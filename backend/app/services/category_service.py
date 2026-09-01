@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -28,7 +27,7 @@ from app.services.expense_revision_service import (
     record_prepared_correction_revision,
 )
 from app.services.optimistic_concurrency import bump_row_version
-from app.services.spending_contract_service import month_bounds_utc, stat_time_expr
+from app.services.spending_contract_service import confirmed_stream_query
 
 # Re-exports — existing callers do
 # ``from app.services.category_service import normalize_category`` etc.
@@ -203,23 +202,24 @@ def _confirmed_summaries_by_category(
     db: Session,
     *,
     tenant_id: str,
-    start: datetime,
-    end: datetime,
+    month: str,
+    timezone_name: str | None,
     pending_by_category: dict[str, int],
 ) -> dict[str, CategorySummary]:
-    stat_time = stat_time_expr()
+    stream = confirmed_stream_query(
+        tenant_id=tenant_id,
+        month=month,
+        timezone_name=timezone_name,
+        amount_required=True,
+    )
     confirmed_rows = db.execute(
         select(
-            Expense.category,
-            func.count(Expense.id),
-            func.coalesce(func.sum(Expense.amount_cents), 0),
+            stream.c.category,
+            func.count(stream.c.entry_id),
+            func.coalesce(func.sum(stream.c.stream_amount_cents), 0),
         )
-        .where(Expense.tenant_id == tenant_id)
-        .where(Expense.status == "confirmed")
-        .where(Expense.amount_cents.is_not(None))
-        .where(stat_time >= start)
-        .where(stat_time < end)
-        .group_by(Expense.category)
+        .select_from(stream)
+        .group_by(stream.c.category)
     ).all()
 
     aggregated: dict[str, CategorySummary] = {}
@@ -292,17 +292,17 @@ def list_category_summary(
 ) -> CategoryDashboard:
     """Return per-category counts/amounts for the dashboard.
 
-    Confirmed amounts/counts are scoped to ``[start, end)`` of ``month``
-    based on expense time first, then confirmed time. Pending counts are global per category so
-    the user can see lingering uncategorized rows regardless of month.
+    Confirmed amounts/counts use the shared financial-event projection: roots
+    use their local expense/confirmation date, offsets their accounting date.
+    Pending counts are global per category so the user can see lingering
+    uncategorized rows regardless of month.
     """
-    start, end = month_bounds_utc(month, timezone_name)
     pending_by_category = _pending_counts_by_category(db, tenant_id=tenant_id)
     aggregated = _confirmed_summaries_by_category(
         db,
         tenant_id=tenant_id,
-        start=start,
-        end=end,
+        month=month,
+        timezone_name=timezone_name,
         pending_by_category=pending_by_category,
     )
     _add_pending_only_summaries(aggregated, pending_by_category)

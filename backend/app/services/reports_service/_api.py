@@ -50,6 +50,7 @@ def _overview_range_totals(
     current: tuple[Any, Any],
     previous: tuple[Any, Any],
     year_over_year: tuple[Any, Any],
+    timezone_name: str,
 ) -> dict[str, tuple[int, int]]:
     return _range_amount_counts(
         db,
@@ -59,6 +60,7 @@ def _overview_range_totals(
             "previous": previous,
             "year_over_year": year_over_year,
         },
+        timezone_name=timezone_name,
     )
 
 
@@ -75,9 +77,7 @@ def reports_overview(
 ) -> dict:
     _parse_month(month)
     timezone_key, zone = _resolve_timezone(timezone_name)
-    normalized_merchant_category = (
-        normalize_category(merchant_category) if merchant_category else None
-    )
+    normalized_merchant_category = normalize_category(merchant_category) if merchant_category else None
     current_start_utc, current_end_utc = _month_bounds(month, timezone_key)
     previous_month = _shift_month(month, -1)
     previous_start_utc, previous_end_utc = _month_bounds(previous_month, timezone_key)
@@ -89,6 +89,7 @@ def reports_overview(
         current=(current_start_utc, current_end_utc),
         previous=(previous_start_utc, previous_end_utc),
         year_over_year=(yoy_start_utc, yoy_end_utc),
+        timezone_name=timezone_key,
     )
     total_amount, count = range_totals["current"]
     previous_total, previous_count = range_totals["previous"]
@@ -130,16 +131,15 @@ def reports_overview(
             top_n=top_n,
             category=merchant_category,
             ranking_metric=ranking_metric,
+            timezone_name=timezone_key,
         ),
         "category_comparison": _category_comparison(
             db,
             tenant_id=tenant_id,
-            current_start_utc=current_start_utc,
-            current_end_utc=current_end_utc,
-            previous_start_utc=previous_start_utc,
-            previous_end_utc=previous_end_utc,
-            year_over_year_start_utc=yoy_start_utc,
-            year_over_year_end_utc=yoy_end_utc,
+            current=(current_start_utc, current_end_utc),
+            previous=(previous_start_utc, previous_end_utc),
+            year_over_year=(yoy_start_utc, yoy_end_utc),
+            timezone_name=timezone_key,
         ),
     }
 
@@ -170,6 +170,7 @@ def six_month_summary(
             tenant_id=tenant_id,
             start_utc=start_utc,
             end_utc=end_utc,
+            timezone_name=timezone_key,
         )
         try:
             budget = get_monthly_budget(

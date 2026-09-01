@@ -6,13 +6,18 @@ import com.ticketbox.domain.model.BatchApplyResult
 import com.ticketbox.domain.model.BillSplitInbox
 import com.ticketbox.domain.model.BillSplitSent
 import com.ticketbox.domain.model.ConnectionDiagnostics
+import com.ticketbox.domain.model.ConfirmedStreamItem
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.DataQualitySummary
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import com.ticketbox.domain.model.ExpenseCorrectionOutcome
+import com.ticketbox.domain.model.ExpenseFactBundle
 import com.ticketbox.domain.model.ExpenseRevisionPage
+import com.ticketbox.domain.model.ExpenseOffsetDraft
+import com.ticketbox.domain.model.ExpenseOffsetFact
+import com.ticketbox.domain.model.ExpenseOffsetMutationOutcome
 import com.ticketbox.domain.model.ExpenseItemDraft
 import com.ticketbox.domain.model.ExpenseItems
 import com.ticketbox.domain.model.ExpenseSplitDraft
@@ -86,6 +91,7 @@ class ExpenseRepository(
     private val searchRepository = ExpenseSearchRepositoryActions(core, pendingRepository, binding.settingsStore)
     private val detailRepository = ExpenseDetailRepository(core)
     private val correctionRepository = ExpenseCorrectionRepository(core)
+    private val offsetRepository = ExpenseOffsetRepository(core)
     private val billSplitRepository = ExpenseBillSplitRepository(core)
     private val backgroundTaskRepository = ExpenseBackgroundTaskRepository(core)
 
@@ -153,6 +159,20 @@ class ExpenseRepository(
         correction: ExpenseCorrectionDraft,
     ): Result<ExpenseCorrectionOutcome> =
         correctionRepository.correctAllowingOffline(expense, correction)
+
+    override suspend fun fetchExpenseFactBundle(id: Long): Result<ExpenseFactBundle> =
+        offsetRepository.fetch(id)
+
+    override suspend fun createExpenseOffsetAllowingOffline(
+        expense: Expense,
+        draft: ExpenseOffsetDraft,
+    ): Result<ExpenseOffsetMutationOutcome> = offsetRepository.createAllowingOffline(expense, draft)
+
+    override suspend fun voidExpenseOffsetAllowingOffline(
+        expense: Expense,
+        offset: ExpenseOffsetFact,
+        reason: String,
+    ): Result<ExpenseOffsetMutationOutcome> = offsetRepository.voidAllowingOffline(expense, offset, reason)
 
     override suspend fun uploadScreenshot(request: ScreenshotUploadRequest): Result<PendingUploadReceipt> =
         pendingRepository.uploadScreenshot(request)
@@ -343,6 +363,9 @@ class ExpenseRepository(
 
     override fun observeConfirmed(): Flow<List<Expense>> =
         ledgerRepository.observeConfirmed()
+
+    override fun observeConfirmedStream(): Flow<List<ConfirmedStreamItem>> =
+        ledgerRepository.observeConfirmedStream()
 
     override fun recentSearches(): List<String> =
         searchRepository.recentSearches()

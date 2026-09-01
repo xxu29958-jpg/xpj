@@ -121,7 +121,7 @@ def _confirmed_in_month(
 ) -> list[tuple[str, int]]:
     """Return (category, amount_cents) pairs for the named month."""
 
-    rows = db.scalars(
+    rows = db.execute(
         confirmed_amount_query(
             tenant_id=tenant_id,
             month=year_month,
@@ -130,14 +130,14 @@ def _confirmed_in_month(
     )
     return [
         (
-            expense.category or "其他",
+            row.category or "其他",
             projection_sum_to_int(
-                expense.amount_cents,
-                label="monthly_report.expense",
+                row.amount_cents,
+                label="monthly_report.entry",
                 empty_is_zero=True,
             ),
         )
-        for expense in rows
+        for row in rows
     ]
 
 

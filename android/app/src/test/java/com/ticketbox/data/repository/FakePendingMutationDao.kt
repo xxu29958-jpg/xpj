@@ -144,14 +144,15 @@ class FakePendingMutationDao : PendingMutationDao {
         ownerKey: String,
         ledgerId: String,
         targetId: String,
-        pendingStatus: String,
+        preservedTokenType: String,
         freshToken: Long,
     ): Int {
         val matching = rows.values.filter {
             it.ownerKey == ownerKey &&
                 it.ledgerId == ledgerId &&
                 it.targetId == targetId &&
-                it.status == pendingStatus
+                it.status == PendingMutationStatus.Pending.wireValue &&
+                it.type != preservedTokenType
         }
         for (row in matching) {
             rows[row.id] = row.copy(expectedRowVersion = freshToken)

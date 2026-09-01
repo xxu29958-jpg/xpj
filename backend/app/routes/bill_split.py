@@ -75,8 +75,21 @@ def list_my_sent(
     rows = bsplit.list_sent(
         db, sender_account_id=auth.account_id, sender_ledger_id=auth.tenant_id
     )
+    impacted = bsplit.source_impact_pending_invitation_ids(
+        db,
+        sender_ledger_id=auth.tenant_id,
+        invitations=rows,
+    )
     return BillSplitSentListResponse(
-        items=[BillSplitSentResponse.model_validate(bsplit.to_sent_response_dict(r)) for r in rows]
+        items=[
+            BillSplitSentResponse.model_validate(
+                bsplit.to_sent_response_dict(
+                    row,
+                    source_impact_pending=row.public_id in impacted,
+                )
+            )
+            for row in rows
+        ]
     )
 
 

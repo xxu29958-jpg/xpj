@@ -154,6 +154,18 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
     }
 
     @Test
+    fun `confirmed server row is loadable from cache by its positive domain id`() = runTest {
+        val dao = FakeExpenseDao()
+        val repo = createRepo(ManualCreateApi(), dao, outbox(FakePendingMutationDao()))
+        dao.insert(confirmedDto(id = 77L).toEntity(activeLedger))
+
+        val loaded = repo.fetchExpenseFromLocalCache(77L).getOrThrow()
+
+        assertEquals(77L, loaded.id)
+        assertEquals("confirmed", loaded.status)
+    }
+
+    @Test
     fun `online create stays direct, sends client_ref, enqueues nothing`() = runTest {
         val dao = FakeExpenseDao()
         val pendingDao = FakePendingMutationDao()

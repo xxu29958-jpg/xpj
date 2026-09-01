@@ -136,11 +136,13 @@ class OutboxDrainEngine(
         val ADVICE_INPUT_MUTATION_TYPES: Set<PendingMutationType> = setOf(
             PendingMutationType.ConfirmExpense,
             PendingMutationType.CreateExpense,
+            PendingMutationType.CreateExpenseOffset,
             PendingMutationType.PatchExpense,
             PendingMutationType.CorrectExpense,
             PendingMutationType.UpdateIncomePlan,
             PendingMutationType.CreateRecurringItem,
             PendingMutationType.UpdateRecurringItem,
+            PendingMutationType.VoidExpenseOffset,
         )
     }
 

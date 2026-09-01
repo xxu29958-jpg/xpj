@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from app.database import SessionLocal
 from app.models import Expense, ExpenseTag, Tag
 from app.services.import_service import import_rows, parse_csv_preview
+from tests._confirmed_stream_test_support import confirmed_expense_roots
 
 
 def _manual(
@@ -63,7 +64,7 @@ def test_manual_tags_normalize_filter_export_and_stats(client: TestClient, *, id
     assert filtered.status_code == 200
     filtered_body = filtered.json()
     assert filtered_body["total"] == 1
-    assert filtered_body["items"][0]["merchant"] == "标签早餐"
+    assert confirmed_expense_roots(filtered_body)[0]["merchant"] == "标签早餐"
 
     missing = client.get(
         "/api/expenses/confirmed?month=2026-05&tag=不存在", headers=identity.app_headers
@@ -151,8 +152,8 @@ def test_tag_filters_are_ledger_scoped(client: TestClient, *, identity) -> None:
     )
     assert owner_page.status_code == 200
     assert gray_page.status_code == 200
-    assert [row["merchant"] for row in owner_page.json()["items"]] == ["Owner Shared"]
-    assert [row["merchant"] for row in gray_page.json()["items"]] == ["Gray Shared"]
+    assert [row["merchant"] for row in confirmed_expense_roots(owner_page.json())] == ["Owner Shared"]
+    assert [row["merchant"] for row in confirmed_expense_roots(gray_page.json())] == ["Gray Shared"]
 
     owner_stats = client.get(
         "/api/stats/monthly?month=2026-05&tag=Shared", headers=identity.app_headers

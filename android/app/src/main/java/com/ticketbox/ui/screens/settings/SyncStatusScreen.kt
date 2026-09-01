@@ -437,6 +437,8 @@ internal val syncStatusMutationLabelResources = mapOf(
     PendingMutationType.UpdateIncomePlan to R.string.sync_status_mutation_update_income_plan,
     PendingMutationType.CreateRecurringItem to R.string.sync_status_mutation_create_recurring_item,
     PendingMutationType.UpdateRecurringItem to R.string.sync_status_mutation_update_recurring_item,
+    PendingMutationType.CreateExpenseOffset to R.string.sync_status_mutation_create_expense_offset,
+    PendingMutationType.VoidExpenseOffset to R.string.sync_status_mutation_void_expense_offset,
     PendingMutationType.Unknown to R.string.sync_status_mutation_unknown,
 )
 

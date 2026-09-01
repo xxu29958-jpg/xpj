@@ -43,15 +43,22 @@ from app.services.bill_split_service._guards import (
     assert_no_immutable_field_changes,
 )
 from app.services.bill_split_service._query import (
+    AcceptedSourceRelationship,
     get_invitation,
+    list_accepted_source_relationships,
     list_inbox,
     list_sent,
     list_sent_for_expense,
+    source_impact_pending_invitation_ids,
 )
 from app.services.bill_split_service._serializers import (
     receiver_sender_presentation,
     to_inbox_response_dict,
     to_sent_response_dict,
+)
+from app.services.bill_split_service._source_financial_change import (
+    SourceFinancialChangeImpacts,
+    settle_source_financial_change,
 )
 from app.services.bill_split_service._transitions import (
     accept_invitation,
@@ -64,6 +71,8 @@ __all__ = [
     "IMMUTABLE_ON_SPLIT_RECEIVED",
     "INVITATION_TTL",
     "SPLIT_RECEIVED_SOURCE",
+    "AcceptedSourceRelationship",
+    "SourceFinancialChangeImpacts",
     "WRITER_ROLES",
     "accept_invitation",
     "assert_no_immutable_field_changes",
@@ -72,12 +81,15 @@ __all__ = [
     "create_invitation",
     "expire_invitations",
     "get_invitation",
+    "list_accepted_source_relationships",
     "list_inbox",
     "list_sent",
     "list_sent_for_expense",
     "reconcile_bill_split_debts_if_enabled",
     "reject_invitation",
     "receiver_sender_presentation",
+    "settle_source_financial_change",
+    "source_impact_pending_invitation_ids",
     "to_inbox_response_dict",
     "to_sent_response_dict",
 ]

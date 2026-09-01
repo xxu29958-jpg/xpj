@@ -41,6 +41,7 @@ from app.services.expense_service._image import ensure_image_file, ensure_thumbn
 from app.services.expense_service._ocr import recognize_expense_text, retry_expense_ocr
 from app.services.expense_service._query import (
     fetch_expense_row_version_in_status,
+    filtered_confirmed_stream,
     get_expense,
     is_expense_in_status_for_tenant,
     ledger_has_any_expense,
@@ -73,6 +74,7 @@ __all__ = [
     "ensure_thumbnail_file",
     "enrich_pending_expense",
     "fetch_expense_row_version_in_status",
+    "filtered_confirmed_stream",
     "get_expense",
     "is_expense_in_status_for_tenant",
     "ledger_has_any_expense",

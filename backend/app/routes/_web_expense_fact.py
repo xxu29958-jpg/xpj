@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.routes._web_expense_fact_pager import fact_timeline_page_context
 from app.routes._web_expense_helpers import web_edit_context
+from app.routes._web_expense_offset_fact import expense_offset_fact_view
 from app.routes._web_expense_return_context import (
     ExpenseReturnContext,
     clean_return_to,
@@ -388,6 +389,7 @@ def web_fact_context(
         expense=ctx["expense"],
         can_write=ctx["can_write"],
     )
+    ctx.update(expense_offset_fact_view(db, selected_id, expense_id, ctx["can_write"]))
     member_names = {
         member.member_id: member.account_name
         for member in invitation_members.list_members(

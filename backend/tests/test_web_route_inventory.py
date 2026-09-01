@@ -79,6 +79,8 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     # Account flows
     ("GET", "/web/confirmed"): "local-only-rendering",
     ("POST", "/web/confirmed/batch-update"): "writer-only",
+    ("POST", "/web/expenses/{expense_id}/offsets"): "writer-only",
+    ("POST", "/web/expenses/{expense_id}/offsets/{offset_public_id}/voids"): "writer-only",
     # Budgets
     ("GET", "/web/budgets"): "local-only-rendering",
     ("POST", "/web/budgets/save"): "writer-only",

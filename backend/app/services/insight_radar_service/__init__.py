@@ -31,6 +31,8 @@ from app.money_contract import projection_sum_to_int
 from app.services.income_plan_service import total_monthly_income_cents
 from app.services.spending_contract_service import (
     accounting_timezone_key,
+    accounting_zone,
+    confirmed_stream_query,
     month_bounds_utc,
     month_labels_ending_at,
     stat_month_label,
@@ -108,24 +110,24 @@ def cashflow_radar(
         return []
     start_utc, _ = month_bounds_utc(months[0], timezone_name)
     _, end_utc = month_bounds_utc(months[-1], timezone_name)
-    time_expr = stat_time_expr()
-
-    expenses = db.scalars(
-        select(Expense)
-        .where(Expense.tenant_id == tenant_id)
-        .where(Expense.status == "confirmed")
-        .where(Expense.amount_cents.is_not(None))
-        .where(time_expr >= start_utc)
-        .where(time_expr < end_utc)
+    zone = accounting_zone(timezone_name)
+    stream = confirmed_stream_query(
+        tenant_id=tenant_id,
+        timezone_name=timezone_name,
+        amount_required=True,
     )
     expense_by_month: dict[str, int] = defaultdict(int)
-    timezone_key = accounting_timezone_key(timezone_name)
-    for expense in expenses:
-        key = stat_month_label(expense, timezone_key)
+    rows = db.execute(
+        select(stream.c.stream_date, stream.c.stream_amount_cents)
+        .where(stream.c.stream_date >= start_utc.astimezone(zone).date())
+        .where(stream.c.stream_date < end_utc.astimezone(zone).date())
+    )
+    for stream_date, stream_amount_cents in rows:
+        key = stream_date.strftime("%Y-%m")
         if key in months:
             amount = projection_sum_to_int(
-                expense.amount_cents,
-                label="insight_radar.expense",
+                stream_amount_cents,
+                label="insight_radar.entry",
             )
             expense_by_month[key] = projection_sum_to_int(
                 expense_by_month[key] + amount,

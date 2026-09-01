@@ -10,6 +10,8 @@ import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto
 import com.ticketbox.data.remote.dto.addExpenseCorrectionWireAdapters
 import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
+import com.ticketbox.data.remote.dto.ExpenseOffsetCreateRequestDto
+import com.ticketbox.data.repository.ExpenseOffsetVoidOutboxPayload
 import com.ticketbox.data.remote.dto.ExpenseRecognizeTextRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
@@ -110,6 +112,14 @@ internal class OutboxAdapterGraph {
     // and CreateExpenseDispatcher's replay. Same roundtrip guarantee as patchExpenseAdapter.
     val manualCreateAdapter: JsonAdapter<ExpenseManualCreateRequestDto> = lazyJsonAdapter {
         moshi.adapter(ExpenseManualCreateRequestDto::class.java)
+    }
+
+    val offsetCreateAdapter: JsonAdapter<ExpenseOffsetCreateRequestDto> = lazyJsonAdapter {
+        moshi.adapter(ExpenseOffsetCreateRequestDto::class.java)
+    }
+
+    val offsetVoidAdapter: JsonAdapter<ExpenseOffsetVoidOutboxPayload> = lazyJsonAdapter {
+        moshi.adapter(ExpenseOffsetVoidOutboxPayload::class.java)
     }
 
     // ADR-0042 Slice F: PATCH /api/goals/{publicId} adapter. Shared between

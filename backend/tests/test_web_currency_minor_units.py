@@ -240,7 +240,7 @@ def test_confirmed_search_and_reports_use_zero_fraction_home_amounts(
         )
         assert confirmed.status_code == 200, confirmed.text
         assert f"{month} 共 1 笔，合计 ¥1234。" in confirmed.text
-        assert '<span class="lday-s">¥1234</span>' in confirmed.text
+        assert '<span class="lday-s">¥1,234</span>' in confirmed.text
         assert "¥12.34" not in confirmed.text
 
         search = web_client.get(

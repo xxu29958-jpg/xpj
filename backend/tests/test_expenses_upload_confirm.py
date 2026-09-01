@@ -18,6 +18,7 @@ from app.models import Expense
 from app.routes.web_auth import SESSION_COOKIE_NAME
 from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.time_service import now_utc
+from tests._confirmed_stream_test_support import confirmed_expense_roots
 from tests._infra.assets import PNG_BYTES
 from tests._infra.env import BACKEND_ROOT
 
@@ -281,7 +282,7 @@ def test_confirm_removes_expense_from_pending_and_adds_confirmed(
     confirmed = client.get("/api/expenses/confirmed?month=2026-05", headers=identity.app_headers)
     assert confirmed.status_code == 200
     assert confirmed.json()["total"] == 1
-    assert confirmed.json()["items"][0]["id"] == expense_id
+    assert confirmed_expense_roots(confirmed.json())[0]["id"] == expense_id
 
     stats = client.get("/api/stats/monthly?month=2026-05", headers=identity.app_headers)
     assert stats.status_code == 200

@@ -154,7 +154,9 @@ class ExpenseEditViewModel(
             val loaded = if (expenseId < 0) {
                 repository.fetchExpenseFromLocalCache(expenseId)
             } else {
-                repository.fetchExpense(expenseId)
+                repository.fetchExpense(expenseId).let { remote ->
+                    if (remote.isSuccess) remote else repository.fetchExpenseFromLocalCache(expenseId)
+                }
             }
             loaded
                 .onSuccess { expense ->

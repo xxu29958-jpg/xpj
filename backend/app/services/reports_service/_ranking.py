@@ -8,14 +8,12 @@ from datetime import datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.ledger_scope import add_ledger_scope
-from app.models import Expense
 from app.money_contract import projection_sum_to_int
 from app.services.category_service import category_filter_values, normalize_category
 from app.services.merchant_alias_service import canonical_merchant_for
 from app.services.merchant_service import display_merchant, normalize_merchant
+from app.services.reports_service._aggregation import _stream_for_utc_range
 from app.services.reports_service._models import ReportRankingMetric
-from app.services.reports_service._time import _stat_time_expr
 from app.services.spending_contract_service import enabled_merchant_display_map
 
 
@@ -40,33 +38,26 @@ def _merchant_ranking(
     top_n: int,
     category: str | None,
     ranking_metric: ReportRankingMetric,
+    timezone_name: str,
 ) -> list[dict]:
-    stat_time = _stat_time_expr()
+    stream = _stream_for_utc_range(
+        tenant_id=tenant_id,
+        start_utc=start_utc,
+        end_utc=end_utc,
+        timezone_name=timezone_name,
+        category=category,
+    )
     # Reuse one expression object in both SELECT and GROUP BY. Rebuilding
     # ``func.coalesce(Expense.merchant, "")`` twice binds the "" literal as two
     # different parameters, so PostgreSQL sees coalesce(merchant,$1) vs
     # coalesce(merchant,$2) and rejects the SELECT column as not grouped
     # (SQLite is lenient and never complained) — ADR-0041.
-    merchant_key = func.coalesce(Expense.merchant, "")
-    statement = (
-        add_ledger_scope(
-            select(
-                merchant_key,
-                func.coalesce(func.sum(Expense.amount_cents), 0),
-                func.count(Expense.id),
-            ).group_by(merchant_key),
-            Expense,
-            tenant_id,
-        )
-        .where(Expense.status == "confirmed")
-        .where(Expense.amount_cents.is_not(None))
-        .where(stat_time >= start_utc)
-        .where(stat_time < end_utc)
-    )
-    if category:
-        statement = statement.where(
-            Expense.category.in_(_category_filter_values(category))
-        )
+    merchant_key = func.coalesce(stream.c.merchant, "")
+    statement = select(
+        merchant_key,
+        func.coalesce(func.sum(stream.c.stream_amount_cents), 0),
+        func.count(stream.c.entry_id),
+    ).select_from(stream).group_by(merchant_key)
     rows = db.execute(statement)
     alias_map = enabled_merchant_display_map(db, tenant_id=tenant_id)
     buckets: dict[str, dict[str, int | str]] = defaultdict(
@@ -115,22 +106,22 @@ def _category_totals(
     tenant_id: str,
     start_utc: datetime,
     end_utc: datetime,
+    timezone_name: str,
 ) -> dict[str, dict[str, int | str]]:
-    stat_time = _stat_time_expr()
+    stream = _stream_for_utc_range(
+        tenant_id=tenant_id,
+        start_utc=start_utc,
+        end_utc=end_utc,
+        timezone_name=timezone_name,
+    )
     statement = (
-        add_ledger_scope(
-            select(
-                Expense.category,
-                func.coalesce(func.sum(Expense.amount_cents), 0),
-                func.count(Expense.id),
-            ).group_by(Expense.category),
-            Expense,
-            tenant_id,
+        select(
+            stream.c.category,
+            func.coalesce(func.sum(stream.c.stream_amount_cents), 0),
+            func.count(stream.c.entry_id),
         )
-        .where(Expense.status == "confirmed")
-        .where(Expense.amount_cents.is_not(None))
-        .where(stat_time >= start_utc)
-        .where(stat_time < end_utc)
+        .select_from(stream)
+        .group_by(stream.c.category)
     )
     rows = db.execute(statement)
     buckets: dict[str, dict[str, int | str]] = defaultdict(
@@ -156,34 +147,34 @@ def _category_totals(
     return buckets
 
 
+def _category_totals_for_range(
+    db: Session,
+    tenant_id: str,
+    period: tuple[datetime, datetime],
+    timezone_name: str,
+) -> dict[str, dict[str, int | str]]:
+    return _category_totals(
+        db,
+        tenant_id=tenant_id,
+        start_utc=period[0],
+        end_utc=period[1],
+        timezone_name=timezone_name,
+    )
+
+
 def _category_comparison(
     db: Session,
     *,
     tenant_id: str,
-    current_start_utc: datetime,
-    current_end_utc: datetime,
-    previous_start_utc: datetime,
-    previous_end_utc: datetime,
-    year_over_year_start_utc: datetime,
-    year_over_year_end_utc: datetime,
+    current: tuple[datetime, datetime],
+    previous: tuple[datetime, datetime],
+    year_over_year: tuple[datetime, datetime],
+    timezone_name: str,
 ) -> list[dict]:
-    current = _category_totals(
-        db,
-        tenant_id=tenant_id,
-        start_utc=current_start_utc,
-        end_utc=current_end_utc,
-    )
-    previous = _category_totals(
-        db,
-        tenant_id=tenant_id,
-        start_utc=previous_start_utc,
-        end_utc=previous_end_utc,
-    )
-    year_over_year = _category_totals(
-        db,
-        tenant_id=tenant_id,
-        start_utc=year_over_year_start_utc,
-        end_utc=year_over_year_end_utc,
+    current = _category_totals_for_range(db, tenant_id, current, timezone_name)
+    previous = _category_totals_for_range(db, tenant_id, previous, timezone_name)
+    year_over_year = _category_totals_for_range(
+        db, tenant_id, year_over_year, timezone_name
     )
     items: list[dict] = []
     for category in set(current) | set(previous) | set(year_over_year):

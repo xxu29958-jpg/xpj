@@ -43,7 +43,7 @@ import com.ticketbox.viewmodel.updateCorrectionSplitDraft
 
 /**
  * A1 事实屏的 sheet 托管（detekt 拆分：ExpenseFactScreen 只留正文编排）。
- * 更正 sheet / 明细子 surface / 拆账子 surface / 拆账邀请 sheet。
+ * 更正 sheet / 明细子 surface / 拆账子 surface / 拆账邀请 sheet / offset 登记与撤销 sheet。
  */
 @Composable
 internal fun ExpenseFactSheetHosts(
@@ -53,6 +53,7 @@ internal fun ExpenseFactSheetHosts(
     FactBillSplitInviteHost(state = state, viewModel = viewModel)
     FactCorrectionHost(state = state, viewModel = viewModel)
     FactCorrectionLinesHosts(state = state, viewModel = viewModel)
+    FactOffsetSheetHosts(state = state, viewModel = viewModel)
 }
 
 @Composable

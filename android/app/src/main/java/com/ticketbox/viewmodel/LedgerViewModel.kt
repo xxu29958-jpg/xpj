@@ -6,6 +6,7 @@ import com.ticketbox.R
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.LedgerActions
 import com.ticketbox.domain.model.BatchApplyResult
+import com.ticketbox.domain.model.ConfirmedStreamItem
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
@@ -15,8 +16,9 @@ import com.ticketbox.domain.model.ExpenseFilterCriteria
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RecentMerchant
 import com.ticketbox.domain.model.UiText
+import com.ticketbox.domain.model.asExpenseRoot
 import com.ticketbox.domain.model.expenseLedgerMonth
-import com.ticketbox.domain.model.filterConfirmedExpenses
+import com.ticketbox.domain.model.filterConfirmedStreamItems
 import com.ticketbox.domain.model.isUncategorizedExpenseCategory
 import com.ticketbox.domain.model.recentLedgerMerchants
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -69,7 +71,10 @@ private data class LedgerSyncKey(
 )
 
 data class LedgerUiState(
-    val items: List<Expense> = emptyList(),
+    // Typed confirmed stream (Refund/Chargeback/Reversal 纵向片): expense root
+    // rows + offset event rows. Sums/grouping read ONLY the server-owned
+    // streamDate/streamAmountCents; batch selection resolves via asExpenseRoot().
+    val items: List<ConfirmedStreamItem> = emptyList(),
     val categories: List<String> = DEFAULT_EXPENSE_CATEGORIES,
     val tags: List<String> = emptyList(),
     val months: List<String> = emptyList(),
@@ -145,7 +150,10 @@ data class LedgerUiState(
 
     val summary: LedgerSummaryUi
         get() = LedgerSummaryUi(
-            totalAmountCents = items.sumOf { it.amountCents ?: 0L },
+            // Page header total = sum of server-owned signed contributions only
+            // (refund/chargeback negative, reversal & reversed root zero). Never
+            // gross amountCents, never lineage net.
+            totalAmountCents = items.sumOf { it.streamAmountCents },
             itemCount = items.size,
             monthFilter = monthFilter,
             syncing = syncing,
@@ -185,7 +193,7 @@ class LedgerViewModel(
         ),
     )
     val uiState: StateFlow<LedgerUiState> = _uiState.asStateFlow()
-    private var allConfirmed: List<Expense> = emptyList()
+    private var allConfirmed: List<ConfirmedStreamItem> = emptyList()
     private var inFlightSyncKey: LedgerSyncKey? = null
 
     init {
@@ -196,16 +204,21 @@ class LedgerViewModel(
         // 代际守卫 last-writer-wins，写尝试时可重解析（一次性门闩解除）。
         viewModelScope.launch { refreshLedgerCurrency() }
         viewModelScope.launch {
-            repository.observeConfirmed().collect { expenses ->
-                allConfirmed = expenses
+            repository.observeConfirmedStream().collect { streamItems ->
+                allConfirmed = streamItems
                 _uiState.update { state ->
                     state.copy(
-                        items = filterItems(expenses, state),
+                        items = filterItems(streamItems, state),
                         // Keep the replace-gate flag honest if the synced data
-                        // changes while a selection is open.
+                        // changes while a selection is open. Selection ids are
+                        // root ids; offset rows carry the same root, so `any`
+                        // over the stream is equivalent to roots-only.
                         selectedHaveTags = state.selectionMode &&
-                            expenses.any { it.id in state.selectedIds && !it.tags.isNullOrBlank() },
-                        recentMerchants = recentLedgerMerchants(expenses),
+                            streamItems.any { it.root.id in state.selectedIds && !it.root.tags.isNullOrBlank() },
+                        // MRU quick-fill is a root-bill vocabulary: dedupe the
+                        // root carried by every entry so a much-refunded bill
+                        // can't dominate the chips.
+                        recentMerchants = recentLedgerMerchants(streamItems.map { it.root }.distinctBy { it.id }),
                     )
                 }
             }
@@ -251,9 +264,12 @@ class LedgerViewModel(
         loadTags()
     }
 
-    private fun filterItems(expenses: List<Expense>, state: LedgerUiState): List<Expense> {
-        val normallyFiltered = filterConfirmedExpenses(
-            expenses = expenses,
+    private fun filterItems(
+        streamItems: List<ConfirmedStreamItem>,
+        state: LedgerUiState,
+    ): List<ConfirmedStreamItem> {
+        val normallyFiltered = filterConfirmedStreamItems(
+            items = streamItems,
             criteria = ExpenseFilterCriteria(
                 month = state.monthFilter,
                 category = state.categoryFilter,
@@ -261,13 +277,19 @@ class LedgerViewModel(
                 query = state.query,
             ),
         )
+        // Data-quality calibers are root-bill predicates (uncategorized /
+        // missing image): offset event rows never match them.
         return when (state.dataQualityFilter) {
             LedgerDataQualityFilter.MissingCategory ->
                 // Same serverCategory-first caliber as the inbox (pendingNeedsCategory).
-                normallyFiltered.filter { isUncategorizedExpenseCategory(it.serverCategory ?: it.category) }
+                normallyFiltered.filter { item ->
+                    item.asExpenseRoot()?.let { isUncategorizedExpenseCategory(it.serverCategory ?: it.category) } == true
+                }
             LedgerDataQualityFilter.ConfirmedWithoutImage ->
                 // Mirrors the backend predicate: image_path IS NULL OR image_deleted_at IS NOT NULL.
-                normallyFiltered.filter { !it.hasImage || it.imageDeletedAt != null }
+                normallyFiltered.filter { item ->
+                    item.asExpenseRoot()?.let { !it.hasImage || it.imageDeletedAt != null } == true
+                }
             null -> normallyFiltered
         }
     }
@@ -593,10 +615,12 @@ class LedgerViewModel(
         }
     }
 
-    /** Select every expense currently visible under the active filters. */
+    /** Select every expense root currently visible under the active filters.
+     *  Offset event rows are never batch-command targets (no checkbox), so they
+     *  contribute nothing here either. */
     fun selectAllVisible() {
         _uiState.update { state ->
-            state.withSelection(state.items.map { it.id }.toSet(), allConfirmed)
+            state.withSelection(state.items.mapNotNull { it.asExpenseRoot()?.id }.toSet(), allConfirmed)
         }
     }
 
@@ -636,8 +660,9 @@ class LedgerViewModel(
         }
         val selected = _uiState.value.selectedIds
         // Resolve to the full Expense objects (each carries its own rowVersion
-        // token) from the synced confirmed cache, not the filtered view.
-        val targets = allConfirmed.filter { it.id in selected }
+        // token) from the synced confirmed cache, not the filtered view. Only
+        // expense root rows are batch targets.
+        val targets = allConfirmed.mapNotNull { it.asExpenseRoot() }.filter { it.id in selected }
         if (targets.isEmpty()) {
             // Flip batchDone so the screen closes the sheet and the page-level no-selection
             // message becomes visible (the still-open sheet would otherwise cover it). Mirrors
@@ -744,12 +769,13 @@ class LedgerViewModel(
 
 private fun LedgerUiState.withSelection(
     ids: Set<Long>,
-    allConfirmed: List<Expense>,
+    allConfirmed: List<ConfirmedStreamItem>,
 ): LedgerUiState = copy(
     selectionMode = true,
     selectedIds = ids,
     // From allConfirmed (the fan-out's target source), not the filtered view.
-    selectedHaveTags = allConfirmed.any { it.id in ids && !it.tags.isNullOrBlank() },
+    // Ids are root ids; an offset row's root answers the same predicate.
+    selectedHaveTags = allConfirmed.any { it.root.id in ids && !it.root.tags.isNullOrBlank() },
 )
 
 private fun batchResultTone(result: BatchApplyResult): MessageTone = when {

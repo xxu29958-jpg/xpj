@@ -95,4 +95,12 @@ data class ExpenseEntity(
     val clientRef: String? = null,
     @ColumnInfo(defaultValue = "0")
     val factRevision: Long = 0L,
+    // Nullable for pending/local-only rows and for v16 cache rows until the
+    // next server stream sync. Clients never reconstruct these facts locally.
+    val streamDate: String? = null,
+    val streamSortTime: String? = null,
+    val streamSortId: Long? = null,
+    val streamAmountCents: Long? = null,
+    val lineageStatus: String? = null,
+    val lineageHomeNetCents: Long? = null,
 )

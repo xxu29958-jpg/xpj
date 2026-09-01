@@ -2,6 +2,7 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.ExpenseDao
 import com.ticketbox.data.local.ExpenseEntity
+import com.ticketbox.data.local.ExpenseOffsetStreamEntity
 import com.ticketbox.data.local.PersistedLedgerIdentity
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiService
@@ -15,11 +16,14 @@ import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.remote.dto.DashboardCardsResponseDto
 import com.ticketbox.data.remote.dto.DashboardCardsUpdateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseDto
+import com.ticketbox.data.remote.dto.ExpenseFactBundleDto
 import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseItemsResponseDto
 import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitsResponseDto
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
+import com.ticketbox.data.remote.dto.ExpenseOffsetCreateRequestDto
+import com.ticketbox.data.remote.dto.ExpenseOffsetVoidRequestDto
 import com.ticketbox.data.remote.dto.GoalCreateRequestDto
 import com.ticketbox.data.remote.dto.GoalDto
 import com.ticketbox.data.remote.dto.GoalListResponseDto
@@ -311,6 +315,21 @@ internal class StubApi(
         request: com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto,
         idempotencyKey: String?,
     ): com.ticketbox.data.remote.dto.ExpenseCorrectionResponseDto = ledgerUnsupported()
+
+    override suspend fun expenseFactBundle(id: String): ExpenseFactBundleDto = ledgerUnsupported()
+
+    override suspend fun createExpenseOffset(
+        id: String,
+        request: ExpenseOffsetCreateRequestDto,
+        idempotencyKey: String,
+    ): ExpenseFactBundleDto = ledgerUnsupported()
+
+    override suspend fun voidExpenseOffset(
+        id: String,
+        offsetPublicId: String,
+        request: ExpenseOffsetVoidRequestDto,
+        idempotencyKey: String,
+    ): ExpenseFactBundleDto = ledgerUnsupported()
     override suspend fun expenseRevisions(
         id: Long,
         page: Int,
@@ -776,6 +795,12 @@ internal class LedgerFakeDao : ExpenseDao {
     fun insertEntity(entity: ExpenseEntity) { map[entity.id] = entity }
     fun find(id: Long): ExpenseEntity? = map[id]
     override fun observeConfirmed(ledgerId: String): Flow<List<ExpenseEntity>> = flowFor(ledgerId)
+    override fun observeConfirmedStreamRoots(ledgerId: String): Flow<List<ExpenseEntity>> =
+        MutableStateFlow(emptyList())
+    override fun observeConfirmedStreamOffsets(ledgerId: String): Flow<List<ExpenseOffsetStreamEntity>> =
+        MutableStateFlow(emptyList())
+    override suspend fun getConfirmedStreamOffsets(ledgerId: String): List<ExpenseOffsetStreamEntity> = emptyList()
+    override suspend fun confirmedStreamOffsetPublicIdsForLedger(ledgerId: String): List<String> = emptyList()
     override suspend fun getConfirmed(ledgerId: String): List<ExpenseEntity> = map.values.filter { it.ledgerId == ledgerId }
     override suspend fun getPending(ledgerId: String): List<ExpenseEntity> =
         map.values.filter { it.ledgerId == ledgerId && it.status == "pending" }
@@ -794,6 +819,7 @@ internal class LedgerFakeDao : ExpenseDao {
         return expense.id
     }
     override suspend fun insertAll(expenses: List<ExpenseEntity>): List<Long> = expenses.map { insert(it) }
+    override suspend fun upsertConfirmedStreamOffsets(offsets: List<ExpenseOffsetStreamEntity>) = Unit
     override suspend fun update(expense: ExpenseEntity) { map[expense.id] = expense }
     override suspend fun updateAll(expenses: List<ExpenseEntity>) { expenses.forEach { update(it) } }
     override suspend fun clear() { map.clear() }
@@ -816,6 +842,10 @@ internal class LedgerFakeDao : ExpenseDao {
             .map { it.id }
         ids.forEach { map.remove(it) }
     }
+    override suspend fun clearConfirmedStreamOffsets() = Unit
+    override suspend fun clearConfirmedStreamOffsetsForLedger(ledgerId: String) = Unit
+    override suspend fun deleteConfirmedStreamOffsetsByPublicIds(ledgerId: String, publicIds: List<String>) = Unit
+    override suspend fun deleteConfirmedStreamOffsetsForRoot(ledgerId: String, rootServerId: Long) = Unit
     private fun flowFor(ledgerId: String): MutableStateFlow<List<ExpenseEntity>> =
         flows.getOrPut(ledgerId) { MutableStateFlow(emptyList()) }
 }

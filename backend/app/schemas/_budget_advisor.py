@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.schemas._money import NonNegativeMoneyAggregate, NonNegativeMoneyMinor
+from app.schemas._money import (
+    NonNegativeMoneyAggregate,
+    NonNegativeMoneyMinor,
+    SignedMoneyAggregate,
+)
 
 __all__ = [
     "BudgetAdviceDto",
@@ -25,7 +29,7 @@ class DiscretionaryResponse(BaseModel):
 
     monthly_income_cents: NonNegativeMoneyAggregate
     fixed_expenses_cents: NonNegativeMoneyAggregate
-    spent_amount_cents: NonNegativeMoneyAggregate
+    spent_amount_cents: SignedMoneyAggregate
     savings_target_cents: NonNegativeMoneyMinor
     reserved_buffer_cents: NonNegativeMoneyMinor
     discretionary_cents: NonNegativeMoneyAggregate

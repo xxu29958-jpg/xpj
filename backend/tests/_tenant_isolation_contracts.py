@@ -3,6 +3,7 @@ from __future__ import annotations
 from api_contract_helpers import confirm_expense_api, patch_expense, reject_expense_api, upload_png
 from fastapi.testclient import TestClient
 
+from tests._confirmed_stream_test_support import confirmed_expense_roots
 from tests._infra.env import TEST_UPLOAD_RELATIVE
 
 
@@ -247,8 +248,8 @@ def _assert_confirmed_expense_lists_are_ledger_scoped(
     )
     assert owner_confirmed.status_code == 200
     assert tester_confirmed.status_code == 200
-    assert [item["id"] for item in owner_confirmed.json()["items"]] == [owner_id]
-    assert [item["id"] for item in tester_confirmed.json()["items"]] == [tester_id]
+    assert [item["id"] for item in confirmed_expense_roots(owner_confirmed.json())] == [owner_id]
+    assert [item["id"] for item in confirmed_expense_roots(tester_confirmed.json())] == [tester_id]
 
 
 def _assert_monthly_stats_are_ledger_scoped(client: TestClient, *, identity) -> None:

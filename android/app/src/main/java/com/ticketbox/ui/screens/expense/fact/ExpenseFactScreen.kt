@@ -88,6 +88,7 @@ private fun FactContentSections(
                     state = state,
                     onOpenCorrection = viewModel::openCorrectionSheet,
                 )
+                FactOffsetsSection(state = state, viewModel = viewModel)
                 FactMediaSection(
                     state = state,
                     onLoadFullImage = viewModel::loadFullImage,

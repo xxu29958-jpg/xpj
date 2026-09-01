@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from app.database import SessionLocal
 from app.models import Expense
 from app.services import web_stats_service
+from tests._confirmed_stream_test_support import confirmed_expense_roots
 
 
 def test_local_timezone_month_filter_matches_android_display_month(
@@ -113,7 +114,7 @@ def test_confirmed_month_filter_falls_back_to_confirmed_at_and_category(
     assert may_food_page.status_code == 200
     may_food_payload = may_food_page.json()
     assert may_food_payload["total"] == 1
-    assert may_food_payload["items"][0]["merchant"] == "确认时间跨月餐饮"
+    assert confirmed_expense_roots(may_food_payload)[0]["merchant"] == "确认时间跨月餐饮"
 
     april_food_page = client.get(
         "/api/expenses/confirmed?month=2026-04&category=餐饮", headers=identity.app_headers
@@ -121,7 +122,7 @@ def test_confirmed_month_filter_falls_back_to_confirmed_at_and_category(
     assert april_food_page.status_code == 200
     april_food_payload = april_food_page.json()
     assert april_food_payload["total"] == 1
-    assert april_food_payload["items"][0]["merchant"] == "确认时间上月餐饮"
+    assert confirmed_expense_roots(april_food_payload)[0]["merchant"] == "确认时间上月餐饮"
 
     may_stats = client.get("/api/stats/monthly?month=2026-05", headers=identity.app_headers)
     assert may_stats.status_code == 200
@@ -158,7 +159,7 @@ def test_confirmed_category_filter_includes_legacy_aliases(client: TestClient, *
     assert response.status_code == 200
     payload = response.json()
     assert payload["total"] == 1
-    assert payload["items"][0]["merchant"] == "旧分类餐饮"
+    assert confirmed_expense_roots(payload)[0]["merchant"] == "旧分类餐饮"
 
 
 def test_confirmed_month_filter_handles_cross_year_local_boundary(
@@ -189,7 +190,7 @@ def test_confirmed_month_filter_handles_cross_year_local_boundary(
     assert january_page.status_code == 200
     january_payload = january_page.json()
     assert january_payload["total"] == 1
-    assert january_payload["items"][0]["merchant"] == "跨年后餐饮"
+    assert confirmed_expense_roots(january_payload)[0]["merchant"] == "跨年后餐饮"
 
     december_page = client.get(
         "/api/expenses/confirmed?month=2026-12&category=餐饮", headers=identity.app_headers
@@ -197,7 +198,7 @@ def test_confirmed_month_filter_handles_cross_year_local_boundary(
     assert december_page.status_code == 200
     december_payload = december_page.json()
     assert december_payload["total"] == 1
-    assert december_payload["items"][0]["merchant"] == "跨年前餐饮"
+    assert confirmed_expense_roots(december_payload)[0]["merchant"] == "跨年前餐饮"
 
     january_stats = client.get(
         "/api/stats/monthly?month=2027-01", headers=identity.app_headers
@@ -408,7 +409,7 @@ def test_confirmed_pagination_and_month_filters_are_server_side_contract(
     assert first_page.status_code == 200
     first_payload = first_page.json()
     assert first_payload["total"] == 3
-    assert [item["merchant"] for item in first_payload["items"]] == ["晚饭", "地铁"]
+    assert [item["merchant"] for item in confirmed_expense_roots(first_payload)] == ["晚饭", "地铁"]
 
     second_page = client.get(
         "/api/expenses/confirmed?month=2026-05&page=2&page_size=2",
@@ -417,7 +418,7 @@ def test_confirmed_pagination_and_month_filters_are_server_side_contract(
     assert second_page.status_code == 200
     second_payload = second_page.json()
     assert second_payload["total"] == 3
-    assert [item["merchant"] for item in second_payload["items"]] == ["早餐店"]
+    assert [item["merchant"] for item in confirmed_expense_roots(second_payload)] == ["早餐店"]
 
     category_page = client.get(
         "/api/expenses/confirmed?month=2026-05&category=餐饮&page=1&page_size=50",
@@ -426,7 +427,7 @@ def test_confirmed_pagination_and_month_filters_are_server_side_contract(
     assert category_page.status_code == 200
     category_payload = category_page.json()
     assert category_payload["total"] == 2
-    assert [item["merchant"] for item in category_payload["items"]] == [
+    assert [item["merchant"] for item in confirmed_expense_roots(category_payload)] == [
         "晚饭",
         "早餐店",
     ]

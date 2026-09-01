@@ -1,0 +1,191 @@
+{# Refund/Chargeback/Reversal 纵向片：事实详情「退回与冲销」段（紧随摘要卡）。
+   事实源唯一 = 服务端 fact bundle view model（offset_summary/active_offsets/
+   offset_relationship_impacts/offset_recent_history）；浏览器不复制币种小数位规则
+   （直接消费 offset_currency_input 元数据），不用 remaining 设 max，不做金额
+   eligibility —— 409/422 由 route 以 offset_form/offset_void_form 重渲染
+   open+draft+fresh token，本模板只呈现。
+   交互：native <details> 保证 no-JS；summary 是可发现动作。offset_form.kind 为
+   refund/chargeback 时只展开「登记退款或拒付」，为 reversal 时只展开冲销；
+   void 错误只展开目标行。冲销是低频高危动作：quiet-danger disclosure，无金额。
+   reversal 不是现金流入：active 行不渲染金额槽（与 stream 同一语义）。
+   reversal gate 用 server lineage status（context 已收成 confirmed-only）：
+   有 active 退款/拒付时冲销必然 409 expense_refund_exists，不诱导用户提交。 #}
+<section class="product-panel product-panel--padded fact-offsets" id="fact-offsets" aria-label="退回与冲销">
+  <div class="product-panel-header">
+    <div>
+      <h2 class="product-panel-title">退回与冲销</h2>
+      <div class="product-panel-subtitle">退款、拒付或冲销不会改动原账单，只在这里追加一条记录。</div>
+    </div>
+    {% if offset_summary.status == 'partially_refunded' %}
+    <span class="product-status product-status--info">{{ offset_summary.status_label }}</span>
+    {% elif offset_summary.status == 'fully_refunded' %}
+    <span class="product-status product-status--success">{{ offset_summary.status_label }}</span>
+    {% elif offset_summary.status == 'reversed' %}
+    <span class="product-status product-status--warning">{{ offset_summary.status_label }}</span>
+    {% endif %}
+  </div>
+
+  {% if offset_summary.status != 'confirmed' %}
+  <dl class="offset-summary">
+    <div><dt>原始金额</dt><dd>{{ offset_summary.gross_original_label }}</dd></div>
+    {% if offset_summary.status in ['partially_refunded', 'fully_refunded'] %}
+    <div><dt>已退回</dt><dd>{{ offset_summary.refunded_original_label }}</dd></div>
+    {% endif %}
+    <div><dt>当前净额</dt><dd>{{ offset_summary.lineage_net_label }}</dd></div>
+  </dl>
+  {% if offset_summary.fx_difference_label %}
+  <p class="meta">其中 {{ offset_summary.fx_difference_label }} 是汇率变动差额。</p>
+  {% endif %}
+  {% endif %}
+
+  {% if offset_summary.status == 'confirmed' and not active_offsets and not offset_recent_history %}
+  <p class="meta">还没有退回或冲销记录。</p>
+  {% endif %}
+
+  {% for row in active_offsets %}
+  {% set _void_draft = offset_void_form.open and offset_void_form.target_public_id == row.public_id %}
+  <div class="offset-row">
+    <div class="offset-row-main">
+      <span class="product-status product-status--info">{{ row.kind_label }}</span>
+      {% if row.kind != 'reversal' %}
+      <span class="offset-amount">+{{ row.amount_label }}</span>
+      {% endif %}
+    </div>
+    <div class="meta">{{ row.accounting_date }}{% if row.reason %} · {{ row.reason }}{% endif %}</div>
+    {% if offset_can_write %}
+    <details class="offset-void"{% if _void_draft %} open{% endif %}>
+      <summary>撤销</summary>
+      <form class="offset-void-form" method="post" action="/web/expenses/{{ expense.id }}/offsets/{{ row.public_id }}/voids">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+        {% for name, value in edit_return_fields.items() %}
+        <input type="hidden" name="{{ name }}" value="{{ value }}">
+        {% endfor %}
+        <input type="hidden" name="expected_row_version" value="{{ offset_void_form.expected_row_version if _void_draft else row.row_version }}">
+        <input type="hidden" name="idempotency_key" value="{{ offset_void_form.idempotency_key if _void_draft else row.void_idempotency_key }}">
+        {% if _void_draft %}
+        <div id="offset-void-error-{{ row.public_id }}" class="product-feedback product-feedback--danger offset-form-error" role="alert">{{ offset_void_form.error }}</div>
+        {% endif %}
+        <p class="hint">撤销后这条{{ row.kind_label }}不再生效；记录本身仍会保留在变更历史里。</p>
+        <div class="product-field">
+          <label for="offset-void-reason-{{ row.public_id }}">撤销原因（必填）</label>
+          <input id="offset-void-reason-{{ row.public_id }}" class="product-input" type="text" name="void_reason"
+                 value="{{ offset_void_form.void_reason if _void_draft else '' }}"
+                 {% if _void_draft %}aria-invalid="true" aria-describedby="offset-void-error-{{ row.public_id }}"{% endif %} required>
+        </div>
+        <div class="offset-form-actions">
+          <button class="product-button product-button--quiet product-button--small" type="submit">确认撤销</button>
+        </div>
+      </form>
+    </details>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  {% if offset_relationship_impacts.cancelled_count %}
+  <p class="meta">已同时撤回 {{ offset_relationship_impacts.cancelled_count }} 个待处理拆账邀请。</p>
+  {% endif %}
+  {% for impact in offset_relationship_impacts.accepted %}
+  <p class="meta offset-impact">{{ impact.receiver_display_name }} 原分摊 {{ impact.original_share_label }}，按当前退款估算约 {{ impact.suggested_share_label }}。</p>
+  {% endfor %}
+  {% if offset_relationship_impacts.accepted %}
+  <p class="meta">估算是按原拆账比例计算，不会自动改账。</p>
+  {% endif %}
+
+  {% if offset_recent_history %}
+  <div class="offset-history">
+    {% for entry in offset_recent_history %}
+    <p class="meta">{{ entry.kind_label }} · {{ entry.when }}{% if entry.reason %} · {{ entry.reason }}{% endif %}{% if entry.actor %} · {{ entry.actor }}{% endif %}</p>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if offset_can_write %}
+    {% if offset_reversed %}
+    <p class="meta">这笔账单已冲销，不再计入支出。</p>
+    {% else %}
+      {% set _money_draft = offset_form.open and offset_form.kind != 'reversal' %}
+      {% set _reversal_draft = offset_form.open and offset_form.kind == 'reversal' %}
+      {% if offset_can_create_refund %}
+      <details class="offset-action-panel" id="offset-create-money"{% if _money_draft %} open{% endif %}>
+        <summary>登记退款或拒付</summary>
+        <form class="offset-form" method="post" action="/web/expenses/{{ expense.id }}/offsets">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+          {% for name, value in edit_return_fields.items() %}
+          <input type="hidden" name="{{ name }}" value="{{ value }}">
+          {% endfor %}
+          <input type="hidden" name="expected_row_version" value="{{ offset_form.expected_row_version }}">
+          <input type="hidden" name="idempotency_key" value="{{ offset_form.idempotency_key }}">
+          {% if _money_draft %}
+          <div id="offset-create-error" class="product-feedback product-feedback--{% if offset_form.conflict %}warning{% else %}danger{% endif %} offset-form-error" role="alert">{{ offset_form.error }}</div>
+          {% endif %}
+          <div class="product-field">
+            <span class="offset-kind-legend" id="offset-kind-label">类型</span>
+            <div class="offset-kind-group" role="radiogroup" aria-labelledby="offset-kind-label">
+              <label class="offset-kind-option"><input type="radio" name="kind" value="refund"{% if not _money_draft or offset_form.kind == 'refund' %} checked{% endif %}> 商家退款</label>
+              <label class="offset-kind-option"><input type="radio" name="kind" value="chargeback"{% if _money_draft and offset_form.kind == 'chargeback' %} checked{% endif %}> 银行拒付</label>
+            </div>
+          </div>
+          <div class="product-field">
+            <label for="offset-amount">退回金额（{{ offset_currency_input.currency_symbol }}）</label>
+            {# type=text 而非 number：number state 的 value sanitization 会把非法输入
+               清成空串，丢掉 422 后要保留的草稿（WHATWG number-state）；解析 Owner 在
+               server，浏览器只保留 inputmode/placeholder 引导，不复制校验。 #}
+            <input id="offset-amount" class="product-input" type="text" name="original_amount"
+                   value="{{ offset_form.original_amount if _money_draft else offset_summary.remaining_original_value }}"
+                   inputmode="{{ offset_currency_input.inputmode }}" placeholder="{{ offset_currency_input.amount_placeholder }}"
+                   {% if _money_draft %}aria-invalid="true" aria-describedby="offset-create-error"{% endif %} required>
+            <p class="hint">{{ offset_currency_input.amount_input_hint }}；当前可退约 {{ offset_summary.remaining_original_label }}，最终以保存结果为准。</p>
+          </div>
+          <div class="product-field">
+            <label for="offset-date">生效日期</label>
+            <input id="offset-date" class="product-input" type="date" name="accounting_date" value="{{ offset_form.accounting_date }}" required>
+          </div>
+          <div class="product-field">
+            <label for="offset-reason">原因（必填）</label>
+            <input id="offset-reason" class="product-input" type="text" name="reason"
+                   value="{{ offset_form.reason if _money_draft else '' }}" placeholder="例如：商家退了部分货款" required>
+          </div>
+          <div class="offset-form-actions">
+            <button class="product-button product-button--primary" type="submit">登记</button>
+          </div>
+        </form>
+      </details>
+      {% endif %}
+      {% if offset_can_reverse %}
+      <details class="offset-action-panel offset-action-panel--danger" id="offset-create-reversal"{% if _reversal_draft %} open{% endif %}>
+        <summary>冲销这笔账单</summary>
+        <form class="offset-form" method="post" action="/web/expenses/{{ expense.id }}/offsets">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+          {% for name, value in edit_return_fields.items() %}
+          <input type="hidden" name="{{ name }}" value="{{ value }}">
+          {% endfor %}
+          <input type="hidden" name="kind" value="reversal">
+          <input type="hidden" name="expected_row_version" value="{{ offset_form.expected_row_version }}">
+          <input type="hidden" name="idempotency_key" value="{{ offset_form.idempotency_key }}">
+          {% if _reversal_draft %}
+          <div id="offset-reversal-error" class="product-feedback product-feedback--{% if offset_form.conflict %}warning{% else %}danger{% endif %} offset-form-error" role="alert">{{ offset_form.error }}</div>
+          {% endif %}
+          <p class="hint">冲销表示这笔账从一开始就不该算：整笔不再计入支出，无需填写金额；原账单和这条冲销记录都会保留。</p>
+          <div class="product-field">
+            <label for="offset-reversal-date">生效日期</label>
+            <input id="offset-reversal-date" class="product-input" type="date" name="accounting_date" value="{{ offset_form.accounting_date }}" required>
+          </div>
+          <div class="product-field">
+            <label for="offset-reversal-reason">原因（必填）</label>
+            <input id="offset-reversal-reason" class="product-input" type="text" name="reason"
+                   value="{{ offset_form.reason if _reversal_draft else '' }}" placeholder="例如：重复录入，这笔不该算" required>
+          </div>
+          <div class="offset-form-actions">
+            <button class="product-button product-button--quiet" type="submit">确认冲销</button>
+          </div>
+        </form>
+      </details>
+      {% else %}
+      <p class="meta">已有退款或拒付记录；先撤销它们，才能冲销整笔账单。</p>
+      {% endif %}
+    {% endif %}
+  {% endif %}
+</section>

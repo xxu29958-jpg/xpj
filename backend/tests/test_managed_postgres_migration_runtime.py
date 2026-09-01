@@ -41,7 +41,7 @@ pytestmark = pytest.mark.real_db
 
 _C07_TARGET_REVISION = "20260729_0001"
 _C02_TARGET_REVISION = "20260802_0001"
-_RELEASE_HEAD_REVISION = "20260828_0001"
+_RELEASE_HEAD_REVISION = "20260901_0001"
 _OWNER_PASSWORD = "ManagedOwnerRuntimePassword0001"
 _MIGRATOR_PASSWORD = "ManagedMigratorRuntimePassword01"
 _RUNTIME_PASSWORD = "ManagedApplicationRuntimePassword1"

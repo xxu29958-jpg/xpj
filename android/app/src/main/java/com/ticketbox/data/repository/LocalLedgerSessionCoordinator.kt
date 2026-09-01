@@ -105,7 +105,7 @@ class LocalLedgerSessionCoordinator(
     internal suspend fun clearSession() {
         mutex.withLock {
             val clear: suspend () -> Unit = {
-                expenseDao.clear()
+                expenseDao.clearAllExpenseCaches()
                 sessionStore.clearSession()
                 settingsStore.clear()
             }
@@ -221,11 +221,11 @@ class LocalLedgerSessionCoordinator(
         when (transition.cacheInvalidation) {
             LedgerCacheInvalidation.None -> Unit
             LedgerCacheInvalidation.TargetLedger -> {
-                expenseDao.clearForLedger(transition.identity.ledgerId)
+                expenseDao.clearAllExpenseCachesForLedger(transition.identity.ledgerId)
                 settingsStore.clearLastConfirmedSyncAtForLedger(transition.identity.ledgerId)
             }
             LedgerCacheInvalidation.AllLedgers -> {
-                expenseDao.clear()
+                expenseDao.clearAllExpenseCaches()
                 settingsStore.clearLedgerScopedRuntimeState()
             }
         }

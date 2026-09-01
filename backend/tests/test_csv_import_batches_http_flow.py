@@ -8,6 +8,7 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import LedgerMember
+from tests._confirmed_stream_test_support import confirmed_expense_roots
 
 
 def _csv_bytes(row_count: int) -> BytesIO:
@@ -103,8 +104,9 @@ def _assert_coffee_import_filter_and_export(client: TestClient, *, identity) -> 
     assert filtered.status_code == 200, filtered.json()
     filtered_body = filtered.json()
     assert filtered_body["total"] == 1
-    assert filtered_body["items"][0]["merchant"] == "CSV咖啡店"
-    assert filtered_body["items"][0]["source"] == "支付宝账单"
+    filtered_root = confirmed_expense_roots(filtered_body)[0]
+    assert filtered_root["merchant"] == "CSV咖啡店"
+    assert filtered_root["source"] == "支付宝账单"
 
     category_miss = client.get(
         "/api/expenses/confirmed?month=2026-05&category=购物",

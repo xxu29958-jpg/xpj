@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import csv
 from collections import defaultdict
-from datetime import timedelta
+from datetime import datetime, timedelta
 from io import StringIO
 
 from sqlalchemy import Select, func, select
@@ -13,56 +13,32 @@ from app.models import Expense, ExpenseTag, Tag
 from app.money_contract import projection_sum_to_int
 from app.services.category_service import list_ledger_category_options, normalize_category
 from app.services.csv_security import safe_csv_cell
+from app.services.expense_service import filtered_confirmed_stream
 from app.services.spending_contract_service import (
+    accounting_zone,
     canonical_merchant_display,
+    confirmed_stream_query,
     current_accounting_month,
     default_accounting_timezone_name,
     enabled_merchant_display_map,
     month_bounds_utc,
-    stat_month_label,
 )
 from app.services.spending_contract_service import (
     clean_month as _contract_clean_month,
 )
 from app.services.spending_contract_service import (
-    confirmed_amount_query as _contract_confirmed_amount_query,
-)
-from app.services.spending_contract_service import (
-    confirmed_ordered as _contract_confirmed_ordered,
-)
-from app.services.spending_contract_service import (
     confirmed_query as _contract_confirmed_query,
-)
-from app.services.spending_contract_service import (
-    filtered_confirmed as _contract_filtered_confirmed,
 )
 from app.services.spending_contract_service import (
     stat_time as _contract_stat_time,
 )
-from app.services.spending_contract_service import (
-    stat_time_expr as _contract_stat_time_expr,
-)
 from app.services.stats_money import (
-    category_total as _category_total,
-)
-from app.services.stats_money import (
-    export_money_fields as _export_money_fields,
-)
-from app.services.stats_money import (
-    merchant_amount_total as _merchant_amount_total,
+    export_money_values as _export_money_values,
 )
 from app.services.time_service import (
     ensure_utc,
     now_utc,
 )
-
-
-def _base_confirmed_query(tenant_id: str) -> Select[tuple[Expense]]:
-    return _contract_confirmed_query(tenant_id=tenant_id)
-
-
-def _stat_time_expr():
-    return _contract_stat_time_expr()
 
 
 def _stat_time(expense: Expense):
@@ -100,46 +76,6 @@ def _confirmed_query(
     )
 
 
-def _confirmed_amount_query(
-    *,
-    tenant_id: str,
-    month: str | None = None,
-    category: str | None = None,
-    tag: str | None = None,
-    timezone_name: str | None = None,
-) -> Select[tuple[Expense]]:
-    return _contract_confirmed_amount_query(
-        tenant_id=tenant_id,
-        month=month,
-        category=category,
-        tag=tag,
-        timezone_name=timezone_name,
-    )
-
-
-def _confirmed_ordered(query: Select[tuple[Expense]]) -> Select[tuple[Expense]]:
-    return _contract_confirmed_ordered(query)
-
-
-def _filtered_confirmed(
-    db: Session,
-    *,
-    tenant_id: str,
-    month: str | None = None,
-    category: str | None = None,
-    tag: str | None = None,
-    timezone_name: str | None = None,
-) -> list[Expense]:
-    return _contract_filtered_confirmed(
-        db,
-        tenant_id=tenant_id,
-        month=month,
-        category=category,
-        tag=tag,
-        timezone_name=timezone_name,
-    )
-
-
 def list_categories(db: Session, tenant_id: str) -> list[str]:
     return list_ledger_category_options(db, tenant_id=tenant_id)
 
@@ -149,17 +85,16 @@ def list_months(
 ) -> list[str]:
     resolved_timezone = _stat_timezone(timezone_name)
     current_month_label = current_accounting_month(resolved_timezone)
-    expenses = db.scalars(
-        select(Expense)
-        .where(Expense.tenant_id == tenant_id)
-        .where(Expense.status == "confirmed")
-        .where(_stat_time_expr().is_not(None))
+    stream = confirmed_stream_query(
+        tenant_id=tenant_id,
+        timezone_name=resolved_timezone,
     )
     months = {
-        label
-        for expense in expenses
-        if (label := stat_month_label(expense, resolved_timezone))
-        is not None and label <= current_month_label
+        stream_date.strftime("%Y-%m")
+        for stream_date in db.scalars(
+            select(stream.c.stream_date).where(stream.c.stream_date.is_not(None))
+        )
+        if stream_date.strftime("%Y-%m") <= current_month_label
     }
     return sorted(months, reverse=True)
 
@@ -173,7 +108,7 @@ def export_confirmed_csv(
     tag: str | None = None,
     timezone_name: str | None = None,
 ) -> str:
-    expenses = _filtered_confirmed(
+    entries = filtered_confirmed_stream(
         db,
         tenant_id=tenant_id,
         month=month,
@@ -207,50 +142,112 @@ def export_confirmed_csv(
             # column above in its original position for positional consumers.
             "home_currency_code",
             "amount_home_major",
+            "entry_kind",
+            "offset_kind",
+            "root_expense_id",
+            "root_expense_public_id",
+            "stream_date",
+            "stream_amount_cents",
+            "lineage_status",
+            "lineage_home_net_cents",
         ]
     )
-    for expense in expenses:
-        amount_cents, amount_yuan, amount_home_major = _export_money_fields(expense)
-        stat_time = _stat_time(expense)
-        confirmed_at = ensure_utc(expense.confirmed_at)
-        writer.writerow(
-            [
-                expense.id,
-                expense.public_id,
-                amount_cents,
-                amount_yuan,
-                expense.original_currency_code,
-                expense.original_amount_minor if expense.original_amount_minor is not None else "",
-                expense.exchange_rate_to_cny if expense.exchange_rate_to_cny is not None else "",
-                expense.exchange_rate_date.isoformat() if expense.exchange_rate_date else "",
-                safe_csv_cell(expense.exchange_rate_source or ""),
-                safe_csv_cell(expense.merchant or ""),
-                safe_csv_cell(expense.category),
-                safe_csv_cell(expense.note or ""),
-                safe_csv_cell(expense.source),
-                stat_time.isoformat().replace("+00:00", "Z") if stat_time else "",
-                confirmed_at.isoformat().replace("+00:00", "Z") if confirmed_at else "",
-                safe_csv_cell(expense.tags or ""),
-                expense.value_score or "",
-                expense.regret_score or "",
-                expense.home_currency_code,
-                amount_home_major,
-            ]
-        )
+    for entry in entries:
+        writer.writerow(_confirmed_stream_csv_row(entry))
     return output.getvalue()
+
+
+def _confirmed_stream_csv_row(entry) -> list:
+    root = entry.root
+    if entry.entry_kind == "expense":
+        amount_cents, amount_yuan, amount_home_major = _export_money_values(
+            amount_cents=root.amount_cents,
+            home_currency_code=root.home_currency,
+            label="stats.export_expense_response",
+        )
+        stat_time = _stat_time(root)
+        confirmed_at = ensure_utc(root.confirmed_at)
+        return [
+            root.id,
+            root.public_id,
+            amount_cents,
+            amount_yuan,
+            root.original_currency_code,
+            root.original_amount_minor if root.original_amount_minor is not None else "",
+            root.exchange_rate_to_cny if root.exchange_rate_to_cny is not None else "",
+            root.exchange_rate_date.isoformat() if root.exchange_rate_date else "",
+            safe_csv_cell(root.exchange_rate_source or ""),
+            safe_csv_cell(root.merchant or ""),
+            safe_csv_cell(root.category),
+            safe_csv_cell(root.note or ""),
+            safe_csv_cell(root.source),
+            stat_time.isoformat().replace("+00:00", "Z") if stat_time else "",
+            confirmed_at.isoformat().replace("+00:00", "Z") if confirmed_at else "",
+            safe_csv_cell(root.tags or ""),
+            root.value_score or "",
+            root.regret_score or "",
+            root.home_currency,
+            amount_home_major,
+            entry.entry_kind,
+            "",
+            root.id,
+            root.public_id,
+            entry.stream_date.isoformat(),
+            entry.stream_amount_cents,
+            entry.lineage_status,
+            entry.lineage_home_net_cents,
+        ]
+    offset = entry.offset
+    if offset is None:
+        raise ValueError("offset CSV row requires an offset projection")
+    amount_cents, amount_yuan, amount_home_major = _export_money_values(
+        amount_cents=offset.amount_cents,
+        home_currency_code=offset.home_currency_code,
+        label="stats.export_offset_response",
+    )
+    return [
+        "",
+        offset.public_id,
+        amount_cents,
+        amount_yuan,
+        offset.original_currency_code,
+        offset.original_amount_minor,
+        "",
+        "",
+        "",
+        safe_csv_cell(root.merchant or ""),
+        safe_csv_cell(offset.category),
+        "",
+        "",
+        entry.stream_date.isoformat(),
+        "",
+        "",
+        "",
+        "",
+        offset.home_currency_code,
+        amount_home_major,
+        entry.entry_kind,
+        offset.kind,
+        root.id,
+        root.public_id,
+        entry.stream_date.isoformat(),
+        entry.stream_amount_cents,
+        entry.lineage_status,
+        entry.lineage_home_net_cents,
+    ]
 
 
 def _tag_stats_for_filtered_query(db: Session, tenant_id: str, filtered) -> list[dict]:
     rows = db.execute(
         select(
             Tag.name,
-            func.coalesce(func.sum(filtered.c.amount_cents), 0),
-            func.count(filtered.c.id),
+            func.coalesce(func.sum(filtered.c.stream_amount_cents), 0),
+            func.count(filtered.c.entry_id),
         )
         .select_from(filtered)
         .join(
             ExpenseTag,
-            (ExpenseTag.expense_id == filtered.c.id)
+            (ExpenseTag.expense_id == filtered.c.root_expense_id)
             & (ExpenseTag.tenant_id == tenant_id),
         )
         .join(Tag, (Tag.id == ExpenseTag.tag_id) & (Tag.tenant_id == tenant_id))
@@ -342,17 +339,18 @@ def monthly_stats(
     bounds = _stat_month_bounds(month, timezone_name)
     if bounds is None:
         raise AppError("invalid_request", status_code=422)
-    filtered = _confirmed_amount_query(
+    filtered = confirmed_stream_query(
         tenant_id=tenant_id,
         month=month,
         tag=tag,
         timezone_name=timezone_name,
-    ).subquery()
+        amount_required=True,
+    )
     rows = db.execute(
         select(
             filtered.c.category,
-            func.coalesce(func.sum(filtered.c.amount_cents), 0),
-            func.count(filtered.c.id),
+            func.coalesce(func.sum(filtered.c.stream_amount_cents), 0),
+            func.count(filtered.c.entry_id),
         )
         .select_from(filtered)
         .group_by(filtered.c.category)
@@ -395,6 +393,69 @@ def monthly_stats(
     }
 
 
+def _lifestyle_stream_totals(
+    db: Session,
+    *,
+    tenant_id: str,
+    month: str,
+    timezone_name: str | None,
+    recent_start: datetime,
+    recent_end: datetime,
+) -> tuple[dict[str, int], list[dict], int]:
+    stream = confirmed_stream_query(
+        tenant_id=tenant_id,
+        month=month,
+        timezone_name=timezone_name,
+        amount_required=True,
+    )
+    alias_map = enabled_merchant_display_map(db, tenant_id=tenant_id)
+    category_amounts: dict[str, int] = defaultdict(int)
+    merchant_counts: dict[str, int] = defaultdict(int)
+    merchant_amounts: dict[str, int] = defaultdict(int)
+    recent_7_days_amount_cents = 0
+    zone = accounting_zone(timezone_name)
+    recent_start_date = recent_start.astimezone(zone).date()
+    recent_end_date = recent_end.astimezone(zone).date()
+    for category_raw, merchant_raw, stream_date, stream_amount in db.execute(
+        select(
+            stream.c.category,
+            stream.c.merchant,
+            stream.c.stream_date,
+            stream.c.stream_amount_cents,
+        )
+    ):
+        amount = projection_sum_to_int(stream_amount, label="stats.lifestyle_entry")
+        category = normalize_category(category_raw)
+        category_amounts[category] = projection_sum_to_int(
+            category_amounts[category] + amount,
+            label="stats.lifestyle_category",
+        )
+        if merchant_raw and merchant_raw.strip():
+            merchant = canonical_merchant_display(merchant_raw, alias_map)
+            merchant_counts[merchant] += 1
+            merchant_amounts[merchant] = projection_sum_to_int(
+                merchant_amounts[merchant] + amount,
+                label="stats.lifestyle_merchant",
+            )
+        if recent_start < recent_end and recent_start_date <= stream_date <= recent_end_date:
+            recent_7_days_amount_cents = projection_sum_to_int(
+                recent_7_days_amount_cents + amount,
+                label="stats.recent_seven_days",
+            )
+    frequent_merchants = [
+        {
+            "merchant": merchant,
+            "count": count,
+            "amount_cents": merchant_amounts[merchant],
+        }
+        for merchant, count in sorted(
+            merchant_counts.items(),
+            key=lambda pair: (-merchant_amounts[pair[0]], -pair[1], pair[0]),
+        )[:5]
+    ]
+    return category_amounts, frequent_merchants, recent_7_days_amount_cents
+
+
 def lifestyle_stats(
     db: Session, month: str, tenant_id: str, timezone_name: str | None = None
 ) -> dict:
@@ -412,58 +473,23 @@ def lifestyle_stats(
     month_start, month_end = bounds
     recent_end = min(now_utc(), month_end)
     recent_start = max(month_start, recent_end - timedelta(days=7))
-
-    ai_subscription_amount_cents = _category_total(
-        month_expenses, category="AI订阅", label="stats.ai_subscription_total"
-    )
-    digital_amount_cents = _category_total(
-        month_expenses, category="数码", label="stats.digital_total"
+    category_amounts, frequent_merchants, recent_amount = _lifestyle_stream_totals(
+        db,
+        tenant_id=tenant_id,
+        month=month,
+        timezone_name=timezone_name,
+        recent_start=recent_start,
+        recent_end=recent_end,
     )
     max_expense = max(
         month_expenses, key=lambda item: item.amount_cents or 0, default=None
     )
-    recent_7_days_amount_cents = projection_sum_to_int(
-        db.scalar(
-            select(func.coalesce(func.sum(Expense.amount_cents), 0))
-            .where(Expense.tenant_id == tenant_id)
-            .where(Expense.status == "confirmed")
-            .where(Expense.amount_cents.is_not(None))
-            .where(_stat_time_expr() >= recent_start)
-            .where(_stat_time_expr() < recent_end)
-        ),
-        label="stats.recent_seven_days",
-        empty_is_zero=True,
-    ) if recent_start < recent_end else 0
-
-    alias_map = enabled_merchant_display_map(db, tenant_id=tenant_id)
-    merchant_counts: dict[str, int] = defaultdict(int)
-    merchant_amounts: dict[str, int] = defaultdict(int)
-    for item in month_expenses:
-        if item.merchant and item.merchant.strip():
-            merchant = canonical_merchant_display(item.merchant, alias_map)
-            merchant_counts[merchant] += 1
-            merchant_amounts[merchant] = _merchant_amount_total(
-                merchant_amounts[merchant], item.amount_cents
-            )
-
-    frequent_merchants = [
-        {
-            "merchant": merchant,
-            "count": count,
-            "amount_cents": merchant_amounts[merchant],
-        }
-        for merchant, count in sorted(
-            merchant_counts.items(),
-            key=lambda pair: (-merchant_amounts[pair[0]], -pair[1], pair[0]),
-        )[:5]
-    ]
-
     return {
         "month": month,
-        "ai_subscription_amount_cents": ai_subscription_amount_cents,
-        "digital_amount_cents": digital_amount_cents,
+        "ai_subscription_amount_cents": category_amounts.get("AI订阅", 0),
+        "digital_amount_cents": category_amounts.get("数码", 0),
         "max_expense": max_expense,
-        "recent_7_days_amount_cents": recent_7_days_amount_cents,
+        "recent_7_days_amount_cents": recent_amount,
         "frequent_merchants": frequent_merchants,
         "best_value_expenses": _ranked_scored_expenses(
             month_expenses, score_attr="value_score"

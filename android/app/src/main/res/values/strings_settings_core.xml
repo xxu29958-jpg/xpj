@@ -287,6 +287,8 @@
     <string name="sync_status_mutation_update_income_plan">修改收入记录</string>
     <string name="sync_status_mutation_create_recurring_item">新建固定支出</string>
     <string name="sync_status_mutation_update_recurring_item">修改固定支出</string>
+    <string name="sync_status_mutation_create_expense_offset">登记退回或冲销</string>
+    <string name="sync_status_mutation_void_expense_offset">撤销退回或冲销</string>
     <string name="sync_status_mutation_unknown">改动</string>
 
     <!-- 离线同步内部错误映射为用户文案。 -->

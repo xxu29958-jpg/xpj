@@ -3,7 +3,7 @@
 {% block title %}账单详情 — 小票夹{% endblock %}
 {% block content %}
 {# 已确认账单事实详情（编排壳）：read-first 单任务页。各段责任：
-   _fact_header / _fact_summary_card / _fact_items_readonly /
+   _fact_header / _fact_summary_card / _fact_offsets / _fact_items_readonly /
    _fact_splits_readonly / _fact_split_invite / _fact_timeline。
    凭证是事实的旁证：桌面右侧 aside（detail.css 骨架），窄屏上移到明细
    之前（transactions.css 的 order 规则），不抢 hero。 #}
@@ -22,6 +22,8 @@
 <div class="detail-layout fact-layout">
   <div class="detail-main">
     {% include "_fact_summary_card.html" %}
+    {# 退回与冲销紧随摘要卡（事实之后、明细之前）；PRG 锚点 #fact-offsets。 #}
+    {% include "_fact_offsets.html" %}
     {% include "_fact_items_readonly.html" %}
     {% include "_fact_splits_readonly.html" %}
     {# 拆账邀请是关联动作，排在事实之后、历史之前，不抢事实主体。 #}

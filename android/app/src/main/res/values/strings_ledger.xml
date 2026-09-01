@@ -93,6 +93,14 @@
     <string name="ledger_item_category_mark_fallback">账</string>
     <string name="ledger_item_time_empty">未设置时间</string>
     <string name="ledger_item_meta">%1$s · %2$s</string>
+    <!-- 退款/拒付/冲销事件行与账单净额状态 chip（与 Web lineage chip 同一术语） -->
+    <string name="ledger_offset_kind_refund">退款</string>
+    <string name="ledger_offset_kind_chargeback">拒付</string>
+    <string name="ledger_offset_kind_reversal">冲销</string>
+    <string name="ledger_offset_inflow_amount">+%1$s</string>
+    <string name="ledger_lineage_partially_refunded">部分退回</string>
+    <string name="ledger_lineage_fully_refunded">已退回</string>
+    <string name="ledger_lineage_reversed">已冲销</string>
 
     <!-- LedgerViewModel：账本 ViewModel 状态/结果文案（ADR-0044 wave 2，纯②：经 UiText 外置） -->
     <string name="ledger_msg_sync_done">更新完成</string>

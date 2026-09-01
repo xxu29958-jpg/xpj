@@ -8,8 +8,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
+import com.ticketbox.domain.model.ConfirmedStreamItem
 import com.ticketbox.domain.model.Expense
-import com.ticketbox.ui.screens.LedgerExpenseGroup
+import com.ticketbox.domain.model.ExpenseLineageStatus
+import com.ticketbox.ui.screens.LedgerStreamGroup
 import com.ticketbox.ui.screens.ledgerDayPreviewLabels
 import com.ticketbox.viewmodel.LedgerViewMode
 
@@ -41,7 +43,7 @@ internal fun shouldCompactLedgerDayGroups(groupCount: Int, itemCount: Int): Bool
 }
 
 internal fun LazyListScope.ledgerDaySection(
-    group: LedgerExpenseGroup,
+    group: LedgerStreamGroup,
     sectionState: LedgerDaySectionState,
     actions: LedgerDaySectionActions,
 ) {
@@ -59,18 +61,29 @@ internal fun LazyListScope.ledgerDaySection(
         )
     }
     if (sectionState.expanded) {
-        items(group.items, key = { it.id }) { expense ->
-            LedgerExpenseRow(
-                state = LedgerExpenseRowState(
-                    expense = expense,
-                    viewMode = sectionState.viewMode,
-                    selection = LedgerExpenseSelectionState(
-                        enabled = sectionState.selectionMode,
-                        selected = expense.id in sectionState.selectedIds,
+        // rowKey spans both id spaces: offset rows never collide with roots.
+        items(group.items, key = { it.rowKey }) { item ->
+            when (item) {
+                is ConfirmedStreamItem.ExpenseRow -> LedgerExpenseRow(
+                    state = LedgerExpenseRowState(
+                        expense = item.root,
+                        viewMode = sectionState.viewMode,
+                        selection = LedgerExpenseSelectionState(
+                            enabled = sectionState.selectionMode,
+                            selected = item.root.id in sectionState.selectedIds,
+                        ),
+                        lineageStatus = item.lineageStatus,
                     ),
-                ),
-                actions = actions,
-            )
+                    actions = actions,
+                )
+                // Offset events render as one compact event row in every view
+                // mode: no checkbox, no selection long-press; a tap opens the
+                // ROOT fact detail (the envelope's root, offline-openable).
+                is ConfirmedStreamItem.OffsetRow -> LedgerOffsetRow(
+                    state = LedgerOffsetItemState(item = item),
+                    onOpen = { actions.onEdit(item.root) },
+                )
+            }
         }
     }
 }
@@ -79,6 +92,7 @@ private data class LedgerExpenseRowState(
     val expense: Expense,
     val viewMode: LedgerViewMode,
     val selection: LedgerExpenseSelectionState,
+    val lineageStatus: ExpenseLineageStatus,
 )
 
 @Composable
@@ -90,6 +104,7 @@ private fun LedgerExpenseRow(
     val itemState = LedgerExpenseItemState(
         expense = expense,
         selection = state.selection,
+        lineageStatus = state.lineageStatus,
     )
     val itemActions = LedgerExpenseItemActions(
         onOpen = { actions.onEdit(expense) },
@@ -113,7 +128,7 @@ private fun LedgerExpenseRow(
 }
 
 @Composable
-private fun LedgerExpenseGroup.previewText(): String? {
+private fun LedgerStreamGroup.previewText(): String? {
     val separator = stringResource(R.string.ledger_day_preview_separator)
     val names = ledgerDayPreviewLabels(items, LedgerDaySectionDefaults.PreviewMerchantCount)
     if (names.isEmpty()) return null

@@ -9,8 +9,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.ticketbox.domain.model.FxContract
 
 @Database(
-    entities = [ExpenseEntity::class, PendingMutationEntity::class],
-    version = 16,
+    entities = [ExpenseEntity::class, PendingMutationEntity::class, ExpenseOffsetStreamEntity::class],
+    version = 17,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -461,6 +461,43 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        internal val MIGRATION_16_17_STATEMENTS: List<String> = listOf(
+            "ALTER TABLE expenses ADD COLUMN streamDate TEXT",
+            "ALTER TABLE expenses ADD COLUMN streamSortTime TEXT",
+            "ALTER TABLE expenses ADD COLUMN streamSortId INTEGER",
+            "ALTER TABLE expenses ADD COLUMN streamAmountCents INTEGER",
+            "ALTER TABLE expenses ADD COLUMN lineageStatus TEXT",
+            "ALTER TABLE expenses ADD COLUMN lineageHomeNetCents INTEGER",
+            """
+            CREATE TABLE IF NOT EXISTS expense_offset_stream (
+                ledgerId TEXT NOT NULL,
+                publicId TEXT NOT NULL,
+                rootServerId INTEGER NOT NULL,
+                kind TEXT NOT NULL,
+                streamDate TEXT NOT NULL,
+                streamSortTime TEXT NOT NULL,
+                streamSortId INTEGER NOT NULL,
+                streamAmountCents INTEGER NOT NULL,
+                amountCents INTEGER NOT NULL,
+                originalAmountMinor INTEGER NOT NULL,
+                originalCurrencyCode TEXT NOT NULL,
+                homeCurrencyCode TEXT NOT NULL,
+                category TEXT NOT NULL,
+                PRIMARY KEY(ledgerId, publicId)
+            )
+            """.trimIndent(),
+            "CREATE INDEX IF NOT EXISTS index_expense_offset_stream_ledgerId_streamDate " +
+                "ON expense_offset_stream (ledgerId, streamDate)",
+            "CREATE INDEX IF NOT EXISTS index_expense_offset_stream_ledgerId_rootServerId " +
+                "ON expense_offset_stream (ledgerId, rootServerId)",
+        )
+
+        internal val Migration16To17 = object : Migration(16, 17) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_16_17_STATEMENTS.forEach(db::execSQL)
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -484,6 +521,7 @@ abstract class AppDatabase : RoomDatabase() {
                         Migration13To14,
                         Migration14To15,
                         Migration15To16,
+                        Migration16To17,
                     )
                     .build()
                     .also { instance = it }

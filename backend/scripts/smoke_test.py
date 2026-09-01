@@ -679,7 +679,13 @@ def _check_confirmed_exports_and_stats(base_url: str, expense_id: int) -> None:
     assert_equal(confirmed_page["page"], 1, "confirmed page")
     assert_equal(confirmed_page["page_size"], 50, "confirmed page size")
     assert_true(confirmed_page["total"] >= 1, "confirmed total")
-    assert_true(any(item["id"] == expense_id for item in confirmed_page["items"]), "confirmed item included")
+    assert_true(
+        any(
+            item["entry_kind"] == "expense" and item["root"]["id"] == expense_id
+            for item in confirmed_page["items"]
+        ),
+        "confirmed expense root included",
+    )
     print("OK confirmed pagination")
 
     result = request("GET", f"{base_url}/api/expenses/categories", headers=app_headers())

@@ -1,6 +1,8 @@
 package com.ticketbox.ui.screens
 
+import com.ticketbox.domain.model.ConfirmedStreamItem
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.domain.model.ExpenseLineageStatus
 import com.ticketbox.ui.components.MonthPickerListState
 import com.ticketbox.viewmodel.LedgerDataQualityFilter
 import com.ticketbox.viewmodel.LedgerMonthsLoadState
@@ -36,7 +38,7 @@ class LedgerScreenSheetsTest {
         // The CSV endpoint only scopes by month/category/tag; exporting under
         // the client-side data-quality filter would silently widen the scope.
         val state = LedgerUiState(
-            items = listOf(exportFixtureExpense),
+            items = listOf(exportFixtureItem),
             dataQualityFilter = LedgerDataQualityFilter.MissingCategory,
         )
         assertFalse(ledgerExportAvailable(state))
@@ -48,7 +50,7 @@ class LedgerScreenSheetsTest {
         assertFalse(ledgerExportAvailable(LedgerUiState(items = emptyList())))
         assertFalse(
             ledgerExportAvailable(
-                LedgerUiState(items = listOf(exportFixtureExpense), exporting = true),
+                LedgerUiState(items = listOf(exportFixtureItem), exporting = true),
             ),
         )
     }
@@ -80,4 +82,13 @@ private val exportFixtureExpense = Expense(
     rowVersion = 1L,
     confirmedAt = "2026-05-17T08:01:00Z",
     rejectedAt = null,
+)
+
+/** The fixture as its confirmed-stream root row (typed stream consumer contract). */
+private val exportFixtureItem: ConfirmedStreamItem = ConfirmedStreamItem.ExpenseRow(
+    streamDate = "2026-05-17",
+    streamAmountCents = 1200,
+    root = exportFixtureExpense,
+    lineageStatus = ExpenseLineageStatus.Confirmed,
+    lineageHomeNetCents = 1200,
 )

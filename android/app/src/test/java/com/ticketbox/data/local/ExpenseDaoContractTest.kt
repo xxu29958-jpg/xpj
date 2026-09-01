@@ -175,6 +175,59 @@ class ExpenseDaoContractTest {
     }
 
     @Test
+    fun staleFactBundleCannotReplaceOffsetsOfANewerRoot() = runTest {
+        val dao = FakeExpenseDao()
+        val newerOffsets = listOf(offset("refund-a", 300), offset("refund-b", 200))
+        dao.applyExpenseFactBundle(
+            ledgerId = "owner",
+            root = entity("owner", serverId = 9, fixture = ExpenseEntityFixture(rowVersion = 3)),
+            activeOffsets = newerOffsets,
+        )
+
+        dao.applyExpenseFactBundle(
+            ledgerId = "owner",
+            root = entity("owner", serverId = 9, fixture = ExpenseEntityFixture(rowVersion = 2)),
+            activeOffsets = listOf(offset("refund-a", 100)),
+        )
+
+        assertEquals(3L, dao.findByServerId("owner", 9)?.rowVersion)
+        assertEquals(
+            mapOf("refund-a" to 300L, "refund-b" to 200L),
+            dao.getConfirmedStreamOffsets("owner").associate { it.publicId to it.amountCents },
+        )
+    }
+
+    @Test
+    fun staleConfirmedStreamCannotReplaceOrPruneOffsetsOfANewerRoot() = runTest {
+        val dao = FakeExpenseDao()
+        val newerOffsets = listOf(offset("refund-a", 300), offset("refund-b", 200))
+        dao.applyConfirmedStreamSyncForLedger(
+            ledgerId = "owner",
+            roots = listOf(entity("owner", serverId = 9, fixture = ExpenseEntityFixture(rowVersion = 3))),
+            offsets = newerOffsets,
+            replaceCache = false,
+            pruneScope = ConfirmedStreamPruneScope(rootServerIds = null, offsetPublicIds = null),
+        )
+
+        dao.applyConfirmedStreamSyncForLedger(
+            ledgerId = "owner",
+            roots = listOf(entity("owner", serverId = 9, fixture = ExpenseEntityFixture(rowVersion = 2))),
+            offsets = listOf(offset("refund-a", 100)),
+            replaceCache = false,
+            pruneScope = ConfirmedStreamPruneScope(
+                rootServerIds = setOf(9),
+                offsetPublicIds = setOf("refund-a", "refund-b"),
+            ),
+        )
+
+        assertEquals(3L, dao.findByServerId("owner", 9)?.rowVersion)
+        assertEquals(
+            mapOf("refund-a" to 300L, "refund-b" to 200L),
+            dao.getConfirmedStreamOffsets("owner").associate { it.publicId to it.amountCents },
+        )
+    }
+
+    @Test
     fun confirmedSyncPruneSparesRowsCachedAfterTheSnapshot() = runTest {
         // Audit follow-up P2: the full-list response is a snapshot of the
         // server at request time. A row confirmed-and-cached while the fetch
@@ -338,6 +391,22 @@ class ExpenseDaoContractTest {
         val rowVersion: Long = 1L,
     )
 
+    private fun offset(publicId: String, amountCents: Long) = ExpenseOffsetStreamEntity(
+        ledgerId = "owner",
+        publicId = publicId,
+        rootServerId = 9,
+        kind = "refund",
+        streamDate = "2026-09-03",
+        streamSortTime = "2026-09-03T04:00:00Z",
+        streamSortId = publicId.hashCode().toLong(),
+        streamAmountCents = -amountCents,
+        amountCents = amountCents,
+        originalAmountMinor = amountCents,
+        originalCurrencyCode = "CNY",
+        homeCurrencyCode = "CNY",
+        category = "餐饮",
+    )
+
     private fun entity(
         ledgerId: String,
         serverId: Long,
@@ -380,12 +449,25 @@ class ExpenseDaoContractTest {
  */
 private class FakeExpenseDao : ExpenseDao {
     private val expenses = linkedMapOf<Long, ExpenseEntity>()
+    private val offsets = linkedMapOf<Pair<String, String>, ExpenseOffsetStreamEntity>()
     private val perLedgerFlows = mutableMapOf<String, MutableStateFlow<List<ExpenseEntity>>>()
     private var nextId = 1L
 
     override fun observeConfirmed(ledgerId: String): Flow<List<ExpenseEntity>> {
         return flowFor(ledgerId)
     }
+
+    override fun observeConfirmedStreamRoots(ledgerId: String): Flow<List<ExpenseEntity>> =
+        MutableStateFlow(emptyList())
+
+    override fun observeConfirmedStreamOffsets(ledgerId: String): Flow<List<ExpenseOffsetStreamEntity>> =
+        MutableStateFlow(offsets.values.filter { it.ledgerId == ledgerId })
+
+    override suspend fun getConfirmedStreamOffsets(ledgerId: String): List<ExpenseOffsetStreamEntity> =
+        offsets.values.filter { it.ledgerId == ledgerId }
+
+    override suspend fun confirmedStreamOffsetPublicIdsForLedger(ledgerId: String): List<String> =
+        getConfirmedStreamOffsets(ledgerId).map { it.publicId }
 
     override suspend fun getConfirmed(ledgerId: String): List<ExpenseEntity> {
         return expenses.values
@@ -433,6 +515,10 @@ private class FakeExpenseDao : ExpenseDao {
         return expenses.map { insert(it) }
     }
 
+    override suspend fun upsertConfirmedStreamOffsets(offsets: List<ExpenseOffsetStreamEntity>) {
+        offsets.forEach { this.offsets[it.ledgerId to it.publicId] = it }
+    }
+
     override suspend fun update(expense: ExpenseEntity) {
         expenses[expense.id] = expense
         emit(expense.ledgerId)
@@ -477,6 +563,25 @@ private class FakeExpenseDao : ExpenseDao {
             .map { it.id }
         ids.forEach { expenses.remove(it) }
         emit(ledgerId)
+    }
+
+    override suspend fun clearConfirmedStreamOffsets() {
+        offsets.clear()
+    }
+
+    override suspend fun clearConfirmedStreamOffsetsForLedger(ledgerId: String) {
+        offsets.keys.filter { it.first == ledgerId }.forEach(offsets::remove)
+    }
+
+    override suspend fun deleteConfirmedStreamOffsetsByPublicIds(ledgerId: String, publicIds: List<String>) {
+        publicIds.forEach { offsets.remove(ledgerId to it) }
+    }
+
+    override suspend fun deleteConfirmedStreamOffsetsForRoot(ledgerId: String, rootServerId: Long) {
+        offsets.entries
+            .filter { (_, offset) -> offset.ledgerId == ledgerId && offset.rootServerId == rootServerId }
+            .map { it.key }
+            .forEach(offsets::remove)
     }
 
     private fun flowFor(ledgerId: String): MutableStateFlow<List<ExpenseEntity>> {
