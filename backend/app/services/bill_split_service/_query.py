@@ -2,13 +2,89 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import BillSplitInvitation
+from app.models import BillSplitInvitation, Debt, ExpenseOffsetFact
 
 _INVITATION_STATUSES = frozenset({"invited", "accepted", "rejected", "cancelled", "expired"})
+
+
+@dataclass(frozen=True)
+class AcceptedSourceRelationship:
+    invitation_public_id: str
+    receiver_display_name: str | None
+    agreed_share_home_minor: int
+    debt_public_id: str | None
+
+
+def list_accepted_source_relationships(
+    db: Session,
+    *,
+    sender_ledger_id: str,
+    sender_expense_id: int,
+) -> tuple[AcceptedSourceRelationship, ...]:
+    """Read accepted split snapshots and their canonical Debt links in two queries."""
+
+    invitations = list(
+        db.scalars(
+            select(BillSplitInvitation)
+            .where(BillSplitInvitation.sender_ledger_id == sender_ledger_id)
+            .where(BillSplitInvitation.sender_expense_id == sender_expense_id)
+            .where(BillSplitInvitation.status == "accepted")
+            .order_by(BillSplitInvitation.created_at, BillSplitInvitation.id)
+        )
+    )
+    if not invitations:
+        return ()
+    public_ids = [invitation.public_id for invitation in invitations]
+    debt_by_source = dict(
+        db.execute(
+            select(Debt.source_id, Debt.public_id)
+            .where(Debt.source_type == "bill_split")
+            .where(Debt.source_id.in_(public_ids))
+        ).all()
+    )
+    return tuple(
+        AcceptedSourceRelationship(
+            invitation_public_id=invitation.public_id,
+            receiver_display_name=invitation.receiver_display_name_snapshot,
+            agreed_share_home_minor=invitation.amount_cents,
+            debt_public_id=debt_by_source.get(invitation.public_id),
+        )
+        for invitation in invitations
+    )
+
+
+def source_impact_pending_invitation_ids(
+    db: Session,
+    *,
+    sender_ledger_id: str,
+    invitations: list[BillSplitInvitation],
+) -> frozenset[str]:
+    """Return accepted sent rows whose source Expense has an active offset."""
+
+    accepted = [invitation for invitation in invitations if invitation.status == "accepted"]
+    if not accepted:
+        return frozenset()
+    expense_ids = {invitation.sender_expense_id for invitation in accepted}
+    affected_expense_ids = set(
+        db.scalars(
+            select(ExpenseOffsetFact.expense_id)
+            .where(ExpenseOffsetFact.tenant_id == sender_ledger_id)
+            .where(ExpenseOffsetFact.expense_id.in_(expense_ids))
+            .where(ExpenseOffsetFact.status == "active")
+            .distinct()
+        )
+    )
+    return frozenset(
+        invitation.public_id
+        for invitation in accepted
+        if invitation.sender_expense_id in affected_expense_ids
+    )
 
 
 def list_sent(

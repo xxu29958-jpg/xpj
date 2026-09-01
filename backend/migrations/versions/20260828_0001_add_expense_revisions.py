@@ -448,5 +448,11 @@ def assert_postcondition(bind: sa.Connection) -> None:
     authority_revision = bind.scalar(
         sa.text("SELECT schema_revision FROM dataset_authority WHERE singleton_id = 1")
     )
-    if authority_revision != revision:
+    alembic_revision = bind.scalar(sa.text("SELECT version_num FROM alembic_version"))
+    # During this migration's own ``upgrade`` Alembic has not advanced its
+    # version row yet, while the dataset-authority CAS already names this
+    # revision. During a later release-head revalidation both rows name the
+    # newer authorized head. Accept those two honest phases; the terminal
+    # revision's postcondition still requires exact head equality.
+    if authority_revision not in {revision, alembic_revision}:
         raise RuntimeError("dataset authority revision is not aligned with Alembic head")

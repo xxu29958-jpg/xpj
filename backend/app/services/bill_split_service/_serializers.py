@@ -41,6 +41,7 @@ class _BillSplitCommonPayload(TypedDict):
     accepted_at: datetime | None
     rejected_at: datetime | None
     cancelled_at: datetime | None
+    cancellation_reason_code: str | None
     expired_at: datetime | None
 
 
@@ -48,6 +49,7 @@ class BillSplitSentPayload(_BillSplitCommonPayload):
     receiver_account_id: int
     receiver_display_name_snapshot: str | None
     sender_expense_id: int
+    source_impact_pending: bool
 
 
 class BillSplitInboxPayload(_BillSplitCommonPayload):
@@ -55,7 +57,11 @@ class BillSplitInboxPayload(_BillSplitCommonPayload):
     sender_display_name: str
 
 
-def to_sent_response_dict(inv: BillSplitInvitation) -> BillSplitSentPayload:
+def to_sent_response_dict(
+    inv: BillSplitInvitation,
+    *,
+    source_impact_pending: bool = False,
+) -> BillSplitSentPayload:
     """Sender view dict. Deliberately omits ``receiver_ledger_id``."""
     return {
         "public_id": inv.public_id,
@@ -75,10 +81,12 @@ def to_sent_response_dict(inv: BillSplitInvitation) -> BillSplitSentPayload:
         "accepted_at": inv.accepted_at,
         "rejected_at": inv.rejected_at,
         "cancelled_at": inv.cancelled_at,
+        "cancellation_reason_code": inv.cancellation_reason_code,
         "expired_at": inv.expired_at,
         "receiver_account_id": inv.receiver_account_id,
         "receiver_display_name_snapshot": inv.receiver_display_name_snapshot,
         "sender_expense_id": inv.sender_expense_id,
+        "source_impact_pending": source_impact_pending,
     }
 
 
@@ -104,6 +112,7 @@ def to_inbox_response_dict(inv: BillSplitInvitation) -> BillSplitInboxPayload:
         "accepted_at": inv.accepted_at,
         "rejected_at": inv.rejected_at,
         "cancelled_at": inv.cancelled_at,
+        "cancellation_reason_code": inv.cancellation_reason_code,
         "expired_at": inv.expired_at,
         "sender_account_id": inv.sender_account_id,
         "sender_display_name": receiver_sender_presentation(inv.sender_display_name)[0],

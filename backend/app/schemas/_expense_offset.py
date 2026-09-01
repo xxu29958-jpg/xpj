@@ -34,7 +34,34 @@ __all__ = [
     "ExpenseOffsetResponse",
     "ExpenseOffsetRevisionResponse",
     "ExpenseOffsetStatus",
+    "ExpenseRelationshipImpacts",
 ]
+
+ExpenseRelationshipReason = Literal[
+    "source_refunded",
+    "source_chargeback",
+    "source_reversed",
+]
+
+
+class CancelledPendingInvitationImpact(BaseModel):
+    invitation_public_id: str
+    cancellation_reason_code: ExpenseRelationshipReason
+
+
+class AcceptedInvitationImpact(BaseModel):
+    invitation_public_id: str
+    source_reason_code: ExpenseRelationshipReason
+    receiver_display_name: str | None = None
+    debt_public_id: str | None = None
+    original_agreed_share_home_minor: NonNegativeMoneyAggregate
+    suggested_net_share_home_minor: NonNegativeMoneyAggregate
+    suggested_action: Literal["review_split"] = "review_split"
+
+
+class ExpenseRelationshipImpacts(BaseModel):
+    pending_invites_cancelled: list[CancelledPendingInvitationImpact] = Field(default_factory=list)
+    accepted_impacts: list[AcceptedInvitationImpact] = Field(default_factory=list)
 
 
 class ExpenseOffsetCreateRequest(BaseModel):
@@ -44,7 +71,10 @@ class ExpenseOffsetCreateRequest(BaseModel):
     original_amount_minor: PositiveMoneyMinor | None = None
     accounting_date: date
     reason: str = Field(min_length=1, max_length=500)
-    expected_row_version: int = Field(ge=1)
+    # ``0`` is the existing device-local first-write sentinel. A server-id
+    # mutation carrying it still reaches the OCC CAS and conflicts because
+    # persisted Expense versions start at 1.
+    expected_row_version: int = Field(ge=0)
 
     @field_validator("reason")
     @classmethod
@@ -74,6 +104,8 @@ class ExpenseOffsetResponse(BaseModel):
     home_currency_code: str
     amount_cents: PositiveMoneyMinor
     exchange_rate_to_cny: Decimal | None
+    exchange_rate_date: date | None
+    exchange_rate_source: str | None
     accounting_date: date
     category: str
     reason: str
@@ -126,3 +158,4 @@ class ExpenseFactBundleResponse(BaseModel):
     financial_summary: ExpenseFinancialSummary
     active_offsets: list[ExpenseOffsetResponse]
     recent_history: list[ExpenseOffsetRevisionResponse] = Field(default_factory=list)
+    relationship_impacts: ExpenseRelationshipImpacts = Field(default_factory=ExpenseRelationshipImpacts)

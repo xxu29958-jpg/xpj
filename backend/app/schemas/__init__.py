@@ -161,6 +161,7 @@ from app.schemas._expense_offset import (
     ExpenseOffsetCreateRequest,
     ExpenseOffsetResponse,
     ExpenseOffsetRevisionResponse,
+    ExpenseRelationshipImpacts,
 )
 from app.schemas._expense_revision import (
     ConfirmedExpenseBatchUpdateRequest,
@@ -406,6 +407,7 @@ __all__ = [
     "ExpenseOffsetCreateRequest",
     "ExpenseOffsetResponse",
     "ExpenseOffsetRevisionResponse",
+    "ExpenseRelationshipImpacts",
     "ExpenseAcknowledgeItemsMismatchRequest",
     "ExpenseRecognizeTextRequest",
     "ExpenseRejectRequest",

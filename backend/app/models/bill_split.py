@@ -45,6 +45,12 @@ class BillSplitInvitation(Base):
             "status IN ('invited', 'accepted', 'rejected', 'cancelled', 'expired')",
             name="ck_bill_split_invitations_status_valid",
         ),
+        CheckConstraint(
+            "cancellation_reason_code IS NULL OR "
+            "(status = 'cancelled' AND cancellation_reason_code IN "
+            "('source_refunded', 'source_chargeback', 'source_reversed'))",
+            name="ck_bill_split_invitations_cancellation_reason",
+        ),
         # When accepted: receiver_ledger_id, receiver_member_id, and
         # received_expense_id all present. When NOT accepted: all three
         # NULL. We don't enforce this via CHECK (SQLite gets cranky about
@@ -127,6 +133,7 @@ class BillSplitInvitation(Base):
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancellation_reason_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
     expired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 

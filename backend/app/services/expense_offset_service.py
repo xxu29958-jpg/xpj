@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import select
@@ -22,7 +23,20 @@ from app.schemas import (
     ExpenseOffsetResponse,
     ExpenseOffsetRevisionResponse,
 )
+from app.services.bill_split_service import (
+    AcceptedSourceRelationship,
+    settle_source_financial_change,
+)
 from app.services.currency_binding_service import authorize_currency_metadata_write
+from app.services.expense_offset_money import (
+    OffsetMoney,
+    gross_original_minor,
+    resolve_offset_money,
+)
+from app.services.expense_offset_relationship_projection import (
+    relationship_impacts,
+    source_relationship_reason,
+)
 from app.services.expense_response_service import expense_to_response
 from app.services.expense_service import get_expense
 from app.services.idempotency import claim_idempotent_request, mark_idempotency_succeeded
@@ -31,21 +45,12 @@ from app.services.time_service import now_utc, to_iso
 
 __all__ = ["create_expense_offset", "expense_fact_bundle"]
 
-
 def _require_confirmed(expense: Expense) -> None:
     if expense.status == "confirmed" and expense.amount_cents is not None:
         return
     if expense.status == "pending":
         raise AppError("expense_not_confirmed", status_code=409)
     raise AppError("expense_not_found", status_code=404)
-
-
-def _gross_original_minor(expense: Expense) -> int:
-    if expense.original_amount_minor is not None:
-        return expense.original_amount_minor
-    if expense.amount_cents is not None:
-        return expense.amount_cents
-    raise AppError("amount_required", status_code=409)
 
 
 def _offset_snapshot(offset: ExpenseOffsetFact) -> dict[str, object]:
@@ -60,6 +65,10 @@ def _offset_snapshot(offset: ExpenseOffsetFact) -> dict[str, object]:
         "exchange_rate_to_cny": (
             format(offset.exchange_rate_to_cny, "f") if offset.exchange_rate_to_cny is not None else None
         ),
+        "exchange_rate_date": (
+            offset.exchange_rate_date.isoformat() if offset.exchange_rate_date is not None else None
+        ),
+        "exchange_rate_source": offset.exchange_rate_source,
         "accounting_date": offset.accounting_date.isoformat(),
         "category": offset.category,
         "reason": offset.reason,
@@ -92,7 +101,7 @@ def _financial_summary(
     expense: Expense,
     offsets: list[ExpenseOffsetFact],
 ) -> ExpenseFinancialSummary:
-    gross_original = _gross_original_minor(expense)
+    gross_original = gross_original_minor(expense)
     gross_home = int(expense.amount_cents or 0)
     reversal = next((offset for offset in offsets if offset.kind == "reversal"), None)
     refunds = [offset for offset in offsets if offset.kind != "reversal"]
@@ -100,6 +109,7 @@ def _financial_summary(
     remaining_original = max(gross_original - refunded_original, 0)
 
     if reversal is not None:
+        remaining_original = 0
         net_home = 0
         status = "reversed"
     else:
@@ -112,7 +122,7 @@ def _financial_summary(
             status = "partially_refunded"
 
     baseline_remaining_home = 0
-    if gross_original:
+    if gross_original and reversal is None:
         baseline_remaining_home = int(
             (Decimal(gross_home) * Decimal(remaining_original) / Decimal(gross_original)).quantize(
                 Decimal("1"), rounding=ROUND_HALF_UP
@@ -155,6 +165,9 @@ def expense_fact_bundle(
     *,
     tenant_id: str,
     expense_id: int,
+    accepted_relationships: tuple[AcceptedSourceRelationship, ...] | None = None,
+    cancelled_public_ids: tuple[str, ...] = (),
+    cancellation_reason_code: str | None = None,
 ) -> ExpenseFactBundleResponse:
     expense = get_expense(db, expense_id, tenant_id)
     _require_confirmed(expense)
@@ -176,9 +189,10 @@ def expense_fact_bundle(
             .limit(20)
         )
     )
+    summary = _financial_summary(expense, offsets)
     return ExpenseFactBundleResponse(
         root=expense_to_response(db, tenant_id=tenant_id, expense=expense),
-        financial_summary=_financial_summary(expense, offsets),
+        financial_summary=summary,
         active_offsets=[ExpenseOffsetResponse.model_validate(offset) for offset in offsets],
         recent_history=[
             _revision_to_response(
@@ -188,6 +202,16 @@ def expense_fact_bundle(
             )
             for revision in revisions
         ],
+        relationship_impacts=relationship_impacts(
+            db,
+            tenant_id=tenant_id,
+            expense_id=expense.id,
+            offsets=offsets,
+            summary=summary,
+            accepted_relationships=accepted_relationships,
+            cancelled_public_ids=cancelled_public_ids,
+            cancellation_reason_code=cancellation_reason_code,
+        ),
     )
 
 
@@ -207,6 +231,136 @@ def _replayed_bundle(
     return ExpenseFactBundleResponse.model_validate(record.response_body)
 
 
+def _claim_offset_command(
+    db: Session,
+    *,
+    tenant_id: str,
+    expense_id: int,
+    payload: ExpenseOffsetCreateRequest,
+    actor_account_id: int,
+    idempotency_key: str | None,
+) -> ApiIdempotencyKey | ExpenseFactBundleResponse:
+    claim = claim_idempotent_request(
+        db,
+        idempotency_key=idempotency_key,
+        tenant_id=tenant_id,
+        operation="create_expense_offset",
+        target_id=str(expense_id),
+        target_type="expense_offset",
+        body={
+            **payload.model_dump(mode="json", exclude={"expected_row_version"}),
+            "actor_account_id": actor_account_id,
+        },
+        expected_row_version=payload.expected_row_version,
+    )
+    if claim is not None:
+        return claim
+    if idempotency_key is None:
+        raise AppError("server_error", status_code=500)
+    return _replayed_bundle(
+        db,
+        tenant_id=tenant_id,
+        idempotency_key=idempotency_key,
+    )
+
+
+def _claim_expense_for_offset(
+    db: Session,
+    *,
+    tenant_id: str,
+    expense_id: int,
+    expected_row_version: int,
+) -> tuple[Expense, list[ExpenseOffsetFact], datetime]:
+    current = get_expense(db, expense_id, tenant_id)
+    _require_confirmed(current)
+    now = now_utc()
+    claimed = claim_row_with_token(
+        db,
+        Expense,
+        pk_id=expense_id,
+        tenant_id=tenant_id,
+        expected_row_version=expected_row_version,
+        set_values={"updated_at": now},
+        extra_where=(Expense.status == "confirmed",),
+        synchronize_session=False,
+    )
+    if claimed != 1:
+        db.rollback()
+        _require_confirmed(get_expense(db, expense_id, tenant_id))
+        raise AppError("state_conflict", status_code=409)
+    db.expire_all()
+    expense = get_expense(db, expense_id, tenant_id)
+    offsets = _active_offsets(
+        db,
+        tenant_id=tenant_id,
+        expense_id=expense_id,
+        for_update=True,
+    )
+    if any(offset.kind == "reversal" for offset in offsets):
+        db.rollback()
+        raise AppError("expense_reversal_active", status_code=409)
+    return expense, offsets, now
+
+
+def _persist_new_offset(
+    db: Session,
+    *,
+    tenant_id: str,
+    expense: Expense,
+    payload: ExpenseOffsetCreateRequest,
+    money: OffsetMoney,
+    actor_account_id: int,
+    actor_device_public_id: str | None,
+    actor_device_name: str | None,
+    idempotency_key: str,
+    now: datetime,
+) -> ExpenseOffsetFact:
+    offset = ExpenseOffsetFact(
+        tenant_id=tenant_id,
+        expense_id=expense.id,
+        kind=payload.kind,
+        original_currency_code=expense.original_currency_code,
+        original_amount_minor=money.original_amount_minor,
+        home_currency_code=expense.home_currency_code,
+        amount_cents=money.amount_cents,
+        exchange_rate_to_cny=money.exchange_rate_to_cny,
+        exchange_rate_date=money.exchange_rate_date,
+        exchange_rate_source=money.exchange_rate_source,
+        accounting_date=payload.accounting_date,
+        category=expense.category,
+        reason=payload.reason,
+        created_actor_account_id=actor_account_id,
+        created_device_public_id=actor_device_public_id,
+        created_device_name=actor_device_name,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(offset)
+    db.flush()
+    db.refresh(offset)
+    db.add(
+        ExpenseOffsetRevision(
+            tenant_id=tenant_id,
+            expense_id=expense.id,
+            offset_id=offset.id,
+            revision_number=1,
+            change_kind="created",
+            reason=payload.reason,
+            idempotency_key=idempotency_key,
+            actor_account_id=actor_account_id,
+            actor_device_public_id=actor_device_public_id,
+            actor_device_name=actor_device_name,
+            before_snapshot=None,
+            after_snapshot=_offset_snapshot(offset),
+            previous_row_version=None,
+            resulting_row_version=offset.row_version,
+            created_at=now,
+        )
+    )
+    db.flush()
+    return offset
+
+
 def create_expense_offset(
     db: Session,
     *,
@@ -221,124 +375,62 @@ def create_expense_offset(
 ) -> ExpenseFactBundleResponse:
     """Create one offset fact and publish its immutable first revision."""
 
-    claim = claim_idempotent_request(
+    claim_or_replay = _claim_offset_command(
         db,
-        idempotency_key=idempotency_key,
         tenant_id=tenant_id,
-        operation="create_expense_offset",
-        target_id=str(expense_id),
-        target_type="expense_offset",
-        body={
-            **payload.model_dump(
-                mode="json",
-                exclude={"expected_row_version"},
-            ),
-            "actor_account_id": actor_account_id,
-        },
-        expected_row_version=payload.expected_row_version,
+        expense_id=expense_id,
+        payload=payload,
+        actor_account_id=actor_account_id,
+        idempotency_key=idempotency_key,
     )
-    if claim is None:
-        if idempotency_key is None:
-            raise AppError("server_error", status_code=500)
-        return _replayed_bundle(
-            db,
-            tenant_id=tenant_id,
-            idempotency_key=idempotency_key,
-        )
+    if isinstance(claim_or_replay, ExpenseFactBundleResponse):
+        return claim_or_replay
     if idempotency_key is None:
         raise AppError("server_error", status_code=500)
+    claim = claim_or_replay
 
     authorize_currency_metadata_write(db)
-    current = get_expense(db, expense_id, tenant_id)
-    _require_confirmed(current)
-    now = now_utc()
-    claimed = claim_row_with_token(
+    expense, offsets, now = _claim_expense_for_offset(
         db,
-        Expense,
-        pk_id=expense_id,
         tenant_id=tenant_id,
+        expense_id=expense_id,
         expected_row_version=effective_expected_row_version,
-        set_values={"updated_at": now},
-        extra_where=(Expense.status == "confirmed",),
-        synchronize_session=False,
     )
-    if claimed != 1:
-        db.rollback()
-        current = get_expense(db, expense_id, tenant_id)
-        _require_confirmed(current)
-        raise AppError("state_conflict", status_code=409)
-
-    db.expire_all()
-    expense = get_expense(db, expense_id, tenant_id)
-    offsets = _active_offsets(
+    money = resolve_offset_money(
         db,
         tenant_id=tenant_id,
-        expense_id=expense_id,
-        for_update=True,
+        expense=expense,
+        offsets=offsets,
+        payload=payload,
     )
-    if any(offset.kind == "reversal" for offset in offsets):
-        db.rollback()
-        raise AppError("expense_reversal_active", status_code=409)
-
-    gross_original = _gross_original_minor(expense)
-    active_refunded = sum(offset.original_amount_minor for offset in offsets if offset.kind != "reversal")
-    if payload.kind == "reversal":
-        if active_refunded:
-            db.rollback()
-            raise AppError("expense_refund_exists", status_code=409)
-        original_amount_minor = gross_original
-        amount_cents = int(expense.amount_cents or 0)
-    else:
-        original_amount_minor = int(payload.original_amount_minor or 0)
-        if original_amount_minor > gross_original - active_refunded:
-            db.rollback()
-            raise AppError("expense_refund_exceeds_remaining", status_code=409)
-        if expense.original_currency_code != expense.home_currency_code:
-            db.rollback()
-            raise AppError("exchange_rate_required", status_code=409)
-        amount_cents = original_amount_minor
-
-    offset = ExpenseOffsetFact(
+    offset = _persist_new_offset(
+        db,
         tenant_id=tenant_id,
-        expense_id=expense_id,
-        kind=payload.kind,
-        original_currency_code=expense.original_currency_code,
-        original_amount_minor=original_amount_minor,
-        home_currency_code=expense.home_currency_code,
-        amount_cents=amount_cents,
-        accounting_date=payload.accounting_date,
-        category=expense.category,
-        reason=payload.reason,
-        created_actor_account_id=actor_account_id,
-        created_device_public_id=actor_device_public_id,
-        created_device_name=actor_device_name,
-        created_at=now,
-        updated_at=now,
-    )
-    db.add(offset)
-    db.flush()
-    db.refresh(offset)
-    snapshot = _offset_snapshot(offset)
-    revision = ExpenseOffsetRevision(
-        tenant_id=tenant_id,
-        expense_id=expense_id,
-        offset_id=offset.id,
-        revision_number=1,
-        change_kind="created",
-        reason=payload.reason,
-        idempotency_key=idempotency_key,
+        expense=expense,
+        payload=payload,
+        money=money,
         actor_account_id=actor_account_id,
         actor_device_public_id=actor_device_public_id,
         actor_device_name=actor_device_name,
-        before_snapshot=None,
-        after_snapshot=snapshot,
-        previous_row_version=None,
-        resulting_row_version=offset.row_version,
-        created_at=now,
+        idempotency_key=idempotency_key,
+        now=now,
     )
-    db.add(revision)
-    db.flush()
-    result = expense_fact_bundle(db, tenant_id=tenant_id, expense_id=expense_id)
+    reason_code = source_relationship_reason(payload.kind)
+    relationship_result = settle_source_financial_change(
+        db,
+        sender_ledger_id=tenant_id,
+        sender_expense_id=expense_id,
+        reason_code=reason_code,
+        actor_account_id=actor_account_id,
+    )
+    result = expense_fact_bundle(
+        db,
+        tenant_id=tenant_id,
+        expense_id=expense_id,
+        accepted_relationships=relationship_result.accepted_relationships,
+        cancelled_public_ids=relationship_result.cancelled_public_ids,
+        cancellation_reason_code=reason_code,
+    )
     mark_idempotency_succeeded(
         db,
         claim,

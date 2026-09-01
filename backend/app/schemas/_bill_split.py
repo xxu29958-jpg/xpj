@@ -97,6 +97,11 @@ class _BillSplitCommon(BaseModel):
     accepted_at: datetime | None = None
     rejected_at: datetime | None = None
     cancelled_at: datetime | None = None
+    cancellation_reason_code: Literal[
+        "source_refunded",
+        "source_chargeback",
+        "source_reversed",
+    ] | None = None
     expired_at: datetime | None = None
 
     @field_serializer(
@@ -124,6 +129,7 @@ class BillSplitSentResponse(_BillSplitCommon):
     receiver_account_id: int
     receiver_display_name_snapshot: str | None = None
     sender_expense_id: int
+    source_impact_pending: bool = False
 
 
 class BillSplitInboxResponse(_BillSplitCommon):

@@ -19,6 +19,8 @@ _REVISIONS = "expense_offset_revisions"
 _CURRENCY_WRITER_FUNCTION = "ticketbox_require_currency_writer"
 _CURRENCY_WRITER_TRIGGER = "trg_currency_writer_expense_offset_facts"
 _CURRENCY_TRUNCATE_TRIGGER = "trg_currency_writer_expense_offset_facts_truncate"
+_RELATIONSHIPS = "bill_split_invitations"
+_RELATIONSHIP_REASON_CONSTRAINT = "ck_bill_split_invitations_cancellation_reason"
 
 
 def _set_dataset_authority_revision(
@@ -44,6 +46,25 @@ def _set_dataset_authority_revision(
     )
     if updated.rowcount != 1:
         raise RuntimeError("dataset authority revision update lost its migration claim")
+
+
+def _ensure_relationship_reason_shape(bind: sa.Connection) -> None:
+    inspector = sa.inspect(bind)
+    columns = {column["name"] for column in inspector.get_columns(_RELATIONSHIPS)}
+    if "cancellation_reason_code" not in columns:
+        op.add_column(
+            _RELATIONSHIPS,
+            sa.Column("cancellation_reason_code", sa.String(length=32), nullable=True),
+        )
+    checks = {check["name"] for check in sa.inspect(bind).get_check_constraints(_RELATIONSHIPS)}
+    if _RELATIONSHIP_REASON_CONSTRAINT not in checks:
+        op.create_check_constraint(
+            _RELATIONSHIP_REASON_CONSTRAINT,
+            _RELATIONSHIPS,
+            "cancellation_reason_code IS NULL OR "
+            "(status = 'cancelled' AND cancellation_reason_code IN "
+            "('source_refunded', 'source_chargeback', 'source_reversed'))",
+        )
 
 
 def _create_fact_table() -> None:
@@ -257,6 +278,7 @@ def _create_revision_table() -> None:
 
 def upgrade() -> None:
     bind = op.get_bind()
+    _ensure_relationship_reason_shape(bind)
     inspector = sa.inspect(bind)
     if not inspector.has_table(_FACTS):
         _create_fact_table()
@@ -283,6 +305,20 @@ def downgrade() -> None:
     op.execute("DROP FUNCTION IF EXISTS ticketbox_reject_expense_offset_revision_mutation()")
     if sa.inspect(bind).has_table(_FACTS):
         op.drop_table(_FACTS)
+    relationship_columns = {
+        column["name"] for column in sa.inspect(bind).get_columns(_RELATIONSHIPS)
+    }
+    if "cancellation_reason_code" in relationship_columns:
+        relationship_checks = {
+            check["name"] for check in sa.inspect(bind).get_check_constraints(_RELATIONSHIPS)
+        }
+        if _RELATIONSHIP_REASON_CONSTRAINT in relationship_checks:
+            op.drop_constraint(
+                _RELATIONSHIP_REASON_CONSTRAINT,
+                _RELATIONSHIPS,
+                type_="check",
+            )
+        op.drop_column(_RELATIONSHIPS, "cancellation_reason_code")
     _set_dataset_authority_revision(
         bind,
         expected_revision=revision,
@@ -294,6 +330,11 @@ def assert_postcondition(bind: sa.Connection) -> None:
     inspector = sa.inspect(bind)
     if not inspector.has_table(_FACTS) or not inspector.has_table(_REVISIONS):
         raise RuntimeError("Expense offset fact tables are missing")
+    relationship_columns = {
+        column["name"] for column in inspector.get_columns(_RELATIONSHIPS)
+    }
+    if "cancellation_reason_code" not in relationship_columns:
+        raise RuntimeError("Bill split cancellation reason column is missing")
     trigger_exists = bind.scalar(
         sa.text(
             "SELECT EXISTS (SELECT 1 FROM pg_trigger "
