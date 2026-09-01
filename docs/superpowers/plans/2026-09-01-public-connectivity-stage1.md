@@ -301,7 +301,12 @@ if generation == self._requested_generation and not self._shutdown:
     self._status = assembled
 ```
 
-The runtime context loader calls `runtime_provider.current()` off-thread, maps its existing attested `RuntimeStatus` to the origin axis, uses `config.public_base_url`, and loads `ProductSession` only for `full=True`. Current installed configuration supplies no `ManagedConnectorExpectation`.
+The runtime context loader calls `runtime_provider.current()` off-thread and maps its attested
+`RuntimeStatus` to the origin axis. The Backend canonicalizes its service-owned runtime setting into
+the loopback installation-health contract; `RuntimeStatus.public_origin` carries that value only
+inside the Manager process, including installed mode where `ManagerConfig.public_base_url` is
+intentionally `None`. A `ProductSession` is loaded only for `full=True` and a present attested
+origin. Current installed configuration supplies no `ManagedConnectorExpectation`.
 
 - [x] **Step 4: Run provider GREEN, combined model/probe tests, and lint**
 

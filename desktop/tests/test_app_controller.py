@@ -38,6 +38,7 @@ class FakeRuntime:
             log=["ready"],
             health_state="healthy",
             health_detail="identity verified",
+            public_origin="https://not-exported.example",
             mobile_endpoint_state="public_configured_unverified",
             android_binding_state="configured_unverified",
             iphone_upload_state="configured_unverified",
@@ -110,6 +111,7 @@ def test_status_exposes_runtime_capabilities(monkeypatch) -> None:
     assert status["android_binding_state"] == "configured_unverified"
     assert status["runtime_access_state"] == "available"
     assert status["public_connectivity"]["schema"] == "ticketbox-public-connectivity-v1"
+    assert "https://not-exported.example" not in repr(status)
     assert "tunnel" not in status
     assert "public_endpoint_state" not in status
 

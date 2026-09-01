@@ -52,13 +52,14 @@ class HealthResponse(BaseModel):
 
 
 class InstallationMobileCapabilitiesResponse(BaseModel):
+    public_origin: str | None
     mobile_endpoint_state: Literal["local_only", "public_configured_unverified"]
     android_binding_state: Literal["setup_required", "configured_unverified"]
     iphone_upload_state: Literal["setup_required", "configured_unverified"]
 
 
 class InstallationHealthResponse(BaseModel):
-    contract: Literal["ticketbox-installation-health-v2"] = "ticketbox-installation-health-v2"
+    contract: Literal["ticketbox-installation-health-v3"] = "ticketbox-installation-health-v3"
     status: Literal["ok"] = "ok"
     product: Literal["ticketbox"] = "ticketbox"
     backend_version: str

@@ -278,15 +278,16 @@ def build_public_connectivity_provider(
         projection = runtime_provider.current()
         config = projection.config
         snapshot = projection.runtime.status()
+        public_origin = snapshot.public_origin
         session: ProductSession | None = None
-        if full and config.public_base_url:
+        if full and public_origin:
             try:
                 session = product_session_loader(config.expected_installation_id)
             except ProductCredentialError:
                 session = None
         return PublicConnectivityContext(
             origin=_origin_state(snapshot),
-            public_origin=config.public_base_url,
+            public_origin=public_origin,
             session=session,
             # The current installed release has no protected connector
             # projection. Absence is material: external evidence cannot be

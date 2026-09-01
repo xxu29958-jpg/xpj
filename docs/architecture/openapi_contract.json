@@ -9830,8 +9830,8 @@
             "type": "string"
           },
           "contract": {
-            "const": "ticketbox-installation-health-v2",
-            "default": "ticketbox-installation-health-v2",
+            "const": "ticketbox-installation-health-v3",
+            "default": "ticketbox-installation-health-v3",
             "title": "Contract",
             "type": "string"
           },
@@ -9916,9 +9916,21 @@
             ],
             "title": "Mobile Endpoint State",
             "type": "string"
+          },
+          "public_origin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Origin"
           }
         },
         "required": [
+          "public_origin",
           "mobile_endpoint_state",
           "android_binding_state",
           "iphone_upload_state"

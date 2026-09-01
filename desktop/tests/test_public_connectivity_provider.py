@@ -408,9 +408,15 @@ def test_shutdown_cancels_queued_work_and_rejects_new_requests_without_waiting()
 
 
 class _Runtime:
-    def __init__(self, health_state: str = "healthy", healthy: bool = True) -> None:
+    def __init__(
+        self,
+        health_state: str = "healthy",
+        healthy: bool = True,
+        public_origin: str | None = None,
+    ) -> None:
         self.health_state = health_state
         self.healthy = healthy
+        self.public_origin = public_origin
 
     def status(self) -> RuntimeStatus:
         return RuntimeStatus(
@@ -426,6 +432,7 @@ class _Runtime:
             database_service_state=None,
             log=[],
             health_state=self.health_state,
+            public_origin=self.public_origin,
         )
 
 
@@ -470,7 +477,11 @@ def test_builder_maps_existing_attested_runtime_and_loads_wincred_only_for_full(
     healthy: bool,
     expected: OriginState,
 ) -> None:
-    runtime_provider = _RuntimeProvider(_config(), _Runtime(health_state, healthy))
+    attested_origin = "https://public.example" if healthy else None
+    runtime_provider = _RuntimeProvider(
+        _config(),
+        _Runtime(health_state, healthy, public_origin=attested_origin),
+    )
     session_loads: list[str] = []
     public_contexts: list[object] = []
     clock = _Clock()
@@ -489,6 +500,38 @@ def test_builder_maps_existing_attested_runtime_and_loads_wincred_only_for_full(
     assert public_contexts == []
 
     provider.request_refresh(full=True)
+    if attested_origin is None:
+        assert session_loads == []
+        assert len(public_contexts) == 1
+        assert public_contexts[0].public_origin is None
+        assert public_contexts[0].session is None
+    else:
+        assert session_loads == [runtime_provider.config.expected_installation_id]
+        assert len(public_contexts) == 1
+        assert public_contexts[0].session is not None
+
+
+def test_builder_uses_attested_runtime_public_origin_when_manager_config_hides_it() -> None:
+    runtime_provider = _RuntimeProvider(
+        _config(public_origin=None),
+        _Runtime(public_origin="https://installed.example"),
+    )
+    session_loads: list[str] = []
+    public_contexts: list[object] = []
+    provider = build_public_connectivity_provider(
+        runtime_provider,  # type: ignore[arg-type]
+        product_session_loader=lambda installation_id: (
+            session_loads.append(installation_id),
+            _session(),
+        )[1],
+        cloudflared_probe=lambda _expectation: _cloud(),
+        public_endpoint_probe=lambda context: (public_contexts.append(context), _public())[1],
+        executor=_InlineExecutor(),
+        utcnow=_Clock().utcnow,
+    )
+
+    provider.request_refresh(full=True)
+
     assert session_loads == [runtime_provider.config.expected_installation_id]
     assert len(public_contexts) == 1
-    assert public_contexts[0].session is not None
+    assert public_contexts[0].public_origin == "https://installed.example"

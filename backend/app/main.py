@@ -468,6 +468,7 @@ def installation_health(
         owner_state=owner_state,
         owner_recovery_channel=settings.owner_recovery_channel,
         mobile_connectivity=InstallationMobileCapabilitiesResponse(
+            public_origin=mobile.public_origin,
             mobile_endpoint_state=mobile.mobile_endpoint_state,
             android_binding_state=mobile.android_binding_state,
             iphone_upload_state=mobile.iphone_upload_state,

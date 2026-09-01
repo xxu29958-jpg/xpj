@@ -69,7 +69,7 @@ def _health_server(body: bytes, *, header_delay_seconds: float = 0.0):
 
 
 def test_health_transport_reads_fixed_loopback_response(monkeypatch) -> None:
-    body = b'{"contract":"ticketbox-installation-health-v2"}'
+    body = b'{"contract":"ticketbox-installation-health-v3"}'
     monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:9")
     monkeypatch.delenv("NO_PROXY", raising=False)
 
@@ -110,7 +110,7 @@ def test_health_transport_normalizes_body_failure() -> None:
 
 
 def test_health_transport_deadline_includes_status_and_headers(monkeypatch) -> None:
-    body = b'{"contract":"ticketbox-installation-health-v2"}'
+    body = b'{"contract":"ticketbox-installation-health-v3"}'
     monkeypatch.setattr(health, "_TOTAL_TIMEOUT_SECONDS", 0.15)
     started = time.monotonic()
 

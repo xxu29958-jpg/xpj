@@ -46,10 +46,12 @@ def _health_payload(
     runtime_access_state: str = "available",
     owner_state: str = "configured",
     owner_recovery_channel: str = "managed_host",
+    public_origin: str | None = None,
 ) -> bytes:
+    configured = public_origin is not None
     return json.dumps(
         {
-            "contract": "ticketbox-installation-health-v2",
+            "contract": "ticketbox-installation-health-v3",
             "status": "ok",
             "product": "ticketbox",
             "backend_version": "9.8.7",
@@ -58,9 +60,16 @@ def _health_payload(
             "owner_state": owner_state,
             "owner_recovery_channel": owner_recovery_channel,
             "mobile_connectivity": {
-                "mobile_endpoint_state": "local_only",
-                "android_binding_state": "setup_required",
-                "iphone_upload_state": "setup_required",
+                "public_origin": public_origin,
+                "mobile_endpoint_state": (
+                    "public_configured_unverified" if configured else "local_only"
+                ),
+                "android_binding_state": (
+                    "configured_unverified" if configured else "setup_required"
+                ),
+                "iphone_upload_state": (
+                    "configured_unverified" if configured else "setup_required"
+                ),
             },
         },
         separators=(",", ":"),
@@ -106,6 +115,24 @@ def test_status_reports_services_and_redacted_identity_health_without_raw_logs()
     assert status.health_detail == "verified"
 
 
+def test_status_carries_attested_public_origin_without_logging_it() -> None:
+    public_origin = "https://installed.example"
+    runtime = _runtime(
+        FakeGateway(backend="running", database="running"),
+        health_result=HealthProbeResult(
+            "healthy",
+            "verified",
+            public_origin=public_origin,
+        ),
+    )
+
+    status = runtime.status()
+
+    assert status.public_origin == public_origin
+    assert public_origin not in repr(status)
+    assert all(public_origin not in line for line in status.log)
+
+
 def test_health_json_requires_exact_product_version_and_installation_identity() -> None:
     expectation = InstalledHealthExpectation(
         backend_version="9.8.7",
@@ -126,7 +153,7 @@ def test_health_json_requires_exact_product_version_and_installation_identity() 
     )
     attestation = _sign_challenge(_HEALTH_ATTESTATION_KEY, _HEALTH_CHALLENGE)
     valid = _parse_health_payload(
-        _health_payload(),
+        _health_payload(public_origin="https://installed.example"),
         expectation,
         challenge=_HEALTH_CHALLENGE,
         attestation=attestation,
@@ -153,8 +180,10 @@ def test_health_json_requires_exact_product_version_and_installation_identity() 
     assert random_200.state == "mismatch"
     assert forged.state == "mismatch"
     assert valid.healthy is True
-    assert valid.mobile_endpoint_state == "local_only"
-    assert valid.android_binding_state == "setup_required"
+    assert valid.public_origin == "https://installed.example"
+    assert valid.mobile_endpoint_state == "public_configured_unverified"
+    assert valid.android_binding_state == "configured_unverified"
+    assert valid.iphone_upload_state == "configured_unverified"
     assert valid.owner_state == "configured"
     assert wrong_install.state == "mismatch"
     assert missing_owner.healthy is True

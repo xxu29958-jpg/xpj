@@ -21,6 +21,11 @@ Manager 卡片标题为 `公网连接`，副标题为 `由 Cloudflare Tunnel 提
 卡片不得出现安装、启动、停止、重启、修复、更新、UAC 或 token 管理按钮；这类能力属于
 后续受管生命周期阶段。
 
+正式安装态的公网地址 authority 是 Backend 服务拥有的 runtime setting，不是 Manager 的
+`ManagerConfig.public_base_url`（该字段在 installed mode 中故意为 `None`）。Backend 先将地址
+规范化，再通过仅限 loopback、安装身份受 attestation 保护的 installation-health v3 合同投影；
+Manager 只在进程内将它交给完整检查。该地址不进入 Manager 稳定状态 JSON、日志或诊断包。
+
 ## 如何读状态
 
 `overall` 只由后端状态模型按固定优先级生成，UI 不重新裁决：
