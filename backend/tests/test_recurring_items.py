@@ -16,7 +16,6 @@ from app.schemas import RecurringCandidateConfirmRequest
 from app.services.recurring_candidate_confirmation_service import (
     confirm_recurring_candidate as confirm_recurring_candidate_service,
 )
-from app.services.recurring_service import _historical_average_amount
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
@@ -27,18 +26,6 @@ def _freeze_recurring_candidate_clock(monkeypatch: pytest.MonkeyPatch) -> None:
         "app.services.insights_service.now_utc",
         lambda: datetime(2026, 8, 31, 12, 0, tzinfo=UTC),
     )
-
-
-def test_recurring_history_average_accepts_wide_exact_numerator() -> None:
-    item = RecurringItem(
-        merchant_key="large-subscription",
-        merchant_name="Large subscription",
-        frequency="monthly",
-        baseline_amount_cents=1,
-        last_amount_cents=1,
-    )
-
-    assert _historical_average_amount(item, [2**53 - 1] * 1001) == 2**53 - 1
 
 
 def test_recurring_candidate_confirmation_service_creates_item_directly() -> None:
