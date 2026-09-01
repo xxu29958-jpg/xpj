@@ -50,6 +50,58 @@ def test_actions_are_single_flight_and_availability_is_reapplied_from_status() -
     assert 'button.disabled = false' not in html
 
 
+def test_public_connectivity_card_is_projection_driven_and_read_only() -> None:
+    html = (Path(__file__).parents[1] / "backend_manager" / "ui.html").read_text(encoding="utf-8")
+
+    assert '<h2 id="publicConnectivityTitle">公网连接</h2>' in html
+    assert '<p class="card-subtitle">由 Cloudflare Tunnel 提供</p>' in html
+    assert 'id="publicConnectivitySummary"' in html
+    assert 'id="publicConnectivityNextStep"' in html
+    assert 'id="publicConnectivityDetails"' in html
+    assert "PUBLIC_CONNECTIVITY_ACTIONS" in html
+    assert 'refresh: {label: "刷新状态", action: "refresh_public_connectivity"}' in html
+    assert 'full_check: {label: "完整检查", action: "run_full_public_connectivity_check"}' in html
+    assert 'export_diagnostics: {label: "导出诊断", action: "export_diagnostics"}' in html
+    assert ".filter(([key]) => supported.has(key))" in html
+    assert "projection.overall" in html
+    for derived_axis in (
+        "projection.service ===",
+        "projection.connector ===",
+        "projection.origin ===",
+        "projection.public ===",
+        "projection.boundary ===",
+    ):
+        assert derived_axis not in html
+    assert "summary.textContent = projection.summary" in html
+    assert "nextStep.textContent = projection.next_step" in html
+    assert "label.textContent = row.label" in html
+    assert "value.textContent = row.text" in html
+
+    card_start = html.index('<section class="connectivity-card"')
+    card_end = html.index("</section>", card_start)
+    card = html[card_start:card_end]
+    for forbidden in ("安装", "启动", "停止", "重启", "修复", "更新", "UAC"):
+        assert forbidden not in card
+    for forbidden_action in (
+        "install_cloudflared",
+        "start_cloudflared",
+        "stop_cloudflared",
+        "restart_cloudflared",
+        "repair_cloudflared",
+        "update_cloudflared",
+    ):
+        assert forbidden_action not in html
+
+
+def test_public_connectivity_card_has_keyboard_and_narrow_layout_contracts() -> None:
+    html = (Path(__file__).parents[1] / "backend_manager" / "ui.html").read_text(encoding="utf-8")
+
+    assert "button:focus-visible" in html
+    assert ".connectivity-actions { display: flex; flex-wrap: wrap;" in html
+    assert ".connectivity-grid { grid-template-columns: 1fr; }" in html
+    assert 'aria-live="polite"' in html
+
+
 def test_primary_workbench_uses_real_tasks_without_fake_qr_or_token_copy() -> None:
     html = (Path(__file__).parents[1] / "backend_manager" / "ui.html").read_text(encoding="utf-8")
 
