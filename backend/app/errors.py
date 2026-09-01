@@ -174,6 +174,7 @@ ERROR_MESSAGES = {
     "expense_refund_exceeds_remaining": "退款金额超过这笔账单当前可退金额。",
     "expense_reversal_active": "这笔账单已经冲销，请先撤销冲销记录。",
     "expense_refund_exists": "这笔账单已有退款，请先撤销退款记录再冲销。",
+    "expense_reversal_amount_server_owned": "冲销金额由原账单决定，不能手动修改。",
     "expense_offset_not_active": "这条退款或冲销记录已经撤销。",
     "expense_offset_not_found": "没有找到这条退款或冲销记录。",
     # ADR-0042 request-idempotency (Idempotency-Key header on outbox-routed

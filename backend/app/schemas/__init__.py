@@ -158,9 +158,11 @@ from app.schemas._expense import (
 from app.schemas._expense_offset import (
     ExpenseFactBundleResponse,
     ExpenseFinancialSummary,
+    ExpenseOffsetCorrectionRequest,
     ExpenseOffsetCreateRequest,
     ExpenseOffsetResponse,
     ExpenseOffsetRevisionResponse,
+    ExpenseOffsetVoidRequest,
     ExpenseRelationshipImpacts,
 )
 from app.schemas._expense_revision import (
@@ -397,6 +399,7 @@ __all__ = [
     "ExpenseCorrectionResponse",
     "ExpenseFactBundleResponse",
     "ExpenseFinancialSummary",
+    "ExpenseOffsetCorrectionRequest",
     "ExpenseItemReplaceRequest",
     "ExpenseItemRequest",
     "ExpenseItemResponse",
@@ -407,6 +410,7 @@ __all__ = [
     "ExpenseOffsetCreateRequest",
     "ExpenseOffsetResponse",
     "ExpenseOffsetRevisionResponse",
+    "ExpenseOffsetVoidRequest",
     "ExpenseRelationshipImpacts",
     "ExpenseAcknowledgeItemsMismatchRequest",
     "ExpenseRecognizeTextRequest",

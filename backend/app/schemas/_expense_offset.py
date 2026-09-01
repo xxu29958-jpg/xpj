@@ -29,11 +29,13 @@ ExpenseOffsetStatus = Literal["active", "voided"]
 __all__ = [
     "ExpenseFactBundleResponse",
     "ExpenseFinancialSummary",
+    "ExpenseOffsetCorrectionRequest",
     "ExpenseOffsetCreateRequest",
     "ExpenseOffsetKind",
     "ExpenseOffsetResponse",
     "ExpenseOffsetRevisionResponse",
     "ExpenseOffsetStatus",
+    "ExpenseOffsetVoidRequest",
     "ExpenseRelationshipImpacts",
 ]
 
@@ -91,6 +93,42 @@ class ExpenseOffsetCreateRequest(BaseModel):
         if self.kind != "reversal" and self.original_amount_minor is None:
             raise ValueError("refund amount is required")
         return self
+
+
+class ExpenseOffsetCorrectionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # Required full snapshot: refund/chargeback carry a positive amount;
+    # reversal carries an explicit null because its amount remains server-owned.
+    original_amount_minor: PositiveMoneyMinor | None
+    accounting_date: date
+    category: str = Field(min_length=1, max_length=64)
+    offset_reason: str = Field(min_length=1, max_length=500)
+    correction_reason: str = Field(min_length=1, max_length=500)
+    expected_row_version: int = Field(ge=1)
+
+    @field_validator("category", "offset_reason", "correction_reason")
+    @classmethod
+    def _strip_required_text(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("value is required")
+        return cleaned
+
+
+class ExpenseOffsetVoidRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    void_reason: str = Field(min_length=1, max_length=500)
+    expected_row_version: int = Field(ge=1)
+
+    @field_validator("void_reason")
+    @classmethod
+    def _strip_void_reason(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("void reason is required")
+        return cleaned
 
 
 class ExpenseOffsetResponse(BaseModel):

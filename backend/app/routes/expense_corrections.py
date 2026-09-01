@@ -14,7 +14,9 @@ from app.schemas import (
     ExpenseCorrectionRequest,
     ExpenseCorrectionResponse,
     ExpenseFactBundleResponse,
+    ExpenseOffsetCorrectionRequest,
     ExpenseOffsetCreateRequest,
+    ExpenseOffsetVoidRequest,
     ExpenseRevisionListResponse,
 )
 from app.services.expense_correction_service import (
@@ -22,6 +24,10 @@ from app.services.expense_correction_service import (
     claim_correction_command,
     complete_correction_command,
     correction_idempotency_body,
+)
+from app.services.expense_offset_lifecycle_service import (
+    correct_expense_offset,
+    void_expense_offset,
 )
 from app.services.expense_offset_service import create_expense_offset, expense_fact_bundle
 from app.services.expense_response_service import expense_to_response
@@ -177,6 +183,74 @@ def post_expense_offset(
         expense_id=expense_pk,
         payload=payload,
         effective_expected_row_version=effective_row_version,
+        actor_account_id=auth.account_id,
+        actor_device_public_id=auth.device_public_id,
+        actor_device_name=auth.device_name,
+        idempotency_key=idempotency_key,
+    )
+
+
+@router.post(
+    "/{expense_id}/offsets/{offset_public_id}/corrections",
+    response_model=ExpenseFactBundleResponse,
+    status_code=201,
+)
+def post_expense_offset_correction(
+    expense_id: str,
+    offset_public_id: str,
+    payload: ExpenseOffsetCorrectionRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> ExpenseFactBundleResponse:
+    expense = resolve_expense(
+        db,
+        auth.tenant_id,
+        expense_id,
+        device_id=auth.device_id,
+    )
+    if expense is None:
+        raise AppError("expense_not_found", status_code=404)
+    return correct_expense_offset(
+        db,
+        tenant_id=auth.tenant_id,
+        expense_id=expense.id,
+        offset_public_id=offset_public_id,
+        payload=payload,
+        actor_account_id=auth.account_id,
+        actor_device_public_id=auth.device_public_id,
+        actor_device_name=auth.device_name,
+        idempotency_key=idempotency_key,
+    )
+
+
+@router.post(
+    "/{expense_id}/offsets/{offset_public_id}/voids",
+    response_model=ExpenseFactBundleResponse,
+    status_code=201,
+)
+def post_expense_offset_void(
+    expense_id: str,
+    offset_public_id: str,
+    payload: ExpenseOffsetVoidRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> ExpenseFactBundleResponse:
+    expense = resolve_expense(
+        db,
+        auth.tenant_id,
+        expense_id,
+        device_id=auth.device_id,
+    )
+    if expense is None:
+        raise AppError("expense_not_found", status_code=404)
+    return void_expense_offset(
+        db,
+        tenant_id=auth.tenant_id,
+        expense_id=expense.id,
+        offset_public_id=offset_public_id,
+        payload=payload,
         actor_account_id=auth.account_id,
         actor_device_public_id=auth.device_public_id,
         actor_device_name=auth.device_name,
