@@ -107,6 +107,32 @@ internal class ExpenseOffsetRepositoryTest : ExpensePendingRepositoryOutboxTestB
         assertTrue(dao.getConfirmedStreamOffsets("owner").isEmpty())
     }
 
+    @Test
+    fun networkLossQueuesVoidBehindTheSameRootAndCarriesItsOffsetIdentity() = runTest {
+        val mutationDao = FakePendingMutationDao()
+        val repository = buildRepository(
+            api = OffsetApiService(
+                FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0),
+                failure = IOException("offline"),
+            ),
+            dao = FakeExpenseDao(),
+            outbox = testOutboxRepository(dao = mutationDao),
+        )
+
+        val outcome = repository.voidExpenseOffsetAllowingOffline(
+            rootExpense(rowVersion = 7),
+            offsetFact(rowVersion = 2),
+            "误记退款",
+        ).getOrThrow()
+
+        assertIs<ExpenseOffsetMutationOutcome.Queued>(outcome)
+        val row = mutationDao.rows.values.single()
+        assertEquals("expense:9", row.targetId)
+        assertEquals(2L, row.expectedRowVersion)
+        assertTrue("\"offset_public_id\":\"refund-1\"" in row.payload, row.payload)
+        assertTrue("\"void_reason\":\"误记退款\"" in row.payload, row.payload)
+    }
+
     private fun buildRepository(
         api: ApiService,
         dao: FakeExpenseDao,
@@ -121,7 +147,7 @@ internal class ExpenseOffsetRepositoryTest : ExpensePendingRepositoryOutboxTestB
         offlineMutations = ExpenseOfflineMutationWiring(
             outbox = outbox,
             offsetCreateAdapter = moshi().adapter(ExpenseOffsetCreateRequestDto::class.java),
-            offsetVoidAdapter = moshi().adapter(ExpenseOffsetVoidRequestDto::class.java),
+            offsetVoidAdapter = moshi().adapter(ExpenseOffsetVoidOutboxPayload::class.java),
         ),
     )
 

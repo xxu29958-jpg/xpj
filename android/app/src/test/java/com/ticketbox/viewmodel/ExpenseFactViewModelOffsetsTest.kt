@@ -157,15 +157,50 @@ internal class ExpenseFactViewModelOffsetsTest : ExpenseFactViewModelTestBase() 
         assertTrue(blocked.refreshingAfterConflict)
         assertFalse(vm.canSubmitOffset())
         assertEquals(ExpenseDetailDataLoadState.Failed, vm.uiState.value.factBundleLoadState)
+        // 关闭再打开不是 authority reset：刷新没成功前仍不能拿旧 token 重试。
+        vm.closeOffsetSheet()
+        vm.openOffsetSheet(StreamOffsetKind.Refund)
+        vm.updateOffsetFormField(OffsetFormField.Reason, "再次提交")
+        assertTrue(vm.uiState.value.offsetForm.refreshingAfterConflict)
+        assertFalse(vm.canSubmitOffset())
         // 第二轮：显式 retry，刷新成功 —— 整包采用 rv=2、解除禁用、草稿仍在。
         fake.factBundleResult = { Result.success(bundleOf(fake.baseExpense.copy(rowVersion = 2L))) }
         vm.loadExpenseFactBundle()
         advanceUntilIdle()
         val refreshed = vm.uiState.value.offsetForm
         assertFalse(refreshed.refreshingAfterConflict)
-        assertEquals("商家退货", refreshed.reason)
+        assertEquals("再次提交", refreshed.reason)
         assertEquals(2L, vm.uiState.value.expense?.rowVersion)
         assertTrue(vm.canSubmitOffset())
+    }
+
+    @Test
+    fun `void conflict remains blocked after dismiss until authoritative refresh succeeds`() = edit { fake ->
+        val offset = offsetFact()
+        fake.stubBundle(bundleOf(fake.baseExpense, remaining = 500L, activeOffsets = listOf(offset)))
+        val vm = viewModel(fake)
+        advanceUntilIdle()
+        vm.openVoidOffsetSheet(offset)
+        vm.updateVoidOffsetReason("误记")
+        fake.factBundleResult = {
+            Result.failure(RepositoryException(errorCode = "server_unavailable", message = "down"))
+        }
+        fake.voidOffsetResult = { _, _, _ ->
+            Result.failure(RepositoryException(errorCode = "state_conflict", message = "conflict"))
+        }
+
+        vm.submitVoidOffset()
+        advanceUntilIdle()
+        vm.closeVoidOffsetSheet()
+        vm.openVoidOffsetSheet(offset)
+        vm.updateVoidOffsetReason("再次撤销")
+
+        assertTrue(vm.uiState.value.voidOffsetForm.refreshingAfterConflict)
+        assertFalse(vm.canSubmitVoidOffset())
+        fake.factBundleResult = { Result.success(bundleOf(fake.baseExpense.copy(rowVersion = 2L))) }
+        vm.loadExpenseFactBundle()
+        advanceUntilIdle()
+        assertTrue(vm.canSubmitVoidOffset())
     }
 
     @Test

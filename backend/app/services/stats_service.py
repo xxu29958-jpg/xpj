@@ -33,7 +33,7 @@ from app.services.spending_contract_service import (
     stat_time as _contract_stat_time,
 )
 from app.services.stats_money import (
-    export_money_fields as _export_money_fields,
+    export_money_values as _export_money_values,
 )
 from app.services.time_service import (
     ensure_utc,
@@ -160,7 +160,11 @@ def export_confirmed_csv(
 def _confirmed_stream_csv_row(entry) -> list:
     root = entry.root
     if entry.entry_kind == "expense":
-        amount_cents, amount_yuan, amount_home_major = _export_money_fields(root)
+        amount_cents, amount_yuan, amount_home_major = _export_money_values(
+            amount_cents=root.amount_cents,
+            home_currency_code=root.home_currency,
+            label="stats.export_expense_response",
+        )
         stat_time = _stat_time(root)
         confirmed_at = ensure_utc(root.confirmed_at)
         return [
@@ -182,7 +186,7 @@ def _confirmed_stream_csv_row(entry) -> list:
             safe_csv_cell(root.tags or ""),
             root.value_score or "",
             root.regret_score or "",
-            root.home_currency_code,
+            root.home_currency,
             amount_home_major,
             entry.entry_kind,
             "",
@@ -196,7 +200,11 @@ def _confirmed_stream_csv_row(entry) -> list:
     offset = entry.offset
     if offset is None:
         raise ValueError("offset CSV row requires an offset projection")
-    amount_cents, amount_yuan, amount_home_major = _export_money_fields(offset)
+    amount_cents, amount_yuan, amount_home_major = _export_money_values(
+        amount_cents=offset.amount_cents,
+        home_currency_code=offset.home_currency_code,
+        label="stats.export_offset_response",
+    )
     return [
         "",
         offset.public_id,
@@ -476,7 +484,6 @@ def lifestyle_stats(
     max_expense = max(
         month_expenses, key=lambda item: item.amount_cents or 0, default=None
     )
-
     return {
         "month": month,
         "ai_subscription_amount_cents": category_amounts.get("AI订阅", 0),

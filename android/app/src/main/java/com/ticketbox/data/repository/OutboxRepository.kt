@@ -556,6 +556,7 @@ class OutboxRepository private constructor(
                 ledgerId = binding.ledgerId,
                 targetId = targetId,
                 pendingStatus = PendingMutationStatus.Pending.wireValue,
+                preservedTokenType = PendingMutationType.VoidExpenseOffset.wireValue,
                 freshToken = newToken,
             )
         }

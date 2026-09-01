@@ -225,8 +225,6 @@ private fun FactOffsetActiveRow(
     canWrite: Boolean,
     onVoid: () -> Unit,
 ) {
-    // offset 金额按自身原币码渲染（forRecord：未知码原样亮码，不拿 home 符号撒谎）。
-    val originalDisplay = CurrencyDisplay.forRecord(offset.originalCurrencyCode)
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
@@ -241,11 +239,13 @@ private fun FactOffsetActiveRow(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 StatusPill(text = offsetKindLabel(offset.kind), active = false)
-                Text(
-                    text = "+" + formatDisplayAmount(offset.originalAmountMinor, originalDisplay),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+                offsetInflowAmountText(offset)?.let { amountText ->
+                    Text(
+                        text = amountText,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
             }
             Text(
                 text = listOf(offset.accountingDate, offset.reason)
@@ -261,6 +261,13 @@ private fun FactOffsetActiveRow(
             }
         }
     }
+}
+
+/** Refund/chargeback are inflows; reversal is an amount-less cancellation event. */
+internal fun offsetInflowAmountText(offset: ExpenseOffsetFact): String? {
+    if (!offset.kind.isMoneyEvent) return null
+    val display = CurrencyDisplay.forRecord(offset.originalCurrencyCode)
+    return "+" + formatDisplayAmount(offset.originalAmountMinor, display)
 }
 
 @Composable

@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+import app.routes.web_expense_offsets as web_expense_offsets
 import app.routes.web_library as web_library
 from app.auth import get_current_app_context
 from app.config import DATA_ROOT, get_settings
@@ -83,7 +84,6 @@ from app.routes import (
     web_expense_edit,
     web_expense_items,
     web_expense_lifecycle,
-    web_expense_offsets,
     web_expense_splits,
     web_goals,
     web_import_export,

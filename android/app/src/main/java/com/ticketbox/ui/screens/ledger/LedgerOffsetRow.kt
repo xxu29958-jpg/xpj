@@ -31,6 +31,7 @@ import com.ticketbox.domain.model.StreamOffsetKind
 import com.ticketbox.ui.components.AppAdaptiveAmountRowDefaults
 import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppDensity
 import com.ticketbox.ui.design.AppListDensity
@@ -134,7 +135,9 @@ internal fun LedgerOffsetRow(
                 LedgerOffsetInflowAmount(offset = offset)
             }
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f))
+        HorizontalDivider(
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium),
+        )
     }
 }
 

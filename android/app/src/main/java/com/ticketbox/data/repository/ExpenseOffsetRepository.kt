@@ -77,11 +77,11 @@ internal class ExpenseOffsetRepository(private val core: ExpenseRepositoryCore) 
         val request = ExpenseOffsetVoidRequestDto(cleanReason, offset.rowVersion)
         val bound = core.ledgerRequestGuard.bind()
         val key = UUID.randomUUID().toString()
-        val targetId = expenseOffsetTargetId(expense.id, offset.publicId)
+        val targetId = expenseOutboxTargetId(expense)
         val outbox = core.outbox
         val adapter = core.offsetVoidAdapter
         if (outbox != null && adapter != null && core.hasUnresolvedQueuedMutationsFor(bound, targetId)) {
-            enqueueVoid(bound, targetId, request, key)
+            enqueueVoid(bound, targetId, offset.publicId, cleanReason, offset.rowVersion, key)
             return@safeCall queuedVoid(offset, cleanReason)
         }
         val response = try {
@@ -90,7 +90,7 @@ internal class ExpenseOffsetRepository(private val core: ExpenseRepositoryCore) 
             }
         } catch (networkError: IOException) {
             if (outbox == null || adapter == null) throw networkError
-            enqueueVoid(bound, targetId, request, key)
+            enqueueVoid(bound, targetId, offset.publicId, cleanReason, offset.rowVersion, key)
             return@safeCall queuedVoid(offset, cleanReason)
         }
         synced(response, bound)
@@ -154,7 +154,9 @@ internal class ExpenseOffsetRepository(private val core: ExpenseRepositoryCore) 
     private suspend fun enqueueVoid(
         bound: BoundLedgerRequest,
         targetId: String,
-        request: ExpenseOffsetVoidRequestDto,
+        offsetPublicId: String,
+        reason: String,
+        expectedRowVersion: Long,
         key: String,
     ) {
         requireNotNull(core.outbox).enqueue(
@@ -163,8 +165,8 @@ internal class ExpenseOffsetRepository(private val core: ExpenseRepositoryCore) 
                 type = PendingMutationType.VoidExpenseOffset,
                 targetId = targetId,
                 payloadJson = requireNotNull(core.offsetVoidAdapter)
-                    .toJson(request.copy(expectedRowVersion = 0)),
-                expectedRowVersion = request.expectedRowVersion,
+                    .toJson(ExpenseOffsetVoidOutboxPayload(offsetPublicId, reason)),
+                expectedRowVersion = expectedRowVersion,
                 idempotencyKey = key,
             ),
         )

@@ -127,7 +127,7 @@ interface ExpenseDao {
     suspend fun updateAll(expenses: List<ExpenseEntity>)
 
     @Transaction
-    suspend fun upsertByServerIdForLedger(ledgerId: String, expense: ExpenseEntity) {
+    suspend fun upsertByServerIdForLedger(ledgerId: String, expense: ExpenseEntity): Boolean {
         require(expense.ledgerId == ledgerId) {
             "expense.ledgerId=${expense.ledgerId} does not match scope $ledgerId"
         }
@@ -140,6 +140,7 @@ interface ExpenseDao {
         val existing = findByServerId(ledgerId, serverId)
         if (existing == null) {
             insert(expense.copy(id = 0))
+            return true
         } else if (expense.rowVersion >= existing.rowVersion) {
             // rowVersion monotonic guard: a slow full-list sync response must
             // not clobber a row a fresh PATCH already advanced (the server is
@@ -147,15 +148,17 @@ interface ExpenseDao {
             // shows the stale snapshot until then). Same-version writes are
             // allowed — identical token means identical server payload.
             update(expense.withPreservedStreamProjection(existing).copy(id = existing.id))
+            return true
         }
+        return false
     }
 
     @Transaction
     suspend fun upsertAllByServerIdForLedger(
         ledgerId: String,
         expenses: List<ExpenseEntity>,
-    ) {
-        if (expenses.isEmpty()) return
+    ): Set<Long> {
+        if (expenses.isEmpty()) return emptySet()
         require(expenses.all { it.ledgerId == ledgerId }) {
             "upsertAllByServerIdForLedger received mixed-ledger entities"
         }
@@ -163,22 +166,27 @@ interface ExpenseDao {
         // null) are skipped defensively — a single malformed row must not abort a
         // whole confirmed-list batch (server-fetched entities always carry one).
         val serverScoped = expenses.filter { it.serverId != null }
-        if (serverScoped.isEmpty()) return
+        if (serverScoped.isEmpty()) return emptySet()
         val existingByServerId = findByServerIds(ledgerId, serverScoped.mapNotNull { it.serverId })
             .associateBy { it.serverId }
         val inserts = mutableListOf<ExpenseEntity>()
         val updates = mutableListOf<ExpenseEntity>()
+        val acceptedServerIds = mutableSetOf<Long>()
         serverScoped.forEach { expense ->
-            val existing = existingByServerId[expense.serverId]
+            val serverId = requireNotNull(expense.serverId)
+            val existing = existingByServerId[serverId]
             if (existing == null) {
                 inserts += expense.copy(id = 0)
+                acceptedServerIds += serverId
             } else if (expense.rowVersion >= existing.rowVersion) {
                 // Same monotonic guard as upsertByServerIdForLedger.
                 updates += expense.withPreservedStreamProjection(existing).copy(id = existing.id)
+                acceptedServerIds += serverId
             }
         }
         if (inserts.isNotEmpty()) insertAll(inserts)
         if (updates.isNotEmpty()) updateAll(updates)
+        return acceptedServerIds
     }
 
     @Query("DELETE FROM expenses WHERE id = :id")
@@ -293,7 +301,7 @@ interface ExpenseDao {
         require(root.ledgerId == ledgerId && activeOffsets.all {
             it.ledgerId == ledgerId && it.rootServerId == rootServerId
         }) { "expense fact bundle crossed its ledger or root boundary" }
-        upsertByServerIdForLedger(ledgerId, root)
+        if (!upsertByServerIdForLedger(ledgerId, root)) return
         deleteConfirmedStreamOffsetsForRoot(ledgerId, rootServerId)
         if (activeOffsets.isNotEmpty()) upsertConfirmedStreamOffsets(activeOffsets)
     }
@@ -344,24 +352,33 @@ interface ExpenseDao {
             clearForLedger(ledgerId)
             clearConfirmedStreamOffsetsForLedger(ledgerId)
         }
+        val acceptedRootIds = mutableSetOf<Long>()
         roots.chunked(SQLITE_BINDING_CHUNK_SIZE).forEach { chunk ->
-            upsertAllByServerIdForLedger(ledgerId, chunk)
+            acceptedRootIds += upsertAllByServerIdForLedger(ledgerId, chunk)
         }
-        offsets.chunked(SQLITE_BINDING_CHUNK_SIZE).forEach { chunk ->
+        val acceptedOffsets = offsets.filter { it.rootServerId in acceptedRootIds }
+        acceptedOffsets.chunked(SQLITE_BINDING_CHUNK_SIZE).forEach { chunk ->
             if (chunk.isNotEmpty()) upsertConfirmedStreamOffsets(chunk)
         }
+        var staleRootIds: List<Long> = emptyList()
         if (pruneScope.rootServerIds != null) {
             val remoteServerIds = roots.mapNotNull { it.serverId }.toSet()
-            val staleServerIds = confirmedServerIdsForLedger(ledgerId)
+            staleRootIds = confirmedServerIdsForLedger(ledgerId)
                 .filter { it in pruneScope.rootServerIds && it !in remoteServerIds }
-            staleServerIds.chunked(SQLITE_BINDING_CHUNK_SIZE).forEach { chunk ->
+            staleRootIds.chunked(SQLITE_BINDING_CHUNK_SIZE).forEach { chunk ->
                 if (chunk.isNotEmpty()) deleteConfirmedByServerIds(ledgerId, chunk)
             }
         }
         if (pruneScope.offsetPublicIds != null) {
-            val remotePublicIds = offsets.map { it.publicId }.toSet()
-            val stalePublicIds = confirmedStreamOffsetPublicIdsForLedger(ledgerId)
-                .filter { it in pruneScope.offsetPublicIds && it !in remotePublicIds }
+            val remotePublicIds = acceptedOffsets.map { it.publicId }.toSet()
+            val prunableRootIds = acceptedRootIds + staleRootIds
+            val stalePublicIds = getConfirmedStreamOffsets(ledgerId)
+                .filter {
+                    it.rootServerId in prunableRootIds &&
+                        it.publicId in pruneScope.offsetPublicIds &&
+                        it.publicId !in remotePublicIds
+                }
+                .map { it.publicId }
             stalePublicIds.chunked(SQLITE_BINDING_CHUNK_SIZE).forEach { chunk ->
                 if (chunk.isNotEmpty()) deleteConfirmedStreamOffsetsByPublicIds(ledgerId, chunk)
             }

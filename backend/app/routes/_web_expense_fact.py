@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.routes._web_expense_fact_pager import fact_timeline_page_context
 from app.routes._web_expense_helpers import web_edit_context
+from app.routes._web_expense_offset_fact import expense_offset_fact_view
 from app.routes._web_expense_return_context import (
     ExpenseReturnContext,
     clean_return_to,
@@ -30,14 +31,10 @@ from app.routes._web_expense_return_context import (
 from app.routes._web_money_views import _minor_amount_label
 from app.routes.web_bill_split import build_split_invite_context
 from app.routes.web_common import _web_redirect, templates
-from app.schemas import ExpenseFactBundleResponse
 from app.services import invitation_members
-from app.services.currency_common import currency_input_metadata, minor_amount_value
-from app.services.expense_offset_service import expense_fact_bundle
 from app.services.expense_revision_service import list_expense_revisions
 from app.services.expense_service import get_expense
-from app.services.spending_contract_service import accounting_datetime_label, accounting_zone
-from app.services.time_service import now_utc
+from app.services.spending_contract_service import accounting_datetime_label
 
 # 用户可写字段 → 时间线人话标签。对照 expense_revision_service._SCALAR_FIELDS；
 # 未列出的快照字段（home_currency_code / exchange_rate_* / fx_status / source /
@@ -62,22 +59,6 @@ _FACT_FIELD_ORDER = tuple(_FACT_FIELD_LABELS)
 
 _KIND_LABELS = {"confirmed": "首次确认", "correction": "更正"}
 _FACT_FLASH_TYPES = frozenset({"success", "error", "warning"})
-_OFFSET_KIND_LABELS = {
-    "refund": "商家退款",
-    "chargeback": "银行拒付",
-    "reversal": "冲销",
-}
-_OFFSET_CHANGE_LABELS = {
-    "created": "已登记",
-    "correction": "已更正",
-    "void": "已撤销",
-}
-_OFFSET_STATUS_LABELS = {
-    "confirmed": "已确认",
-    "partially_refunded": "部分退回",
-    "fully_refunded": "已全部退回",
-    "reversed": "已冲销",
-}
 
 
 def _snapshot_time_label(value: object) -> str:
@@ -355,133 +336,6 @@ def build_fact_timeline(
     }
 
 
-def _offset_fact_view(bundle: ExpenseFactBundleResponse, *, can_write: bool) -> dict[str, Any]:
-    """Translate the authoritative fact bundle into one browser presentation model."""
-
-    root = bundle.root
-    summary = bundle.financial_summary
-    original_code = root.original_currency_code
-    home_code = root.home_currency
-    active_offsets = [
-        {
-            "public_id": offset.public_id,
-            "kind": offset.kind,
-            "kind_label": _OFFSET_KIND_LABELS[offset.kind],
-            "amount_label": _minor_amount_label(
-                offset.original_amount_minor,
-                offset.original_currency_code,
-            ),
-            "home_amount_label": _minor_amount_label(
-                offset.amount_cents,
-                offset.home_currency_code,
-            ),
-            "accounting_date": offset.accounting_date.isoformat(),
-            "reason": offset.reason,
-            "row_version": offset.row_version,
-            "void_idempotency_key": str(uuid4()),
-        }
-        for offset in bundle.active_offsets
-    ]
-    recent_history = []
-    for revision in bundle.recent_history:
-        actor = " · ".join(
-            part
-            for part in (revision.actor_account_name, revision.actor_device_name)
-            if part
-        )
-        recent_history.append(
-            {
-                "kind_label": _OFFSET_CHANGE_LABELS[revision.change_kind],
-                "reason": revision.reason,
-                "when": accounting_datetime_label(revision.created_at),
-                "actor": actor,
-            }
-        )
-    impacts = bundle.relationship_impacts
-    return {
-        "offset_summary": {
-            "status": summary.status,
-            "status_label": _OFFSET_STATUS_LABELS[summary.status],
-            "gross_original_label": _minor_amount_label(
-                summary.gross_original_minor,
-                original_code,
-            ),
-            "gross_home_label": _minor_amount_label(
-                summary.gross_home_amount_cents,
-                home_code,
-            ),
-            "refunded_original_label": _minor_amount_label(
-                summary.active_refunded_original_minor,
-                original_code,
-            ),
-            "remaining_original_label": _minor_amount_label(
-                summary.remaining_refundable_original_minor,
-                original_code,
-            ),
-            "remaining_original_value": minor_amount_value(
-                summary.remaining_refundable_original_minor,
-                original_code,
-            ),
-            "lineage_net_label": _minor_amount_label(
-                summary.lineage_home_net_cents,
-                home_code,
-            ),
-            "fx_difference_label": (
-                _minor_amount_label(summary.fx_difference_cents, home_code)
-                if summary.fx_difference_cents
-                else ""
-            ),
-        },
-        "offset_currency_input": currency_input_metadata(original_code),
-        "active_offsets": active_offsets,
-        "offset_recent_history": recent_history,
-        "offset_relationship_impacts": {
-            "cancelled_count": len(impacts.pending_invites_cancelled),
-            "accepted": [
-                {
-                    "receiver_display_name": impact.receiver_display_name or "家庭成员",
-                    "original_share_label": _minor_amount_label(
-                        impact.original_agreed_share_home_minor,
-                        home_code,
-                    ),
-                    "suggested_share_label": _minor_amount_label(
-                        impact.suggested_net_share_home_minor,
-                        home_code,
-                    ),
-                }
-                for impact in impacts.accepted_impacts
-            ],
-        },
-        "offset_can_write": can_write,
-        "offset_can_create_refund": (
-            can_write
-            and summary.status not in {"fully_refunded", "reversed"}
-        ),
-        "offset_can_reverse": can_write and summary.status == "confirmed",
-        "offset_reversed": summary.status == "reversed",
-        "offset_form": {
-            "open": False,
-            "kind": "refund",
-            "original_amount": "",
-            "accounting_date": now_utc().astimezone(accounting_zone()).date().isoformat(),
-            "reason": "",
-            "expected_row_version": root.row_version,
-            "idempotency_key": str(uuid4()),
-            "error": "",
-            "conflict": False,
-        },
-        "offset_void_form": {
-            "open": False,
-            "target_public_id": "",
-            "void_reason": "",
-            "expected_row_version": "",
-            "idempotency_key": str(uuid4()),
-            "error": "",
-            "conflict": False,
-        },
-    }
-
-
 def web_fact_context(
     db: Session,
     request: Request,
@@ -535,16 +389,7 @@ def web_fact_context(
         expense=ctx["expense"],
         can_write=ctx["can_write"],
     )
-    ctx.update(
-        _offset_fact_view(
-            expense_fact_bundle(
-                db,
-                tenant_id=selected_id,
-                expense_id=expense_id,
-            ),
-            can_write=ctx["can_write"],
-        )
-    )
+    ctx.update(expense_offset_fact_view(db, selected_id, expense_id, ctx["can_write"]))
     member_names = {
         member.member_id: member.account_name
         for member in invitation_members.list_members(

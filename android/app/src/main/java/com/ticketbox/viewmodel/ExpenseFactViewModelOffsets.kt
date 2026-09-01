@@ -119,6 +119,7 @@ private fun ExpenseFactViewModel.adoptFactBundle(bundle: ExpenseFactBundle) {
                 factBundle = bundle,
                 factBundleLoadState = ExpenseDetailDataLoadState.Loaded,
                 factBundleMessage = null,
+                offsetCommandsBlockedUntilRefresh = false,
                 // 权威刷新完成：解除 conflict 后的提交禁用（banner 由 sheet 按状态收尾）。
                 offsetForm = it.offsetForm.copy(refreshingAfterConflict = false),
                 voidOffsetForm = it.voidOffsetForm.copy(refreshingAfterConflict = false),
@@ -145,8 +146,8 @@ fun ExpenseFactViewModel.openOffsetSheet(kind: StreamOffsetKind) {
     // remaining，sheet 内明示「可退余额暂不可用」，登记照常可提交。
     val summary = _uiState.value.factBundle?.financialSummary
     val today = LocalDate.now(ZoneId.of(repository.currentTimezoneId())).toString()
-    _uiState.update {
-        it.copy(
+    _uiState.update { state ->
+        state.copy(
             offsetForm = OffsetFormState(
                 open = true,
                 kind = kind,
@@ -159,6 +160,9 @@ fun ExpenseFactViewModel.openOffsetSheet(kind: StreamOffsetKind) {
                     ""
                 },
                 accountingDate = today,
+                conflictMessage = UiText.res(R.string.expense_offset_conflict)
+                    .takeIf { state.offsetCommandsBlockedUntilRefresh },
+                refreshingAfterConflict = state.offsetCommandsBlockedUntilRefresh,
             ),
         )
     }
@@ -197,7 +201,9 @@ internal fun ExpenseFactViewModel.updateOffsetForm(transform: (OffsetFormState) 
  * conflict 权威刷新完成前禁用（不用旧 root token 立即重复提交）。
  */
 fun ExpenseFactViewModel.canSubmitOffset(): Boolean {
-    val form = _uiState.value.offsetForm
+    val state = _uiState.value
+    val form = state.offsetForm
+    if (state.offsetCommandsBlockedUntilRefresh) return false
     if (!form.open || form.saving || form.refreshingAfterConflict) return false
     if (form.reason.isBlank() || form.accountingDate.isBlank()) return false
     return !form.kind.isMoneyEvent || form.amountText.isNotBlank()

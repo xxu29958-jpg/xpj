@@ -19,7 +19,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
-import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.ExpenseFinancialSummary
 import com.ticketbox.domain.model.ExpenseOffsetFact
 import com.ticketbox.domain.model.MessageTone
@@ -37,7 +36,6 @@ import com.ticketbox.ui.components.AppTextInputEmphasis
 import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.formatAmountInput
-import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.expense.ExpenseEditSheetScaffold
 import com.ticketbox.viewmodel.ExpenseDetailDataLoadState
@@ -384,18 +382,18 @@ private fun VoidOffsetReasonInput(form: VoidOffsetFormState, viewModel: ExpenseF
 
 @Composable
 private fun VoidOffsetEcho(target: ExpenseOffsetFact) {
-    // offset 金额按自身原币码渲染（forRecord：未知码原样亮码，不拿 home 符号撒谎）。
-    val originalDisplay = CurrencyDisplay.forRecord(target.originalCurrencyCode)
     Row(
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         StatusPill(text = offsetKindLabel(target.kind), active = false)
-        Text(
-            text = "+" + formatDisplayAmount(target.originalAmountMinor, originalDisplay),
-            color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.bodyMedium,
-        )
+        offsetInflowAmountText(target)?.let { amountText ->
+            Text(
+                text = amountText,
+                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
     }
     Text(
         text = listOf(target.accountingDate, target.reason)

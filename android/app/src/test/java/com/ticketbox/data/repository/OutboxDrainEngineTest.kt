@@ -221,6 +221,45 @@ class OutboxDrainEngineTest {
     }
 
     @Test
+    fun voidSuccessCascadesRootTokenWithoutOverwritingAnotherOffsetsOccToken() = runTest {
+        val dao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(dao = dao)
+        val engine = OutboxDrainEngine(
+            outbox,
+            listOf(
+                StubDispatcher(
+                    result = DispatchResult.Success(newRowVersion = 8L),
+                    type = PendingMutationType.VoidExpenseOffset,
+                ),
+            ),
+        )
+        outbox.enqueue(
+            type = PendingMutationType.VoidExpenseOffset,
+            targetId = "expense:1",
+            payloadJson = "{}",
+            expectedRowVersion = 2L,
+        )
+        val laterPatchId = outbox.enqueue(
+            type = PendingMutationType.PatchExpense,
+            targetId = "expense:1",
+            payloadJson = "{}",
+            expectedRowVersion = 7L,
+        )
+        val laterVoidId = outbox.enqueue(
+            type = PendingMutationType.VoidExpenseOffset,
+            targetId = "expense:1",
+            payloadJson = "{}",
+            expectedRowVersion = 4L,
+        )
+
+        val summary = engine.drainOnce()
+
+        assertEquals(1, summary.done)
+        assertEquals(8L, dao.rows.getValue(laterPatchId).expectedRowVersion)
+        assertEquals(4L, dao.rows.getValue(laterVoidId).expectedRowVersion)
+    }
+
+    @Test
     fun sameTargetSerialInsideOneDrain() = runTest {
         // [codex P1#1] Two PENDING rows for the same target → only
         // the oldest comes out of this drain batch; the second

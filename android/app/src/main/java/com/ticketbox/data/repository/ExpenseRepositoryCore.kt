@@ -18,7 +18,6 @@ import com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto
 import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseOffsetCreateRequestDto
-import com.ticketbox.data.remote.dto.ExpenseOffsetVoidRequestDto
 import com.ticketbox.data.remote.dto.ExpenseRecognizeTextRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
@@ -96,7 +95,7 @@ internal class ExpenseRepositoryCore(
         get() = offlineMutations.manualCreateAdapter
     val offsetCreateAdapter: JsonAdapter<ExpenseOffsetCreateRequestDto>?
         get() = offlineMutations.offsetCreateAdapter
-    val offsetVoidAdapter: JsonAdapter<ExpenseOffsetVoidRequestDto>?
+    val offsetVoidAdapter: JsonAdapter<ExpenseOffsetVoidOutboxPayload>?
         get() = offlineMutations.offsetVoidAdapter
 
     val errorHandler = NetworkErrorHandler(

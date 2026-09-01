@@ -9,7 +9,6 @@ import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto
 import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseOffsetCreateRequestDto
-import com.ticketbox.data.remote.dto.ExpenseOffsetVoidRequestDto
 import com.ticketbox.data.remote.dto.ExpenseRecognizeTextRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
@@ -45,7 +44,7 @@ data class ExpenseOfflineMutationWiring(
     val recognizeTextAdapter: JsonAdapter<ExpenseRecognizeTextRequestDto>? = null,
     val manualCreateAdapter: JsonAdapter<ExpenseManualCreateRequestDto>? = null,
     val offsetCreateAdapter: JsonAdapter<ExpenseOffsetCreateRequestDto>? = null,
-    val offsetVoidAdapter: JsonAdapter<ExpenseOffsetVoidRequestDto>? = null,
+    val offsetVoidAdapter: JsonAdapter<ExpenseOffsetVoidOutboxPayload>? = null,
 )
 
 /**

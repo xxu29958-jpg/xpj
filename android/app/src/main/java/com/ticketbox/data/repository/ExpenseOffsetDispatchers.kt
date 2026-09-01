@@ -36,27 +36,28 @@ class CreateExpenseOffsetDispatcher(
 
 class VoidExpenseOffsetDispatcher(
     private val apiProvider: (OutboxRow) -> ApiService,
-    private val payloadAdapter: JsonAdapter<ExpenseOffsetVoidRequestDto>,
+    private val payloadAdapter: JsonAdapter<ExpenseOffsetVoidOutboxPayload>,
     private val publishBundle: suspend (String, ExpenseFactBundleDto) -> Unit,
 ) : OutboxMutationDispatcher {
     override val type = PendingMutationType.VoidExpenseOffset
 
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
-        val target = parseExpenseOffsetTargetRef(row.targetId)
+        val expenseRef = parseExpenseTargetRef(row.targetId)
             ?: return DispatchResult.Discarded("invalid target id: ${row.targetId}")
-        val request = decode(payloadAdapter, row) { it.copy(expectedRowVersion = row.expectedRowVersion) }
+        val payload = decode(payloadAdapter, row) { it }
             ?: return DispatchResult.Failure("offset void payload is invalid")
+        val request = ExpenseOffsetVoidRequestDto(payload.voidReason, row.expectedRowVersion)
         val key = row.idempotencyKey
             ?: return DispatchResult.Failure("VoidExpenseOffset row missing idempotency key")
         return dispatchOffsetCommand {
             val bundle = apiProvider(row).voidExpenseOffset(
-                target.expenseId.toString(),
-                target.offsetPublicId,
+                expenseRef,
+                payload.offsetPublicId,
                 request,
                 key,
             )
             publishBundle(row.ledgerId, bundle)
-            DispatchResult.Success()
+            DispatchResult.Success(bundle.root.rowVersion)
         }
     }
 }

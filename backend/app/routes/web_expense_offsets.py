@@ -12,7 +12,6 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.models import Device
 from app.routes._web_expense_fact import web_fact_context
 from app.routes._web_expense_form import web_form_error_status
 from app.routes._web_expense_return_context import (
@@ -108,10 +107,10 @@ def _actor_snapshot(
     account_id, device_id = resolve_web_actor(db, request, selected_id)
     if device_id is None:
         return account_id, None, None
-    device = db.get(Device, device_id)
-    if device is None:
+    session_auth = getattr(request.state, "web_session_auth", None)
+    if session_auth is None or session_auth.device_id != device_id:
         raise AppError("state_conflict", status_code=409)
-    return account_id, device.public_id, device.device_name
+    return account_id, session_auth.device_public_id, session_auth.device_name
 
 
 def _fact_redirect(

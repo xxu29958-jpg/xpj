@@ -396,6 +396,7 @@ interface PendingMutationDao {
           AND ledgerId = :ledgerId
           AND targetId = :targetId
           AND status = :pendingStatus
+          AND type != :preservedTokenType
         """,
     )
     suspend fun cascadeFreshTokenForTarget(
@@ -403,6 +404,7 @@ interface PendingMutationDao {
         ledgerId: String,
         targetId: String,
         pendingStatus: String,
+        preservedTokenType: String,
         freshToken: Long,
     ): Int
 

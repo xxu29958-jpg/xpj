@@ -60,15 +60,20 @@ def parse_dispatchers(files: dict[str, str]) -> dict[str, str]:
     """Map ``PendingMutationType`` -> dispatcher class name across impl files."""
     type_re = re.compile(r"override\s+val\s+type\b[^=\n]*=\s*PendingMutationType\.(\w+)")
     class_re = re.compile(r"\bclass\s+(\w+)\b[^{]*:\s*[^{]*\bOutboxMutationDispatcher\b", re.DOTALL)
+    any_class_re = re.compile(r"\bclass\s+\w+\b")
     out: dict[str, str] = {}
     for _name, source in files.items():
         if "OutboxMutationDispatcher" not in source:
             continue
-        type_match = type_re.search(source)
-        class_match = class_re.search(source)
-        if type_match is None or class_match is None:
-            continue
-        out[type_match.group(1)] = class_match.group(1)
+        class_starts = [match.start() for match in any_class_re.finditer(source)]
+        for class_match in class_re.finditer(source):
+            end = next(
+                (start for start in class_starts if start > class_match.start()),
+                len(source),
+            )
+            type_match = type_re.search(source, class_match.end(), end)
+            if type_match is not None:
+                out[type_match.group(1)] = class_match.group(1)
     return out
 
 

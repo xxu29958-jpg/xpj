@@ -171,6 +171,7 @@ internal fun ExpenseFactViewModel.publishOffsetFailure(error: Throwable, isVoid:
     _uiState.update {
         if (isVoid) {
             it.copy(
+                offsetCommandsBlockedUntilRefresh = it.offsetCommandsBlockedUntilRefresh || isConflict,
                 voidOffsetForm = it.voidOffsetForm.copy(
                     conflictMessage = message.takeIf { isConflict },
                     refreshingAfterConflict = isConflict,
@@ -180,6 +181,7 @@ internal fun ExpenseFactViewModel.publishOffsetFailure(error: Throwable, isVoid:
             )
         } else {
             it.copy(
+                offsetCommandsBlockedUntilRefresh = it.offsetCommandsBlockedUntilRefresh || isConflict,
                 offsetForm = it.offsetForm.copy(
                     conflictMessage = message.takeIf { isConflict },
                     refreshingAfterConflict = isConflict,

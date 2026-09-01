@@ -317,6 +317,27 @@ def _persist_new_offset(
     return offset
 
 
+def _commit_offset_creation(
+    db: Session,
+    *,
+    claim: ApiIdempotencyKey,
+    offset: ExpenseOffsetFact,
+    result: ExpenseFactBundleResponse,
+) -> ExpenseFactBundleResponse:
+    mark_idempotency_succeeded(
+        db,
+        claim,
+        resource_type="expense_offset",
+        resource_id=offset.public_id,
+        # Computed stream projections are reconstructed by the response model
+        # on replay; storing them would make this strict model reject its own
+        # receipt as extra input.
+        response_body=result.model_dump(mode="json", exclude_computed_fields=True),
+    )
+    db.commit()
+    return result
+
+
 def create_expense_offset(
     db: Session,
     *,
@@ -387,15 +408,9 @@ def create_expense_offset(
         cancelled_public_ids=relationship_result.cancelled_public_ids,
         cancellation_reason_code=reason_code,
     )
-    mark_idempotency_succeeded(
+    return _commit_offset_creation(
         db,
-        claim,
-        resource_type="expense_offset",
-        resource_id=offset.public_id,
-        # Computed stream projections are reconstructed by the response model
-        # on replay; storing them would make this strict model reject its own
-        # receipt as extra input.
-        response_body=result.model_dump(mode="json", exclude_computed_fields=True),
+        claim=claim,
+        offset=offset,
+        result=result,
     )
-    db.commit()
-    return result

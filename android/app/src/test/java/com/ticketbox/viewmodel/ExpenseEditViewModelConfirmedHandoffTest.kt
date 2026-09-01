@@ -39,4 +39,29 @@ internal class ExpenseEditViewModelConfirmedHandoffTest {
             Dispatchers.resetMain()
         }
     }
+
+    @Test
+    fun `confirmed handoff falls back to its cached snapshot when offline`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        try {
+            val fake = FakeExpenseEditActions().apply {
+                fetchExpenseResponder = { Result.failure(IllegalStateException("offline")) }
+                localCacheResponder = {
+                    Result.success(baseExpense.copy(status = "confirmed", amountCents = 1000L))
+                }
+            }
+
+            val viewModel = ExpenseEditViewModel(expenseId = 7L, repository = fake)
+            advanceUntilIdle()
+
+            assertEquals("confirmed", viewModel.uiState.value.expense?.status)
+            assertEquals(1, fake.localCacheCalls)
+            assertEquals(0, fake.categoriesCalls)
+            assertEquals(0, fake.fetchItemsCalls)
+        } finally {
+            advanceUntilIdle()
+            Dispatchers.resetMain()
+        }
+    }
 }

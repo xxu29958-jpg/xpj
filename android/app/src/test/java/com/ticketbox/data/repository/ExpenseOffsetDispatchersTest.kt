@@ -24,11 +24,16 @@ class ExpenseOffsetDispatchersTest {
 
     private class Stub(
         private val createResult: Result<ExpenseFactBundleDto>,
+        private val voidResult: Result<ExpenseFactBundleDto>? = null,
         delegate: ApiService = FakeApiService(mutableListOf(), 0),
     ) : ApiService by delegate {
         var createId: String? = null
         var createRequest: ExpenseOffsetCreateRequestDto? = null
         var createKey: String? = null
+        var voidId: String? = null
+        var voidOffsetPublicId: String? = null
+        var voidRequest: ExpenseOffsetVoidRequestDto? = null
+        var voidKey: String? = null
 
         override suspend fun createExpenseOffset(
             id: String,
@@ -39,6 +44,19 @@ class ExpenseOffsetDispatchersTest {
             createRequest = request
             createKey = idempotencyKey
             return createResult.getOrThrow()
+        }
+
+        override suspend fun voidExpenseOffset(
+            id: String,
+            offsetPublicId: String,
+            request: ExpenseOffsetVoidRequestDto,
+            idempotencyKey: String,
+        ): ExpenseFactBundleDto {
+            voidId = id
+            voidOffsetPublicId = offsetPublicId
+            voidRequest = request
+            voidKey = idempotencyKey
+            return requireNotNull(voidResult).getOrThrow()
         }
     }
 
@@ -83,6 +101,31 @@ class ExpenseOffsetDispatchersTest {
         assertIs<DispatchResult.Failure>(dispatcher.dispatch(createRow()))
     }
 
+    @Test
+    fun `void replay keeps offset OCC but returns the bumped root token`() = runTest {
+        val bundle = expenseFactBundleDtoFixture(
+            root = confirmedExpenseDtoFixture(rowVersion = 8),
+            activeOffsets = emptyList(),
+        )
+        val stub = Stub(Result.failure(AssertionError("create not expected")), Result.success(bundle))
+        var published: Pair<String, ExpenseFactBundleDto>? = null
+        val dispatcher = VoidExpenseOffsetDispatcher(
+            apiProvider = { stub },
+            payloadAdapter = moshi.adapter(ExpenseOffsetVoidOutboxPayload::class.java),
+            publishBundle = { ledgerId, dto -> published = ledgerId to dto },
+        )
+
+        val result = dispatcher.dispatch(voidRow())
+
+        assertEquals("42", stub.voidId)
+        assertEquals("refund-1", stub.voidOffsetPublicId)
+        assertEquals(3L, stub.voidRequest?.expectedRowVersion)
+        assertEquals("撤销误记", stub.voidRequest?.voidReason)
+        assertEquals("void-key", stub.voidKey)
+        assertEquals("owner" to bundle, published)
+        assertEquals(DispatchResult.Success(newRowVersion = 8), result)
+    }
+
     private fun createRow() = OutboxRow(
         id = 1,
         serverUrl = "https://api.example.com",
@@ -106,6 +149,16 @@ class ExpenseOffsetDispatchersTest {
         attemptedAt = "2026-09-03T04:01:00Z",
         completedAt = null,
         idempotencyKey = "offset-key",
+    )
+
+    private fun voidRow() = createRow().copy(
+        type = PendingMutationType.VoidExpenseOffset,
+        targetId = expenseTargetId(42),
+        payloadJson = moshi.adapter(ExpenseOffsetVoidOutboxPayload::class.java).toJson(
+            ExpenseOffsetVoidOutboxPayload(offsetPublicId = "refund-1", voidReason = "撤销误记"),
+        ),
+        expectedRowVersion = 3,
+        idempotencyKey = "void-key",
     )
 
     private fun httpException(code: Int, body: String): HttpException {
