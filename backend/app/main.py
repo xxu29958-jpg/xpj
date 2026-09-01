@@ -64,7 +64,6 @@ from app.routes import (
     tags,
     tasks,
     uploads,
-    user_preferences,
     web_app,
     web_auth,
     web_bill_split,
@@ -371,7 +370,6 @@ app.include_router(dashboard.router)
 app.include_router(rules.router)
 app.include_router(settings.router)
 app.include_router(currency_system.router)
-app.include_router(user_preferences.router)
 app.include_router(stats.router)
 app.include_router(tags.router)
 app.include_router(tasks.router)

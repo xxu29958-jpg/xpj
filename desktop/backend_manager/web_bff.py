@@ -15,7 +15,6 @@ BRIDGE_HEADER = "X-Ticketbox-Desktop-Bridge"
 BRIDGE_VERSION = "v1"
 SESSION_COOKIE = "ticketbox_manager_web"
 ASSET_SESSION_COOKIE = "ticketbox_manager_assets"
-PREFERENCE_SESSION_COOKIE = "ticketbox_manager_preferences"
 MAX_REQUEST_BYTES = 65 * 1024 * 1024
 _SAFE_RESPONSE_HEADERS = {
     "content-type",
@@ -87,8 +86,6 @@ def allowed_target(raw_target: str, method: str) -> urllib.parse.SplitResult | N
         return parsed if verb in {"GET", "HEAD", "POST"} else None
     if decoded.startswith(("/static/web/", "/static/shared/")):
         return parsed if verb in {"GET", "HEAD"} else None
-    if decoded == "/api/me/ui-preferences":
-        return parsed if verb == "PUT" and not parsed.query else None
     return None
 
 

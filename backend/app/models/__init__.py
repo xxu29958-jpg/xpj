@@ -90,7 +90,6 @@ from app.models.system import (
     InstallationOwnerClaim,
     SchedulerLease,
     SchemaMigration,
-    UserUiPreference,
 )
 
 __all__ = [
@@ -165,5 +164,4 @@ __all__ = [
     "UploadLink",
     "UploadLinkDailyUsage",
     "UploadLinkRemoteAttempt",
-    "UserUiPreference",
 ]

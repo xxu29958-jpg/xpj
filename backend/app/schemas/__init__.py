@@ -19,7 +19,7 @@ Internal layout (one submodule per business domain):
 - ``_recurring``— recurring candidates and v0.6 formal recurring items
 - ``_recycle_bin`` — current-ledger unified recycle bin
 - ``_budgets``  — monthly budget dashboard
-- ``_admin``    — data quality, maintenance, server settings, user prefs
+- ``_admin``    — data quality, maintenance, server settings
 """
 
 from __future__ import annotations
@@ -35,8 +35,6 @@ from app.schemas._admin import (
     MaintenanceDeviceCleanupResponse,
     MaintenanceOrphanCleanupResponse,
     ServerSettingsResponse,
-    UserUiPreferencesResponse,
-    UserUiPreferencesUpdateRequest,
 )
 from app.schemas._background_task import (
     BackgroundTaskListResponse,
@@ -558,6 +556,4 @@ __all__ = [
     "TagUndoResponse",
     "TagsResponse",
     "UploadResponse",
-    "UserUiPreferencesResponse",
-    "UserUiPreferencesUpdateRequest",
 ]

@@ -84,7 +84,6 @@ RESTORE_TABLE_SECURITY: Mapping[str, RestoreTableSecurity] = MappingProxyType(
         "tag_mutation_undo_groups": "preserve",
         "tag_mutation_undo_items": "preserve",
         "tags": "preserve",
-        "user_ui_preferences": "preserve",
     }
 )
 

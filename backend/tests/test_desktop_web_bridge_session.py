@@ -181,7 +181,7 @@ def test_valid_desktop_bridge_projects_bound_viewer_and_its_ledger(
         headers=_principal_headers(principal.token),
         json={"theme": "midnight"},
     )
-    assert theme_write.status_code == 403, theme_write.text
+    assert theme_write.status_code == 404, theme_write.text
 
 
 def test_desktop_bridge_options_fall_back_to_session_record_off_console_roster(

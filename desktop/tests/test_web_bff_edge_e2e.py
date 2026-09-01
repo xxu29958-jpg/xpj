@@ -94,20 +94,11 @@ button.addEventListener("click", async () => {{
       body: JSON.stringify({{interaction: "primary"}})
     }});
     const payload = await response.json();
-    const themeResponse = await fetch("/api/me/ui-preferences", {{
-      method: "PUT",
-      headers: {{"Content-Type": "application/json"}},
-      body: JSON.stringify({{theme: "midnight"}})
-    }});
-    const themePayload = await themeResponse.json();
     output.textContent = payload.message;
     probe = {{
       ok: response.ok,
       status: response.status,
       message: payload.message,
-      themeOk: themeResponse.ok,
-      themeStatus: themeResponse.status,
-      theme: themePayload.theme,
       responseSecret: response.headers.get("X-Backend-Secret"),
       cookie: document.cookie,
       title: document.title,
@@ -158,7 +149,11 @@ _THEME_PROBE = """
 (() => {
   const theme = document.documentElement.getAttribute("data-theme");
   if (theme === "paper" || !theme) return undefined;
-  return JSON.stringify({theme});
+  return JSON.stringify({
+    theme,
+    storedTheme: localStorage.getItem("ui-theme"),
+    cookie: document.cookie
+  });
 })()
 """
 
@@ -172,10 +167,10 @@ class _ObservedRequest:
 
 
 class _AuditedConsumerServer(ThreadingHTTPServer):
-    def __init__(self, *, theme_status: int = 200) -> None:
+    def __init__(self, *, theme_fixture: bool = False) -> None:
         super().__init__(("127.0.0.1", 0), _ConsumerHandler)
         self.requests: list[_ObservedRequest] = []
-        self.theme_status = theme_status
+        self.theme_fixture = theme_fixture
 
 
 class _ConsumerHandler(BaseHTTPRequestHandler):
@@ -213,7 +208,7 @@ class _ConsumerHandler(BaseHTTPRequestHandler):
         self._record()
         if self.path == "/web":
             server = cast(_AuditedConsumerServer, self.server)
-            body = _THEME_HTML if server.theme_status != 200 else _CONSUMER_HTML
+            body = _THEME_HTML if server.theme_fixture else _CONSUMER_HTML
             self._send(200, body.encode(), "text/html; charset=utf-8")
             return
         if self.path == "/static/web/desktop-e2e-consumer.js":
@@ -243,21 +238,6 @@ class _ConsumerHandler(BaseHTTPRequestHandler):
                 ("Set-Cookie", f"backend_secret={_RESPONSE_SECRET}; Path=/web"),
             ),
         )
-
-    def do_PUT(self) -> None:
-        body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
-        self._record(body)
-        if self.path != "/api/me/ui-preferences":
-            self._send(404, b"not found", "text/plain; charset=utf-8")
-            return
-        server = cast(_AuditedConsumerServer, self.server)
-        payload = (
-            json.dumps({"theme": "midnight"})
-            if server.theme_status == 200
-            else json.dumps({"error": "permission_denied"})
-        ).encode()
-        self._send(server.theme_status, payload, "application/json; charset=utf-8")
-
 
 @dataclass(frozen=True)
 class _Controller:
@@ -334,9 +314,6 @@ def test_real_edge_navigates_manager_session_and_uses_bff_consumer(tmp_path: Pat
         "ok": True,
         "status": 200,
         "message": "真实请求已完成",
-        "themeOk": True,
-        "themeStatus": 200,
-        "theme": "midnight",
         "responseSecret": None,
         "cookie": f"browser_secret={_BROWSER_SECRET}",
         "title": "桌面桥真实消费者",
@@ -349,15 +326,12 @@ def test_real_edge_navigates_manager_session_and_uses_bff_consumer(tmp_path: Pat
         ("GET", "/web"),
         ("GET", "/static/web/desktop-e2e-consumer.js"),
         ("POST", "/web/consumer"),
-        ("PUT", "/api/me/ui-preferences"),
     ]
     for request in consumer.requests:
         _assert_bridge_request(request, backend_origin)
 
-    interaction = consumer.requests[-2]
+    interaction = consumer.requests[-1]
     assert json.loads(interaction.body) == {"interaction": "primary"}
-    theme_write = consumer.requests[-1]
-    assert json.loads(theme_write.body) == {"theme": "midnight"}
     for sensitive_header in ("x-control-token", "x-client-secret"):
         assert sensitive_header not in interaction.headers
     serialized = json.dumps([request.headers for request in consumer.requests], sort_keys=True)
@@ -367,11 +341,11 @@ def test_real_edge_navigates_manager_session_and_uses_bff_consumer(tmp_path: Pat
     assert "browser-forged-bridge" not in serialized
 
 
-def test_real_edge_theme_write_relays_main_static_theme_script(tmp_path: Path) -> None:
-    """The consumer serves main's theme.js verbatim; its PUT crosses the BFF."""
+def test_real_edge_theme_change_stays_in_the_browser(tmp_path: Path) -> None:
+    """The exact production theme script persists locally without an API owner."""
     edge = discover_edge_executable()
     assert edge is not None, "Microsoft Edge is required for the Desktop theme bridge gate"
-    consumer = _AuditedConsumerServer(theme_status=403)
+    consumer = _AuditedConsumerServer(theme_fixture=True)
     backend_origin = f"http://127.0.0.1:{consumer.server_address[1]}"
     manager = _manager(tmp_path, backend_origin)
     bootstrap_url = manager.prepare_web_bootstrap(tmp_path / "theme-bootstrap.html")
@@ -386,28 +360,18 @@ def test_real_edge_theme_write_relays_main_static_theme_script(tmp_path: Path) -
             expression=_THEME_PROBE,
         )
 
-    # main's theme.js applies the chosen theme locally, then fires the sync
-    # PUT; a non-2xx backend answer is tolerated silently (no visible status
-    # contract exists on main's /web).
-    assert json.loads(value) == {"theme": "mono"}
+    assert json.loads(value) == {
+        "theme": "mono",
+        "storedTheme": "mono",
+        "cookie": "ui_theme=mono",
+    }
     observed = [(request.method, request.path) for request in consumer.requests]
     assert observed[0] == ("GET", "/web")
-    assert observed[-1] == ("PUT", "/api/me/ui-preferences")
     # The two static fetches race; order between them is not contractual.
-    assert sorted(observed[1:-1]) == [
+    assert sorted(observed[1:]) == [
         ("GET", "/static/web/desktop/theme-fixture.js"),
         ("GET", "/static/web/desktop/theme.js"),
     ]
-    theme_write = consumer.requests[-1]
-    assert theme_write.headers["authorization"] == f"Bearer {_APP_TOKEN}"
-    assert theme_write.headers[BRIDGE_HEADER.casefold()] == BRIDGE_VERSION
-    assert theme_write.headers["origin"] == backend_origin
-    assert theme_write.headers["referer"] == backend_origin + theme_write.path
-    assert theme_write.headers["sec-fetch-site"] == "same-origin"
-    # main's theme.js sets the allowlisted ui_theme cookie; only allowlisted
-    # cookie names ever cross the relay.
-    assert theme_write.headers["cookie"] == "ui_theme=mono"
-    assert json.loads(theme_write.body) == {"theme": "mono"}
 
 
 _REAL_RENDER_PROBE = """

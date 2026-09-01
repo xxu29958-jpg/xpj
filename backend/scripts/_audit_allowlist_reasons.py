@@ -36,7 +36,6 @@ REVIEWABLE_REASON_PATTERN = re.compile(
 SINGLE_WRITER_ROUTE_ALLOWLIST = frozenset(
     {
         "PUT /api/dashboard/cards",
-        "PUT /api/me/ui-preferences",
         "POST /web/dashboard/cards/save",
     }
 )

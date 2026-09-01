@@ -11,9 +11,9 @@ cd desktop
 
 UI 只以 HKLM App Paths 动态发现并校验的 Edge `--app` 窗口打开；每个 app-window 使用独立且不含秘密的 profile（`edge-session`），并通过 Edge 直启参数持有真实、可等待的浏览器进程，最后一个窗口关闭后 Manager 主进程退出。无合格 Edge 时 fail closed，不回退成无法跟踪生命周期的默认浏览器窗口，也不会从用户可写 `PATH` 解析浏览器。Owner 业务任务页仍交给用户默认浏览器打开。
 
-默认窗口读取当前用户 ACL 限定的临时 bootstrap HTML，以 POST body 提交独立单次 token，建立 4 个 HttpOnly path-scoped Manager 会话 cookie 后进入干净 `/web`；临时文件在消费、取消或关闭时删除。instance proof、app token 与 control token 均不进入 URL、Edge 参数或 profile 路径。
+默认窗口读取当前用户 ACL 限定的临时 bootstrap HTML，以 POST body 提交独立单次 token，建立 3 个 HttpOnly path-scoped Manager 会话 cookie 后进入干净 `/web`；临时文件在消费、取消或关闭时删除。instance proof、app token 与 control token 均不进入 URL、Edge 参数或 profile 路径。
 
-Manager BFF 只连接 `127.0.0.1`，从 WinCred 临时读取既有 app identity，在进程内注入 Bearer 与固定 `X-Ticketbox-Desktop-Bridge: v1`。它只代理 `/web/**`、Web/shared 静态资源和精确的 `PUT /api/me/ui-preferences` 主题写入，其他 `/api/**`、`/owner`、`/desktop`、认证页及歧义路径全部拒绝；浏览器侧敏感头（控制 token、伪造的 Authorization/Bridge 头、非 allowlist cookie）不会进入后端。Manager 不读数据库、不 iframe `/web`，也不复制账务真值。
+Manager BFF 只连接 `127.0.0.1`，从 WinCred 临时读取既有 app identity，在进程内注入 Bearer 与固定 `X-Ticketbox-Desktop-Bridge: v1`。它只代理 `/web/**` 和 Web/shared 静态资源，其他 `/api/**`、`/owner`、`/desktop`、认证页及歧义路径全部拒绝；浏览器侧敏感头（控制 token、伪造的 Authorization/Bridge 头、非 allowlist cookie）不会进入后端。Manager 不读数据库、不 iframe `/web`，也不复制账务真值。
 
 正式安装后，管理器从 `HKLM\Software\Ticketbox` 动态读取 Inno 写入的安装布局和服务合同，通过 Windows SCM 的只读投影查看状态。正式安装态不暴露启停、备份或恢复 mutation 路由，也不启动提权 helper。普通用户进程不读取受保护的 `.env`、数据库或后端原始日志。正式运行态不依赖源码目录、Python 或 `.venv`。
 

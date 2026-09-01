@@ -179,21 +179,6 @@ STATEMENTS: tuple[str, ...] = (
     CREATE UNIQUE INDEX ix_devices_public_id ON devices (public_id)
     """,
     """
-    CREATE TABLE user_ui_preferences (
-        id SERIAL NOT NULL,
-        account_id INTEGER NOT NULL,
-        account_name VARCHAR(128) NOT NULL,
-        preferences TEXT NOT NULL,
-        updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
-        PRIMARY KEY (id),
-        CONSTRAINT uq_user_ui_preferences_account_id UNIQUE (account_id),
-        CONSTRAINT fk_user_ui_preferences_account FOREIGN KEY(account_id) REFERENCES accounts (id)
-    )
-    """,
-    """
-    CREATE INDEX ix_user_ui_preferences_account_id ON user_ui_preferences (account_id)
-    """,
-    """
     CREATE TABLE ai_merchant_anon_map (
         id SERIAL NOT NULL,
         tenant_id VARCHAR(64) NOT NULL,

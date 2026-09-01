@@ -162,7 +162,7 @@ def test_control_server_never_serves_token_to_noncanonical_host(tmp_path) -> Non
         connection.close()
 
         # The bootstrap flow replaces it: ACL'd single-use HTML -> POST ->
-        # 4 HttpOnly path-scoped cookies -> manager page with the control token.
+        # 3 HttpOnly path-scoped cookies -> manager page with the control token.
         bootstrap_path = tmp_path / "bootstrap.html"
         bootstrap_url = server.prepare_web_bootstrap(bootstrap_path)
         assert _INSTANCE_SECRET not in bootstrap_url
@@ -183,15 +183,14 @@ def test_control_server_never_serves_token_to_noncanonical_host(tmp_path) -> Non
         response = connection.getresponse()
         assert response.status == 200
         cookies = response.headers.get_all("Set-Cookie")
-        assert cookies is not None and len(cookies) == 4
+        assert cookies is not None and len(cookies) == 3
         assert any("Path=/web" in cookie for cookie in cookies)
         assert any("Path=/static" in cookie for cookie in cookies)
-        assert any("Path=/api/me/ui-preferences" in cookie for cookie in cookies)
         assert any("ticketbox_manager_control=" in cookie and "Path=/" in cookie for cookie in cookies)
         assert all("HttpOnly" in cookie for cookie in cookies)
         assert all("SameSite=Strict" in cookie for cookie in cookies)
         session_ids = [cookie.partition(";")[0].partition("=")[2] for cookie in cookies]
-        assert len(set(session_ids)) == 4
+        assert len(set(session_ids)) == 3
         assert all(session_id not in repr(server._web_session_digests) for session_id in session_ids)
         assert _TOKEN.encode() not in response.read()
         connection.close()
