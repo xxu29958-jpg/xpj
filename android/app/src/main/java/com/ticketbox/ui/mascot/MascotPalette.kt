@@ -7,7 +7,7 @@ import com.ticketbox.ui.design.ThemeVisuals
 /**
  * 夹夹各部件的主题化配色——MASCOT_BRIEF.md §7.1 映射表的代码单源。
  *
- * 原生 Compose 渲染([MascotPlaceholder])从这里取色,三主题(paper/mono/midnight)
+ * 原生 Compose 渲染([MascotPlaceholder])从这里取色,渲染主题(paper/midnight)
  * 自动换色。若未来再引入外部动画运行时,也必须消费这套语义槽位,禁止另起映射。
  */
 data class MascotPalette(

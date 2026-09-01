@@ -2,14 +2,14 @@
  *
  * 维护原则：
  * 1. 这里只放 :root / [data-theme=…] 选择器，不写组件样式。
- * 2. 3 套主题 (paper / mono / midnight) 字段名与 Android ThemeVisuals 镜像，
+ * 2. 2 套渲染主题 (paper / midnight) 字段名与 Android ThemeVisuals 镜像，
  *    语义分组：surface / text / brand / state / chart / goal / card。
+ *    「跟随系统」是各端本地偏好 mode，解析后仍落到这两套之一，不是第三主题。
  * 3. v0.4 alias 已删除；新增页面必须直接使用 v0.10 token 名称。
  * 4. :root 默认调色板 = paper，与 Android AppSkin.Default 对齐。
  * 5. Midnight 是显式主题，不依赖 prefers-color-scheme。
- * 6. v0.10 旧 5 套主题 (pine / pomelo / harbor / berry / night) 已被替换为 3 套。
- *    Android 端 AppSkin.fromStorageKey() 会把旧 storageKey 自动映射到新值：
- *    pine/pomelo/harbor → paper，berry → mono，night → midnight。
+ * 6. v0.10 旧 5 套主题 (pine / pomelo / harbor / berry / night) 与之后的 mono
+ *    均已退役；无生产数据，不保留旧 storageKey 映射，未知值一律回落 paper。
  * 7. 新增两个 token：--text-faint（第四级文本）、--brand-primary-bg（强调底）。
  * 8. v0.10.1 (2026-05) 新增主题无关 scale —— typography / spacing / motion / radius,
  *    见文件末尾「全局 design scale」段。与 Android `AppSpacing` / `AppTextHierarchy` /
@@ -106,7 +106,7 @@
     --card-backup-accent:        #8c9691; --card-backup-icon:        #66716b; --card-backup-surface:        #ffffff;
     --card-device-accent:        #756a8a; --card-device-icon:        #574d6a; --card-device-surface:        #ffffff;
 
-    /* v0.10 Motion (layout 级，三主题共享值；放在 :root 默认块) */
+    /* v0.10 Motion (layout 级，双主题共享值；放在 :root 默认块) */
     --motion-fast: 120ms;
     --motion-normal: 220ms;
     --motion-slow: 320ms;
@@ -117,12 +117,12 @@
     --ease-accelerate: cubic-bezier(0.3, 0, 1, 1);
     --ease-overshoot: cubic-bezier(0.34, 1.56, 0.64, 1);
 
-    /* v0.10 Layout（drawer 宽度等，三主题共享）
+    /* v0.10 Layout（drawer 宽度等，双主题共享）
      * 注：--sidebar-w 由 web/_shell.css 与 owner/owner.css 各自定义，
      * 因为两端密度不同；shared 层只管 drawer 宽度。 */
     --drawer-w: 380px;
 
-    /* v0.10 Elevation 扩展（按主题阴影深浅，paper/mono 共用浅） */
+    /* v0.10 Elevation 扩展（按主题阴影深浅，paper 浅 / midnight 深） */
     --elevation-dragging-card: 0 8px 24px rgba(0, 0, 0, 0.18);
     --elevation-swipe-row: 0 2px 8px rgba(0, 0, 0, 0.06);
 
@@ -139,99 +139,6 @@
     --drawer-overlay-bg: rgba(23, 32, 28, 0.32);
 }
 
-:root[data-theme="mono"] {
-    /* Surface — 冷灰极简 */
-    --surface-app: #ecefed;
-    --surface-card: #ffffff;
-    --surface-raised: #ffffff;
-    --surface-nav: #ffffff;
-    --surface-sunken: #f0f2f1;
-
-    /* Text */
-    --text-default: #171b19;
-    --text-muted: #626965;
-    --text-meta: #858c88;
-    --text-faint: #b6bcb8;
-    --text-on-primary: #ffffff;
-
-    /* Brand — 石墨即强调 */
-    --brand-primary: #202824;
-    --brand-primary-strong: #111614;
-    --brand-accent: #7a8780;
-    --brand-primary-bg: #e5eae7;
-    --brand-focus-ring: rgba(32, 40, 36, 0.40);
-
-    /* State */
-    --state-success-bg: #d6e2d6; --state-success-fg: #315a45; --state-success-border: #b7c9b8;
-    --state-warn-bg:    #e7dbc0; --state-warn-fg:    #6d5729; --state-warn-border:    #d2c39a;
-    --state-danger-bg:  #f1d8d4; --state-danger-fg:  #8c3b32; --state-danger-border:  #e2b9b3;
-    --state-info-bg:    #dbe1e3; --state-info-fg:    #485a5f; --state-info-border:    #bcc6ca;
-    --state-neutral-bg: #e3e2dd; --state-neutral-fg: #626965; --state-neutral-border: #c9c8c3;
-
-    --border-card: #dad9d4;
-    --border-input: #b8b7b3;
-    --control-border: rgba(32, 40, 36, 0.24);
-    --control-border-hover: rgba(32, 40, 36, 0.42);
-    --control-border-active: rgba(32, 40, 36, 0.62);
-    --control-press-bg: rgba(32, 40, 36, 0.08);
-    --radius-card: 10px;
-    --radius-input: 6px;
-    --radius-pill: 999px;
-    --shadow-card: 0 1px 3px rgba(0,0,0,.06);
-    --shadow-raised: 0 4px 16px rgba(0,0,0,.10);
-
-    --chart-series-1: #202824;
-    --chart-series-2: #6a746f;
-    --chart-series-3: #315a45;
-    --chart-series-4: #8c3b32;
-    --chart-series-5: #485a5f;
-    --chart-series-6: #79653b;
-    --chart-series-7: #655f72;
-    --chart-series-8: #aab3ae;
-    --chart-sequential-from: #e5eae7;
-    --chart-sequential-to:   #202824;
-    --chart-diverging-negative: #8c3b32;
-    --chart-diverging-zero:     #e8ece9;
-    --chart-diverging-positive: #315a45;
-    --chart-axis: #a9b0ac;
-    --chart-axis-label: #626965;
-    --chart-grid: rgba(0, 0, 0, 0.06);
-    --chart-grid-emphasis: #20282466;
-    --chart-tooltip-bg: #171b19;
-    --chart-tooltip-fg: #f7f8f7;
-    --chart-tooltip-border: #353d39;
-    --chart-legend-fg: #171b19;
-    --chart-legend-marker: #f7f8f7;
-    --chart-sankey-ribbon: #20282433;
-    --chart-sankey-ribbon-emphasis: #202824b3;
-    --chart-overspend: #8c3b32;
-    --chart-empty: #d8deda;
-
-    --goal-idle-bg:        #e3e2dd; --goal-idle-fg:        #626965; --goal-idle-border:        #c9c8c3;
-    --goal-on-track-bg:    #d6e2d6; --goal-on-track-fg:    #315a45; --goal-on-track-border:    #b7c9b8;
-    --goal-near-limit-bg:  #e7dbc0; --goal-near-limit-fg:  #6d5729; --goal-near-limit-border:  #d2c39a;
-    --goal-exceeded-bg:    #f1d8d4; --goal-exceeded-fg:    #8c3b32; --goal-exceeded-border:    #e2b9b3;
-    --goal-expired-bg:     #e7e6e1; --goal-expired-fg:     #7b827e; --goal-expired-border:     #cdcdc8;
-
-    --card-pending-accent:       #4e5b55; --card-pending-icon:       #303b36; --card-pending-surface:       #ffffff;
-    --card-month-spend-accent:   #202824; --card-month-spend-icon:   #111614; --card-month-spend-surface:   #ffffff;
-    --card-recent-upload-accent: #485a5f; --card-recent-upload-icon: #304348; --card-recent-upload-surface: #ffffff;
-    --card-recurring-accent:     #8c3b32; --card-recurring-icon:     #672921; --card-recurring-surface:     #ffffff;
-    --card-goals-accent:         #315a45; --card-goals-icon:         #214332; --card-goals-surface:         #ffffff;
-    --card-budget-accent:        #79653b; --card-budget-icon:        #594820; --card-budget-surface:        #ffffff;
-    --card-backup-accent:        #7c8580; --card-backup-icon:        #5b635f; --card-backup-surface:        #ffffff;
-    --card-device-accent:        #655f72; --card-device-icon:        #494353; --card-device-surface:        #ffffff;
-
-    /* v0.10 Mono theme-specific elevation / skeleton / swipe / drawer overlay */
-    --elevation-dragging-card: 0 8px 24px rgba(0, 0, 0, 0.18);
-    --elevation-swipe-row: 0 2px 8px rgba(0, 0, 0, 0.06);
-    --skeleton-base-bg: #171b1914;
-    --skeleton-shine-bg: rgba(255, 255, 255, 0.20);
-    --swipe-confirm-bg: #315a45; --swipe-confirm-fg: #ffffff;
-    --swipe-ignore-bg:  #626965; --swipe-ignore-fg:  #ffffff;
-    --swipe-delete-bg:  #8c3b32; --swipe-delete-fg:  #ffffff;
-    --drawer-overlay-bg: rgba(32, 40, 36, 0.32);
-}
 
 :root[data-theme="midnight"] {
     /* Surface — 深石墨工作区 */
@@ -332,7 +239,7 @@
 /* ───────────────────────────────────────────────────────────────────────────
  * 全局 design scale (v0.10.1, 2026-05) — 主题无关
  *
- * 这一段定义所有 paper/mono/midnight 主题共享、与「颜色」无关的尺度 token：
+ * 这一段定义所有 paper/midnight 主题共享、与「颜色」无关的尺度 token：
  *   typography / spacing / radius scale / motion / easing
  *
  * 与 Android 端镜像关系：

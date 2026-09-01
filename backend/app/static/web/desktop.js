@@ -15,15 +15,12 @@
   }
 
   function boot() {
-    // 启动时先把 cookie / localStorage 与 <html data-theme> 对齐（防止刷新闪烁）
-    let saved = null;
-    try { saved = localStorage.getItem("ui-theme"); } catch (_) {}
-    if (saved && app.THEMES && app.THEMES.includes(saved)) {
-      const current = document.documentElement.getAttribute("data-theme");
-      if (current !== saved) document.documentElement.setAttribute("data-theme", saved);
+    // 启动时把本地 mode 解析成渲染主题并对齐 <html data-theme> / ui_theme cookie。
+    if (typeof app.currentThemeMode === "function" && typeof app.applyThemeMode === "function") {
+      app.applyThemeMode(app.currentThemeMode());
     }
 
-    call("initThemeToggle");
+    call("initThemeControl");
     call("initLedgerSwitcher");
     call("initDrawer");
     call("initReviewKeyboard");

@@ -7,7 +7,7 @@ import com.ticketbox.R
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.repository.BindServerResult
 import com.ticketbox.data.repository.ServerBindingRepository
-import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.domain.model.AppThemeMode
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
@@ -32,7 +32,7 @@ data class AppUiState(
     val binding: Boolean = false,
     val sessionVerification: SessionVerificationState = SessionVerificationState.Unbound,
     val hasPendingEnrollment: Boolean = false,
-    val skin: AppSkin = AppSkin.Default,
+    val themeMode: AppThemeMode = AppThemeMode.Default,
     val currency: CurrencyCode = CurrencyCode.Default,
     val currencyDisplay: CurrencyDisplay = CurrencyDisplay.Base,
     val backgroundSettings: BackgroundSettings = BackgroundSettings(),
@@ -61,16 +61,16 @@ class AppViewModel(
     private val initialBusinessSessionReady =
         initialHasActiveBinding && repository.isBusinessSessionReady()
 
-    // Normalize the persisted skin key on construction: if the stored key isn't the
-    // canonical form, rewrite it. Inlined into the initializer (not a helper method)
+    // Normalize the persisted theme-mode key on construction: if the stored key isn't
+    // the canonical form, rewrite it. Inlined into the initializer (not a helper method)
     // so the class stays within the detekt per-class function budget.
-    private val initialSkin: AppSkin = run {
-        val rawKey = settingsStore.appSkinKey()
-        val skin = AppSkin.fromStorageKey(rawKey)
-        if (rawKey != skin.storageKey) {
-            settingsStore.saveAppSkinKey(skin.storageKey)
+    private val initialThemeMode: AppThemeMode = run {
+        val rawKey = settingsStore.appThemeModeKey()
+        val mode = AppThemeMode.fromStorageKey(rawKey)
+        if (rawKey != mode.storageKey) {
+            settingsStore.saveAppThemeModeKey(mode.storageKey)
         }
-        skin
+        mode
     }
     private val initialCurrency = CurrencyCode.fromStorageKey(settingsStore.currencyCodeKey())
     private val _uiState = MutableStateFlow(
@@ -84,7 +84,7 @@ class AppViewModel(
                 else -> SessionVerificationState.Verifying
             },
             hasPendingEnrollment = repository.hasPendingBinding(),
-            skin = initialSkin,
+            themeMode = initialThemeMode,
             currency = initialCurrency,
             currencyDisplay = CurrencyDisplay.Base,
         ),
@@ -248,10 +248,10 @@ class AppViewModel(
         _uiState.update { it.copy(unlocked = true, localUnlockDisabled = true, authMessage = null) }
     }
 
-    fun selectSkin(skin: AppSkin) {
-        settingsStore.saveAppSkinKey(skin.storageKey)
+    fun selectThemeMode(mode: AppThemeMode) {
+        settingsStore.saveAppThemeModeKey(mode.storageKey)
         _uiState.update {
-            it.copy(skin = skin, authMessage = UiText.res(R.string.app_skin_switched, skin.displayName))
+            it.copy(themeMode = mode, authMessage = UiText.res(R.string.app_theme_mode_switched, mode.displayName))
         }
     }
 
@@ -267,16 +267,16 @@ class AppViewModel(
     }
 
     fun clearBinding() {
-        val currentSkin = _uiState.value.skin
+        val currentMode = _uiState.value.themeMode
         val currentCurrency = _uiState.value.currency
         val currentBackground = _uiState.value.backgroundSettings
         viewModelScope.launch {
             repository.clearBinding()
-            settingsStore.saveAppSkinKey(currentSkin.storageKey)
+            settingsStore.saveAppThemeModeKey(currentMode.storageKey)
             settingsStore.saveCurrencyCodeKey(currentCurrency.storageKey)
             _uiState.update {
                 AppUiState(
-                    skin = currentSkin,
+                    themeMode = currentMode,
                     currency = currentCurrency,
                     currencyDisplay = CurrencyDisplay.Base,
                     backgroundSettings = currentBackground,

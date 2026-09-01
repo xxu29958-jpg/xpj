@@ -41,7 +41,7 @@ import kotlin.math.sin
 /**
  * 通用「清零/两清」庆祝动画。
  *
- * 从 [com.ticketbox.ui.screens.pending.PendingClearCelebration] 抽出（视觉 / 时长 / 三主题色逐字节一致，
+ * 从 [com.ticketbox.ui.screens.pending.PendingClearCelebration] 抽出（视觉 / 时长 / 主题色逐字节一致，
  * 仅把文案参数化），让待确认清空（pending）与成员债两清（ADR-0049 §5 / slice 8e-4，
  * [com.ticketbox.ui.screens.DebtSettleCelebrationOverlay]）共用同一份动画体；§5.7 的「单笔两清 / 计划达成 /
  * AllDebtsCleared」三处也复用本组件。
@@ -54,7 +54,7 @@ import kotlin.math.sin
  * 设计取舍：
  * - 不使用 Lottie：避免引一个 .json 资产文件；本地 Canvas 绘制足够表达「完成」语义。未来如果想换成更精致的
  *   Lottie，把这个文件 swap 成 [com.airbnb.lottie.compose.LottieAnimation] 即可，调用方接口不变。
- * - 复用 ThemeVisuals.primary / illustrationTint，三套主题色都能 work。
+ * - 复用 ThemeVisuals.primary / illustrationTint，两套主题色都能 work。
  * - 不上音效（一般用户不会喜欢账单 app 突然响）。
  */
 @Composable

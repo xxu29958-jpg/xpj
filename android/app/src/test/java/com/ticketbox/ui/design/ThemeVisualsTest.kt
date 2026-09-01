@@ -38,10 +38,10 @@ class ThemeVisualsTest {
     }
 
     @Test
-    fun exactlyThreeSkinsAreShipped() {
-        // v0.10：3 套主题 (Paper / Mono / Midnight)，旧 5 套 (pine/pomelo/harbor/berry/night)
-        // 已迁移。修改本断言前先确认 shared/tokens.css 与 ThemeVisuals 同步更新。
-        assertEquals(3, AppSkin.entries.size)
+    fun exactlyTwoSkinsAreShipped() {
+        // 2 套主题 (Paper / Midnight)；mono 已退役，无历史数据不保留映射。
+        // 修改本断言前先确认 shared/tokens.css 与 ThemeVisuals 同步更新。
+        assertEquals(2, AppSkin.entries.size)
     }
 
     @Test

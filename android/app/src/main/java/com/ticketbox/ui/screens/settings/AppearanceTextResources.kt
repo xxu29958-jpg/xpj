@@ -16,14 +16,12 @@ import com.ticketbox.ui.appearance.BuiltInBackgroundCategory
 @StringRes
 internal fun appSkinNameRes(skin: AppSkin): Int = when (skin) {
     AppSkin.Paper -> R.string.appearance_skin_name_paper
-    AppSkin.Mono -> R.string.appearance_skin_name_mono
     AppSkin.Midnight -> R.string.appearance_skin_name_midnight
 }
 
 @StringRes
 internal fun appSkinDescriptionRes(skin: AppSkin): Int = when (skin) {
     AppSkin.Paper -> R.string.appearance_skin_description_paper
-    AppSkin.Mono -> R.string.appearance_skin_description_mono
     AppSkin.Midnight -> R.string.appearance_skin_description_midnight
 }
 

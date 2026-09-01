@@ -1,5 +1,6 @@
 package com.ticketbox.ui.navigation
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,6 +29,7 @@ import com.ticketbox.BuildConfig
 import com.ticketbox.R
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.domain.model.AppThemeMode
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
@@ -75,16 +77,17 @@ internal fun TicketboxApp(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    val resolvedSkin = appState.themeMode.resolveSkin(isSystemInDarkTheme())
     TicketboxTheme(
-        skin = appState.skin,
+        skin = resolvedSkin,
         currency = appState.currency,
         currencyDisplay = appState.currencyDisplay,
     ) {
         TicketboxContent(
             appState = appState,
             appViewModel = appViewModel,
+            resolvedSkin = resolvedSkin,
             dependencies = dependencies,
-            onAuthMessageShown = { appViewModel.setAuthMessage(null) },
             launchConsumer = LaunchRequestConsumer(
                 request = launchRequest,
                 onHandled = onLaunchRequestHandled,
@@ -108,14 +111,14 @@ internal data class TicketboxAppViewModelFactories(
 private fun TicketboxContent(
     appState: AppUiState,
     appViewModel: AppViewModel,
+    resolvedSkin: AppSkin,
     dependencies: TicketboxAppDependencies,
-    onAuthMessageShown: () -> Unit,
     launchConsumer: LaunchRequestConsumer,
 ) {
     if (!appState.isBound) {
         ImmersiveBackgroundScaffold(
             backgroundSettings = appState.backgroundSettings,
-            currentSkin = appState.skin,
+            currentSkin = resolvedSkin,
             surfaceRole = SurfaceRole.Auth,
         ) {
             UnboundAuthFlow(
@@ -130,7 +133,7 @@ private fun TicketboxContent(
     if (!appState.isBusinessReady) {
         SessionVerificationGate(
             backgroundSettings = appState.backgroundSettings,
-            currentSkin = appState.skin,
+            currentSkin = resolvedSkin,
             verification = appState.sessionVerification,
             message = appState.authMessage,
             onRetry = appViewModel::refreshBindingState,
@@ -141,7 +144,7 @@ private fun TicketboxContent(
     if (BuildConfig.REQUIRE_LOCAL_UNLOCK && !appState.unlocked && !appState.localUnlockDisabled) {
         ImmersiveBackgroundScaffold(
             backgroundSettings = appState.backgroundSettings,
-            currentSkin = appState.skin,
+            currentSkin = resolvedSkin,
             surfaceRole = SurfaceRole.Auth,
         ) {
             LocalUnlockGate(
@@ -156,17 +159,18 @@ private fun TicketboxContent(
     MainShell(
         dependencies = dependencies,
         chrome = MainShellChrome(
-            currentSkin = appState.skin,
+            currentSkin = resolvedSkin,
+            themeMode = appState.themeMode,
             currentCurrency = appState.currency,
             backgroundSettings = appState.backgroundSettings,
         ),
         startup = MainShellStartup(
             message = appState.authMessage,
             localUnlockDisabled = appState.localUnlockDisabled,
-            onMessageShown = onAuthMessageShown,
+            onMessageShown = { appViewModel.setAuthMessage(null) },
         ),
         actions = MainShellActions(
-            onSkinChange = appViewModel::selectSkin,
+            onThemeModeChange = appViewModel::selectThemeMode,
             onCurrencyChange = appViewModel::selectCurrency,
             onBindingCleared = appViewModel::clearBinding,
         ),
@@ -279,8 +283,9 @@ private fun MainShell(
     }
     val preferenceControls = SettingsPreferenceControls(
         currentSkin = chrome.currentSkin,
+        currentMode = chrome.themeMode,
         currentCurrency = chrome.currentCurrency,
-        onSkinChange = actions.onSkinChange,
+        onThemeModeChange = actions.onThemeModeChange,
         onCurrencyChange = actions.onCurrencyChange,
     )
 
@@ -308,6 +313,7 @@ private fun MainShell(
 
 private data class MainShellChrome(
     val currentSkin: AppSkin,
+    val themeMode: AppThemeMode,
     val currentCurrency: com.ticketbox.domain.model.CurrencyCode,
     val backgroundSettings: BackgroundSettings,
 )
@@ -319,7 +325,7 @@ private data class MainShellStartup(
 )
 
 private data class MainShellActions(
-    val onSkinChange: (AppSkin) -> Unit,
+    val onThemeModeChange: (AppThemeMode) -> Unit,
     val onCurrencyChange: (com.ticketbox.domain.model.CurrencyCode) -> Unit,
     val onBindingCleared: () -> Unit,
 )

@@ -5,6 +5,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -70,6 +71,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.domain.model.AppThemeMode
 import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.BackgroundSource
@@ -105,6 +107,7 @@ data class AppearanceScreenState(
 
 data class AppearancePreferenceState(
     val currentSkin: AppSkin,
+    val currentMode: AppThemeMode,
     val currentCurrency: CurrencyCode,
 )
 
@@ -116,7 +119,7 @@ data class AppearanceScreenActions(
 )
 
 data class AppearancePreferenceActions(
-    val onSkinChange: (AppSkin) -> Unit,
+    val onThemeModeChange: (AppThemeMode) -> Unit,
     val onCurrencyChange: (CurrencyCode) -> Unit,
 )
 
@@ -147,25 +150,26 @@ fun AppearanceScreen(
         status = { AppStatusBanner(message = appearance.message, tone = appearance.messageTone) },
     ) {
         AppearanceOverviewSection(
-            currentSkin = preferences.currentSkin,
+            currentMode = preferences.currentMode,
             currentCurrency = preferences.currentCurrency,
             backgroundSettings = appearance.backgroundSettings,
         )
         SettingsSection(title = stringResource(R.string.appearance_section_skin_title), icon = Icons.Filled.Palette) {
-            AppSkin.entries.chunked(2).forEach { rowSkins ->
+            AppThemeMode.entries.chunked(2).forEach { rowModes ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
                 ) {
-                    rowSkins.forEach { skin ->
+                    rowModes.forEach { mode ->
                         SkinOptionCard(
                             modifier = Modifier.weight(1f),
-                            skin = skin,
-                            selected = skin == preferences.currentSkin,
-                            onClick = { actions.preferences.onSkinChange(skin) },
+                            mode = mode,
+                            previewSkin = mode.resolveSkin(isSystemInDarkTheme()),
+                            selected = mode == preferences.currentMode,
+                            onClick = { actions.preferences.onThemeModeChange(mode) },
                         )
                     }
-                    if (rowSkins.size == 1) {
+                    if (rowModes.size == 1) {
                         Spacer(modifier = Modifier.weight(1f))
                     }
                 }

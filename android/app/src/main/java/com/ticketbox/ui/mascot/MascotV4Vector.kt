@@ -15,7 +15,7 @@ private const val V4_VIEWBOX = 520f
  * 夹夹 V4 front pose 的原生矢量渲染:圆角枕形身体(上宽下窄)、顶部两个有洞的纸夹手柄
  * 环、肚前小票 + 红夹口、五官、脚与状态道具。几何来自 docs/design_reference 的
  * final-reference-lock 定稿(见 MASCOT_BRIEF §1-§7),所有颜色取自 [MascotPalette]
- * 语义槽位,三主题自动换色。
+ * 语义槽位,渲染主题自动换色。
  */
 internal fun DrawScope.drawJiajiaV4Vector(
     state: MascotState,

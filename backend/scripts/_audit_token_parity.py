@@ -2,7 +2,8 @@
 
 强约束:`/web` 的 `tokens.css` 与 Android 的 Kotlin token 源是同一套调色板的镜像;
 此前只靠人自觉,`scripts/` 下无任何检查在拦——改一处忘另一处即静默漂移(/web 与
-Android 视觉分叉)。本 lane 把它变成硬检查,逐主题(paper/mono/midnight)比对。
+Android 视觉分叉)。本 lane 把它变成硬检查,逐主题(paper/midnight)比对;并附带
+theme 级 Mono 退役证明(任一 source 重现 Mono 即 FAIL)。
 
 覆盖面(2026-06 从 54 项扩到 ~230,把整套子调色板纳入机器守护):
   - core:`tokens.css` ↔ `ThemeVisuals.kt` 13 个 brand/surface/text token
@@ -61,7 +62,24 @@ _GOAL_TOKENS = _DESIGN / "GoalTokens.kt"
 _SWIPE_TOKENS = _DESIGN / "SwipeActionTokens.kt"
 _SKELETON_TOKENS = _DESIGN / "SkeletonTokens.kt"
 
-_THEMES = ("paper", "mono", "midnight")
+_THEMES = ("paper", "midnight")
+
+# mono 退役证明：render theme 只剩 paper/midnight；主题级 Mono 不得在任何一端复活。
+# （BackgroundCatalog 里 id 为 "mono" 的背景资产是合法保留项，死亡证明只钉 theme 级引用。）
+_MONO_DEATH_PROOF_SOURCES: tuple[tuple[str, Path, str], ...] = (
+    ("tokens.css", _TOKENS_CSS, '[data-theme="mono"]'),
+    ("ThemeVisuals.kt", _THEME_VISUALS, "AppSkin.Mono"),
+    ("StateTokens.kt", _STATE_TOKENS, "AppSkin.Mono"),
+    ("ChartTokens.kt", _CHART_TOKENS, "AppSkin.Mono"),
+    ("GoalTokens.kt", _GOAL_TOKENS, "AppSkin.Mono"),
+    ("SwipeActionTokens.kt", _SWIPE_TOKENS, "AppSkin.Mono"),
+    ("SkeletonTokens.kt", _SKELETON_TOKENS, "AppSkin.Mono"),
+    ("StatsTokens.kt", _DESIGN / "StatsTokens.kt", "AppSkin.Mono"),
+    ("BackgroundVisuals.kt", _DESIGN / "BackgroundVisuals.kt", "AppSkin.Mono"),
+    ("Theme.kt", _REPO / "android" / "app" / "src" / "main" / "java" / "com" / "ticketbox" / "ui" / "theme" / "Theme.kt", "AppSkin.Mono"),
+    ("AppSkin.kt", _REPO / "android" / "app" / "src" / "main" / "java" / "com" / "ticketbox" / "domain" / "model" / "AppSkin.kt", "Mono"),
+    ("BackgroundCatalog.kt", _REPO / "android" / "app" / "src" / "main" / "java" / "com" / "ticketbox" / "ui" / "appearance" / "BackgroundCatalog.kt", "AppSkin.Mono"),
+)
 
 # tokens.css 核心 token ↔ ThemeVisuals 字段(逐主题须一致;brand-primary-bg 含半透明)
 _CORE_MAPPING: tuple[tuple[str, str], ...] = (
@@ -84,7 +102,7 @@ _CORE_MAPPING: tuple[tuple[str, str], ...] = (
 _STATE_TONES = ("success", "warn", "danger", "info", "neutral")
 
 # Kotlin AppSkin 分支名(data class 工厂里逐主题块的锚点片段)
-_SKIN = {"paper": "Paper", "mono": "Mono", "midnight": "Midnight"}
+_SKIN = {"paper": "Paper", "midnight": "Midnight"}
 
 _VISUALS_ANCHOR = {t: f"AppSkin.{t.capitalize()} -> ThemeVisuals(" for t in _THEMES}
 
@@ -240,6 +258,16 @@ def _diff(theme: str, label: str, want: str | None, got: str | None, source: str
     return None
 
 
+def _check_mono_retired(problems: list[str]) -> int:
+    """theme 级 Mono 死亡证明：任一 source 重现 Mono 即 FAIL（不比对，只证伪）。"""
+    checked = 0
+    for label, path, needle in _MONO_DEATH_PROOF_SOURCES:
+        if needle in path.read_text(encoding="utf-8"):
+            problems.append(f"[mono-retirement] {label} 仍含 theme 级 {needle!r}")
+        checked += 1
+    return checked
+
+
 def _check_core_and_state(css, visuals, state_fg, problems: list[str]) -> int:
     checked = 0
     for theme in _THEMES:
@@ -350,6 +378,7 @@ def main() -> int:
 
     problems: list[str] = []
     checked = 0
+    checked += _check_mono_retired(problems)
     checked += _check_core_and_state(css, visuals, state_fg, problems)
     checked += _check_chart(css, chart_series, chart_fields, problems)
     checked += _check_goal(css, goal_fg, problems)
@@ -357,9 +386,9 @@ def main() -> int:
     checked += _check_skeleton(css, skel, problems)
     checked += _check_motion_shimmer(css_text, skeleton_text, problems)
 
-    print(f"== 三端 token parity（{checked} 项 · core/state/chart/goal/swipe/skeleton + 数值钉，3 主题）==")
+    print(f"== 三端 token parity（{checked} 项 · mono 退役证明 + core/state/chart/goal/swipe/skeleton + 数值钉，2 主题）==")
     if problems:
-        print(f"FAIL: 发现 {len(problems)} 处三端 token 漂移:")
+        print(f"FAIL: 发现 {len(problems)} 处三端 token 漂移 / mono 残留:")
         for problem in problems:
             print(f"  - {problem}")
         return 1

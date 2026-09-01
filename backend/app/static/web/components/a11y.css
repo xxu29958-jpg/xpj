@@ -6,7 +6,7 @@
 /* ───── A11y: 键盘焦点环 ─────
  * 仅在键盘导航（Tab）触发的 :focus-visible 上显示，
  * 鼠标点击不会出现描边；颜色来自 shared/tokens.css 的 --brand-focus-ring，
- * paper / mono / midnight 三主题自动适配。
+ * paper / midnight 双主题自动适配。
  */
 .skip-link {
     position: fixed;

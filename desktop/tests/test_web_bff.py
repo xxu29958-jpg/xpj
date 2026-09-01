@@ -66,7 +66,7 @@ def test_web_bff_session_and_same_origin_matrix() -> None:
     session_digest = hashlib.sha256(session_id.encode("ascii")).hexdigest()
     origin = "http://127.0.0.1:8799"
     assert browser_session_valid(
-        f"{SESSION_COOKIE}={session_id}; ui_theme=mono",
+        f"{SESSION_COOKIE}={session_id}; ui_theme=midnight",
         (session_digest,),
     )
     assert not browser_session_valid(f"{SESSION_COOKIE}=wrong", (session_digest,))

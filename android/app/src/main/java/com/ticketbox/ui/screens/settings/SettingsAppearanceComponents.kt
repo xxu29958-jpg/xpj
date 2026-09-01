@@ -72,6 +72,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.domain.model.AppThemeMode
 import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.CategoryRule
@@ -183,12 +184,13 @@ internal fun ThemeMoodPreview(
 @Composable
 internal fun SkinOptionCard(
     modifier: Modifier = Modifier,
-    skin: AppSkin,
+    mode: AppThemeMode,
+    previewSkin: AppSkin,
     selected: Boolean,
     onClick: () -> Unit,
 ) {
-    val scheme = colorSchemeForSkin(skin)
-    val visuals = themeVisualsForSkin(skin)
+    val scheme = colorSchemeForSkin(previewSkin)
+    val visuals = themeVisualsForSkin(previewSkin)
     val containerColor = if (selected) {
         visuals.glassTint.copy(alpha = 0.86f)
     } else {
@@ -218,7 +220,7 @@ internal fun SkinOptionCard(
                 .padding(AppSpacing.compactPadding),
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
-            SkinPreview(skin = skin, scheme = scheme, visuals = visuals)
+            SkinPreview(skin = previewSkin, scheme = scheme, visuals = visuals)
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -226,18 +228,18 @@ internal fun SkinOptionCard(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = stringResource(appSkinNameRes(skin)),
+                        text = stringResource(appThemeModeNameRes(mode)),
                         style = MaterialTheme.typography.titleSmall,
                         maxLines = 1,
                     )
                     if (selected) {
                         SkinPill(text = stringResource(R.string.appearance_skin_pill_current), scheme = scheme, visuals = visuals, emphasized = true)
-                    } else if (skin == AppSkin.Paper) {
+                    } else if (mode == AppThemeMode.Paper) {
                         SkinPill(text = stringResource(R.string.appearance_skin_pill_recommended), scheme = scheme, visuals = visuals, emphasized = false)
                     }
                 }
                 Text(
-                    text = stringResource(appSkinDescriptionRes(skin)),
+                    text = stringResource(appThemeModeDescriptionRes(mode)),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,

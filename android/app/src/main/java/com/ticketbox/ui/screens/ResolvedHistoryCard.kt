@@ -36,7 +36,7 @@ import com.ticketbox.ui.design.tabularNum
  * [MemberProposalSection] 的债务人/债权人卡承载，§3.2 不进历史，避免一件事出现两次)。研究背书：累积可见的
  * scorecard 会把关系重分类为 Market (Gladstone / Clark & Mills)。故沉降态**逐条清晰**(金额/状态/日期/备注)
  * 但**集合零汇总**——无 total/count/rank、所有已解决态一律 neutral 灰、不给成功行挑亮 (§3.4 去 success 竖条)。
- * 视觉降权全用既有 token 的 [AppAlpha] 叠 (三主题自动一致，不硬编码浅色)；日期到"日"不到分秒 (去对账味)。
+ * 视觉降权全用既有 token 的 [AppAlpha] 叠 (渲染主题自动一致，不硬编码浅色)；日期到"日"不到分秒 (去对账味)。
  */
 private const val RESOLVED_HISTORY_COLLAPSED_COUNT = 3
 

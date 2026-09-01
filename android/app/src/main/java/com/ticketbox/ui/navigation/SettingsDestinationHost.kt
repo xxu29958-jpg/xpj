@@ -20,6 +20,7 @@ import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.data.repository.OutboxRepository
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.domain.model.AppThemeMode
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ImmersionMode
@@ -79,6 +80,7 @@ internal data class SettingsRouteStates(
 
 internal data class SettingsDestinationChromeState(
     val currentSkin: AppSkin,
+    val currentMode: AppThemeMode,
     val currentCurrency: CurrencyCode,
     val showAdvancedTools: Boolean,
 )
@@ -95,7 +97,7 @@ internal data class SettingsRouteActions(
     val onSync: () -> Unit,
     val onClearCache: () -> Unit,
     val onSaveNotificationPreferences: (NotificationPreferences) -> Unit,
-    val onSkinChange: (AppSkin) -> Unit,
+    val onThemeModeChange: (AppThemeMode) -> Unit,
     val onCurrencyChange: (CurrencyCode) -> Unit,
     val onApplyBackgroundSettings: (BackgroundSettings) -> Unit,
     val onClearBackgroundImage: () -> Unit,
@@ -223,13 +225,14 @@ internal fun SettingsDestinationHost(
                 appearance = states.appearance,
                 preferences = AppearancePreferenceState(
                     currentSkin = chromeState.currentSkin,
+                    currentMode = chromeState.currentMode,
                     currentCurrency = chromeState.currentCurrency,
                 ),
             ),
             actions = AppearanceScreenActions(
                 onBack = { route = SettingsDestination.Root },
                 preferences = AppearancePreferenceActions(
-                    onSkinChange = actions.onSkinChange,
+                    onThemeModeChange = actions.onThemeModeChange,
                     onCurrencyChange = actions.onCurrencyChange,
                 ),
                 background = AppearanceBackgroundActions(

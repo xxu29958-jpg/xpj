@@ -4,7 +4,7 @@
 <resources>
     <!-- AppearanceScreen：外观与主题屏 -->
     <string name="appearance_page_title">外观与主题</string>
-    <string name="appearance_page_subtitle">纸本作为默认推荐，背景参与氛围但不抢账单内容。</string>
+    <string name="appearance_page_subtitle">晨纸作为默认推荐，背景参与氛围但不抢账单内容。</string>
     <string name="appearance_section_overview_title">外观概况</string>
     <string name="appearance_overview_skin_label">主题</string>
     <string name="appearance_overview_skin_caption">当前视觉</string>
@@ -40,12 +40,12 @@
 
     <!-- SettingsAppearanceComponents：皮肤卡 / 沉浸预览组件 -->
     <string name="appearance_mood_preview_caption">背景只参与氛围</string>
-    <string name="appearance_skin_name_paper">纸本</string>
-    <string name="appearance_skin_name_mono">墨白</string>
+    <string name="appearance_skin_name_paper">晨纸</string>
     <string name="appearance_skin_name_midnight">玄夜</string>
+    <string name="appearance_theme_mode_name_system">跟随系统</string>
     <string name="appearance_skin_description_paper">温润米白 + 茶铜</string>
-    <string name="appearance_skin_description_mono">冷灰极简</string>
     <string name="appearance_skin_description_midnight">深色玻璃 + 暖金</string>
+    <string name="appearance_theme_mode_description_system">自动匹配系统明暗外观</string>
     <string name="appearance_immersion_name_atmosphere">氛围</string>
     <string name="appearance_immersion_name_balanced">平衡</string>
     <string name="appearance_immersion_name_focus">专注</string>

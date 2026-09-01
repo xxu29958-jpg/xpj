@@ -76,7 +76,7 @@ data class AppContentStateSpec(
  * - 仅做展示职责：不发起任何业务调用，由调用方决定何时显示。
  *
  * v0.10：进度条改为 [SkeletonScaffold] 包裹的骸屏行，按 [com.ticketbox.ui.design.LocalSkeletonTokens]
- * 渲染主题色板（midnight 用暖金 alpha，paper/mono 用墨灰）。调用方签名不变；若调用方未来升级为
+ * 渲染主题色板（midnight 用暖金 alpha，paper 用墨灰）。调用方签名不变；若调用方未来升级为
  * "接管 isLoading 切换"，可以直接换用 [SkeletonScaffold]。
  */
 @Composable
@@ -304,7 +304,7 @@ private fun AppStateTextBlock(
  *
  * - 卡片底版复用 [AppEmptyStateCard]，与空 / 加载态共享视觉语言（不自创视觉）。
  * - 强调色取 [com.ticketbox.ui.design.StateTokens.danger]（与 [AppStatusBanner] 的 danger
- *   分支同源、三主题 paper/mono/midnight 视差对齐），用 token 不写死色值，三主题自然可读。
+ *   分支同源、渲染主题 paper/midnight 视差对齐），用 token 不写死色值，各主题自然可读。
  * - 仅做展示与回调；何时显示、[onRetry] 触发什么由调用方决定（一般是 VM 的 refresh）。
  */
 @Composable

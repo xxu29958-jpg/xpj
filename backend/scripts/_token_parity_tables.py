@@ -79,7 +79,7 @@ SWIPE_MAPPING: tuple[tuple[str, str, str], ...] = (
     ("--swipe-delete-bg", "--swipe-delete-fg", "delete"),
 )
 
-# ── SkeletonTokens(base/shine × 3 主题)──────────────────────────────────────
+# ── SkeletonTokens(base/shine × 2 主题)──────────────────────────────────────
 # 表项 = (css_var, skeleton_field)。两端都是半透明,按 half-up alpha 折算后比对。
 SKELETON_MAPPING: tuple[tuple[str, str], ...] = (
     ("--skeleton-base-bg", "base"),

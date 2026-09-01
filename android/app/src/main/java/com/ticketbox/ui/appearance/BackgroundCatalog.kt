@@ -44,7 +44,7 @@ object BackgroundCatalog {
             category = BuiltInBackgroundCategory.Minimal,
             description = "冷灰纸面，减少彩色干扰。",
             gradientColors = listOf(0xFFFAFAF8L, 0xFFF1F0EDL, 0xFFDAD9D4L),
-            preferredSkin = AppSkin.Mono,
+            preferredSkin = AppSkin.Paper,
         ),
         BuiltInBackground(
             id = "mono_fog",
@@ -52,7 +52,7 @@ object BackgroundCatalog {
             category = BuiltInBackgroundCategory.Illustration,
             description = "低对比灰雾，适合表格和长列表。",
             gradientColors = listOf(0xFFF7F7F4L, 0xFFE3E2DDL, 0xFFB8B7B3L),
-            preferredSkin = AppSkin.Mono,
+            preferredSkin = AppSkin.Paper,
         ),
         BuiltInBackground(
             id = "midnight",

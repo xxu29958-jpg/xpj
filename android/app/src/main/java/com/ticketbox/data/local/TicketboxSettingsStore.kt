@@ -30,7 +30,7 @@ internal interface LegacySessionProjectionStore {
 interface TicketboxSettingsStore {
     val backgroundSettingsFlow: Flow<BackgroundSettings>
 
-    fun appSkinKey(): String?
+    fun appThemeModeKey(): String?
 
     fun monthlyBudgetCents(): Long?
 
@@ -100,7 +100,7 @@ interface TicketboxSettingsStore {
         saveLastUploadAt(value)
     }
 
-    fun saveAppSkinKey(skinKey: String)
+    fun saveAppThemeModeKey(modeKey: String)
 
     /**
      * 已存储的币种 storage key（如 "CNY"/"USD"）。空表示沿用默认。
@@ -116,7 +116,7 @@ interface TicketboxSettingsStore {
 
     /**
      * Recently committed global-search queries, most-recent-first. A non-secure
-     * local convenience (like [appSkinKey] / budget) — never holds tokens or
+     * local convenience (like [appThemeModeKey] / budget) — never holds tokens or
      * ledger-scoped data, so it survives ledger switches and is cleared only on
      * sign-out via [clear]. Default empty for stores that don't persist it.
      */

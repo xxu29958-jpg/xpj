@@ -28,7 +28,7 @@ internal class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
 
     override fun observeCurrencyCodeKey(): Flow<String?> = currencyCodeFlow
 
-    override fun appSkinKey(): String? = prefs.getString(KEY_APP_SKIN, null)
+    override fun appThemeModeKey(): String? = prefs.getString(KEY_APP_THEME_MODE, null)
 
     override fun currencyCodeKey(): String? = prefs.getString(KEY_CURRENCY_CODE, null)
 
@@ -165,9 +165,9 @@ internal class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
         }
     }
 
-    override fun saveAppSkinKey(skinKey: String) {
+    override fun saveAppThemeModeKey(modeKey: String) {
         prefs.edit {
-            putString(KEY_APP_SKIN, skinKey)
+            putString(KEY_APP_THEME_MODE, modeKey)
         }
     }
 
@@ -182,7 +182,7 @@ internal class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
 
     // Recent global-search queries persist as a newline-joined string (queries
     // are single-line so the delimiter is unambiguous). Non-secure UI sugar,
-    // same as app_skin / currency — not ledger-scoped, wiped only by clear().
+    // same as app_theme_mode / currency — not ledger-scoped, wiped only by clear().
     override fun recentSearches(): List<String> {
         val raw = prefs.getString(KEY_RECENT_SEARCHES, null) ?: return emptyList()
         return raw.split('\n').filter { it.isNotBlank() }
@@ -265,7 +265,7 @@ internal class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
 
     private companion object {
         const val KEY_RECENT_SEARCHES = "recent_searches"
-        const val KEY_APP_SKIN = "app_skin"
+        const val KEY_APP_THEME_MODE = "app_theme_mode"
         const val KEY_CURRENCY_CODE = "currency_code"
         const val KEY_MONTHLY_BUDGET_CENTS = "monthly_budget_cents"
         const val KEY_AVAILABLE_LEDGERS_JSON = "available_ledgers_json"

@@ -100,48 +100,6 @@ private val PaperScheme = run {
     )
 }
 
-private val MonoScheme = run {
-    val v = themeVisualsForSkin(AppSkin.Mono)
-    val s = stateTokensForSkin(AppSkin.Mono)
-    lightColorScheme(
-        primary = v.primary,
-        onPrimary = v.textOnPrimary,
-        primaryContainer = v.brandPrimaryBg,
-        onPrimaryContainer = v.primaryDark,
-        secondary = v.accent,
-        onSecondary = v.textOnPrimary,
-        secondaryContainer = s.neutral.bg,
-        onSecondaryContainer = v.textMuted,
-        tertiary = s.success.fg,
-        onTertiary = v.textOnPrimary,
-        tertiaryContainer = s.success.bg,
-        onTertiaryContainer = s.success.fg,
-        background = v.backgroundBottom,
-        onBackground = v.textDefault,
-        surface = v.solidCard,
-        onSurface = v.textDefault,
-        surfaceVariant = v.surfaceSunken,
-        onSurfaceVariant = v.textMuted,
-        surfaceTint = v.primary,
-        inverseSurface = v.textDefault,
-        inverseOnSurface = v.solidCard,
-        surfaceBright = v.solidCard,
-        surfaceDim = v.backgroundBottom,
-        surfaceContainerLowest = v.solidCard,
-        surfaceContainerLow = v.backgroundTop,
-        surfaceContainer = v.surfaceSunken,
-        surfaceContainerHigh = v.receiptStub.footer,
-        surfaceContainerHighest = v.receiptStub.border,
-        outline = v.textMeta,
-        outlineVariant = v.receiptStub.border,
-        error = s.danger.fg,
-        onError = v.textOnPrimary,
-        errorContainer = s.danger.bg,
-        onErrorContainer = s.danger.fg,
-        scrim = Color.Black,
-    )
-}
-
 private val MidnightScheme = run {
     val v = themeVisualsForSkin(AppSkin.Midnight)
     val s = stateTokensForSkin(AppSkin.Midnight)
@@ -202,7 +160,6 @@ private val TicketboxShapes = Shapes(
 fun colorSchemeForSkin(skin: AppSkin): ColorScheme {
     return when (skin) {
         AppSkin.Paper -> PaperScheme
-        AppSkin.Mono -> MonoScheme
         AppSkin.Midnight -> MidnightScheme
     }
 }
@@ -259,7 +216,7 @@ fun TicketboxTheme(
 /**
  * 由 [SkeletonTokens] 派生 valentinilk shimmer 主题，让骨架扫光真正消费三端 token：
  *
- * - 扫光带改画 tokens.shine 渐变（midnight 暖金、paper/mono 白光），blendMode 用
+ * - 扫光带改画 tokens.shine 渐变（midnight 暖金、paper 白光），blendMode 用
  *   [BlendMode.SrcOver]——库默认的 DstIn 是 alpha 蒙版（骨架大部分时间被压到
  *   25%×base，midnight 6% 底直接被压到不可见），SrcOver 才是"底色常驻 + 光带扫过"。
  * - 节奏改 [SkeletonTokens.shimmerDurationMillis]（1200ms）连续线性扫光，去掉库默认

@@ -36,7 +36,7 @@ import com.valentinilk.shimmer.shimmer
  * 设计取舍：
  * - 不在内部 wrap [shimmer]——shimmer 应该一次包整个骨架区域，
  *   而不是每个 SkeletonBlock 各跑一次动画（会出现不同步抖动）。
- * - 底色默认取 [LocalSkeletonTokens] 的 base（midnight 暖金 alpha、paper/mono 墨灰，
+ * - 底色默认取 [LocalSkeletonTokens] 的 base（midnight 暖金 alpha、paper 墨灰，
  *   与 /web `--skeleton-base-bg` 同源）；扫光带色由主题提供的 LocalShimmerTheme
  *   负责（tokens.shine，见 ui/theme/Theme.kt）。
  */

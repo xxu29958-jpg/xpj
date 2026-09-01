@@ -34,24 +34,6 @@ fun backgroundVisualsForSkin(skin: AppSkin): BackgroundVisuals {
             textureTint = Color(0xFF66716B),
             textureAlpha = 0.04f,
         )
-        AppSkin.Mono -> BackgroundVisuals(
-            baseGradient = listOf(
-                Color(0xFFF4F5F4),
-                Color(0xFFF0F2F1),
-                Color(0xFFECEFED),
-            ),
-            topGlow = Color(0xFFE5EAE7),
-            topGlowAlpha = 0.10f,
-            sideGlow = Color(0xFFD8DEDA),
-            sideGlowAlpha = 0.08f,
-            bottomMist = listOf(
-                Color.Transparent,
-                Color(0xFFE5E9E6).copy(alpha = 0.14f),
-                Color(0xFFD8DEDA).copy(alpha = 0.08f),
-            ),
-            textureTint = Color(0xFF626965),
-            textureAlpha = 0.035f,
-        )
         AppSkin.Midnight -> BackgroundVisuals(
             baseGradient = listOf(
                 Color(0xFF151A17),
