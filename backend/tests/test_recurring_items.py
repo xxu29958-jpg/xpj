@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import uuid4
 
+import pytest
 from api_contract_helpers import insert_confirmed_expense
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
@@ -18,6 +19,14 @@ from app.services.recurring_candidate_confirmation_service import (
 from app.services.recurring_service import _historical_average_amount
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
+
+
+@pytest.fixture(autouse=True)
+def _freeze_recurring_candidate_clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "app.services.insights_service.now_utc",
+        lambda: datetime(2026, 8, 31, 12, 0, tzinfo=UTC),
+    )
 
 
 def test_recurring_history_average_accepts_wide_exact_numerator() -> None:
