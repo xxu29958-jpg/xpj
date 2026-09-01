@@ -16,6 +16,18 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from backend_manager.public_connectivity import (
+    PUBLIC_CONNECTIVITY_STATUS_CODES,
+    ActionState,
+    BoundaryState,
+    ConnectorState,
+    FreshnessState,
+    OriginState,
+    OverallState,
+    OwnershipState,
+    PublicState,
+    ServiceState,
+)
 from backend_manager.version_contract import is_managed_release_version
 from backend_manager.windows_known_folders import DOWNLOADS_FOLDER_ID, known_folder_path
 
@@ -49,6 +61,28 @@ _STARTUP_FAILURE_CODES = frozenset(
     },
 )
 _STARTUP_FAILURE_STAGES = frozenset({"manager_identity", "runtime_discovery"})
+_PUBLIC_CONNECTIVITY_SCHEMA = "ticketbox-public-connectivity-v1"
+_PUBLIC_CONNECTIVITY_VERSION_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,63}\Z")
+_PUBLIC_CONNECTIVITY_TIMESTAMP_PATTERN = re.compile(
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
+    r"(?:\.[0-9]{1,9})?(?:Z|\+00:00)\Z"
+)
+_PUBLIC_CONNECTIVITY_ENUMS = {
+    "overall": frozenset(item.value for item in OverallState),
+    "freshness": frozenset(item.value for item in FreshnessState),
+    "ownership": frozenset(item.value for item in OwnershipState),
+    "service": frozenset(item.value for item in ServiceState),
+    "connector": frozenset(item.value for item in ConnectorState),
+    "origin": frozenset(item.value for item in OriginState),
+    "public": frozenset(item.value for item in PublicState),
+    "boundary": frozenset(item.value for item in BoundaryState),
+    "managed_action": frozenset(item.value for item in ActionState),
+}
+_PUBLIC_CONNECTIVITY_MATCH_FIELDS = (
+    "service_identity_match",
+    "binary_identity_match",
+    "tunnel_identity_match",
+)
 
 
 class DiagnosticExportError(RuntimeError):
@@ -271,6 +305,44 @@ def _manifest_summary(path: Path, spec: _ManifestSpec) -> dict[str, object]:
     return {key: value for key, value in summary.items() if isinstance(value, (int, str))}
 
 
+def _public_connectivity_summary(value: object) -> dict[str, object] | None:
+    if not isinstance(value, Mapping) or value.get("schema") != _PUBLIC_CONNECTIVITY_SCHEMA:
+        return None
+    result: dict[str, object] = {}
+    for key, allowed in _PUBLIC_CONNECTIVITY_ENUMS.items():
+        item = value.get(key)
+        if not isinstance(item, str) or item not in allowed:
+            return None
+        result[key] = item
+    code = value.get("code")
+    if not isinstance(code, str) or code not in PUBLIC_CONNECTIVITY_STATUS_CODES:
+        return None
+    result["code"] = code
+    for key in ("observed_at", "public_checked_at"):
+        item = value.get(key)
+        if item is not None and (
+            not isinstance(item, str) or _PUBLIC_CONNECTIVITY_TIMESTAMP_PATTERN.fullmatch(item) is None
+        ):
+            return None
+        result[key] = item
+    version = value.get("cloudflared_version")
+    if version is not None and (
+        not isinstance(version, str) or _PUBLIC_CONNECTIVITY_VERSION_PATTERN.fullmatch(version) is None
+    ):
+        return None
+    result["cloudflared_version"] = version
+    count = value.get("connection_count")
+    if count is not None and (isinstance(count, bool) or not isinstance(count, int) or not 0 <= count <= 16):
+        return None
+    result["connection_count"] = count
+    for key in _PUBLIC_CONNECTIVITY_MATCH_FIELDS:
+        item = value.get(key)
+        if item is not None and not isinstance(item, bool):
+            return None
+        result[key] = item
+    return result
+
+
 def _runtime_summary(status: Mapping[str, object]) -> dict[str, object]:
     allowed = (
         "runtime_mode",
@@ -282,7 +354,6 @@ def _runtime_summary(status: Mapping[str, object]) -> dict[str, object]:
         "restarts",
         "backend_service_state",
         "database_service_state",
-        "public_endpoint_state",
         "runtime_access_state",
         "owner_state",
         "owner_recovery_channel",
@@ -300,6 +371,9 @@ def _runtime_summary(status: Mapping[str, object]) -> dict[str, object]:
         result["startup_failure_code"] = failure_code
     if failure_stage in _STARTUP_FAILURE_STAGES:
         result["startup_failure_stage"] = failure_stage
+    public_connectivity = _public_connectivity_summary(status.get("public_connectivity"))
+    if public_connectivity is not None:
+        result["public_connectivity"] = public_connectivity
     return result
 
 

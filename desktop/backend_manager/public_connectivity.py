@@ -225,6 +225,7 @@ _SUMMARY: Final[dict[str, tuple[str, str]]] = {
         "刷新本机状态，必要时运行完整公网检查。",
     ),
 }
+PUBLIC_CONNECTIVITY_STATUS_CODES: Final = frozenset(_SUMMARY)
 
 _OWNERSHIP_CODES: Final = {
     OwnershipState.UNCONFIGURED: "public_connectivity_unconfigured",

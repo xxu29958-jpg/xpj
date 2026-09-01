@@ -15,6 +15,54 @@ import pytest
 from backend_manager import diagnostic_bundle
 from backend_manager.diagnostic_bundle import export_diagnostic_bundle
 
+_PUBLIC_DIAGNOSTIC_KEYS = {
+    "overall",
+    "code",
+    "freshness",
+    "observed_at",
+    "public_checked_at",
+    "ownership",
+    "service",
+    "connector",
+    "origin",
+    "public",
+    "boundary",
+    "managed_action",
+    "cloudflared_version",
+    "connection_count",
+    "service_identity_match",
+    "binary_identity_match",
+    "tunnel_identity_match",
+}
+
+
+def _public_connectivity_projection() -> dict[str, object]:
+    return {
+        "schema": "ticketbox-public-connectivity-v1",
+        "overall": "unknown",
+        "code": "external_connector_unmanaged",
+        "freshness": "fresh",
+        "observed_at": "2026-09-01T08:00:00+00:00",
+        "public_checked_at": None,
+        "ownership": "external_unmanaged",
+        "service": "missing",
+        "connector": "healthy",
+        "origin": "unreachable",
+        "public": "unconfigured",
+        "boundary": "unknown",
+        "managed_action": "unavailable",
+        "cloudflared_version": "2026.8.2",
+        "connection_count": 4,
+        "service_identity_match": None,
+        "binary_identity_match": None,
+        "tunnel_identity_match": None,
+        "summary": "safe display only",
+        "next_step": "safe display only",
+        "supported_actions": ["refresh", "full_check", "export_diagnostics"],
+        "detail_rows": [],
+        "in_progress": False,
+    }
+
 
 def _snapshot(files: dict[str, bytes]) -> dict:
     records = [
@@ -82,7 +130,8 @@ def test_bundle_contains_only_allowlisted_runtime_evidence_and_never_overwrites(
         "restarts": 1,
         "backend_service_state": "running",
         "database_service_state": "running",
-        "public_endpoint_state": "protected_unknown",
+        "public_connectivity": _public_connectivity_projection(),
+        "public_endpoint_state": "RETIRED-PUBLIC-ENDPOINT-MARKER",
         "owner_state": "recovery_required",
         "owner_recovery_channel": "managed_host",
         "version": "1.2.0.7",
@@ -113,10 +162,95 @@ def test_bundle_contains_only_allowlisted_runtime_evidence_and_never_overwrites(
     assert payload["runtime"]["owner_state"] == "recovery_required"
     assert payload["runtime"]["startup_failure_code"] == "installed_binding_invalid"
     assert payload["runtime"]["control_error_present"] is False
+    assert set(payload["runtime"]["public_connectivity"]) == _PUBLIC_DIAGNOSTIC_KEYS
+    assert payload["runtime"]["public_connectivity"]["ownership"] == "external_unmanaged"
+    assert "public_endpoint_state" not in payload["runtime"]
     assert payload["privacy"]["contains_tokens"] is False
     assert b"secret.example" not in raw
     assert b"ProgramData" not in raw
     assert b"192.168.1.8" not in raw
+    assert b"RETIRED-PUBLIC-ENDPOINT-MARKER" not in raw
+
+
+def test_public_connectivity_diagnostics_rebuild_a_closed_safe_projection(tmp_path) -> None:
+    projection = {
+        **_public_connectivity_projection(),
+        "url": "https://PUBLIC-URL-MARKER.example",
+        "token": "TOKEN-MARKER",
+        "Authorization": "Bearer AUTHORIZATION-MARKER",
+        "tunnel_id": "11111111-1111-4111-8111-111111111111",
+        "connector_id": "22222222-2222-4222-8222-222222222222",
+        "ImagePath": r"C:\IMAGEPATH-MARKER\cloudflared.exe",
+        "argv": ["--token", "ARGV-MARKER"],
+        "account_name": "ACCOUNT-MARKER",
+        "device_name": "DEVICE-MARKER",
+        "log": ["LOG-MARKER"],
+        "certificate": "CERTIFICATE-MARKER",
+        "absolute_path": r"C:\ABSOLUTE-PATH-MARKER",
+        "detail_rows": [{"label": "secret", "text": "NESTED-DETAIL-MARKER"}],
+    }
+
+    raw, payload = _read_payload(
+        export_diagnostic_bundle(
+            {
+                "public_connectivity": projection,
+                "public_endpoint_state": "RETIRED-SCALAR-MARKER",
+            },
+            output_dir=tmp_path,
+        )
+    )
+
+    public = payload["runtime"]["public_connectivity"]
+    expected = _public_connectivity_projection()
+    assert set(public) == _PUBLIC_DIAGNOSTIC_KEYS
+    assert public == {key: expected[key] for key in _PUBLIC_DIAGNOSTIC_KEYS}
+    assert "public_endpoint_state" not in payload["runtime"]
+    for marker in (
+        b"PUBLIC-URL-MARKER",
+        b"TOKEN-MARKER",
+        b"AUTHORIZATION-MARKER",
+        b"11111111-1111-4111-8111-111111111111",
+        b"22222222-2222-4222-8222-222222222222",
+        b"IMAGEPATH-MARKER",
+        b"ARGV-MARKER",
+        b"ACCOUNT-MARKER",
+        b"DEVICE-MARKER",
+        b"LOG-MARKER",
+        b"CERTIFICATE-MARKER",
+        b"ABSOLUTE-PATH-MARKER",
+        b"NESTED-DETAIL-MARKER",
+        b"RETIRED-SCALAR-MARKER",
+    ):
+        assert marker not in raw
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("schema", "ticketbox-public-connectivity-v2"),
+        ("overall", "ENUM-MARKER"),
+        ("code", "CODE-MARKER"),
+        ("observed_at", r"C:\TIMESTAMP-MARKER"),
+        ("cloudflared_version", "VERSION MARKER"),
+        ("connection_count", True),
+        ("connection_count", 17),
+        ("service_identity_match", "MATCH-MARKER"),
+    ],
+)
+def test_invalid_public_connectivity_projection_is_omitted_fail_closed(
+    tmp_path,
+    field: str,
+    invalid: object,
+) -> None:
+    projection = {**_public_connectivity_projection(), field: invalid}
+
+    raw, payload = _read_payload(
+        export_diagnostic_bundle({"public_connectivity": projection}, output_dir=tmp_path)
+    )
+
+    assert "public_connectivity" not in payload["runtime"]
+    if isinstance(invalid, str):
+        assert invalid.encode() not in raw
 
 
 def test_bundle_publication_does_not_require_windows_hard_links_or_overwrite(
