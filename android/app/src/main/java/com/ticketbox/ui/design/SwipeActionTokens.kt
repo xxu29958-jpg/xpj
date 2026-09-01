@@ -24,11 +24,6 @@ fun swipeActionTokensForSkin(skin: AppSkin): SwipeActionTokens = when (skin) {
         ignore = SwipeAction(Color(0xFF66716B), Color(0xFFFFFFFF), Color(0xFFFFFFFF)),
         delete = SwipeAction(Color(0xFFA83D32), Color(0xFFFFFFFF), Color(0xFFFFFFFF)),
     )
-    AppSkin.Mono -> SwipeActionTokens(
-        confirm = SwipeAction(Color(0xFF315A45), Color(0xFFFFFFFF), Color(0xFFFFFFFF)),
-        ignore = SwipeAction(Color(0xFF626965), Color(0xFFFFFFFF), Color(0xFFFFFFFF)),
-        delete = SwipeAction(Color(0xFF8C3B32), Color(0xFFFFFFFF), Color(0xFFFFFFFF)),
-    )
     AppSkin.Midnight -> SwipeActionTokens(
         confirm = SwipeAction(Color(0xFF2C4B40), Color(0xFFB4E2D2), Color(0xFFB4E2D2)),
         ignore = SwipeAction(Color(0xFF303A35), Color(0xFFAAB5AF), Color(0xFFAAB5AF)),

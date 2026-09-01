@@ -52,6 +52,7 @@ _BROWSER_SECRET = "browser-secret-must-not-reach-backend"
 _RESPONSE_SECRET = "backend-secret-must-not-reach-browser"
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _THEME_SCRIPT = (_REPO_ROOT / "backend" / "app" / "static" / "web" / "desktop" / "theme.js").read_bytes()
+_DESKTOP_BOOT_SCRIPT = (_REPO_ROOT / "backend" / "app" / "static" / "web" / "desktop.js").read_bytes()
 _UI_HTML = _REPO_ROOT / "desktop" / "backend_manager" / "ui.html"
 
 pytestmark = pytest.mark.skipif(
@@ -118,17 +119,28 @@ _THEME_HTML = """<!doctype html>
 <html lang="zh-CN" data-theme="paper">
 <head><meta charset="utf-8"><title>主题桥接</title></head>
 <body>
-  <button id="theme-toggle" type="button">切换主题</button>
+  <div id="theme-control" role="group" aria-label="主题">
+    <button type="button" data-theme-mode="paper">晨纸</button>
+    <button type="button" data-theme-mode="midnight">玄夜</button>
+    <button type="button" data-theme-mode="system">跟随系统</button>
+  </div>
   <script src="/static/web/desktop/theme.js"></script>
+  <script src="/static/web/desktop.js"></script>
   <script src="/static/web/desktop/theme-fixture.js"></script>
 </body>
 </html>
 """
 
+# 钉死平台暗色，使 system mode 的解析在测试机上是确定的；然后走真实控件 wiring：
+# initThemeControl 绑定后点击「跟随系统」。
 _THEME_FIXTURE_SCRIPT = """
-window.TicketboxWeb.THEMES = ["paper", "mono", "midnight"];
-window.TicketboxWeb.initThemeToggle();
-document.getElementById("theme-toggle").click();
+const darkQuery = { matches: true, media: "(prefers-color-scheme: dark)", addEventListener() {}, removeEventListener() {} };
+window.matchMedia = (query) => query === "(prefers-color-scheme: dark)"
+  ? darkQuery
+  : { matches: false, media: query, addEventListener() {}, removeEventListener() {} };
+document.addEventListener("DOMContentLoaded", () => {
+  document.querySelector('[data-theme-mode="system"]').click();
+});
 """
 
 _EDGE_PROBE = """
@@ -151,8 +163,9 @@ _THEME_PROBE = """
   if (theme === "paper" || !theme) return undefined;
   return JSON.stringify({
     theme,
-    storedTheme: localStorage.getItem("ui-theme"),
-    cookie: document.cookie
+    storedTheme: localStorage.getItem("ui-theme-mode"),
+    cookie: document.cookie,
+    systemPressed: document.querySelector('[data-theme-mode="system"]').getAttribute("aria-pressed")
   });
 })()
 """
@@ -216,6 +229,9 @@ class _ConsumerHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/static/web/desktop/theme.js":
             self._send(200, _THEME_SCRIPT, "text/javascript; charset=utf-8")
+            return
+        if self.path == "/static/web/desktop.js":
+            self._send(200, _DESKTOP_BOOT_SCRIPT, "text/javascript; charset=utf-8")
             return
         if self.path == "/static/web/desktop/theme-fixture.js":
             self._send(200, _THEME_FIXTURE_SCRIPT.encode(), "text/javascript; charset=utf-8")
@@ -361,14 +377,16 @@ def test_real_edge_theme_change_stays_in_the_browser(tmp_path: Path) -> None:
         )
 
     assert json.loads(value) == {
-        "theme": "mono",
-        "storedTheme": "mono",
-        "cookie": "ui_theme=mono",
+        "theme": "midnight",
+        "storedTheme": "system",
+        "cookie": "ui_theme=midnight",
+        "systemPressed": "true",
     }
     observed = [(request.method, request.path) for request in consumer.requests]
     assert observed[0] == ("GET", "/web")
-    # The two static fetches race; order between them is not contractual.
+    # The static fetches race; order between them is not contractual.
     assert sorted(observed[1:]) == [
+        ("GET", "/static/web/desktop.js"),
         ("GET", "/static/web/desktop/theme-fixture.js"),
         ("GET", "/static/web/desktop/theme.js"),
     ]

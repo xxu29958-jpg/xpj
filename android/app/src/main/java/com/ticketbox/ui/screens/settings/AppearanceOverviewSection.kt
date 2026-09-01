@@ -8,14 +8,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
-import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.domain.model.AppThemeMode
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.ui.design.AppSpacing
 
 @Composable
 internal fun AppearanceOverviewSection(
-    currentSkin: AppSkin,
+    currentMode: AppThemeMode,
     currentCurrency: CurrencyCode,
     backgroundSettings: BackgroundSettings,
 ) {
@@ -29,7 +29,7 @@ internal fun AppearanceOverviewSection(
                 metrics = listOf(
                     SettingsMetricData(
                         label = stringResource(R.string.appearance_overview_skin_label),
-                        value = stringResource(appSkinNameRes(currentSkin)),
+                        value = stringResource(appThemeModeNameRes(currentMode)),
                         caption = stringResource(R.string.appearance_overview_skin_caption),
                     ),
                     SettingsMetricData(

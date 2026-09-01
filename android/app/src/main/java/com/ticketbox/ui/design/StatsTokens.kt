@@ -47,7 +47,6 @@ val LocalStatsTokens = compositionLocalOf { statsTokensForSkin(AppSkin.Default) 
 
 fun statsTokensForSkin(skin: AppSkin): StatsTokens = when (skin) {
     AppSkin.Paper -> paperStatsTokens()
-    AppSkin.Mono -> monoStatsTokens()
     AppSkin.Midnight -> midnightStatsTokens()
 }
 
@@ -96,33 +95,6 @@ private fun paperStatsTokens(): StatsTokens =
             quietAlpha = 0.62f,
             emphasisAlpha = 0.92f,
             comparison = defaultStatsComparisonChartTokens(guideAlpha = 0.26f, barAlpha = 0.84f),
-        ),
-    )
-
-private fun monoStatsTokens(): StatsTokens =
-    StatsTokens(
-        surface = StatsSurfaceTokens(
-            section = StatsSurfaceStyleTokens(radius = 12.dp, topAlpha = 1f, borderAlpha = 0.86f),
-        ),
-        control = StatsControlTokens(
-            height = 34.dp,
-            borderWidth = 1.dp,
-            horizontalPadding = 12.dp,
-            selectedAlpha = 1f,
-            unselectedAlpha = 1f,
-            borderAlpha = 0.56f,
-        ),
-        chart = StatsChartTokens(
-            overviewHeight = 92.dp,
-            monthlyHeight = 112.dp,
-            recentHeight = 92.dp,
-            minimumRangeLabelWidth = StatsRangeLabelMinimumWidth,
-            distributionHeight = 14.dp,
-            distribution = defaultStatsDistributionTokens(),
-            guideAlpha = 0.30f,
-            quietAlpha = 0.58f,
-            emphasisAlpha = 0.90f,
-            comparison = defaultStatsComparisonChartTokens(guideAlpha = 0.24f, barAlpha = 0.82f),
         ),
     )
 

@@ -107,7 +107,7 @@ templates = Jinja2Templates(
 )
 templates.env.filters["to_iso"] = _datetime_to_iso
 
-_VALID_UI_THEMES = {"paper", "mono", "midnight"}
+_VALID_UI_THEMES = {"paper", "midnight"}
 
 
 def _read_ui_theme(request: Request) -> str:

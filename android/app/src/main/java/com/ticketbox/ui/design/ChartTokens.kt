@@ -60,36 +60,6 @@ fun chartTokensForSkin(skin: AppSkin): ChartTokens {
             overspend = Color(0xFFB65E47),
             empty = Color(0xFFDCE2DD),
         )
-        AppSkin.Mono -> ChartTokens(
-            series = listOf(
-                Color(0xFF202824),
-                Color(0xFF6A746F),
-                Color(0xFF315A45),
-                Color(0xFF8C3B32),
-                Color(0xFF485A5F),
-                Color(0xFF79653B),
-                Color(0xFF655F72),
-                Color(0xFFAAB3AE),
-            ),
-            sequentialFrom = Color(0xFFE5EAE7),
-            sequentialTo = Color(0xFF202824),
-            divergingNegative = Color(0xFF8C3B32),
-            divergingZero = Color(0xFFE8ECE9),
-            divergingPositive = Color(0xFF315A45),
-            axis = Color(0xFFA9B0AC),
-            axisLabel = Color(0xFF626965),
-            grid = Color(0x0F000000),
-            gridEmphasis = Color(0x66202824),
-            tooltipBg = Color(0xFF171B19),
-            tooltipFg = Color(0xFFF7F8F7),
-            tooltipBorder = Color(0xFF353D39),
-            legendFg = Color(0xFF171B19),
-            legendMarker = Color(0xFFF7F8F7),
-            sankeyRibbon = Color(0x33202824),
-            sankeyRibbonEmphasis = Color(0xB3202824),
-            overspend = Color(0xFF8C3B32),
-            empty = Color(0xFFD8DEDA),
-        )
         AppSkin.Midnight -> ChartTokens(
             series = listOf(
                 Color(0xFF69BFA4),

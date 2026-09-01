@@ -352,7 +352,7 @@ private class FakeAppSettingsStore(
 
     fun serverUrl(): String? = null
 
-    override fun appSkinKey(): String? = null
+    override fun appThemeModeKey(): String? = null
 
     override fun monthlyBudgetCents(): Long? = null
 
@@ -396,7 +396,7 @@ private class FakeAppSettingsStore(
 
     override fun saveLastUploadAt(value: String) = Unit
 
-    override fun saveAppSkinKey(skinKey: String) = Unit
+    override fun saveAppThemeModeKey(modeKey: String) = Unit
 
     override fun currencyCodeKey(): String? = null
 

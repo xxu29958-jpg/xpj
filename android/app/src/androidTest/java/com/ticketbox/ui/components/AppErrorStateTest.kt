@@ -14,7 +14,7 @@ import org.junit.Test
  * 审计 8.4: AppErrorState is the unified failure surface (说明 + 「重试」) — distinct
  * from the loading / empty states it visually mirrors. These pin (a) title, body and
  * the 重试 button render, and (b) tapping 重试 fires onRetry. It draws the danger
- * StateTone so it stays readable across paper / mono / midnight; the per-skin color
+ * StateTone so it stays readable across paper / midnight; the per-skin color
  * triple itself is pinned in AppStatusBannerTest.
  *
  * Lives in androidTest (Compose render assertions need the device runtime); does not

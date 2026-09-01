@@ -86,7 +86,7 @@ def _require_local(request: Request) -> None:
 LocalOnly = Depends(_require_local)
 
 
-_VALID_UI_THEMES = {"paper", "mono", "midnight"}
+_VALID_UI_THEMES = {"paper", "midnight"}
 
 
 def _read_ui_theme(request: Request) -> str:

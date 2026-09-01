@@ -362,6 +362,36 @@ a {
     color: var(--text-default);
 }
 
+/* 主题三态分段控件（晨纸 / 玄夜 / 跟随系统）；选中态由 aria-pressed 表达。 */
+.theme-control {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--border-input);
+    border-radius: var(--radius-sm);
+    background: var(--surface-card);
+    overflow: hidden;
+}
+
+.theme-choice {
+    min-height: var(--space-9);
+    padding: var(--space-2) var(--space-3);
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: var(--type-caption-size);
+}
+
+.theme-choice:hover {
+    color: var(--text-default);
+}
+
+.theme-choice[aria-pressed="true"] {
+    background: var(--brand-primary-bg);
+    color: var(--brand-primary-strong);
+    font-weight: var(--type-meta-weight);
+}
+
 .month-picker {
     display: inline-flex;
     flex: 0 0 auto;

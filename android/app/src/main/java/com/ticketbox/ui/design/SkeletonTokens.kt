@@ -27,10 +27,6 @@ fun skeletonTokensForSkin(skin: AppSkin): SkeletonTokens = when (skin) {
         base = Color(0x1417201C),
         shine = Color(0x33FFFFFF),
     )
-    AppSkin.Mono -> SkeletonTokens(
-        base = Color(0x14171B19),
-        shine = Color(0x33FFFFFF),
-    )
     AppSkin.Midnight -> SkeletonTokens(
         base = Color(0x1469BFA4),
         shine = Color(0x2469BFA4),

@@ -76,14 +76,14 @@ internal class FakeTicketboxSettingsStore(
     private var lastUploadAt: String? = null
     private var monthlyBudgetCents: Long? = null
     private var notificationPreferences: NotificationPreferences = NotificationPreferences()
-    private var appSkinKey: String? = null
+    private var appThemeModeKey: String? = null
     var onSaveIdentity: (() -> Unit)? = null
     var backgroundWriteFailure: Throwable? = null
     var sessionProjectionWriteFailure: Throwable? = null
 
     fun serverUrl(): String? = serverUrl
 
-    override fun appSkinKey(): String? = appSkinKey
+    override fun appThemeModeKey(): String? = appThemeModeKey
 
     override fun monthlyBudgetCents(): Long? = monthlyBudgetCents
 
@@ -208,8 +208,8 @@ internal class FakeTicketboxSettingsStore(
         lastUploadAt = value
     }
 
-    override fun saveAppSkinKey(skinKey: String) {
-        appSkinKey = skinKey
+    override fun saveAppThemeModeKey(modeKey: String) {
+        appThemeModeKey = modeKey
     }
 
     override fun currencyCodeKey(): String? = null

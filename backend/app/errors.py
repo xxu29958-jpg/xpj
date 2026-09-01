@@ -273,7 +273,7 @@ def _request_id(request: Request) -> str | None:
 # ErrorResponse decoder must never receive HTML).
 
 _HTML_ERROR_PREFIXES = ("/web", "/owner")
-_VALID_UI_THEMES = frozenset({"paper", "mono", "midnight"})
+_VALID_UI_THEMES = frozenset({"paper", "midnight"})
 
 
 def _wants_html_error_page(request: Request) -> bool:
@@ -327,7 +327,7 @@ def _error_page_copy(status_code: int) -> tuple[str, str]:
 def html_error_response(request: Request, status_code: int) -> HTMLResponse:
     """Render the minimal browser error page for /web and /owner.
 
-    Self-contained: links the shared design tokens so all three themes apply,
+    Self-contained: links the shared design tokens so both themes apply,
     carries ``data-theme`` from the ui_theme cookie (paper default), and shows
     the request_id in small text so a screenshot is actionable (§12). No body
     field exposes internals (§4 / §10).
@@ -351,7 +351,7 @@ def html_error_response(request: Request, status_code: int) -> HTMLResponse:
         '<link rel="stylesheet" href="/static/shared/tokens.css">'
         "<style>"
         # Consume the real shared tokens (--surface-app / --text-* / --brand-* /
-        # --radius-*) so paper/mono/midnight all theme correctly via data-theme;
+        # --radius-*) so paper/midnight both theme correctly via data-theme;
         # literal fallbacks mirror the paper palette if a token is ever absent.
         # Font family stays a local system stack (tokens.css keeps font-family per-end).
         "body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;"

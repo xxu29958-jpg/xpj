@@ -697,7 +697,7 @@ internal class LedgerFakeSettingsStore : TicketboxSettingsStore {
     var capturedRole: String? = null
     var capturedBoundAt: String? = null
     fun serverUrl(): String? = serverUrl
-    override fun appSkinKey(): String? = null
+    override fun appThemeModeKey(): String? = null
     override fun monthlyBudgetCents(): Long? = null
     override fun saveMonthlyBudgetCents(amountCents: Long?) = Unit
     override fun lastConfirmedSyncAt(): String? = null
@@ -729,7 +729,7 @@ internal class LedgerFakeSettingsStore : TicketboxSettingsStore {
     override fun clearLedgerScopedRuntimeState() = Unit
     override fun lastUploadAt(): String? = null
     override fun saveLastUploadAt(value: String) = Unit
-    override fun saveAppSkinKey(skinKey: String) = Unit
+    override fun saveAppThemeModeKey(modeKey: String) = Unit
     override fun currencyCodeKey(): String? = null
     override fun saveCurrencyCodeKey(currencyKey: String) = Unit
     override fun observeCurrencyCodeKey(): Flow<String?> = MutableStateFlow(null)

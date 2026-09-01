@@ -72,6 +72,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.domain.model.AppThemeMode
 import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.CategoryRule
@@ -180,21 +181,39 @@ internal fun ThemeMoodPreview(
     }
 }
 
-@Composable
-internal fun SkinOptionCard(
-    modifier: Modifier = Modifier,
-    skin: AppSkin,
+internal data class SkinOptionCardPalette(
+    val container: Color,
+    val border: Color,
+    val title: Color,
+    val description: Color,
+)
+
+internal fun skinOptionCardPalette(
+    scheme: ColorScheme,
+    visuals: ThemeVisuals,
     selected: Boolean,
-    onClick: () -> Unit,
-) {
-    val scheme = colorSchemeForSkin(skin)
-    val visuals = themeVisualsForSkin(skin)
-    val containerColor = if (selected) {
+): SkinOptionCardPalette = SkinOptionCardPalette(
+    container = if (selected) {
         visuals.glassTint.copy(alpha = 0.86f)
     } else {
         visuals.solidCard.copy(alpha = 0.94f)
-    }
-    val borderColor = if (selected) visuals.primary else Color.White.copy(alpha = 0.58f)
+    },
+    border = if (selected) visuals.primary else Color.White.copy(alpha = 0.58f),
+    title = scheme.onSurface,
+    description = scheme.onSurfaceVariant,
+)
+
+@Composable
+internal fun SkinOptionCard(
+    modifier: Modifier = Modifier,
+    mode: AppThemeMode,
+    previewSkin: AppSkin,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val scheme = colorSchemeForSkin(previewSkin)
+    val visuals = themeVisualsForSkin(previewSkin)
+    val palette = skinOptionCardPalette(scheme, visuals, selected)
     val cardShape = RoundedCornerShape(AppRadius.large)
 
     Box(
@@ -208,8 +227,8 @@ internal fun SkinOptionCard(
                 spotColor = visuals.shadowTint.copy(alpha = if (selected) 0.14f else 0.06f),
             )
             .clip(cardShape)
-            .background(containerColor)
-            .border(width = 1.dp, color = borderColor, shape = cardShape)
+            .background(palette.container)
+            .border(width = 1.dp, color = palette.border, shape = cardShape)
             .clickable(onClick = onClick),
     ) {
         Column(
@@ -218,7 +237,7 @@ internal fun SkinOptionCard(
                 .padding(AppSpacing.compactPadding),
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
-            SkinPreview(skin = skin, scheme = scheme, visuals = visuals)
+            SkinPreview(skin = previewSkin, scheme = scheme, visuals = visuals)
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -226,19 +245,20 @@ internal fun SkinOptionCard(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = stringResource(appSkinNameRes(skin)),
+                        text = stringResource(appThemeModeNameRes(mode)),
+                        color = palette.title,
                         style = MaterialTheme.typography.titleSmall,
                         maxLines = 1,
                     )
                     if (selected) {
                         SkinPill(text = stringResource(R.string.appearance_skin_pill_current), scheme = scheme, visuals = visuals, emphasized = true)
-                    } else if (skin == AppSkin.Paper) {
+                    } else if (mode == AppThemeMode.Paper) {
                         SkinPill(text = stringResource(R.string.appearance_skin_pill_recommended), scheme = scheme, visuals = visuals, emphasized = false)
                     }
                 }
                 Text(
-                    text = stringResource(appSkinDescriptionRes(skin)),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = stringResource(appThemeModeDescriptionRes(mode)),
+                    color = palette.description,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

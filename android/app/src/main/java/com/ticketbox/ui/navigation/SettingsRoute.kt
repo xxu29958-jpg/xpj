@@ -6,14 +6,16 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.BuildConfig
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.domain.model.AppThemeMode
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.viewmodel.AppearanceViewModel
 import com.ticketbox.viewmodel.SettingsViewModel
 
 internal data class SettingsPreferenceControls(
     val currentSkin: AppSkin,
+    val currentMode: AppThemeMode,
     val currentCurrency: CurrencyCode,
-    val onSkinChange: (AppSkin) -> Unit,
+    val onThemeModeChange: (AppThemeMode) -> Unit,
     val onCurrencyChange: (CurrencyCode) -> Unit,
 )
 
@@ -41,6 +43,7 @@ internal fun SettingsRoute(
         ),
         chromeState = SettingsDestinationChromeState(
             currentSkin = preferenceControls.currentSkin,
+            currentMode = preferenceControls.currentMode,
             currentCurrency = preferenceControls.currentCurrency,
             showAdvancedTools = BuildConfig.SHOW_ADVANCED_TOOLS,
         ),
@@ -52,7 +55,7 @@ internal fun SettingsRoute(
             onSync = settingsViewModel::sync,
             onClearCache = settingsViewModel::clearLocalCache,
             onSaveNotificationPreferences = settingsViewModel::saveNotificationPreferences,
-            onSkinChange = preferenceControls.onSkinChange,
+            onThemeModeChange = preferenceControls.onThemeModeChange,
             onCurrencyChange = preferenceControls.onCurrencyChange,
             onApplyBackgroundSettings = appearanceViewModel::applyBackgroundSettings,
             onClearBackgroundImage = appearanceViewModel::clearBackgroundImage,

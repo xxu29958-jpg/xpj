@@ -8,7 +8,7 @@ import kotlin.test.assertEquals
 
 /**
  * 钉死 MascotPalette 与 brief §7.1 的逐槽位映射:换源/串线(比如把腮红接到
- * primary)直接翻红。跑满三主题,保证映射对 skin 是纯透传、不藏主题分支。
+ * primary)直接翻红。跑满全部渲染主题,保证映射对 skin 是纯透传、不藏主题分支。
  */
 class MascotPaletteTest {
 

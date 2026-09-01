@@ -14718,13 +14718,13 @@ SPLcom/ticketbox/data/local/ExpenseDao_Impl$Companion;->getRequiredConverters()L
 Lcom/ticketbox/data/local/LocalSettingsStore;
 SPLcom/ticketbox/data/local/LocalSettingsStore;-><clinit>()V
 SPLcom/ticketbox/data/local/LocalSettingsStore;-><init>(Landroid/content/Context;)V
-SPLcom/ticketbox/data/local/LocalSettingsStore;->appSkinKey()Ljava/lang/String;
+SPLcom/ticketbox/data/local/LocalSettingsStore;->appThemeModeKey()Ljava/lang/String;
 SPLcom/ticketbox/data/local/LocalSettingsStore;->currencyCodeKey()Ljava/lang/String;
 SPLcom/ticketbox/data/local/LocalSettingsStore;->getBackgroundSettingsFlow()Lkotlinx/coroutines/flow/Flow;
 SPLcom/ticketbox/data/local/LocalSettingsStore;->isBound()Z
 SPLcom/ticketbox/data/local/LocalSettingsStore;->observeActiveLedgerId()Lkotlinx/coroutines/flow/Flow;
 SPLcom/ticketbox/data/local/LocalSettingsStore;->observeCurrencyCodeKey()Lkotlinx/coroutines/flow/Flow;
-SPLcom/ticketbox/data/local/LocalSettingsStore;->saveAppSkinKey(Ljava/lang/String;)V
+SPLcom/ticketbox/data/local/LocalSettingsStore;->saveAppThemeModeKey(Ljava/lang/String;)V
 SPLcom/ticketbox/data/local/LocalSettingsStore;->serverUrl()Ljava/lang/String;
 Lcom/ticketbox/data/local/LocalSettingsStore$Companion;
 SPLcom/ticketbox/data/local/LocalSettingsStore$Companion;-><init>()V

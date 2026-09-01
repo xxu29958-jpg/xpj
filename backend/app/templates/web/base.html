@@ -212,13 +212,11 @@
       {% if show_month_picker %}
         {% include "_month_picker.html" %}
       {% endif %}
-      <button id="theme-toggle"
-              class="topbar-action"
-              type="button"
-              aria-label="切换主题"
-              title="切换主题（纸本 / 墨白 / 玄夜）">
-        主题
-      </button>
+      <div id="theme-control" class="theme-control" role="group" aria-label="主题">
+        <button type="button" class="theme-choice" data-theme-mode="paper" aria-pressed="false">晨纸</button>
+        <button type="button" class="theme-choice" data-theme-mode="midnight" aria-pressed="false">玄夜</button>
+        <button type="button" class="theme-choice" data-theme-mode="system" aria-pressed="false">跟随系统</button>
+      </div>
       {% include "_ledger_switcher.html" %}
     </header>
     <main class="content" id="main-content" tabindex="-1" data-page-level="{{ _page_level }}">

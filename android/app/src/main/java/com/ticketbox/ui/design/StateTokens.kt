@@ -29,13 +29,6 @@ fun stateTokensForSkin(skin: AppSkin): StateTokens {
             info = StateTone(Color(0xFFE8EFF0), Color(0xFF49656B), Color(0xFFCFDDE0)),
             neutral = StateTone(Color(0xFFEDF1EE), Color(0xFF66716B), Color(0xFFDCE2DD)),
         )
-        AppSkin.Mono -> StateTokens(
-            success = StateTone(Color(0xFFE3EBE6), Color(0xFF315A45), Color(0xFFC6D5CB)),
-            warn = StateTone(Color(0xFFF0E9DC), Color(0xFF6D5729), Color(0xFFDDD0B9)),
-            danger = StateTone(Color(0xFFF1E2DF), Color(0xFF8C3B32), Color(0xFFDEC2BC)),
-            info = StateTone(Color(0xFFE5EAEB), Color(0xFF485A5F), Color(0xFFCBD4D6)),
-            neutral = StateTone(Color(0xFFE8ECE9), Color(0xFF626965), Color(0xFFD8DEDA)),
-        )
         AppSkin.Midnight -> StateTokens(
             success = StateTone(Color(0xFF1C332B), Color(0xFF77C3A9), Color(0xFF2C4B40)),
             warn = StateTone(Color(0xFF332B20), Color(0xFFE3B36C), Color(0xFF4A3D2B)),

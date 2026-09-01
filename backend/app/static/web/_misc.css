@@ -61,7 +61,7 @@
  * .form-row, and .filter-tab. This layer overrides those classes after
  * web.css loads so budgets, goals, categories, rules, merchants, recurring,
  * import, stats, data-quality, dashboard cards, uncategorized, and edit pages
- * follow the paper / mono / midnight token system without template rewrites.
+ * follow the paper / midnight token system without template rewrites.
  * -------------------------------------------------------------------------- */
 
 /* h1 页头标题已收口到 _shell.css 的 .page-title / .page-title--compact / .page-title-sub

@@ -5,8 +5,6 @@
   const app = window.TicketboxWeb = window.TicketboxWeb || {};
   const UNKNOWN_MONEY_TEXT = "金额不可用";
 
-  app.THEMES = ["paper", "mono", "midnight"];
-
   app.escapeHtml = function escapeHtml(value) {
     return String(value == null ? "" : value)
       .replace(/&/g, "&amp;")

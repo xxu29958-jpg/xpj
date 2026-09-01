@@ -317,7 +317,7 @@ form.inline { display: inline; }
 
 /* ───── A11y: 键盘焦点环 ─────
  * 仅 :focus-visible 触发，鼠标点击不显示；颜色由 shared/tokens.css 的
- * --brand-focus-ring 提供，自动跟随 paper / mono / midnight。
+ * --brand-focus-ring 提供，自动跟随 paper / midnight。
  */
 .skip-link {
     position: fixed;
