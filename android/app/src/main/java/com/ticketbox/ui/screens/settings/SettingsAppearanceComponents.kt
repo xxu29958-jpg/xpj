@@ -181,6 +181,28 @@ internal fun ThemeMoodPreview(
     }
 }
 
+internal data class SkinOptionCardPalette(
+    val container: Color,
+    val border: Color,
+    val title: Color,
+    val description: Color,
+)
+
+internal fun skinOptionCardPalette(
+    scheme: ColorScheme,
+    visuals: ThemeVisuals,
+    selected: Boolean,
+): SkinOptionCardPalette = SkinOptionCardPalette(
+    container = if (selected) {
+        visuals.glassTint.copy(alpha = 0.86f)
+    } else {
+        visuals.solidCard.copy(alpha = 0.94f)
+    },
+    border = if (selected) visuals.primary else Color.White.copy(alpha = 0.58f),
+    title = scheme.onSurface,
+    description = scheme.onSurfaceVariant,
+)
+
 @Composable
 internal fun SkinOptionCard(
     modifier: Modifier = Modifier,
@@ -191,12 +213,7 @@ internal fun SkinOptionCard(
 ) {
     val scheme = colorSchemeForSkin(previewSkin)
     val visuals = themeVisualsForSkin(previewSkin)
-    val containerColor = if (selected) {
-        visuals.glassTint.copy(alpha = 0.86f)
-    } else {
-        visuals.solidCard.copy(alpha = 0.94f)
-    }
-    val borderColor = if (selected) visuals.primary else Color.White.copy(alpha = 0.58f)
+    val palette = skinOptionCardPalette(scheme, visuals, selected)
     val cardShape = RoundedCornerShape(AppRadius.large)
 
     Box(
@@ -210,8 +227,8 @@ internal fun SkinOptionCard(
                 spotColor = visuals.shadowTint.copy(alpha = if (selected) 0.14f else 0.06f),
             )
             .clip(cardShape)
-            .background(containerColor)
-            .border(width = 1.dp, color = borderColor, shape = cardShape)
+            .background(palette.container)
+            .border(width = 1.dp, color = palette.border, shape = cardShape)
             .clickable(onClick = onClick),
     ) {
         Column(
@@ -229,6 +246,7 @@ internal fun SkinOptionCard(
                 ) {
                     Text(
                         text = stringResource(appThemeModeNameRes(mode)),
+                        color = palette.title,
                         style = MaterialTheme.typography.titleSmall,
                         maxLines = 1,
                     )
@@ -240,7 +258,7 @@ internal fun SkinOptionCard(
                 }
                 Text(
                     text = stringResource(appThemeModeDescriptionRes(mode)),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = palette.description,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
