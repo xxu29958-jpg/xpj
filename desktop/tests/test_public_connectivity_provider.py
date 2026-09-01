@@ -155,6 +155,35 @@ def test_snapshot_is_cache_only_and_initially_stale_unknown() -> None:
     assert calls == []
 
 
+def test_manager_restart_does_not_carry_a_prior_healthy_cache() -> None:
+    def new_provider() -> PublicConnectivityProvider:
+        return PublicConnectivityProvider(
+            context_loader=lambda full: _context(full, session=_session()),
+            cloudflared_probe=lambda _expectation: _cloud(
+                ownership=OwnershipState.MANAGED,
+                service=ServiceState.RUNNING,
+            ),
+            public_endpoint_probe=lambda _context: _public(
+                PublicState.AUTHENTICATED_REACHABLE,
+            ),
+            executor=_InlineExecutor(),
+            utcnow=_Clock().utcnow,
+        )
+
+    prior_process = new_provider()
+    prior_process.request_refresh(full=True)
+    assert prior_process.snapshot().overall is OverallState.HEALTHY
+    prior_process.shutdown()
+
+    restarted_process = new_provider()
+    restarted = restarted_process.snapshot()
+
+    assert restarted.overall is OverallState.UNKNOWN
+    assert restarted.freshness is FreshnessState.STALE
+    assert restarted.observed_at is None
+    restarted_process.shutdown()
+
+
 def test_local_refresh_maps_probe_axes_without_loading_or_checking_public_session() -> None:
     context_calls: list[bool] = []
     public_calls: list[object] = []
