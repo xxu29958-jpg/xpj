@@ -48,7 +48,6 @@ from app.services.debt_service import repayment_draft_response
 from app.services.expense_response_service import (
     expense_raw_text_by_id,
     expense_to_response,
-    expenses_to_responses,
 )
 from app.services.expense_review_command_service import confirm_expense_submission
 from app.services.expense_service import (
@@ -158,7 +157,7 @@ def get_confirmed_expenses(
         timezone_name=timezone,
     )
     return PaginatedExpensesResponse(
-        items=expenses_to_responses(db, tenant_id=auth.tenant_id, expenses=items),
+        items=items,
         page=page,
         page_size=page_size,
         total=total,

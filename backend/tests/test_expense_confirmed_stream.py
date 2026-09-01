@@ -110,8 +110,11 @@ def test_offset_stream_filtering_uses_its_date_category_and_root_tags(
     assert entry["kind"] == "refund"
     assert entry["stream_date"] == "2026-09-03"
     assert entry["stream_amount_cents"] == -300
+    assert entry["root_expense_id"] == expense["id"]
     assert entry["root_expense_public_id"] == expense["public_id"]
     assert entry["root_merchant_label"] == "夏日酒店"
+    assert entry["home_currency_code"] == expense["home_currency_code"]
+    assert entry["original_currency_code"] == expense["original_currency_code"]
     assert _stream(client, identity, month="2026-09", category="旅游", tag="旅行")["total"] == 0
 
     august = _stream(client, identity, month="2026-08", category="旅游", tag="旅行")

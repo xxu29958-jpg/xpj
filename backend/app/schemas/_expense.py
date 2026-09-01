@@ -54,7 +54,6 @@ __all__ = [
     "ExpenseUpdateRequest",
     "NotificationDraftCreateRequest",
     "OcrRetryResponse",
-    "PaginatedExpensesResponse",
     "UploadResponse",
 ]
 
@@ -464,13 +463,6 @@ class ExpenseSplitsResponse(BaseModel):
     # chained client reuse the fresh token without a second GET.
     row_version: int
     splits: list[ExpenseSplitResponse]
-
-
-class PaginatedExpensesResponse(BaseModel):
-    items: list[ExpenseResponse]
-    page: int
-    page_size: int
-    total: int
 
 
 class OcrRetryResponse(BaseModel):

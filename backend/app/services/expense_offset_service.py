@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -18,7 +17,6 @@ from app.models import (
 )
 from app.schemas import (
     ExpenseFactBundleResponse,
-    ExpenseFinancialSummary,
     ExpenseOffsetCreateRequest,
     ExpenseOffsetResponse,
     ExpenseOffsetRevisionResponse,
@@ -30,13 +28,13 @@ from app.services.bill_split_service import (
 from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.expense_offset_money import (
     OffsetMoney,
-    gross_original_minor,
     resolve_offset_money,
 )
 from app.services.expense_offset_relationship_projection import (
     relationship_impacts,
     source_relationship_reason,
 )
+from app.services.expense_offset_summary import expense_financial_summary
 from app.services.expense_response_service import expense_to_response
 from app.services.expense_service import get_expense
 from app.services.idempotency import claim_idempotent_request, mark_idempotency_succeeded
@@ -97,48 +95,6 @@ def _active_offsets(
     return list(db.scalars(statement))
 
 
-def _financial_summary(
-    expense: Expense,
-    offsets: list[ExpenseOffsetFact],
-) -> ExpenseFinancialSummary:
-    gross_original = gross_original_minor(expense)
-    gross_home = int(expense.amount_cents or 0)
-    reversal = next((offset for offset in offsets if offset.kind == "reversal"), None)
-    refunds = [offset for offset in offsets if offset.kind != "reversal"]
-    refunded_original = sum(offset.original_amount_minor for offset in refunds)
-    remaining_original = max(gross_original - refunded_original, 0)
-
-    if reversal is not None:
-        remaining_original = 0
-        net_home = 0
-        status = "reversed"
-    else:
-        net_home = gross_home - sum(offset.amount_cents for offset in refunds)
-        if refunded_original == 0:
-            status = "confirmed"
-        elif remaining_original == 0:
-            status = "fully_refunded"
-        else:
-            status = "partially_refunded"
-
-    baseline_remaining_home = 0
-    if gross_original and reversal is None:
-        baseline_remaining_home = int(
-            (Decimal(gross_home) * Decimal(remaining_original) / Decimal(gross_original)).quantize(
-                Decimal("1"), rounding=ROUND_HALF_UP
-            )
-        )
-    return ExpenseFinancialSummary(
-        gross_original_minor=gross_original,
-        gross_home_amount_cents=gross_home,
-        active_refunded_original_minor=refunded_original,
-        remaining_refundable_original_minor=remaining_original,
-        lineage_home_net_cents=net_home,
-        fx_difference_cents=net_home - baseline_remaining_home,
-        status=status,
-    )
-
-
 def _revision_to_response(
     db: Session,
     revision: ExpenseOffsetRevision,
@@ -189,7 +145,7 @@ def expense_fact_bundle(
             .limit(20)
         )
     )
-    summary = _financial_summary(expense, offsets)
+    summary = expense_financial_summary(expense, offsets)
     return ExpenseFactBundleResponse(
         root=expense_to_response(db, tenant_id=tenant_id, expense=expense),
         financial_summary=summary,

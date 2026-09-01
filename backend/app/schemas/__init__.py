@@ -150,7 +150,6 @@ from app.schemas._expense import (
     ExpenseUpdateRequest,
     NotificationDraftCreateRequest,
     OcrRetryResponse,
-    PaginatedExpensesResponse,
     PendingCategorySuggestionResponse,
     PendingDuplicateCandidateResponse,
     UploadResponse,
@@ -164,6 +163,13 @@ from app.schemas._expense_offset import (
     ExpenseOffsetRevisionResponse,
     ExpenseOffsetVoidRequest,
     ExpenseRelationshipImpacts,
+)
+from app.schemas._expense_stream import (
+    ConfirmedExpenseStreamEntry,
+    ConfirmedExpenseStreamItem,
+    ConfirmedOffsetStreamEntry,
+    ExpenseLineageStatus,
+    PaginatedExpensesResponse,
 )
 from app.schemas._expense_revision import (
     ConfirmedExpenseBatchUpdateRequest,
@@ -360,6 +366,9 @@ __all__ = [
     "CategoryStatsResponse",
     "ConfirmedExpenseBatchUpdateRequest",
     "ConfirmedExpenseBatchUpdateResponse",
+    "ConfirmedExpenseStreamEntry",
+    "ConfirmedExpenseStreamItem",
+    "ConfirmedOffsetStreamEntry",
     "CsvImportApplyRequest",
     "CsvImportApplyResponse",
     "CsvImportBatchResponse",
@@ -404,6 +413,7 @@ __all__ = [
     "ExpenseItemRequest",
     "ExpenseItemResponse",
     "ExpenseItemsResponse",
+    "ExpenseLineageStatus",
     "ExpenseManualCreateRequest",
     "ExpenseMarkNotDuplicateRequest",
     "ExpenseOcrRetryRequest",
