@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -132,7 +134,7 @@ def _bump_expense_root(
     db: Session,
     *,
     expense: Expense,
-    now,
+    now: datetime,
 ) -> None:
     claimed = claim_row_with_token(
         db,
@@ -161,7 +163,7 @@ def _append_revision(
     actor_device_public_id: str | None,
     actor_device_name: str | None,
     idempotency_key: str,
-    created_at,
+    created_at: datetime,
 ) -> None:
     db.add(
         ExpenseOffsetRevision(
@@ -183,6 +185,80 @@ def _append_revision(
         )
     )
     db.flush()
+
+
+def _persist_offset_update(
+    db: Session,
+    *,
+    expense: Expense,
+    offset: ExpenseOffsetFact,
+    expected_row_version: int,
+    set_values: dict[str, object],
+    now: datetime,
+) -> ExpenseOffsetFact:
+    claimed = claim_row_with_token(
+        db,
+        ExpenseOffsetFact,
+        pk_id=offset.id,
+        tenant_id=offset.tenant_id,
+        expected_row_version=expected_row_version,
+        set_values=set_values,
+        extra_where=(ExpenseOffsetFact.status == "active",),
+        synchronize_session=False,
+    )
+    if claimed != 1:
+        db.rollback()
+        raise AppError("state_conflict", status_code=409)
+    _bump_expense_root(db, expense=expense, now=now)
+    db.expire_all()
+    updated = db.scalar(
+        select(ExpenseOffsetFact)
+        .where(ExpenseOffsetFact.tenant_id == offset.tenant_id)
+        .where(ExpenseOffsetFact.id == offset.id)
+    )
+    if updated is None:
+        raise AppError("server_error", status_code=500)
+    return updated
+
+
+def _complete_lifecycle_command(
+    db: Session,
+    *,
+    claim: ApiIdempotencyKey,
+    offset: ExpenseOffsetFact,
+    before: dict[str, object],
+    change_kind: str,
+    reason: str,
+    previous_version: int,
+    actor_account_id: int,
+    actor_device_public_id: str | None,
+    actor_device_name: str | None,
+    idempotency_key: str,
+    created_at: datetime,
+) -> ExpenseFactBundleResponse:
+    _append_revision(
+        db,
+        offset=offset,
+        before=before,
+        change_kind=change_kind,
+        reason=reason,
+        previous_version=previous_version,
+        actor_account_id=actor_account_id,
+        actor_device_public_id=actor_device_public_id,
+        actor_device_name=actor_device_name,
+        idempotency_key=idempotency_key,
+        created_at=created_at,
+    )
+    result = expense_fact_bundle(db, tenant_id=offset.tenant_id, expense_id=offset.expense_id)
+    mark_idempotency_succeeded(
+        db,
+        claim,
+        resource_type="expense_offset",
+        resource_id=offset.public_id,
+        response_body=result.model_dump(mode="json"),
+    )
+    db.commit()
+    return result
 
 
 def correct_expense_offset(
@@ -229,11 +305,10 @@ def correct_expense_offset(
     before = _offset_snapshot(offset)
     previous_version = offset.row_version
     now = now_utc()
-    claimed_offset = claim_row_with_token(
+    corrected = _persist_offset_update(
         db,
-        ExpenseOffsetFact,
-        pk_id=offset.id,
-        tenant_id=tenant_id,
+        expense=expense,
+        offset=offset,
         expected_row_version=payload.expected_row_version,
         set_values={
             "original_amount_minor": money.original_amount_minor,
@@ -247,24 +322,11 @@ def correct_expense_offset(
             "fact_revision": ExpenseOffsetFact.fact_revision + 1,
             "updated_at": now,
         },
-        extra_where=(ExpenseOffsetFact.status == "active",),
-        synchronize_session=False,
+        now=now,
     )
-    if claimed_offset != 1:
-        db.rollback()
-        raise AppError("state_conflict", status_code=409)
-    _bump_expense_root(db, expense=expense, now=now)
-
-    db.expire_all()
-    corrected = db.scalar(
-        select(ExpenseOffsetFact)
-        .where(ExpenseOffsetFact.tenant_id == tenant_id)
-        .where(ExpenseOffsetFact.id == offset.id)
-    )
-    if corrected is None:
-        raise AppError("server_error", status_code=500)
-    _append_revision(
+    return _complete_lifecycle_command(
         db,
+        claim=claim_or_replay,
         offset=corrected,
         before=before,
         change_kind="correction",
@@ -276,16 +338,6 @@ def correct_expense_offset(
         idempotency_key=idempotency_key,
         created_at=now,
     )
-    result = expense_fact_bundle(db, tenant_id=tenant_id, expense_id=expense_id)
-    mark_idempotency_succeeded(
-        db,
-        claim_or_replay,
-        resource_type="expense_offset",
-        resource_id=corrected.public_id,
-        response_body=result.model_dump(mode="json"),
-    )
-    db.commit()
-    return result
 
 
 def void_expense_offset(
@@ -324,11 +376,10 @@ def void_expense_offset(
     before = _offset_snapshot(offset)
     previous_version = offset.row_version
     now = now_utc()
-    claimed_offset = claim_row_with_token(
+    voided = _persist_offset_update(
         db,
-        ExpenseOffsetFact,
-        pk_id=offset.id,
-        tenant_id=tenant_id,
+        expense=expense,
+        offset=offset,
         expected_row_version=payload.expected_row_version,
         set_values={
             "status": "voided",
@@ -336,24 +387,11 @@ def void_expense_offset(
             "updated_at": now,
             "fact_revision": ExpenseOffsetFact.fact_revision + 1,
         },
-        extra_where=(ExpenseOffsetFact.status == "active",),
-        synchronize_session=False,
+        now=now,
     )
-    if claimed_offset != 1:
-        db.rollback()
-        raise AppError("state_conflict", status_code=409)
-    _bump_expense_root(db, expense=expense, now=now)
-
-    db.expire_all()
-    voided = db.scalar(
-        select(ExpenseOffsetFact)
-        .where(ExpenseOffsetFact.tenant_id == tenant_id)
-        .where(ExpenseOffsetFact.id == offset.id)
-    )
-    if voided is None:
-        raise AppError("server_error", status_code=500)
-    _append_revision(
+    return _complete_lifecycle_command(
         db,
+        claim=claim_or_replay,
         offset=voided,
         before=before,
         change_kind="void",
@@ -365,16 +403,6 @@ def void_expense_offset(
         idempotency_key=idempotency_key,
         created_at=now,
     )
-    result = expense_fact_bundle(db, tenant_id=tenant_id, expense_id=expense_id)
-    mark_idempotency_succeeded(
-        db,
-        claim_or_replay,
-        resource_type="expense_offset",
-        resource_id=voided.public_id,
-        response_body=result.model_dump(mode="json"),
-    )
-    db.commit()
-    return result
 
 
 __all__ = ["correct_expense_offset", "void_expense_offset"]

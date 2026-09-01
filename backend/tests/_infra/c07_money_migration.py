@@ -16,7 +16,6 @@ from app.database import SessionLocal, engine
 from app.database._managed_postgres_migration_runtime import _prearmed_transaction
 from app.models import (
     Account,
-    BillSplitInvitation,
     Budget,
     ExpenseItem,
     ExpenseSplit,
@@ -368,28 +367,31 @@ def seed_cross_currency_invitation() -> int:
         expense_time=now,
         confirmed_at=now,
     )
-    with SessionLocal() as db:
-        invitation = BillSplitInvitation(
-            sender_account_id=account_id,
-            sender_ledger_id="owner",
-            sender_member_id=member_id,
-            sender_expense_id=expense_id,
-            sender_display_name="A",
-            receiver_account_id=account_id,
-            receiver_display_name_snapshot="B",
-            amount_cents=3_000,
-            home_currency_code="CNY",
-            original_currency_code="USD",
-            original_amount_minor=1_500,
-            exchange_rate_to_cny=Decimal("7"),
-            exchange_rate_source="manual",
-            status="invited",
-            expires_at=datetime(2099, 1, 1, tzinfo=UTC),
-            created_at=now_utc(),
+    with engine.begin() as connection:
+        invitation_id = connection.scalar(
+            text(
+                "INSERT INTO bill_split_invitations ("
+                "public_id, sender_account_id, sender_ledger_id, sender_member_id, "
+                "sender_expense_id, sender_display_name, receiver_account_id, "
+                "receiver_display_name_snapshot, amount_cents, home_currency_code, "
+                "original_currency_code, original_amount_minor, exchange_rate_to_cny, "
+                "exchange_rate_source, status, expires_at, created_at"
+                ") VALUES ("
+                ":public_id, :account_id, 'owner', :member_id, :expense_id, 'A', "
+                ":account_id, 'B', 3000, 'CNY', 'USD', 1500, 7, 'manual', "
+                "'invited', :expires_at, :created_at"
+                ") RETURNING id"
+            ),
+            {
+                "public_id": str(uuid4()),
+                "account_id": account_id,
+                "member_id": member_id,
+                "expense_id": expense_id,
+                "expires_at": datetime(2099, 1, 1, tzinfo=UTC),
+                "created_at": now_utc(),
+            },
         )
-        db.add(invitation)
-        db.commit()
-        return int(invitation.id)
+    return int(invitation_id)
 
 
 def seed_legacy_ocr_amount_fact() -> int:

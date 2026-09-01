@@ -61,6 +61,27 @@ def _create_refund(
     return response.json()
 
 
+def test_offset_lifecycle_mutations_require_authentication(client: TestClient) -> None:
+    correction = client.post(
+        "/api/expenses/1/offsets/missing/corrections",
+        json={
+            "original_amount_minor": 1,
+            "accounting_date": "2026-09-01",
+            "category": "其他",
+            "offset_reason": "更正",
+            "correction_reason": "更正原因",
+            "expected_row_version": 1,
+        },
+    )
+    void = client.post(
+        "/api/expenses/1/offsets/missing/voids",
+        json={"void_reason": "误录", "expected_row_version": 1},
+    )
+
+    assert correction.status_code == 401
+    assert void.status_code == 401
+
+
 def test_amount_only_offset_correction_reuses_its_frozen_rate_and_occ_baseline(
     client: TestClient,
     *,
