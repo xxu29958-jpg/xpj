@@ -116,9 +116,10 @@ def test_refund_cancels_pending_split_and_publishes_relationship_receipt(
     identity,
 ) -> None:
     expense = manual_confirmed(client, identity, amount_cents=1200)
+    receiver_ledger_id = "refund_relationship_receiver"
     receiver_account_id = _seed_receiver(
         name="退款关系收件人",
-        ledger_id="refund_relationship_receiver",
+        ledger_id=receiver_ledger_id,
     )
     invited = client.post(
         f"/api/expenses/{expense['id']}/split-invite",
@@ -145,7 +146,7 @@ def test_refund_cancels_pending_split_and_publishes_relationship_receipt(
         "pending_invites_cancelled": [
             {
                 "invitation_public_id": invitation_public_id,
-                "reason_code": "source_refunded",
+                "cancellation_reason_code": "source_refunded",
             }
         ],
         "accepted_impacts": [],
@@ -156,6 +157,15 @@ def test_refund_cancels_pending_split_and_publishes_relationship_receipt(
     affected = next(item for item in sent.json()["items"] if item["public_id"] == invitation_public_id)
     assert affected["status"] == "cancelled"
     assert affected["cancellation_reason_code"] == "source_refunded"
+
+    inbox = client.get(
+        "/api/bill-splits/inbox",
+        headers=_bearer_for_account_ledger(receiver_account_id, receiver_ledger_id),
+    )
+    assert inbox.status_code == 200, inbox.text
+    received = next(item for item in inbox.json()["items"] if item["public_id"] == invitation_public_id)
+    assert received["status"] == "cancelled"
+    assert received["cancellation_reason_code"] == "source_refunded"
 
 
 def test_refund_keeps_accepted_split_fact_and_publishes_review_suggestion(
@@ -183,6 +193,11 @@ def test_refund_keeps_accepted_split_fact_and_publishes_review_suggestion(
     )
     assert accepted.status_code == 200, accepted.text
 
+    before = client.get("/api/bill-splits/sent", headers=identity.app_headers)
+    assert before.status_code == 200, before.text
+    before_row = next(item for item in before.json()["items"] if item["public_id"] == invitation_public_id)
+    assert before_row["source_impact_pending"] is False
+
     created = client.post(
         f"/api/expenses/{expense['id']}/offsets",
         headers=idem(identity.app_headers),
@@ -196,20 +211,39 @@ def test_refund_keeps_accepted_split_fact_and_publishes_review_suggestion(
     )
 
     assert created.status_code == 201, created.text
-    assert created.json()["relationship_impacts"] == {
+    impacts = created.json()["relationship_impacts"]
+    assert impacts == {
         "pending_invites_cancelled": [],
         "accepted_impacts": [
             {
                 "invitation_public_id": invitation_public_id,
-                "reason_code": "source_refunded",
+                "source_reason_code": "source_refunded",
+                "receiver_display_name": "已接受退款关系收件人",
+                "debt_public_id": impacts["accepted_impacts"][0]["debt_public_id"],
+                "original_agreed_share_home_minor": 500,
+                "suggested_net_share_home_minor": 375,
                 "suggested_action": "review_split",
             }
         ],
     }
+    assert impacts["accepted_impacts"][0]["debt_public_id"]
+
+    reread = client.get(
+        f"/api/expenses/{expense['id']}/fact-bundle",
+        headers=identity.app_headers,
+    )
+    assert reread.status_code == 200, reread.text
+    assert reread.json()["relationship_impacts"] == {
+        "pending_invites_cancelled": [],
+        "accepted_impacts": impacts["accepted_impacts"],
+    }
+
     sent = client.get("/api/bill-splits/sent", headers=identity.app_headers)
+    assert sent.status_code == 200, sent.text
     affected = next(item for item in sent.json()["items"] if item["public_id"] == invitation_public_id)
     assert affected["status"] == "accepted"
     assert affected["amount_cents"] == 500
+    assert affected["source_impact_pending"] is True
 
 
 def test_foreign_refund_uses_accounting_date_rate_and_freezes_snapshot(
@@ -328,3 +362,131 @@ def test_foreign_refund_without_accounting_date_rate_refuses_without_mutation(
     assert reread.status_code == 200, reread.text
     assert reread.json()["root"]["row_version"] == expense["row_version"]
     assert reread.json()["active_offsets"] == []
+
+
+def test_chargeback_is_a_distinct_offset_fact(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
+    expense = manual_confirmed(client, identity, amount_cents=900)
+
+    created = client.post(
+        f"/api/expenses/{expense['id']}/offsets",
+        headers=idem(identity.app_headers),
+        json={
+            "kind": "chargeback",
+            "original_amount_minor": 250,
+            "accounting_date": "2026-09-09",
+            "reason": "银行卡拒付",
+            "expected_row_version": expense["row_version"],
+        },
+    )
+
+    assert created.status_code == 201, created.text
+    assert created.json()["active_offsets"][0]["kind"] == "chargeback"
+    assert created.json()["financial_summary"]["lineage_home_net_cents"] == 650
+
+
+def test_foreign_reversal_reuses_root_snapshot_without_a_new_rate(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
+    seeded = client.put(
+        "/api/exchange-rates/USD/2026-05-04",
+        headers=identity.app_headers,
+        json={
+            "currency_code": "USD",
+            "rate_date": "2026-05-04",
+            "rate_to_cny": "7",
+            "source": "manual",
+        },
+    )
+    assert seeded.status_code == 200, seeded.text
+    expense_response = client.post(
+        "/api/expenses/manual",
+        headers=identity.app_headers,
+        json={
+            "original_currency_code": "USD",
+            "original_amount_minor": 10000,
+            "expense_time": "2026-05-04T08:00:00Z",
+            "merchant": "海外冲销订单",
+            "category": "购物",
+        },
+    )
+    assert expense_response.status_code == 200, expense_response.text
+    expense = expense_response.json()
+
+    reversed_response = client.post(
+        f"/api/expenses/{expense['id']}/offsets",
+        headers=idem(identity.app_headers),
+        json={
+            "kind": "reversal",
+            "accounting_date": "2026-05-09",
+            "reason": "原交易已冲销",
+            "expected_row_version": expense["row_version"],
+        },
+    )
+
+    assert reversed_response.status_code == 201, reversed_response.text
+    body = reversed_response.json()
+    offset = body["active_offsets"][0]
+    assert offset["kind"] == "reversal"
+    assert offset["original_amount_minor"] == 10000
+    assert offset["amount_cents"] == 70000
+    assert offset["exchange_rate_to_cny"] == "7.00000000"
+    assert offset["exchange_rate_date"] == "2026-05-04"
+    assert offset["exchange_rate_source"] == "manual"
+    assert body["financial_summary"] == {
+        "gross_original_minor": 10000,
+        "gross_home_amount_cents": 70000,
+        "active_refunded_original_minor": 0,
+        "remaining_refundable_original_minor": 0,
+        "lineage_home_net_cents": 0,
+        "fx_difference_cents": 0,
+        "status": "reversed",
+    }
+
+
+def test_offset_create_replays_once_and_stale_new_intent_conflicts(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
+    expense = manual_confirmed(client, identity, amount_cents=1000)
+    payload = {
+        "kind": "refund",
+        "original_amount_minor": 200,
+        "accounting_date": "2026-09-10",
+        "reason": "重复提交退款",
+        "expected_row_version": expense["row_version"],
+    }
+    key = "00000000-0000-4000-8000-000000000099"
+
+    first = client.post(
+        f"/api/expenses/{expense['id']}/offsets",
+        headers=idem(identity.app_headers, key=key),
+        json=payload,
+    )
+    replay = client.post(
+        f"/api/expenses/{expense['id']}/offsets",
+        headers=idem(identity.app_headers, key=key),
+        json=payload,
+    )
+    stale = client.post(
+        f"/api/expenses/{expense['id']}/offsets",
+        headers=idem(identity.app_headers),
+        json={**payload, "reason": "另一条过期意图"},
+    )
+
+    assert first.status_code == 201, first.text
+    assert replay.status_code == 201, replay.text
+    assert replay.json() == first.json()
+    assert stale.status_code == 409, stale.text
+    assert stale.json()["error"] == "state_conflict"
+    reread = client.get(
+        f"/api/expenses/{expense['id']}/fact-bundle",
+        headers=identity.app_headers,
+    )
+    assert len(reread.json()["active_offsets"]) == 1
