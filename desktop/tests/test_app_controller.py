@@ -360,7 +360,10 @@ def test_installed_refresh_failure_does_not_reuse_stale_projection(tmp_path: Pat
             return config
         raise ConfigError(r"secret path C:\ProgramData\Ticketbox\app\.env")
 
-    provider = RefreshingInstalledRuntimeConfigProvider(config_loader=load, runtime_builder=lambda _config: FakeRuntime())
+    provider = RefreshingInstalledRuntimeConfigProvider(
+        config_loader=load,
+        runtime_builder=lambda _config: FakeRuntime(),
+    )
     controller = AppController(provider)
 
     assert controller.status()["port"] == 8101

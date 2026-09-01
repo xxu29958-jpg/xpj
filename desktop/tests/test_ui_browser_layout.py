@@ -782,7 +782,15 @@ def test_product_card_role_follows_live_membership_and_handles_vanished_ledger(t
     assert edge is not None, "Microsoft Edge is required for the live-role rendering gate"
     script = f"""    (async () => {{
       const healthy = {json.dumps(_product_status(), ensure_ascii=False)};
-      const session = {{configured: true, account_name: "我", ledger_id: "owner", ledger_name: "我的小票夹", device_name: "小票夹 Desktop", role: "owner", expires_at: null}};
+      const session = {{
+        configured: true,
+        account_name: "我",
+        ledger_id: "owner",
+        ledger_name: "我的小票夹",
+        device_name: "小票夹 Desktop",
+        role: "owner",
+        expires_at: null
+      }};
       const demotedLedgers = {{ledgers: [
         {{ledger_id: "owner", name: "我的小票夹", role: "viewer", is_default: true, is_current: true}},
         {{ledger_id: "family", name: "家庭账本", role: "member", is_default: false, is_current: false}}
