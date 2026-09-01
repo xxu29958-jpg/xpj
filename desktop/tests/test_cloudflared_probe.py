@@ -136,10 +136,7 @@ def _responses(
 def test_absent_exact_service_and_diagnostics_are_unconfigured() -> None:
     reader = _ServiceReader(ServiceObservation.missing())
     transport = _Transport(
-        {
-            f"http://127.0.0.1:{port}/ready": CloudflaredProbeError("unavailable")
-            for port in range(20241, 20246)
-        }
+        {f"http://127.0.0.1:{port}/ready": CloudflaredProbeError("unavailable") for port in range(20241, 20246)}
     )
 
     result = probe_cloudflared(service_reader=reader, transport=transport)
@@ -154,8 +151,7 @@ def test_absent_exact_service_and_diagnostics_are_unconfigured() -> None:
 def test_external_ready_connector_never_becomes_managed() -> None:
     reader = _ServiceReader(ServiceObservation.missing())
     responses: dict[str, LoopbackJsonResponse | Exception] = {
-        f"http://127.0.0.1:{port}/ready": CloudflaredProbeError("unavailable")
-        for port in range(20241, 20246)
+        f"http://127.0.0.1:{port}/ready": CloudflaredProbeError("unavailable") for port in range(20241, 20246)
     }
     responses.update(_responses(20243))
 
@@ -261,8 +257,7 @@ def test_ready_and_diagnostic_connector_ids_must_match_each_other() -> None:
 
 def test_multiple_distinct_diagnostic_identities_are_a_conflict() -> None:
     responses: dict[str, LoopbackJsonResponse | Exception] = {
-        f"http://127.0.0.1:{port}/ready": CloudflaredProbeError("unavailable")
-        for port in range(20241, 20246)
+        f"http://127.0.0.1:{port}/ready": CloudflaredProbeError("unavailable") for port in range(20241, 20246)
     }
     responses.update(_responses(20241))
     responses.update(
@@ -413,7 +408,11 @@ def test_loopback_transport_disables_proxies_and_redirects(monkeypatch: pytest.M
     def fake_build_opener(*values: object) -> _Opener:
         nonlocal handlers
         handlers = values
-        return _Opener(_HttpResponse(b'{"status":503,"readyConnections":0,"connectorId":"aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"}', status=503))
+        return _Opener(
+            _HttpResponse(
+                b'{"status":503,"readyConnections":0,"connectorId":"aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"}', status=503
+            )
+        )
 
     monkeypatch.setattr(urllib.request, "build_opener", fake_build_opener)
     transport = LoopbackCloudflaredTransport(timeout_seconds=0.25)
