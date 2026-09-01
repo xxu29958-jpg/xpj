@@ -7,10 +7,12 @@ import com.ticketbox.data.repository.ExpenseFactActions
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.domain.model.ExpenseFactBundle
 import com.ticketbox.domain.model.ExpenseItems
 import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.MessageTone
+import com.ticketbox.domain.model.PendingExpenseOffsetIntent
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.canInitiateBillSplit
@@ -28,6 +30,8 @@ import kotlinx.coroutines.launch
  *  - [ExpenseFactViewModelRevisions.kt]   变更记录时间线（真实 GET revisions）
  *  - [ExpenseFactViewModelCorrection.kt]  显式更正流（reason + composite draft + 四态）
  *  - [ExpenseFactViewModelBillSplit.kt]   拆账邀请（迁移自旧编辑 VM，能力不丢）
+ *  - [ExpenseFactViewModelOffsets.kt]     退回与冲销：bundle 读 + 登记表单态
+ *  - ExpenseFactViewModelOffsetsCommands.kt / OffsetsVoid.kt  登记/撤销命令与发布
  */
 data class ExpenseFactUiState(
     val expense: Expense? = null,
@@ -67,6 +71,14 @@ data class ExpenseFactUiState(
     val timelineExpanded: Boolean = false,
     // 更正流（correction 扩展拥有全部逻辑）。
     val correction: CorrectionFormState = CorrectionFormState(),
+    // 退回与冲销（offsets 扩展拥有逻辑；bundle = 服务端原子事实包，pending 只是
+    // 会话内待提交表达，持久队列归 Outbox；command 不依赖 bundle 是否可读）。
+    val factBundle: ExpenseFactBundle? = null,
+    val factBundleLoadState: ExpenseDetailDataLoadState = ExpenseDetailDataLoadState.Unknown,
+    val factBundleMessage: UiText? = null,
+    val pendingOffsetIntent: PendingExpenseOffsetIntent? = null,
+    val offsetForm: OffsetFormState = OffsetFormState(),
+    val voidOffsetForm: VoidOffsetFormState = VoidOffsetFormState(),
     // 拆账邀请（bill-split 扩展拥有逻辑；字段名与旧编辑 VM 同构，便于组件复用）。
     val billSplitSent: List<com.ticketbox.domain.model.BillSplitSent> = emptyList(),
     val billSplitSentLoadState: BillSplitSentLoadState = BillSplitSentLoadState.Unknown,
@@ -131,6 +143,9 @@ class ExpenseFactViewModel(
 
     internal var revisionLoadGeneration = 0L
 
+    /** bundle 读/命令的 authority 序号：只在调用点同步递增（见 Offsets 扩展）。 */
+    internal var factBundleLoadGeneration = 0L
+
     internal val _uiState = MutableStateFlow(
         ExpenseFactUiState(
             expense = initialExpense,
@@ -155,6 +170,7 @@ class ExpenseFactViewModel(
         initialExpense?.let { loadThumbnailFor(it) }
         loadExpenseItems()
         loadExpenseSplits()
+        loadExpenseFactBundle()
         loadExpenseRevisions()
         loadRevisionMemberNames()
     }
@@ -176,8 +192,13 @@ class ExpenseFactViewModel(
             repository.fetchExpense(expenseId)
                 .onSuccess { expense ->
                     _uiState.update {
+                        // 单调采用：bundle 读/命令已发布更新的 root 时，较旧的
+                        // fetchExpense 响应不倒灌 expense（OCC token 不回退）。
+                        val current = it.expense
+                        val adopt = current == null || current.id != expense.id ||
+                            expense.rowVersion >= current.rowVersion
                         it.copy(
-                            expense = expense,
+                            expense = if (adopt) expense else current,
                             expenseLoading = false,
                             expenseLoadState = ExpenseDetailDataLoadState.Loaded,
                             expenseStale = false,

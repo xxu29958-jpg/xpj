@@ -2,12 +2,18 @@ package com.ticketbox.data.local
 
 import androidx.room.Dao
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
 private const val SQLITE_BINDING_CHUNK_SIZE = 500
+
+data class ConfirmedStreamPruneScope(
+    val rootServerIds: Set<Long>?,
+    val offsetPublicIds: Set<String>?,
+)
 
 /**
  * v0.4-alpha1 multi-ledger contract:
@@ -36,6 +42,37 @@ interface ExpenseDao {
         """,
     )
     suspend fun getConfirmed(ledgerId: String): List<ExpenseEntity>
+
+    @Query(
+        """
+        SELECT * FROM expenses
+        WHERE ledgerId = :ledgerId
+          AND status = 'confirmed'
+          AND streamDate IS NOT NULL
+          AND streamSortTime IS NOT NULL
+          AND streamSortId IS NOT NULL
+          AND streamAmountCents IS NOT NULL
+          AND lineageStatus IS NOT NULL
+          AND lineageHomeNetCents IS NOT NULL
+        ORDER BY streamDate DESC, streamSortTime DESC, streamSortId DESC
+        """,
+    )
+    fun observeConfirmedStreamRoots(ledgerId: String): Flow<List<ExpenseEntity>>
+
+    @Query(
+        """
+        SELECT * FROM expense_offset_stream
+        WHERE ledgerId = :ledgerId
+        ORDER BY streamDate DESC, streamSortTime DESC, streamSortId DESC
+        """,
+    )
+    fun observeConfirmedStreamOffsets(ledgerId: String): Flow<List<ExpenseOffsetStreamEntity>>
+
+    @Query("SELECT * FROM expense_offset_stream WHERE ledgerId = :ledgerId")
+    suspend fun getConfirmedStreamOffsets(ledgerId: String): List<ExpenseOffsetStreamEntity>
+
+    @Query("SELECT publicId FROM expense_offset_stream WHERE ledgerId = :ledgerId")
+    suspend fun confirmedStreamOffsetPublicIdsForLedger(ledgerId: String): List<String>
 
     @Query(
         """
@@ -80,6 +117,9 @@ interface ExpenseDao {
     @Insert
     suspend fun insertAll(expenses: List<ExpenseEntity>): List<Long>
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertConfirmedStreamOffsets(offsets: List<ExpenseOffsetStreamEntity>)
+
     @Update
     suspend fun update(expense: ExpenseEntity)
 
@@ -106,7 +146,7 @@ interface ExpenseDao {
             // the source of truth and would self-heal next sync, but the UI
             // shows the stale snapshot until then). Same-version writes are
             // allowed — identical token means identical server payload.
-            update(expense.copy(id = existing.id))
+            update(expense.withPreservedStreamProjection(existing).copy(id = existing.id))
         }
     }
 
@@ -134,7 +174,7 @@ interface ExpenseDao {
                 inserts += expense.copy(id = 0)
             } else if (expense.rowVersion >= existing.rowVersion) {
                 // Same monotonic guard as upsertByServerIdForLedger.
-                updates += expense.copy(id = existing.id)
+                updates += expense.withPreservedStreamProjection(existing).copy(id = existing.id)
             }
         }
         if (inserts.isNotEmpty()) insertAll(inserts)
@@ -206,6 +246,58 @@ interface ExpenseDao {
     )
     suspend fun deleteConfirmedByServerIds(ledgerId: String, serverIds: List<Long>)
 
+    @Query("DELETE FROM expense_offset_stream")
+    suspend fun clearConfirmedStreamOffsets()
+
+    @Query("DELETE FROM expense_offset_stream WHERE ledgerId = :ledgerId")
+    suspend fun clearConfirmedStreamOffsetsForLedger(ledgerId: String)
+
+    @Query(
+        """
+        DELETE FROM expense_offset_stream
+        WHERE ledgerId = :ledgerId AND publicId IN (:publicIds)
+        """,
+    )
+    suspend fun deleteConfirmedStreamOffsetsByPublicIds(
+        ledgerId: String,
+        publicIds: List<String>,
+    )
+
+    @Query(
+        """
+        DELETE FROM expense_offset_stream
+        WHERE ledgerId = :ledgerId AND rootServerId = :rootServerId
+        """,
+    )
+    suspend fun deleteConfirmedStreamOffsetsForRoot(ledgerId: String, rootServerId: Long)
+
+    @Transaction
+    suspend fun clearAllExpenseCaches() {
+        clear()
+        clearConfirmedStreamOffsets()
+    }
+
+    @Transaction
+    suspend fun clearAllExpenseCachesForLedger(ledgerId: String) {
+        clearForLedger(ledgerId)
+        clearConfirmedStreamOffsetsForLedger(ledgerId)
+    }
+
+    @Transaction
+    suspend fun applyExpenseFactBundle(
+        ledgerId: String,
+        root: ExpenseEntity,
+        activeOffsets: List<ExpenseOffsetStreamEntity>,
+    ) {
+        val rootServerId = requireNotNull(root.serverId)
+        require(root.ledgerId == ledgerId && activeOffsets.all {
+            it.ledgerId == ledgerId && it.rootServerId == rootServerId
+        }) { "expense fact bundle crossed its ledger or root boundary" }
+        upsertByServerIdForLedger(ledgerId, root)
+        deleteConfirmedStreamOffsetsForRoot(ledgerId, rootServerId)
+        if (activeOffsets.isNotEmpty()) upsertConfirmedStreamOffsets(activeOffsets)
+    }
+
     @Transaction
     suspend fun applyConfirmedSyncForLedger(
         ledgerId: String,
@@ -239,6 +331,43 @@ interface ExpenseDao {
         }
     }
 
+    /** Atomically applies the server-owned typed confirmed stream projection. */
+    @Transaction
+    suspend fun applyConfirmedStreamSyncForLedger(
+        ledgerId: String,
+        roots: List<ExpenseEntity>,
+        offsets: List<ExpenseOffsetStreamEntity>,
+        replaceCache: Boolean,
+        pruneScope: ConfirmedStreamPruneScope,
+    ) {
+        if (replaceCache) {
+            clearForLedger(ledgerId)
+            clearConfirmedStreamOffsetsForLedger(ledgerId)
+        }
+        roots.chunked(SQLITE_BINDING_CHUNK_SIZE).forEach { chunk ->
+            upsertAllByServerIdForLedger(ledgerId, chunk)
+        }
+        offsets.chunked(SQLITE_BINDING_CHUNK_SIZE).forEach { chunk ->
+            if (chunk.isNotEmpty()) upsertConfirmedStreamOffsets(chunk)
+        }
+        if (pruneScope.rootServerIds != null) {
+            val remoteServerIds = roots.mapNotNull { it.serverId }.toSet()
+            val staleServerIds = confirmedServerIdsForLedger(ledgerId)
+                .filter { it in pruneScope.rootServerIds && it !in remoteServerIds }
+            staleServerIds.chunked(SQLITE_BINDING_CHUNK_SIZE).forEach { chunk ->
+                if (chunk.isNotEmpty()) deleteConfirmedByServerIds(ledgerId, chunk)
+            }
+        }
+        if (pruneScope.offsetPublicIds != null) {
+            val remotePublicIds = offsets.map { it.publicId }.toSet()
+            val stalePublicIds = confirmedStreamOffsetPublicIdsForLedger(ledgerId)
+                .filter { it in pruneScope.offsetPublicIds && it !in remotePublicIds }
+            stalePublicIds.chunked(SQLITE_BINDING_CHUNK_SIZE).forEach { chunk ->
+                if (chunk.isNotEmpty()) deleteConfirmedStreamOffsetsByPublicIds(ledgerId, chunk)
+            }
+        }
+    }
+
     /**
      * issue #64 A3：pending 列表本地优先读的写回路。pending 取自一次性的
      * `GET /api/expenses/pending`（非分页、单次原子调用，见
@@ -263,4 +392,16 @@ interface ExpenseDao {
             upsertAllByServerIdForLedger(ledgerId, chunk)
         }
     }
+}
+
+private fun ExpenseEntity.withPreservedStreamProjection(existing: ExpenseEntity): ExpenseEntity {
+    if (streamDate != null) return this
+    return copy(
+        streamDate = existing.streamDate,
+        streamSortTime = streamSortTime ?: existing.streamSortTime,
+        streamSortId = streamSortId ?: existing.streamSortId,
+        streamAmountCents = streamAmountCents ?: existing.streamAmountCents,
+        lineageStatus = lineageStatus ?: existing.lineageStatus,
+        lineageHomeNetCents = lineageHomeNetCents ?: existing.lineageHomeNetCents,
+    )
 }

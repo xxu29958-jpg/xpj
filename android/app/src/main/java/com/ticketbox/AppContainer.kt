@@ -14,6 +14,7 @@ import com.ticketbox.data.repository.ApiServiceProvider
 import com.ticketbox.data.repository.ConfirmExpenseDispatcher
 import com.ticketbox.data.repository.CorrectExpenseDispatcher
 import com.ticketbox.data.repository.CreateExpenseDispatcher
+import com.ticketbox.data.repository.CreateExpenseOffsetDispatcher
 import com.ticketbox.data.repository.CreateRecurringItemDispatcher
 import com.ticketbox.data.repository.DeleteCategoryRuleDispatcher
 import com.ticketbox.data.repository.DeleteMerchantAliasDispatcher
@@ -35,9 +36,12 @@ import com.ticketbox.data.repository.UpdateGoalDispatcher
 import com.ticketbox.data.repository.UpdateIncomePlanDispatcher
 import com.ticketbox.data.repository.UpdateMerchantAliasDispatcher
 import com.ticketbox.data.repository.UpdateRecurringItemDispatcher
+import com.ticketbox.data.repository.VoidExpenseOffsetDispatcher
 import com.ticketbox.data.repository.bindingOrNull
 import com.ticketbox.data.repository.reconcileLocalSession
 import com.ticketbox.data.repository.toEntity
+import com.ticketbox.data.repository.toCacheProjection
+import com.ticketbox.data.remote.dto.ExpenseFactBundleDto
 import com.ticketbox.data.repository.toOutboxBinding
 import com.ticketbox.security.SecureSessionStore
 import com.ticketbox.security.SessionCredentialAdapter
@@ -116,6 +120,15 @@ class AppContainer(context: Context) {
                 ?: throw IllegalStateException("Outbox row has no verified owner binding."),
         )
 
+    private suspend fun publishExpenseFactBundle(ledgerId: String, bundle: ExpenseFactBundleDto) {
+        val projection = bundle.toCacheProjection(ledgerId)
+        database.expenseDao().applyExpenseFactBundle(
+            ledgerId = ledgerId,
+            root = projection.root,
+            activeOffsets = projection.activeOffsets,
+        )
+    }
+
     /**
      * Registered dispatchers. PR-2g.2 wired the first dispatcher
      * [PatchExpenseDispatcher]; PR-2g.3 routed the matching call
@@ -167,6 +180,16 @@ class AppContainer(context: Context) {
                         created.toEntity(ledgerId).copy(clientRef = clientRef),
                     )
                 },
+            ),
+            CreateExpenseOffsetDispatcher(
+                apiProvider = ::outboxApi,
+                payloadAdapter = outboxAdapters.offsetCreateAdapter,
+                publishBundle = ::publishExpenseFactBundle,
+            ),
+            VoidExpenseOffsetDispatcher(
+                apiProvider = ::outboxApi,
+                payloadAdapter = outboxAdapters.offsetVoidAdapter,
+                publishBundle = ::publishExpenseFactBundle,
             ),
             // PR-2g.4: PATCH /api/rules/categories/{id} via outbox.
             UpdateCategoryRuleDispatcher(

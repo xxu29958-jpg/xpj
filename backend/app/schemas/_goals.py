@@ -221,7 +221,7 @@ class GoalResponse(BaseModel):
     month: str | None = None
     category: str | None = None
     target_amount_cents: PositiveMoneyMinor | None = None
-    spent_amount_cents: NonNegativeMoneyAggregate | None = None
+    spent_amount_cents: SignedMoneyAggregate | None = None
     remaining_amount_cents: SignedMoneyAggregate | None = None
     progress_percent: int | None = Field(
         default=None,

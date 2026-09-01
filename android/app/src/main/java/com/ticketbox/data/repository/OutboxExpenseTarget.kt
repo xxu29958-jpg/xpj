@@ -12,6 +12,7 @@ import com.ticketbox.domain.model.Expense
  * knowledge in one place instead of duplicated across the nine expense dispatchers.
  */
 private const val EXPENSE_TARGET_PREFIX = "expense:"
+private const val EXPENSE_OFFSET_TARGET_PREFIX = "expense_offset:"
 private const val LOCAL_REF_PREFIX = "local:"
 
 /** The outbox ``targetId`` for a synced expense addressed by its server id. */
@@ -53,3 +54,16 @@ fun parseExpenseTargetRef(targetId: String): String? =
     } else {
         null
     }
+
+data class ExpenseOffsetTargetRef(val expenseId: Long, val offsetPublicId: String)
+
+fun expenseOffsetTargetId(expenseId: Long, offsetPublicId: String): String =
+    "$EXPENSE_OFFSET_TARGET_PREFIX$expenseId:$offsetPublicId"
+
+fun parseExpenseOffsetTargetRef(targetId: String): ExpenseOffsetTargetRef? {
+    if (!targetId.startsWith(EXPENSE_OFFSET_TARGET_PREFIX)) return null
+    val parts = targetId.removePrefix(EXPENSE_OFFSET_TARGET_PREFIX).split(':', limit = 2)
+    val expenseId = parts.getOrNull(0)?.toLongOrNull() ?: return null
+    val offsetPublicId = parts.getOrNull(1)?.takeIf { it.isNotBlank() } ?: return null
+    return ExpenseOffsetTargetRef(expenseId, offsetPublicId)
+}

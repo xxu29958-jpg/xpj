@@ -8,7 +8,11 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import com.ticketbox.domain.model.ExpenseCorrectionOutcome
+import com.ticketbox.domain.model.ExpenseFactBundle
 import com.ticketbox.domain.model.ExpenseItems
+import com.ticketbox.domain.model.ExpenseOffsetDraft
+import com.ticketbox.domain.model.ExpenseOffsetFact
+import com.ticketbox.domain.model.ExpenseOffsetMutationOutcome
 import com.ticketbox.domain.model.ExpenseRevision
 import com.ticketbox.domain.model.ExpenseRevisionPage
 import com.ticketbox.domain.model.ExpenseSplits
@@ -215,6 +219,22 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
     var repaymentDraftResult: (Expense) -> Result<RepaymentDraft> = {
         Result.failure(RepositoryException(errorCode = "invalid_request", message = "not under test"))
     }
+    var factBundleResult: (Long) -> Result<ExpenseFactBundle> = {
+        Result.failure(RepositoryException(errorCode = "invalid_request", message = "not under test"))
+    }
+    var createOffsetResult: (Expense, ExpenseOffsetDraft) -> Result<ExpenseOffsetMutationOutcome> = { _, _ ->
+        Result.failure(RepositoryException(errorCode = "invalid_request", message = "not under test"))
+    }
+    var voidOffsetResult: (Expense, ExpenseOffsetFact, String) -> Result<ExpenseOffsetMutationOutcome> = { _, _, _ ->
+        Result.failure(RepositoryException(errorCode = "invalid_request", message = "not under test"))
+    }
+
+    var fetchFactBundleCalls = 0
+    var createOffsetCalls = 0
+    var lastOffsetDraft: ExpenseOffsetDraft? = null
+    var voidOffsetCalls = 0
+    var lastVoidOffset: ExpenseOffsetFact? = null
+    var lastVoidReason: String? = null
 
     fun member(
         memberId: Long,
@@ -351,4 +371,29 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
 
     override suspend fun cancelBillSplitInvitation(publicId: String): Result<BillSplitSent> =
         cancelBillSplitResult(publicId)
+
+    override suspend fun fetchExpenseFactBundle(id: Long): Result<ExpenseFactBundle> {
+        fetchFactBundleCalls++
+        return factBundleResult(id)
+    }
+
+    override suspend fun createExpenseOffsetAllowingOffline(
+        expense: Expense,
+        draft: ExpenseOffsetDraft,
+    ): Result<ExpenseOffsetMutationOutcome> {
+        createOffsetCalls++
+        lastOffsetDraft = draft
+        return createOffsetResult(expense, draft)
+    }
+
+    override suspend fun voidExpenseOffsetAllowingOffline(
+        expense: Expense,
+        offset: ExpenseOffsetFact,
+        reason: String,
+    ): Result<ExpenseOffsetMutationOutcome> {
+        voidOffsetCalls++
+        lastVoidOffset = offset
+        lastVoidReason = reason
+        return voidOffsetResult(expense, offset, reason)
+    }
 }

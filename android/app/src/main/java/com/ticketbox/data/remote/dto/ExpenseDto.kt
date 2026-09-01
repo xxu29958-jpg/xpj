@@ -234,8 +234,44 @@ data class NotificationDraftRequestDto(
     val notificationKey: String? = null,
 )
 
+@JsonClass(generateAdapter = true)
+data class ConfirmedOffsetStreamDto(
+    @param:Json(name = "public_id")
+    val publicId: String,
+    val kind: ExpenseOffsetKindDto,
+    @param:Json(name = "amount_cents")
+    val amountCents: Long,
+    @param:Json(name = "original_amount_minor")
+    val originalAmountMinor: Long,
+    @param:Json(name = "original_currency_code")
+    val originalCurrencyCode: String,
+    @param:Json(name = "home_currency_code")
+    val homeCurrencyCode: String,
+    val category: String,
+)
+
+@JsonClass(generateAdapter = true)
+data class ConfirmedExpenseStreamItemDto(
+    @param:Json(name = "entry_kind")
+    val entryKind: ConfirmedStreamEntryKindDto,
+    @param:Json(name = "stream_date")
+    val streamDate: String,
+    @param:Json(name = "stream_sort_time")
+    val streamSortTime: String,
+    @param:Json(name = "stream_sort_id")
+    val streamSortId: Long,
+    @param:Json(name = "stream_amount_cents")
+    val streamAmountCents: Long,
+    val root: ExpenseDto,
+    val offset: ConfirmedOffsetStreamDto? = null,
+    @param:Json(name = "lineage_status")
+    val lineageStatus: ExpenseLineageStatusDto,
+    @param:Json(name = "lineage_home_net_cents")
+    val lineageHomeNetCents: Long,
+)
+
 data class PaginatedExpensesDto(
-    val items: List<ExpenseDto>,
+    val items: List<ConfirmedExpenseStreamItemDto>,
     val page: Int,
     @param:Json(name = "page_size")
     val pageSize: Int,

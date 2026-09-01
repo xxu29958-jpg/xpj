@@ -56,14 +56,14 @@ class BudgetMonthlyArchiveResponse(BaseModel):
 class BudgetCategoryResponse(BaseModel):
     category: str
     amount_cents: NonNegativeMoneyMinor
-    spent_amount_cents: NonNegativeMoneyAggregate
+    spent_amount_cents: SignedMoneyAggregate
     remaining_amount_cents: SignedMoneyAggregate
     overspent_amount_cents: NonNegativeMoneyAggregate
 
 
 class BudgetExcludedCategoryResponse(BaseModel):
     category: str
-    amount_cents: NonNegativeMoneyAggregate
+    amount_cents: SignedMoneyAggregate
     count: int
 
 
@@ -77,8 +77,8 @@ class BudgetMonthlyResponse(BaseModel):
     fixed_amount_cents: NonNegativeMoneyAggregate
     non_monthly_amount_cents: NonNegativeMoneyMinor
     flex_budget_cents: NonNegativeMoneyAggregate
-    spent_amount_cents: NonNegativeMoneyAggregate
-    excluded_amount_cents: NonNegativeMoneyAggregate
+    spent_amount_cents: SignedMoneyAggregate
+    excluded_amount_cents: SignedMoneyAggregate
     remaining_amount_cents: SignedMoneyAggregate
     overspent_amount_cents: NonNegativeMoneyAggregate
     excluded_categories: list[str]

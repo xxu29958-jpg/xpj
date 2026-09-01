@@ -83,6 +83,7 @@ from app.routes import (
     web_expense_edit,
     web_expense_items,
     web_expense_lifecycle,
+    web_expense_offsets,
     web_expense_splits,
     web_goals,
     web_import_export,
@@ -394,6 +395,7 @@ app.include_router(web_bill_split.router)
 app.include_router(web_dashboard.router)
 app.include_router(web_expense_edit.router)
 app.include_router(web_expense_correction.router)
+app.include_router(web_expense_offsets.router)
 app.include_router(web_expense_lifecycle.router)
 app.include_router(web_expense_items.router)
 app.include_router(web_expense_splits.router)

@@ -219,7 +219,7 @@ fun monthlyStatsFromConfirmedExpenses(
     )
 }
 
-private fun Expense.normalizedTagNames(): List<String> {
+internal fun Expense.normalizedTagNames(): List<String> {
     val raw = tags ?: return emptyList()
     val seen = mutableSetOf<String>()
     return TAG_SPLIT_REGEX.split(raw)

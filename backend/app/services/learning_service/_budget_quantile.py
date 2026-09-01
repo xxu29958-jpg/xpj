@@ -36,7 +36,6 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Expense
 from app.money_contract import (
     projection_sum_to_int,
     round_minor_ratio_half_up,
@@ -46,11 +45,11 @@ from app.services.learning_service._algorithm_registry import (
 )
 from app.services.spending_contract_service import (
     accounting_timezone_key,
+    accounting_zone,
+    confirmed_stream_query,
     month_bounds_utc,
     month_labels_ending_at,
     shift_month,
-    stat_month_label,
-    stat_time_expr,
 )
 from app.services.time_service import ensure_utc, local_month_label, now_utc
 
@@ -143,19 +142,7 @@ def compute_budget_quantile_suggestion(
     now: datetime | None = None,
     timezone_name: str | None = None,
 ) -> BudgetQuantileSuggestion | None:
-    """Return the P50 / P75 monthly spend for ``category``.
-
-    ``categories`` lets callers aggregate the history across a set of raw
-    stored category strings (e.g. a canonical name plus its legacy aliases);
-    when omitted the lookback matches ``category`` exactly, preserving the
-    historical single-category contract.
-
-    ``include_zero_months`` toggles whether months with no expense in
-    the category contribute a zero data point. The default (True)
-    reflects the user's *actual* per-month cadence; turning it off is
-    useful when the user explicitly only wants to see "months I spent
-    on this".
-    """
+    """Return monthly P50/P75 for the requested category set."""
 
     look_back_months = max(int(look_back_months), 1)
     anchor = ensure_utc(now) or now_utc()
@@ -168,37 +155,38 @@ def compute_budget_quantile_suggestion(
         return None
     earliest_start, _ = month_bounds_utc(months[0], timezone_name)
     _, latest_end = month_bounds_utc(months[-1], timezone_name)
-    time_expr = stat_time_expr()
-
     match_values = set(categories) if categories else {category}
-    expenses = db.scalars(
-        select(Expense)
-        .where(Expense.tenant_id == tenant_id)
-        .where(Expense.status == "confirmed")
-        .where(Expense.category.in_(match_values))
-        .where(Expense.amount_cents.is_not(None))
-        .where(time_expr >= earliest_start)
-        .where(time_expr < latest_end)
+    zone = accounting_zone(timezone_name)
+    stream = confirmed_stream_query(
+        tenant_id=tenant_id,
+        timezone_name=zone.key,
+        amount_required=True,
     )
-
     monthly_totals: dict[str, int] = defaultdict(int)
-    timezone_key = accounting_timezone_key(timezone_name)
-    for expense in expenses:
-        key = stat_month_label(expense, timezone_key)
+    rows = db.execute(
+        select(stream.c.stream_date, stream.c.stream_amount_cents)
+        .where(stream.c.category.in_(match_values))
+        .where(stream.c.stream_date >= earliest_start.astimezone(zone).date())
+        .where(stream.c.stream_date < latest_end.astimezone(zone).date())
+    )
+    for stream_date, stream_amount in rows:
+        key = stream_date.strftime("%Y-%m")
         if key not in months:
             continue
-        monthly_totals[key] = _checked_month_total(monthly_totals[key], expense.amount_cents)
+        monthly_totals[key] = _checked_month_total(
+            monthly_totals[key], stream_amount
+        )
 
     if include_zero_months:
-        # Pad missing months with zero so the user's cadence is
-        # accurately reflected. Without this, a user who only spends
-        # on this category once a quarter sees a P50 equal to "one
-        # quarter's spend" which over-estimates the typical month.
         for month in months:
             monthly_totals.setdefault(month, 0)
 
     values = sorted(
-        projection_sum_to_int(value, label="budget_quantile.month_projection") for value in monthly_totals.values()
+        max(
+            projection_sum_to_int(value, label="budget_quantile.month_projection"),
+            0,
+        )
+        for value in monthly_totals.values()
     )
     if len(values) < max(min_months, 1):
         return None

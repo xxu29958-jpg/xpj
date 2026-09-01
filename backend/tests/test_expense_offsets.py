@@ -57,6 +57,7 @@ def test_refund_keeps_original_fact_and_publishes_net_bundle(
     assert body["financial_summary"] == {
         "gross_original_minor": 1280,
         "gross_home_amount_cents": 1280,
+        "root_stream_amount_cents": 1280,
         "active_refunded_original_minor": 300,
         "remaining_refundable_original_minor": 980,
         "lineage_home_net_cents": 980,
@@ -67,6 +68,7 @@ def test_refund_keeps_original_fact_and_publishes_net_bundle(
     assert body["active_offsets"][0]["kind"] == "refund"
     assert body["active_offsets"][0]["original_amount_minor"] == 300
     assert body["active_offsets"][0]["amount_cents"] == 300
+    assert body["active_offsets"][0]["stream_amount_cents"] == -300
     assert body["active_offsets"][0]["accounting_date"] == "2026-09-05"
 
     reread = client.get(
@@ -435,12 +437,14 @@ def test_foreign_reversal_reuses_root_snapshot_without_a_new_rate(
     assert offset["kind"] == "reversal"
     assert offset["original_amount_minor"] == 10000
     assert offset["amount_cents"] == 70000
+    assert offset["stream_amount_cents"] == 0
     assert offset["exchange_rate_to_cny"] == "7.00000000"
     assert offset["exchange_rate_date"] == "2026-05-04"
     assert offset["exchange_rate_source"] == "manual"
     assert body["financial_summary"] == {
         "gross_original_minor": 10000,
         "gross_home_amount_cents": 70000,
+        "root_stream_amount_cents": 0,
         "active_refunded_original_minor": 0,
         "remaining_refundable_original_minor": 0,
         "lineage_home_net_cents": 0,

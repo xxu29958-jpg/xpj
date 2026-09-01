@@ -4,21 +4,18 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Mapping
-from datetime import date
+from datetime import date, datetime
 
-from sqlalchemy import Date as SqlDate
-from sqlalchemy import Integer, cast, func, literal, select, union_all
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.ledger_scope import ledger_scoped_select
 from app.models import Expense, ExpenseOffsetFact
 from app.schemas import (
-    ConfirmedExpenseStreamEntry,
     ConfirmedExpenseStreamItem,
-    ConfirmedOffsetStreamEntry,
+    ConfirmedOffsetStreamProjection,
     ExpenseResponse,
 )
-from app.services.category_common import category_filter_values
 from app.services.expense_offset_summary import expense_financial_summary
 from app.services.expense_query import (  # noqa: F401 — re-exported
     get_expense,
@@ -27,14 +24,12 @@ from app.services.expense_query import (  # noqa: F401 — re-exported
 )
 from app.services.expense_response_service import expenses_to_responses
 from app.services.spending_contract_service import (
-    accounting_timezone_key,
-    confirmed_query,
-    parse_month,
-    stat_time_expr,
+    confirmed_stream_query,
 )
 
 __all__ = [
     "fetch_expense_row_version_in_status",
+    "filtered_confirmed_stream",
     "get_expense",
     "is_expense_in_status_for_tenant",
     "ledger_has_any_expense",
@@ -175,12 +170,33 @@ def list_confirmed(
     return _confirmed_stream_entries(db, tenant_id=tenant_id, locators=locators), total
 
 
-def _offset_month_bounds(month: str) -> tuple[date, date]:
-    year, month_number = parse_month(month)
-    start = date(year, month_number, 1)
-    if month_number == 12:
-        return start, date(year + 1, 1, 1)
-    return start, date(year, month_number + 1, 1)
+def filtered_confirmed_stream(
+    db: Session,
+    *,
+    tenant_id: str,
+    month: str | None = None,
+    category: str | None = None,
+    tag: str | None = None,
+    timezone_name: str | None = None,
+) -> list[ConfirmedExpenseStreamItem]:
+    stream = _confirmed_stream_locator_query(
+        tenant_id=tenant_id,
+        month=month,
+        category=category,
+        tag=tag,
+        timezone_name=timezone_name,
+    )
+    locators = list(
+        db.execute(
+            select(stream).order_by(
+                stream.c.stream_date.desc(),
+                stream.c.sort_time.desc(),
+                stream.c.sort_id.desc(),
+                stream.c.entry_kind.desc(),
+            )
+        ).mappings()
+    )
+    return _confirmed_stream_entries(db, tenant_id=tenant_id, locators=locators)
 
 
 def _confirmed_stream_locator_query(
@@ -191,53 +207,13 @@ def _confirmed_stream_locator_query(
     tag: str | None,
     timezone_name: str | None,
 ):
-    timezone_key = accounting_timezone_key(timezone_name)
-    expense_time = stat_time_expr()
-    expense_scope = confirmed_query(
+    return confirmed_stream_query(
         tenant_id=tenant_id,
         month=month,
         category=category,
         tag=tag,
-        timezone_name=timezone_key,
+        timezone_name=timezone_name,
     )
-    expense_entries = expense_scope.with_only_columns(
-        literal("expense").label("entry_kind"),
-        cast(func.timezone(timezone_key, expense_time), SqlDate).label("stream_date"),
-        expense_time.label("sort_time"),
-        Expense.id.label("sort_id"),
-        Expense.id.label("root_expense_id"),
-        cast(literal(None), Integer).label("offset_id"),
-    )
-
-    tagged_confirmed_roots = confirmed_query(
-        tenant_id=tenant_id,
-        tag=tag,
-        timezone_name=timezone_key,
-    ).with_only_columns(Expense.id)
-    offset_entries = (
-        select(
-            literal("offset").label("entry_kind"),
-            ExpenseOffsetFact.accounting_date.label("stream_date"),
-            ExpenseOffsetFact.created_at.label("sort_time"),
-            ExpenseOffsetFact.id.label("sort_id"),
-            ExpenseOffsetFact.expense_id.label("root_expense_id"),
-            ExpenseOffsetFact.id.label("offset_id"),
-        )
-        .where(ExpenseOffsetFact.tenant_id == tenant_id)
-        .where(ExpenseOffsetFact.status == "active")
-        .where(ExpenseOffsetFact.expense_id.in_(tagged_confirmed_roots))
-    )
-    if month:
-        start, end = _offset_month_bounds(month)
-        offset_entries = offset_entries.where(
-            ExpenseOffsetFact.accounting_date >= start,
-            ExpenseOffsetFact.accounting_date < end,
-        )
-    if category:
-        offset_entries = offset_entries.where(
-            ExpenseOffsetFact.category.in_(category_filter_values(category))
-        )
-    return union_all(expense_entries, offset_entries).subquery("confirmed_stream")
 
 
 def _confirmed_stream_entries(
@@ -253,33 +229,32 @@ def _confirmed_stream_entries(
         tenant_id=tenant_id,
         locators=locators,
     )
-    expense_entry_ids = {
-        int(row["root_expense_id"])
-        for row in locators
-        if row["entry_kind"] == "expense"
-    }
     response_by_id, offsets_by_expense_id = _expense_entry_context(
         db,
         tenant_id=tenant_id,
         roots=roots,
-        expense_entry_ids=expense_entry_ids,
     )
 
     items: list[ConfirmedExpenseStreamItem] = []
     for locator in locators:
         root_id = int(locator["root_expense_id"])
         root = roots[root_id]
-        if locator["entry_kind"] == "expense":
-            items.append(
-                _expense_stream_entry(
-                    root,
-                    response_by_id[root_id],
-                    offsets_by_expense_id[root_id],
-                    stream_date=locator["stream_date"],
-                )
+        offset = (
+            offsets[int(locator["offset_id"])]
+            if locator["entry_kind"] == "offset"
+            else None
+        )
+        items.append(
+            _stream_entry(
+                root,
+                response_by_id[root_id],
+                offsets_by_expense_id[root_id],
+                offset=offset,
+                stream_date=locator["stream_date"],
+                stream_sort_time=locator["sort_time"],
+                stream_sort_id=int(locator["sort_id"]),
             )
-        else:
-            items.append(_offset_stream_entry(root, offsets[int(locator["offset_id"])]))
+        )
     return items
 
 
@@ -319,22 +294,21 @@ def _expense_entry_context(
     *,
     tenant_id: str,
     roots: dict[int, Expense],
-    expense_entry_ids: set[int],
 ) -> tuple[dict[int, ExpenseResponse], dict[int, list[ExpenseOffsetFact]]]:
     response_by_id = {
         response.id: response
         for response in expenses_to_responses(
             db,
             tenant_id=tenant_id,
-            expenses=[roots[expense_id] for expense_id in expense_entry_ids],
+            expenses=list(roots.values()),
         )
     }
     offsets_by_expense_id: dict[int, list[ExpenseOffsetFact]] = defaultdict(list)
-    if expense_entry_ids:
+    if roots:
         active_offsets = db.scalars(
             select(ExpenseOffsetFact)
             .where(ExpenseOffsetFact.tenant_id == tenant_id)
-            .where(ExpenseOffsetFact.expense_id.in_(expense_entry_ids))
+            .where(ExpenseOffsetFact.expense_id.in_(roots))
             .where(ExpenseOffsetFact.status == "active")
         )
         for offset in active_offsets:
@@ -342,38 +316,47 @@ def _expense_entry_context(
     return response_by_id, offsets_by_expense_id
 
 
-def _expense_stream_entry(
+def _stream_entry(
     root: Expense,
     response: ExpenseResponse,
     active_offsets: list[ExpenseOffsetFact],
     *,
+    offset: ExpenseOffsetFact | None,
     stream_date: date,
-) -> ConfirmedExpenseStreamEntry:
+    stream_sort_time: datetime,
+    stream_sort_id: int,
+) -> ConfirmedExpenseStreamItem:
     summary = expense_financial_summary(root, active_offsets)
-    return ConfirmedExpenseStreamEntry(
-        **response.model_dump(),
+    return ConfirmedExpenseStreamItem(
+        entry_kind="offset" if offset is not None else "expense",
         stream_date=stream_date,
-        stream_amount_cents=0 if summary.status == "reversed" else int(root.amount_cents or 0),
+        stream_sort_time=stream_sort_time,
+        stream_sort_id=stream_sort_id,
+        stream_amount_cents=(
+            0
+            if offset is not None and offset.kind == "reversal"
+            else -offset.amount_cents
+            if offset is not None
+            else 0
+            if summary.status == "reversed"
+            else int(root.amount_cents or 0)
+        ),
+        root=response,
+        offset=_offset_stream_projection(offset) if offset is not None else None,
         lineage_status=summary.status,
         lineage_home_net_cents=summary.lineage_home_net_cents,
     )
 
 
-def _offset_stream_entry(
-    root: Expense,
+def _offset_stream_projection(
     offset: ExpenseOffsetFact,
-) -> ConfirmedOffsetStreamEntry:
-    return ConfirmedOffsetStreamEntry(
+) -> ConfirmedOffsetStreamProjection:
+    return ConfirmedOffsetStreamProjection(
         public_id=offset.public_id,
         kind=offset.kind,
-        stream_date=offset.accounting_date,
-        stream_amount_cents=0 if offset.kind == "reversal" else -offset.amount_cents,
         amount_cents=offset.amount_cents,
         original_amount_minor=offset.original_amount_minor,
         original_currency_code=offset.original_currency_code,
         home_currency_code=offset.home_currency_code,
-        root_expense_id=root.id,
-        root_expense_public_id=root.public_id,
-        root_merchant_label=root.merchant,
         category=offset.category,
     )

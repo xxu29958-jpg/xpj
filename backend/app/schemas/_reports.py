@@ -10,7 +10,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from app.schemas._expense import ExpenseResponse
-from app.schemas._money import NonNegativeMoneyAggregate, SignedMoneyAggregate
+from app.schemas._money import SignedMoneyAggregate
 
 __all__ = [
     "LifestyleFrequentMerchantResponse",
@@ -25,25 +25,25 @@ __all__ = [
 class ReportTrendPointResponse(BaseModel):
     bucket: str
     label: str
-    amount_cents: NonNegativeMoneyAggregate
+    amount_cents: SignedMoneyAggregate
     count: int
 
 
 class ReportMerchantRankingResponse(BaseModel):
     merchant: str
-    amount_cents: NonNegativeMoneyAggregate
+    amount_cents: SignedMoneyAggregate
     count: int
 
 
 class ReportCategoryComparisonResponse(BaseModel):
     category: str
-    amount_cents: NonNegativeMoneyAggregate
+    amount_cents: SignedMoneyAggregate
     count: int
-    previous_amount_cents: NonNegativeMoneyAggregate
+    previous_amount_cents: SignedMoneyAggregate
     previous_count: int
     delta_amount_cents: SignedMoneyAggregate
     delta_count: int
-    year_over_year_amount_cents: NonNegativeMoneyAggregate
+    year_over_year_amount_cents: SignedMoneyAggregate
     year_over_year_count: int
     year_over_year_delta_amount_cents: SignedMoneyAggregate
     year_over_year_delta_count: int
@@ -53,13 +53,13 @@ class ReportsOverviewResponse(BaseModel):
     month: str
     timezone: str
     granularity: str
-    total_amount_cents: NonNegativeMoneyAggregate
+    total_amount_cents: SignedMoneyAggregate
     count: int
     previous_month: str
-    previous_total_amount_cents: NonNegativeMoneyAggregate
+    previous_total_amount_cents: SignedMoneyAggregate
     previous_count: int
     year_over_year_month: str
-    year_over_year_total_amount_cents: NonNegativeMoneyAggregate
+    year_over_year_total_amount_cents: SignedMoneyAggregate
     year_over_year_count: int
     year_over_year_delta_amount_cents: SignedMoneyAggregate
     year_over_year_delta_count: int
@@ -73,15 +73,15 @@ class ReportsOverviewResponse(BaseModel):
 class LifestyleFrequentMerchantResponse(BaseModel):
     merchant: str
     count: int
-    amount_cents: NonNegativeMoneyAggregate
+    amount_cents: SignedMoneyAggregate
 
 
 class LifestyleStatsResponse(BaseModel):
     month: str
-    ai_subscription_amount_cents: NonNegativeMoneyAggregate
-    digital_amount_cents: NonNegativeMoneyAggregate
+    ai_subscription_amount_cents: SignedMoneyAggregate
+    digital_amount_cents: SignedMoneyAggregate
     max_expense: ExpenseResponse | None
-    recent_7_days_amount_cents: NonNegativeMoneyAggregate
+    recent_7_days_amount_cents: SignedMoneyAggregate
     frequent_merchants: list[LifestyleFrequentMerchantResponse]
     best_value_expenses: list[ExpenseResponse] = Field(default_factory=list)
     most_regretted_expenses: list[ExpenseResponse] = Field(default_factory=list)

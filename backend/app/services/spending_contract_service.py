@@ -10,12 +10,28 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import (
+    Date as SqlDate,
+)
+from sqlalchemy import (
+    Integer,
+    Select,
+    String,
+    case,
+    cast,
+    exists,
+    func,
+    literal,
+    or_,
+    select,
+    union_all,
+)
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.selectable import Subquery
 
 from app.config import get_settings
 from app.errors import AppError
-from app.models import Expense, ExpenseTag, RecurringItem, Tag
+from app.models import Expense, ExpenseOffsetFact, ExpenseTag, RecurringItem, Tag
 from app.services.category_common import category_filter_values
 from app.services.merchant_alias_service import (
     canonical_merchant_for,
@@ -163,8 +179,8 @@ def confirmed_amount_query(
     category: str | None = None,
     tag: str | None = None,
     timezone_name: str | None = None,
-) -> Select[tuple[Expense]]:
-    return confirmed_query(
+) -> Select:
+    stream = confirmed_stream_query(
         tenant_id=tenant_id,
         month=month,
         category=category,
@@ -172,6 +188,150 @@ def confirmed_amount_query(
         timezone_name=timezone_name,
         amount_required=True,
     )
+    return select(
+        stream.c.entry_id.label("id"),
+        stream.c.root_expense_id,
+        stream.c.entry_kind,
+        stream.c.stream_date,
+        stream.c.category,
+        stream.c.stream_amount_cents.label("amount_cents"),
+    )
+
+
+def _calendar_month_bounds(month: str) -> tuple[date, date]:
+    year, month_number = parse_month(month)
+    start = date(year, month_number, 1)
+    if month_number == 12:
+        return start, date(year + 1, 1, 1)
+    return start, date(year, month_number + 1, 1)
+
+
+def _confirmed_root_stream_query(
+    *,
+    tenant_id: str,
+    month: str | None,
+    category: str | None,
+    tag: str | None,
+    timezone_key: str,
+    amount_required: bool,
+):
+    expense_time = stat_time_expr()
+    active_reversal = exists(
+        select(ExpenseOffsetFact.id)
+        .where(ExpenseOffsetFact.tenant_id == Expense.tenant_id)
+        .where(ExpenseOffsetFact.expense_id == Expense.id)
+        .where(ExpenseOffsetFact.status == "active")
+        .where(ExpenseOffsetFact.kind == "reversal")
+    ).correlate(Expense)
+    return confirmed_query(
+        tenant_id=tenant_id,
+        month=month,
+        category=category,
+        tag=tag,
+        timezone_name=timezone_key,
+        amount_required=amount_required,
+    ).with_only_columns(
+        literal("expense").label("entry_kind"),
+        Expense.id.label("entry_id"),
+        Expense.id.label("root_expense_id"),
+        cast(literal(None), Integer).label("offset_id"),
+        cast(literal(None), String(32)).label("offset_kind"),
+        cast(func.timezone(timezone_key, expense_time), SqlDate).label("stream_date"),
+        expense_time.label("sort_time"),
+        Expense.id.label("sort_id"),
+        Expense.category.label("category"),
+        Expense.merchant.label("merchant"),
+        Expense.source.label("source"),
+        case((active_reversal, 0), else_=Expense.amount_cents).label(
+            "stream_amount_cents"
+        ),
+    )
+
+
+def _confirmed_offset_stream_query(
+    *,
+    tenant_id: str,
+    month: str | None,
+    category: str | None,
+    tag: str | None,
+    timezone_key: str,
+    amount_required: bool,
+):
+    tagged_confirmed_roots = confirmed_query(
+        tenant_id=tenant_id,
+        tag=tag,
+        timezone_name=timezone_key,
+        amount_required=amount_required,
+    ).with_only_columns(Expense.id)
+    query = (
+        select(
+            literal("offset").label("entry_kind"),
+            ExpenseOffsetFact.id.label("entry_id"),
+            ExpenseOffsetFact.expense_id.label("root_expense_id"),
+            ExpenseOffsetFact.id.label("offset_id"),
+            ExpenseOffsetFact.kind.label("offset_kind"),
+            ExpenseOffsetFact.accounting_date.label("stream_date"),
+            ExpenseOffsetFact.created_at.label("sort_time"),
+            ExpenseOffsetFact.id.label("sort_id"),
+            ExpenseOffsetFact.category.label("category"),
+            Expense.merchant.label("merchant"),
+            cast(literal(None), String(64)).label("source"),
+            case(
+                (ExpenseOffsetFact.kind == "reversal", 0),
+                else_=-ExpenseOffsetFact.amount_cents,
+            ).label("stream_amount_cents"),
+        )
+        .join(
+            Expense,
+            (Expense.id == ExpenseOffsetFact.expense_id)
+            & (Expense.tenant_id == ExpenseOffsetFact.tenant_id),
+        )
+        .where(ExpenseOffsetFact.tenant_id == tenant_id)
+        .where(ExpenseOffsetFact.status == "active")
+        .where(ExpenseOffsetFact.expense_id.in_(tagged_confirmed_roots))
+    )
+    if month:
+        start, end = _calendar_month_bounds(month)
+        query = query.where(
+            ExpenseOffsetFact.accounting_date >= start,
+            ExpenseOffsetFact.accounting_date < end,
+        )
+    if category:
+        query = query.where(
+            ExpenseOffsetFact.category.in_(category_filter_values(category))
+        )
+    return query
+
+
+def confirmed_stream_query(
+    *,
+    tenant_id: str,
+    month: str | None = None,
+    category: str | None = None,
+    tag: str | None = None,
+    timezone_name: str | None = None,
+    amount_required: bool = False,
+) -> Subquery:
+    """Shared root + active offset projection for every spending consumer."""
+
+    timezone_key = accounting_timezone_key(timezone_name)
+    roots = _confirmed_root_stream_query(
+        tenant_id=tenant_id,
+        month=month,
+        category=category,
+        tag=tag,
+        timezone_key=timezone_key,
+        amount_required=amount_required,
+    )
+    offsets = _confirmed_offset_stream_query(
+        tenant_id=tenant_id,
+        month=month,
+        category=category,
+        tag=tag,
+        timezone_key=timezone_key,
+        amount_required=amount_required,
+    )
+    return union_all(roots, offsets).subquery("confirmed_stream")
 
 
 def monthly_recurring_fixed_amount_query(

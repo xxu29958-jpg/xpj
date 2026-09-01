@@ -7,8 +7,11 @@
      与全部 inline 样式属性退役;
    - 只筛当前 50 行的客户端假分类 tab 整体删除 (含其 JS 与行上的类目数据
      属性), 不做 facet 替代; 标签筛选改为服务端状态条 + 一键清除;
-   - 按日分组流水流是页面主体; 行结构沿用 #218 兄弟节点合同 (选择槽 .lrow-sel
-     与整行链接 a.timeline-row-detail 并列, 链接内零交互控件);
+   - 按日分组 typed stream 是页面主体: expense root / refund / chargeback /
+     reversal 四种行形态共用 #218 兄弟节点合同 (选择槽 .lrow-sel 仅 root 行,
+     与整行链接 a.timeline-row-detail 并列, 链接内零交互控件); 分组日与
+     日合计全认 server-owned stream_date / stream_amount_cents, 前端不转日、
+     不重算符号;
    - 热力图改离散 level-2/3/4 分桶 (无 inline 样式), 来源构成用原生 <progress>;
      二者是当前唯一 Web consumer, 保留为流水之后的「本月概况」次级区;
    - 批量更正保持一个 native form + 共享更正理由 + 两个语义分开的行动组
@@ -51,10 +54,12 @@
 
 <section class="product-panel ledger-stream" aria-label="已确认流水">
   {% if expenses %}
+  {# 分组日期是 server-owned stream_date (expense 按请求时区的本地日,
+     offset 直接是 accounting_date); 前端不再从 timestamp 自行转日。 #}
   {% set _groups = {} %}
   {% set _order = [] %}
   {% for e in expenses %}
-    {% set _d = e.stat_time[:10] if e.stat_time else '—' %}
+    {% set _d = e.stream_date or '—' %}
     {% if _d not in _groups %}{% set _ = _groups.update({_d: []}) %}{% set _ = _order.append(_d) %}{% endif %}
     {% set _ = _groups[_d].append(e) %}
   {% endfor %}
@@ -70,24 +75,27 @@
     {% endif %}
     {% for d in _order %}
       {% set _items = _groups[d] %}
-      {% set _day_sum = _items | sum(attribute='amount_cents') %}
+      {# 日合计只加 server-owned stream_amount_cents: refund/chargeback 是负向
+         贡献, reversed root 与 reversal 事件都计 0; 不重算 gross。 #}
+      {% set _day_sum = _items | sum(attribute='stream_amount_cents') %}
   <div class="lday">
     <span class="lday-d">{{ d[5:7] }} 月 {{ d.split('-')[2] if '-' in d else d }} 日</span>
     <span class="lday-n">{{ _items | length }} 笔</span>
-    <span class="lday-s">{{ home_currency_symbol }}{{ home_amount_value(_day_sum) }}</span>
+    <span class="lday-s">{{ home_amount_label(_day_sum) }}</span>
   </div>
       {% for e in _items %}
-      {# amount_label 已是带原币符号的完整串（FX 时是原币如 $12.34，本币时是 ¥X）；
-         只把末尾小数拆出来灰显，不改符号、不强加 ¥。 #}
-      {% set _ap = (e.amount_label or '未识别').rsplit('.', 1) %}
-  {# #218 行结构合同：checkbox(.lrow-sel) 与整行链接(a.timeline-row-detail) 是
-     兄弟节点，行容器 .timeline-row 不是锚点，不存在交互元素嵌套。 #}
-  <div class="timeline-row lrow{% if can_write %} has-check{% endif %}">
-        {% if can_write %}
+  {# #218 行结构合同: 选择槽 (.lrow-sel, 仅 expense root 行) 与整行链接
+     (a.timeline-row-detail) 是兄弟节点, 链接内零交互控件。
+     typed stream: refund/chargeback 是入账金额行 (+ 号与流入色, 不伪装成
+     消费扣款); reversal 是无金额槽事件行, 金额只进引用文案; offset 行
+     一律无选择槽, 整行链接到 numeric root 的事实详情。 #}
+  <div class="timeline-row lrow{% if can_write and e.entry_kind == 'expense' %} has-check{% endif %}">
+        {% if can_write and e.entry_kind == 'expense' %}
     <div class="lrow-sel">
       <input class="checkbox row-check" type="checkbox" name="expense_snapshot" value="{{ e.id }}:{{ e.row_version }}" form="bulk-form" data-id="{{ e.id }}" data-row-version="{{ e.row_version }}" aria-label="选择账单：{{ e.merchant or '未填写商家' }} {{ e.amount_label or '金额未识别' }}"{% if e.id in selected_expense_ids %} checked{% endif %}>
     </div>
         {% endif %}
+        {% if e.entry_kind == 'expense' %}
     <a class="timeline-row-detail" href="/web/expenses/{{ e.id }}/edit?{{ confirmed_edit_query }}">
       <div class="lrow-ic">{{ (e.category or '·')[:1] }}</div>
       <div class="lrow-mid">
@@ -95,13 +103,33 @@
         <div class="lrow-meta">
           <span class="num">{{ e.stat_time[11:16] if e.stat_time and ' ' in e.stat_time else '—' }}</span>
           <span class="sep">·</span><span>{{ e.category or '未分类' }}</span>
+          {% if e.lineage_chip_label %}<span class="product-status product-status--{{ e.lineage_chip_tone }} lrow-lineage">{{ e.lineage_chip_label }}</span>{% endif %}
         </div>
       </div>
       <div class="lrow-amt">
+      {# amount_label 已是带原币符号的完整串（FX 时是原币如 $12.34，本币时是 ¥X）；
+         只把末尾小数拆出来灰显，不改符号、不强加 ¥。 #}
+      {% set _ap = (e.amount_label or '未识别').rsplit('.', 1) %}
         <span class="amt-main">{% if _ap | length == 2 %}{{ _ap[0] }}<span class="d">.{{ _ap[1] }}</span>{% else %}{{ _ap[0] }}{% endif %}</span>
         {% if e.fx_meta %}<span class="amt-fx">{{ e.fx_meta }}</span>{% endif %}
       </div>
     </a>
+        {% else %}
+    <a class="timeline-row-detail" href="/web/expenses/{{ e.root_expense_id }}/edit?{{ confirmed_edit_query }}">
+      <div class="lrow-ic lrow-ic--{{ 'inflow' if e.is_money_event else 'event' }}">{{ e.kind_label[:1] }}</div>
+      <div class="lrow-mid">
+        <div class="lrow-merch">{{ e.merchant or '未填写商家' }}</div>
+        <div class="lrow-meta"><span>{{ e.meta_label }}</span></div>
+      </div>
+          {% if e.is_money_event %}
+      <div class="lrow-amt lrow-amt--inflow">
+        {% set _ap = e.amount_label.rsplit('.', 1) %}
+        <span class="amt-main">{% if _ap | length == 2 %}{{ _ap[0] }}<span class="d">.{{ _ap[1] }}</span>{% else %}{{ _ap[0] }}{% endif %}</span>
+        {% if e.fx_meta %}<span class="amt-fx">{{ e.fx_meta }}</span>{% endif %}
+      </div>
+          {% endif %}
+    </a>
+        {% endif %}
   </div>
       {% endfor %}
     {% endfor %}
@@ -121,12 +149,14 @@
   {% endif %}
 </section>
 
-{# 本月概况: 次要信息区, 下沉到流水之后; 两个 panel 都是当前唯一 Web consumer。 #}
+{# 本月概况: 次要信息区, 下沉到流水之后; 每日分布按 server-owned typed stream
+   净贡献 (含退款/拒付/冲销, 与列表日合计同一投影), 原始账单来源是 root-only
+   入账渠道。 #}
 <section class="month-overview" aria-label="本月概况">
   <div class="product-panel product-panel--padded">
     <div class="product-panel-header">
       <h2 class="product-panel-title">每日分布</h2>
-      <span class="product-panel-subtitle">{{ selected_month }} · 有支出的日期与强度</span>
+      <span class="product-panel-subtitle">{{ selected_month }} · 每日净额与强度 · 含退款、拒付与冲销</span>
     </div>
     {% set _byday_map = {} %}
     {% for dd in by_day %}{% set _ = _byday_map.update({dd.date: dd}) %}{% endfor %}
@@ -152,7 +182,7 @@
         {% elif _ratio >= 0.25 %}{% set _level = 2 %}
         {% else %}{% set _level = 1 %}{% endif %}
       <div class="day{% if _hit %} has{% endif %}{% if _level > 1 %} level-{{ _level }}{% endif %}"
-           title="{{ _dstr }}{% if _hit %} · {{ home_currency_symbol }}{{ home_amount_value(_hit.amount_cents) }}{% endif %}">{{ i }}</div>
+           title="{{ _dstr }}{% if _hit %} · {{ home_amount_label(_hit.amount_cents) }}{% endif %}">{{ i }}</div>
       {% endfor %}
     </div>
     {% endif %}
@@ -160,8 +190,8 @@
 
   <div class="product-panel product-panel--padded">
     <div class="product-panel-header">
-      <h2 class="product-panel-title">来源</h2>
-      <span class="product-panel-subtitle">本月入账渠道</span>
+      <h2 class="product-panel-title">原始账单来源</h2>
+      <span class="product-panel-subtitle">按原始账单统计 · 退款、拒付与冲销不影响来源</span>
     </div>
     <div class="source-list">
       {% for s in source_breakdown %}

@@ -255,7 +255,7 @@ def _complete_lifecycle_command(
         claim,
         resource_type="expense_offset",
         resource_id=offset.public_id,
-        response_body=result.model_dump(mode="json"),
+        response_body=result.model_dump(mode="json", exclude_computed_fields=True),
     )
     db.commit()
     return result

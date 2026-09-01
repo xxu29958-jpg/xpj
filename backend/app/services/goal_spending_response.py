@@ -102,7 +102,7 @@ def goal_response(goal: Goal, totals: GoalSpendTotals) -> GoalResponse:
         # spent/target/remaining and ``progress_state=over_limit``; emitting an
         # unbounded percentage would be both inaccessible as a progressbar and
         # unsafe for ECMAScript consumers after C07 aggregate widening.
-        progress_percent=min(100, (spent * 100) // target),
+        progress_percent=max(0, min(100, (spent * 100) // target)),
         progress_state=_progress_state(goal, spent),
         status=goal.status,
         created_at=goal.created_at,

@@ -8,8 +8,6 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
-from app.ledger_scope import add_ledger_scope
-from app.models import Expense
 from app.money_contract import projection_sum_to_int
 from app.services.reports_service._models import ReportGranularity, _TrendBucket
 from app.services.reports_service._time import (
@@ -18,8 +16,36 @@ from app.services.reports_service._time import (
     _local_day_bounds_utc,
     _month_bounds,
     _month_labels_ending_at,
-    _stat_time_expr,
 )
+from app.services.spending_contract_service import (
+    accounting_zone,
+    confirmed_stream_query,
+)
+
+
+def _stream_for_utc_range(
+    *,
+    tenant_id: str,
+    start_utc: datetime,
+    end_utc: datetime,
+    timezone_name: str,
+    category: str | None = None,
+):
+    zone = accounting_zone(timezone_name)
+    start_date = start_utc.astimezone(zone).date()
+    end_date = end_utc.astimezone(zone).date()
+    stream = confirmed_stream_query(
+        tenant_id=tenant_id,
+        category=category,
+        timezone_name=timezone_name,
+        amount_required=True,
+    )
+    return (
+        select(stream)
+        .where(stream.c.stream_date >= start_date)
+        .where(stream.c.stream_date < end_date)
+        .subquery("report_stream")
+    )
 
 
 def _range_amount_count(
@@ -28,22 +54,18 @@ def _range_amount_count(
     tenant_id: str,
     start_utc: datetime,
     end_utc: datetime,
+    timezone_name: str,
 ) -> tuple[int, int]:
-    stat_time = _stat_time_expr()
-    statement = (
-        add_ledger_scope(
-            select(
-                func.coalesce(func.sum(Expense.amount_cents), 0),
-                func.count(Expense.id),
-            ),
-            Expense,
-            tenant_id,
-        )
-        .where(Expense.status == "confirmed")
-        .where(Expense.amount_cents.is_not(None))
-        .where(stat_time >= start_utc)
-        .where(stat_time < end_utc)
+    stream = _stream_for_utc_range(
+        tenant_id=tenant_id,
+        start_utc=start_utc,
+        end_utc=end_utc,
+        timezone_name=timezone_name,
     )
+    statement = select(
+        func.coalesce(func.sum(stream.c.stream_amount_cents), 0),
+        func.count(stream.c.entry_id),
+    ).select_from(stream)
     row = db.execute(statement).one()
     return (
         projection_sum_to_int(
@@ -60,19 +82,31 @@ def _range_amount_counts(
     *,
     tenant_id: str,
     ranges: dict[str, tuple[datetime, datetime]],
+    timezone_name: str,
 ) -> dict[str, tuple[int, int]]:
     if not ranges:
         return {}
-    stat_time = _stat_time_expr()
+    zone = accounting_zone(timezone_name)
+    stream = confirmed_stream_query(
+        tenant_id=tenant_id,
+        timezone_name=timezone_name,
+        amount_required=True,
+    )
     columns = []
     labels = list(ranges)
     for index, label in enumerate(labels):
         start_utc, end_utc = ranges[label]
-        in_range = (stat_time >= start_utc) & (stat_time < end_utc)
+        start_date = start_utc.astimezone(zone).date()
+        end_date = end_utc.astimezone(zone).date()
+        in_range = (stream.c.stream_date >= start_date) & (
+            stream.c.stream_date < end_date
+        )
         columns.extend(
             [
                 func.coalesce(
-                    func.sum(case((in_range, Expense.amount_cents), else_=0)),
+                    func.sum(
+                        case((in_range, stream.c.stream_amount_cents), else_=0)
+                    ),
                     0,
                 ).label(f"amount_{index}"),
                 func.coalesce(
@@ -81,12 +115,13 @@ def _range_amount_counts(
                 ).label(f"count_{index}"),
             ]
         )
+    earliest = min(start for start, _end in ranges.values()).astimezone(zone).date()
+    latest = max(end for _start, end in ranges.values()).astimezone(zone).date()
     statement = (
-        add_ledger_scope(select(*columns), Expense, tenant_id)
-        .where(Expense.status == "confirmed")
-        .where(Expense.amount_cents.is_not(None))
-        .where(stat_time >= min(start for start, _end in ranges.values()))
-        .where(stat_time < max(end for _start, end in ranges.values()))
+        select(*columns)
+        .select_from(stream)
+        .where(stream.c.stream_date >= earliest)
+        .where(stream.c.stream_date < latest)
     )
     row = db.execute(statement).one()
     return {
@@ -164,17 +199,29 @@ def _bucket_amount_counts(
     *,
     tenant_id: str,
     buckets: list[_TrendBucket],
+    timezone_name: str,
 ) -> dict[str, tuple[int, int]]:
     if not buckets:
         return {}
-    stat_time = _stat_time_expr()
+    zone = accounting_zone(timezone_name)
+    stream = confirmed_stream_query(
+        tenant_id=tenant_id,
+        timezone_name=timezone_name,
+        amount_required=True,
+    )
     columns = []
     for index, bucket in enumerate(buckets):
-        in_bucket = (stat_time >= bucket.start_utc) & (stat_time < bucket.end_utc)
+        start_date = bucket.start_utc.astimezone(zone).date()
+        end_date = bucket.end_utc.astimezone(zone).date()
+        in_bucket = (stream.c.stream_date >= start_date) & (
+            stream.c.stream_date < end_date
+        )
         columns.extend(
             [
                 func.coalesce(
-                    func.sum(case((in_bucket, Expense.amount_cents), else_=0)),
+                    func.sum(
+                        case((in_bucket, stream.c.stream_amount_cents), else_=0)
+                    ),
                     0,
                 ).label(f"amount_{index}"),
                 func.coalesce(
@@ -183,12 +230,13 @@ def _bucket_amount_counts(
                 ).label(f"count_{index}"),
             ]
         )
+    earliest = min(bucket.start_utc for bucket in buckets).astimezone(zone).date()
+    latest = max(bucket.end_utc for bucket in buckets).astimezone(zone).date()
     statement = (
-        add_ledger_scope(select(*columns), Expense, tenant_id)
-        .where(Expense.status == "confirmed")
-        .where(Expense.amount_cents.is_not(None))
-        .where(stat_time >= min(bucket.start_utc for bucket in buckets))
-        .where(stat_time < max(bucket.end_utc for bucket in buckets))
+        select(*columns)
+        .select_from(stream)
+        .where(stream.c.stream_date >= earliest)
+        .where(stream.c.stream_date < latest)
     )
     row = db.execute(statement).one()
     return {
@@ -219,7 +267,12 @@ def _trend_points(
         timezone_name=timezone_name,
         zone=zone,
     )
-    totals = _bucket_amount_counts(db, tenant_id=tenant_id, buckets=buckets)
+    totals = _bucket_amount_counts(
+        db,
+        tenant_id=tenant_id,
+        buckets=buckets,
+        timezone_name=timezone_name,
+    )
     return [
         {
             "bucket": bucket.bucket,

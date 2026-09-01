@@ -38,7 +38,7 @@ internal fun LedgerContent(
     chromeState: LedgerScreenChromeState,
 ) {
     val resources = LocalContext.current.resources
-    val groupedItems = remember(state.items, resources) { groupLedgerExpenses(resources, state.items) }
+    val groupedItems = remember(state.items, resources) { groupConfirmedStream(resources, state.items) }
     val foldState = rememberLedgerDayFoldState(state)
     val compactDayGroups = !state.selectionMode &&
         shouldCompactLedgerDayGroups(groupedItems.size, state.items.size)
@@ -74,7 +74,7 @@ internal fun LedgerContent(
 }
 
 private data class LedgerAdaptiveContentModel(
-    val groupedItems: List<LedgerExpenseGroup>,
+    val groupedItems: List<LedgerStreamGroup>,
     val foldState: LedgerDayFoldState,
     val compactDayGroups: Boolean,
     val showSupportingPane: Boolean,
@@ -139,7 +139,7 @@ private fun LedgerPrimaryPane(
 }
 
 private fun LazyListScope.ledgerDaySectionsContent(
-    groupedItems: List<LedgerExpenseGroup>,
+    groupedItems: List<LedgerStreamGroup>,
     state: LedgerUiState,
     actions: LedgerScreenActions,
     foldState: LedgerDayFoldState,

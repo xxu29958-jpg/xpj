@@ -18,6 +18,9 @@ import com.ticketbox.data.remote.dto.ExpenseSplitDto
 import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitsResponseDto
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
+import com.ticketbox.data.remote.dto.ExpenseFactBundleDto
+import com.ticketbox.data.remote.dto.ExpenseOffsetCreateRequestDto
+import com.ticketbox.data.remote.dto.ExpenseOffsetVoidRequestDto
 import com.ticketbox.data.remote.dto.GoalCreateRequestDto
 import com.ticketbox.data.remote.dto.GoalDto
 import com.ticketbox.data.remote.dto.GoalListResponseDto
@@ -187,7 +190,7 @@ internal class FakeApiService(
         }
         confirmedResponses[page]?.let { return it }
         return PaginatedExpensesDto(
-            items = listOf(confirmedExpenseDto()),
+            items = listOf(confirmedStreamEnvelopeFixture()),
             page = page,
             pageSize = pageSize,
             total = 1,
@@ -285,6 +288,21 @@ internal class FakeApiService(
         request: com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto,
         idempotencyKey: String?,
     ): com.ticketbox.data.remote.dto.ExpenseCorrectionResponseDto = unsupported()
+
+    override suspend fun expenseFactBundle(id: String): ExpenseFactBundleDto = unsupported()
+
+    override suspend fun createExpenseOffset(
+        id: String,
+        request: ExpenseOffsetCreateRequestDto,
+        idempotencyKey: String,
+    ): ExpenseFactBundleDto = unsupported()
+
+    override suspend fun voidExpenseOffset(
+        id: String,
+        offsetPublicId: String,
+        request: ExpenseOffsetVoidRequestDto,
+        idempotencyKey: String,
+    ): ExpenseFactBundleDto = unsupported()
     override suspend fun expenseRevisions(
         id: Long,
         page: Int,
@@ -858,33 +876,5 @@ internal class FakeApiService(
         ),
     )
 
-    private fun confirmedExpenseDto(): ExpenseDto {
-        return ExpenseDto(
-            id = 9,
-            publicId = "691da31d-e8d7-49b0-bece-ec6f61c044b2",
-            amountCents = 175479,
-            merchant = "高德",
-            category = "交通",
-            note = "",
-            source = "Android截图",
-            imagePath = null,
-            thumbnailPath = null,
-            imageHash = null,
-            rawText = null,
-            confidence = null,
-            duplicateStatus = "none",
-            duplicateOfId = null,
-            duplicateReason = null,
-            tags = null,
-            valueScore = null,
-            regretScore = null,
-            status = "confirmed",
-            expenseTime = "2026-05-07T07:29:00Z",
-            createdAt = "2026-05-09T08:08:13Z",
-            updatedAt = "2026-05-09T08:12:40Z",
-            rowVersion = 1L,
-            confirmedAt = "2026-05-09T08:12:40Z",
-            rejectedAt = null,
-        )
-    }
+    private fun confirmedExpenseDto(): ExpenseDto = confirmedExpenseDtoFixture()
 }

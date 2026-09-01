@@ -164,13 +164,6 @@ from app.schemas._expense_offset import (
     ExpenseOffsetVoidRequest,
     ExpenseRelationshipImpacts,
 )
-from app.schemas._expense_stream import (
-    ConfirmedExpenseStreamEntry,
-    ConfirmedExpenseStreamItem,
-    ConfirmedOffsetStreamEntry,
-    ExpenseLineageStatus,
-    PaginatedExpensesResponse,
-)
 from app.schemas._expense_revision import (
     ConfirmedExpenseBatchUpdateRequest,
     ConfirmedExpenseBatchUpdateResponse,
@@ -178,6 +171,12 @@ from app.schemas._expense_revision import (
     ExpenseCorrectionResponse,
     ExpenseRevisionListResponse,
     ExpenseRevisionResponse,
+)
+from app.schemas._expense_stream import (
+    ConfirmedExpenseStreamItem,
+    ConfirmedOffsetStreamProjection,
+    ExpenseLineageStatus,
+    PaginatedExpensesResponse,
 )
 from app.schemas._goals import (
     DebtGoalIntegrityReviewRequest,
@@ -366,9 +365,8 @@ __all__ = [
     "CategoryStatsResponse",
     "ConfirmedExpenseBatchUpdateRequest",
     "ConfirmedExpenseBatchUpdateResponse",
-    "ConfirmedExpenseStreamEntry",
     "ConfirmedExpenseStreamItem",
-    "ConfirmedOffsetStreamEntry",
+    "ConfirmedOffsetStreamProjection",
     "CsvImportApplyRequest",
     "CsvImportApplyResponse",
     "CsvImportBatchResponse",

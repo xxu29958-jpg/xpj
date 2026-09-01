@@ -2162,6 +2162,77 @@
         "title": "Body_web_create_debt_web_debts_post",
         "type": "object"
       },
+      "Body_web_create_expense_offset_web_expenses__expense_id__offsets_post": {
+        "properties": {
+          "accounting_date": {
+            "default": "",
+            "title": "Accounting Date",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "original_amount": {
+            "default": "",
+            "title": "Original Amount",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          },
+          "return_filter": {
+            "default": "",
+            "title": "Return Filter",
+            "type": "string"
+          },
+          "return_month": {
+            "default": "",
+            "title": "Return Month",
+            "type": "string"
+          },
+          "return_page": {
+            "default": "",
+            "title": "Return Page",
+            "type": "string"
+          },
+          "return_query": {
+            "default": "",
+            "title": "Return Query",
+            "type": "string"
+          },
+          "return_tag": {
+            "default": "",
+            "title": "Return Tag",
+            "type": "string"
+          },
+          "return_to": {
+            "default": "",
+            "title": "Return To",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_create_expense_offset_web_expenses__expense_id__offsets_post",
+        "type": "object"
+      },
       "Body_web_create_repayment_proposal_web_debts__public_id__repayment_proposals_post": {
         "properties": {
           "amount_major": {
@@ -3946,6 +4017,62 @@
         "title": "Body_web_void_debt_web_debts__public_id__void_post",
         "type": "object"
       },
+      "Body_web_void_expense_offset_web_expenses__expense_id__offsets__offset_public_id__voids_post": {
+        "properties": {
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "return_filter": {
+            "default": "",
+            "title": "Return Filter",
+            "type": "string"
+          },
+          "return_month": {
+            "default": "",
+            "title": "Return Month",
+            "type": "string"
+          },
+          "return_page": {
+            "default": "",
+            "title": "Return Page",
+            "type": "string"
+          },
+          "return_query": {
+            "default": "",
+            "title": "Return Query",
+            "type": "string"
+          },
+          "return_tag": {
+            "default": "",
+            "title": "Return Tag",
+            "type": "string"
+          },
+          "return_to": {
+            "default": "",
+            "title": "Return To",
+            "type": "string"
+          },
+          "void_reason": {
+            "default": "",
+            "title": "Void Reason",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_void_expense_offset_web_expenses__expense_id__offsets__offset_public_id__voids_post",
+        "type": "object"
+      },
       "Body_web_void_repayment_web_debts__public_id__repayment_voids_post": {
         "properties": {
           "csrf_token": {
@@ -4375,7 +4502,7 @@
           "spent_amount_cents": {
             "format": "int64",
             "maximum": 9007199254740991.0,
-            "minimum": 0.0,
+            "minimum": -9007199254740991.0,
             "title": "Spent Amount Cents",
             "type": "integer"
           }
@@ -4395,7 +4522,7 @@
           "amount_cents": {
             "format": "int64",
             "maximum": 9007199254740991.0,
-            "minimum": 0.0,
+            "minimum": -9007199254740991.0,
             "title": "Amount Cents",
             "type": "integer"
           },
@@ -4459,7 +4586,7 @@
           "excluded_amount_cents": {
             "format": "int64",
             "maximum": 9007199254740991.0,
-            "minimum": 0.0,
+            "minimum": -9007199254740991.0,
             "title": "Excluded Amount Cents",
             "type": "integer"
           },
@@ -4541,7 +4668,7 @@
           "spent_amount_cents": {
             "format": "int64",
             "maximum": 9007199254740991.0,
-            "minimum": 0.0,
+            "minimum": -9007199254740991.0,
             "title": "Spent Amount Cents",
             "type": "integer"
           },
@@ -5120,7 +5247,7 @@
           "amount_cents": {
             "format": "int64",
             "maximum": 9007199254740991.0,
-            "minimum": 0.0,
+            "minimum": -9007199254740991.0,
             "title": "Amount Cents",
             "type": "integer"
           },
@@ -5230,249 +5357,16 @@
         "title": "ConfirmedExpenseBatchUpdateResponse",
         "type": "object"
       },
-      "ConfirmedExpenseStreamEntry": {
+      "ConfirmedExpenseStreamItem": {
+        "description": "One timeline row with enough root context to open it offline.",
         "properties": {
-          "amount_cents": {
-            "anyOf": [
-              {
-                "format": "int64",
-                "maximum": 9000000000000.0,
-                "minimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Amount Cents"
-          },
-          "category": {
-            "title": "Category",
-            "type": "string"
-          },
-          "category_suggestion": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PendingCategorySuggestionResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "confidence": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Confidence"
-          },
-          "confirmed_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Confirmed At"
-          },
-          "created_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Created At"
-          },
-          "duplicate_candidates": {
-            "items": {
-              "$ref": "#/components/schemas/PendingDuplicateCandidateResponse"
-            },
-            "title": "Duplicate Candidates",
-            "type": "array"
-          },
-          "duplicate_of_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Duplicate Of Id"
-          },
-          "duplicate_reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Duplicate Reason"
-          },
-          "duplicate_status": {
-            "title": "Duplicate Status",
-            "type": "string"
-          },
           "entry_kind": {
-            "const": "expense",
-            "default": "expense",
+            "enum": [
+              "expense",
+              "offset"
+            ],
             "title": "Entry Kind",
             "type": "string"
-          },
-          "exchange_rate_date": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Exchange Rate Date"
-          },
-          "exchange_rate_source": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Exchange Rate Source"
-          },
-          "exchange_rate_to_cny": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Exchange Rate To Cny"
-          },
-          "expense_time": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Expense Time"
-          },
-          "fact_revision": {
-            "title": "Fact Revision",
-            "type": "integer"
-          },
-          "fx_rate": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Fx Rate"
-          },
-          "fx_rate_date": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Fx Rate Date"
-          },
-          "fx_source": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Fx Source"
-          },
-          "fx_status": {
-            "title": "Fx Status",
-            "type": "string"
-          },
-          "home_amount_cents": {
-            "anyOf": [
-              {
-                "format": "int64",
-                "maximum": 9000000000000.0,
-                "minimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Home Amount Cents"
-          },
-          "home_currency": {
-            "title": "Home Currency",
-            "type": "string"
-          },
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          },
-          "image_deleted_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Image Deleted At"
-          },
-          "image_hash": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Image Hash"
-          },
-          "image_path": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Image Path"
           },
           "lineage_home_net_cents": {
             "format": "int64",
@@ -5491,109 +5385,18 @@
             "title": "Lineage Status",
             "type": "string"
           },
-          "merchant": {
+          "offset": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/ConfirmedOffsetStreamProjection"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Merchant"
+            ]
           },
-          "note": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Note"
-          },
-          "original_amount": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Original Amount"
-          },
-          "original_amount_minor": {
-            "anyOf": [
-              {
-                "format": "int64",
-                "maximum": 9000000000000.0,
-                "minimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Original Amount Minor"
-          },
-          "original_currency": {
-            "title": "Original Currency",
-            "type": "string"
-          },
-          "original_currency_code": {
-            "title": "Original Currency Code",
-            "type": "string"
-          },
-          "public_id": {
-            "title": "Public Id",
-            "type": "string"
-          },
-          "raw_text": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Raw Text"
-          },
-          "regret_score": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Regret Score"
-          },
-          "rejected_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rejected At"
-          },
-          "row_version": {
-            "title": "Row Version",
-            "type": "integer"
-          },
-          "source": {
-            "title": "Source",
-            "type": "string"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
+          "root": {
+            "$ref": "#/components/schemas/ExpenseResponse"
           },
           "stream_amount_cents": {
             "format": "int64",
@@ -5607,113 +5410,29 @@
             "title": "Stream Date",
             "type": "string"
           },
-          "tags": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tags"
+          "stream_sort_id": {
+            "title": "Stream Sort Id",
+            "type": "integer"
           },
-          "thumbnail_deleted_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Thumbnail Deleted At"
-          },
-          "thumbnail_path": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Thumbnail Path"
-          },
-          "updated_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Updated At"
-          },
-          "value_score": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Value Score"
+          "stream_sort_time": {
+            "title": "Stream Sort Time",
+            "type": "string"
           }
         },
         "required": [
-          "id",
-          "public_id",
-          "amount_cents",
-          "home_amount_cents",
-          "home_currency",
-          "original_currency",
-          "original_amount",
-          "fx_rate",
-          "fx_rate_date",
-          "fx_source",
-          "fx_status",
-          "original_currency_code",
-          "original_amount_minor",
-          "exchange_rate_to_cny",
-          "exchange_rate_date",
-          "exchange_rate_source",
-          "merchant",
-          "category",
-          "note",
-          "source",
-          "image_path",
-          "thumbnail_path",
-          "image_hash",
-          "raw_text",
-          "confidence",
-          "duplicate_status",
-          "duplicate_of_id",
-          "duplicate_reason",
-          "tags",
-          "value_score",
-          "regret_score",
-          "status",
-          "expense_time",
-          "created_at",
-          "updated_at",
-          "row_version",
-          "fact_revision",
-          "confirmed_at",
-          "rejected_at",
-          "image_deleted_at",
-          "thumbnail_deleted_at",
+          "entry_kind",
           "stream_date",
+          "stream_sort_time",
+          "stream_sort_id",
           "stream_amount_cents",
+          "root",
           "lineage_status",
           "lineage_home_net_cents"
         ],
-        "title": "ConfirmedExpenseStreamEntry",
+        "title": "ConfirmedExpenseStreamItem",
         "type": "object"
       },
-      "ConfirmedOffsetStreamEntry": {
+      "ConfirmedOffsetStreamProjection": {
         "properties": {
           "amount_cents": {
             "format": "int64",
@@ -5724,12 +5443,6 @@
           },
           "category": {
             "title": "Category",
-            "type": "string"
-          },
-          "entry_kind": {
-            "const": "offset",
-            "default": "offset",
-            "title": "Entry Kind",
             "type": "string"
           },
           "home_currency_code": {
@@ -5759,54 +5472,18 @@
           "public_id": {
             "title": "Public Id",
             "type": "string"
-          },
-          "root_expense_id": {
-            "title": "Root Expense Id",
-            "type": "integer"
-          },
-          "root_expense_public_id": {
-            "title": "Root Expense Public Id",
-            "type": "string"
-          },
-          "root_merchant_label": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Root Merchant Label"
-          },
-          "stream_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Stream Amount Cents",
-            "type": "integer"
-          },
-          "stream_date": {
-            "format": "date",
-            "title": "Stream Date",
-            "type": "string"
           }
         },
         "required": [
           "public_id",
           "kind",
-          "stream_date",
-          "stream_amount_cents",
           "amount_cents",
           "original_amount_minor",
           "original_currency_code",
           "home_currency_code",
-          "root_expense_id",
-          "root_expense_public_id",
-          "root_merchant_label",
           "category"
         ],
-        "title": "ConfirmedOffsetStreamEntry",
+        "title": "ConfirmedOffsetStreamProjection",
         "type": "object"
       },
       "CsvImportApplyRequest": {
@@ -7553,7 +7230,7 @@
           "spent_amount_cents": {
             "format": "int64",
             "maximum": 9007199254740991.0,
-            "minimum": 0.0,
+            "minimum": -9007199254740991.0,
             "title": "Spent Amount Cents",
             "type": "integer"
           }
@@ -8212,6 +7889,14 @@
             "title": "Remaining Refundable Original Minor",
             "type": "integer"
           },
+          "root_stream_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
+            "readOnly": true,
+            "title": "Root Stream Amount Cents",
+            "type": "integer"
+          },
           "status": {
             "enum": [
               "confirmed",
@@ -8230,7 +7915,8 @@
           "remaining_refundable_original_minor",
           "lineage_home_net_cents",
           "fx_difference_cents",
-          "status"
+          "status",
+          "root_stream_amount_cents"
         ],
         "title": "ExpenseFinancialSummary",
         "type": "object"
@@ -9059,6 +8745,29 @@
             "title": "Status",
             "type": "string"
           },
+          "stream_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
+            "readOnly": true,
+            "title": "Stream Amount Cents",
+            "type": "integer"
+          },
+          "stream_sort_id": {
+            "title": "Stream Sort Id",
+            "type": "integer"
+          },
+          "stream_sort_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stream Sort Time"
+          },
           "updated_at": {
             "anyOf": [
               {
@@ -9090,6 +8799,8 @@
           "original_amount_minor",
           "home_currency_code",
           "amount_cents",
+          "stream_sort_time",
+          "stream_sort_id",
           "exchange_rate_to_cny",
           "exchange_rate_date",
           "exchange_rate_source",
@@ -9100,7 +8811,8 @@
           "fact_revision",
           "created_at",
           "updated_at",
-          "voided_at"
+          "voided_at",
+          "stream_amount_cents"
         ],
         "title": "ExpenseOffsetResponse",
         "type": "object"
@@ -10485,7 +10197,7 @@
               {
                 "format": "int64",
                 "maximum": 9007199254740991.0,
-                "minimum": 0.0,
+                "minimum": -9007199254740991.0,
                 "type": "integer"
               },
               {
@@ -12198,7 +11910,7 @@
           "amount_cents": {
             "format": "int64",
             "maximum": 9007199254740991.0,
-            "minimum": 0.0,
+            "minimum": -9007199254740991.0,
             "title": "Amount Cents",
             "type": "integer"
           },
@@ -12224,7 +11936,7 @@
           "ai_subscription_amount_cents": {
             "format": "int64",
             "maximum": 9007199254740991.0,
-            "minimum": 0.0,
+            "minimum": -9007199254740991.0,
             "title": "Ai Subscription Amount Cents",
             "type": "integer"
           },
@@ -12238,7 +11950,7 @@
           "digital_amount_cents": {
             "format": "int64",
             "maximum": 9007199254740991.0,
-            "minimum": 0.0,
+            "minimum": -9007199254740991.0,
             "title": "Digital Amount Cents",
             "type": "integer"
           },
@@ -12273,7 +11985,7 @@
           "recent_7_days_amount_cents": {
             "format": "int64",
             "maximum": 9007199254740991.0,
-            "minimum": 0.0,
+            "minimum": -9007199254740991.0,
             "title": "Recent 7 Days Amount Cents",
             "type": "integer"
           }
@@ -13176,7 +12888,7 @@
           "total_amount_cents": {
             "format": "int64",
             "maximum": 9007199254740991.0,
-            "minimum": 0.0,
+            "minimum": -9007199254740991.0,
             "title": "Total Amount Cents",
             "type": "integer"
           }
@@ -13451,21 +13163,7 @@
         "properties": {
           "items": {
             "items": {
-              "discriminator": {
-                "mapping": {
-                  "expense": "#/components/schemas/ConfirmedExpenseStreamEntry",
-                  "offset": "#/components/schemas/ConfirmedOffsetStreamEntry"
-                },
-                "propertyName": "entry_kind"
-              },
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/ConfirmedExpenseStreamEntry"
-                },
-                {
-                  "$ref": "#/components/schemas/ConfirmedOffsetStreamEntry"
-                }
-              ]
+              "$ref": "#/components/schemas/ConfirmedExpenseStreamItem"
             },
             "title": "Items",
             "type": "array"
@@ -15232,7 +14930,7 @@
           "amount_cents": {
             "format": "int64",
             "maximum": 9007199254740991.0,
-            "minimum": 0.0,
+            "minimum": -9007199254740991.0,
             "title": "Amount Cents",
             "type": "integer"
           },
@@ -15258,7 +14956,7 @@
           "previous_amount_cents": {
             "format": "int64",
             "maximum": 9007199254740991.0,
-            "minimum": 0.0,
+            "minimum": -9007199254740991.0,
             "title": "Previous Amount Cents",
             "type": "integer"
           },
@@ -15269,7 +14967,7 @@
           "year_over_year_amount_cents": {
             "format": "int64",
             "maximum": 9007199254740991.0,
-            "minimum": 0.0,
+            "minimum": -9007199254740991.0,
             "title": "Year Over Year Amount Cents",
             "type": "integer"
           },
@@ -15310,7 +15008,7 @@
           "amount_cents": {
             "format": "int64",
             "maximum": 9007199254740991.0,
-            "minimum": 0.0,
+            "minimum": -9007199254740991.0,
             "title": "Amount Cents",
             "type": "integer"
           },
@@ -15336,7 +15034,7 @@
           "amount_cents": {
             "format": "int64",
             "maximum": 9007199254740991.0,
-            "minimum": 0.0,
+            "minimum": -9007199254740991.0,
             "title": "Amount Cents",
             "type": "integer"
           },
@@ -15412,7 +15110,7 @@
           "previous_total_amount_cents": {
             "format": "int64",
             "maximum": 9007199254740991.0,
-            "minimum": 0.0,
+            "minimum": -9007199254740991.0,
             "title": "Previous Total Amount Cents",
             "type": "integer"
           },
@@ -15427,7 +15125,7 @@
           "total_amount_cents": {
             "format": "int64",
             "maximum": 9007199254740991.0,
-            "minimum": 0.0,
+            "minimum": -9007199254740991.0,
             "title": "Total Amount Cents",
             "type": "integer"
           },
@@ -15460,7 +15158,7 @@
           "year_over_year_total_amount_cents": {
             "format": "int64",
             "maximum": 9007199254740991.0,
-            "minimum": 0.0,
+            "minimum": -9007199254740991.0,
             "title": "Year Over Year Total Amount Cents",
             "type": "integer"
           }
@@ -16460,7 +16158,7 @@
           "amount_cents": {
             "format": "int64",
             "maximum": 9007199254740991.0,
-            "minimum": 0.0,
+            "minimum": -9007199254740991.0,
             "title": "Amount Cents",
             "type": "integer"
           },
@@ -39361,6 +39059,117 @@
           }
         },
         "summary": "Web Items Save",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/expenses/{expense_id}/offsets": {
+      "post": {
+        "operationId": "web_create_expense_offset_web_expenses__expense_id__offsets_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_create_expense_offset_web_expenses__expense_id__offsets_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Create Expense Offset",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/expenses/{expense_id}/offsets/{offset_public_id}/voids": {
+      "post": {
+        "operationId": "web_void_expense_offset_web_expenses__expense_id__offsets__offset_public_id__voids_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "offset_public_id",
+            "required": true,
+            "schema": {
+              "title": "Offset Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_void_expense_offset_web_expenses__expense_id__offsets__offset_public_id__voids_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Void Expense Offset",
         "tags": [
           "web"
         ]

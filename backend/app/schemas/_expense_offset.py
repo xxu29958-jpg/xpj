@@ -7,9 +7,11 @@ from decimal import Decimal
 from typing import Any, Literal
 
 from pydantic import (
+    AliasChoices,
     BaseModel,
     ConfigDict,
     Field,
+    computed_field,
     field_serializer,
     field_validator,
     model_validator,
@@ -132,7 +134,7 @@ class ExpenseOffsetVoidRequest(BaseModel):
 
 
 class ExpenseOffsetResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True, extra="forbid")
+    model_config = ConfigDict(from_attributes=True, extra="forbid", populate_by_name=True)
 
     public_id: str
     kind: ExpenseOffsetKind
@@ -141,6 +143,16 @@ class ExpenseOffsetResponse(BaseModel):
     original_amount_minor: PositiveMoneyMinor
     home_currency_code: str
     amount_cents: PositiveMoneyMinor
+    # Same ordering locator published by the confirmed stream. Direct command
+    # responses can therefore be cached without inventing a client tie-breaker.
+    stream_sort_time: datetime = Field(
+        validation_alias=AliasChoices("stream_sort_time", "created_at"),
+        serialization_alias="stream_sort_time",
+    )
+    stream_sort_id: int = Field(
+        validation_alias=AliasChoices("stream_sort_id", "id"),
+        serialization_alias="stream_sort_id",
+    )
     exchange_rate_to_cny: Decimal | None
     exchange_rate_date: date | None
     exchange_rate_source: str | None
@@ -153,7 +165,12 @@ class ExpenseOffsetResponse(BaseModel):
     updated_at: datetime
     voided_at: datetime | None
 
-    @field_serializer("created_at", "updated_at", "voided_at")
+    @computed_field
+    @property
+    def stream_amount_cents(self) -> SignedMoneyAggregate:
+        return 0 if self.kind == "reversal" else -self.amount_cents
+
+    @field_serializer("created_at", "updated_at", "voided_at", "stream_sort_time")
     def _serialize_datetime(self, value: datetime | None) -> str | None:
         return to_iso(value)
 
@@ -189,6 +206,11 @@ class ExpenseFinancialSummary(BaseModel):
     lineage_home_net_cents: SignedMoneyAggregate
     fx_difference_cents: SignedMoneyAggregate
     status: Literal["confirmed", "partially_refunded", "fully_refunded", "reversed"]
+
+    @computed_field
+    @property
+    def root_stream_amount_cents(self) -> SignedMoneyAggregate:
+        return 0 if self.status == "reversed" else self.gross_home_amount_cents
 
 
 class ExpenseFactBundleResponse(BaseModel):

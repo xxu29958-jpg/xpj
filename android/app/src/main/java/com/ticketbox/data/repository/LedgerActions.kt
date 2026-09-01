@@ -1,6 +1,7 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.domain.model.BatchApplyResult
+import com.ticketbox.domain.model.ConfirmedStreamItem
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
@@ -10,6 +11,7 @@ interface LedgerActions {
     fun canModifyLedger(): Boolean
     fun lastConfirmedSyncAt(): String?
     fun observeConfirmed(): Flow<List<Expense>>
+    fun observeConfirmedStream(): Flow<List<ConfirmedStreamItem>>
     suspend fun categories(): Result<List<String>>
     suspend fun tags(): Result<List<String>>
     suspend fun months(): Result<List<String>>

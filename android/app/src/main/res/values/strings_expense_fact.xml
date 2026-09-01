@@ -125,4 +125,78 @@
     <string name="expense_correction_score_clear">清除</string>
     <string name="expense_correction_time_helper">留空表示清空现有时间。</string>
     <string name="expense_correction_saving">保存中…</string>
+
+    <!-- Refund/Chargeback/Reversal 纵向片：事实详情「退回与冲销」段。金额/状态全部
+         渲染服务端 bundle，客户端不重算；两端仅共享统一产品术语，不共享 runtime source。 -->
+    <string name="expense_fact_offsets_title">退回与冲销</string>
+    <string name="expense_fact_offsets_hint">退款、拒付或冲销不会改动原账单，只在下面追加一条记录。</string>
+    <string name="expense_fact_offsets_failed">退回与冲销记录加载失败，点按重试。</string>
+    <string name="expense_fact_offsets_loading">正在载入退回与冲销记录…</string>
+    <string name="expense_fact_offsets_stale">暂时取不到最新记录，以下显示已知记录。</string>
+    <string name="expense_offset_summary_gross">原始金额</string>
+    <string name="expense_offset_summary_refunded">已退回</string>
+    <string name="expense_offset_summary_net">当前净额</string>
+    <string name="expense_offset_summary_fx_difference">其中 %1$s 是汇率变动差额</string>
+    <string name="expense_offset_empty">还没有退回或冲销记录。</string>
+    <string name="expense_offset_kind_refund">商家退款</string>
+    <string name="expense_offset_kind_chargeback">银行拒付</string>
+    <string name="expense_offset_kind_reversal">冲销</string>
+    <string name="expense_offset_create_refund_cta">登记退款</string>
+    <string name="expense_offset_create_reversal_cta">冲销这笔账单</string>
+    <string name="expense_offset_reversed_hint">这笔账单已冲销，不再计入支出。</string>
+    <string name="expense_offset_reversal_blocked_hint">已有退款或拒付记录；先撤销它们，才能冲销整笔账单。</string>
+    <string name="expense_offset_pending_sync">待同步</string>
+
+    <!-- 登记 sheet（refund/chargeback 同一入口分段切换；reversal 无金额） -->
+    <string name="expense_offset_sheet_title_refund">登记退款</string>
+    <string name="expense_offset_sheet_subtitle_refund">原账单保留不变，这里追加一条退回记录。</string>
+    <string name="expense_offset_sheet_title_reversal">冲销这笔账单</string>
+    <string name="expense_offset_sheet_subtitle_reversal">冲销表示这笔账从一开始就不该算。</string>
+    <string name="expense_offset_reversal_explainer">不需要填写金额：整笔按原记录冲掉，原账单和这条冲销都会保留在记录里。</string>
+    <string name="expense_offset_amount_label">退回金额（%1$s）</string>
+    <string name="expense_offset_amount_invalid">请填写大于 0 的有效金额。</string>
+    <string name="expense_offset_remaining_hint">当前可退约 %1$s，最终以保存结果为准。</string>
+    <string name="expense_offset_remaining_unavailable">当前可退余额暂不可用，最终由服务器核验。</string>
+    <string name="expense_offset_currency_unsupported">当前币种（%1$s）暂不受支持，暂不能登记退回金额。</string>
+    <string name="expense_offset_date_label">生效日期</string>
+    <string name="expense_offset_date_placeholder">格式 2026-09-01</string>
+    <string name="expense_offset_date_invalid">请按 年-月-日 填写日期。</string>
+    <string name="expense_offset_reason_label">原因（必填）</string>
+    <string name="expense_offset_reason_placeholder_refund">例如：商家退了部分货款</string>
+    <string name="expense_offset_reason_placeholder_chargeback">例如：银行确认这笔拒付</string>
+    <string name="expense_offset_reason_placeholder_reversal">例如：重复录入，这笔不该算</string>
+    <string name="expense_offset_reason_required">请说明原因，这会显示在记录里。</string>
+    <string name="expense_offset_submit_refund">登记退款</string>
+    <string name="expense_offset_submit_reversal">确认冲销</string>
+    <string name="expense_offset_saving">保存中…</string>
+    <string name="expense_offset_success_refund">退款已登记。</string>
+    <string name="expense_offset_success_chargeback">拒付已登记。</string>
+    <string name="expense_offset_success_reversal">账单已冲销。</string>
+    <string name="expense_offset_success_refresh_pending">已登记；列表将在下次同步时刷新。</string>
+    <string name="expense_offset_cancelled_invites">%1$d 个待接受的拆账邀请已随之撤回。</string>
+    <string name="expense_offset_queued">操作已保存，联网后自动提交。</string>
+    <string name="expense_offset_conflict">退款或冲销记录刚在其它端发生变化；已载入最新事实，请核对草稿后重新提交。</string>
+    <string name="expense_offset_conflict_refreshing">退款或冲销记录刚在其它端发生变化，正在载入最新事实…</string>
+    <string name="expense_offset_conflict_refresh_failed">最新记录暂时取不到；重试刷新后再提交。</string>
+    <string name="expense_offset_submit_failed">保存失败，请重试。</string>
+
+    <!-- 撤销 sheet（只作用于已生效记录；记录本身保留在历史里） -->
+    <string name="expense_offset_void_action">撤销</string>
+    <string name="expense_offset_void_title">撤销这条记录</string>
+    <string name="expense_offset_void_explainer">撤销后这条%1$s不再生效；记录本身仍会保留在变更历史里。</string>
+    <string name="expense_offset_void_reason_label">撤销原因（必填）</string>
+    <string name="expense_offset_void_reason_placeholder">例如：退款又被商家收回</string>
+    <string name="expense_offset_void_reason_required">请说明撤销原因。</string>
+    <string name="expense_offset_void_submit">确认撤销</string>
+    <string name="expense_offset_void_success">这条退回或冲销已撤销。</string>
+
+    <!-- 关系影响：pending 邀请撤回回执 + accepted 估算建议（永不自动改账） -->
+    <string name="expense_offset_impact_cancelled">已撤回 %1$d 个待接受的拆账邀请。</string>
+    <string name="expense_offset_impact_accepted_line">%1$s 原分摊 %2$s，按当前剩余建议 %3$s</string>
+    <string name="expense_offset_impact_disclaimer">按原拆账比例估算，不会自动改账。</string>
+
+    <!-- offset 历史（append-only；change kind 人话标签） -->
+    <string name="expense_offset_history_created">已登记</string>
+    <string name="expense_offset_history_correction">已更正</string>
+    <string name="expense_offset_history_void">已撤销</string>
 </resources>

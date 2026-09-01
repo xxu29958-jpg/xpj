@@ -11,7 +11,7 @@ selection, view-models) and concentrates the SQL here next to the other
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
@@ -30,9 +30,8 @@ from app.services.spending_contract_service import (
     accounting_zone,
     clean_month,
     confirmed_query,
+    confirmed_stream_query,
     month_bounds_utc,
-    stat_time,
-    stat_time_expr,
 )
 from app.services.time_service import now_utc
 
@@ -96,29 +95,25 @@ def trend14_amounts(
     zone = _web_stats_zone()
     today = now_utc().astimezone(zone).date()
     start = today - timedelta(days=13)
-    start_utc = datetime(start.year, start.month, start.day, tzinfo=zone).astimezone(UTC)
     end_day = today + timedelta(days=1)
-    end_utc = datetime(end_day.year, end_day.month, end_day.day, tzinfo=zone).astimezone(UTC)
-    expense_time = stat_time_expr()
-    expenses = db.scalars(
-        select(Expense)
-        .where(Expense.tenant_id == ledger_id)
-        .where(Expense.status == "confirmed")
-        .where(Expense.amount_cents.is_not(None))
-        .where(expense_time >= start_utc)
-        .where(expense_time < end_utc)
+    stream = confirmed_stream_query(
+        tenant_id=ledger_id,
+        timezone_name=zone.key,
+        amount_required=True,
     )
     by_day: dict[str, int] = defaultdict(int)
-    for expense in expenses:
-        when = stat_time(expense)
-        if when is None or expense.amount_cents is None:
-            continue
-        key = when.astimezone(zone).strftime("%m-%d")
+    rows = db.execute(
+        select(stream.c.stream_date, stream.c.stream_amount_cents)
+        .where(stream.c.stream_date >= start)
+        .where(stream.c.stream_date < end_day)
+    )
+    for stream_date, stream_amount_cents in rows:
+        key = stream_date.strftime("%m-%d")
         by_day[key] = projection_sum_to_int(
             by_day[key]
             + projection_sum_to_int(
-                expense.amount_cents,
-                label="web_stats.trend_expense",
+                stream_amount_cents,
+                label="web_stats.trend_entry",
             ),
             label="web_stats.trend_day",
         )
@@ -147,26 +142,25 @@ def confirmed_by_day(
     """已确认账单在指定月内的每日金额，用于日历热力图。"""
     month = _clean_month_filter(month)
     zone = _web_stats_zone()
-    expenses = db.scalars(
-        confirmed_query(
-            tenant_id=ledger_id,
-            month=month,
-            tag=tag,
-            timezone_name=zone.key,
-            amount_required=True,
-        )
+    stream = confirmed_stream_query(
+        tenant_id=ledger_id,
+        month=month,
+        tag=tag,
+        timezone_name=zone.key,
+        amount_required=True,
     )
     by_day: dict[str, dict[str, int]] = defaultdict(lambda: {"amount_cents": 0, "count": 0})
-    for expense in expenses:
-        when = stat_time(expense)
-        if when is None or expense.amount_cents is None:
+    for stream_date, stream_amount_cents in db.execute(
+        select(stream.c.stream_date, stream.c.stream_amount_cents)
+    ):
+        if stream_date is None or stream_amount_cents is None:
             continue
-        key = when.astimezone(zone).date().isoformat()
+        key = stream_date.isoformat()
         by_day[key]["amount_cents"] = projection_sum_to_int(
             by_day[key]["amount_cents"]
             + projection_sum_to_int(
-                expense.amount_cents,
-                label="web_stats.calendar_expense",
+                stream_amount_cents,
+                label="web_stats.calendar_entry",
             ),
             label="web_stats.calendar_day",
         )

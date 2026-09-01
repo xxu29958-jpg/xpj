@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.fx_constants import CURRENCY_SYMBOLS, FX_STATUS_PENDING, NO_FRACTION_CURRENCY_CODES
 from app.money_contract import projection_sum_to_int
+from app.schemas import ConfirmedExpenseStreamItem
 from app.services import bill_split_service, web_stats_service
 from app.services.currency_common import (
     currency_input_metadata,
@@ -259,4 +260,74 @@ def _expense_view(
         "fx_pending": getattr(expense, "fx_status", "") == FX_STATUS_PENDING,
         "source_label": source_label,
         "is_split_received": is_split_received,
+    }
+
+
+# typed confirmed stream 的展示语义: refund/chargeback 是入账金额行 (+ 号与
+# 流入色, 不伪装成消费扣款); reversal 是无金额槽事件行, 金额只进引用文案。
+# 符号与合计永远只认 server-owned stream_amount_cents, 这里不做任何金额运算。
+_OFFSET_STREAM_KIND_LABELS = {
+    "refund": "退款",
+    "chargeback": "拒付",
+    "reversal": "冲销",
+}
+
+# root 行的 lineage chip 只解释当前净额状态, 不参与金额槽与合计。
+_LINEAGE_CHIP_LABELS = {
+    "partially_refunded": "部分退回",
+    "fully_refunded": "已退回",
+    "reversed": "已冲销",
+}
+
+_LINEAGE_CHIP_TONES = {
+    "partially_refunded": "info",
+    "fully_refunded": "info",
+    "reversed": "warning",
+}
+
+
+def _lineage_chip(lineage_status: str) -> dict:
+    return {
+        "lineage_status": lineage_status,
+        "lineage_chip_label": _LINEAGE_CHIP_LABELS.get(lineage_status, ""),
+        "lineage_chip_tone": _LINEAGE_CHIP_TONES.get(lineage_status, "info"),
+    }
+
+
+def _offset_stream_view(
+    entry: ConfirmedExpenseStreamItem,
+    *,
+    home_currency_code: str,
+) -> dict:
+    offset = entry.offset
+    if offset is None:
+        raise ValueError("offset stream view requires an offset entry")
+    home_code = _required_currency_code(offset.home_currency_code, home_currency_code)
+    original_code = (offset.original_currency_code or home_code).upper()
+    original_label = _minor_amount_label(offset.original_amount_minor, original_code)
+    is_foreign = original_code != home_code
+    is_money_event = offset.kind != "reversal"
+    kind_label = _OFFSET_STREAM_KIND_LABELS[offset.kind]
+    if is_money_event:
+        meta_label = f"{kind_label} · {offset.category or '未分类'}"
+        amount_label = f"+{original_label}"
+        fx_meta = f"≈ {_minor_amount_label(offset.amount_cents, home_code)}" if is_foreign else None
+    else:
+        meta_label = f"{kind_label} · 原账单 {original_label}"
+        amount_label = ""
+        fx_meta = None
+    return {
+        "entry_kind": "offset",
+        "kind": offset.kind,
+        "kind_label": kind_label,
+        "public_id": offset.public_id,
+        "stream_date": entry.stream_date.isoformat(),
+        "stream_amount_cents": entry.stream_amount_cents,
+        "root_expense_id": entry.root.id,
+        # merchant 槽复用 root 商家名: 用户认出的是原账单, 完整上下文在 root 详情。
+        "merchant": entry.root.merchant or "",
+        "meta_label": meta_label,
+        "amount_label": amount_label,
+        "fx_meta": fx_meta,
+        "is_money_event": is_money_event,
     }

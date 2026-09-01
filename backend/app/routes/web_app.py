@@ -32,7 +32,9 @@ from app.routes.web_common import (
     _confirmed_by_day,
     _confirmed_source_breakdown,
     _expense_view,
+    _lineage_chip,
     _list_ledger_options,
+    _offset_stream_view,
     _require_local,  # re-exported for tests
     _resolve_selected_ledger_id,
     _sidebar_counts,
@@ -154,8 +156,24 @@ def _confirmed_month_context(
     }
 
 
-def _confirmed_items(expenses, home_currency_code: str) -> list[dict]:
-    return [_expense_view(expense, presentation_currency_code=home_currency_code) for expense in expenses]
+def _confirmed_items(entries, home_currency_code: str) -> list[dict]:
+    """typed stream → 行视图模型。offset 与 expense 是两种行形态, 不互套
+    Expense 视图; 每行只携带 server 给的 stream_date/stream_amount_cents,
+    符号与归属不重算。"""
+    items: list[dict] = []
+    for entry in entries:
+        if entry.entry_kind == "offset":
+            items.append(_offset_stream_view(entry, home_currency_code=home_currency_code))
+            continue
+        view = _expense_view(entry.root, presentation_currency_code=home_currency_code)
+        view.update(
+            entry_kind="expense",
+            stream_date=entry.stream_date.isoformat(),
+            stream_amount_cents=entry.stream_amount_cents,
+            **_lineage_chip(entry.lineage_status),
+        )
+        items.append(view)
+    return items
 
 
 def _confirmed_edit_query(
@@ -188,7 +206,7 @@ def _confirmed_page_rows(
 ) -> tuple[str, str, list[dict], int, int, str]:
     timezone_name = accounting_timezone_key()
     effective_month = month or current_accounting_month(timezone_name)
-    expenses, total = list_confirmed(
+    entries, total = list_confirmed(
         db,
         tenant_id=selected_id,
         page=page,
@@ -205,7 +223,7 @@ def _confirmed_page_rows(
     return (
         effective_month,
         home,
-        _confirmed_items(expenses, home),
+        _confirmed_items(entries, home),
         total,
         total_pages,
         urlencode(pager_params),

@@ -380,12 +380,25 @@ class ExpenseDaoContractTest {
  */
 private class FakeExpenseDao : ExpenseDao {
     private val expenses = linkedMapOf<Long, ExpenseEntity>()
+    private val offsets = linkedMapOf<Pair<String, String>, ExpenseOffsetStreamEntity>()
     private val perLedgerFlows = mutableMapOf<String, MutableStateFlow<List<ExpenseEntity>>>()
     private var nextId = 1L
 
     override fun observeConfirmed(ledgerId: String): Flow<List<ExpenseEntity>> {
         return flowFor(ledgerId)
     }
+
+    override fun observeConfirmedStreamRoots(ledgerId: String): Flow<List<ExpenseEntity>> =
+        MutableStateFlow(emptyList())
+
+    override fun observeConfirmedStreamOffsets(ledgerId: String): Flow<List<ExpenseOffsetStreamEntity>> =
+        MutableStateFlow(offsets.values.filter { it.ledgerId == ledgerId })
+
+    override suspend fun getConfirmedStreamOffsets(ledgerId: String): List<ExpenseOffsetStreamEntity> =
+        offsets.values.filter { it.ledgerId == ledgerId }
+
+    override suspend fun confirmedStreamOffsetPublicIdsForLedger(ledgerId: String): List<String> =
+        getConfirmedStreamOffsets(ledgerId).map { it.publicId }
 
     override suspend fun getConfirmed(ledgerId: String): List<ExpenseEntity> {
         return expenses.values
@@ -433,6 +446,10 @@ private class FakeExpenseDao : ExpenseDao {
         return expenses.map { insert(it) }
     }
 
+    override suspend fun upsertConfirmedStreamOffsets(offsets: List<ExpenseOffsetStreamEntity>) {
+        offsets.forEach { this.offsets[it.ledgerId to it.publicId] = it }
+    }
+
     override suspend fun update(expense: ExpenseEntity) {
         expenses[expense.id] = expense
         emit(expense.ledgerId)
@@ -477,6 +494,25 @@ private class FakeExpenseDao : ExpenseDao {
             .map { it.id }
         ids.forEach { expenses.remove(it) }
         emit(ledgerId)
+    }
+
+    override suspend fun clearConfirmedStreamOffsets() {
+        offsets.clear()
+    }
+
+    override suspend fun clearConfirmedStreamOffsetsForLedger(ledgerId: String) {
+        offsets.keys.filter { it.first == ledgerId }.forEach(offsets::remove)
+    }
+
+    override suspend fun deleteConfirmedStreamOffsetsByPublicIds(ledgerId: String, publicIds: List<String>) {
+        publicIds.forEach { offsets.remove(ledgerId to it) }
+    }
+
+    override suspend fun deleteConfirmedStreamOffsetsForRoot(ledgerId: String, rootServerId: Long) {
+        offsets.entries
+            .filter { (_, offset) -> offset.ledgerId == ledgerId && offset.rootServerId == rootServerId }
+            .map { it.key }
+            .forEach(offsets::remove)
     }
 
     private fun flowFor(ledgerId: String): MutableStateFlow<List<ExpenseEntity>> {

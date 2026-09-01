@@ -392,7 +392,10 @@ def create_expense_offset(
         claim,
         resource_type="expense_offset",
         resource_id=offset.public_id,
-        response_body=result.model_dump(mode="json"),
+        # Computed stream projections are reconstructed by the response model
+        # on replay; storing them would make this strict model reject its own
+        # receipt as extra input.
+        response_body=result.model_dump(mode="json", exclude_computed_fields=True),
     )
     db.commit()
     return result

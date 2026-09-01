@@ -23,11 +23,9 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ledger_scope import add_ledger_scope
-from app.models import Expense
 from app.services.budget_baseline_service._models import CategoryBaseline
 from app.services.category_service import normalize_category
-from app.services.spending_contract_service import stat_time_expr
+from app.services.spending_contract_service import accounting_zone, confirmed_stream_query
 from app.services.time_service import now_utc
 
 
@@ -62,13 +60,21 @@ def compute_personal_baseline(
     anchor = now or now_utc()
     start_utc = anchor - timedelta(days=months_window * 31)
 
+    zone = accounting_zone()
+    stream = confirmed_stream_query(
+        tenant_id=tenant_id,
+        timezone_name=zone.key,
+        amount_required=True,
+    )
     rows = list(
-        db.scalars(
-            add_ledger_scope(select(Expense), Expense, tenant_id)
-            .where(Expense.status == "confirmed")
-            .where(Expense.amount_cents.is_not(None))
-            .where(stat_time_expr() >= start_utc)
-            .where(stat_time_expr() <= anchor)
+        db.execute(
+            select(
+                stream.c.category,
+                stream.c.stream_date,
+                stream.c.stream_amount_cents,
+            )
+            .where(stream.c.stream_date >= start_utc.astimezone(zone).date())
+            .where(stream.c.stream_date <= anchor.astimezone(zone).date())
         )
     )
     if not rows:
@@ -76,18 +82,15 @@ def compute_personal_baseline(
 
     monthly_totals: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     months_seen: set[str] = set()
-    for expense in rows:
-        bucket_time = expense.expense_time or expense.confirmed_at
-        if bucket_time is None:
-            continue
-        month_key = bucket_time.strftime("%Y-%m")
+    for category_raw, stream_date, stream_amount in rows:
+        month_key = stream_date.strftime("%Y-%m")
         months_seen.add(month_key)
-        category = normalize_category(expense.category or "")
-        monthly_totals[category][month_key] += int(expense.amount_cents)
+        category = normalize_category(category_raw or "")
+        monthly_totals[category][month_key] += int(stream_amount)
 
     categories: list[CategoryBaseline] = []
     for category, by_month in monthly_totals.items():
-        monthly_amounts = sorted(by_month.values())
+        monthly_amounts = sorted(max(value, 0) for value in by_month.values())
         # P50 = median; P75 via inclusive percentile.
         median = int(statistics.median(monthly_amounts))
         p75 = _percentile_inclusive(monthly_amounts, 75)

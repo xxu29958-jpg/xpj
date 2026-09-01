@@ -6,10 +6,12 @@ import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.data.repository.LedgerActions
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.BatchApplyResult
+import com.ticketbox.domain.model.ConfirmedStreamItem
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.ExpenseLineageStatus
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RecentMerchant
 import com.ticketbox.domain.model.UiText
@@ -87,7 +89,7 @@ class LedgerViewModelTest {
         advanceUntilIdle()
 
         val state = vm.uiState.value
-        assertEquals(listOf(1L), state.items.map { it.id })
+        assertEquals(listOf(1L), state.items.map { it.root.id })
         assertEquals(1200L, state.summary.totalAmountCents)
         assertTrue(state.filter.hasFilters)
         assertEquals("餐饮", state.filter.categoryFilter)
@@ -118,7 +120,7 @@ class LedgerViewModelTest {
         assertEquals("餐饮", state.filter.categoryFilter)
         assertEquals("", state.filter.tagFilter)
         assertEquals("", state.filter.query)
-        assertEquals(listOf(1L), state.items.map { it.id })
+        assertEquals(listOf(1L), state.items.map { it.root.id })
     }
 
     @Test
@@ -562,7 +564,7 @@ class LedgerViewModelTest {
         // Has cached items while first sync runs → show the cache, not a skeleton.
         assertFalse(
             LedgerUiState(
-                items = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
+                items = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A").toStreamRow()),
                 syncing = true,
                 lastSyncAt = null,
             ).isFirstSync,
@@ -578,7 +580,7 @@ class LedgerViewModelTest {
         assertTrue(LedgerUiState(items = emptyList(), syncing = true).showPageRefresh)
         assertFalse(
             LedgerUiState(
-                items = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
+                items = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A").toStreamRow()),
                 syncing = true,
             ).showPageRefresh,
         )
@@ -717,7 +719,7 @@ class LedgerViewModelTest {
         vm.applyDataQualityFilter(LedgerDataQualityFilter.ConfirmedWithoutImage)
         advanceUntilIdle()
 
-        assertEquals(listOf(2L, 3L), vm.uiState.value.items.map { it.id })
+        assertEquals(listOf(2L, 3L), vm.uiState.value.items.map { it.root.id })
     }
 
     @Test
@@ -737,7 +739,7 @@ class LedgerViewModelTest {
         vm.applyDataQualityFilter(LedgerDataQualityFilter.MissingCategory)
         advanceUntilIdle()
 
-        assertEquals(listOf(1L, 3L), vm.uiState.value.items.map { it.id })
+        assertEquals(listOf(1L, 3L), vm.uiState.value.items.map { it.root.id })
     }
 }
 
@@ -842,6 +844,9 @@ private class FakeLedgerActions(
 
     override fun observeConfirmed(): Flow<List<Expense>> = flowOf(confirmed)
 
+    override fun observeConfirmedStream(): Flow<List<ConfirmedStreamItem>> =
+        flowOf(confirmed.map { it.toStreamRow() })
+
     override suspend fun categories(): Result<List<String>> =
         Result.success(DEFAULT_EXPENSE_CATEGORIES)
 
@@ -921,6 +926,17 @@ private fun manualDraft(): ExpenseDraft = ExpenseDraft(
     tags = null,
     valueScore = null,
     regretScore = null,
+)
+
+/** Wrap a fixture expense as its confirmed-stream root row — the fake publishes
+ *  the same caliber the server would (streamDate = the bill's day, contribution
+ *  = gross amount, ordinary confirmed lineage, no offsets). */
+internal fun Expense.toStreamRow(): ConfirmedStreamItem.ExpenseRow = ConfirmedStreamItem.ExpenseRow(
+    streamDate = (expenseTime ?: createdAt).take(10),
+    streamAmountCents = amountCents ?: 0L,
+    root = this,
+    lineageStatus = ExpenseLineageStatus.Confirmed,
+    lineageHomeNetCents = amountCents ?: 0L,
 )
 
 private fun expense(

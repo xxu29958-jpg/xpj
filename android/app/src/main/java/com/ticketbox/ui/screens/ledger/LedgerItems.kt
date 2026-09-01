@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.domain.model.ExpenseLineageStatus
 import com.ticketbox.ui.components.AppAdaptiveAmountRowDefaults
 import com.ticketbox.ui.components.AppAdaptiveContentActionStateRow
 import com.ticketbox.ui.components.AppEndAlignedAmountText
@@ -81,6 +82,9 @@ internal data class LedgerExpenseSelectionState(
 internal data class LedgerExpenseItemState(
     val expense: Expense,
     val selection: LedgerExpenseSelectionState,
+    // Server-owned net-state of this bill's lineage (chip copy key); Confirmed
+    // renders no chip. Presentation only — never feeds sums.
+    val lineageStatus: ExpenseLineageStatus = ExpenseLineageStatus.Confirmed,
 )
 
 internal data class LedgerExpenseItemActions(
@@ -237,15 +241,22 @@ internal fun LedgerExpenseCard(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
                     ) {
-                        Text(
-                            text = expense.merchant?.takeIf { it.isNotBlank() }
-                                ?: stringResource(R.string.ledger_item_merchant_empty),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontWeight = AppTypography.cardTitle.weight,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+                        ) {
+                            Text(
+                                text = expense.merchant?.takeIf { it.isNotBlank() }
+                                    ?: stringResource(R.string.ledger_item_merchant_empty),
+                                modifier = Modifier.weight(1f, fill = false),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontWeight = AppTypography.cardTitle.weight,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            LedgerLineageChip(status = state.lineageStatus)
+                        }
                         Text(
                             text = displayTime(expense.expenseTime ?: expense.confirmedAt ?: expense.createdAt),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -339,6 +350,7 @@ internal fun LedgerExpenseListRow(
                 LedgerListTextBlock(
                     expense = expense,
                     metaText = metaText,
+                    lineageStatus = state.lineageStatus,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -393,15 +405,22 @@ internal fun LedgerExpenseTableRow(
                         modifier = Modifier.weight(LedgerItemLayout.TableMerchantWeight),
                         verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
                     ) {
-                        Text(
-                            text = expense.merchant?.takeIf { it.isNotBlank() }
-                                ?: stringResource(R.string.ledger_item_merchant_empty),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontWeight = AppTypography.chip.weight,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+                        ) {
+                            Text(
+                                text = expense.merchant?.takeIf { it.isNotBlank() }
+                                    ?: stringResource(R.string.ledger_item_merchant_empty),
+                                modifier = Modifier.weight(1f, fill = false),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontWeight = AppTypography.chip.weight,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            LedgerLineageChip(status = state.lineageStatus)
+                        }
                         Text(
                             text = displayTime(expense.expenseTime ?: expense.confirmedAt ?: expense.createdAt),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,

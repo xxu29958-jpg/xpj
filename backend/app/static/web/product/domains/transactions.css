@@ -81,9 +81,10 @@
     font-variant-numeric: tabular-nums;
 }
 
-/* 行结构: 选择槽 (.lrow-sel) 与整行链接 (a.timeline-row-detail) 兄弟并列,
-   /web/confirmed 是唯一 consumer; 容器只出「选择器 | 链接」两列, 内容
-   三列网格收在行链接上, 链接内零交互控件。 */
+/* 行结构: 选择槽 (.lrow-sel, 仅 expense root 行) 与整行链接 (a.timeline-row-detail)
+   兄弟并列, /web/confirmed 是唯一 consumer; 容器只出「选择器 | 链接」两列, 内容
+   三列网格收在行链接上, 链接内零交互控件。offset 行 (refund/chargeback/reversal)
+   没有选择槽, 链接占满整行。 */
 .timeline-row.lrow {
     grid-template-columns: minmax(0, 1fr);
     min-height: calc(var(--space-12) + var(--space-3));
@@ -140,6 +141,26 @@
     font-weight: var(--type-title-weight);
 }
 
+/* typed stream: offset 行图标承载事件方向 — 退款/拒付是入账 (success 语义色),
+   冲销是中性事件; 金额槽只对入账行着色, 冲销行没有金额槽。 */
+.lrow-ic--inflow {
+    background: var(--state-success-bg);
+    color: var(--state-success-fg);
+}
+
+.lrow-ic--event {
+    background: var(--surface-sunken);
+    color: var(--text-meta);
+}
+
+/* root 行的 lineage chip: 复用 product-status 语义色, 压缩到 caption 行高内,
+   只解释净额状态, 不进金额槽。 */
+.lrow-lineage {
+    min-height: 0;
+    margin-inline-start: var(--space-2);
+    padding-block: 0;
+}
+
 .lrow-merch {
     overflow: hidden;
     font-weight: var(--type-subtitle-weight);
@@ -168,6 +189,11 @@
 
 .amt-main .d {
     color: var(--text-muted);
+}
+
+.lrow-amt--inflow .amt-main,
+.lrow-amt--inflow .amt-main .d {
+    color: var(--state-success-fg);
 }
 
 .month-overview {
@@ -1447,4 +1473,119 @@
     .fact-lines-table td.fact-cell-empty {
         display: none;
     }
+}
+
+
+/* Refund/Chargeback/Reversal 纵向片：事实详情「退回与冲销」段。
+   native <details> 复用 debt-action-panel 语义：summary 是可发现动作，
+   发丝分隔；冲销是 quiet-danger。只定义本域增量，不复制组件栈。 */
+.fact-offsets {
+    scroll-margin-block-start: var(--space-3);
+}
+
+.fact-offsets .offset-summary {
+    display: grid;
+    gap: var(--space-1);
+    margin: 0 0 var(--space-3);
+}
+
+.fact-offsets .offset-summary > div {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-3);
+}
+
+.fact-offsets .offset-summary dt {
+    color: var(--text-faint);
+}
+
+.fact-offsets .offset-summary dd {
+    margin: 0;
+    font-weight: var(--type-subtitle-weight);
+}
+
+.fact-offsets .offset-row {
+    padding-block: var(--space-2);
+    border-block-start: 1px solid var(--border-card);
+}
+
+.fact-offsets .offset-row-main {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.fact-offsets .offset-amount {
+    font-weight: var(--type-subtitle-weight);
+}
+
+.fact-offsets .offset-kind-legend {
+    color: var(--text-default);
+    font-size: var(--type-caption-size);
+    font-weight: var(--type-subtitle-weight);
+}
+
+.fact-offsets .offset-kind-group {
+    display: flex;
+    gap: var(--space-3);
+}
+
+.fact-offsets .offset-kind-option {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+}
+
+.fact-offsets .offset-action-panel,
+.fact-offsets .offset-void {
+    padding-block: var(--space-3);
+    border-block-start: 1px solid var(--border-card);
+}
+
+.fact-offsets .offset-action-panel > summary {
+    color: var(--text-default);
+    font-weight: var(--type-subtitle-weight);
+    cursor: pointer;
+}
+
+.fact-offsets .offset-action-panel--danger > summary {
+    color: var(--state-danger-fg);
+}
+
+.fact-offsets .offset-action-panel > summary:focus-visible,
+.fact-offsets .offset-void > summary:focus-visible {
+    outline: var(--space-1) solid var(--brand-focus-ring);
+    outline-offset: var(--space-1);
+}
+
+.fact-offsets .offset-void {
+    padding-block: var(--space-2);
+    border-block-start: 0;
+}
+
+.fact-offsets .offset-void > summary {
+    color: var(--text-faint);
+    cursor: pointer;
+}
+
+.fact-offsets .offset-form,
+.fact-offsets .offset-void-form {
+    display: grid;
+    gap: var(--space-3);
+    margin-block-start: var(--space-3);
+}
+
+.fact-offsets .offset-form-error {
+    margin: 0;
+    padding: var(--space-2) var(--space-3);
+}
+
+.fact-offsets .offset-form-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.fact-offsets .offset-history {
+    padding-block-start: var(--space-2);
+    border-block-start: 1px solid var(--border-card);
 }

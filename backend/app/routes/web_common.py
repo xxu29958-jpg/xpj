@@ -34,9 +34,11 @@ from app.routes._web_money_views import (
     _expense_time_local_input,
     _expense_view,
     _home_amount_label,
+    _lineage_chip,
     _minor_amount_label,
     _minor_amount_value,
     _month_display_label,
+    _offset_stream_view,
     _trend14_amounts,
 )
 from app.routes._web_session_common import (
@@ -79,10 +81,12 @@ __all__ = [
     "_expense_time_local_input",
     "_expense_view",
     "_home_amount_label",
+    "_lineage_chip",
     "_list_ledger_options",
     "_minor_amount_label",
     "_minor_amount_value",
     "_month_display_label",
+    "_offset_stream_view",
     "_require_local",
     "_require_selected_ledger_write",
     "_resolve_selected_ledger_id",
@@ -152,6 +156,9 @@ def _base_ctx(
         "home_currency_symbol": _currency_symbol(home),
         "home_currency_minor_digits": minor_unit_digits(home),
         "home_amount_value": lambda amount: minor_amount_value(amount, home),
+        # 带符号金额 (如退款日的负向日合计) 用 label: 符号在货币符号前 (-¥40.00),
+        # 避免 value + 前置 symbol 拼出反直觉的 ¥-40.00。
+        "home_amount_label": lambda amount: _minor_amount_label(amount, home),
         "currency_input": _currency_input_view(home),
     }
 
