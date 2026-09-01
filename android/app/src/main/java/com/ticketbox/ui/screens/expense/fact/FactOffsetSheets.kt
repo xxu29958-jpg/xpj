@@ -18,13 +18,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
-import com.ticketbox.domain.model.CurrencyCode
-import com.ticketbox.domain.model.ExpenseFinancialSummary
 import com.ticketbox.domain.model.ExpenseOffsetFact
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.StreamOffsetKind
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.AppSheetAction
 import com.ticketbox.ui.components.AppSheetActionRow
@@ -35,7 +32,6 @@ import com.ticketbox.ui.components.AppTextInputDecorations
 import com.ticketbox.ui.components.AppTextInputEmphasis
 import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.StatusPill
-import com.ticketbox.ui.components.formatAmountInput
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.expense.ExpenseEditSheetScaffold
 import com.ticketbox.viewmodel.ExpenseDetailDataLoadState
@@ -402,43 +398,4 @@ private fun VoidOffsetEcho(target: ExpenseOffsetFact) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         style = MaterialTheme.typography.bodySmall,
     )
-}
-
-/** quickMerchantSupportingText 同形范式：调用点不做可组合 lambda 类型推导。 */
-@Composable
-private fun offsetFieldErrorText(error: UiText?): (@Composable () -> Unit)? {
-    val text = error ?: return null
-    return {
-        Text(
-            text = text.asString(),
-            color = MaterialTheme.colorScheme.error,
-            style = MaterialTheme.typography.bodySmall,
-        )
-    }
-}
-
-/** 金额 supporting：错误优先；否则剩余可退快照提示；bundle 非 Loaded 明示暂不可用。 */
-@Composable
-private fun offsetAmountSupportingText(
-    form: OffsetFormState,
-    summary: ExpenseFinancialSummary?,
-    currency: CurrencyCode,
-): (@Composable () -> Unit)? {
-    offsetFieldErrorText(form.amountError)?.let { return it }
-    val hint = if (summary != null) {
-        // 与原币解析同一枚举（未知原币已在 openOffsetSheet fail-closed）。
-        stringResource(
-            R.string.expense_offset_remaining_hint,
-            formatAmountInput(summary.remainingRefundableOriginalMinor, currency),
-        )
-    } else {
-        stringResource(R.string.expense_offset_remaining_unavailable)
-    }
-    return {
-        Text(
-            text = hint,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-        )
-    }
 }

@@ -63,7 +63,7 @@ class ExpenseOffsetDispatchersTest {
     @Test
     fun `create replay uses outbox OCC and key then publishes authoritative bundle`() = runTest {
         val bundle = expenseFactBundleDtoFixture(
-            root = confirmedExpenseDtoFixture(rowVersion = 8),
+            root = confirmedExpenseDtoFixture(ConfirmedExpenseFixture(rowVersion = 8)),
         )
         val stub = Stub(Result.success(bundle))
         var published: Pair<String, ExpenseFactBundleDto>? = null
@@ -104,7 +104,7 @@ class ExpenseOffsetDispatchersTest {
     @Test
     fun `void replay keeps offset OCC but returns the bumped root token`() = runTest {
         val bundle = expenseFactBundleDtoFixture(
-            root = confirmedExpenseDtoFixture(rowVersion = 8),
+            root = confirmedExpenseDtoFixture(ConfirmedExpenseFixture(rowVersion = 8)),
             activeOffsets = emptyList(),
         )
         val stub = Stub(Result.failure(AssertionError("create not expected")), Result.success(bundle))

@@ -144,7 +144,6 @@ class FakePendingMutationDao : PendingMutationDao {
         ownerKey: String,
         ledgerId: String,
         targetId: String,
-        pendingStatus: String,
         preservedTokenType: String,
         freshToken: Long,
     ): Int {
@@ -152,7 +151,7 @@ class FakePendingMutationDao : PendingMutationDao {
             it.ownerKey == ownerKey &&
                 it.ledgerId == ledgerId &&
                 it.targetId == targetId &&
-                it.status == pendingStatus &&
+                it.status == PendingMutationStatus.Pending.wireValue &&
                 it.type != preservedTokenType
         }
         for (row in matching) {

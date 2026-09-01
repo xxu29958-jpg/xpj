@@ -253,13 +253,11 @@ private fun refundRow(
     streamDate: String,
     amountCents: Long,
 ) = offsetRow(
-    publicId = publicId,
     root = root,
     streamDate = streamDate,
-    kind = StreamOffsetKind.Refund,
-    amountCents = amountCents,
     streamAmountCents = -amountCents,
     lineage = ExpenseLineageStatus.PartiallyRefunded,
+    offset = streamOffset(publicId, StreamOffsetKind.Refund, amountCents),
 )
 
 private fun reversalRow(
@@ -267,36 +265,38 @@ private fun reversalRow(
     root: Expense,
     streamDate: String,
 ) = offsetRow(
-    publicId = publicId,
     root = root,
     streamDate = streamDate,
-    kind = StreamOffsetKind.Reversal,
-    amountCents = 0L,
     streamAmountCents = 0L,
     lineage = ExpenseLineageStatus.Reversed,
+    offset = streamOffset(publicId, StreamOffsetKind.Reversal, amountCents = 0L),
 )
 
 private fun offsetRow(
-    publicId: String,
     root: Expense,
     streamDate: String,
-    kind: StreamOffsetKind,
-    amountCents: Long,
     streamAmountCents: Long,
     lineage: ExpenseLineageStatus,
+    offset: StreamOffset,
 ) = ConfirmedStreamItem.OffsetRow(
     streamDate = streamDate,
     streamAmountCents = streamAmountCents,
     root = root,
     lineageStatus = lineage,
     lineageHomeNetCents = 0L,
-    offset = StreamOffset(
-        publicId = publicId,
-        kind = kind,
-        amountCents = amountCents,
-        originalAmountMinor = amountCents,
-        originalCurrencyCode = "CNY",
-        homeCurrencyCode = "CNY",
-        category = "餐饮",
-    ),
+    offset = offset,
+)
+
+private fun streamOffset(
+    publicId: String,
+    kind: StreamOffsetKind,
+    amountCents: Long,
+): StreamOffset = StreamOffset(
+    publicId = publicId,
+    kind = kind,
+    amountCents = amountCents,
+    originalAmountMinor = amountCents,
+    originalCurrencyCode = "CNY",
+    homeCurrencyCode = "CNY",
+    category = "餐饮",
 )

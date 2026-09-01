@@ -46,21 +46,23 @@ internal fun cachedConfirmedEntity(
 
 internal fun unsupported(): Nothing = error("Unexpected API call")
 
+internal data class ConfirmedExpenseFixture(
+    val amountCents: Long = 175_479L,
+    val merchant: String = "高德",
+    val category: String = "交通",
+    val tags: String? = null,
+    val expenseTime: String = "2026-05-07T07:29:00Z",
+    val rowVersion: Long = 1L,
+)
+
 internal fun confirmedExpenseDtoFixture(
-    id: Long = 9L,
-    publicId: String = "691da31d-e8d7-49b0-bece-ec6f61c044b2",
-    amountCents: Long = 175_479L,
-    merchant: String = "高德",
-    category: String = "交通",
-    tags: String? = null,
-    expenseTime: String = "2026-05-07T07:29:00Z",
-    rowVersion: Long = 1L,
+    fixture: ConfirmedExpenseFixture = ConfirmedExpenseFixture(),
 ): ExpenseDto = ExpenseDto(
-    id = id,
-    publicId = publicId,
-    amountCents = amountCents,
-    merchant = merchant,
-    category = category,
+    id = 9L,
+    publicId = "691da31d-e8d7-49b0-bece-ec6f61c044b2",
+    amountCents = fixture.amountCents,
+    merchant = fixture.merchant,
+    category = fixture.category,
     note = "",
     source = "Android截图",
     imagePath = null,
@@ -71,72 +73,80 @@ internal fun confirmedExpenseDtoFixture(
     duplicateStatus = "none",
     duplicateOfId = null,
     duplicateReason = null,
-    tags = tags,
+    tags = fixture.tags,
     valueScore = null,
     regretScore = null,
     status = "confirmed",
-    expenseTime = expenseTime,
+    expenseTime = fixture.expenseTime,
     createdAt = "2026-05-09T08:08:13Z",
     updatedAt = "2026-05-09T08:12:40Z",
-    rowVersion = rowVersion,
+    rowVersion = fixture.rowVersion,
     confirmedAt = "2026-05-09T08:12:40Z",
     rejectedAt = null,
 )
 
+internal data class ConfirmedLineageFixture(
+    val status: ExpenseLineageStatusDto = ExpenseLineageStatusDto.Confirmed,
+    val homeNetCents: Long = 175_479L,
+)
+
+internal data class ConfirmedStreamFixture(
+    val entryKind: ConfirmedStreamEntryKindDto = ConfirmedStreamEntryKindDto.Expense,
+    val streamDate: String = "2026-05-07",
+    val streamAmountCents: Long = 175_479L,
+    val root: ExpenseDto = confirmedExpenseDtoFixture(),
+    val offset: ConfirmedOffsetStreamDto? = null,
+    val lineage: ConfirmedLineageFixture = ConfirmedLineageFixture(),
+)
+
 internal fun confirmedStreamEnvelopeFixture(
-    entryKind: ConfirmedStreamEntryKindDto = ConfirmedStreamEntryKindDto.Expense,
-    streamDate: String = "2026-05-07",
-    streamSortTime: String = "2026-05-07T07:29:00Z",
-    streamSortId: Long = 9,
-    streamAmountCents: Long = 175_479L,
-    root: ExpenseDto = confirmedExpenseDtoFixture(),
-    offset: ConfirmedOffsetStreamDto? = null,
-    lineageStatus: ExpenseLineageStatusDto = ExpenseLineageStatusDto.Confirmed,
-    lineageHomeNetCents: Long = 175_479L,
+    fixture: ConfirmedStreamFixture = ConfirmedStreamFixture(),
 ): ConfirmedExpenseStreamItemDto = ConfirmedExpenseStreamItemDto(
-    entryKind = entryKind,
-    streamDate = streamDate,
-    streamSortTime = streamSortTime,
-    streamSortId = streamSortId,
-    streamAmountCents = streamAmountCents,
-    root = root,
-    offset = offset,
-    lineageStatus = lineageStatus,
-    lineageHomeNetCents = lineageHomeNetCents,
+    entryKind = fixture.entryKind,
+    streamDate = fixture.streamDate,
+    streamSortTime = "2026-05-07T07:29:00Z",
+    streamSortId = 9,
+    streamAmountCents = fixture.streamAmountCents,
+    root = fixture.root,
+    offset = fixture.offset,
+    lineageStatus = fixture.lineage.status,
+    lineageHomeNetCents = fixture.lineage.homeNetCents,
+)
+
+internal data class ExpenseOffsetFixture(
+    val publicId: String = "refund-1",
+    val kind: ExpenseOffsetKindDto = ExpenseOffsetKindDto.Refund,
+    val amountCents: Long = 300,
+    val streamAmountCents: Long = -300,
+    val rowVersion: Long = 1,
 )
 
 internal fun expenseOffsetResponseDtoFixture(
-    publicId: String = "refund-1",
-    kind: ExpenseOffsetKindDto = ExpenseOffsetKindDto.Refund,
-    originalAmountMinor: Long = 300,
-    amountCents: Long = 300,
-    streamAmountCents: Long = -300,
-    streamSortTime: String = "2026-09-03T04:00:00Z",
-    streamSortId: Long = 22,
-    accountingDate: String = "2026-09-03",
-    rowVersion: Long = 1,
+    fixture: ExpenseOffsetFixture = ExpenseOffsetFixture(),
 ): ExpenseOffsetResponseDto = ExpenseOffsetResponseDto(
-    publicId = publicId,
-    kind = kind,
+    publicId = fixture.publicId,
+    kind = fixture.kind,
     status = ExpenseOffsetStatusDto.Active,
     originalCurrencyCode = "CNY",
-    originalAmountMinor = originalAmountMinor,
+    originalAmountMinor = fixture.amountCents,
     homeCurrencyCode = "CNY",
-    amountCents = amountCents,
-    streamAmountCents = streamAmountCents,
-    streamSortTime = streamSortTime,
-    streamSortId = streamSortId,
-    accountingDate = accountingDate,
+    amountCents = fixture.amountCents,
+    streamAmountCents = fixture.streamAmountCents,
+    streamSortTime = "2026-09-03T04:00:00Z",
+    streamSortId = 22,
+    accountingDate = "2026-09-03",
     category = "交通",
     reason = "退款到账",
-    rowVersion = rowVersion,
+    rowVersion = fixture.rowVersion,
     factRevision = 1,
     createdAt = "2026-09-03T04:00:00Z",
     updatedAt = "2026-09-03T04:00:00Z",
 )
 
 internal fun expenseFactBundleDtoFixture(
-    root: ExpenseDto = confirmedExpenseDtoFixture(amountCents = 1_200, rowVersion = 2),
+    root: ExpenseDto = confirmedExpenseDtoFixture(
+        ConfirmedExpenseFixture(amountCents = 1_200, rowVersion = 2),
+    ),
     status: ExpenseLineageStatusDto = ExpenseLineageStatusDto.PartiallyRefunded,
     rootStreamAmountCents: Long = 1_200,
     lineageHomeNetCents: Long = 900,

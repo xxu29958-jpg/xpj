@@ -75,13 +75,14 @@ internal class ExpenseOffsetRepository(private val core: ExpenseRepositoryCore) 
         if (offset.rowVersion <= 0) throw RepositoryException("这条退款事实还不能撤销。")
         val cleanReason = requiredReason(reason)
         val request = ExpenseOffsetVoidRequestDto(cleanReason, offset.rowVersion)
+        val outboxPayload = ExpenseOffsetVoidOutboxPayload(offset.publicId, cleanReason)
         val bound = core.ledgerRequestGuard.bind()
         val key = UUID.randomUUID().toString()
         val targetId = expenseOutboxTargetId(expense)
         val outbox = core.outbox
         val adapter = core.offsetVoidAdapter
         if (outbox != null && adapter != null && core.hasUnresolvedQueuedMutationsFor(bound, targetId)) {
-            enqueueVoid(bound, targetId, offset.publicId, cleanReason, offset.rowVersion, key)
+            enqueueVoid(bound, targetId, outboxPayload, offset.rowVersion, key)
             return@safeCall queuedVoid(offset, cleanReason)
         }
         val response = try {
@@ -90,7 +91,7 @@ internal class ExpenseOffsetRepository(private val core: ExpenseRepositoryCore) 
             }
         } catch (networkError: IOException) {
             if (outbox == null || adapter == null) throw networkError
-            enqueueVoid(bound, targetId, offset.publicId, cleanReason, offset.rowVersion, key)
+            enqueueVoid(bound, targetId, outboxPayload, offset.rowVersion, key)
             return@safeCall queuedVoid(offset, cleanReason)
         }
         synced(response, bound)
@@ -154,8 +155,7 @@ internal class ExpenseOffsetRepository(private val core: ExpenseRepositoryCore) 
     private suspend fun enqueueVoid(
         bound: BoundLedgerRequest,
         targetId: String,
-        offsetPublicId: String,
-        reason: String,
+        payload: ExpenseOffsetVoidOutboxPayload,
         expectedRowVersion: Long,
         key: String,
     ) {
@@ -165,7 +165,7 @@ internal class ExpenseOffsetRepository(private val core: ExpenseRepositoryCore) 
                 type = PendingMutationType.VoidExpenseOffset,
                 targetId = targetId,
                 payloadJson = requireNotNull(core.offsetVoidAdapter)
-                    .toJson(ExpenseOffsetVoidOutboxPayload(offsetPublicId, reason)),
+                    .toJson(payload),
                 expectedRowVersion = expectedRowVersion,
                 idempotencyKey = key,
             ),

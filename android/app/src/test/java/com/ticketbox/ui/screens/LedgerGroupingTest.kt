@@ -96,7 +96,7 @@ class LedgerGroupingTest {
             kind = StreamOffsetKind.Refund,
             amountCents = 100,
             streamAmountCents = -100,
-            rootId = 7,
+            root = LedgerRootFixture(id = 7),
         )
 
         assertEquals("expense-7", root.rowKey)
@@ -151,7 +151,7 @@ class LedgerGroupingTest {
                     kind = StreamOffsetKind.Refund,
                     amountCents = 20_000,
                     streamAmountCents = -20_000,
-                    rootMerchant = "Hotel",
+                    root = LedgerRootFixture(merchant = "Hotel"),
                 ),
             ),
             limit = 2,
@@ -169,15 +169,19 @@ private fun expenseRow(
     id: Long,
     amountCents: Long? = 1200,
     streamAmountCents: Long = amountCents ?: 0L,
-    streamDate: String = "2026-05-17",
     lineageStatus: ExpenseLineageStatus = ExpenseLineageStatus.Confirmed,
     lineageHomeNetCents: Long = streamAmountCents,
 ): ConfirmedStreamItem.ExpenseRow = ConfirmedStreamItem.ExpenseRow(
-    streamDate = streamDate,
+    streamDate = "2026-05-17",
     streamAmountCents = streamAmountCents,
     root = expense(id = id, amountCents = amountCents),
     lineageStatus = lineageStatus,
     lineageHomeNetCents = lineageHomeNetCents,
+)
+
+private data class LedgerRootFixture(
+    val id: Long = 99,
+    val merchant: String = "商家99",
 )
 
 private fun offsetRow(
@@ -185,13 +189,11 @@ private fun offsetRow(
     kind: StreamOffsetKind,
     amountCents: Long,
     streamAmountCents: Long,
-    streamDate: String = "2026-05-17",
-    rootId: Long = 99,
-    rootMerchant: String = "商家99",
+    root: LedgerRootFixture = LedgerRootFixture(),
 ): ConfirmedStreamItem.OffsetRow = ConfirmedStreamItem.OffsetRow(
-    streamDate = streamDate,
+    streamDate = "2026-05-17",
     streamAmountCents = streamAmountCents,
-    root = expense(id = rootId, amountCents = amountCents).copy(merchant = rootMerchant),
+    root = expense(id = root.id, amountCents = amountCents).copy(merchant = root.merchant),
     lineageStatus = ExpenseLineageStatus.PartiallyRefunded,
     lineageHomeNetCents = 0L,
     offset = StreamOffset(

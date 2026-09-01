@@ -35,7 +35,9 @@ internal class ExpenseOffsetRepositoryTest : ExpensePendingRepositoryOutboxTestB
         val api = OffsetApiService(
             FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0),
             createResponse = expenseFactBundleDtoFixture(
-                root = confirmedExpenseDtoFixture(amountCents = 1_200, rowVersion = 4),
+                root = confirmedExpenseDtoFixture(
+                    ConfirmedExpenseFixture(amountCents = 1_200, rowVersion = 4),
+                ),
             ),
         )
         val repository = buildRepository(api, dao)

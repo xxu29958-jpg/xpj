@@ -395,7 +395,7 @@ interface PendingMutationDao {
         WHERE ownerKey = :ownerKey
           AND ledgerId = :ledgerId
           AND targetId = :targetId
-          AND status = :pendingStatus
+          AND status = 'pending'
           AND type != :preservedTokenType
         """,
     )
@@ -403,7 +403,6 @@ interface PendingMutationDao {
         ownerKey: String,
         ledgerId: String,
         targetId: String,
-        pendingStatus: String,
         preservedTokenType: String,
         freshToken: Long,
     ): Int
