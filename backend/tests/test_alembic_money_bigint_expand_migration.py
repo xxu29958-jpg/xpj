@@ -15,7 +15,6 @@ from app.canonical_money_facts import canonical_money_facts_sha256
 from app.database import SessionLocal, engine
 from app.database._managed_postgres_migration_runtime import _prearmed_transaction
 from app.models import (
-    BillSplitInvitation,
     Budget,
     CsvImportRow,
     ExpenseItem,
@@ -298,14 +297,20 @@ def test_existing_cross_currency_snapshot_is_not_reinterpreted() -> None:
     run_alembic(command.upgrade, PREVIOUS_REVISION)
     invitation_id = seed_cross_currency_invitation()
     run_alembic(command.upgrade, HEAD_REVISION)
-    with SessionLocal() as db:
-        invitation = db.get(BillSplitInvitation, invitation_id)
-        assert invitation is not None
-        assert invitation.amount_cents == 3_000
-        assert invitation.original_currency_code == "USD"
-        assert invitation.original_amount_minor == 1_500
-        assert Decimal(invitation.exchange_rate_to_cny) == Decimal("7")
-        assert invitation.exchange_rate_source == "manual"
+    with engine.connect() as connection:
+        invitation = connection.execute(
+            text(
+                "SELECT amount_cents, original_currency_code, original_amount_minor, "
+                "exchange_rate_to_cny, exchange_rate_source "
+                "FROM bill_split_invitations WHERE id = :invitation_id"
+            ),
+            {"invitation_id": invitation_id},
+        ).mappings().one()
+    assert invitation["amount_cents"] == 3_000
+    assert invitation["original_currency_code"] == "USD"
+    assert invitation["original_amount_minor"] == 1_500
+    assert Decimal(invitation["exchange_rate_to_cny"]) == Decimal("7")
+    assert invitation["exchange_rate_source"] == "manual"
 
 
 def test_legacy_ocr_amount_fact_is_preserved_without_later_schema() -> None:

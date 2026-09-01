@@ -236,6 +236,10 @@ def test_web_fact_context_keeps_disabled_member_identity_in_revision_projection(
             return_value={},
         ),
         patch(
+            "app.routes._web_expense_fact.expense_offset_fact_view",
+            return_value={},
+        ),
+        patch(
             "app.routes._web_expense_fact.list_active_split_members",
             return_value=[],
             create=True,

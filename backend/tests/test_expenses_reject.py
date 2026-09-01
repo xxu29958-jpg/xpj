@@ -13,6 +13,7 @@ from app.database import SessionLocal
 from app.errors import AppError
 from app.models import Expense
 from app.services.expense_service import confirm_expense, reject_expense
+from tests._confirmed_stream_test_support import confirmed_expense_roots
 
 
 def test_reject_removes_expense_from_pending_without_confirming(
@@ -58,7 +59,7 @@ def test_reject_confirmed_expense_requires_refund_or_reversal_fact(client: TestC
     confirmed_page = client.get("/api/expenses/confirmed", headers=identity.app_headers)
     assert confirmed_page.status_code == 200
     assert confirmed_page.json()["total"] == 1
-    assert any(item["id"] == expense_id for item in confirmed_page.json()["items"])
+    assert any(item["id"] == expense_id for item in confirmed_expense_roots(confirmed_page.json()))
 
     detail = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
     assert detail.status_code == 200

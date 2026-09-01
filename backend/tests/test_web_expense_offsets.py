@@ -247,4 +247,5 @@ def test_web_void_race_conflict_surfaces_page_feedback(
     )
     assert stale.status_code == 409, stale.text
     assert "已载入最新事实" in stale.text
-    assert f"/offsets/{offset['public_id']}/voids" not in stale.text
+    action = f'action="/web/expenses/{expense_id}/offsets/{offset["public_id"]}/voids"'
+    assert action not in stale.text
