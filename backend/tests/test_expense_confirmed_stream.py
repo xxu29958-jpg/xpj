@@ -150,7 +150,7 @@ def test_offset_stream_filtering_uses_its_date_category_and_root_tags(
     assert entry["root"]["id"] == expense["id"]
     assert entry["root"]["public_id"] == expense["public_id"]
     assert entry["root"]["merchant"] == "夏日酒店"
-    assert entry["offset"]["home_currency_code"] == entry["root"]["home_currency_code"]
+    assert entry["offset"]["home_currency_code"] == entry["root"]["home_currency"]
     assert entry["offset"]["original_currency_code"] == entry["root"]["original_currency_code"]
     assert _stream(client, identity, month="2026-09", category="旅游", tag="旅行")["total"] == 0
 

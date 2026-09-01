@@ -329,6 +329,10 @@ def test_anchored_timeline_pager_keeps_one_snapshot_across_pages() -> None:
             return_value={},
         ),
         patch(
+            "app.routes._web_expense_fact.expense_offset_fact_view",
+            return_value={},
+        ),
+        patch(
             "app.routes._web_expense_fact.list_active_split_members",
             return_value=[],
             create=True,
