@@ -24,7 +24,11 @@
     <span class="product-eyebrow">收件 / 待我处理</span>
     <h1 class="page-title">把新账单整理清楚</h1>
     <p class="product-page-summary">
-      先处理缺失信息与重复风险，再批量确认。当前显示 {{ filtered_count }} 笔，共 {{ pending_count }} 笔待整理。
+      {% if pending_count %}
+      共 {{ pending_count }} 笔待整理，其中 {{ ready_count }} 笔可直接确认；其余先补齐金额、商家、分类或核对重复。{% if filter != 'all' %}当前筛选显示 {{ filtered_count }} 笔。{% endif %}
+      {% else %}
+      当前账本没有待处理记录。
+      {% endif %}
     </p>
   </div>
   <div class="product-page-actions">
@@ -41,19 +45,7 @@
   </div>
 </header>
 
-{# K3: 三数字概况墙压平为一句队列小结; 可行动计数保留在下方筛选 pill 上。 #}
-<section class="inbox-summary" aria-label="收件处理概况">
-  <div class="inbox-summary-main">
-    <span class="product-eyebrow">当前队列</span>
-    <p class="inbox-queue-line">
-      {% if pending_count %}
-        共 {{ pending_count }} 笔待整理，其中 {{ ready_count }} 笔可直接确认，其余先补齐金额、商家、分类或核对重复。
-      {% else %}
-        当前账本没有待处理记录。
-      {% endif %}
-    </p>
-  </div>
-</section>
+{# K3: 队列概况并入页头判断句 (不再独立成区); 可行动计数在下方筛选 pill 上。 #}
 
 {% if enrichment_watch %}
 {# K3: OCR/后台识别表达升级为 ambient 状态带, 不再混进通用 flash。
@@ -297,8 +289,9 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
   <input type="hidden" name="filter" value="{{ filter }}">
-  <span class="count" data-bulk-count>0</span>
-  <span class="label">笔已选</span>
+  {# no-JS fail-open: 未增强时整栏可见可原生提交, 计数/取消选择由 CSS 隐藏
+     (无 JS 计数恒 0 且无意义); JS 初始化后由 bulk-bar.js 接管显隐。 #}
+  <span class="bulk-selection-status"><span class="count" data-bulk-count>0</span><span class="label">笔已选</span></span>
   {# main 保留 (矿无): 一键清空选择并把焦点还回第一个已选行 (批选可达性合同)。 #}
   <button class="product-button" type="button" data-bulk-clear>取消选择</button>
   <div class="spacer"></div>

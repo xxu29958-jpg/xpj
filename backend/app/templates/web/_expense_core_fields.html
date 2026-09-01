@@ -1,0 +1,145 @@
+{# 编辑 core-fields 共享 presentation partial（收件域收口片冻结）。
+   真实 consumer: _edit_drawer.html (抽屉快速核对) 与 edit.html (完整整理页)。
+   本 partial 只做展示: 冲突横幅 + 金额/商家/时间/分类/标签/备注字段排版与
+   错误挂载。值、category_options、disabled 判定、hidden command fields
+   (csrf/ledger_id/original_currency/expected_row_version/idempotency_key/
+   save_before_confirm/return_*) 全部由 consumer 的表单提供, 业务规则零复制。
+   consumer 须在 include 前提供:
+   - core_fields_prefix:     字段 id/name 前缀 (两 consumer 不同, 防 id 冲突)
+   - core_fields_reload_href: 冲突横幅「放弃修改，载入现值」的 GET 目标
+   上下文: expense / conflict_current / field_errors / can_write /
+   expense_currency_input / category_options。 #}
+{% set e = expense %}
+{% set _p = core_fields_prefix %}
+<div class="expense-core-fields" data-expense-core-fields>
+  {% if conflict_current %}
+  {# OCC 409: 写入被拒绝 = role="alert"; 数据主权事件 = warning tone, 不升级
+     danger。草稿 (submitted) 已在字段值里, hidden expected_row_version 已是
+     current; 用户核对后点原来的保存/确认即重试, 不造 merge state。 #}
+  <div class="product-feedback product-feedback--warning expense-conflict" role="alert">
+    <span class="expense-conflict-lead">这条账单已在其它端被修改</span>
+    <span>你的这次保存没有写入——可能是家人在另一台设备上先保存了。表单里仍是你的填写；对照账本现值后再次保存即可，不用刷新页面。</span>
+    <div class="expense-conflict-compare">
+      <div class="expense-conflict-compare-row expense-conflict-compare-head" aria-hidden="true">
+        <span></span><span>你的填写</span><span>账本现值</span>
+      </div>
+      <dl class="expense-conflict-compare-list">
+        <div class="expense-conflict-compare-row">
+          <dt>金额</dt>
+          <dd>{% if e.original_amount_value %}{{ e.amount_symbol }}{{ e.original_amount_value }}{% else %}待补{% endif %}</dd>
+          <dd>{{ conflict_current.amount_label or '待补' }}</dd>
+        </div>
+        <div class="expense-conflict-compare-row">
+          <dt>商家</dt>
+          <dd>{{ e.merchant or '未填写' }}</dd>
+          <dd>{{ conflict_current.merchant or '未填写' }}</dd>
+        </div>
+        <div class="expense-conflict-compare-row">
+          <dt>分类</dt>
+          <dd>{{ e.category_input or '待分类' }}</dd>
+          <dd>{% if conflict_current.needs_category %}待分类{% else %}{{ conflict_current.category }}{% endif %}</dd>
+        </div>
+      </dl>
+    </div>
+    <a class="expense-conflict-reload" href="{{ core_fields_reload_href }}" data-drawer-reload>放弃修改，载入现值</a>
+  </div>
+  {% endif %}
+
+  <div class="product-drawer-field-row">
+    <label class="product-field" for="{{ _p }}-amount-yuan">
+      <span>金额{% if e.needs_amount %} · 待补{% endif %}</span>
+      <span class="product-drawer-input-prefix">
+        <span aria-hidden="true">{{ e.amount_symbol }}</span>
+        <input id="{{ _p }}-amount-yuan"
+               class="product-input"
+               type="number"
+               inputmode="{{ expense_currency_input.inputmode }}"
+               name="amount_yuan"
+               value="{{ e.original_amount_value }}"
+               min="0"
+               step="{{ expense_currency_input.amount_step }}"
+               placeholder="例如 {{ expense_currency_input.amount_example }}"
+               {% if field_errors.get('amount_yuan') %}aria-invalid="true" aria-describedby="{{ _p }}-amount-error"{% endif %}
+               {% if not can_write or e.is_split_received %}disabled{% endif %}>
+      </span>
+      {% if field_errors.get('amount_yuan') %}<span id="{{ _p }}-amount-error" class="error-text">{{ field_errors.get('amount_yuan') }}</span>{% endif %}
+      {% if e.fx_meta %}<span class="meta">{{ e.fx_meta }}</span>{% endif %}
+    </label>
+    <label class="product-field" for="{{ _p }}-currency">
+      <span>币种</span>
+      <input id="{{ _p }}-currency"
+             class="product-input"
+             value="{{ e.original_currency_code }}"
+             disabled>
+    </label>
+  </div>
+
+  <label class="product-field" for="{{ _p }}-merchant">
+    <span>商家</span>
+    <input id="{{ _p }}-merchant"
+           class="product-input"
+           type="text"
+           name="merchant"
+           value="{{ e.merchant }}"
+           maxlength="255"
+           placeholder="例如：盒马鲜生 · 望京店"
+           {% if field_errors.get('merchant') %}aria-invalid="true" aria-describedby="{{ _p }}-merchant-error"{% endif %}
+           {% if not can_write or e.is_split_received %}disabled{% endif %}>
+    {% if field_errors.get('merchant') %}<span id="{{ _p }}-merchant-error" class="error-text">{{ field_errors.get('merchant') }}</span>{% endif %}
+  </label>
+
+  <label class="product-field" for="{{ _p }}-expense-time">
+    <span>消费时间</span>
+    <input id="{{ _p }}-expense-time"
+           class="product-input"
+           type="datetime-local"
+           name="expense_time"
+           value="{{ e.expense_time_local }}"
+           {% if field_errors.get('expense_time') %}aria-invalid="true" aria-describedby="{{ _p }}-time-error"{% endif %}
+           {% if not can_write or e.is_split_received %}disabled{% endif %}>
+    {% if field_errors.get('expense_time') %}<span id="{{ _p }}-time-error" class="error-text">{{ field_errors.get('expense_time') }}</span>{% endif %}
+    <span class="meta">留空表示不修改时间。</span>
+  </label>
+
+  <label class="product-field" for="{{ _p }}-category">
+    <span>分类</span>
+    <input id="{{ _p }}-category"
+           class="product-input"
+           type="text"
+           name="category"
+           value="{{ e.category_input }}"
+           maxlength="64"
+           list="{{ _p }}-category-options"
+           placeholder="例如：餐饮"
+           {% if field_errors.get('category') %}aria-invalid="true" aria-describedby="{{ _p }}-category-error"{% endif %}
+           {% if not can_write %}disabled{% endif %}>
+    {% if field_errors.get('category') %}<span id="{{ _p }}-category-error" class="error-text">{{ field_errors.get('category') }}</span>{% endif %}
+  </label>
+  <datalist id="{{ _p }}-category-options">
+    {% for option in category_options %}<option value="{{ option }}"></option>{% endfor %}
+  </datalist>
+
+  <label class="product-field" for="{{ _p }}-tags">
+    <span>标签</span>
+    <input id="{{ _p }}-tags"
+           class="product-input"
+           type="text"
+           name="tags"
+           value="{{ e.tags }}"
+           maxlength="500"
+           placeholder="用逗号分隔，例如：报销, 出差"
+           {% if field_errors.get('tags') %}aria-invalid="true" aria-describedby="{{ _p }}-tags-error"{% endif %}
+           {% if not can_write %}disabled{% endif %}>
+    {% if field_errors.get('tags') %}<span id="{{ _p }}-tags-error" class="error-text">{{ field_errors.get('tags') }}</span>{% endif %}
+  </label>
+
+  <label class="product-field" for="{{ _p }}-note">
+    <span>备注</span>
+    <textarea id="{{ _p }}-note"
+              class="product-input"
+              name="note"
+              rows="3"
+              placeholder="可选，仅当前账本可见"
+              {% if not can_write %}disabled{% endif %}>{{ e.note }}</textarea>
+  </label>
+</div>

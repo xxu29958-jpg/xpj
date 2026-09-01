@@ -1,55 +1,82 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="paper">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="csrf-token" content="{{ csrf_token }}">
-  <title>小票夹 网页版 — 输入绑定码</title>
+  <title>连接小票夹 — 小票夹</title>
+  <link rel="icon" type="image/svg+xml" href="/static/web/icon.svg">
   <link rel="stylesheet" href="/static/shared/tokens.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/web/pages/auth-login.css?v={{ asset_version }}">
+  <script>
+    /* 登录页无 SSR theme 上下文：首屏前从 ui_theme cookie 还原已解析主题
+       (paper/midnight)，与 theme.js 的 cookie 语义同源，绝不解析 "system"。 */
+    try {
+      var _t = document.cookie.match(/(?:^|;\s*)ui_theme=(paper|midnight)(?:;|$)/);
+      if (_t) document.documentElement.setAttribute("data-theme", _t[1]);
+    } catch (_) {}
+  </script>
   <script defer src="/static/shared/csrf.js?v={{ asset_version }}"></script>
 </head>
 <body>
-  <main class="card">
-    <h1>小票夹</h1>
-    <p class="hint">向账本所有者索取 8 位绑定码后，在此输入。</p>
+  <main class="auth-layout">
+    <section class="auth-story" aria-label="关于小票夹">
+      <div class="auth-brand">
+        <img class="auth-brand-mark" src="/static/web/icon.svg" alt="" aria-hidden="true">
+        <span class="auth-brand-name">小票夹</span>
+      </div>
+      <h1 class="auth-title">把每张小票，<br>变成全家都看得懂的账</h1>
+      <ol class="auth-steps">
+        <li><span class="auth-step-num">1</span>拍下或截图小票</li>
+        <li><span class="auth-step-num">2</span>核对识别结果</li>
+        <li><span class="auth-step-num">3</span>确认后正式入账</li>
+      </ol>
+    </section>
 
-    {% if error_message %}
-    <div class="error" role="alert">{{ error_message }}</div>
-    {% endif %}
+    <section class="auth-card" aria-label="连接这台设备">
+      <h2 class="auth-card-title">连接小票夹</h2>
+      <p class="auth-hint">输入家人给你的 8 位连接码，把这台设备接入家庭账本。</p>
 
-    <form method="post" action="/web/auth/login" autocomplete="off">
-      {{ csrf_field|safe }}
-      <input type="hidden" name="next" value="{{ next_url }}">
+      {% if error_message %}
+      <div class="auth-error" role="alert">{{ error_message }}</div>
+      {% endif %}
 
-      <label for="pairing_code">绑定码（8 位数字）</label>
-      <input
-        id="pairing_code"
-        name="pairing_code"
-        type="text"
-        inputmode="numeric"
-        pattern="[0-9]{8}"
-        maxlength="8"
-        autofocus
-        required
-      >
+      <form method="post" action="/web/auth/login" autocomplete="off">
+        {{ csrf_field|safe }}
+        <input type="hidden" name="next" value="{{ next_url }}">
 
-      <label for="device_name">浏览器名称（可选）</label>
-      <input
-        id="device_name"
-        name="device_name"
-        type="text"
-        placeholder="例如：客厅 iPad"
-        maxlength="120"
-      >
+        <label class="auth-field" for="pairing_code">
+          <span class="auth-field-label">连接码</span>
+          <input
+            id="pairing_code"
+            name="pairing_code"
+            type="text"
+            inputmode="numeric"
+            pattern="[0-9]{8}"
+            maxlength="8"
+            placeholder="1234 5678"
+            autofocus
+            required
+          >
+          <span class="auth-field-hint">向账本所有者索取；一次性使用，每位家庭成员需要单独的码。</span>
+        </label>
 
-      <button type="submit">登录</button>
-    </form>
+        <label class="auth-field" for="device_name">
+          <span class="auth-field-label">设备名称（可选）</span>
+          <input
+            id="device_name"
+            name="device_name"
+            type="text"
+            placeholder="例如：客厅的电脑"
+            maxlength="120"
+          >
+        </label>
 
-    <p class="foot">
-      绑定码一次性使用，每位家庭成员需要单独的码。<br>
-      旧版静态 token 已废弃；不要在此输入旧的 APP_TOKEN。
-    </p>
+        <button class="auth-submit" type="submit">连接</button>
+      </form>
+
+      <p class="auth-foot">连接码只用于本次设备授权，不创建账号，也不要求密码。</p>
+    </section>
   </main>
 </body>
 </html>

@@ -253,12 +253,36 @@ def test_web_edit_stale_write_returns_409_with_authoritative_values(
     assert "已在其它端被修改" in response.text
     assert "Authoritative Merchant" in response.text
     assert "Stale Overwrite" in response.text
+    assert "你的填写" in response.text
+    assert "账本现值" in response.text
+    assert 'data-page-level="tertiary"' in response.text
+    assert "/static/web/product/detail.css" in response.text
+    current = _expense_payload(web_client, expense_id, identity=identity)
     assert (
-        f'name="expected_row_version" value="{stale["row_version"]}"'
+        f'name="expected_row_version" value="{current["row_version"]}"'
         in response.text
     )
     after = _expense_payload(web_client, expense_id, identity=identity)
     assert after["merchant"] == "Authoritative Merchant"
+
+    retry = web_client.post(
+        f"/web/expenses/{expense_id}/save",
+        data={
+            "ledger_id": "owner",
+            "expected_row_version": str(current["row_version"]),
+            "original_currency": current["original_currency_code"],
+            "amount_yuan": "8.00",
+            "merchant": "Stale Overwrite",
+            "category": "餐饮",
+            "note": "",
+            "tags": "",
+        },
+        follow_redirects=False,
+    )
+    assert retry.status_code == 303, retry.text
+    assert _expense_payload(web_client, expense_id, identity=identity)["merchant"] == (
+        "Stale Overwrite"
+    )
 
 
 def test_web_search_renders_expense_amount_with_record_currency(

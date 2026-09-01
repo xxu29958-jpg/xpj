@@ -1,100 +1,248 @@
-/* /web/auth/login page — extracted from login.html inline <style> (P2 audit).
- * Tokens come from /static/shared/tokens.css (loaded by the template before
- * this stylesheet).
+/* /web/auth/login — 消费级连接入口（Paper Atelier 人格）。
+ * 只被 auth/login.html 挂载；token 全部来自 /static/shared/tokens.css。
+ * 布局：桌面左叙事右卡，窄屏单栏（叙事压缩为上部品牌区）。
  */
 
 * { box-sizing: border-box; }
 
 body {
     margin: 0;
-    min-height: 100vh;
+    min-height: 100dvh;
     background: var(--surface-app);
+    background-image: var(--surface-app-image, none);
     color: var(--text-default);
-    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
-    display: grid;
-    place-items: center;
-    padding: 24px;
+    font-family: "Ticketbox Sans", "Microsoft YaHei UI", "PingFang SC", sans-serif;
+    font-size: var(--type-body-size);
+    line-height: var(--type-body-line);
 }
 
-.card {
+.auth-layout {
+    display: grid;
+    min-height: 100dvh;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+    align-items: center;
+    gap: var(--space-12);
+    width: min(100%, 72rem);
+    margin-inline: auto;
+    padding: var(--space-12) var(--space-8);
+}
+
+/* ── 左：品牌叙事 ─────────────────────────────────────────── */
+
+.auth-brand {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-block-end: var(--space-8);
+}
+
+.auth-brand-mark {
+    width: var(--space-10);
+    height: var(--space-10);
+    border-radius: var(--radius-md);
+}
+
+.auth-brand-name {
+    font-size: var(--type-title-size);
+    font-weight: var(--type-title-weight);
+    letter-spacing: -0.02em;
+}
+
+.auth-title {
+    margin: 0 0 var(--space-7);
+    font-size: var(--type-display-size);
+    font-weight: var(--type-display-weight);
+    letter-spacing: -0.03em;
+    line-height: var(--type-display-line);
+}
+
+.auth-steps {
+    display: grid;
+    gap: var(--space-3);
+    margin: 0;
+    padding: 0;
+    color: var(--text-muted);
+    font-size: var(--type-subtitle-size);
+    list-style: none;
+}
+
+.auth-steps li {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.auth-step-num {
+    display: grid;
+    width: var(--space-7);
+    height: var(--space-7);
+    flex: 0 0 auto;
+    place-items: center;
+    border: 1px solid var(--border-input);
+    border-radius: var(--radius-pill);
+    color: var(--brand-primary-strong);
+    font-family: "Cascadia Mono", "SFMono-Regular", "Roboto Mono", monospace;
+    font-size: var(--type-caption-size);
+}
+
+/* ── 右：连接卡 ───────────────────────────────────────────── */
+
+.auth-card {
     width: 100%;
-    max-width: 360px;
-    background: var(--surface-card);
+    max-width: 26rem;
+    justify-self: end;
+    padding: var(--space-8);
     border: 1px solid var(--border-card);
     border-radius: var(--radius-card);
-    padding: 32px 28px;
+    background: var(--surface-card);
     box-shadow: var(--shadow-card);
 }
 
-h1 {
-    margin: 0 0 4px;
-    font-size: 22px;
-    font-weight: 600;
-    color: var(--brand-primary);
+.auth-card-title {
+    margin: 0 0 var(--space-2);
+    font-size: var(--type-headline-size);
+    font-weight: var(--type-headline-weight);
+    letter-spacing: -0.02em;
+    line-height: var(--type-headline-line);
 }
 
-.hint {
-    margin: 0 0 24px;
-    font-size: 13px;
-    color: var(--text-meta);
-}
-
-label {
-    display: block;
-    font-size: 13px;
+.auth-hint {
+    margin: 0 0 var(--space-6);
     color: var(--text-muted);
-    margin: 16px 0 6px;
+    font-size: var(--type-body-size);
 }
 
-input[type="text"],
-input[type="password"] {
-    width: 100%;
-    padding: 10px 12px;
-    border: 1px solid var(--border-input);
-    border-radius: var(--radius-input);
-    background: var(--surface-raised);
+.auth-field {
+    display: grid;
+    gap: var(--space-2);
+    margin-block-end: var(--space-5);
+}
+
+.auth-field-label {
     color: var(--text-default);
-    font-size: 15px;
-    font-variant-numeric: tabular-nums;
-    letter-spacing: 0.12em;
+    font-size: var(--type-caption-size);
+    font-weight: var(--type-subtitle-weight);
 }
 
-input:focus {
-    outline: none;
-    border-color: var(--brand-primary);
-    box-shadow: 0 0 0 3px var(--brand-focus-ring);
-}
-
-button {
+.auth-field input {
     width: 100%;
-    margin-top: 24px;
-    padding: 11px 14px;
+    min-height: var(--space-10);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border-input);
+    border-radius: var(--radius-sm);
+    background: var(--surface-card);
+    color: var(--text-default);
+    font-size: var(--type-subtitle-size);
+}
+
+.auth-field input:hover {
+    border-color: var(--control-border-hover);
+}
+
+.auth-field input:focus {
+    border-color: var(--control-border-active);
+    outline: var(--space-1) solid var(--brand-focus-ring);
+    outline-offset: 0;
+}
+
+/* 连接码：唯一视觉焦点字段。视觉 4+4 分组靠 placeholder 与字距表达，
+   不拆 input、不动值（单一原生控件，no-JS 与 pattern 校验不变）。 */
+#pairing_code {
+    font-family: "Cascadia Mono", "SFMono-Regular", "Roboto Mono", monospace;
+    font-size: var(--type-title-size);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.28em;
+}
+
+.auth-field-hint {
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+    line-height: var(--type-caption-line);
+}
+
+.auth-submit {
+    width: 100%;
+    min-height: var(--space-10);
+    margin-block-start: var(--space-2);
+    padding: var(--space-2) var(--space-5);
+    border: 1px solid var(--brand-primary);
+    border-radius: var(--radius-sm);
     background: var(--brand-primary);
     color: var(--text-on-primary);
-    border: 0;
-    border-radius: var(--radius-input);
-    font-size: 15px;
-    font-weight: 500;
     cursor: pointer;
+    font-size: var(--type-body-size);
+    font-weight: var(--type-subtitle-weight);
+    transition: background var(--motion-fast) var(--ease-standard);
 }
 
-button:hover { background: var(--brand-primary-strong); }
+.auth-submit:hover {
+    background: var(--brand-primary-strong);
+}
 
-.error {
-    margin: 12px 0 0;
-    padding: 10px 12px;
+.auth-submit:focus-visible {
+    outline: var(--space-1) solid var(--brand-focus-ring);
+    outline-offset: var(--space-1);
+}
+
+.auth-error {
+    margin: 0 0 var(--space-5);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--state-danger-border);
+    border-radius: var(--radius-sm);
     background: var(--state-danger-bg);
     color: var(--state-danger-fg);
-    border: 1px solid var(--state-danger-border);
-    border-radius: var(--radius-input);
-    font-size: 13px;
+    font-size: var(--type-caption-size);
+    line-height: var(--type-caption-line);
 }
 
-.foot {
-    margin-top: 28px;
-    padding-top: 16px;
-    border-top: 1px solid var(--border-card);
-    font-size: 12px;
-    color: var(--text-faint);
-    line-height: 1.6;
+.auth-foot {
+    margin: var(--space-6) 0 0;
+    padding-block-start: var(--space-4);
+    border-block-start: 1px solid var(--border-card);
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+    line-height: var(--type-caption-line);
+}
+
+/* ── 窄屏：单栏，叙事压缩为页头 ───────────────────────────── */
+
+@media (max-width: 48rem) {
+    .auth-layout {
+        grid-template-columns: minmax(0, 1fr);
+        align-content: start;
+        gap: var(--space-8);
+        padding: var(--space-8) var(--space-5) var(--space-12);
+    }
+
+    .auth-brand {
+        margin-block-end: var(--space-5);
+    }
+
+    .auth-title {
+        font-size: var(--type-hero-size);
+        line-height: var(--type-hero-line);
+    }
+
+    .auth-title br {
+        display: none;
+    }
+
+    .auth-steps {
+        display: none; /* 窄屏只留定位语，步骤不进首屏 */
+    }
+
+    .auth-card {
+        max-width: none;
+        justify-self: stretch;
+        padding: var(--space-6);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        transition-duration: 0s !important;
+        animation-duration: 0s !important;
+    }
 }

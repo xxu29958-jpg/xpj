@@ -348,3 +348,119 @@
     --z-modal:   1000;
     --z-toast:   2000;
 }
+
+/* ───────────────────────────────────────────────────────────────────────────
+ * 外观轴 (2026-09, Web product shell 片) — 主题 × 质感 × 强调色
+ *
+ * 三条轴都是浏览器本地偏好 (localStorage + html data-* 属性)，不是服务端事实,
+ * 不登录、不上传、不跨端同步。theme.js 是唯一写入者; <html data-*> 是唯一载体。
+ *
+ * - data-theme="paper|midnight"  已有双主题 (本文件上半部)。
+ * - data-texture="flat|fiber"    工作区底质感; fiber 铺真实 WebP 资产
+ *   (product/textures/, 每预设每主题一份), 只作用于 --surface-app 层,
+ *   业务面板保持实色, 可读性由架构保证。--surface-app-image 同时是
+ *   「用户素材背景」紧邻能力片的承接槽位: 该片落地时同一 slot 由
+ *   IndexedDB blob URL 填充, 本片的 scrim/降级结构不变。
+ * - data-accent="evergreen|ink|ochre|plum"  策展强调色, 只换 --brand-* /
+ *   --control-* 一族; state 语义色永不参与个性化。
+ * prefers-contrast: more 时质感强制关闭 (见文件末尾媒体查询)。
+ * ─────────────────────────────────────────────────────────────────────────── */
+:root {
+    --surface-app-image: none;
+
+    /* 外观 popover 色板预览 (与下方 accent 轴同值, 只服务 swatch 展示) */
+    --accent-swatch-evergreen: #176b5b;
+    --accent-swatch-ink: #235a97;
+    --accent-swatch-ochre: #9a6218;
+    --accent-swatch-plum: #8a3a5e;
+}
+
+:root[data-theme="midnight"] {
+    --accent-swatch-evergreen: #69bfa4;
+    --accent-swatch-ink: #7aa8e0;
+    --accent-swatch-ochre: #d9a45c;
+    --accent-swatch-plum: #d98bab;
+}
+
+/* 质感轴：真实 raster 资产, 不用 CSS/SVG/伪元素造纹理。 */
+:root[data-texture="fiber"][data-theme="paper"] {
+    --surface-app-image: url("/static/web/product/textures/paper-fiber.webp");
+}
+
+:root[data-texture="fiber"][data-theme="midnight"] {
+    --surface-app-image: url("/static/web/product/textures/midnight-grain.webp");
+}
+
+/* 强调色轴 · paper ────────────────────────────────────────── */
+:root[data-accent="ink"]:not([data-theme="midnight"]) {
+    --brand-primary: #235a97;
+    --brand-primary-strong: #17467a;
+    --brand-primary-bg: #e2ecf6;
+    --brand-focus-ring: rgba(35, 90, 151, 0.40);
+    --control-border: rgba(35, 90, 151, 0.26);
+    --control-border-hover: rgba(35, 90, 151, 0.44);
+    --control-border-active: rgba(35, 90, 151, 0.62);
+    --control-press-bg: rgba(35, 90, 151, 0.10);
+}
+
+:root[data-accent="ochre"]:not([data-theme="midnight"]) {
+    --brand-primary: #9a6218;
+    --brand-primary-strong: #7a4a10;
+    --brand-primary-bg: #f5ead7;
+    --brand-focus-ring: rgba(154, 98, 24, 0.40);
+    --control-border: rgba(154, 98, 24, 0.26);
+    --control-border-hover: rgba(154, 98, 24, 0.44);
+    --control-border-active: rgba(154, 98, 24, 0.62);
+    --control-press-bg: rgba(154, 98, 24, 0.10);
+}
+
+:root[data-accent="plum"]:not([data-theme="midnight"]) {
+    --brand-primary: #8a3a5e;
+    --brand-primary-strong: #6c2747;
+    --brand-primary-bg: #f4e3ea;
+    --brand-focus-ring: rgba(138, 58, 94, 0.40);
+    --control-border: rgba(138, 58, 94, 0.26);
+    --control-border-hover: rgba(138, 58, 94, 0.44);
+    --control-border-active: rgba(138, 58, 94, 0.62);
+    --control-press-bg: rgba(138, 58, 94, 0.10);
+}
+
+/* 强调色轴 · midnight (提亮人格, 与默认 #69bfa4 同明度带) ───── */
+:root[data-accent="ink"][data-theme="midnight"] {
+    --brand-primary: #7aa8e0;
+    --brand-primary-strong: #5a8cc8;
+    --brand-primary-bg: #7aa8e02e;
+    --brand-focus-ring: rgba(122, 168, 224, 0.55);
+    --control-border: rgba(122, 168, 224, 0.28);
+    --control-border-hover: rgba(122, 168, 224, 0.46);
+    --control-border-active: rgba(122, 168, 224, 0.68);
+    --control-press-bg: rgba(122, 168, 224, 0.12);
+}
+
+:root[data-accent="ochre"][data-theme="midnight"] {
+    --brand-primary: #d9a45c;
+    --brand-primary-strong: #b9863e;
+    --brand-primary-bg: #d9a45c2e;
+    --brand-focus-ring: rgba(217, 164, 92, 0.55);
+    --control-border: rgba(217, 164, 92, 0.28);
+    --control-border-hover: rgba(217, 164, 92, 0.46);
+    --control-border-active: rgba(217, 164, 92, 0.68);
+    --control-press-bg: rgba(217, 164, 92, 0.12);
+}
+
+:root[data-accent="plum"][data-theme="midnight"] {
+    --brand-primary: #d98bab;
+    --brand-primary-strong: #b96a8c;
+    --brand-primary-bg: #d98bab2e;
+    --brand-focus-ring: rgba(217, 139, 171, 0.55);
+    --control-border: rgba(217, 139, 171, 0.28);
+    --control-border-hover: rgba(217, 139, 171, 0.46);
+    --control-border-active: rgba(217, 139, 171, 0.68);
+    --control-press-bg: rgba(217, 139, 171, 0.12);
+}
+
+@media (prefers-contrast: more) {
+    :root {
+        --surface-app-image: none !important;
+    }
+}

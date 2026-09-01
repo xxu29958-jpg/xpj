@@ -183,7 +183,6 @@ def _overlay_submitted_expense_values(
     if not form_values:
         return
     view_keys = {
-        "expected_row_version": "row_version",
         "amount_yuan": "original_amount_value",
         "merchant": "merchant",
         "category": "category_input",

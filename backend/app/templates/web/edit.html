@@ -1,331 +1,263 @@
+{% set product_body_domain = 'inbox' %}
+{% set page_surface = 'tertiary' %}
+{% set page_title = '完整整理账单' %}
 {% extends "base.html" %}
-{% block title %}编辑账单 — 小票夹{% endblock %}
+{% block title %}完整整理账单 #{{ expense.id }} — 小票夹{% endblock %}
 {% block content %}
-{% set form_prefix = 'expense-' ~ expense.id %}
-<h1 class="page-title page-title--compact">编辑账单 #{{ expense.id }}</h1>
+{# 收件域收口片: pending 完整整理页 (confirmed 落地 expense_fact.html, 本模板
+   只服务 pending)。product 正文标记, product_body_domain='inbox' 断旧栈;
+   confirmed-only 的拆账邀请发起卡已物理删除 (迁往 expense_fact 事实页,
+   测试钉死 pending 不渲染)。字段与 OCC 冲突横幅与抽屉共用
+   _expense_core_fields.html (presentation-only); hidden command fields、
+   明细/家庭拆账子表单仍由本页表单提供。 #}
+{% set e = expense %}
+{% set _q = '?ledger_id=' ~ selected_ledger_id %}
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">收件 / 待我处理 / 完整整理</span>
+    <h1 class="page-title page-title--compact">完整整理账单 #{{ e.id }}</h1>
+    <p class="product-page-summary">
+      来源 {{ e.source_label }} · 上传于 {{ e.created_at or '时间待核对' }}
+      {% if e.is_split_received %}· 来自家庭拆账的账单，金额、商家和消费时间按协定冻结，分类、标签和备注仍可整理。{% endif %}
+    </p>
+  </div>
+  <div class="product-page-actions">
+    <span class="product-status">
+      {% if e.is_duplicate %}疑似重复
+      {% elif e.status == 'confirmed' %}已确认
+      {% elif e.status == 'rejected' %}已忽略
+      {% elif e.needs_amount %}缺金额
+      {% elif e.needs_merchant %}缺商家
+      {% else %}待确认{% endif %}
+    </span>
+    <a href="{{ edit_return_href }}" class="product-button">{{ edit_return_label or '返回' }}</a>
+  </div>
+</header>
 
-{% if error %}
-<div class="dt-alert danger">⚠️ {{ error }}</div>
-{% endif %}
-{% if conflict_current %}
-<div class="dt-alert warn" role="status">
-  当前权威值：商家 {{ conflict_current.merchant or '未填写' }}，金额 {{ conflict_current.amount_label or '待补' }}，分类 {% if conflict_current.needs_category %}待分类{% else %}{{ conflict_current.category }}{% endif %}。你的提交值已保留在表单中，请刷新后对照处理。
-</div>
-{% endif %}
 {% if message %}
-<div class="dt-alert success">{{ message }}</div>
+<div class="product-feedback product-feedback--success" role="status">{{ message }}</div>
+{% endif %}
+{% if error and not conflict_current %}
+<div class="product-feedback product-feedback--error" role="alert">{{ error }}</div>
 {% endif %}
 
-<div class="dt-card">
-  <div class="edit-grid">
-    {% if expense.has_image %}
-    <div class="edit-image receipt-image-shell" data-image-skeleton>
-      <div class="skeleton skeleton-block receipt-image-skeleton" aria-hidden="true"></div>
-      <a href="/web/expenses/{{ expense.id }}/image{{ q }}" target="_blank">
-        <img src="/web/expenses/{{ expense.id }}/image{{ q }}" alt="小票图片" class="receipt-img" loading="lazy" decoding="async">
-      </a>
-    </div>
-    {% elif expense.image_state == 'cleaned' %}
-    <div class="edit-image meta">图片已清理</div>
-    {% else %}
-    <div class="edit-image meta">暂不预览</div>
-    {% endif %}
-    <form method="post" action="/web/expenses/{{ expense.id }}/save" class="edit-form">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-      <input type="hidden" name="original_currency" value="{{ expense.original_currency_code }}">
-      <input type="hidden" name="expected_row_version" value="{{ expense.row_version }}">
-      <input type="hidden" name="idempotency_key" value="{{ confirm_idempotency_key }}">
-      <input type="hidden" name="save_before_confirm" value="1">
-      {% for field_name, field_value in edit_return_fields.items() %}<input type="hidden" name="{{ field_name }}" value="{{ field_value }}">{% endfor %}
-      <div class="dt-form-row">
-        <label for="{{ form_prefix }}-amount-yuan">金额 ({{ expense.original_currency_code }})</label>
-        <input id="{{ form_prefix }}-amount-yuan" type="number" name="amount_yuan" value="{{ expense.original_amount_value }}" min="0" step="{{ expense_currency_input.amount_step }}" placeholder="例如 {{ expense_currency_input.amount_example }}" inputmode="{{ expense_currency_input.inputmode }}" {% if field_errors.get('amount_yuan') %}aria-invalid="true" aria-describedby="{{ form_prefix }}-amount-error"{% endif %} {% if not can_write or expense.is_split_received %}disabled{% endif %}>
-        {% if field_errors.get('amount_yuan') %}<div id="{{ form_prefix }}-amount-error" class="error-text">{{ field_errors.get('amount_yuan') }}</div>{% endif %}
-        {% if expense.fx_meta %}<div class="meta">{{ expense.fx_meta }}</div>{% endif %}
-      </div>
-      <div class="dt-form-row">
-        <label for="{{ form_prefix }}-merchant">商家</label>
-        <input id="{{ form_prefix }}-merchant" type="text" name="merchant" value="{{ expense.merchant }}" maxlength="255" placeholder="未填写商家" {% if field_errors.get('merchant') %}aria-invalid="true" aria-describedby="{{ form_prefix }}-merchant-error"{% endif %} {% if not can_write or expense.is_split_received %}disabled{% endif %}>
-        {% if field_errors.get('merchant') %}<div id="{{ form_prefix }}-merchant-error" class="error-text">{{ field_errors.get('merchant') }}</div>{% endif %}
-      </div>
-      <div class="dt-form-row">
-        <label for="{{ form_prefix }}-expense-time">消费时间</label>
-        <input id="{{ form_prefix }}-expense-time" type="datetime-local" name="expense_time" value="{{ expense.expense_time_local }}" {% if field_errors.get('expense_time') %}aria-invalid="true" aria-describedby="{{ form_prefix }}-time-error"{% endif %} {% if not can_write or expense.is_split_received %}disabled{% endif %}>
-        {% if field_errors.get('expense_time') %}<div id="{{ form_prefix }}-time-error" class="error-text">{{ field_errors.get('expense_time') }}</div>{% endif %}
-        <div class="meta">留空表示不修改时间。</div>
-      </div>
-      <div class="dt-form-row">
-        <label for="{{ form_prefix }}-category">分类</label>
-        <input id="{{ form_prefix }}-category" type="text" name="category" value="{{ expense.category_input }}" maxlength="64" placeholder="例如 餐饮" list="category-options" {% if field_errors.get('category') %}aria-invalid="true" aria-describedby="{{ form_prefix }}-category-error"{% endif %} {% if not can_write %}disabled{% endif %}>
-        {% if field_errors.get('category') %}<div id="{{ form_prefix }}-category-error" class="error-text">{{ field_errors.get('category') }}</div>{% endif %}
-        <datalist id="category-options">
-          {% for option in category_options %}<option value="{{ option }}"></option>{% endfor %}
-        </datalist>
-      </div>
-      <div class="dt-form-row">
-        <label for="{{ form_prefix }}-tags">标签</label>
-        <input id="{{ form_prefix }}-tags" type="text" name="tags" value="{{ expense.tags }}" maxlength="500" placeholder="用逗号分隔，例如 报销, 出差" {% if field_errors.get('tags') %}aria-invalid="true" aria-describedby="{{ form_prefix }}-tags-error"{% endif %} {% if not can_write %}disabled{% endif %}>
-        {% if field_errors.get('tags') %}<div id="{{ form_prefix }}-tags-error" class="error-text">{{ field_errors.get('tags') }}</div>{% endif %}
-      </div>
-      <div class="dt-form-row">
-        <label for="{{ form_prefix }}-note">备注</label>
-        <textarea id="{{ form_prefix }}-note" name="note" rows="3" {% if not can_write %}disabled{% endif %}>{{ expense.note }}</textarea>
-      </div>
-      <div class="dt-form-row">
-        <span class="meta">
-          状态：
-          {% if expense.is_duplicate %}<span class="dt-pill warn">疑似重复</span>
-          {% elif expense.status == 'confirmed' %}<span class="dt-pill ok">已确认</span>
-          {% elif expense.status == 'rejected' %}<span class="dt-pill muted">已忽略</span>
-          {% elif expense.needs_amount %}<span class="dt-pill warn">缺金额</span>
-          {% elif expense.needs_merchant %}<span class="dt-pill muted">缺商家</span>
-          {% else %}<span class="dt-pill">待确认</span>{% endif %}
-          ｜来源：{{ expense.source_label }}
-          ｜上传时间：{{ expense.created_at }}
-        </span>
-        {% if expense.is_split_received %}<div class="meta">来自家庭拆账的金额、商家和消费时间按协定冻结；分类、标签和备注仍可整理。</div>{% endif %}
-      </div>
-      <div class="actions">
+<div class="detail-layout expense-detail-layout">
+  <div class="detail-main">
+    <section class="product-panel product-panel--padded" aria-label="账单字段">
+      <form method="post" action="/web/expenses/{{ e.id }}/save" class="edit-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+        <input type="hidden" name="original_currency" value="{{ e.original_currency_code }}">
+        <input type="hidden" name="expected_row_version" value="{{ e.row_version }}">
+        <input type="hidden" name="idempotency_key" value="{{ confirm_idempotency_key }}">
+        <input type="hidden" name="save_before_confirm" value="1">
+        {% for field_name, field_value in edit_return_fields.items() %}<input type="hidden" name="{{ field_name }}" value="{{ field_value }}">{% endfor %}
+        {# 隐式提交守卫 (与抽屉同合同): Enter 走 /save, 不触发忽略。 #}
+        {% if can_write %}<button type="submit" hidden tabindex="-1" aria-hidden="true"></button>{% endif %}
+
+        {% set core_fields_prefix = 'expense-' ~ e.id %}
+        {% set core_fields_reload_href = request.url %}
+        {% include "_expense_core_fields.html" %}
+
         {% if can_write %}
-        <button type="submit" class="dt-btn primary">保存</button>
-        {% if expense.status == 'pending' %}
-        <button type="submit" formaction="/web/expenses/{{ expense.id }}/confirm" class="dt-btn success">入账</button>
-        <button type="submit" formaction="/web/expenses/{{ expense.id }}/reject" class="dt-btn danger"
-                data-confirm="忽略这笔账单？">忽略</button>
-        {% endif %}
-        {% endif %}
-        <a href="{{ edit_return_href }}" class="dt-btn link">返回</a>
-      </div>
-    </form>
-  </div>
-</div>
-
-{# A8: 找家人分摊（拆账）—— 给已确认账单发起跨账本拆账邀请。仅当后端判定可发起
-   （已确认 + 有金额 + 非收到的拆账 + 当前角色可写）时渲染。概念区分（对照 Android
-   批 13）：拆账 = 发邀请到 TA 自己的账本；下方“家庭拆账”卡 = 只记在本账本的分摊。 #}
-{% if split_invite %}
-<div class="dt-card bsplit-invite-card">
-  <div class="card-header">
-    <div>
-      <h2>找家人分摊</h2>
-      <div class="meta">发一份拆账邀请到家人自己的账本；对方接受后会在 TA 的账本里生成一笔独立账单，不影响这笔账。要只在本账本内记录分摊，请用下方的“家庭拆账”。</div>
-    </div>
-  </div>
-  {% if not split_invite.members %}
-  <div class="bsplit-invite-note">本账本暂时只有你一个成员，先邀请家人加入，才能发起拆账。</div>
-  {% else %}
-  <form method="post" action="/web/expenses/{{ expense.id }}/split-invite" class="bsplit-invite-form">
-    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <div class="bsplit-invite-fields">
-      <label class="bsplit-invite-field">
-        <span class="bsplit-invite-label">分摊给</span>
-        <select name="receiver_account_id" required>
-          {% for member in split_invite.members %}
-          <option value="{{ member.account_id }}">{{ member.account_name }} · {% if member.role == 'owner' %}拥有者{% elif member.role == 'member' %}成员{% else %}只读{% endif %}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label class="bsplit-invite-field bsplit-invite-field--amount">
-        <span class="bsplit-invite-label">分摊金额（{{ home_currency_symbol }}）</span>
-        <input type="number" name="amount_yuan" value="{{ split_invite.remaining_yuan }}" min="{{ currency_input.positive_amount_min }}" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="例如 {{ currency_input.amount_example }}" required>
-      </label>
-      <button type="submit" class="dt-btn primary">发起拆账</button>
-    </div>
-    <div class="meta">本张账单还可分摊 {{ home_currency_symbol }}{{ split_invite.remaining_yuan }}。</div>
-  </form>
-  {% endif %}
-
-  {% if split_invite.sent_rows %}
-  <table class="dt-table dt-table--compact bsplit-invite-sent">
-    <thead>
-      <tr>
-        <th>已发给</th>
-        <th class="amount">金额</th>
-        <th>状态</th>
-        <th>到期</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody>
-    {% for row in split_invite.sent_rows %}
-      <tr>
-        <td>{{ row.receiver_display_name or '—' }}</td>
-        <td class="amount">{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
-        <td>
-          {% if row.status == 'invited' %}<span class="dt-pill">待处理</span>
-          {% elif row.status == 'accepted' %}<span class="dt-pill ok">已接受</span>
-          {% elif row.status == 'rejected' %}<span class="dt-pill muted">已拒绝</span>
-          {% elif row.status == 'cancelled' %}<span class="dt-pill muted">已撤回</span>
-          {% else %}<span class="dt-pill muted">已过期</span>{% endif %}
-        </td>
-        <td class="num">{{ row.expires_at or '—' }}</td>
-        <td>
-          {% if row.is_cancellable %}
-          <form method="post" action="/web/bill-splits/{{ row.public_id }}/cancel" class="inline-form">
-            <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-            <input type="hidden" name="return_expense_id" value="{{ expense.id }}">
-            <button type="submit" class="dt-btn link" data-confirm="撤回这份拆账邀请？">撤回</button>
-          </form>
-          {% else %}
-          <span class="meta">—</span>
+        <div class="product-page-actions detail-form-actions">
+          <button class="product-button product-button--danger"
+                  type="submit"
+                  formaction="/web/expenses/{{ e.id }}/reject"
+                  data-confirm="忽略这笔账单？">忽略</button>
+          {% if e.is_duplicate %}
+          <button class="product-button"
+                  type="submit"
+                  formaction="/web/duplicates/{{ e.id }}/keep">标为非重复</button>
           {% endif %}
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  {% endif %}
-</div>
-{% endif %}
+          <div class="spacer"></div>
+          <button class="product-button" type="submit">保存草稿</button>
+          {% if e.status == 'pending' %}
+          <button class="product-button product-button--primary"
+                  type="submit"
+                  formaction="/web/expenses/{{ e.id }}/confirm">确认入账</button>
+          {% endif %}
+        </div>
+        {% endif %}
+      </form>
+    </section>
+  </div>
 
-<div class="grid two-col detail-sections">
-  <div class="dt-card">
-    <div class="card-header">
+  <div class="detail-aside">
+    <section class="product-panel receipt-preview" aria-label="小票原件">
+      {% if e.has_image %}
+      <div class="receipt-image-shell" data-image-skeleton>
+        <div class="receipt-image-skeleton" aria-hidden="true"></div>
+        <a href="/web/expenses/{{ e.id }}/image{{ _q }}" target="_blank" rel="noopener">
+          <img src="/web/expenses/{{ e.id }}/image{{ _q }}" alt="账单 #{{ e.id }} 的小票原图" class="receipt-img" loading="lazy" decoding="async">
+        </a>
+      </div>
+      {% elif e.image_state == 'cleaned' %}
+      <div class="product-state product-drawer-image-state">
+        <div class="product-state-title">凭证图片已清理</div>
+        <div class="product-state-body">原图已按清理策略移除，账面字段不受影响。</div>
+      </div>
+      {% else %}
+      <div class="product-state product-drawer-image-state">
+        <div class="product-state-title">没有可查看的原图</div>
+        <div class="product-state-body">这可能是手动记录，或凭证图片尚未上传。</div>
+      </div>
+      {% endif %}
+    </section>
+  </div>
+</div>
+
+<div class="detail-sections">
+  <section class="product-panel product-panel--padded">
+    <div class="product-panel-header">
       <div>
-        <h2>小票明细</h2>
-        <div class="meta">只记录本张小票的商品行，不改变账单金额、统计或导出。</div>
+        <h2 class="product-panel-title">小票明细</h2>
+        <div class="product-panel-subtitle">只记录本张小票的商品行，不改变账单金额、统计或导出。</div>
       </div>
     </div>
     {% if items_error %}
-    <div class="dt-alert danger">⚠️ {{ items_error }}</div>
+    <div class="product-feedback product-feedback--error" role="alert">{{ items_error }}</div>
     {% endif %}
 
     {# ADR-0035: items_sum_status banner — mismatch_known 时提示用户确认或修正 #}
     {% if receipt_items.status == 'mismatch_known' %}
-    <div class="dt-alert warn">
-      ⚠️ 明细合计与账单金额差 {{ home_currency_symbol }}{{ receipt_items.mismatch_yuan }}。检查明细，或如果原小票本身如此，点下面"原小票如此"确认。
+    <div class="product-feedback product-feedback--warning" role="status">
+      明细合计与账单金额差 {{ home_currency_symbol }}{{ receipt_items.mismatch_yuan }}。检查明细，或如果原小票本身如此，点下面“原小票如此”确认。
     </div>
-    <form method="post" action="/web/expenses/{{ expense.id }}/items/acknowledge-mismatch" class="acknowledge-form">
+    <form method="post" action="/web/expenses/{{ e.id }}/items/acknowledge-mismatch" class="product-inline-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-      <input type="hidden" name="expected_row_version" value="{{ expense.row_version }}">
+      <input type="hidden" name="expected_row_version" value="{{ e.row_version }}">
       {% for field_name, field_value in edit_return_fields.items() %}<input type="hidden" name="{{ field_name }}" value="{{ field_value }}">{% endfor %}
-      {% if can_write %}<button type="submit" class="dt-btn">原小票如此</button>{% endif %}
+      {% if can_write %}<button type="submit" class="product-button">原小票如此</button>{% endif %}
     </form>
     {% elif receipt_items.status == 'mismatch_acknowledged' %}
-    <div class="dt-alert info">
+    <div class="product-feedback" role="status">
       已确认原小票合计与明细存在 {{ home_currency_symbol }}{{ receipt_items.mismatch_yuan }} 差异；后续编辑不再弹警告。
     </div>
     {% endif %}
 
-    <form method="post" action="/web/expenses/{{ expense.id }}/items/save">
+    <form method="post" action="/web/expenses/{{ e.id }}/items/save">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <input type="hidden" name="expected_row_version" value="{{ expense.row_version }}">
+      <input type="hidden" name="expected_row_version" value="{{ e.row_version }}">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       {% for field_name, field_value in edit_return_fields.items() %}<input type="hidden" name="{{ field_name }}" value="{{ field_value }}">{% endfor %}
-      <table class="dt-table dt-table--compact edit-subtable">
-        <thead>
-          <tr>
-            <th class="th-w-110">类型</th>
-            <th>名称</th>
-            <th class="th-w-90">数量</th>
-            <th class="th-w-110">单价</th>
-            <th class="th-w-110">金额</th>
-            <th class="th-w-100">分类</th>
-          </tr>
-        </thead>
-        <tbody>
-        {% for item in receipt_items.rows %}
-          {% set row_index = loop.index0 %}
-          {% set item_errors = item.errors or {} %}
-          <tr>
-            <td>
-              <select name="item_kind" {% if item_errors.get('kind') %}aria-invalid="true" aria-describedby="item-{{ row_index }}-kind-error"{% endif %} {% if not can_write %}disabled{% endif %}>
-                <option value="product" {% if item.kind == 'product' %}selected{% endif %}>商品</option>
-                <option value="discount" {% if item.kind == 'discount' %}selected{% endif %}>优惠/折扣</option>
-                <option value="tax" {% if item.kind == 'tax' %}selected{% endif %}>税</option>
-                <option value="service_fee" {% if item.kind == 'service_fee' %}selected{% endif %}>服务费</option>
-              </select>
-              {% if item_errors.get('kind') %}<div id="item-{{ row_index }}-kind-error" class="error-text">{{ item_errors.get('kind') }}</div>{% endif %}
-            </td>
-            <td>
-              <input type="text" name="item_name" value="{{ item.name }}" maxlength="255" placeholder="商品或服务" {% if item_errors.get('name') or item_errors.get('row') %}aria-invalid="true" aria-describedby="item-{{ row_index }}-name-error"{% endif %} {% if not can_write %}disabled{% endif %}>
-              {% if item_errors.get('name') or item_errors.get('row') %}<div id="item-{{ row_index }}-name-error" class="error-text">{{ item_errors.get('name') or item_errors.get('row') }}</div>{% endif %}
-              {% if item.is_ocr_draft %}<div class="meta">识别草稿</div>{% endif %}
-            </td>
-            <td><input type="text" name="item_quantity" value="{{ item.quantity_text }}" maxlength="64" placeholder="1份" {% if item_errors.get('quantity') %}aria-invalid="true" aria-describedby="item-{{ row_index }}-quantity-error"{% endif %} {% if not can_write %}disabled{% endif %}>{% if item_errors.get('quantity') %}<div id="item-{{ row_index }}-quantity-error" class="error-text">{{ item_errors.get('quantity') }}</div>{% endif %}</td>
-            <td><input type="number" name="item_unit_price_yuan" value="{{ item.unit_price_yuan }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" {% if item_errors.get('unit_price_yuan') %}aria-invalid="true" aria-describedby="item-{{ row_index }}-unit-error"{% endif %} {% if not can_write %}disabled{% endif %}>{% if item_errors.get('unit_price_yuan') %}<div id="item-{{ row_index }}-unit-error" class="error-text">{{ item_errors.get('unit_price_yuan') }}</div>{% endif %}</td>
-            <td><input type="number" name="item_amount_yuan" value="{{ item.amount_yuan }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" {% if item_errors.get('amount_yuan') %}aria-invalid="true" aria-describedby="item-{{ row_index }}-amount-error"{% endif %} {% if not can_write %}disabled{% endif %}>{% if item_errors.get('amount_yuan') %}<div id="item-{{ row_index }}-amount-error" class="error-text">{{ item_errors.get('amount_yuan') }}</div>{% endif %}</td>
-            <td><input type="text" name="item_category" value="{{ item.category }}" maxlength="64" placeholder="其他" {% if item_errors.get('category') %}aria-invalid="true" aria-describedby="item-{{ row_index }}-category-error"{% endif %} {% if not can_write %}disabled{% endif %}>{% if item_errors.get('category') %}<div id="item-{{ row_index }}-category-error" class="error-text">{{ item_errors.get('category') }}</div>{% endif %}</td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
+      <div class="product-table-wrap expense-lines-scroll">
+        <table class="product-table expense-lines-table">
+          <thead>
+            <tr>
+              <th>类型</th>
+              <th>名称</th>
+              <th>数量</th>
+              <th>单价</th>
+              <th>金额</th>
+              <th>分类</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for item in receipt_items.rows %}
+            {% set row_index = loop.index0 %}
+            {% set item_errors = item.errors or {} %}
+            <tr>
+              <td>
+                <select name="item_kind" {% if item_errors.get('kind') %}aria-invalid="true" aria-describedby="item-{{ row_index }}-kind-error"{% endif %} {% if not can_write %}disabled{% endif %}>
+                  <option value="product" {% if item.kind == 'product' %}selected{% endif %}>商品</option>
+                  <option value="discount" {% if item.kind == 'discount' %}selected{% endif %}>优惠/折扣</option>
+                  <option value="tax" {% if item.kind == 'tax' %}selected{% endif %}>税</option>
+                  <option value="service_fee" {% if item.kind == 'service_fee' %}selected{% endif %}>服务费</option>
+                </select>
+                {% if item_errors.get('kind') %}<div id="item-{{ row_index }}-kind-error" class="error-text">{{ item_errors.get('kind') }}</div>{% endif %}
+              </td>
+              <td>
+                <input type="text" name="item_name" value="{{ item.name }}" maxlength="255" placeholder="商品或服务" {% if item_errors.get('name') or item_errors.get('row') %}aria-invalid="true" aria-describedby="item-{{ row_index }}-name-error"{% endif %} {% if not can_write %}disabled{% endif %}>
+                {% if item_errors.get('name') or item_errors.get('row') %}<div id="item-{{ row_index }}-name-error" class="error-text">{{ item_errors.get('name') or item_errors.get('row') }}</div>{% endif %}
+                {% if item.is_ocr_draft %}<div class="meta">识别草稿</div>{% endif %}
+              </td>
+              <td><input type="text" name="item_quantity" value="{{ item.quantity_text }}" maxlength="64" placeholder="1份" {% if item_errors.get('quantity') %}aria-invalid="true" aria-describedby="item-{{ row_index }}-quantity-error"{% endif %} {% if not can_write %}disabled{% endif %}>{% if item_errors.get('quantity') %}<div id="item-{{ row_index }}-quantity-error" class="error-text">{{ item_errors.get('quantity') }}</div>{% endif %}</td>
+              <td><input type="number" name="item_unit_price_yuan" value="{{ item.unit_price_yuan }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" {% if item_errors.get('unit_price_yuan') %}aria-invalid="true" aria-describedby="item-{{ row_index }}-unit-error"{% endif %} {% if not can_write %}disabled{% endif %}>{% if item_errors.get('unit_price_yuan') %}<div id="item-{{ row_index }}-unit-error" class="error-text">{{ item_errors.get('unit_price_yuan') }}</div>{% endif %}</td>
+              <td><input type="number" name="item_amount_yuan" value="{{ item.amount_yuan }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" {% if item_errors.get('amount_yuan') %}aria-invalid="true" aria-describedby="item-{{ row_index }}-amount-error"{% endif %} {% if not can_write %}disabled{% endif %}>{% if item_errors.get('amount_yuan') %}<div id="item-{{ row_index }}-amount-error" class="error-text">{{ item_errors.get('amount_yuan') }}</div>{% endif %}</td>
+              <td><input type="text" name="item_category" value="{{ item.category }}" maxlength="64" placeholder="其他" {% if item_errors.get('category') %}aria-invalid="true" aria-describedby="item-{{ row_index }}-category-error"{% endif %} {% if not can_write %}disabled{% endif %}>{% if item_errors.get('category') %}<div id="item-{{ row_index }}-category-error" class="error-text">{{ item_errors.get('category') }}</div>{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
       {% if can_write %}
-      <div class="actions sub-actions">
-        <button type="submit" class="dt-btn">保存明细</button>
+      <div class="product-page-actions expense-sub-actions">
+        <button type="submit" class="product-button">保存明细</button>
       </div>
       {% else %}
       <div class="readonly-inline">只读角色，无法修改小票明细。</div>
       {% endif %}
     </form>
-  </div>
+  </section>
 
-  <div class="dt-card">
-    <div class="card-header">
+  <section class="product-panel product-panel--padded">
+    <div class="product-panel-header">
       <div>
-        <h2>家庭拆账</h2>
-        <div class="meta">拆账只作为家庭分摊记录，不改变入账金额、统计或导出。</div>
+        <h2 class="product-panel-title">家庭拆账</h2>
+        <div class="product-panel-subtitle">拆账只作为家庭分摊记录，不改变入账金额、统计或导出。</div>
       </div>
     </div>
     {% if splits_error %}
-    <div class="dt-alert danger">⚠️ {{ splits_error }}</div>
+    <div class="product-feedback product-feedback--error" role="alert">{{ splits_error }}</div>
     {% endif %}
     {% if split_rows.total_yuan %}
-    <div class="reconcile-line">
+    <div class="expense-reconcile">
       账单 {{ home_currency_symbol }}{{ split_rows.parent_amount_yuan }} · 已拆 {{ home_currency_symbol }}{{ split_rows.total_yuan }}
       {% if split_rows.reconcile_state == 'partial' %}· 还差 {{ home_currency_symbol }}{{ split_rows.reconcile_delta_yuan }} 未分配{% endif %}
       {% if split_rows.reconcile_state == 'overallocated' %}<span class="error-text">· 已拆超出 {{ home_currency_symbol }}{{ split_rows.reconcile_delta_yuan }}</span>{% endif %}
     </div>
     {% endif %}
-    <form method="post" action="/web/expenses/{{ expense.id }}/splits/save">
+    <form method="post" action="/web/expenses/{{ e.id }}/splits/save">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <input type="hidden" name="expected_row_version" value="{{ expense.row_version }}">
+      <input type="hidden" name="expected_row_version" value="{{ e.row_version }}">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       {% for field_name, field_value in edit_return_fields.items() %}<input type="hidden" name="{{ field_name }}" value="{{ field_value }}">{% endfor %}
-      <table class="dt-table dt-table--compact edit-subtable">
-        <thead>
-          <tr>
-            <th>成员</th>
-            <th class="th-w-120">金额</th>
-            <th>备注</th>
-          </tr>
-        </thead>
-        <tbody>
-        {% for split in split_rows.rows %}
-          {% set row_index = loop.index0 %}
-          {% set split_errors = split.errors or {} %}
-          <tr>
-            <td>
-              <select name="split_member_id" {% if split_errors.get('member_id') or split_errors.get('row') %}aria-invalid="true" aria-describedby="split-{{ row_index }}-member-error"{% endif %} {% if not can_write %}disabled{% endif %}>
-                <option value="">选择成员</option>
-                {% if split.member_id is string and split.member_id %}<option value="{{ split.member_id }}" selected>无效成员（请重新选择）</option>{% endif %}
-                {% if split.disabled %}
-                <option value="{{ split.member_id }}" selected>{{ split.account_name }}（已停用）</option>
-                {% endif %}
-                {% for member in split_members %}
-                <option value="{{ member.member_id }}" {% if member.member_id == split.member_id %}selected{% endif %}>
-                  {{ member.account_name }} · {% if member.role == 'owner' %}拥有者{% elif member.role == 'member' %}成员{% else %}只读{% endif %}
-                </option>
-                {% endfor %}
-              </select>
-              {% if split_errors.get('member_id') or split_errors.get('row') %}<div id="split-{{ row_index }}-member-error" class="error-text">{{ split_errors.get('member_id') or split_errors.get('row') }}</div>{% endif %}
-            </td>
-            <td><input type="number" name="split_amount_yuan" value="{{ split.amount_yuan }}" min="{{ currency_input.positive_amount_min }}" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" {% if split_errors.get('amount_yuan') %}aria-invalid="true" aria-describedby="split-{{ row_index }}-amount-error"{% endif %} {% if not can_write %}disabled{% endif %}>{% if split_errors.get('amount_yuan') %}<div id="split-{{ row_index }}-amount-error" class="error-text">{{ split_errors.get('amount_yuan') }}</div>{% endif %}</td>
-            <td><input type="text" name="split_note" value="{{ split.note }}" maxlength="200" placeholder="可选" {% if split_errors.get('note') %}aria-invalid="true" aria-describedby="split-{{ row_index }}-note-error"{% endif %} {% if not can_write %}disabled{% endif %}>{% if split_errors.get('note') %}<div id="split-{{ row_index }}-note-error" class="error-text">{{ split_errors.get('note') }}</div>{% endif %}</td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
+      <div class="product-table-wrap expense-lines-scroll">
+        <table class="product-table">
+          <thead>
+            <tr>
+              <th>成员</th>
+              <th>金额</th>
+              <th>备注</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for split in split_rows.rows %}
+            {% set row_index = loop.index0 %}
+            {% set split_errors = split.errors or {} %}
+            <tr>
+              <td>
+                <select name="split_member_id" {% if split_errors.get('member_id') or split_errors.get('row') %}aria-invalid="true" aria-describedby="split-{{ row_index }}-member-error"{% endif %} {% if not can_write %}disabled{% endif %}>
+                  <option value="">选择成员</option>
+                  {% if split.member_id is string and split.member_id %}<option value="{{ split.member_id }}" selected>无效成员（请重新选择）</option>{% endif %}
+                  {% if split.disabled %}
+                  <option value="{{ split.member_id }}" selected>{{ split.account_name }}（已停用）</option>
+                  {% endif %}
+                  {% for member in split_members %}
+                  <option value="{{ member.member_id }}" {% if member.member_id == split.member_id %}selected{% endif %}>
+                    {{ member.account_name }} · {% if member.role == 'owner' %}拥有者{% elif member.role == 'member' %}成员{% else %}只读{% endif %}
+                  </option>
+                  {% endfor %}
+                </select>
+                {% if split_errors.get('member_id') or split_errors.get('row') %}<div id="split-{{ row_index }}-member-error" class="error-text">{{ split_errors.get('member_id') or split_errors.get('row') }}</div>{% endif %}
+              </td>
+              <td><input type="number" name="split_amount_yuan" value="{{ split.amount_yuan }}" min="{{ currency_input.positive_amount_min }}" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" {% if split_errors.get('amount_yuan') %}aria-invalid="true" aria-describedby="split-{{ row_index }}-amount-error"{% endif %} {% if not can_write %}disabled{% endif %}>{% if split_errors.get('amount_yuan') %}<div id="split-{{ row_index }}-amount-error" class="error-text">{{ split_errors.get('amount_yuan') }}</div>{% endif %}</td>
+              <td><input type="text" name="split_note" value="{{ split.note }}" maxlength="200" placeholder="可选" {% if split_errors.get('note') %}aria-invalid="true" aria-describedby="split-{{ row_index }}-note-error"{% endif %} {% if not can_write %}disabled{% endif %}>{% if split_errors.get('note') %}<div id="split-{{ row_index }}-note-error" class="error-text">{{ split_errors.get('note') }}</div>{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
       {% if can_write %}
-      <div class="actions sub-actions">
-        <button type="submit" class="dt-btn">保存拆账</button>
+      <div class="product-page-actions expense-sub-actions">
+        <button type="submit" class="product-button">保存拆账</button>
       </div>
       {% else %}
       <div class="readonly-inline">只读角色，无法修改家庭拆账。</div>
       {% endif %}
     </form>
-  </div>
+  </section>
 </div>
 {% endblock %}

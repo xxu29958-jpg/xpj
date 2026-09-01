@@ -59,7 +59,13 @@ def _pairing_attempt_cookie_header(client: TestClient) -> dict[str, str]:
 def test_login_form_renders(client: TestClient) -> None:
     resp = client.get("/web/auth/login")
     assert resp.status_code == 200
-    assert "绑定码" in resp.text
+    assert "连接小票夹" in resp.text
+    assert "连接码" in resp.text
+    assert "设备名称（可选）" in resp.text
+    assert ">连接</button>" in resp.text
+    assert "连接码只用于本次设备授权" in resp.text
+    assert "APP_TOKEN" not in resp.text
+    assert 'type="password"' not in resp.text
     assert 'action="/web/auth/login"' in resp.text
     cookie_header = resp.headers.get("set-cookie", "")
     assert PAIRING_ATTEMPT_COOKIE_NAME in cookie_header
@@ -72,7 +78,20 @@ def test_login_form_renders(client: TestClient) -> None:
 def test_login_form_shows_error_param(client: TestClient) -> None:
     resp = client.get("/web/auth/login?error=invalid_pairing_code")
     assert resp.status_code == 200
-    assert "绑定码不正确" in resp.text
+    assert "连接码不正确" in resp.text
+
+
+def test_login_form_maps_closed_attempt_and_unknown_error_without_leaking_code(
+    client: TestClient,
+) -> None:
+    closed = client.get("/web/auth/login?error=pairing_attempt_closed")
+    assert closed.status_code == 200
+    assert "这次连接已经结束，请重新获取连接码" in closed.text
+
+    unknown = client.get("/web/auth/login?error=private_backend_detail")
+    assert unknown.status_code == 200
+    assert "暂时无法连接，请重新获取连接码后再试" in unknown.text
+    assert "private_backend_detail" not in unknown.text
 
 
 def test_valid_pairing_code_sets_secure_session_cookie(client: TestClient, *, identity) -> None:

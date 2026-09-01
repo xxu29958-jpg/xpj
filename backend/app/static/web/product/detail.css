@@ -79,6 +79,19 @@
     display: none;
 }
 
+/* K3: 新栈统一骨架类 (expense_fact 之外的 consumer 用 receipt-image-skeleton)。 */
+.receipt-image-skeleton {
+    position: absolute;
+    z-index: 1;
+    inset: 0;
+    border-radius: var(--radius-sm);
+    background: var(--skeleton-base-bg);
+}
+
+.receipt-image-shell.is-loaded .receipt-image-skeleton {
+    display: none;
+}
+
 .receipt-img {
     display: block;
     width: 100%;
@@ -94,6 +107,9 @@
 }
 
 .detail-sections {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-5);
     margin-block-start: var(--space-6);
 }
 
@@ -243,6 +259,10 @@
 
 @media (max-width: 56rem) {
     .detail-layout {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .detail-sections {
         grid-template-columns: minmax(0, 1fr);
     }
 
