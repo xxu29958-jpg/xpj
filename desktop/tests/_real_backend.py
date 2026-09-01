@@ -289,7 +289,7 @@ def manager_bootstrap_cookies(manager: ControlServer, material_path: Path) -> st
     cookies = response.headers.get_all("Set-Cookie")
     response.read()
     connection.close()
-    assert cookies is not None and len(cookies) == 4
+    assert cookies is not None and len(cookies) == 3
     assert all("HttpOnly" in cookie for cookie in cookies)
     assert not material_path.exists()
     return "; ".join(cookie.partition(";")[0] for cookie in cookies)
