@@ -171,12 +171,7 @@ class BoundedHttpsTransport:
         normalized = _normalize_public_origin(public_origin)
         if normalized is None:
             raise PublicEndpointProbeError("invalid public origin")
-        if (
-            timeout_seconds <= 0
-            or deadline_seconds <= 0
-            or max_requests <= 0
-            or max_response_bytes <= 0
-        ):
+        if timeout_seconds <= 0 or deadline_seconds <= 0 or max_requests <= 0 or max_response_bytes <= 0:
             raise ValueError("public probe limits must be positive")
         self._origin = normalized
         self._timeout_seconds = timeout_seconds

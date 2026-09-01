@@ -134,9 +134,7 @@ def test_anonymous_health_proves_only_reachable_unverified() -> None:
 
 
 def test_matching_desktop_session_proves_authenticated_ticketbox_product() -> None:
-    transport = _Transport(
-        _responses(authenticated_auth=BoundedHttpResponse(200, _auth_payload()))
-    )
+    transport = _Transport(_responses(authenticated_auth=BoundedHttpResponse(200, _auth_payload())))
 
     result = probe_public_endpoint(
         PublicEndpointContext(public_origin="https://public.example", session=_session()),
@@ -153,9 +151,7 @@ def test_matching_desktop_session_proves_authenticated_ticketbox_product() -> No
 def test_rejected_desktop_session_keeps_valid_health_reachable_unverified(status: int) -> None:
     result = probe_public_endpoint(
         PublicEndpointContext(public_origin="https://public.example", session=_session()),
-        transport=_Transport(
-            _responses(authenticated_auth=BoundedHttpResponse(status, {"error": "invalid_token"}))
-        ),
+        transport=_Transport(_responses(authenticated_auth=BoundedHttpResponse(status, {"error": "invalid_token"}))),
     )
 
     assert result.public is PublicState.REACHABLE_UNVERIFIED
@@ -300,9 +296,7 @@ def test_result_and_error_never_expose_session_or_public_origin() -> None:
     origin = f"https://{marker.lower()}.example"
     result = probe_public_endpoint(
         PublicEndpointContext(public_origin=origin, session=_session()),
-        transport=_Transport(
-            _responses(authenticated_auth=PublicEndpointProbeError("DO-NOT-EXPORT-TRANSPORT-DETAIL"))
-        ),
+        transport=_Transport(_responses(authenticated_auth=PublicEndpointProbeError("DO-NOT-EXPORT-TRANSPORT-DETAIL"))),
     )
 
     serialized = repr(result)
