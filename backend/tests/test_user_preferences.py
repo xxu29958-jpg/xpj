@@ -2,75 +2,26 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from app.database import SessionLocal
-from app.models import Account, AuthToken, Device, LedgerMember
-from app.services.identity_service import hash_secret
-from app.services.time_service import now_utc
+from app.database._dataset_restore_security import RESTORE_TABLE_SECURITY
+from app.database_model_registry import Base
+from migrations.versions._baseline.schema_01 import STATEMENTS as BASELINE_STATEMENTS
 
 
-def _same_name_member_token(label: str) -> str:
-    token = f"same-name-pref-token-{label}"
-    now = now_utc()
-    with SessionLocal() as db:
-        account = Account(display_name="Same Name", created_at=now)
-        db.add(account)
-        db.flush()
-        device = Device(
-            account_id=account.id,
-            device_name=f"same-name-device-{label}",
-            platform="android",
-            created_at=now,
+def test_cross_surface_ui_preferences_owner_is_physically_retired(
+    client: TestClient,
+) -> None:
+    assert "/api/me/ui-preferences" not in client.app.openapi()["paths"]
+
+    for method in ("GET", "PUT"):
+        response = client.request(
+            method,
+            "/api/me/ui-preferences",
+            json={"theme": "midnight"} if method == "PUT" else None,
         )
-        db.add(device)
-        db.flush()
-        db.add(
-            LedgerMember(
-                ledger_id="owner",
-                account_id=account.id,
-                role="member",
-                created_at=now,
-            )
-        )
-        db.add(
-            AuthToken(
-                token_hash=hash_secret(token),
-                account_id=account.id,
-                device_id=device.id,
-                ledger_id="owner",
-                scope="app",
-                created_at=now,
-            )
-        )
-        db.commit()
-    return token
+        assert response.status_code == 404
 
 
-def _headers(token: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {token}"}
-
-
-def test_ui_preferences_are_keyed_by_account_id_not_display_name(client: TestClient) -> None:
-    token_a = _same_name_member_token("a")
-    token_b = _same_name_member_token("b")
-
-    first = client.put("/api/me/ui-preferences", headers=_headers(token_a), json={"theme": "mono"})
-    assert first.status_code == 200, first.json()
-    second = client.put("/api/me/ui-preferences", headers=_headers(token_b), json={"theme": "midnight"})
-    assert second.status_code == 200, second.json()
-
-    read_a = client.get("/api/me/ui-preferences", headers=_headers(token_a))
-    read_b = client.get("/api/me/ui-preferences", headers=_headers(token_b))
-
-    assert read_a.status_code == 200, read_a.json()
-    assert read_b.status_code == 200, read_b.json()
-    assert read_a.json()["theme"] == "mono"
-    assert read_b.json()["theme"] == "midnight"
-
-
-def test_put_ui_preferences_without_auth_returns_401(client: TestClient) -> None:
-    # codex P2 #9: route-test-matrix 守护要求 mutating route 都有 401 拒绝测试。
-    # PUT /api/me/ui-preferences 用 Depends(get_current_writer_context),dependency
-    # 在 body parse 之前 resolve,无 token 直接拒。
-    response = client.put("/api/me/ui-preferences", json={"theme": "mono"})
-    assert response.status_code == 401
-    assert response.json()["error"] == "invalid_token"
+def test_cross_surface_ui_preferences_storage_is_physically_retired() -> None:
+    assert "user_ui_preferences" not in Base.metadata.tables
+    assert "user_ui_preferences" not in RESTORE_TABLE_SECURITY
+    assert all("user_ui_preferences" not in statement for statement in BASELINE_STATEMENTS)

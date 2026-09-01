@@ -167,8 +167,7 @@ def _collect_route_gaps(tests_root: pathlib.Path) -> tuple[list[str], list[str]]
     missing_401: list[str] = []
     # codex P2: 按 (method, path) 元组去重,不是按 path。同一 path 上 POST 和 PUT 必须
     # 各自独立验证 401 覆盖;此前只按 path 去重会让"POST 有 401 测试 + PUT 没"的 case
-    # 静默通过。已知漏检例:PUT /api/expenses/{expense_id}/splits、PUT /api/dashboard/cards、
-    # PUT /api/me/ui-preferences。
+    # 静默通过。已知漏检例:PUT /api/expenses/{expense_id}/splits、PUT /api/dashboard/cards。
     seen: set[tuple[str, str]] = set()
     for method, path, handler in _route_index():
         if path in ALLOWLIST or not method:

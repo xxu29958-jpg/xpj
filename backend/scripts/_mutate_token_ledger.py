@@ -342,7 +342,6 @@ ALLOWLIST: dict[str, Exempt] = {
     # --- /api upsert / replace-all / lifecycle (tenant/account-keyed bucket) ---
     "PUT /api/budgets/monthly/{month}": Exempt("upsert_bucket", "budget", _BUDGET_BUCKET),
     "PUT /api/dashboard/cards": Exempt("upsert_bucket", "budget", _DASHBOARD),
-    "PUT /api/me/ui-preferences": Exempt("upsert_bucket", "identity", ("user_ui_preferences",)),
 
     # --- /web mutate forms / create / batch / terminal ---
     "POST /web/budgets/save": Exempt("upsert_bucket", "budget", _BUDGET_BUCKET),

@@ -52,7 +52,7 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     "long_functions": 4,
     "deep_nesting_functions": 0,
     "route_layer_imports": 0,
-    "service_public_no_private": 3,
+    "service_public_no_private": 2,
     "global_usage": 0,  # 2026-07-08: process-local CSRF/executor/Windows-task state moved behind lifecycle stores.
     "cached_singletons": 3,
     "nested_dict_args": 0,  # 2026-07-08: JSON/DTO boundary signatures use named contracts.
@@ -63,7 +63,7 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     "hardcoded_urls": 5,  # 2026-07-08: removed prose/comment URL examples; production endpoint defaults remain explicit debt.
     "credentials_risk": 0,
     "n_plus_one": 0,
-    "unreferenced_modules": 60,
+    "unreferenced_modules": 59,
     "import_cycles": 0,
     "sql_outside_database": 0,
     "import_star": 0,
@@ -132,7 +132,7 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_carriers": 104,
-    "mutate_token_exempted": 130,
+    "mutate_token_exempted": 129,
     "mutate_token_reason_admin_single_writer": 10,
     "mutate_token_reason_append_only_fact": 4,
     "mutate_token_reason_batch_db_write": 17,
@@ -143,7 +143,7 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_read_only_compute": 4,
     "mutate_token_reason_session_rotation": 8,
     "mutate_token_reason_terminal_flag_flip": 30,
-    "mutate_token_reason_upsert_bucket": 8,
+    "mutate_token_reason_upsert_bucket": 7,
 }
 STRICT_EQUALITY_BASELINE.update(load_current_test_count_baselines())
 

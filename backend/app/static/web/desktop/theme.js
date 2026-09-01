@@ -10,15 +10,6 @@
     try { localStorage.setItem("ui-theme", theme); } catch (_) {}
     // SSR 用 cookie 读取主题以避免下次刷新闪烁
     document.cookie = "ui_theme=" + theme + ";path=/;max-age=31536000;samesite=lax";
-    // v0.10: 跨端同步。Loopback web 暂无 auth 会 401, V0.11 加 web account binding 后自然生效。
-    if (typeof fetch === "function") {
-      fetch("/api/me/ui-preferences", {
-        method: "PUT",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ theme: theme }),
-      }).catch(function () { /* silent, 服务端无 auth 时 401 是预期 */ });
-    }
   };
 
   app.initThemeToggle = function initThemeToggle() {

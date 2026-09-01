@@ -1,17 +1,12 @@
-"""Owner / admin surfaces: data quality, maintenance, server settings, prefs.
+"""Owner / admin surfaces: data quality, maintenance, and server settings.
 
-Heterogeneous bucket for owner-only and per-account configuration responses
-that don't fit the identity, expense, or rules domains. ``ServerSettings`` and
-``UserUiPreferences`` are kept here despite being user-facing because their
-shape is dictated by the owner-console-driven runtime state, not the regular
-expense workflow.
+Heterogeneous bucket for owner-only configuration responses that don't fit the
+identity, expense, or rules domains.
 """
 
 from __future__ import annotations
 
-from datetime import datetime
-
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 __all__ = [
     "DataQualitySummaryResponse",
@@ -20,8 +15,6 @@ __all__ = [
     "MaintenanceDeviceCleanupResponse",
     "MaintenanceOrphanCleanupResponse",
     "ServerSettingsResponse",
-    "UserUiPreferencesResponse",
-    "UserUiPreferencesUpdateRequest",
 ]
 
 
@@ -120,15 +113,3 @@ class ServerSettingsResponse(BaseModel):
     suspected_duplicate_count: int
     upload_storage_bytes: int
     latest_upload_at: str | None
-
-
-# v0.10: User UI preferences (cross-surface theme sync, etc.)
-class UserUiPreferencesResponse(BaseModel):
-    theme: str | None = None
-    updated_at: datetime | None = None
-
-
-class UserUiPreferencesUpdateRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    theme: str | None = None

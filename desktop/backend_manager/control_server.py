@@ -44,7 +44,6 @@ from backend_manager.product_data import ProductDataError
 from backend_manager.web_bff import (
     ASSET_SESSION_COOKIE,
     MAX_REQUEST_BYTES,
-    PREFERENCE_SESSION_COOKIE,
     SESSION_COOKIE,
     WebBridgeError,
     browser_session_valid,
@@ -443,11 +442,6 @@ class _Handler(BaseHTTPRequestHandler):
         )
         self.send_header(
             "Set-Cookie",
-            f"{PREFERENCE_SESSION_COOKIE}={session_ids[PREFERENCE_SESSION_COOKIE]}; "
-            "Path=/api/me/ui-preferences; HttpOnly; SameSite=Strict",
-        )
-        self.send_header(
-            "Set-Cookie",
             f"{_CONTROL_SESSION_COOKIE}={session_ids[_CONTROL_SESSION_COOKIE]}; Path=/; HttpOnly; SameSite=Strict",
         )
         self.send_header("Content-Length", str(len(body)))
@@ -457,12 +451,7 @@ class _Handler(BaseHTTPRequestHandler):
     def _web_bridge_allowed(self) -> bool:
         srv: ControlServer = self.server  # type: ignore[assignment]
         path = urllib.parse.urlsplit(self.path).path
-        if path == "/api/me/ui-preferences":
-            cookie_name = PREFERENCE_SESSION_COOKIE
-        elif path.startswith("/static/"):
-            cookie_name = ASSET_SESSION_COOKIE
-        else:
-            cookie_name = SESSION_COOKIE
+        cookie_name = ASSET_SESSION_COOKIE if path.startswith("/static/") else SESSION_COOKIE
         return (
             self._host_allowed()
             and srv.browser_session_valid(
@@ -858,10 +847,6 @@ class _Handler(BaseHTTPRequestHandler):
         if not self._host_allowed():
             self._send(421, b"misdirected request", "text/plain; charset=utf-8")
             return
-        parsed_path = urllib.parse.urlsplit(self.path)
-        if parsed_path.path == "/api/me/ui-preferences" and not parsed_path.query:
-            self._serve_web_bridge()
-            return
         self._send(404, b"not found", "text/plain; charset=utf-8")
 
     def do_POST(self) -> None:  # noqa: C901 - explicit fail-closed route matrix
@@ -976,7 +961,6 @@ class ControlServer(ThreadingHTTPServer):
             for cookie_name in (
                 SESSION_COOKIE,
                 ASSET_SESSION_COOKIE,
-                PREFERENCE_SESSION_COOKIE,
                 _CONTROL_SESSION_COOKIE,
             )
         }
