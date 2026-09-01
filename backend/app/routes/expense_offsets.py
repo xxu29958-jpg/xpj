@@ -7,12 +7,13 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_app_context, get_current_writer_context
 from app.database import get_db
+from app.errors import AppError
 from app.schemas import ExpenseFactBundleResponse, ExpenseOffsetCreateRequest
 from app.services.expense_offset_service import (
     create_expense_offset,
     expense_fact_bundle,
 )
-from app.services.expense_service import resolve_expense_for_mutation
+from app.services.expense_service import resolve_expense, resolve_expense_for_mutation
 from app.tenants import AuthContext
 
 router = APIRouter(prefix="/api/expenses", tags=["expenses"])
@@ -55,12 +56,20 @@ def post_expense_offset(
     response_model=ExpenseFactBundleResponse,
 )
 def get_expense_fact_bundle(
-    expense_id: int,
+    expense_id: str,
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> ExpenseFactBundleResponse:
+    expense = resolve_expense(
+        db,
+        auth.tenant_id,
+        expense_id,
+        device_id=auth.device_id,
+    )
+    if expense is None:
+        raise AppError("expense_not_found", status_code=404)
     return expense_fact_bundle(
         db,
         tenant_id=auth.tenant_id,
-        expense_id=expense_id,
+        expense_id=expense.id,
     )

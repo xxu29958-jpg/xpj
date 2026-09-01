@@ -27,7 +27,7 @@ from app.services.expense_response_service import expense_to_response
 from app.services.expense_service import get_expense
 from app.services.idempotency import claim_idempotent_request, mark_idempotency_succeeded
 from app.services.optimistic_concurrency import claim_row_with_token
-from app.services.time_service import ensure_utc, now_utc, to_iso
+from app.services.time_service import now_utc, to_iso
 
 __all__ = ["create_expense_offset", "expense_fact_bundle"]
 
@@ -60,7 +60,7 @@ def _offset_snapshot(offset: ExpenseOffsetFact) -> dict[str, object]:
         "exchange_rate_to_cny": (
             format(offset.exchange_rate_to_cny, "f") if offset.exchange_rate_to_cny is not None else None
         ),
-        "accounting_time": to_iso(offset.accounting_time),
+        "accounting_date": offset.accounting_date.isoformat(),
         "category": offset.category,
         "reason": offset.reason,
         "row_version": offset.row_version,
@@ -81,7 +81,7 @@ def _active_offsets(
         .where(ExpenseOffsetFact.tenant_id == tenant_id)
         .where(ExpenseOffsetFact.expense_id == expense_id)
         .where(ExpenseOffsetFact.status == "active")
-        .order_by(ExpenseOffsetFact.accounting_time, ExpenseOffsetFact.id)
+        .order_by(ExpenseOffsetFact.accounting_date, ExpenseOffsetFact.id)
     )
     if for_update:
         statement = statement.with_for_update()
@@ -306,7 +306,7 @@ def create_expense_offset(
         original_amount_minor=original_amount_minor,
         home_currency_code=expense.home_currency_code,
         amount_cents=amount_cents,
-        accounting_time=ensure_utc(payload.accounting_time),
+        accounting_date=payload.accounting_date,
         category=expense.category,
         reason=payload.reason,
         created_actor_account_id=actor_account_id,

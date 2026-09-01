@@ -20,7 +20,7 @@ def test_refund_keeps_original_fact_and_publishes_net_bundle(
         json={
             "kind": "refund",
             "original_amount_minor": 300,
-            "accounting_time": "2026-09-05T10:00:00Z",
+            "accounting_date": "2026-09-05",
             "reason": "退货退款",
             "expected_row_version": expense["row_version"],
         },
@@ -43,7 +43,7 @@ def test_refund_keeps_original_fact_and_publishes_net_bundle(
     assert body["active_offsets"][0]["kind"] == "refund"
     assert body["active_offsets"][0]["original_amount_minor"] == 300
     assert body["active_offsets"][0]["amount_cents"] == 300
-    assert body["active_offsets"][0]["accounting_time"] == "2026-09-05T10:00:00Z"
+    assert body["active_offsets"][0]["accounting_date"] == "2026-09-05"
 
     reread = client.get(
         f"/api/expenses/{expense['id']}/fact-bundle",
@@ -51,3 +51,36 @@ def test_refund_keeps_original_fact_and_publishes_net_bundle(
     )
     assert reread.status_code == 200, reread.text
     assert reread.json() == body
+
+
+def test_fact_bundle_read_resolves_the_same_device_local_ref(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
+    expense = manual_confirmed(
+        client,
+        identity,
+        amount_cents=800,
+        client_ref="refund-local-read",
+    )
+    created = client.post(
+        "/api/expenses/local:refund-local-read/offsets",
+        headers=idem(identity.app_headers),
+        json={
+            "kind": "refund",
+            "original_amount_minor": 200,
+            "accounting_date": "2026-09-06",
+            "reason": "本地引用退款",
+            "expected_row_version": 0,
+        },
+    )
+    assert created.status_code == 201, created.text
+
+    reread = client.get(
+        "/api/expenses/local:refund-local-read/fact-bundle",
+        headers=identity.app_headers,
+    )
+    assert reread.status_code == 200, reread.text
+    assert reread.json()["root"]["id"] == expense["id"]
+    assert reread.json()["financial_summary"]["lineage_home_net_cents"] == 600

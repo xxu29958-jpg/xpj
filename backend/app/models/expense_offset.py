@@ -99,7 +99,7 @@ class ExpenseOffsetFact(Base):
     exchange_rate_to_cny: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
     exchange_rate_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     exchange_rate_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    accounting_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    accounting_date: Mapped[date] = mapped_column(Date, nullable=False)
     category: Mapped[str] = mapped_column(String(64), nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     row_version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
@@ -121,10 +121,11 @@ class ExpenseOffsetFact(Base):
 
 
 Index(
-    "ix_expense_offset_facts_tenant_expense_created",
+    "ix_expense_offset_facts_tenant_expense_accounting",
     ExpenseOffsetFact.tenant_id,
     ExpenseOffsetFact.expense_id,
-    ExpenseOffsetFact.created_at,
+    ExpenseOffsetFact.accounting_date,
+    ExpenseOffsetFact.id,
 )
 Index(
     "uq_expense_offset_facts_active_reversal",

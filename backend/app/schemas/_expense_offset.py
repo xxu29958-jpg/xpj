@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Literal
 
@@ -42,7 +42,7 @@ class ExpenseOffsetCreateRequest(BaseModel):
 
     kind: ExpenseOffsetKind
     original_amount_minor: PositiveMoneyMinor | None = None
-    accounting_time: datetime
+    accounting_date: date
     reason: str = Field(min_length=1, max_length=500)
     expected_row_version: int = Field(ge=1)
 
@@ -74,7 +74,7 @@ class ExpenseOffsetResponse(BaseModel):
     home_currency_code: str
     amount_cents: PositiveMoneyMinor
     exchange_rate_to_cny: Decimal | None
-    accounting_time: datetime
+    accounting_date: date
     category: str
     reason: str
     row_version: int
@@ -83,7 +83,7 @@ class ExpenseOffsetResponse(BaseModel):
     updated_at: datetime
     voided_at: datetime | None
 
-    @field_serializer("accounting_time", "created_at", "updated_at", "voided_at")
+    @field_serializer("created_at", "updated_at", "voided_at")
     def _serialize_datetime(self, value: datetime | None) -> str | None:
         return to_iso(value)
 

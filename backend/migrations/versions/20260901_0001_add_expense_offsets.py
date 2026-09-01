@@ -62,7 +62,7 @@ def _create_fact_table() -> None:
         sa.Column("exchange_rate_to_cny", sa.Numeric(precision=18, scale=8), nullable=True),
         sa.Column("exchange_rate_date", sa.Date(), nullable=True),
         sa.Column("exchange_rate_source", sa.String(length=32), nullable=True),
-        sa.Column("accounting_time", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("accounting_date", sa.Date(), nullable=False),
         sa.Column("category", sa.String(length=64), nullable=False),
         sa.Column("reason", sa.Text(), nullable=False),
         sa.Column("row_version", sa.Integer(), server_default="1", nullable=False),
@@ -122,9 +122,9 @@ def _create_fact_table() -> None:
         sa.UniqueConstraint("id", "tenant_id", name="uq_expense_offset_facts_id_tenant"),
     )
     op.create_index(
-        "ix_expense_offset_facts_tenant_expense_created",
+        "ix_expense_offset_facts_tenant_expense_accounting",
         _FACTS,
-        ["tenant_id", "expense_id", "created_at"],
+        ["tenant_id", "expense_id", "accounting_date", "id"],
         unique=False,
     )
     op.create_index(
