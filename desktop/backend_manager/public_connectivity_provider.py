@@ -55,6 +55,24 @@ class _StopEvent(Protocol):
     def wait(self, timeout: float | None = None) -> bool: ...
 
 
+class PublicConnectivityReader(Protocol):
+    """Cache-only surface consumed by the synchronous Manager controller."""
+
+    def snapshot(self) -> PublicConnectivityStatus: ...
+
+    def request_refresh(self, *, full: bool = False) -> int: ...
+
+
+class CacheOnlyUnknownPublicConnectivityProvider:
+    """No-I/O fallback for callers that do not own a probe lifetime."""
+
+    def snapshot(self) -> PublicConnectivityStatus:
+        return unknown_public_connectivity_status()
+
+    def request_refresh(self, *, full: bool = False) -> int:
+        return 0
+
+
 def _utcnow() -> datetime:
     return datetime.now(UTC)
 

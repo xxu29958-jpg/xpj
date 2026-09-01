@@ -20,6 +20,7 @@ from backend_manager.control_server import (
 from backend_manager.desktop_shell import open_app_window
 from backend_manager.instance_owner import ManagerInstance, claim_manager_instance
 from backend_manager.projection import UnavailableInstalledRuntimeConfigProvider
+from backend_manager.public_connectivity_provider import build_public_connectivity_provider
 from backend_manager.runtime import RuntimeControlError
 from backend_manager.runtime_factory import build_provider
 
@@ -211,17 +212,20 @@ def run_owned_manager(
     provider, maintenance_version, source_mode, startup_failure_code, startup_failure_stage = (
         _build_runtime(config)
     )
+    public_connectivity = build_public_connectivity_provider(provider)
     controller = AppController(
         provider,
         maintenance_version=maintenance_version,
         startup_failure_code=startup_failure_code,
         startup_failure_stage=startup_failure_stage,
         request_shutdown=shutdown_request.set,
+        public_connectivity_provider=public_connectivity,
     )
     token = secrets.token_urlsafe(24)
     server: ControlServer | None = None
     server_thread: threading.Thread | None = None
     monitor_thread: threading.Thread | None = None
+    public_monitor_thread: threading.Thread | None = None
     windows: ManagerWindowSession | None = None
     server_started = False
     try:
@@ -233,6 +237,7 @@ def run_owned_manager(
             instance_secret=instance.secret,
             request_window=lambda: False,
         )
+        public_connectivity.request_refresh(full=False)
         actual_port = int(server.server_address[1])
         instance.publish_port(actual_port)
         manager_url = config.manager_url_for_port(actual_port)
@@ -250,6 +255,12 @@ def run_owned_manager(
         server_started = True
         monitor_thread = threading.Thread(target=provider.run_monitor, args=(stop_event,), daemon=True)
         monitor_thread.start()
+        public_monitor_thread = threading.Thread(
+            target=public_connectivity.run_monitor,
+            args=(stop_event,),
+            daemon=True,
+        )
+        public_monitor_thread.start()
         if not windows.open():
             raise ConfigError("无法打开小票夹管理器窗口，请确认 Microsoft Edge 可用。")
         _wait_for_shutdown(
@@ -271,12 +282,15 @@ def run_owned_manager(
                     server.shutdown()
             with contextlib.suppress(Exception):
                 server.server_close()
+        public_connectivity.shutdown()
         with contextlib.suppress(RuntimeControlError):
             provider.shutdown()
         if server_started and server_thread is not None:
             server_thread.join(timeout=5)
         if monitor_thread is not None:
             monitor_thread.join(timeout=5)
+        if public_monitor_thread is not None:
+            public_monitor_thread.join(timeout=5)
     return 0
 
 
