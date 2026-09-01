@@ -42,7 +42,6 @@ from app.routes import (
     duplicates,
     exchange_rates,
     expense_corrections,
-    expense_offsets,
     expenses,
     goals,
     imports,
@@ -353,7 +352,6 @@ app.include_router(uploads.router)
 app.include_router(uploads.upload_link_router)
 app.include_router(expenses.router)
 app.include_router(expense_corrections.router)
-app.include_router(expense_offsets.router)
 app.include_router(exchange_rates.router)
 app.include_router(duplicates.router)
 app.include_router(ledgers.router)

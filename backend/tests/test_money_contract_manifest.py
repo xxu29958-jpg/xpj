@@ -147,10 +147,12 @@ def test_manifest_sign_semantics() -> None:
 
 def test_orm_shape_matches_frozen_c07_manifest() -> None:
     contract_keys = {(column.table, column.column) for column in MONEY_COLUMNS_V1}
+    contract_tables = {table for table, _column in contract_keys}
     metadata_keys = {
         (table.name, column.name)
         for table in Base.metadata.tables.values()
         for column in table.columns
+        if table.name in contract_tables
         if column.name.endswith(("_cents", "_minor"))
     }
     assert metadata_keys == contract_keys

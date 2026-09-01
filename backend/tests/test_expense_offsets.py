@@ -8,6 +8,28 @@ from tests.expense_correction_support import idem, manual_confirmed
 from tests.test_bill_split import _seed_receiver
 
 
+def test_create_offset_requires_authenticated_writer(
+    client: TestClient,
+    *,
+    identity,
+) -> None:
+    expense = manual_confirmed(client, identity, amount_cents=500)
+
+    response = client.post(
+        f"/api/expenses/{expense['id']}/offsets",
+        headers={"Idempotency-Key": "00000000-0000-4000-8000-000000000001"},
+        json={
+            "kind": "refund",
+            "original_amount_minor": 100,
+            "accounting_date": "2026-09-05",
+            "reason": "未登录退款",
+            "expected_row_version": expense["row_version"],
+        },
+    )
+
+    assert response.status_code == 401, response.text
+
+
 def test_refund_keeps_original_fact_and_publishes_net_bundle(
     client: TestClient,
     *,

@@ -15,7 +15,7 @@ from tests._infra.alembic_runtime import reset_public_schema, run_alembic_for_te
 
 pytestmark = pytest.mark.real_db
 
-_HEAD = "20260828_0001"
+_HEAD = "20260901_0001"
 _PARENT = "20260821_0001"
 _TABLE = "expense_revisions"
 _COLUMN = "fact_revision"

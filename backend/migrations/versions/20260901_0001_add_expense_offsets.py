@@ -134,16 +134,29 @@ def _create_fact_table() -> None:
         unique=True,
         postgresql_where=sa.text("kind = 'reversal' AND status = 'active'"),
     )
-    op.execute(
-        f"CREATE TRIGGER {_CURRENCY_WRITER_TRIGGER} "
-        f"BEFORE INSERT OR UPDATE OR DELETE ON {_FACTS} FOR EACH ROW "
-        f"EXECUTE FUNCTION {_CURRENCY_WRITER_FUNCTION}()"
+
+
+def _ensure_currency_writer_triggers(bind: sa.Connection) -> None:
+    existing = set(
+        bind.scalars(
+            sa.text(
+                "SELECT tgname FROM pg_trigger "
+                "WHERE tgrelid = 'expense_offset_facts'::regclass AND NOT tgisinternal"
+            )
+        )
     )
-    op.execute(
-        f"CREATE TRIGGER {_CURRENCY_TRUNCATE_TRIGGER} "
-        f"BEFORE TRUNCATE ON {_FACTS} FOR EACH STATEMENT "
-        f"EXECUTE FUNCTION {_CURRENCY_WRITER_FUNCTION}()"
-    )
+    if _CURRENCY_WRITER_TRIGGER not in existing:
+        op.execute(
+            f"CREATE TRIGGER {_CURRENCY_WRITER_TRIGGER} "
+            f"BEFORE INSERT OR UPDATE OR DELETE ON {_FACTS} FOR EACH ROW "
+            f"EXECUTE FUNCTION {_CURRENCY_WRITER_FUNCTION}()"
+        )
+    if _CURRENCY_TRUNCATE_TRIGGER not in existing:
+        op.execute(
+            f"CREATE TRIGGER {_CURRENCY_TRUNCATE_TRIGGER} "
+            f"BEFORE TRUNCATE ON {_FACTS} FOR EACH STATEMENT "
+            f"EXECUTE FUNCTION {_CURRENCY_WRITER_FUNCTION}()"
+        )
 
 
 def _create_revision_table() -> None:
@@ -247,6 +260,7 @@ def upgrade() -> None:
     inspector = sa.inspect(bind)
     if not inspector.has_table(_FACTS):
         _create_fact_table()
+    _ensure_currency_writer_triggers(bind)
     if not sa.inspect(bind).has_table(_REVISIONS):
         _create_revision_table()
     _set_dataset_authority_revision(
