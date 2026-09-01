@@ -153,8 +153,14 @@ class WindowsDatasetAdapter:
                 "health_identity_mismatch",
                 "installation health responder is not the bound backend",
             )
-        if payload.get("contract") != "ticketbox-installation-health-v2" or payload.get("status") != "ok":
-            raise LifecycleError("health_identity_mismatch", "installation health contract is not v2")
+        if (
+            payload.get("contract") != "ticketbox-installation-health-v3"
+            or payload.get("status") != "ok"
+        ):
+            raise LifecycleError(
+                "health_identity_mismatch",
+                "installation health contract is not v3",
+            )
         if payload.get("backend_version") != request.target_release_id:
             raise LifecycleError(
                 "health_identity_mismatch",

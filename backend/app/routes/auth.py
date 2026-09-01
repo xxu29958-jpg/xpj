@@ -18,7 +18,11 @@ from app.schemas import (
     RefreshSessionResponse,
 )
 from app.services.desktop_activation_service import activate_desktop_session
-from app.services.identity_service import authenticate_session_token, pair_device
+from app.services.identity_service import (
+    authenticate_session_token,
+    authenticated_session_credential_state,
+    pair_device,
+)
 from app.services.server_identity_service import read_server_data_identity
 from app.services.session_refresh_service import (
     refresh_legacy_app_session,
@@ -56,6 +60,7 @@ def check_auth(
         device_name=auth.device_name,
         role=auth.role,
         scope=auth.scope,
+        credential_state=authenticated_session_credential_state(db, auth),
     )
 
 

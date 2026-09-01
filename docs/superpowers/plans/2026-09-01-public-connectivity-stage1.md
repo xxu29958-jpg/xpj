@@ -48,7 +48,7 @@
 
 **Interfaces:**
 - Consumes: UTC `datetime` values supplied by the provider.
-- Produces: `PublicConnectivityStatus.current(now, max_age) -> PublicConnectivityStatus`, `PublicConnectivityStatus.to_projection() -> dict[str, object]`, all state `StrEnum` classes, and `unknown_public_connectivity_status()`.
+- Produces: `PublicConnectivityStatus.current(*, evidence_age, max_age) -> PublicConnectivityStatus`, `PublicConnectivityStatus.to_projection() -> dict[str, object]`, all state `StrEnum` classes, and `unknown_public_connectivity_status()`.
 
 - [x] **Step 1: Write the failing state-matrix tests**
 
@@ -88,11 +88,13 @@ Expected: collection fails because `backend_manager.public_connectivity` does no
 Create `StrEnum` classes for every axis and an immutable dataclass with no transport or filesystem imports. Derive `overall`, `code`, Chinese `summary`, `next_step`, and rows inside the model. Use one explicit freshness operation:
 
 ```python
-def current(self, *, now: datetime, max_age: timedelta) -> "PublicConnectivityStatus":
-    observed = self.observed_at
-    stale = observed is None or now.astimezone(UTC) - observed.astimezone(UTC) > max_age
+def current(self, *, evidence_age: timedelta | None, max_age: timedelta) -> "PublicConnectivityStatus":
+    stale = self.observed_at is None or evidence_age is None or evidence_age > max_age
     return replace(self, freshness=FreshnessState.STALE if stale else FreshnessState.FRESH)
 ```
+
+`evidence_age` comes only from elapsed monotonic time owned by the provider. UTC timestamps remain a
+human-readable projection and never decide whether evidence is current.
 
 The projection must serialize enums by `.value`, timestamps in UTC ISO-8601, safe scalar evidence only, and a fixed `supported_actions` list of `refresh`, `full_check`, `export_diagnostics`.
 
@@ -186,22 +188,26 @@ git commit -m "feat(desktop): add readonly cloudflared probes"
 
 **Interfaces:**
 - Consumes: `PublicEndpointContext(public_origin, session)` where the `ProductSession` token is `repr=False` and optional.
-- Produces: `PublicEndpointProbeResult(public, boundary, code)`, `probe_public_endpoint(context, transport=...)`, and `BoundedHttpsTransport.get(path, authorization=None)`.
+- Produces: `PublicEndpointProbeResult(public, boundary, code)`, `probe_public_endpoint(context, transport=...)`, and `BoundedHttpsTransport.get(path, session_token=None)`.
 
 - [x] **Step 1: Write failing public-probe contract tests**
 
 Use a fake transport that records method/path/header metadata without retaining Authorization values. Cover:
 
 - missing public origin -> `unconfigured`;
+- missing origin with unavailable installation-health authority -> `unknown`, not `unconfigured`;
+- Backend-canonicalized non-loopback IPv4/IPv6 HTTPS origins -> probeable;
 - HTTP/userinfo/path/query/fragment -> fail-closed wrong configuration;
 - valid anonymous health -> `reachable_unverified`;
-- valid health plus matching auth-check metadata and `scope=app` -> `authenticated_reachable`;
+- valid health plus matching auth-check metadata, `scope=app`, and `credential_state=current` -> `authenticated_reachable`;
+- matching auth metadata with `credential_state=grace` -> `reachable_unverified`, never authenticated green;
 - auth 401 after valid health -> `reachable_unverified`;
 - auth 200 with malformed schema or mismatched account/ledger/device/role -> `wrong_product`;
 - public health network failure -> `unreachable`;
 - a forbidden path returning 200 -> boundary `violation`;
 - all forbidden paths returning only 401/403/404/405 -> boundary `safe`;
 - redirects/timeouts -> boundary `unknown`;
+- malformed or non-object JSON keeps the received HTTP status while making only the payload unavailable;
 - no request uses a real UploadLink capability or a mutating HTTP method;
 - token markers are absent from exceptions, results, repr, and recorded URL/path values.
 
@@ -215,7 +221,7 @@ Expected: collection fails because `backend_manager.public_endpoint_probe` does 
 
 - [x] **Step 3: Implement normalized HTTPS and bounded reads**
 
-Normalize one HTTPS origin with no userinfo/path/query/fragment. Disable proxies and redirects, use the default TLS verifier, accept only fixed GET paths, cap each body at 8 KiB, cap the complete check at sixteen requests and eight seconds, and parse JSON only after a matching JSON media type.
+Consume the Backend-canonicalized HTTPS-origin contract, including canonical non-loopback IPv4/IPv6 literals, while rejecting loopback, unspecified, userinfo, path, query, and fragment forms. Disable proxies and redirects, use the default TLS verifier, accept only fixed GET paths, cap each body at 8 KiB, cap the complete check at sixteen requests and eight seconds, and parse JSON only after a matching JSON media type.
 
 Use exact safe paths:
 
@@ -233,7 +239,7 @@ _FORBIDDEN_GET_PATHS = (
 )
 ```
 
-Probe `/api/health` first, anonymous `/api/auth/check` for the boundary, then authenticated `/api/auth/check` only when a Desktop app session exists. Match only non-secret local session metadata; never serialize the token.
+Probe `/api/health` first, anonymous `/api/auth/check` for the boundary, then authenticated `/api/auth/check` only when a Desktop app session exists. Match only non-secret local session metadata and require `credential_state=current`; never serialize the token. A matching `grace` token is still valid for Backend in-flight completion, but this new probe reports only `reachable_unverified`.
 
 - [x] **Step 4: Run focused GREEN and lint**
 
@@ -258,7 +264,7 @@ git commit -m "feat(desktop): verify public product boundary"
 - Create: `desktop/tests/test_public_connectivity_provider.py`
 
 **Interfaces:**
-- Consumes: `RuntimeConfigProvider`, `probe_cloudflared`, `probe_public_endpoint`, `load_product_session`, monotonic/UTC clocks, and an executor factory.
+- Consumes: `RuntimeConfigProvider`, `probe_cloudflared`, `probe_public_endpoint`, `load_product_session`, `load_rebind_recovery`, monotonic/UTC clocks, and an executor factory.
 - Produces: `PublicConnectivityProvider.snapshot()`, `request_refresh(full=False) -> int`, `run_monitor(stop_event)`, `shutdown()`, and `build_public_connectivity_provider(runtime_provider)`.
 
 - [x] **Step 1: Write failing provider tests**
@@ -271,7 +277,12 @@ Assert:
 - full refresh is the only path that loads a Desktop session and runs the public probe;
 - an older slow generation cannot overwrite a newer completed generation;
 - a cached full public result ages stale after 60 seconds even while local checks continue;
+- cached public/boundary evidence is reused only for the same attested public origin and authority state;
+- an overlapping refresh retires reusable public/boundary evidence before the newer generation is scheduled;
+- unavailable Backend authority remains public `unknown` rather than becoming `unconfigured`;
+- wall-clock jumps do not make evidence stale or fresh; only monotonic elapsed age does;
 - no-session full check remains reachable-unverified;
+- a completed recovery proof blocks a predecessor primary session, while a primary matching the derived promoted session remains usable;
 - monitor cadence is ten seconds and does not overlap an in-flight generation;
 - probe exceptions commit safe unknown evidence without exception text;
 - shutdown cancels queued work and rejects new requests without an indefinite wait.
@@ -301,7 +312,27 @@ if generation == self._requested_generation and not self._shutdown:
     self._status = assembled
 ```
 
-The runtime context loader calls `runtime_provider.current()` off-thread, maps its existing attested `RuntimeStatus` to the origin axis, uses `config.public_base_url`, and loads `ProductSession` only for `full=True`. Current installed configuration supplies no `ManagedConnectorExpectation`.
+The runtime context loader calls `runtime_provider.current()` off-thread and maps its attested
+`RuntimeStatus` to the origin axis. The Backend canonicalizes its service-owned runtime setting into
+the loopback installation-health contract; `RuntimeStatus.public_origin` carries that value only
+inside the Manager process, including installed mode where `ManagerConfig.public_base_url` is
+intentionally `None`. A `ProductSession` is loaded only for `full=True` and a present attested
+origin. The explicit `mobile_endpoint_state` distinguishes authoritative `local_only` from a lost
+authority projection; cached public evidence is keyed to both that state and the exact origin.
+`AppController` brackets every operation that may change Backend or WinCred ProductSession truth with
+`begin_product_session_mutation()` / `end_product_session_mutation()`. Both edges advance the
+generation, clear the cached public/boundary result, and publish `stale + unknown`; refresh requests
+inside the window are not scheduled. Thus a full check cannot select an intermediate session subject,
+and neither committed-response loss nor WinCred save/delete failure leaves old bearer evidence live.
+For durability across the end of that window and Manager restart, the context loader also reads the
+rebind recovery slot: when it contains a completed ceremony, a primary bearer is admitted only if it
+matches the successor deterministically derived from that proof. A predecessor accepted only by
+Backend rotation grace therefore remains unauthenticated until reconciliation promotes the successor.
+The pair gate likewise refuses to delete or overwrite a completed recovery proof unless the current
+primary equals that derived successor and any recorded predecessor revoke has completed. Backend's
+terminal activation-replay 401 may retire an impossible ceremony; the auth-check `credential_state`
+still prevents any surviving grace predecessor from being promoted to authenticated green.
+Current installed configuration supplies no `ManagedConnectorExpectation`.
 
 - [x] **Step 4: Run provider GREEN, combined model/probe tests, and lint**
 
@@ -402,7 +433,7 @@ git commit -m "feat(desktop): expose public connectivity status"
 
 - [x] **Step 1: Write failing static and browser UI tests**
 
-Assert exact title/subtitle copy, row labels, button actions, keyboard focus, narrow viewport layout, and no horizontal overflow. Assert forbidden words/actions such as install/start/stop/restart/repair/update/UAC for cloudflared are absent from the card. Assert JavaScript does not derive overall state from the individual axes.
+Assert exact title/subtitle copy, row labels, button actions, keyboard focus, narrow viewport layout, and no horizontal overflow. Assert forbidden words/actions such as install/start/stop/restart/repair/update/UAC for cloudflared are absent from the card. Assert JavaScript does not derive overall state from the individual axes. A rejected/non-2xx Manager status or permanently pending status/body/ancillary read replaces any prior healthy public-connectivity card with the neutral unknown skeleton within the two-second refresh deadline; a prompt ancillary product fetch, HTTP, JSON-body, or schema failure retires prior product metadata/entry points, degrades only that product surface, and releases the refresh lock. The schema oracle must use an iterable ledger row with an out-of-domain role so removing the validator cannot fall into an unrelated `.map()` exception and still pass.
 
 - [x] **Step 2: Run UI tests and verify RED**
 
@@ -421,7 +452,7 @@ Render the heading and subtitle exactly:
 <p class="card-subtitle">由 Cloudflare Tunnel 提供</p>
 ```
 
-Render `summary`, `next_step`, and `detail_rows` as text with `textContent`. Show a neutral unknown skeleton when the projection is unavailable. Build buttons only from the intersection of the fixed UI map and server `supported_actions`; disable refresh/full-check while `in_progress`, but keep diagnostic export independent. Reuse existing card, row, button, focus, and responsive tokens.
+Render `summary`, `next_step`, and `detail_rows` as text with `textContent`. Apply one two-second deadline across `/api/status`, its JSON body, and ancillary product-session/ledger refreshes. Show a neutral unknown skeleton when Manager status rejects/is non-2xx, its body rejects, or the shared deadline expires, so a previously healthy card cannot remain green after loss of status authority. Keep prompt ancillary product failures product-specific: malformed/non-object JSON and consumer-invalid session/ledger schemas are failures, clear old options and entry points, and release the refresh lock without erasing the successful Manager projection. Accept only canonical `owner`, `member`, and `viewer` roles from both product consumers. Build buttons only from the intersection of the fixed UI map and server `supported_actions`; disable refresh/full-check while `in_progress`, but keep diagnostic export independent. Reuse existing card, row, button, focus, and responsive tokens.
 
 - [x] **Step 4: Run UI GREEN and the existing Edge layout lane**
 

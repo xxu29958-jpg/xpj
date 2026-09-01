@@ -99,12 +99,14 @@ def _tunnel(
 
 
 class _ServiceReader:
-    def __init__(self, observation: ServiceObservation) -> None:
+    def __init__(self, observation: ServiceObservation | Exception) -> None:
         self.observation = observation
         self.names: list[str] = []
 
     def read_exact(self, service_name: str) -> ServiceObservation:
         self.names.append(service_name)
+        if isinstance(self.observation, Exception):
+            raise self.observation
         return self.observation
 
 
@@ -148,6 +150,21 @@ def test_absent_exact_service_and_diagnostics_are_unconfigured() -> None:
     assert result.connection_count is None
 
 
+def test_unreadable_service_and_diagnostics_keep_ownership_unknown() -> None:
+    transport = _Transport(
+        {f"http://127.0.0.1:{port}/ready": CloudflaredProbeError("unavailable") for port in range(20241, 20246)}
+    )
+
+    result = probe_cloudflared(
+        service_reader=_ServiceReader(CloudflaredProbeError("SCM access denied")),
+        transport=transport,
+    )
+
+    assert result.ownership is OwnershipState.UNKNOWN
+    assert result.service is ServiceState.UNKNOWN
+    assert result.connector is ConnectorState.UNKNOWN
+
+
 def test_external_ready_connector_never_becomes_managed() -> None:
     reader = _ServiceReader(ServiceObservation.missing())
     responses: dict[str, LoopbackJsonResponse | Exception] = {
@@ -184,6 +201,31 @@ def test_protected_expectation_requires_every_service_and_tunnel_identity() -> N
     assert result.service_identity_match is True
     assert result.binary_identity_match is True
     assert result.tunnel_identity_match is True
+
+
+@pytest.mark.parametrize(
+    ("service_observation", "expected_service"),
+    [
+        (ServiceObservation.missing(), ServiceState.MISSING),
+        (CloudflaredProbeError("SCM access denied"), ServiceState.UNKNOWN),
+    ],
+)
+def test_protected_expectation_without_complete_evidence_is_not_managed(
+    service_observation: ServiceObservation | Exception,
+    expected_service: ServiceState,
+) -> None:
+    result = probe_cloudflared(
+        _expectation(),
+        service_reader=_ServiceReader(service_observation),
+        transport=_Transport(
+            {"http://127.0.0.1:24001/ready": CloudflaredProbeError("unavailable")}
+        ),
+    )
+
+    assert result.ownership is OwnershipState.UNKNOWN
+    assert result.service is expected_service
+    assert result.service_identity_match is False
+    assert result.tunnel_identity_match is None
 
 
 def test_image_path_or_argv_mismatch_is_an_identity_conflict_without_path_leak() -> None:
@@ -231,7 +273,7 @@ def test_expected_tunnel_mismatch_is_connector_unavailable_not_false_healthy() -
         transport=_Transport(_responses(tunnel=_tunnel(tunnel_id=_OTHER_TUNNEL_ID))),
     )
 
-    assert result.ownership is OwnershipState.MANAGED
+    assert result.ownership is OwnershipState.CONFLICT
     assert result.service is ServiceState.RUNNING
     assert result.connector is ConnectorState.TUNNEL_MISMATCH
     assert result.tunnel_identity_match is False

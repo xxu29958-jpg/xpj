@@ -86,7 +86,7 @@ def test_middleware_transparent_for_200(client: TestClient) -> None:
     installation_body = installation_health.json()
     assert installation_body["status"] == "ok"
     assert installation_body["product"] == "ticketbox"
-    assert installation_body["contract"] == "ticketbox-installation-health-v2"
+    assert installation_body["contract"] == "ticketbox-installation-health-v3"
     assert installation_body["backend_version"]
     assert installation_body["installation_id"]
     assert installation_body["runtime_access_state"] == "available"
@@ -94,6 +94,7 @@ def test_middleware_transparent_for_200(client: TestClient) -> None:
     assert installation_body["owner_recovery_channel"] == "development"
     assert "X-Ticketbox-Health-Attestation" not in installation_health.headers
     assert installation_body["mobile_connectivity"] == {
+        "public_origin": None,
         "mobile_endpoint_state": "local_only",
         "android_binding_state": "setup_required",
         "iphone_upload_state": "setup_required",

@@ -47,6 +47,7 @@ def _auth_payload(**changes: object) -> dict[str, object]:
         "device_name": "小票夹 Desktop",
         "role": "owner",
         "scope": "app",
+        "credential_state": "current",
     }
     payload.update(changes)
     return payload
@@ -119,6 +120,23 @@ def test_invalid_or_non_public_origin_fails_closed_without_network(origin: str) 
     assert transport.requests == []
 
 
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "https://192.168.1.10:8443",
+        "https://[2001:db8::1]:8443",
+    ],
+)
+def test_backend_attested_non_loopback_ip_origin_is_probeable(origin: str) -> None:
+    transport = _Transport(_responses())
+
+    result = probe_public_endpoint(PublicEndpointContext(public_origin=origin), transport=transport)
+
+    assert result.public is PublicState.REACHABLE_UNVERIFIED
+    assert result.boundary is BoundaryState.SAFE
+    assert transport.requests
+
+
 def test_anonymous_health_proves_only_reachable_unverified() -> None:
     transport = _Transport(_responses())
 
@@ -145,6 +163,26 @@ def test_matching_desktop_session_proves_authenticated_ticketbox_product() -> No
     assert result.boundary is BoundaryState.SAFE
     assert result.code == "public_authenticated_reachable"
     assert transport.requests.count(("/api/auth/check", True)) == 1
+
+
+def test_grace_session_is_reachable_but_never_promoted_to_authenticated() -> None:
+    transport = _Transport(
+        _responses(
+            authenticated_auth=BoundedHttpResponse(
+                200,
+                _auth_payload(credential_state="grace"),
+            )
+        )
+    )
+
+    result = probe_public_endpoint(
+        PublicEndpointContext(public_origin="https://public.example", session=_session()),
+        transport=transport,
+    )
+
+    assert result.public is PublicState.REACHABLE_UNVERIFIED
+    assert result.boundary is BoundaryState.SAFE
+    assert result.code == "public_session_unverified"
 
 
 @pytest.mark.parametrize("status", [401, 403, 404])
@@ -188,6 +226,28 @@ def test_successful_auth_with_wrong_schema_or_local_metadata_is_wrong_product(
     assert marker not in repr(result)
 
 
+def test_successful_non_200_auth_with_malformed_payload_is_wrong_product() -> None:
+    result = probe_public_endpoint(
+        PublicEndpointContext(public_origin="https://public.example", session=_session()),
+        transport=_Transport(_responses(authenticated_auth=BoundedHttpResponse(201, None))),
+    )
+
+    assert result.public is PublicState.WRONG_PRODUCT
+    assert result.code == "public_endpoint_wrong_product"
+
+
+def test_non_200_auth_with_matching_schema_cannot_attest_product() -> None:
+    result = probe_public_endpoint(
+        PublicEndpointContext(public_origin="https://public.example", session=_session()),
+        transport=_Transport(
+            _responses(authenticated_auth=BoundedHttpResponse(201, _auth_payload()))
+        ),
+    )
+
+    assert result.public is PublicState.WRONG_PRODUCT
+    assert result.code == "public_endpoint_wrong_product"
+
+
 @pytest.mark.parametrize(
     "health",
     [
@@ -195,7 +255,7 @@ def test_successful_auth_with_wrong_schema_or_local_metadata_is_wrong_product(
         BoundedHttpResponse(503, {"status": "down"}),
     ],
 )
-def test_health_transport_or_status_failure_is_unreachable(
+def test_health_transport_or_status_failure_is_unreachable_with_safe_denials(
     health: BoundedHttpResponse | Exception,
 ) -> None:
     result = probe_public_endpoint(
@@ -204,7 +264,7 @@ def test_health_transport_or_status_failure_is_unreachable(
     )
 
     assert result.public is PublicState.UNREACHABLE
-    assert result.boundary is BoundaryState.UNKNOWN
+    assert result.boundary is BoundaryState.SAFE
     assert result.code == "public_endpoint_unreachable"
 
 
@@ -216,14 +276,46 @@ def test_health_transport_or_status_failure_is_unreachable(
         {},
     ],
 )
-def test_health_200_with_non_exact_contract_is_wrong_product(payload: dict[str, object]) -> None:
+def test_health_200_with_non_exact_contract_is_wrong_product_and_boundary_safe(
+    payload: dict[str, object],
+) -> None:
     result = probe_public_endpoint(
         PublicEndpointContext(public_origin="https://public.example"),
         transport=_Transport(_responses(health=BoundedHttpResponse(200, payload))),
     )
 
     assert result.public is PublicState.WRONG_PRODUCT
-    assert result.boundary is BoundaryState.UNKNOWN
+    assert result.boundary is BoundaryState.SAFE
+
+
+def test_malformed_health_still_exposes_a_forbidden_path_violation() -> None:
+    responses = _responses(health=BoundedHttpResponse(200, None))
+    responses[("/owner", False)] = BoundedHttpResponse(200, None)
+    transport = _Transport(responses)
+
+    result = probe_public_endpoint(
+        PublicEndpointContext(public_origin="https://public.example"),
+        transport=transport,
+    )
+
+    assert result.public is PublicState.WRONG_PRODUCT
+    assert result.boundary is BoundaryState.VIOLATION
+    assert result.code == "public_boundary_violation"
+    assert ("/owner", False) in transport.requests
+
+
+def test_unhealthy_response_still_exposes_a_forbidden_path_violation() -> None:
+    responses = _responses(health=BoundedHttpResponse(503, {"status": "down"}))
+    responses[("/owner", False)] = BoundedHttpResponse(200, None)
+
+    result = probe_public_endpoint(
+        PublicEndpointContext(public_origin="https://public.example"),
+        transport=_Transport(responses),
+    )
+
+    assert result.public is PublicState.UNREACHABLE
+    assert result.boundary is BoundaryState.VIOLATION
+    assert result.code == "public_boundary_violation"
 
 
 def test_any_successful_forbidden_path_is_a_boundary_violation() -> None:
@@ -365,6 +457,29 @@ def test_https_transport_disables_proxies_rejects_redirect_following_and_uses_ge
     assert timeout <= 0.5
 
 
+@pytest.mark.parametrize(
+    ("origin", "expected_health_url"),
+    [
+        ("https://203.0.113.7:443", "https://203.0.113.7/api/health"),
+        ("https://203.0.113.7:8443", "https://203.0.113.7:8443/api/health"),
+        ("https://[2001:db8::7]:443", "https://[2001:db8::7]/api/health"),
+        ("https://[2001:db8::7]:8443", "https://[2001:db8::7]:8443/api/health"),
+    ],
+)
+def test_public_probe_routes_canonical_ip_through_real_https_transport(
+    monkeypatch: pytest.MonkeyPatch,
+    origin: str,
+    expected_health_url: str,
+) -> None:
+    opener = _Opener(_HttpResponse(b'{"status":"ok"}'))
+    monkeypatch.setattr(urllib.request, "build_opener", lambda *_handlers: opener)
+
+    probe_public_endpoint(PublicEndpointContext(public_origin=origin))
+
+    request, _timeout = opener.requests[0]
+    assert request.full_url == expected_health_url
+
+
 def test_https_transport_puts_session_only_in_authorization_header() -> None:
     opener = _Opener(_HttpResponse(b'{"status":"ok"}'))
     transport = BoundedHttpsTransport("https://public.example", opener=opener)
@@ -393,15 +508,11 @@ def test_https_transport_rejects_nonfixed_paths(path: str) -> None:
         transport.get(path)
 
 
-def test_https_transport_rejects_oversized_invalid_json_and_timeout_without_detail() -> None:
+def test_https_transport_rejects_oversized_response_and_timeout_without_detail() -> None:
     oversized = BoundedHttpsTransport(
         "https://public.example",
         max_response_bytes=8,
         opener=_Opener(_HttpResponse(b'{"status":"ok"}')),
-    )
-    invalid = BoundedHttpsTransport(
-        "https://public.example",
-        opener=_Opener(_HttpResponse(b"not-json")),
     )
     timed_out = BoundedHttpsTransport(
         "https://public.example",
@@ -410,11 +521,41 @@ def test_https_transport_rejects_oversized_invalid_json_and_timeout_without_deta
 
     with pytest.raises(PublicEndpointProbeError, match="response exceeds limit"):
         oversized.get("/api/health")
-    with pytest.raises(PublicEndpointProbeError, match="invalid JSON"):
-        invalid.get("/api/health")
     with pytest.raises(PublicEndpointProbeError) as captured:
         timed_out.get("/api/health")
     assert "DO-NOT-EXPORT-TIMEOUT" not in str(captured.value)
+
+
+@pytest.mark.parametrize("body", [b"not-json", b"[]", b"\xff"])
+def test_https_transport_preserves_http_status_when_json_is_malformed(body: bytes) -> None:
+    error = urllib.error.HTTPError(
+        "https://public.example/owner",
+        403,
+        "forbidden",
+        {"Content-Type": "application/json"},
+        io.BytesIO(body),
+    )
+    transport = BoundedHttpsTransport("https://public.example", opener=_Opener(error))
+
+    response = transport.get("/owner")
+
+    assert response == BoundedHttpResponse(status=403, payload=None)
+
+
+def test_malformed_success_body_is_wrong_product_and_forbidden_success_violation() -> None:
+    transport = BoundedHttpsTransport(
+        "https://public.example",
+        opener=_Opener(_HttpResponse(b"not-json")),
+    )
+
+    result = probe_public_endpoint(
+        PublicEndpointContext(public_origin="https://public.example"),
+        transport=transport,
+    )
+
+    assert result.public is PublicState.WRONG_PRODUCT
+    assert result.boundary is BoundaryState.VIOLATION
+    assert result.code == "public_boundary_violation"
 
 
 def test_https_transport_reports_redirect_without_following_it() -> None:

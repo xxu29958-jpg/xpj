@@ -263,6 +263,35 @@ Authorization: Bearer <admin_token>
 }
 ```
 
+### GET /api/health/installation
+
+只允许 loopback 请求，供正式安装态 Desktop Manager 校验当前 Backend 的产品、版本、安装身份、
+维护状态和移动端连接能力；非 loopback 请求返回 403。正式安装包用 challenge/attestation 响应头
+绑定请求，普通公网健康检查不得消费本接口。
+
+当前响应合同为 `ticketbox-installation-health-v3`。`mobile_connectivity.public_origin` 是 Backend
+从服务拥有的 runtime setting 规范化后投影的 HTTPS origin；未配置或不适合作为手机入口时为
+`null`。该字段只供 Manager 进程内的完整公网检查使用，不进入 Manager 稳定状态、日志或诊断包。
+
+```json
+{
+  "contract": "ticketbox-installation-health-v3",
+  "status": "ok",
+  "product": "ticketbox",
+  "backend_version": "1.2.0",
+  "installation_id": "01234567-89ab-4def-8123-456789abcdef",
+  "runtime_access_state": "available",
+  "owner_state": "configured",
+  "owner_recovery_channel": "managed_host",
+  "mobile_connectivity": {
+    "public_origin": "https://api.example.com",
+    "mobile_endpoint_state": "public_configured_unverified",
+    "android_binding_state": "configured_unverified",
+    "iphone_upload_state": "configured_unverified"
+  }
+}
+```
+
 ### GET /api/status/private
 
 需要有效 session token。用于 Owner / App 侧排查运行状态，不能匿名公网访问。
@@ -293,11 +322,14 @@ Android 首次绑定后校验 session token 使用。
   "ledger_name": "我的小票夹",
   "device_name": "小米 15 Pro",
   "role": "owner",
-  "scope": "app"
+  "scope": "app",
+  "credential_state": "current"
 }
 ```
 
 > v0.4-alpha1 起新增 `ledger_id`，对应当前会话激活的账本。
+>
+> `credential_state` 为 `current` 或 `grace`。`grace` 仅允许已开始的请求在轮换宽限期内收尾，不能作为新的客户端或公网连接 authority 证明。
 
 ### POST /api/auth/pair
 

@@ -53,6 +53,7 @@ def test_resolver_accepts_safe_values(
     assert _resolve_public_base_url(raw) == expected
     capabilities = installation_mobile_capabilities(expected)
     assert configured_mobile_endpoint_url(expected) == (expected if phone_usable else None)
+    assert capabilities.public_origin == (expected if phone_usable else None)
     assert capabilities.mobile_endpoint_state == (
         "public_configured_unverified" if phone_usable else "local_only"
     )

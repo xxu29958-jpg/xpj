@@ -10,7 +10,7 @@ import secrets
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 from backend_manager.version_contract import is_managed_release_version
@@ -32,7 +32,12 @@ _HEALTH_KEYS = frozenset(
     },
 )
 _MOBILE_CONNECTIVITY_KEYS = frozenset(
-    {"mobile_endpoint_state", "android_binding_state", "iphone_upload_state"},
+    {
+        "public_origin",
+        "mobile_endpoint_state",
+        "android_binding_state",
+        "iphone_upload_state",
+    },
 )
 _MOBILE_ENDPOINT_STATES = frozenset({"local_only", "public_configured_unverified"})
 _MOBILE_TASK_STATES = frozenset({"setup_required", "configured_unverified"})
@@ -61,6 +66,7 @@ HealthExpectation = SourceHealthExpectation | InstalledHealthExpectation
 class HealthProbeResult:
     state: Literal["healthy", "pending", "mismatch", "stopped"]
     detail: str
+    public_origin: str | None = field(default=None, repr=False)
     mobile_endpoint_state: str = "unknown"
     android_binding_state: str = "unknown"
     iphone_upload_state: str = "unknown"
@@ -118,12 +124,13 @@ def _attestation_matches(
     return isinstance(candidate, str) and hmac.compare_digest(expected, candidate)
 
 
-def _mobile_states(candidate: object) -> tuple[str, str, str] | None:
+def _mobile_states(candidate: object) -> tuple[str | None, str, str, str] | None:
     if not isinstance(candidate, dict) or set(candidate) != _MOBILE_CONNECTIVITY_KEYS:
         return None
     endpoint = candidate.get("mobile_endpoint_state")
     android = candidate.get("android_binding_state")
     iphone = candidate.get("iphone_upload_state")
+    public_origin = candidate.get("public_origin")
     if not all(isinstance(value, str) for value in (endpoint, android, iphone)):
         return None
     if (
@@ -135,9 +142,20 @@ def _mobile_states(candidate: object) -> tuple[str, str, str] | None:
             endpoint == "public_configured_unverified"
             and (android != "configured_unverified" or iphone != "configured_unverified")
         )
+        or (endpoint == "local_only" and public_origin is not None)
+        or (
+            endpoint == "public_configured_unverified"
+            and (
+                not isinstance(public_origin, str)
+                or not public_origin
+                or len(public_origin.encode("utf-8")) > 2048
+                or "\r" in public_origin
+                or "\n" in public_origin
+            )
+        )
     ):
         return None
-    return endpoint, android, iphone
+    return public_origin, endpoint, android, iphone
 
 
 def _parse_health_payload(
@@ -157,7 +175,7 @@ def _parse_health_payload(
         return HealthProbeResult("mismatch", "loopback 响应不是本机绑定的 Ticketbox 后端。")
     if decoded.get("status") != "ok" or decoded.get("product") != "ticketbox":
         return HealthProbeResult("mismatch", "loopback 服务不是 Ticketbox 后端。")
-    if decoded.get("contract") != "ticketbox-installation-health-v2":
+    if decoded.get("contract") != "ticketbox-installation-health-v3":
         return HealthProbeResult("mismatch", "Ticketbox 安装健康合同版本不匹配。")
     version = decoded.get("backend_version")
     installation_id = decoded.get("installation_id")
@@ -179,7 +197,7 @@ def _parse_health_payload(
     mobile_states = _mobile_states(decoded.get("mobile_connectivity"))
     if mobile_states is None:
         return HealthProbeResult("mismatch", "Ticketbox 移动端能力字段合同无效。")
-    endpoint_state, android_state, iphone_state = mobile_states
+    public_origin, endpoint_state, android_state, iphone_state = mobile_states
     if runtime_access_state == "repair_required":
         detail = "Ticketbox 后端身份已验证，但安装维护尚未完成。"
     elif owner_state == "recovery_required":
@@ -189,6 +207,7 @@ def _parse_health_payload(
     return HealthProbeResult(
         "healthy",
         detail,
+        public_origin=public_origin,
         mobile_endpoint_state=endpoint_state,
         android_binding_state=android_state,
         iphone_upload_state=iphone_state,

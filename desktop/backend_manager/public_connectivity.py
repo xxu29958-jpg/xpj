@@ -349,17 +349,20 @@ class PublicConnectivityStatus:
     def next_step(self) -> str:
         return _SUMMARY[self.code][1]
 
-    def current(self, *, now: datetime, max_age: timedelta) -> PublicConnectivityStatus:
+    def current(
+        self,
+        *,
+        evidence_age: timedelta | None,
+        max_age: timedelta,
+    ) -> PublicConnectivityStatus:
         if max_age < timedelta(0):
             raise ValueError("public connectivity max age must not be negative")
-        if now.tzinfo is None or now.utcoffset() is None:
-            raise ValueError("public connectivity current time must be timezone-aware")
+        if evidence_age is not None and evidence_age < timedelta(0):
+            raise ValueError("public connectivity evidence age must not be negative")
         observed = self.observed_at
-        stale = observed is None
-        if observed is not None:
-            if observed.tzinfo is None or observed.utcoffset() is None:
-                raise ValueError("public connectivity observation must be timezone-aware")
-            stale = now.astimezone(UTC) - observed.astimezone(UTC) > max_age
+        if observed is not None and (observed.tzinfo is None or observed.utcoffset() is None):
+            raise ValueError("public connectivity observation must be timezone-aware")
+        stale = observed is None or evidence_age is None or evidence_age > max_age
         return replace(
             self,
             freshness=FreshnessState.STALE if stale else FreshnessState.FRESH,

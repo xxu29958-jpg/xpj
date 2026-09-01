@@ -321,9 +321,14 @@ def probe_cloudflared(
                 connector=ConnectorState.TUNNEL_MISMATCH,
                 cloudflared_version=version,
             )
-        observed = service.exists or endpoint is not None
+        if service.exists or endpoint is not None:
+            ownership = OwnershipState.EXTERNAL_UNMANAGED
+        elif service.state is ServiceState.MISSING:
+            ownership = OwnershipState.UNCONFIGURED
+        else:
+            ownership = OwnershipState.UNKNOWN
         return CloudflaredProbeResult(
-            ownership=(OwnershipState.EXTERNAL_UNMANAGED if observed else OwnershipState.UNCONFIGURED),
+            ownership=ownership,
             service=service.state,
             connector=(endpoint.connector if endpoint is not None else _connector_without_endpoint(service)),
             cloudflared_version=version,
@@ -353,8 +358,14 @@ def probe_cloudflared(
         )
         if not tunnel_match:
             connector = ConnectorState.TUNNEL_MISMATCH
+    if tunnel_match is False:
+        ownership = OwnershipState.CONFLICT
+    elif service_match and tunnel_match is True:
+        ownership = OwnershipState.MANAGED
+    else:
+        ownership = OwnershipState.UNKNOWN
     return CloudflaredProbeResult(
-        ownership=OwnershipState.MANAGED,
+        ownership=ownership,
         service=service.state,
         connector=connector,
         cloudflared_version=version,

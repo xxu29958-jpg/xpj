@@ -183,6 +183,7 @@ class WindowsServiceRuntime:
             control_error=None,
             health_state=health.state,
             health_detail=health.detail,
+            public_origin=health.public_origin,
             mobile_endpoint_state=health.mobile_endpoint_state,
             android_binding_state=health.android_binding_state,
             iphone_upload_state=health.iphone_upload_state,

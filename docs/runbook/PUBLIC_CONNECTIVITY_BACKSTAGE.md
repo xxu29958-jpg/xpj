@@ -21,6 +21,15 @@ Manager 卡片标题为 `公网连接`，副标题为 `由 Cloudflare Tunnel 提
 卡片不得出现安装、启动、停止、重启、修复、更新、UAC 或 token 管理按钮；这类能力属于
 后续受管生命周期阶段。
 
+正式安装态的公网地址 authority 是 Backend 服务拥有的 runtime setting，不是 Manager 的
+`ManagerConfig.public_base_url`（该字段在 installed mode 中故意为 `None`）。Backend 先将地址
+规范化，再通过仅限 loopback、安装身份受 attestation 保护的 installation-health v3 合同投影；
+Manager 只在进程内将它交给完整检查。该地址不进入 Manager 稳定状态 JSON、日志或诊断包。
+只有 installation-health 明确给出 `local_only` 才表示未配置；Backend authority 不可用时地址状态是
+`unknown`。完整检查缓存还绑定到当时的精确地址与 authority state，地址被修改、清空或失去 authority
+后不会复用上一地址的公网/边界结论。Backend 已规范化并证明可用于手机入口的非 loopback IPv4/IPv6
+HTTPS origin 也属于合法消费值。
+
 ## 如何读状态
 
 `overall` 只由后端状态模型按固定优先级生成，UI 不重新裁决：
@@ -49,15 +58,19 @@ Manager 卡片标题为 `公网连接`，副标题为 `由 Cloudflare Tunnel 提
 Cloudflare Edge 健康只证明 connector 到 Edge 的连接存在，不证明 Ticketbox 源站或公网产品健康。
 同样，发现外部 cloudflared 进程或诊断端点只能得到 `external_unmanaged`，不能升级为
 `managed` 或 `healthy`。
+精确服务确实不存在且诊断端点也不存在时才是 connector `unconfigured`；SCM 读取失败而又没有诊断证据时是 `unknown`。
 
 ## 刷新、时效和并发
 
 - Manager 每 10 秒安排一次本地只读刷新；已有刷新在途时不重叠安排。
 - 状态 API 永远只读缓存，不在控制请求线程中访问 SCM、HTTP、DNS 或 Windows 凭据。
-- 当前完整证据最长有效 60 秒；过期结果强制降为 `stale + unknown`。
+- 当前完整证据最长有效 60 秒；年龄只按进程内 monotonic elapsed time 计算，UTC 时间戳只用于展示和诊断。系统时间跳变不会提前过期或延长旧证据。
 - 每次请求使用递增 generation；旧请求晚完成也不能覆盖更新请求。
+- 若两个刷新请求发生重叠，后一个请求会在调度前销毁可复用的公网/边界证据；只有非重叠的本机刷新可以沿用上次完整检查。
+- 任何可能改变 Backend 或 WinCred ProductSession 真相的操作都会打开 fail-closed 突变窗口：窗口两端都销毁旧公网/边界证据并推进 generation，窗口内不调度刷新。即使 Backend 已提交但响应丢失，或 WinCred 保存/删除失败，旧 bearer 和中间态检查也不能回写。若完成态恢复位仍存在，后续完整检查（包括 Manager 重启后）只接受与恢复证明派生 successor 一致的主凭据。主凭据尚未成为该 successor 或旧凭据撤销未结清时，新的绑定不得删除/覆盖恢复位；只有 Backend 明确以终局 401 拒绝 activation replay 时才可清理这颗不再可激活的证明。即使清理后 predecessor 仍在轮换宽限期，auth-check 的 `credential_state=grace` 也只能得到 `reachable_unverified`，不能重新变绿。
 - 完整检查有 8 秒总期限、最多 16 个固定 GET，每个响应最多 8 KiB。
 - Manager 退出会取消排队工作并使用有界等待；新进程从 `stale + unknown` 开始，不继承旧缓存。
+- Manager UI 对状态 fetch/body 与后续产品会话/账本读取使用同一个 2 秒刷新期限；Manager 状态 reject/non-2xx、状态 body reject，或链路任一阶段永久 pending 至超时，都会丢弃旧公网投影并显示 `状态未知`。立即返回的产品会话/账本 fetch、HTTP、JSON body 或消费 schema 失败都会清除旧账本选项、隐藏产品管理入口、把产品卡降级为“暂不可验证”并释放刷新锁，但不会否定已经成功取得的 Manager 公网投影。产品角色只接受 `owner`、`member`、`viewer`；未知角色按 schema 失败处理，不直接显示。
 
 ## 只读排障顺序
 
@@ -65,13 +78,12 @@ Cloudflare Edge 健康只证明 connector 到 Edge 的连接存在，不证明 T
 2. `external_unmanaged` 表示只发现外部连接；不要把它当成 Ticketbox 已接管，也不要从本页手工改服务。
 3. Edge 健康但 `origin=unreachable` 时，结论仍是源站不可达；Edge 连接数不能替代源站证明。
 4. 已配置公网 HTTPS 地址时再点“完整检查”，分别看 `public` 与 `boundary`。
-5. `reachable_unverified` 只证明匿名健康端点；只有本地 Desktop app session 元数据与公网
-   `/api/auth/check` 完全一致才是 `authenticated_reachable`。
+5. `reachable_unverified` 只证明匿名健康端点，或 bearer 仅处于 rotation grace；只有本地 Desktop app session 元数据与公网
+   `/api/auth/check` 完全一致且 `credential_state=current` 才是 `authenticated_reachable`。
 6. `boundary=violation` 优先按 `unsafe` 处理；不要反复重试来覆盖该结论。
 7. 需要协作排查时导出诊断包；不要附加 cloudflared 原始日志、配置、命令行或凭据。
 
-读取失败、超时、重定向、超大响应、非 JSON 或 schema 不一致都保持显式 `unknown`/失败状态，
-不会被宽泛异常处理伪装成健康。
+读取失败、超时、重定向和超大响应都保持显式 `unknown`/失败状态。收到 HTTP response 后，即使声明为 JSON 的 body malformed 或顶层 schema 不是 object，也保留真实 HTTP status，仅把 payload 视为不可用：2xx 健康响应因此判为错误产品，401/403/404/405 仍按明确拒绝参与边界判断。任何一种都不会被宽泛异常处理伪装成健康。
 
 ## 隐私边界
 

@@ -83,7 +83,7 @@ Managed ownership requires a protected connector expectation that binds the inst
 
 Stage 1 has no protected connector expectation in the installed release contract. Therefore a running external process, PATH hit, similarly named service, Scheduled Task, or an otherwise healthy `/ready` endpoint can be reported only as `external_unmanaged` or `conflict`; it can never become `managed`.
 
-SCM observation must use native exact-name queries and Windows command-line parsing. It must not use wildcard process discovery, localized `sc.exe` text, copied argv strings, or process presence as service identity.
+SCM observation must use native exact-name queries and Windows command-line parsing. It must not use wildcard process discovery, localized `sc.exe` text, copied argv strings, or process presence as service identity. Exact service absence may produce `unconfigured`; an unreadable SCM observation with no diagnostic endpoint remains `unknown`.
 
 ## Connector evidence
 
@@ -100,13 +100,14 @@ Cloudflare Edge readiness proves only an active connector-to-Edge path. It does 
 ## Origin and public evidence
 
 - Origin state reuses the existing exact Ticketbox installation-health attestation and its runtime projection.
-- A public origin must be a normalized HTTPS origin with no userinfo, path, query, or fragment.
+- A public origin must be the Backend-canonicalized HTTPS origin with no userinfo, path, query, or fragment. Canonical non-loopback, non-unspecified IPv4 and IPv6 literals remain valid because the Backend owner accepts and attests them.
+- `local_only` is authoritative unconfigured evidence. If installation-health authority is unavailable, a missing origin remains `unknown`, not `unconfigured`.
 - Public HTTP disables environment proxies and redirects and uses an eight-second deadline, bounded response bytes, and at most sixteen fixed GET requests.
 - Anonymous `/api/health` returning the exact public-safe contract proves only `reachable_unverified`.
 - A full check may load the existing Desktop app session only in the coordinator. The bearer is used only in the Authorization header for the public `/api/auth/check` request.
-- `authenticated_reachable` requires the Ticketbox auth-check schema, `scope=app`, and equality with the non-secret account, ledger, device, and role metadata stored with the local Desktop session.
+- `authenticated_reachable` requires the Ticketbox auth-check schema, `scope=app`, `credential_state=current`, and equality with the non-secret account, ledger, device, and role metadata stored with the local Desktop session.
 - The bearer must never enter a URL, browser, log, exception, status projection, diagnostic bundle, file, environment variable, or subprocess argv.
-- An auth rejection after a valid anonymous health response remains `reachable_unverified`; a successful response with the wrong schema or mismatched local session metadata is `wrong_product`.
+- An auth rejection after a valid anonymous health response remains `reachable_unverified`; so does a matching `credential_state=grace` response, because rotation grace may finish in-flight work but is not current authority. A successful response with the wrong schema or mismatched local session metadata is `wrong_product`.
 
 ## Boundary evidence
 
@@ -138,10 +139,15 @@ The UI title is `公网连接`; its subtitle is `由 Cloudflare Tunnel 提供`. 
 
 - Local read-only refresh cadence: 10 seconds.
 - Maximum age for a current complete result: 60 seconds.
+- Freshness is decided from process-local monotonic elapsed time. UTC observation timestamps are display and diagnostic facts only; wall-clock jumps cannot promote or expire evidence.
 - Status reads are cache-only and must not block on SCM, local HTTP, public HTTP, WinCred, or DNS.
 - Full checks run outside the control-server request thread.
 - Every request receives a monotonically increasing generation. A completed older generation must not overwrite a newer requested generation.
+- Cached public and boundary evidence is keyed to the exact attested public-origin authority; changing, clearing, or losing that authority invalidates the prior subject's evidence.
+- Every operation that may change Backend or WinCred ProductSession truth opens a fail-closed mutation window. Both window edges retire cached public/boundary evidence and advance the generation, and refresh is not scheduled inside the window. An old or intermediate bearer cannot publish even when Backend commit response is lost or WinCred save/delete fails. A completed durable rebind-recovery record also gates every later full check, including after Manager restart: the primary session is usable only when its bearer equals the successor derived from that recovery proof. AppController must not delete or replace that proof until the primary equals the derived successor and every owed predecessor revoke is settled, except after Backend authoritatively rejects activation replay as terminal. Even after terminal cleanup, a predecessor accepted only by rotation grace cannot become fresh green because auth-check labels it `grace`, never `current`.
+- If refresh requests overlap, the newer request retires all reusable public/boundary evidence before scheduling; only a non-overlapping local refresh may carry forward a prior full-check result.
 - Manager shutdown cancels queued work and does not wait indefinitely for network I/O.
+- Manager UI refresh has one two-second deadline across the status fetch/body and ancillary product-session/ledger reads. A rejected or non-2xx Manager status, a rejected status body, or deadline expiry anywhere in that chain invalidates the prior public-connectivity projection and renders neutral unknown; an old healthy card cannot remain current. A prompt ancillary product fetch, HTTP, JSON-body, or consumer-schema failure is product-specific: it must hide stale product metadata and management entry points, render the product card as temporarily unverifiable, complete, and release the refresh lock, but it does not invalidate a successfully received Manager public-connectivity projection. Product-session and ledger consumer schemas accept only the canonical `owner`/`member`/`viewer` role domain; an unknown role is schema failure, not display text.
 
 ## Diagnostic allowlist
 
@@ -163,6 +169,10 @@ Focused automated evidence must cover:
 - absence of unsupported actions;
 - diagnostic secret/path/identifier non-leakage;
 - no-proxy, no-redirect, loopback/HTTPS validation, oversized body, malformed JSON/schema, and timeout behavior;
+- preservation of the received HTTP status when a JSON response body is malformed or has the wrong top-level type;
+- monotonic freshness under wall-clock jumps, exact-origin and full ProductSession mutation-window cache retirement (including response-loss/WinCred failure), durable recovery-proof gating/non-overwrite for ambiguous transitions, explicit `current` versus `grace` auth authority after terminal recovery cleanup, and UI demotion after rejected or stalled Manager polling;
+- product ancillary fetch/HTTP/body/schema failure after a non-empty paired or unpaired DOM state, including an out-of-domain role that remains iterable, proving stale metadata, options, and entry points are physically retired without erasing a successful public projection;
+- unknown versus unconfigured behavior for lost Backend/SCM authority and Backend-canonicalized non-loopback IP origins;
 - cache-only status behavior and generation race ordering;
 - AppController, control-route, UI contract, and Manager startup/shutdown composition.
 

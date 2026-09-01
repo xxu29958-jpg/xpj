@@ -173,13 +173,39 @@ def _render_behavior_probe(tmp_path: Path) -> dict[str, object]:
     healthy = _status(degraded=False)
     script = f"""    (async () => {{
       const healthy = {json.dumps(healthy, ensure_ascii=False)};
+    healthy.public_connectivity = {{
+        ...healthy.public_connectivity,
+        overall: "healthy",
+        summary: "公网连接已验证可用",
+        next_step: "无需操作。"
+      }};
+      const pairedSession = {json.dumps(_PRODUCT_SESSION, ensure_ascii=False)};
+      const connectivityView = (completed, extra = {{}}) => ({{
+        completed,
+        overallText: document.getElementById("overallText").textContent,
+        publicState: document.getElementById("publicConnectivityCard").dataset.state,
+        publicBadge: document.getElementById("publicConnectivityBadge").textContent,
+        publicSummary: document.getElementById("publicConnectivitySummary").textContent,
+        publicActionCount: document.querySelectorAll("#publicConnectivityActions button").length,
+        ...extra
+      }});
+      const productDegradedView = () => ({{
+        productState: document.getElementById("productState").textContent,
+        productHomeHidden: document.getElementById("productHomeLink").hidden,
+        productPairHidden: document.getElementById("productPairGroup").hidden,
+        productManageHidden: document.getElementById("productManageGroup").hidden,
+        importExportDisabled: document.getElementById("importExportAction").disabled,
+        ledgerOptionCount: document.getElementById("ledgerSelect").options.length
+      }});
       render(healthy);
       healthy.public_connectivity.in_progress = true;
       render(healthy);
       const checking = {{
         refreshDisabled: document.getElementById("publicConnectivityRefreshAction").disabled,
         fullDisabled: document.getElementById("publicConnectivityFullCheckAction").disabled,
-        exportDisabled: document.getElementById("publicConnectivityExportAction").disabled
+        exportDisabled: document.getElementById("publicConnectivityExportAction").disabled,
+        publicState: document.getElementById("publicConnectivityCard").dataset.state,
+        publicBadge: document.getElementById("publicConnectivityBadge").textContent
       }};
       window.fetch = async () => {{ throw new Error("offline"); }};
       let offlineThrew = false;
@@ -188,9 +214,113 @@ def _render_behavior_probe(tmp_path: Path) -> dict[str, object]:
         threw: offlineThrew,
         primaryDisabled: document.getElementById("primaryAction").disabled,
         androidDisabled: document.getElementById("androidAction").disabled,
-        overallText: document.getElementById("overallText").textContent
+        overallText: document.getElementById("overallText").textContent,
+        publicState: document.getElementById("publicConnectivityCard").dataset.state,
+        publicBadge: document.getElementById("publicConnectivityBadge").textContent,
+        publicSummary: document.getElementById("publicConnectivitySummary").textContent,
+        publicActionCount: document.querySelectorAll("#publicConnectivityActions button").length
       }};
-      document.body.setAttribute("data-behavior-probe", JSON.stringify({{checking, offline}}));
+      render(healthy);
+      window.fetch = async () => ({{ok: false, status: 503, json: async () => healthy}});
+      await refresh(25);
+      const statusNon2xx = connectivityView(true);
+      healthy.public_connectivity.in_progress = false;
+      render(healthy);
+      window.fetch = () => new Promise(() => {{}});
+      const stalledCompleted = await Promise.race([
+        refresh(25).then(() => true),
+        new Promise((resolve) => setTimeout(() => resolve(false), 75))
+      ]);
+      const stalled = connectivityView(stalledCompleted);
+      render(healthy);
+      window.fetch = (path) => path === "/api/status"
+        ? Promise.resolve({{ok: true, json: () => new Promise(() => {{}})}})
+        : Promise.reject(new Error("unexpected ancillary request"));
+      const statusBodyStalledCompleted = await Promise.race([
+        refresh(25).then(() => true),
+        new Promise((resolve) => setTimeout(() => resolve(false), 75))
+      ]);
+      const statusBodyStalled = connectivityView(statusBodyStalledCompleted);
+      render(healthy);
+      window.fetch = (path) => path === "/api/status"
+        ? Promise.resolve({{ok: true, json: async () => healthy}})
+        : new Promise(() => {{}});
+      const ancillaryStalledCompleted = await Promise.race([
+        refresh(25).then(() => true),
+        new Promise((resolve) => setTimeout(() => resolve(false), 75))
+      ]);
+      const ancillaryStalled = connectivityView(ancillaryStalledCompleted);
+      render(healthy);
+      let rejectedSessionStatusFetches = 0;
+      window.fetch = (path) => {{
+        if (path === "/api/status") {{
+          rejectedSessionStatusFetches += 1;
+          return Promise.resolve({{ok: true, json: async () => healthy}});
+        }}
+        if (path === "/api/product/session") return Promise.reject(new Error("product offline"));
+        return Promise.reject(new Error("unexpected ancillary request"));
+      }};
+      const rejectedSessionFirst = await Promise.race([
+        refresh(25).then(() => true),
+        new Promise((resolve) => setTimeout(() => resolve(false), 75))
+      ]);
+      const rejectedSessionSecond = await Promise.race([
+        refresh(25).then(() => true),
+        new Promise((resolve) => setTimeout(() => resolve(false), 75))
+      ]);
+      const ancillaryRejected = connectivityView(
+        rejectedSessionFirst && rejectedSessionSecond,
+        {{statusFetches: rejectedSessionStatusFetches, ...productDegradedView()}}
+      );
+      render(healthy);
+      window.fetch = (path) => {{
+        if (path === "/api/status") return Promise.resolve({{ok: true, json: async () => healthy}});
+        if (path === "/api/product/session") return Promise.resolve({{ok: true, json: async () => pairedSession}});
+        if (path === "/api/product/ledgers") return new Promise(() => {{}});
+        return Promise.reject(new Error("unexpected ancillary request"));
+      }};
+      const ledgerStalledCompleted = await Promise.race([
+        refresh(25).then(() => true),
+        new Promise((resolve) => setTimeout(() => resolve(false), 75))
+      ]);
+      const ledgerStalled = connectivityView(ledgerStalledCompleted);
+      render(healthy);
+      let rejectedLedgerStatusFetches = 0;
+      window.fetch = (path) => {{
+        if (path === "/api/status") {{
+          rejectedLedgerStatusFetches += 1;
+          return Promise.resolve({{ok: true, json: async () => healthy}});
+        }}
+        if (path === "/api/product/session") return Promise.resolve({{ok: true, json: async () => pairedSession}});
+        if (path === "/api/product/ledgers") return Promise.reject(new Error("ledgers offline"));
+        return Promise.reject(new Error("unexpected ancillary request"));
+      }};
+      const rejectedLedgerFirst = await Promise.race([
+        refresh(25).then(() => true),
+        new Promise((resolve) => setTimeout(() => resolve(false), 75))
+      ]);
+      const rejectedLedgerSecond = await Promise.race([
+        refresh(25).then(() => true),
+        new Promise((resolve) => setTimeout(() => resolve(false), 75))
+      ]);
+      const ledgerRejected = connectivityView(
+        rejectedLedgerFirst && rejectedLedgerSecond,
+        {{statusFetches: rejectedLedgerStatusFetches, ...productDegradedView()}}
+      );
+      document.body.setAttribute(
+        "data-behavior-probe",
+        JSON.stringify({{
+          checking,
+          offline,
+          statusNon2xx,
+          stalled,
+          statusBodyStalled,
+          ancillaryStalled,
+          ancillaryRejected,
+          ledgerStalled,
+          ledgerRejected
+        }})
+      );
     }})();"""
     page = tmp_path / "manager-behavior.html"
     page.write_text(source.replace(_STARTUP_SCRIPT, script), encoding="utf-8")
@@ -265,12 +395,67 @@ def test_manager_offline_state_remains_coherent(tmp_path: Path) -> None:
         "refreshDisabled": True,
         "fullDisabled": True,
         "exportDisabled": False,
+        "publicState": "healthy",
+        "publicBadge": "已验证",
     }
     assert probe["offline"] == {
         "threw": False,
         "primaryDisabled": True,
         "androidDisabled": True,
         "overallText": "管理器离线",
+        "publicState": "unknown",
+        "publicBadge": "状态未知",
+        "publicSummary": "公网连接状态未知",
+        "publicActionCount": 0,
+    }
+    assert probe["statusNon2xx"] == probe["stalled"]
+    assert probe["stalled"] == {
+        "completed": True,
+        "overallText": "管理器离线",
+        "publicState": "unknown",
+        "publicBadge": "状态未知",
+        "publicSummary": "公网连接状态未知",
+        "publicActionCount": 0,
+    }
+    assert probe["statusBodyStalled"] == probe["stalled"]
+    assert probe["ancillaryStalled"] == {
+        "completed": True,
+        "overallText": "管理器离线",
+        "publicState": "unknown",
+        "publicBadge": "状态未知",
+        "publicSummary": "公网连接状态未知",
+        "publicActionCount": 0,
+    }
+    assert probe["ancillaryRejected"] == {
+        "completed": True,
+        "overallText": "运行正常",
+        "publicState": "healthy",
+        "publicBadge": "已验证",
+        "publicSummary": "公网连接已验证可用",
+        "publicActionCount": 3,
+        "statusFetches": 2,
+        "productState": "账本状态暂不可验证，请稍后重试。",
+        "productHomeHidden": True,
+        "productPairHidden": True,
+        "productManageHidden": True,
+        "importExportDisabled": True,
+        "ledgerOptionCount": 0,
+    }
+    assert probe["ledgerStalled"] == probe["stalled"]
+    assert probe["ledgerRejected"] == {
+        "completed": True,
+        "overallText": "运行正常",
+        "publicState": "healthy",
+        "publicBadge": "已验证",
+        "publicSummary": "公网连接已验证可用",
+        "publicActionCount": 3,
+        "statusFetches": 2,
+        "productState": "账本状态暂不可验证，请稍后重试。",
+        "productHomeHidden": True,
+        "productPairHidden": True,
+        "productManageHidden": True,
+        "importExportDisabled": True,
+        "ledgerOptionCount": 0,
     }
 
 
@@ -647,6 +832,194 @@ def test_product_card_visibility_matrix_is_hidden_authoritative(
     assert probe["paired"]["manage"] == "flex"
     assert probe["paired"]["importExportDisabled"] is False
     assert probe["paired"]["options"] == ["owner", "family"]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows Edge consumer gate")
+def test_prompt_product_failures_retire_prior_dom_without_erasing_public_status(tmp_path: Path) -> None:
+    edge = discover_edge_executable()
+    assert edge is not None, "Microsoft Edge is required for the product degradation gate"
+    script = f"""    (async () => {{
+      const healthy = {json.dumps(_product_status(), ensure_ascii=False)};
+      healthy.public_connectivity = {{
+        ...healthy.public_connectivity,
+        overall: "healthy",
+        summary: "公网连接已验证可用",
+        next_step: "无需操作。"
+      }};
+      const pairedSession = {json.dumps(_PRODUCT_SESSION, ensure_ascii=False)};
+      const ledgers = {json.dumps(_PRODUCT_LEDGERS, ensure_ascii=False)};
+      let mode = "paired";
+      const view = () => ({{
+        productState: $("productState").textContent,
+        productHomeHidden: $("productHomeLink").hidden,
+        productPairHidden: $("productPairGroup").hidden,
+        productManageHidden: $("productManageGroup").hidden,
+        importExportDisabled: $("importExportAction").disabled,
+        ledgerOptions: [...$("ledgerSelect").options].map((option) => option.value),
+        publicState: $("publicConnectivityCard").dataset.state,
+        publicSummary: $("publicConnectivitySummary").textContent
+      }});
+      window.fetch = async (url) => {{
+        if (url === "/api/status") return {{status: 200, ok: true, json: async () => healthy}};
+        if (url === "/api/product/session") {{
+          if (mode === "session-reject") throw new Error("session offline");
+          if (mode === "session-http-error") {{
+            return {{status: 503, ok: false, json: async () => ({{message: "session unavailable"}})}};
+          }}
+          if (mode === "session-body-reject") {{
+            return {{status: 200, ok: true, json: async () => {{ throw new Error("bad session JSON"); }}}};
+          }}
+          if (mode === "session-schema") {{
+            return {{status: 200, ok: true, json: async () => ({{configured: true}})}};
+          }}
+          if (mode === "session-role-schema") {{
+            return {{status: 200, ok: true, json: async () => ({{...pairedSession, role: "superuser"}})}};
+          }}
+          return {{
+            status: 200,
+            ok: true,
+            json: async () => mode === "unpaired" ? ({{configured: false}}) : pairedSession
+          }};
+        }}
+        if (url === "/api/product/ledgers") {{
+          if (mode === "ledger-reject") throw new Error("ledgers offline");
+          if (mode === "ledger-body-reject") {{
+            return {{status: 200, ok: true, json: async () => {{ throw new Error("bad ledger JSON"); }}}};
+          }}
+          if (mode === "ledger-schema") {{
+            return {{status: 200, ok: true, json: async () => ({{ledgers: [{{
+              ledger_id: "owner",
+              name: "我的小票夹",
+              role: "superuser",
+              is_default: true,
+              is_current: true
+            }}]}})}};
+          }}
+          return {{status: 200, ok: true, json: async () => ledgers}};
+        }}
+        throw new Error("unexpected " + url);
+      }};
+
+      await refresh();
+      const paired = view();
+      mode = "session-reject";
+      await refresh();
+      const pairedSessionRejected = view();
+      mode = "paired";
+      await refresh();
+      mode = "session-http-error";
+      await refresh();
+      const sessionHttpRejected = view();
+      mode = "paired";
+      await refresh();
+      mode = "session-body-reject";
+      await refresh();
+      const sessionBodyRejected = view();
+      mode = "paired";
+      await refresh();
+      mode = "session-schema";
+      await refresh();
+      const sessionSchemaRejected = view();
+      mode = "paired";
+      await refresh();
+      mode = "session-role-schema";
+      await refresh();
+      const sessionRoleSchemaRejected = view();
+      mode = "unpaired";
+      await refresh();
+      const unpaired = view();
+      mode = "session-reject";
+      await refresh();
+      const unpairedSessionRejected = view();
+      mode = "paired";
+      await refresh();
+      const repaired = view();
+      productLedgers = [];
+      mode = "ledger-reject";
+      await refresh();
+      const ledgerRejected = view();
+      mode = "paired";
+      await refresh();
+      productLedgers = [];
+      mode = "ledger-body-reject";
+      await refresh();
+      const ledgerBodyRejected = view();
+      mode = "paired";
+      await refresh();
+      productLedgers = [];
+      mode = "ledger-schema";
+      await refresh();
+      const ledgerSchemaRejected = view();
+      document.body.setAttribute("data-product-degradation-probe", JSON.stringify({{
+        paired,
+        pairedSessionRejected,
+        sessionHttpRejected,
+        sessionBodyRejected,
+        sessionSchemaRejected,
+        sessionRoleSchemaRejected,
+        unpaired,
+        unpairedSessionRejected,
+        repaired,
+        ledgerRejected,
+        ledgerBodyRejected,
+        ledgerSchemaRejected
+      }}));
+    }})();"""
+    page = _render_probe_page(tmp_path, "product-prompt-degradation.html", script)
+    value = evaluate_page(
+        edge,
+        profile=tmp_path / "edge-product-prompt-degradation",
+        url=page.as_uri(),
+        width=820,
+        height=660,
+        expression=(
+            "document.body && document.body.getAttribute('data-product-degradation-probe') || undefined"
+        ),
+    )
+    assert isinstance(value, str)
+    probe = json.loads(value)
+    paired = {
+        "productState": "我的小票夹 · 拥有者 · 我",
+        "productHomeHidden": False,
+        "productPairHidden": True,
+        "productManageHidden": False,
+        "importExportDisabled": False,
+        "ledgerOptions": ["owner", "family"],
+        "publicState": "healthy",
+        "publicSummary": "公网连接已验证可用",
+    }
+    degraded = {
+        "productState": "账本状态暂不可验证，请稍后重试。",
+        "productHomeHidden": True,
+        "productPairHidden": True,
+        "productManageHidden": True,
+        "importExportDisabled": True,
+        "ledgerOptions": [],
+        "publicState": "healthy",
+        "publicSummary": "公网连接已验证可用",
+    }
+
+    assert probe["paired"] == paired
+    assert probe["pairedSessionRejected"] == degraded
+    assert probe["sessionHttpRejected"] == degraded
+    assert probe["sessionBodyRejected"] == degraded
+    assert probe["sessionSchemaRejected"] == degraded
+    assert probe["sessionRoleSchemaRejected"] == degraded
+    assert probe["unpaired"] == {
+        "productState": "输入安装器提供的“绑定此电脑”码，连接桌面账本。",
+        "productHomeHidden": True,
+        "productPairHidden": False,
+        "productManageHidden": True,
+        "importExportDisabled": True,
+        "ledgerOptions": [],
+        "publicState": "healthy",
+        "publicSummary": "公网连接已验证可用",
+    }
+    assert probe["unpairedSessionRejected"] == degraded
+    assert probe["repaired"] == paired
+    assert probe["ledgerRejected"] == degraded
+    assert probe["ledgerBodyRejected"] == degraded
+    assert probe["ledgerSchemaRejected"] == degraded
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows Edge consumer gate")

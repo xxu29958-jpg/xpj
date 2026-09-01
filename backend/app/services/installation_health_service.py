@@ -22,8 +22,9 @@ class InstallationDatabaseIdentityError(RuntimeError):
 
 @dataclass(frozen=True)
 class InstallationMobileCapabilities:
-    """Low-cardinality deployment facts safe for the loopback Manager."""
+    """Bounded deployment facts safe for the loopback Manager."""
 
+    public_origin: str | None
     mobile_endpoint_state: Literal["local_only", "public_configured_unverified"]
     android_binding_state: Literal["setup_required", "configured_unverified"]
     iphone_upload_state: Literal["setup_required", "configured_unverified"]
@@ -158,13 +159,16 @@ def configured_mobile_endpoint_url(public_base_url: str) -> str | None:
 
 def installation_mobile_capabilities(public_base_url: str) -> InstallationMobileCapabilities:
     """Project configured mobile access without claiming external reachability."""
-    if configured_mobile_endpoint_url(public_base_url) is not None:
+    public_origin = configured_mobile_endpoint_url(public_base_url)
+    if public_origin is not None:
         return InstallationMobileCapabilities(
+            public_origin=public_origin,
             mobile_endpoint_state="public_configured_unverified",
             android_binding_state="configured_unverified",
             iphone_upload_state="configured_unverified",
         )
     return InstallationMobileCapabilities(
+        public_origin=None,
         mobile_endpoint_state="local_only",
         android_binding_state="setup_required",
         iphone_upload_state="setup_required",

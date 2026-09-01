@@ -49,7 +49,7 @@ def _adapter() -> WindowsDatasetAdapter:
 
 def _health_payload(request) -> dict[str, object]:
     return {
-        "contract": "ticketbox-installation-health-v2",
+        "contract": "ticketbox-installation-health-v3",
         "status": "ok",
         "product": "ticketbox",
         "backend_version": request.target_release_id,
@@ -58,6 +58,7 @@ def _health_payload(request) -> dict[str, object]:
         "owner_state": "configured",
         "owner_recovery_channel": "managed_host",
         "mobile_connectivity": {
+            "public_origin": None,
             "mobile_endpoint_state": "local_only",
             "android_binding_state": "setup_required",
             "iphone_upload_state": "setup_required",

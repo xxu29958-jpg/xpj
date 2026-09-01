@@ -43,6 +43,7 @@ def test_health_and_auth_contract(client: TestClient, *, identity) -> None:
         "device_name": "pytest-android",
         "role": "owner",
         "scope": "app",
+        "credential_state": "current",
     }
     assert {key: auth_body[key] for key in expected_business_identity} == expected_business_identity
     for identity_field in (

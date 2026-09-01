@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.models import Account, AuthToken, Device, Ledger, LedgerMember, UploadLink
+from app.services.identity_service._credential_state import _session_credential_state
 from app.services.identity_service._models import WebSessionAuthResult
 from app.services.session_credential_lock import lock_bootstrap_owner_transaction
 from app.services.session_lifecycle_service import hash_secret
@@ -174,12 +175,7 @@ def _context_from_token(
 
 
 def _token_revocation_allows_grace(token: AuthToken, *, now: datetime) -> bool:
-    if token.revoked_at is None:
-        return True
-    if token.scope != "app":
-        return False
-    grace_until = ensure_utc(token.grace_until)
-    return grace_until is not None and grace_until > now
+    return _session_credential_state(token, now=now) is not None
 
 
 def _load_usable_session_token(

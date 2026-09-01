@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 import threading
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 from backend_manager.health_probe import HealthProbeResult
@@ -36,6 +36,7 @@ class RuntimeStatus:
     control_error: str | None = None
     health_state: str = "pending"
     health_detail: str | None = None
+    public_origin: str | None = field(default=None, repr=False)
     mobile_endpoint_state: str = "unknown"
     android_binding_state: str = "unknown"
     iphone_upload_state: str = "unknown"
@@ -94,6 +95,7 @@ class SourceBackendRuntime:
             control_error=snapshot.control_error,
             health_state=health.state,
             health_detail=health.detail,
+            public_origin=health.public_origin,
             mobile_endpoint_state=health.mobile_endpoint_state,
             android_binding_state=health.android_binding_state,
             iphone_upload_state=health.iphone_upload_state,
