@@ -76,6 +76,86 @@ def test_product_shell_exposes_local_appearance_axes_without_fake_upload_entry(
     assert "fetch(" not in theme_js.text
 
 
+def test_product_shell_topbar_carries_compact_brand_identity(
+    web_client: TestClient,
+) -> None:
+    """K3 响应式收件: ≤40rem 品牌身份并入 topbar (sidebar brand 行隐藏),
+    topbar 需携带压缩品牌元素, 桌面由 CSS 隐藏。"""
+    response = web_client.get("/web/pending?ledger_id=owner")
+
+    assert response.status_code == 200
+    topbar = re.search(r'<header class="product-topbar">.*?</header>', response.text, re.S)
+    assert topbar is not None
+    assert 'class="topbar-brand"' in topbar.group(0)
+
+
+def test_product_shell_mobile_task_order_and_capture_search_entries(
+    web_client: TestClient,
+) -> None:
+    """W1 IA-B: 移动 chrome = 单顶带 + 底部五域 nav; 域内页签移入 main 首元素
+    随页滚动, 五域主导航唯一且在 main 之后。topbar 携带真实入口: 收票 (writer
+    可见的 GET 导航, upload command owner 不变) 与搜索。"""
+    response = web_client.get("/web/pending?ledger_id=owner")
+
+    assert response.status_code == 200
+    body = response.text
+
+    # 渲染任务顺序: 域内页签在 main 内, 五域主导航在 main 之后, 各唯一
+    assert body.count('class="mobile-primary-nav"') == 1
+    assert body.count('class="mobile-plan-nav"') == 1
+    assert body.index('<main class="content"') < body.index('class="mobile-plan-nav"')
+    assert body.index('</main>') < body.index('class="mobile-primary-nav"')
+
+    topbar = re.search(r'<header class="product-topbar">.*?</header>', body, re.S)
+    assert topbar is not None
+    topbar_html = topbar.group(0)
+    assert 'href="/web/pending?ledger_id=owner#capture"' in topbar_html
+    assert "收票" in topbar_html
+    assert 'href="/web/search?ledger_id=owner"' in topbar_html
+
+
+def test_product_shell_capture_entry_hidden_for_viewer(web_client: TestClient) -> None:
+    """W1: 收票是写入口, viewer 不渲染; 搜索只读可用, 保留。"""
+    _demote_owner_ledger_to_viewer()
+
+    response = web_client.get("/web/pending?ledger_id=owner")
+    assert response.status_code == 200
+    topbar = re.search(r'<header class="product-topbar">.*?</header>', response.text, re.S)
+    assert topbar is not None
+    topbar_html = topbar.group(0)
+    assert "#capture" not in topbar_html
+    assert "收票" not in topbar_html
+    assert 'href="/web/search?ledger_id=owner"' in topbar_html
+
+
+def test_account_switcher_is_native_disclosure_with_logout(
+    web_client: TestClient,
+) -> None:
+    """W1 repair: 「我」面板是 <details> 原生披露 (无 JS 可开合/键盘/读屏诚实),
+    不再是 clickable div; 浏览器会话提供真实 CSRF POST 登出入口 (命令 owner
+    是既有 POST /web/auth/logout, 303 跳回登录页, 副作用不变); 切换账本 rows
+    保持真实链接。整页结构断言 — 面板内还有嵌套 appearance <details>,
+    不能用 nested-HTML regex 截断检查。"""
+    response = web_client.get("/web/pending?ledger_id=owner")
+
+    assert response.status_code == 200
+    body = response.text
+
+    assert '<details class="ledger-switcher" id="ledger-switcher">' in body
+    assert re.search(r'<summary[^>]+aria-label="账户与账本"', body) is not None
+    # 登出: 浏览器会话的真实命令表单 (CSRF hidden 必备), 收在面板内
+    logout = re.search(
+        r'<form method="post" action="/web/auth/logout"[^>]*>.*?</form>',
+        body,
+        re.S,
+    )
+    assert logout is not None
+    assert 'name="csrf_token"' in logout.group(0)
+    assert body.index('id="ledger-switcher"') < body.index('action="/web/auth/logout"')
+    # 账本切换 rows 仍是真实 GET 链接, 不被披露组件吃掉
+    assert re.search(r'<a class="row[^"]*" href="/web/pending\?ledger_id=', body) is not None
+
+
 @pytest.mark.parametrize(
     ("path", "page_level"),
     [

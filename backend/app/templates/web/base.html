@@ -55,6 +55,36 @@
 }.get(_domain, '工作区') %}
 {% set _has_domain_subnav = _domain != 'workspace' %}
 
+{# 页级归属标志 (K3 响应式收件片提升到 base 单一计算): 桌面 _sidebar_nav.html
+   与移动 _mobile_nav.html 两个 consumer 共用同一组事实, 不各自推导。 #}
+{% set is_pending = '/pending' in _path or ('/expenses/' in _path and _edit_origin == 'pending') %}
+{% set is_duplicates = '/duplicates' in _path or ('/expenses/' in _path and _edit_origin == 'duplicates') %}
+{% set is_confirmed = '/confirmed' in _path or ('/expenses/' in _path and _edit_origin == 'confirmed') %}
+{% set is_search = '/search' in _path %}
+{% set is_categories = '/categories' in _path %}
+{% set is_merchants = '/merchants' in _path %}
+{% set is_tags = '/tags' in _path %}
+{% set is_rules = '/rules' in _path %}
+{% set is_recycle_bin = '/recycle-bin' in _path %}
+{# 资料库 section 页面上高亮「资料库」入口: hub + 五个 section  canonical 路由。 #}
+{% set is_library = '/library' in _path or is_categories or is_merchants or is_tags or is_rules or is_recycle_bin %}
+{% set is_import = '/import' in _path or '/export' in _path %}
+{% set is_debts = '/debts' in _path %}
+{% set is_receivables = '/receivables' in _path %}
+{% set is_bill_split_inbox = '/bill-splits/inbox' in _path %}
+{% set is_bill_split_sent = '/bill-splits/sent' in _path %}
+{% set is_repayment_drafts = '/repayment-drafts' in _path %}
+{% set is_budgets = '/budgets' in _path %}
+{% set is_goals = '/goals' in _path and '/debt-goals' not in _path %}
+{% set is_debt_goals = '/debt-goals' in _path %}
+{% set is_income_plans = '/income-plans' in _path %}
+{% set is_budget_advise = '/budget-advise' in _path %}
+{% set is_recurring = '/recurring' in _path %}
+{% set is_overview = '/overview' in _path %}
+{% set is_dashboard_cards = '/dashboard/cards' in _path %}
+{% set is_reports = '/reports' in _path %}
+{% set is_data_quality = '/data-quality' in _path %}
+
 {# 218-D S3 (移植自产品矿): 页级三态。primary=五域首屏(已迁移, 断旧栈);
    tertiary=详情工作区(挂 detail.css); 其余=secondary。C5c-1 增量 2 落地
    资料库五个 section (/web/categories|merchants|tags|rules|recycle-bin)
@@ -114,13 +144,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="csrf-token" content="{{ csrf_token }}">
-  <meta name="theme-color" content="#f8f7f4">
+  <meta name="theme-color" content="#f6f2ea">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="小票夹">
   <link rel="manifest" href="/static/web/manifest.webmanifest">
-  <link rel="apple-touch-icon" href="/static/web/icon.svg">
-  <link rel="icon" type="image/svg+xml" href="/static/web/icon.svg">
+  <link rel="apple-touch-icon" href="/static/web/product/brand/icon-512.png">
+  <link rel="icon" type="image/png" href="/static/web/product/brand/favicon-48.png">
   <title>{% block title %}小票夹 网页版{% endblock %}</title>
 
   {# 外观轴 anti-FOUC bootstrap: 质感/强调色是纯本地偏好, 无 SSR cookie;
@@ -213,7 +243,18 @@
 <div class="product-app">
   {% include "_sidebar_nav.html" %}
   <div class="product-workspace">
-    <header class="product-topbar">
+    {# W1 IA-B: ≤64rem 移动 chrome = 唯一 56px sticky 顶带 (mobile-chrome);
+       域内页签移入 main 首元素随页滚动, 五域主导航是 fixed 底部 nav
+       (_bottom_nav.html); >64rem 本壳 display:contents, 桌面结构不变。 #}
+    <div class="mobile-chrome">
+      <header class="product-topbar">
+      {# K3 响应式收件片: ≤64rem 品牌身份并入 topbar (sidebar 整栏隐藏,
+         chrome 收进 mobile-chrome 单带); 桌面由 CSS 隐藏, sidebar .brand
+         仍是身份 owner。 #}
+      <span class="topbar-brand">
+        {% include "_brand_mark.html" %}
+        <span class="topbar-brand-name">小票夹</span>
+      </span>
       <div class="topbar-context" aria-label="当前位置">
         <span class="topbar-domain">{{ _domain_label }}</span>
         <span class="topbar-title">{{ page_title or _domain_label }}</span>
@@ -227,41 +268,25 @@
       {% if show_month_picker %}
         {% include "_month_picker.html" %}
       {% endif %}
+      {# W1 IA-B: 全局安静入口 — 搜索全角色可达; 收票是 can_write-gated 的
+         真实 GET 导航 (#capture 锚到收件上传组), upload command owner 不变。
+         ≤40rem 两枚让位进「我」popover (见 _ledger_switcher.html)。 #}
+      <a class="topbar-action topbar-search" href="/web/search{{ q }}">搜索</a>
+      {% if can_write %}
+      <a class="topbar-action topbar-capture" href="/web/pending{{ q }}#capture">收票</a>
+      {% endif %}
       {# 外观入口 (冻结片合同): 单一「外观」popover 聚合 主题/质感/强调色
          三条本地偏好轴。<details> 原生可开合, 无 JS 也可用; 三轴语义与
-         写入者见 theme.js 与 tokens.css 外观轴段。不渲染用户素材入口。 #}
-      <details class="appearance" id="appearance">
-        <summary class="appearance-trigger" data-appearance-trigger>外观</summary>
-        <div class="appearance-popover" id="appearance-popover">
-          <div class="appearance-group" role="group" aria-label="主题">
-            <span class="appearance-label">主题</span>
-            <div class="appearance-options">
-              <button type="button" class="appearance-choice" data-theme-mode="paper" aria-pressed="false">晨纸</button>
-              <button type="button" class="appearance-choice" data-theme-mode="midnight" aria-pressed="false">玄夜</button>
-              <button type="button" class="appearance-choice" data-theme-mode="system" aria-pressed="false">跟随系统</button>
-            </div>
-          </div>
-          <div class="appearance-group" role="group" aria-label="质感">
-            <span class="appearance-label">质感</span>
-            <div class="appearance-options">
-              <button type="button" class="appearance-choice" data-texture-mode="flat" aria-pressed="false">纯净</button>
-              <button type="button" class="appearance-choice" data-texture-mode="fiber" aria-pressed="false">纸纹</button>
-            </div>
-          </div>
-          <div class="appearance-group" role="group" aria-label="强调色">
-            <span class="appearance-label">强调色</span>
-            <div class="appearance-options">
-              <button type="button" class="appearance-choice" data-accent-mode="evergreen" aria-pressed="false"><span class="appearance-swatch appearance-swatch--evergreen" aria-hidden="true"></span>常青</button>
-              <button type="button" class="appearance-choice" data-accent-mode="ink" aria-pressed="false"><span class="appearance-swatch appearance-swatch--ink" aria-hidden="true"></span>墨蓝</button>
-              <button type="button" class="appearance-choice" data-accent-mode="ochre" aria-pressed="false"><span class="appearance-swatch appearance-swatch--ochre" aria-hidden="true"></span>赭石</button>
-              <button type="button" class="appearance-choice" data-accent-mode="plum" aria-pressed="false"><span class="appearance-swatch appearance-swatch--plum" aria-hidden="true"></span>梅子</button>
-            </div>
-          </div>
-        </div>
-      </details>
+         写入者见 theme.js 与 tokens.css 外观轴段。不渲染用户素材入口。
+         W1: 控件抽成 _appearance_control.html — topbar 与「我」popover
+         (≤40rem) 两个真实 consumer 共用, theme.js 多实例绑定。 #}
+      {% include "_appearance_control.html" %}
       {% include "_ledger_switcher.html" %}
-    </header>
+      </header>
+    </div>
     <main class="content" id="main-content" tabindex="-1" data-page-level="{{ _page_level }}">
+      {# W1 IA-B: 域内页签是页级导航, 作为 main 首元素随页滚动, 不占 chrome。 #}
+      {% include "_mobile_nav.html" %}
       {% if _role == 'viewer' %}
       <div class="readonly-callout" role="status">
         当前为<strong>只读角色</strong>。查看与分析保持可用，写入动作已隐藏或禁用。
@@ -269,6 +294,9 @@
       {% endif %}
       {% block content %}{% endblock %}
     </main>
+    {# W1 IA-B: 五域主导航在 ≤64rem 是 fixed 底部 nav (拇指区), >64rem 由
+       CSS 隐藏 (桌面 sidebar 域轨是唯一主导航)。 #}
+    {% include "_bottom_nav.html" %}
   </div>
   <div class="drawer-host">
     {% block drawer %}{% endblock %}

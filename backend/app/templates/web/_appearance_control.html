@@ -1,0 +1,36 @@
+{# 外观控件 (W1 Warm Ledger): 单一「外观」popover 聚合 主题/质感/强调色三条
+   本地偏好轴。<details> 原生可开合, 无 JS 也可用; 三轴写入者是 theme.js,
+   值域见 tokens.css 外观轴段。不渲染用户素材入口。
+   两个真实 consumer: base.html topbar (带 id, 桌面/宽屏入口) 与
+   _ledger_switcher.html「我」popover (≤40rem, _appearance_nested=true)。
+   theme.js 以 [data-appearance-popover] 多实例绑定, aria-pressed 跨实例同步。
+   上下文: _appearance_nested (可选, nested 实例去掉 id 与绝对定位)。 #}
+<details class="appearance{% if _appearance_nested %} appearance--nested{% endif %}"{% if not _appearance_nested %} id="appearance"{% endif %}{% if _appearance_nested %} open{% endif %}>
+  <summary class="chrome-trigger appearance-trigger" data-appearance-trigger>外观</summary>
+  <div class="chrome-popover appearance-popover"{% if not _appearance_nested %} id="appearance-popover"{% endif %} data-appearance-popover>
+    <div class="appearance-group" role="group" aria-label="主题">
+      <span class="appearance-label">主题</span>
+      <div class="appearance-options">
+        <button type="button" class="appearance-choice" data-theme-mode="paper" aria-pressed="false">晨纸</button>
+        <button type="button" class="appearance-choice" data-theme-mode="midnight" aria-pressed="false">玄夜</button>
+        <button type="button" class="appearance-choice" data-theme-mode="system" aria-pressed="false">跟随系统</button>
+      </div>
+    </div>
+    <div class="appearance-group" role="group" aria-label="质感">
+      <span class="appearance-label">质感</span>
+      <div class="appearance-options">
+        <button type="button" class="appearance-choice" data-texture-mode="flat" aria-pressed="false">纯净</button>
+        <button type="button" class="appearance-choice" data-texture-mode="fiber" aria-pressed="false">纸纹</button>
+      </div>
+    </div>
+    <div class="appearance-group" role="group" aria-label="强调色">
+      <span class="appearance-label">强调色</span>
+      <div class="appearance-options">
+        <button type="button" class="appearance-choice" data-accent-mode="evergreen" aria-pressed="false"><span class="appearance-swatch appearance-swatch--evergreen" aria-hidden="true"></span>常青</button>
+        <button type="button" class="appearance-choice" data-accent-mode="ink" aria-pressed="false"><span class="appearance-swatch appearance-swatch--ink" aria-hidden="true"></span>墨蓝</button>
+        <button type="button" class="appearance-choice" data-accent-mode="ochre" aria-pressed="false"><span class="appearance-swatch appearance-swatch--ochre" aria-hidden="true"></span>赭石</button>
+        <button type="button" class="appearance-choice" data-accent-mode="plum" aria-pressed="false"><span class="appearance-swatch appearance-swatch--plum" aria-hidden="true"></span>梅子</button>
+      </div>
+    </div>
+  </div>
+</details>

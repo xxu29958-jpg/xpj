@@ -19,26 +19,27 @@
 
 :root,
 :root[data-theme="paper"] {
-    /* Surface — 冷静工作区 + 纯白业务面板 */
-    --surface-app: #eef2ef;
-    --surface-card: #ffffff;
-    --surface-raised: #ffffff;
-    --surface-nav: #ffffff;
-    --surface-sunken: #eef2ef;
+    /* Surface — 暖纸工作区 + 实色业务面板 (W1 Warm Ledger: 分层靠色调与暖阴影,
+       不靠描边相框) */
+    --surface-app: #f6f2ea;
+    --surface-card: #fffdf8;
+    --surface-raised: #fffdf8;
+    --surface-nav: #faf6ee;
+    --surface-sunken: #efe9dc;
 
-    /* Text — 石墨四级，最重 SemiBold 即止 */
-    --text-default: #17201c;
-    --text-muted: #66716b;
-    --text-meta: #87928c;
-    --text-faint: #b7c0bb;
+    /* Text — 暖墨四级, meta 级在暖纸/卡上保 ≥4.5:1, 最重 SemiBold 即止 */
+    --text-default: #1d1a15;
+    --text-muted: #57514a;
+    --text-meta: #6f6860;
+    --text-faint: #aba294;
     --text-on-primary: #ffffff;
 
-    /* Brand — 低饱和常青色，只用于主 CTA、选中态与焦点 */
-    --brand-primary: #176b5b;
-    --brand-primary-strong: #0e5146;
-    --brand-accent: #86bbaa;
-    --brand-primary-bg: #e1f0ea;
-    --brand-focus-ring: rgba(23, 107, 91, 0.40);
+    /* Brand — 深常青印泥, 只用于主 CTA、选中态与焦点 */
+    --brand-primary: #14504a;
+    --brand-primary-strong: #0d3d38;
+    --brand-accent: #7fae9f;
+    --brand-primary-bg: #e2ecdf;
+    --brand-focus-ring: rgba(20, 80, 74, 0.42);
 
     /* State */
     --state-success-bg: #e7efdd; --state-success-fg: #236a57; --state-success-border: #c8dbb4;
@@ -47,22 +48,22 @@
     --state-info-bg:    #e3ecee; --state-info-fg:    #49656b; --state-info-border:    #c6d6da;
     --state-neutral-bg: #eeede7; --state-neutral-fg: #66716b; --state-neutral-border: #dcdad2;
 
-    /* Borders / radii / shadows */
-    --border-card: #eceae3;
-    --border-input: #d8d5cc;
-    --control-border: rgba(23, 107, 91, 0.26);
-    --control-border-hover: rgba(23, 107, 91, 0.44);
-    --control-border-active: rgba(23, 107, 91, 0.62);
-    --control-press-bg: rgba(23, 107, 91, 0.10);
-    --radius-card: 16px;
+    /* Borders / radii / shadows — border 语义收窄为发丝分隔与输入控件 */
+    --border-card: #e9e2d2;
+    --border-input: #d8d0bd;
+    --control-border: rgba(20, 80, 74, 0.28);
+    --control-border-hover: rgba(20, 80, 74, 0.46);
+    --control-border-active: rgba(20, 80, 74, 0.64);
+    --control-press-bg: rgba(20, 80, 74, 0.10);
+    --radius-card: 14px;
     --radius-input: 6px;
     --radius-pill: 999px;
-    /* 石墨柔阴影，让白色业务面板从工作区中分层 */
-    --shadow-card: 0 1px 2px rgba(23, 32, 28, .05), 0 6px 18px rgba(23, 32, 28, .05);
-    --shadow-raised: 0 2px 6px rgba(23, 32, 28, .06), 0 14px 36px rgba(23, 32, 28, .10);
+    /* 暖墨柔阴影, 让实色面板从暖纸工作区中分层 */
+    --shadow-card: 0 1px 2px rgba(58, 48, 32, .06), 0 8px 24px rgba(58, 48, 32, .07);
+    --shadow-raised: 0 2px 6px rgba(58, 48, 32, .07), 0 16px 40px rgba(58, 48, 32, .10);
 
     /* Chart — 8 色调色板 */
-    --chart-series-1: #176b5b;
+    --chart-series-1: #14504a;
     --chart-series-2: #26322d;
     --chart-series-3: #a9783e;
     --chart-series-4: #b65e47;
@@ -70,41 +71,41 @@
     --chart-series-6: #7f8f68;
     --chart-series-7: #756a8a;
     --chart-series-8: #8c9691;
-    --chart-sequential-from: #e1f0ea;
-    --chart-sequential-to:   #0e5146;
+    --chart-sequential-from: #e2ecdf;
+    --chart-sequential-to:   #0d3d38;
     --chart-diverging-negative: #b65e47;
     --chart-diverging-zero:     #e7ece8;
-    --chart-diverging-positive: #176b5b;
-    --chart-axis: #aab4ae;
-    --chart-axis-label: #66716b;
-    --chart-grid: #17201c14;
-    --chart-grid-emphasis: #176b5b66;
-    --chart-tooltip-bg: #17201c;
-    --chart-tooltip-fg: #f7f8f6;
-    --chart-tooltip-border: #34413b;
-    --chart-legend-fg: #17201c;
-    --chart-legend-marker: #f7f8f6;
-    --chart-sankey-ribbon: #176b5b4d;
-    --chart-sankey-ribbon-emphasis: #0e5146cc;
+    --chart-diverging-positive: #14504a;
+    --chart-axis: #aaa596;
+    --chart-axis-label: #57514a;
+    --chart-grid: #1d1a1514;
+    --chart-grid-emphasis: #14504a66;
+    --chart-tooltip-bg: #1d1a15;
+    --chart-tooltip-fg: #f7f5ef;
+    --chart-tooltip-border: #3a352a;
+    --chart-legend-fg: #1d1a15;
+    --chart-legend-marker: #f7f5ef;
+    --chart-sankey-ribbon: #14504a4d;
+    --chart-sankey-ribbon-emphasis: #0d3d38cc;
     --chart-overspend: #b65e47;
-    --chart-empty: #dce2dd;
+    --chart-empty: #ddd7c8;
 
     /* Goal state */
     --goal-idle-bg:        #ece7d8; --goal-idle-fg:        #66716b; --goal-idle-border:        #d6cfbe;
-    --goal-on-track-bg:    #d9e0c4; --goal-on-track-fg:    #176b5b; --goal-on-track-border:    #bccaa6;
+    --goal-on-track-bg:    #d9e0c4; --goal-on-track-fg:    #14504a; --goal-on-track-border:    #bccaa6;
     --goal-near-limit-bg:  #f5e3c0; --goal-near-limit-fg:  #8a5a18; --goal-near-limit-border:  #e3cb91;
     --goal-exceeded-bg:    #f1d4cb; --goal-exceeded-fg:    #a83d32; --goal-exceeded-border:    #e2b3a5;
     --goal-expired-bg:     #e9e5d9; --goal-expired-fg:     #7a847e; --goal-expired-border:     #d2ccbd;
 
     /* Dashboard card */
-    --card-pending-accent:       #176b5b; --card-pending-icon:       #0e5146; --card-pending-surface:       #ffffff;
-    --card-month-spend-accent:   #26322d; --card-month-spend-icon:   #17201c; --card-month-spend-surface:   #ffffff;
-    --card-recent-upload-accent: #55747a; --card-recent-upload-icon: #38565c; --card-recent-upload-surface: #ffffff;
-    --card-recurring-accent:     #b65e47; --card-recurring-icon:     #8b4233; --card-recurring-surface:     #ffffff;
-    --card-goals-accent:         #7f8f68; --card-goals-icon:         #586b46; --card-goals-surface:         #ffffff;
-    --card-budget-accent:        #a9783e; --card-budget-icon:        #7a5428; --card-budget-surface:        #ffffff;
-    --card-backup-accent:        #8c9691; --card-backup-icon:        #66716b; --card-backup-surface:        #ffffff;
-    --card-device-accent:        #756a8a; --card-device-icon:        #574d6a; --card-device-surface:        #ffffff;
+    --card-pending-accent:       #14504a; --card-pending-icon:       #0d3d38; --card-pending-surface:       #fffdf8;
+    --card-month-spend-accent:   #26322d; --card-month-spend-icon:   #17201c; --card-month-spend-surface:   #fffdf8;
+    --card-recent-upload-accent: #55747a; --card-recent-upload-icon: #38565c; --card-recent-upload-surface: #fffdf8;
+    --card-recurring-accent:     #b65e47; --card-recurring-icon:     #8b4233; --card-recurring-surface:     #fffdf8;
+    --card-goals-accent:         #7f8f68; --card-goals-icon:         #586b46; --card-goals-surface:         #fffdf8;
+    --card-budget-accent:        #a9783e; --card-budget-icon:        #7a5428; --card-budget-surface:        #fffdf8;
+    --card-backup-accent:        #8c9691; --card-backup-icon:        #66716b; --card-backup-surface:        #fffdf8;
+    --card-device-accent:        #756a8a; --card-device-icon:        #574d6a; --card-device-surface:        #fffdf8;
 
     /* v0.10 Motion (layout 级，双主题共享值；放在 :root 默认块) */
     --motion-fast: 120ms;
@@ -126,41 +127,41 @@
     --elevation-dragging-card: 0 8px 24px rgba(0, 0, 0, 0.18);
     --elevation-swipe-row: 0 2px 8px rgba(0, 0, 0, 0.06);
 
-    /* v0.10 Skeleton（按主题，paper 用墨灰 + 白光带） */
-    --skeleton-base-bg: #17201c14;
+    /* v0.10 Skeleton（按主题，paper 用暖墨 + 白光带） */
+    --skeleton-base-bg: #1d1a1514;
     --skeleton-shine-bg: rgba(255, 255, 255, 0.20);
 
     /* v0.10 Swipe actions（左滑确认 / 右滑忽略 / 长按删除） */
-    --swipe-confirm-bg: #176b5b; --swipe-confirm-fg: #ffffff;
-    --swipe-ignore-bg:  #66716b; --swipe-ignore-fg:  #ffffff;
+    --swipe-confirm-bg: #14504a; --swipe-confirm-fg: #ffffff;
+    --swipe-ignore-bg:  #57514a; --swipe-ignore-fg:  #ffffff;
     --swipe-delete-bg:  #a83d32; --swipe-delete-fg:  #ffffff;
 
     /* v0.10 Drawer overlay（窄屏抽屉遮罩） */
-    --drawer-overlay-bg: rgba(23, 32, 28, 0.32);
+    --drawer-overlay-bg: rgba(29, 26, 21, 0.32);
 }
 
 
 :root[data-theme="midnight"] {
-    /* Surface — 深石墨工作区 */
-    --surface-app: #0f1311;
-    --surface-card: #171c19;
-    --surface-raised: #222530;
-    --surface-nav: #111513;
-    --surface-sunken: #1c2320;
+    /* Surface — 深墨纸工作区 (W1 Warm Ledger 夜间人格: 暖底, 非冷石墨) */
+    --surface-app: #14120d;
+    --surface-card: #1d1a13;
+    --surface-raised: #272319;
+    --surface-nav: #12100b;
+    --surface-sunken: #221e15;
 
     /* Text */
-    --text-default: #e8eeea;
-    --text-muted: #aab5af;
-    --text-meta: #77837d;
-    --text-faint: #46514b;
-    --text-on-primary: #0d1d18;
+    --text-default: #ece7db;
+    --text-muted: #b3ab9c;
+    --text-meta: #8a8172;
+    --text-faint: #57503f;
+    --text-on-primary: #0e1a17;
 
     /* Brand — 夜间常青高亮 */
-    --brand-primary: #69bfa4;
-    --brand-primary-strong: #4a9d84;
-    --brand-accent: #315c50;
-    --brand-primary-bg: #69bfa42e;
-    --brand-focus-ring: rgba(105, 191, 164, 0.55);
+    --brand-primary: #70bfa5;
+    --brand-primary-strong: #54a187;
+    --brand-accent: #33584c;
+    --brand-primary-bg: #70bfa52e;
+    --brand-focus-ring: rgba(112, 191, 165, 0.55);
 
     /* State */
     --state-success-bg: rgba(168, 184, 138, 0.14); --state-success-fg: #77c3a9; --state-success-border: rgba(168, 184, 138, 0.30);
@@ -181,7 +182,7 @@
     --shadow-card: 0 1px 3px rgba(0,0,0,.40);
     --shadow-raised: 0 6px 24px rgba(0,0,0,.45);
 
-    --chart-series-1: #69bfa4;
+    --chart-series-1: #70bfa5;
     --chart-series-2: #b7c4bd;
     --chart-series-3: #e3b36c;
     --chart-series-4: #e0836f;
@@ -191,21 +192,21 @@
     --chart-series-7: #b19db8;
     --chart-series-8: #7f9188;
     --chart-sequential-from: #1c2320;
-    --chart-sequential-to:   #69bfa4;
+    --chart-sequential-to:   #70bfa5;
     --chart-diverging-negative: #e0836f;
     --chart-diverging-zero:     #303a35;
-    --chart-diverging-positive: #69bfa4;
+    --chart-diverging-positive: #70bfa5;
     --chart-axis: #4d5a54;
     --chart-axis-label: #aab5af;
     --chart-grid: rgba(255, 255, 255, 0.06);
-    --chart-grid-emphasis: #69bfa466;
+    --chart-grid-emphasis: #70bfa566;
     --chart-tooltip-bg: #0d110f;
     --chart-tooltip-fg: #e8eeea;
     --chart-tooltip-border: #303a35;
     --chart-legend-fg: #e8eeea;
     --chart-legend-marker: #151a17;
-    --chart-sankey-ribbon: #69bfa433;
-    --chart-sankey-ribbon-emphasis: #69bfa4b3;
+    --chart-sankey-ribbon: #70bfa533;
+    --chart-sankey-ribbon-emphasis: #70bfa5b3;
     --chart-overspend: #e0836f;
     --chart-empty: #303a35;
 
@@ -215,7 +216,7 @@
     --goal-exceeded-bg:    rgba(217, 119, 87, 0.14);  --goal-exceeded-fg:    #e0836f; --goal-exceeded-border:    rgba(217, 119, 87, 0.30);
     --goal-expired-bg:     #1d2025;                   --goal-expired-fg:     #77837d; --goal-expired-border:     #2c2f37;
 
-    --card-pending-accent:       #69bfa4; --card-pending-icon:       #b4e2d2; --card-pending-surface:       #171c19;
+    --card-pending-accent:       #70bfa5; --card-pending-icon:       #b4e2d2; --card-pending-surface:       #171c19;
     --card-month-spend-accent:   #b7c4bd; --card-month-spend-icon:   #e8eeea; --card-month-spend-surface:   #171c19;
     --card-recent-upload-accent: #8db8c0; --card-recent-upload-icon: #c8e2e7; --card-recent-upload-surface: #171c19;
     --card-recurring-accent:     #e0836f; --card-recurring-icon:     #f2b5a7; --card-recurring-surface:     #171c19;
@@ -228,8 +229,8 @@
      * 深色主题的 skeleton 使用常青高亮 alpha，确保 shimmer 在工作区可见。 */
     --elevation-dragging-card: 0 8px 24px rgba(0, 0, 0, 0.50);
     --elevation-swipe-row: 0 2px 10px rgba(0, 0, 0, 0.40);
-    --skeleton-base-bg: #69bfa414;
-    --skeleton-shine-bg: #69bfa424;
+    --skeleton-base-bg: #70bfa514;
+    --skeleton-shine-bg: #70bfa524;
     --swipe-confirm-bg: #2c4b40; --swipe-confirm-fg: #b4e2d2;
     --swipe-ignore-bg:  #303a35; --swipe-ignore-fg:  #aab5af;
     --swipe-delete-bg:  #4d302a; --swipe-delete-fg:  #f1a08e;
@@ -339,6 +340,10 @@
     --layout-page-max:  1180px;
     --layout-page-narrow-max: 960px;
 
+    /* 触达目标地板 (2026-09 响应式收件片): 宽度断点管布局密度,
+       pointer:coarse 管目标尺寸; 交互控件在 coarse 下不低于此值。 */
+    --target-min: 44px;
+
     /* ── Z-index ladder ────────────────────────────────────────────────────
      * 五档堆叠层级,避免 magic number。
      */
@@ -366,29 +371,29 @@
  * prefers-contrast: more 时质感强制关闭 (见文件末尾媒体查询)。
  * ─────────────────────────────────────────────────────────────────────────── */
 :root {
-    --surface-app-image: none;
+    /* W1: fiber 成为无偏好新会话默认 — 默认即在 app 背景层铺真实纸纹;
+       显式 flat (已有用户选择或 prefers-contrast) 才关闭。 */
+    --surface-app-image: url("/static/web/product/textures/paper-fiber.webp");
 
     /* 外观 popover 色板预览 (与下方 accent 轴同值, 只服务 swatch 展示) */
-    --accent-swatch-evergreen: #176b5b;
+    --accent-swatch-evergreen: #14504a;
     --accent-swatch-ink: #235a97;
     --accent-swatch-ochre: #9a6218;
     --accent-swatch-plum: #8a3a5e;
 }
 
 :root[data-theme="midnight"] {
-    --accent-swatch-evergreen: #69bfa4;
+    --surface-app-image: url("/static/web/product/textures/midnight-grain.webp");
+
+    --accent-swatch-evergreen: #70bfa5;
     --accent-swatch-ink: #7aa8e0;
     --accent-swatch-ochre: #d9a45c;
     --accent-swatch-plum: #d98bab;
 }
 
-/* 质感轴：真实 raster 资产, 不用 CSS/SVG/伪元素造纹理。 */
-:root[data-texture="fiber"][data-theme="paper"] {
-    --surface-app-image: url("/static/web/product/textures/paper-fiber.webp");
-}
-
-:root[data-texture="fiber"][data-theme="midnight"] {
-    --surface-app-image: url("/static/web/product/textures/midnight-grain.webp");
+/* 质感轴：真实 raster 资产, 不用 CSS/SVG/伪元素造纹理。显式 flat 关闭。 */
+:root[data-texture="flat"] {
+    --surface-app-image: none;
 }
 
 /* 强调色轴 · paper ────────────────────────────────────────── */
@@ -425,7 +430,7 @@
     --control-press-bg: rgba(138, 58, 94, 0.10);
 }
 
-/* 强调色轴 · midnight (提亮人格, 与默认 #69bfa4 同明度带) ───── */
+/* 强调色轴 · midnight (提亮人格, 与默认 #70bfa5 同明度带) ───── */
 :root[data-accent="ink"][data-theme="midnight"] {
     --brand-primary: #7aa8e0;
     --brand-primary-strong: #5a8cc8;

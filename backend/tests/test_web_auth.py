@@ -67,6 +67,10 @@ def test_login_form_renders(client: TestClient) -> None:
     assert "APP_TOKEN" not in resp.text
     assert 'type="password"' not in resp.text
     assert 'action="/web/auth/login"' in resp.text
+    # W1 品牌 mark: 双 colorway 同源剪影两枚 img 都渲染 (纸面默认 + 玄夜由
+    # cookie bootstrap 还原 data-theme 后 CSS 切换); 图形资产是锁定母版。
+    assert '<img class="brand-mark-img" src="/static/web/product/brand/brand-mark.png"' in resp.text
+    assert '<img class="brand-mark-img brand-mark-img--midnight" src="/static/web/product/brand/brand-mark-midnight.png"' in resp.text
     cookie_header = resp.headers.get("set-cookie", "")
     assert PAIRING_ATTEMPT_COOKIE_NAME in cookie_header
     assert "Secure" in cookie_header

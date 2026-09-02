@@ -114,6 +114,26 @@
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   };
 
+  // 原生 <details> 披露的共享便利层: 点外部 / Escape 关闭并把焦点还回
+  // trigger。开合状态由 <details open> 原生持有 (无 JS 可用), 本层只做增强。
+  // 两个真实 consumer: 外观 popover (theme.js) 与「我」账户面板
+  // (ledger-switcher.js)。
+  app.bindDisclosureDismiss = function bindDisclosureDismiss(host, triggerSelector) {
+    if (!host) return;
+    document.addEventListener("click", (event) => {
+      if (host.hasAttribute("open") && !host.contains(event.target)) {
+        host.removeAttribute("open");
+      }
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && host.hasAttribute("open")) {
+        host.removeAttribute("open");
+        const trigger = triggerSelector ? host.querySelector(triggerSelector) : null;
+        if (trigger && typeof trigger.focus === "function") trigger.focus();
+      }
+    });
+  };
+
   // 收件页原生上传表单的渐进增强：权限所需 ledger 已在 action query，
   // 这里只补浏览器时区；不触碰 multipart body，也绝不自动提交。
   app.initInboxCapture = function initInboxCapture() {
@@ -126,6 +146,20 @@
       action.searchParams.set("timezone", tz);
       form.action = action.pathname + action.search;
     } catch (_) {}
+  };
+
+  // K3 file-picker primitive 的渐进增强: 选中后把文件名写进 [data-file-picker-name]
+  // 槽位 (aria-live 读屏播报); input 仍是命令 owner, 绝不自动提交。
+  app.initFilePickers = function initFilePickers() {
+    document.querySelectorAll(".file-picker-input").forEach(function (input) {
+      const scope = input.closest(".file-picker");
+      const slot = scope && scope.querySelector("[data-file-picker-name]");
+      if (!slot) return;
+      input.addEventListener("change", function () {
+        const file = input.files && input.files[0];
+        slot.textContent = file ? file.name : "";
+      });
+    });
   };
 
   app.initInboxEnrichmentWatch = function initInboxEnrichmentWatch() {

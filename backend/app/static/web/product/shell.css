@@ -107,6 +107,13 @@ a {
     min-width: 0;
 }
 
+/* K3 响应式收件片: 移动 chrome 容器。桌面 display:contents 不产生盒子,
+   topbar 直接 sticky 于视口 (行为与旧版一致); ≤64rem 它成为整带唯一的
+   sticky owner (topbar → 主导航 → 域页签, 见媒体查询)。 */
+.mobile-chrome {
+    display: contents;
+}
+
 .sidebar {
     position: sticky;
     inset-block-start: 0;
@@ -122,7 +129,7 @@ a {
     gap: 0;
     padding: var(--space-6) var(--space-4) var(--space-5);
     overflow-y: auto;
-    border-inline-end: 1px solid var(--border-card);
+    /* W1 Warm Ledger: 域轨不靠描边相框分层, 用 tonal 底与留白。 */
     background: var(--surface-nav);
 }
 
@@ -133,13 +140,29 @@ a {
     padding: 0 var(--space-3) var(--space-7);
 }
 
-.brand-mark {
+/* W1 品牌 mark: 双 colorway 由 html[data-theme] 切换 (SSR 直出无 FOUC);
+   尺寸按槽位 — sidebar 40 / topbar 24 (login 48 在 auth-login.css)。 */
+.brand-mark-img {
     display: block;
     width: var(--space-9);
-    height: var(--space-9);
+    height: auto;
     flex: 0 0 auto;
-    border-radius: var(--radius-md);
-    object-fit: cover;
+}
+
+.brand-mark-img--midnight {
+    display: none;
+}
+
+[data-theme="midnight"] .brand-mark-img {
+    display: none;
+}
+
+[data-theme="midnight"] .brand-mark-img--midnight {
+    display: block;
+}
+
+.topbar-brand .brand-mark-img {
+    width: var(--space-7);
 }
 
 .brand-name {
@@ -260,9 +283,7 @@ a {
     cursor: pointer;
     font-size: var(--type-meta-size);
     font-weight: var(--type-meta-weight);
-    letter-spacing: var(--type-meta-tracking);
     list-style: none;
-    text-transform: uppercase;
 }
 
 .nav-group-title::-webkit-details-marker {
@@ -319,11 +340,26 @@ a {
     gap: var(--space-3);
 }
 
+/* 压缩品牌: 桌面隐藏 (sidebar .brand 是身份 owner); ≤64rem sidebar 整栏
+   让位, 品牌并入 mobile-chrome 的 topbar 行 (见媒体查询)。 */
+.topbar-brand {
+    display: none;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.topbar-brand-name {
+    color: var(--text-default);
+    font-size: var(--type-subtitle-size);
+    font-weight: var(--type-title-weight);
+    letter-spacing: -.02em;
+    white-space: nowrap;
+}
+
 .topbar-domain {
     color: var(--brand-primary-strong);
-    font-size: var(--type-meta-size);
-    font-weight: var(--type-meta-weight);
-    letter-spacing: var(--type-meta-tracking);
+    font-size: var(--type-caption-size);
+    font-weight: var(--type-subtitle-weight);
 }
 
 .topbar-title {
@@ -348,18 +384,26 @@ a {
     flex: 1;
 }
 
+/* W1 Warm Ledger: 顶栏动作是安静文本动作 — 无描边无底色, hover 才浮现
+   色面; consumer: 搜索/收票入口。 */
 .topbar-action {
+    display: inline-flex;
     min-height: var(--space-9);
-    padding: var(--space-2) var(--space-4);
-    border: 1px solid var(--border-input);
+    align-items: center;
+    padding: var(--space-2) var(--space-3);
+    border: 0;
     border-radius: var(--radius-sm);
-    background: var(--surface-card);
+    background: transparent;
     color: var(--text-muted);
     cursor: pointer;
+    font-size: var(--type-caption-size);
+    font-weight: var(--type-subtitle-weight);
+    text-decoration: none;
+    white-space: nowrap;
 }
 
 .topbar-action:hover {
-    border-color: var(--control-border-hover);
+    background: var(--surface-sunken);
     color: var(--text-default);
 }
 
@@ -370,18 +414,47 @@ a {
     position: relative;
 }
 
-.appearance-trigger {
+/* W1 chrome 披露原语: 顶栏安静文本触发器 + 浮层面板, 当前两个真实 consumer
+   (外观 / 「我」账户面板), 无真实消费者不扩 API。<details> 原生开合,
+   关闭态由浏览器 details 语义保证, 无 JS 可用。各组件规则只留差异
+   (原生 marker / 尺寸 / 密度 / 嵌套铺开)。 */
+.chrome-trigger {
     display: inline-flex;
     min-height: var(--space-9);
     align-items: center;
-    padding: var(--space-2) var(--space-4);
-    border: 1px solid var(--border-input);
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border: 0;
     border-radius: var(--radius-sm);
-    background: var(--surface-card);
+    background: transparent;
     color: var(--text-muted);
     cursor: pointer;
     font-size: var(--type-caption-size);
     font-weight: var(--type-subtitle-weight);
+    white-space: nowrap;
+}
+
+.chrome-trigger:hover,
+details[open] > .chrome-trigger {
+    background: var(--surface-sunken);
+    color: var(--text-default);
+}
+
+.chrome-popover {
+    position: absolute;
+    inset-block-start: calc(100% + var(--space-2));
+    inset-inline-end: 0;
+    z-index: var(--z-drawer);
+    display: grid;
+    max-inline-size: calc(100vw - var(--space-8));
+    border-radius: var(--radius-md);
+    background: var(--surface-raised);
+    box-shadow: var(--shadow-raised);
+}
+
+/* 外观触发器差异: 纯文字入口抑制原生 marker (「我」trigger 保留 marker
+   承担披露可感知性)。 */
+.appearance-trigger {
     list-style: none;
 }
 
@@ -389,29 +462,32 @@ a {
     display: none;
 }
 
-.appearance-trigger:hover {
-    border-color: var(--control-border-hover);
-    color: var(--text-default);
+/* W1: 「我」popover 内的嵌套实例 (≤40rem) — 静态铺开, 不再绝对定位。 */
+.appearance--nested,
+.appearance--nested .appearance-trigger {
+    width: 100%;
 }
 
-.appearance[open] .appearance-trigger {
-    border-color: var(--control-border-active);
-    color: var(--text-default);
+.appearance--nested .appearance-trigger {
+    justify-content: flex-start;
+    padding-inline: var(--space-3);
+}
+
+.appearance--nested .appearance-popover {
+    position: static;
+    min-width: 0;
+    max-inline-size: none;
+    margin-block-start: var(--space-2);
+    padding: var(--space-2) 0 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
 }
 
 .appearance-popover {
-    position: absolute;
-    inset-block-start: calc(100% + var(--space-2));
-    inset-inline-end: 0;
-    z-index: var(--z-drawer);
-    display: grid;
     min-width: calc(var(--space-12) * 4);
     gap: var(--space-4);
     padding: var(--space-4);
-    border: 1px solid var(--border-input);
-    border-radius: var(--radius-md);
-    background: var(--surface-raised);
-    box-shadow: var(--shadow-raised);
 }
 
 .appearance-group {
@@ -421,9 +497,8 @@ a {
 
 .appearance-label {
     color: var(--text-meta);
-    font-size: var(--type-meta-size);
+    font-size: var(--type-caption-size);
     font-weight: var(--type-meta-weight);
-    letter-spacing: var(--type-meta-tracking);
 }
 
 .appearance-options {
@@ -525,17 +600,31 @@ a {
     position: relative;
 }
 
+/* W1 repair: 账户面板根是 <details> 原生披露 — 无 JS 可开合、键盘 Enter/Space、
+   读屏自动暴露 expanded; JS 只做 outside/Esc 关闭增强 (ledger-switcher.js)。
+   trigger 是安静文本动作, 与顶栏其它入口同语言 (不再是填充 pill)。 */
 .ledger-switcher {
-    display: flex;
+    display: block;
+}
+
+/* 「我」trigger 差异: 更大触达尺寸/默认墨色/保留原生 disclosure marker
+   (承担面板可开合的可感知性); 几何与 hover/open 态由 .chrome-trigger 承载。 */
+.ledger-switcher-trigger {
     min-height: var(--space-10);
-    align-items: center;
     gap: var(--space-3);
-    padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--border-input);
     border-radius: var(--radius-md);
-    background: var(--surface-card);
     color: var(--text-default);
-    cursor: pointer;
+}
+
+/* W1 repair: >40rem trigger 只留 账本名 + 角色, 头像仅 ≤40rem 承担触发器
+   身份 (见媒体查询) — 消除「我 我的小票夹」双重读。 */
+.ledger-switcher-trigger > .ledger-avatar {
+    display: none;
+}
+
+/* W1: ≤40rem 收进「我」面板的搜索/外观入口, 宽屏隐藏 (topbar 承担)。 */
+.ledger-mobile-links {
+    display: none;
 }
 
 .ledger-avatar {
@@ -591,23 +680,15 @@ a {
     color: var(--state-neutral-fg);
 }
 
+/* 「我」面板差异: 更宽最小宽/列表密度/70dvh 滚动约束; 浮层几何与材质由
+   .chrome-popover 承载。开合由 <details open> 原生语义保证 (与外观同一
+   机制, QA 已证), 不再有 .open / data-open 状态类与冗余守卫。 */
 .ledger-popover {
-    position: absolute;
-    inset-block-start: calc(100% + var(--space-2));
-    inset-inline-end: 0;
-    z-index: var(--z-drawer);
-    display: none;
-    min-width: calc(var(--space-12) * 5);
-    padding: var(--space-3);
-    border: 1px solid var(--border-input);
-    border-radius: var(--radius-md);
-    background: var(--surface-raised);
-    box-shadow: var(--shadow-raised);
-}
-
-.ledger-popover.open {
-    display: grid;
     gap: var(--space-1);
+    min-width: calc(var(--space-12) * 5.5);
+    max-block-size: 70dvh;
+    overflow-y: auto;
+    padding: var(--space-3);
 }
 
 .ledger-popover .head {
@@ -649,19 +730,35 @@ a {
     font-size: var(--type-caption-size);
 }
 
-.ledger-session-actions {
+/* W1 repair: 面板底部登出区 — 顶发丝分隔, 安静全宽文本动作 (tonal, 无描边)。 */
+.ledger-popover-foot {
     margin-block-start: var(--space-2);
     padding-block-start: var(--space-2);
     border-block-start: 1px solid var(--border-card);
 }
 
-.ledger-session-form {
+.ledger-popover-foot form {
+    display: block;
     margin: 0;
 }
 
-.ledger-session-form .product-button {
+.ledger-logout {
+    display: block;
     width: 100%;
-    justify-content: flex-start;
+    min-height: var(--space-9);
+    padding: var(--space-2) var(--space-3);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+}
+
+.ledger-logout:hover {
+    background: var(--surface-sunken);
+    color: var(--text-default);
 }
 
 .content {
@@ -678,7 +775,6 @@ a {
 .readonly-callout {
     margin-block-end: var(--space-5);
     padding: var(--space-4) var(--space-5);
-    border: 1px solid var(--state-info-border);
     border-radius: var(--radius-sm);
     background: var(--state-info-bg);
     color: var(--state-info-fg);
@@ -693,56 +789,101 @@ a {
         display: block;
     }
 
+    /* K3 响应式收件片: 桌面侧栏整体让位, 移动导航/topbar 全部收进
+       mobile-chrome 这一个 content-height sticky 带。不再按旧子带高度
+       (brand + nav + subnav) 给 topbar 算 sticky 偏移——那种算术在隐藏
+       brand 后会留下空白带, 也是本轮修复的反例根因。 */
     .sidebar {
-        position: sticky;
-        inset-block-start: 0;
-        width: 100%;
-        height: auto;
-        padding: 0;
-        overflow: visible;
-        border-inline-end: 0;
-        border-block-end: 1px solid var(--border-card);
-    }
-
-    .brand {
-        min-height: var(--space-10);
-        padding: var(--space-3) var(--space-5);
-    }
-
-    .brand-mark {
-        width: var(--space-7);
-        height: var(--space-7);
-    }
-
-    .brand-product,
-    .desktop-nav {
         display: none;
     }
 
+    .mobile-chrome {
+        position: sticky;
+        inset-block-start: 0;
+        z-index: var(--z-sticky);
+        display: block;
+        border-block-end: 1px solid var(--border-card);
+        background: var(--surface-nav);
+    }
+
+    /* topbar 降级为带内静态行: 品牌/域名/账本/外观/账户随行排列;
+       实色整带自带背景, 去掉半透明叠色与 backdrop-filter。
+       W1 IA-B: 全带高 56px (min-height), 是 ≤64rem 唯一顶部 chrome。 */
+    .product-topbar {
+        position: static;
+        min-height: calc(var(--space-10) + var(--space-2));
+        padding: var(--space-2) var(--space-4);
+        border-block-end: 0;
+        background: transparent;
+        backdrop-filter: none;
+    }
+
+    /* 品牌并入 topbar (sidebar 已隐藏); ≤64rem 全部宽度生效。 */
+    .topbar-brand {
+        display: inline-flex;
+    }
+
+    /* W1 repair: ≤64rem 账本身份只出现在「我」触发器 — topbar-ledger 隐藏,
+       消除与品牌并置的双重身份读; 不再只在 ≤40rem 隐藏。 */
+    .topbar-ledger {
+        display: none;
+    }
+
+    /* W1 repair: popover 是相对 sticky mobile-chrome 的全宽 sheet —
+       wrap/details 退出定位上下文, 面板横向撑满 chrome 内边距, 不再被
+       窄触发器锚成 ~74px 竖条 (当前 360「我」不可用的根因)。 */
+    .ledger-switcher-wrap,
+    .ledger-switcher {
+        position: static;
+    }
+
+    .ledger-popover {
+        inset-inline: var(--space-3);
+        inset-block-start: calc(100% + var(--space-2));
+        min-width: 0;
+        max-inline-size: none;
+    }
+
+    /* W1 IA-B: 五域主导航 = fixed 底部 nav (拇指区, 纯文字项, safe-area);
+       active = 顶部 2px 指示条 + 强调色文字, 不用旧下划阴影/图标。 */
     .mobile-primary-nav {
+        position: fixed;
+        inset-inline: 0;
+        inset-block-end: 0;
+        z-index: var(--z-sticky);
         display: grid;
         grid-template-columns: repeat(5, minmax(0, 1fr));
+        padding-block-end: env(safe-area-inset-bottom);
         border-block-start: 1px solid var(--border-card);
+        background: var(--surface-nav);
     }
 
     .mobile-primary-nav .nav-item {
-        min-height: var(--space-10);
+        min-height: calc(var(--space-10) + var(--space-2));
         justify-content: center;
-        padding: var(--space-3) var(--space-2);
+        gap: var(--space-1);
+        padding: var(--space-2) var(--space-1);
         border-radius: 0;
+        color: var(--text-meta);
         font-size: var(--type-caption-size);
     }
 
     .mobile-primary-nav .nav-item.active {
-        box-shadow: inset 0 calc(-1 * var(--space-1)) var(--brand-primary);
+        background: transparent;
+        box-shadow: inset 0 var(--space-1) 0 var(--brand-primary);
+        color: var(--brand-primary-strong);
+        font-weight: var(--type-subtitle-weight);
     }
 
+    /* W1 IA-B: 域内页签移入 main 首元素, in-flow 随页滚动 — 安静文字 tab,
+       active tonal 色面; 横滚不折行。 */
     .mobile-plan-nav {
         display: flex;
         gap: var(--space-1);
-        padding: var(--space-2) var(--space-4);
+        margin-block-end: var(--space-5);
+        padding-block-end: var(--space-2);
         overflow-x: auto;
-        border-block-start: 1px solid var(--border-card);
+        border-block-end: 1px solid var(--border-card);
         scrollbar-width: none;
     }
 
@@ -752,7 +893,7 @@ a {
 
     .mobile-plan-nav a {
         flex: 0 0 auto;
-        min-height: var(--space-8);
+        min-height: var(--space-9);
         padding: var(--space-2) var(--space-3);
         border-radius: var(--radius-sm);
         color: var(--text-meta);
@@ -763,16 +904,7 @@ a {
     .mobile-plan-nav a.active {
         background: var(--surface-sunken);
         color: var(--text-default);
-    }
-
-    .product-topbar {
-        top: calc(var(--space-10) * 2);
-        min-height: var(--space-10);
-        padding: var(--space-2) var(--space-4);
-    }
-
-    .product-shell.has-domain-subnav .product-topbar {
-        top: calc(var(--space-10) * 2 + var(--space-9));
+        font-weight: var(--type-subtitle-weight);
     }
 
     /* 移动端保留压缩位置感: 域名 + 账本名 (截断); 页题让位给正文页头。 */
@@ -780,11 +912,14 @@ a {
         display: none;
     }
 
+    /* 内容区给 fixed 底部 nav 让位: 56px nav + safe-area + 一档间距,
+       最后一行卡片与 bulk 条永不被遮。 */
     .content,
     .content[data-page-level="secondary"],
     .content[data-page-level="tertiary"] {
         width: 100%;
-        padding: var(--space-7) var(--space-5) var(--space-12);
+        padding: var(--space-6) var(--space-5)
+            calc(var(--space-10) + var(--space-2) + env(safe-area-inset-bottom) + var(--space-7));
     }
 }
 
@@ -793,34 +928,59 @@ a {
         gap: var(--space-2);
     }
 
-    .ledger-name,
-    .role-badge,
-    .ledger-switch-label {
+    /* W1 IA-B: ≤40rem topbar = 品牌 mark / 当前域 + 收票 / 我。
+       搜索与外观让位进「我」popover (ledger-mobile-links), 品牌名与
+       顶栏账本名隐藏 (域名保留, 位置感不丢)。 */
+    .topbar-brand-name,
+    .product-topbar > .topbar-search,
+    .product-topbar > .appearance {
         display: none;
     }
 
-    .ledger-popover {
-        position: fixed;
-        inset-block-start: calc(var(--space-10) * 3);
-        inset-inline: var(--space-4);
-        min-width: 0;
+    .ledger-mobile-links {
+        display: grid;
+        gap: var(--space-1);
+        margin-block-start: var(--space-2);
+        padding-block-start: var(--space-2);
+        border-block-start: 1px solid var(--border-card);
     }
 
-    .appearance-popover {
-        position: fixed;
-        inset-block-start: calc(var(--space-10) * 3);
-        inset-inline: var(--space-4);
-        min-width: 0;
+    /* 只收触发器内文字, 不波及 popover rows 的账本名/角色 chip。 */
+    .ledger-switcher-trigger .ledger-name,
+    .ledger-switcher-trigger .role-badge {
+        display: none;
     }
 
-    .product-shell.has-domain-subnav .ledger-popover {
-        inset-block-start: calc(var(--space-10) * 3 + var(--space-9));
+    /* ≤40rem 头像承担触发器身份 (>40rem 双读时隐藏, 见基础规则)。 */
+    .ledger-switcher-trigger > .ledger-avatar {
+        display: grid;
     }
 
     .content,
     .content[data-page-level="secondary"],
     .content[data-page-level="tertiary"] {
         padding-inline: var(--space-4);
+    }
+}
+
+/* K3: pointer 轴正交于 width 断点 — 宽度管布局密度, coarse 管触达尺寸。
+   桌面细指针保持 40px 密度; 粗指针一律抬到 --target-min。 */
+@media (pointer: coarse) {
+    .nav-subnav > a,
+    .mobile-plan-nav a,
+    .appearance-trigger,
+    .appearance-choice,
+    .topbar-action,
+    .ledger-switcher-trigger,
+    .ledger-popover .row,
+    .ledger-logout,
+    .manager-home-link {
+        min-height: var(--target-min);
+    }
+
+    .month-picker a {
+        width: var(--target-min);
+        height: var(--target-min);
     }
 }
 
@@ -844,9 +1004,8 @@ a {
     min-height: var(--space-9);
     align-items: center;
     padding: var(--space-2) var(--space-4);
-    border: 1px solid var(--border-input);
     border-radius: var(--radius-sm);
-    background: var(--surface-card);
+    background: var(--surface-sunken);
     color: var(--text-muted);
     font-size: var(--type-caption-size);
     font-weight: var(--type-subtitle-weight);
@@ -854,6 +1013,5 @@ a {
 }
 
 .manager-home-link:hover {
-    border-color: var(--control-border-hover);
     color: var(--text-default);
 }

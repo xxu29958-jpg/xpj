@@ -1,4 +1,4 @@
-﻿#requires -Version 5.1
+#requires -Version 5.1
 <#
 .SYNOPSIS
     v1.0 public-boundary acceptance probe.
@@ -267,7 +267,7 @@ Test-Probe -Name 'public /static/shared/tokens.css' -Url "$BaseUrl/static/shared
 # fetch them when adding to home screen. None contain account data.
 Test-Probe -Name 'public /static/web/manifest.webmanifest' -Url "$BaseUrl/static/web/manifest.webmanifest" -Method 'GET' -ExpectedStatus @(200) | Out-Null
 Test-Probe -Name 'public /static/web/sw.js' -Url "$BaseUrl/static/web/sw.js" -Method 'GET' -ExpectedStatus @(200) | Out-Null
-Test-Probe -Name 'public /static/web/icon.svg' -Url "$BaseUrl/static/web/icon.svg" -Method 'GET' -ExpectedStatus @(200) | Out-Null
+Test-Probe -Name 'public /static/web/product/brand/icon-512.png' -Url "$BaseUrl/static/web/product/brand/icon-512.png" -Method 'GET' -ExpectedStatus @(200) | Out-Null
 
 # /api/auth/pair must be reachable but reject obviously invalid input.
 # Backend may reject at the auth layer (401 invalid_pairing_code) OR at

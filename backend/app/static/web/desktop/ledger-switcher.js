@@ -1,4 +1,7 @@
-/* Ledger switcher dropdown for /web desktop shell. */
+/* Ledger switcher disclosure for /web product shell.
+   W1 repair: 根是 <details> 原生披露 (无 JS 可开合/键盘/读屏诚实);
+   点外部 / Escape 关闭由 core.js 的 bindDisclosureDismiss 共享便利层承担,
+   本文件不再持有开合状态。 */
 (function (window, document) {
   "use strict";
 
@@ -6,18 +9,7 @@
 
   app.initLedgerSwitcher = function initLedgerSwitcher() {
     const root = document.getElementById("ledger-switcher");
-    const popover = document.getElementById("ledger-popover");
-    if (!root || !popover) return;
-    root.addEventListener("click", function (e) {
-      // 仅当点击 chip 自身（非 popover 行）时翻转
-      if (popover.contains(e.target)) return;
-      const open = popover.classList.toggle("open");
-      root.setAttribute("data-open", open ? "true" : "false");
-    });
-    document.addEventListener("click", function (e) {
-      if (root.contains(e.target)) return;
-      popover.classList.remove("open");
-      root.setAttribute("data-open", "false");
-    });
+    if (!root) return;
+    app.bindDisclosureDismiss(root, "summary");
   };
 })(window, document);

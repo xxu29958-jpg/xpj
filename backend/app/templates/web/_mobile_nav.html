@@ -1,0 +1,36 @@
+{# 移动域内页签 (W1 IA-B): 窄屏当前域的页级链接, 作为 main 首元素 in-flow
+   渲染、随页滚动, 不再占 chrome。仅在 ≤64rem 由 shell.css 显示。
+   页级 is_* 标志在 base.html 单一计算, 本 partial 只消费。
+   上下文: q, _domain, is_* 标志, pending_count, suspected_duplicate_count。 #}
+{# 只渲染当前域的页级链接, 横向滚动; 工作区兜底域整行不渲染。 #}
+{% if _domain != 'workspace' %}
+<nav class="mobile-plan-nav" aria-label="当前领域页面">
+  {% if _domain == 'inbox' %}
+    <a class="{% if is_pending %}active{% endif %}" href="/web/pending{{ q }}"{% if is_pending %} aria-current="page"{% endif %}>待确认{% if pending_count %}<span class="nav-badge">{{ pending_count }}</span>{% endif %}</a>
+    <a class="{% if is_duplicates %}active{% endif %}" href="/web/duplicates{{ q }}"{% if is_duplicates %} aria-current="page"{% endif %}>疑似重复{% if suspected_duplicate_count %}<span class="nav-badge">{{ suspected_duplicate_count }}</span>{% endif %}</a>
+  {% elif _domain == 'transactions' %}
+    <a class="{% if is_confirmed %}active{% endif %}" href="/web/confirmed{{ q }}"{% if is_confirmed %} aria-current="page"{% endif %}>已确认</a>
+    <a class="{% if is_search %}active{% endif %}" href="/web/search{{ q }}"{% if is_search %} aria-current="page"{% endif %}>搜索</a>
+    <a class="{% if is_library %}active{% endif %}" href="/web/library{{ q }}"{% if is_library %} aria-current="page"{% endif %}>资料库</a>
+    <a class="{% if is_import %}active{% endif %}" href="/web/import{{ q }}"{% if is_import %} aria-current="page"{% endif %}>导入导出</a>
+  {% elif _domain == 'obligations' %}
+    <a class="{% if is_debts %}active{% endif %}" href="/web/debts{{ q }}"{% if is_debts %} aria-current="page"{% endif %}>欠款</a>
+    <a class="{% if is_receivables %}active{% endif %}" href="/web/receivables{{ q }}"{% if is_receivables %} aria-current="page"{% endif %}>欠我的</a>
+    <a class="{% if is_bill_split_inbox %}active{% endif %}" href="/web/bill-splits/inbox{{ q }}"{% if is_bill_split_inbox %} aria-current="page"{% endif %}>拆账收件箱</a>
+    <a class="{% if is_bill_split_sent %}active{% endif %}" href="/web/bill-splits/sent{{ q }}"{% if is_bill_split_sent %} aria-current="page"{% endif %}>已发拆账</a>
+    <a class="{% if is_repayment_drafts %}active{% endif %}" href="/web/repayment-drafts{{ q }}"{% if is_repayment_drafts %} aria-current="page"{% endif %}>还款捕获</a>
+  {% elif _domain == 'plans' %}
+    <a class="{% if is_budgets %}active{% endif %}" href="/web/budgets{{ q }}"{% if is_budgets %} aria-current="page"{% endif %}>预算</a>
+    <a class="{% if is_goals %}active{% endif %}" href="/web/goals{{ q }}"{% if is_goals %} aria-current="page"{% endif %}>目标</a>
+    <a class="{% if is_debt_goals %}active{% endif %}" href="/web/debt-goals{{ q }}"{% if is_debt_goals %} aria-current="page"{% endif %}>还债目标</a>
+    <a class="{% if is_income_plans %}active{% endif %}" href="/web/income-plans{{ q }}"{% if is_income_plans %} aria-current="page"{% endif %}>收入记录</a>
+    <a class="{% if is_budget_advise %}active{% endif %}" href="/web/budget-advise{{ q }}"{% if is_budget_advise %} aria-current="page"{% endif %}>AI 预算建议</a>
+    <a class="{% if is_recurring %}active{% endif %}" href="/web/recurring{{ q }}"{% if is_recurring %} aria-current="page"{% endif %}>固定支出</a>
+  {% elif _domain == 'insights' %}
+    <a class="{% if is_overview %}active{% endif %}" href="/web/overview{{ q }}"{% if is_overview %} aria-current="page"{% endif %}>总览</a>
+    <a class="{% if is_reports %}active{% endif %}" href="/web/reports{{ q }}"{% if is_reports %} aria-current="page"{% endif %}>报表</a>
+    <a class="{% if is_data_quality %}active{% endif %}" href="/web/data-quality{{ q }}"{% if is_data_quality %} aria-current="page"{% endif %}>数据体检</a>
+    <a class="{% if is_dashboard_cards %}active{% endif %}" href="/web/dashboard/cards{{ q }}"{% if is_dashboard_cards %} aria-current="page"{% endif %}>模块设置</a>
+  {% endif %}
+</nav>
+{% endif %}
