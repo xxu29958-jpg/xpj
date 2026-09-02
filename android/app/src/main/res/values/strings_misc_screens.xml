@@ -57,6 +57,8 @@
     <string name="global_search_badge_pending">待确认</string>
     <string name="global_search_badge_confirmed">已确认</string>
     <string name="global_search_filter_category_all">全部分类</string>
+    <string name="global_search_filter_category_more">更多分类</string>
+    <string name="global_search_filter_category_less">收起分类</string>
     <string name="global_search_filter_month_all">全部月份</string>
     <string name="global_search_filter_month_picker_description">选择月份</string>
     <string name="global_search_filter_amount_hint">金额可精确匹配。</string>

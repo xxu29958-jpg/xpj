@@ -4,16 +4,14 @@
 <resources>
     <!-- Fact page -->
     <string name="expense_fact_title">账单详情</string>
-    <string name="expense_fact_subtitle_confirmed">已确认 · 修改请使用更正</string>
     <string name="expense_fact_status_confirmed">已确认</string>
     <string name="expense_fact_revision_badge">第 %1$d 版</string>
+    <string name="expense_fact_hero_original_caption">原始 %1$s</string>
+    <string name="expense_fact_hero_refunded_caption">已退回 %1$s</string>
+    <string name="expense_fact_hero_gross_caption">原账金额</string>
     <string name="expense_fact_field_amount">金额</string>
-    <string name="expense_fact_field_merchant">商家</string>
-    <string name="expense_fact_field_category">分类</string>
-    <string name="expense_fact_field_time">消费时间</string>
     <string name="expense_fact_field_tags">标签</string>
     <string name="expense_fact_field_note">备注</string>
-    <string name="expense_fact_field_source">来源</string>
     <string name="expense_fact_field_created">上传时间</string>
     <string name="expense_fact_field_confirmed_at">确认时间</string>
     <string name="expense_fact_value_empty">—</string>

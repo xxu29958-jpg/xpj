@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="transactions_library_title">资料库</string>
-    <string name="transactions_library_subtitle">统一维护交易使用的分类、商家、标签、自动规则与已移除数据</string>
+    <string name="transactions_library_subtitle">整理分类、商家和标签，找回删掉的内容</string>
     <string name="transactions_library_back_to_transactions">交易</string>
     <string name="transactions_library_back_to_library">资料库</string>
-    <string name="transactions_library_group_vocabulary">交易字典</string>
-    <string name="transactions_library_group_automation">自动化</string>
-    <string name="transactions_library_group_lifecycle">数据生命周期</string>
+    <string name="transactions_library_group_vocabulary">整理名称</string>
+    <string name="transactions_library_group_automation">自动归类</string>
+    <string name="transactions_library_group_lifecycle">找回数据</string>
     <string name="transactions_library_categories_title">分类</string>
     <string name="transactions_library_categories_subtitle">查看内置分类，管理账本中的自定义分类</string>
     <string name="transactions_library_merchants_title">商家</string>
@@ -20,8 +20,6 @@
 
     <string name="category_directory_title">分类</string>
     <string name="category_directory_subtitle">%1$d 个内置分类 · %2$d 个自定义分类</string>
-    <string name="category_directory_intro_title">分类是交易的稳定语义</string>
-    <string name="category_directory_intro_body">内置分类保证基础口径一致；在交易中使用新名称后，会自动加入当前账本的自定义分类。</string>
     <string name="category_directory_readonly">当前账本为只读角色，可以查看分类但不能移除。</string>
     <string name="category_directory_default_title">内置分类</string>
     <string name="category_directory_default_body">跨账本保持一致，不可删除。</string>

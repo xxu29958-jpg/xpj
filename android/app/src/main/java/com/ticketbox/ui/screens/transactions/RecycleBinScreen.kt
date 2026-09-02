@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material.icons.Icons
@@ -26,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
@@ -100,11 +103,24 @@ fun RecycleBinScreen(
         )
     }
 
+    val bodyState = recycleBinBodyState(state)
+    val subtitle = if (bodyState == RecycleBinBodyState.Content) {
+        val summary = recycleBinSummaryModel(state.items.size, state.shortWindowCount)
+        stringResource(
+            R.string.recycle_bin_summary_line,
+            summary.totalCount,
+            summary.shortWindowCount,
+            summary.longTermCount,
+        )
+    } else {
+        stringResource(R.string.recycle_bin_page_subtitle)
+    }
+
     AppSecondaryScrollableContent(
         chrome = AppSecondaryPageChrome(
             role = AppPageRole.Ledger,
             title = stringResource(R.string.recycle_bin_page_title),
-            subtitle = stringResource(R.string.recycle_bin_page_subtitle),
+            subtitle = subtitle,
             backText = stringResource(R.string.transactions_library_back_to_library),
             onBack = onBack,
             verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
@@ -148,11 +164,9 @@ private fun LazyListScope.recycleBinPageContent(
                 onRetry = onRefresh,
             )
         }
-        RecycleBinBodyState.Loading,
-        RecycleBinBodyState.Empty,
-        -> item { RecycleBinStateCard(bodyState) }
+        RecycleBinBodyState.Loading -> item { RecycleBinStateCard() }
+        RecycleBinBodyState.Empty -> item { RecycleBinEmptyState() }
         RecycleBinBodyState.Content -> {
-            item { RecycleBinSummary(state) }
             item {
                 RecycleBinListCard(
                     state = state,
@@ -164,34 +178,42 @@ private fun LazyListScope.recycleBinPageContent(
 }
 
 @Composable
-private fun RecycleBinSummary(state: RecycleBinUiState) {
-    val summary = recycleBinSummaryModel(state.items.size, state.shortWindowCount)
-    AppContentCard {
-        Text(
-            text = stringResource(R.string.recycle_bin_section_items),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = AppTextHierarchy.heading.weight,
+private fun RecycleBinEmptyState() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = AppSpacing.cardGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.RestoreFromTrash,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(AppSpacing.controlMinHeight),
         )
         Text(
-            text = stringResource(
-                R.string.recycle_bin_summary_line,
-                summary.totalCount,
-                summary.shortWindowCount,
-                summary.longTermCount,
-            ),
+            text = stringResource(R.string.recycle_bin_empty_title),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = AppTextHierarchy.heading.weight,
+            textAlign = TextAlign.Center,
+        )
+        Text(
+            text = stringResource(R.string.recycle_bin_empty_body),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
         )
     }
 }
 
 @Composable
-private fun RecycleBinStateCard(bodyState: RecycleBinBodyState) {
+private fun RecycleBinStateCard() {
     AppContentCard {
         AppListStateContent(
             state = AppListStateSpec(
                 isEmpty = true,
-                loading = bodyState == RecycleBinBodyState.Loading,
+                loading = true,
                 emptyText = stringResource(R.string.recycle_bin_empty_body),
                 emptyTitle = stringResource(R.string.recycle_bin_empty_title),
                 emptyBody = stringResource(R.string.recycle_bin_empty_body),

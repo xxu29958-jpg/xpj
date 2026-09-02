@@ -177,7 +177,10 @@ private fun LedgerOffsetInflowAmount(offset: StreamOffset, modifier: Modifier = 
         ),
     )
     Box(
-        modifier = modifier.widthIn(min = AppAdaptiveAmountRowDefaults.statusMinWidth),
+        modifier = modifier.widthIn(
+            min = AppAdaptiveAmountRowDefaults.statusMinWidth,
+            max = AppAdaptiveAmountRowDefaults.secondaryMetaInlineMaxWidth,
+        ),
         contentAlignment = Alignment.CenterEnd,
     ) {
         AppEndAlignedAmountText(

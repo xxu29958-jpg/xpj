@@ -17,7 +17,19 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Devices
+import androidx.compose.material.icons.filled.DirectionsBus
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.MedicalServices
+import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.ShoppingBag
+import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.Theaters
+import androidx.compose.material.icons.filled.Weekend
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -27,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -478,6 +491,25 @@ private fun LedgerAmountOrPending(
     }
 }
 
+/**
+ * W2-B: 默认分类从单调首字块升级为语义图标（展示助读，分类文本仍是事实）；
+ * 自定义/未知分类回退首字，不为无事实的分类硬造图形。
+ */
+private val ledgerCategoryIcons: Map<String, ImageVector> = mapOf(
+    "餐饮" to Icons.Filled.Restaurant,
+    "交通" to Icons.Filled.DirectionsBus,
+    "购物" to Icons.Filled.ShoppingBag,
+    "娱乐" to Icons.Filled.Theaters,
+    "医疗" to Icons.Filled.MedicalServices,
+    "教育" to Icons.Filled.School,
+    "住房" to Icons.Filled.Home,
+    "通讯" to Icons.Filled.Phone,
+    "AI订阅" to Icons.Filled.SmartToy,
+    "数码" to Icons.Filled.Devices,
+    "游戏" to Icons.Filled.SportsEsports,
+    "生活" to Icons.Filled.Weekend,
+)
+
 @Composable
 private fun LedgerCategoryMark(category: String, density: AppListDensity) {
     val visuals = LocalThemeVisuals.current
@@ -489,18 +521,30 @@ private fun LedgerCategoryMark(category: String, density: AppListDensity) {
             .background(visuals.chipSelected.copy(alpha = LedgerItemLayout.CategoryMarkAlpha)),
         contentAlignment = Alignment.Center,
     ) {
-        val markFallback = stringResource(R.string.ledger_item_category_mark_fallback)
-        Text(
-            text = category.take(1).ifBlank { markFallback },
-            color = visuals.primary,
-            style = if (density == AppListDensity.Compact) {
-                MaterialTheme.typography.labelLarge
-            } else {
-                MaterialTheme.typography.titleMedium
-            },
-            fontWeight = AppTypography.cardTitle.weight,
-            textAlign = TextAlign.Center,
-        )
+        val icon = ledgerCategoryIcons[category]
+        if (icon != null) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = visuals.primary,
+                modifier = Modifier.size(
+                    if (density == AppListDensity.Compact) 18.dp else 20.dp,
+                ),
+            )
+        } else {
+            val markFallback = stringResource(R.string.ledger_item_category_mark_fallback)
+            Text(
+                text = category.take(1).ifBlank { markFallback },
+                color = visuals.primary,
+                style = if (density == AppListDensity.Compact) {
+                    MaterialTheme.typography.labelLarge
+                } else {
+                    MaterialTheme.typography.titleMedium
+                },
+                fontWeight = AppTypography.cardTitle.weight,
+                textAlign = TextAlign.Center,
+            )
+        }
     }
 }
 

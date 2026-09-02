@@ -24,6 +24,7 @@ import com.ticketbox.ui.design.AppTextHierarchy
 fun SettingsSection(
     title: String,
     icon: ImageVector,
+    trailing: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
@@ -49,7 +50,9 @@ fun SettingsSection(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = AppTextHierarchy.heading.weight,
+                modifier = Modifier.weight(1f),
             )
+            trailing?.invoke()
         }
         content()
     }

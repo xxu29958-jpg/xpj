@@ -43,7 +43,8 @@ fun ExpenseFactScreen(
         chrome = AppSecondaryPageChrome(
             role = AppPageRole.Ledger,
             title = stringResource(R.string.expense_fact_title),
-            subtitle = stringResource(R.string.expense_fact_subtitle_confirmed),
+            // W2-B: 副标题不再是操作说明——更正入口在摘要段自明。
+            subtitle = null,
             backText = "",
             onBack = onBack,
             hasBottomBar = false,

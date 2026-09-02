@@ -15,6 +15,11 @@ data class ConfirmedStreamPruneScope(
     val offsetPublicIds: Set<String>?,
 )
 
+data class ConfirmedStreamSnapshot(
+    val roots: List<ExpenseEntity>,
+    val offsets: List<ExpenseOffsetStreamEntity>,
+)
+
 /**
  * v0.4-alpha1 multi-ledger contract:
  *
@@ -70,6 +75,10 @@ interface ExpenseDao {
 
     @Query("SELECT * FROM expense_offset_stream WHERE ledgerId = :ledgerId")
     suspend fun getConfirmedStreamOffsets(ledgerId: String): List<ExpenseOffsetStreamEntity>
+
+    @Transaction
+    suspend fun getConfirmedStreamSnapshot(ledgerId: String): ConfirmedStreamSnapshot =
+        ConfirmedStreamSnapshot(getConfirmed(ledgerId), getConfirmedStreamOffsets(ledgerId))
 
     @Query("SELECT publicId FROM expense_offset_stream WHERE ledgerId = :ledgerId")
     suspend fun confirmedStreamOffsetPublicIdsForLedger(ledgerId: String): List<String>

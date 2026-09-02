@@ -9,12 +9,23 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import com.ticketbox.R
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.forTone
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
+
+/**
+ * W2-B: query 刷新成功提示与头部「已同步 HH:mm」重复，仅在 presentation 过滤
+ * 这一条；manual/batch/export/error 的 command receipt 永不过滤。无 timer、无新状态。
+ */
+internal fun ledgerPageMessageVisible(message: UiText?): Boolean = when (message) {
+    null -> false
+    is UiText.Res -> message.id != R.string.ledger_msg_sync_done
+    else -> true
+}
 
 @Composable
 internal fun LedgerInlineStatusMessage(

@@ -4,8 +4,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -23,7 +21,6 @@ import com.ticketbox.domain.model.StreamOffsetKind
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.recordCurrencyDisplay
 import com.ticketbox.ui.asString
-import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.AppSectionHeader
 import com.ticketbox.ui.components.StatusPill
@@ -124,11 +121,19 @@ private fun FactOffsetsLoaded(
     viewModel: ExpenseFactViewModel,
 ) {
     val homeDisplay = bundle.root.recordCurrencyDisplay()
+    // W2-B: hero 已用同一 server bundle 表达净额/原始/已退回时，段内不再重复
+    // 汇总表；bundle 未知（hero 为原始金额）时本表仍是唯一分解事实。
+    val heroShowsNet = factHeroShowsNet(state.factBundle)
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-        FactOffsetSummary(bundle = bundle)
+        // 汇总表可被 hero 抑制，但非零汇差是真实既有能力，单独存续。
+        if (!heroShowsNet) {
+            FactOffsetSummary(bundle = bundle)
+        } else {
+            FactOffsetFxDifference(bundle = bundle, homeDisplay = homeDisplay)
+        }
         if (bundle.activeOffsets.isEmpty() &&
             bundle.financialSummary.status == ExpenseLineageStatus.Confirmed
         ) {
@@ -147,75 +152,6 @@ private fun FactOffsetsLoaded(
         }
         FactOffsetImpacts(bundle = bundle, homeDisplay = homeDisplay)
         FactOffsetHistory(bundle = bundle)
-    }
-}
-
-@Composable
-private fun FactOffsetSummary(bundle: ExpenseFactBundle) {
-    val summary = bundle.financialSummary
-    if (summary.status == ExpenseLineageStatus.Confirmed && bundle.activeOffsets.isEmpty()) return
-    val root = bundle.root
-    val originalDisplay = CurrencyDisplay.forRecord(
-        root.originalCurrencyCodeRaw ?: root.originalCurrencyCode.storageKey,
-    )
-    val homeDisplay = root.recordCurrencyDisplay()
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
-        val chipRes = when (summary.status) {
-            ExpenseLineageStatus.Confirmed -> null
-            ExpenseLineageStatus.PartiallyRefunded -> R.string.ledger_lineage_partially_refunded
-            ExpenseLineageStatus.FullyRefunded -> R.string.ledger_lineage_fully_refunded
-            ExpenseLineageStatus.Reversed -> R.string.ledger_lineage_reversed
-        }
-        if (chipRes != null) {
-            Row {
-                StatusPill(text = stringResource(chipRes), active = false)
-            }
-        }
-        FactOffsetSummaryRow(
-            label = stringResource(R.string.expense_offset_summary_gross),
-            value = formatDisplayAmount(summary.grossOriginalMinor, originalDisplay),
-        )
-        if (summary.activeRefundedOriginalMinor > 0L) {
-            FactOffsetSummaryRow(
-                label = stringResource(R.string.expense_offset_summary_refunded),
-                value = formatDisplayAmount(summary.activeRefundedOriginalMinor, originalDisplay),
-            )
-        }
-        FactOffsetSummaryRow(
-            label = stringResource(R.string.expense_offset_summary_net),
-            value = formatDisplayAmount(summary.lineageHomeNetCents, homeDisplay),
-        )
-        if (summary.fxDifferenceCents != 0L) {
-            Text(
-                text = stringResource(
-                    R.string.expense_offset_summary_fx_difference,
-                    formatDisplayAmount(summary.fxDifferenceCents, homeDisplay),
-                ),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-    }
-}
-
-@Composable
-private fun FactOffsetSummaryRow(label: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight),
-    ) {
-        Text(
-            text = label,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.fillMaxWidth(0.3f),
-        )
-        Text(
-            text = value,
-            color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.fillMaxWidth(),
-        )
     }
 }
 
@@ -349,9 +285,9 @@ private fun FactOffsetActions(
         return
     }
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        AppPrimaryButton(
+        // W2-B: 一屏一个深色主动作——摘要段的「更正」已是 primary，登记退款降为次级。
+        AppSecondaryButton(
             text = stringResource(R.string.expense_offset_create_refund_cta),
-            icon = Icons.Filled.Add,
             modifier = Modifier.fillMaxWidth(),
             enabled = status != ExpenseLineageStatus.FullyRefunded,
             onClick = { viewModel.openOffsetSheet(StreamOffsetKind.Refund) },

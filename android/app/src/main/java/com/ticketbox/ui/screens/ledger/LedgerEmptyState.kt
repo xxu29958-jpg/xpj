@@ -2,39 +2,42 @@ package com.ticketbox.ui.screens.ledger
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppListStateContent
 import com.ticketbox.ui.components.AppListStateSpec
-import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.AppOutlinedButton
+import com.ticketbox.ui.components.AppOutlinedButtonOptions
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.mascot.MascotEmptyIllustration
+import com.ticketbox.ui.screens.LedgerRecordCtaSlot
 import com.ticketbox.viewmodel.LedgerUiState
 
+/**
+ * W2-B 流水空态：单一 CTA 纪律（承 W2-A pending 空态）——
+ * 有筛选的唯一动作是「重置筛选」（含 Viewer，清筛选是读侧动作）；
+ * 无筛选的 writer 空态唯一动作是「记一笔」（页头不再重复渲染）；
+ * Viewer 无任何写入口。刷新能力由下拉刷新 + 头部新鲜度行 + 工具内同步承担，
+ * 不再有常驻「更新账本」按钮。
+ */
 @Composable
-internal fun EmptyLedgerState(
-    state: LedgerUiState,
-    onClearFilters: () -> Unit,
-    onSync: () -> Unit,
-    onManualAdd: () -> Unit,
-) {
+private fun ledgerEmptyTitle(state: LedgerUiState): String {
     val hasMonth = state.monthFilter.isNotBlank()
     val hasCategory = state.categoryFilter.isNotBlank()
     val hasTag = state.tagFilter.isNotBlank()
-    val hasActiveFilters = state.filter.hasFilters
-    val title = when {
+    return when {
         hasTag -> stringResource(R.string.ledger_empty_title_tag, state.tagFilter)
         hasMonth && hasCategory -> stringResource(
             R.string.ledger_empty_title_month_category,
@@ -45,12 +48,55 @@ internal fun EmptyLedgerState(
         hasCategory -> stringResource(R.string.ledger_empty_title_category, state.categoryFilter)
         else -> stringResource(R.string.ledger_empty_title_default)
     }
-    val body = when {
-        hasMonth || hasCategory || hasTag -> stringResource(R.string.ledger_empty_body_filtered)
+}
+
+@Composable
+private fun ledgerEmptyBody(state: LedgerUiState): String {
+    val hasScopedFilter = state.monthFilter.isNotBlank() ||
+        state.categoryFilter.isNotBlank() ||
+        state.tagFilter.isNotBlank()
+    return when {
+        hasScopedFilter -> stringResource(R.string.ledger_empty_body_filtered)
         state.readOnly -> stringResource(R.string.ledger_empty_body_readonly)
         else -> stringResource(R.string.ledger_empty_body_default)
     }
+}
 
+@Composable
+private fun LedgerEmptyCta(
+    state: LedgerUiState,
+    recordCtaSlot: LedgerRecordCtaSlot?,
+    onClearFilters: () -> Unit,
+    onManualAdd: () -> Unit,
+) {
+    when {
+        state.filter.hasFilters -> {
+            AppOutlinedButton(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onClearFilters,
+                options = AppOutlinedButtonOptions(),
+            ) {
+                Text(stringResource(R.string.ledger_empty_reset_filters))
+            }
+        }
+        recordCtaSlot == LedgerRecordCtaSlot.EmptyState -> {
+            Button(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onManualAdd,
+            ) {
+                Text(stringResource(R.string.ledger_header_add_button))
+            }
+        }
+    }
+}
+
+@Composable
+internal fun EmptyLedgerState(
+    state: LedgerUiState,
+    recordCtaSlot: LedgerRecordCtaSlot?,
+    onClearFilters: () -> Unit,
+    onManualAdd: () -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -59,68 +105,36 @@ internal fun EmptyLedgerState(
                 bottom = AppSpacing.bottomContentPadding,
             ),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-        horizontalAlignment = Alignment.Start,
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.20f))
+        // 只有「账本真的空了」才是吉祥物时刻；筛选无结果是操作态，不插画。
+        if (recordCtaSlot == LedgerRecordCtaSlot.EmptyState) {
+            MascotEmptyIllustration(
+                modifier = Modifier.padding(bottom = AppSpacing.miniGap),
+            )
+        }
         Text(
-            text = title,
+            text = ledgerEmptyTitle(state),
             style = MaterialTheme.typography.titleSmall,
             fontWeight = AppTextHierarchy.heading.weight,
+            textAlign = TextAlign.Center,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
         Text(
-            text = body,
+            text = ledgerEmptyBody(state),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
-        Text(
-            text = ledgerFilterSummary(state),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
+        LedgerEmptyCta(
+            state = state,
+            recordCtaSlot = recordCtaSlot,
+            onClearFilters = onClearFilters,
+            onManualAdd = onManualAdd,
         )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        ) {
-            if (hasActiveFilters) {
-                Button(
-                    modifier = Modifier.weight(1f),
-                    onClick = onClearFilters,
-                ) {
-                    Text(stringResource(R.string.ledger_empty_reset_filters))
-                }
-                QuietOutlinedButton(
-                    text = stringResource(R.string.ledger_empty_update_ledger),
-                    modifier = Modifier.weight(1f),
-                    enabled = !state.syncing,
-                    onClick = onSync,
-                )
-            } else if (!state.readOnly) {
-                Button(
-                    modifier = Modifier.weight(1f),
-                    onClick = onManualAdd,
-                ) {
-                    Text(stringResource(R.string.ledger_empty_manual_add))
-                }
-                QuietOutlinedButton(
-                    text = stringResource(R.string.ledger_empty_update_ledger),
-                    modifier = Modifier.weight(1f),
-                    enabled = !state.syncing,
-                    onClick = onSync,
-                )
-            } else {
-                QuietOutlinedButton(
-                    text = stringResource(R.string.ledger_empty_update_ledger),
-                    modifier = Modifier.weight(1f),
-                    enabled = !state.syncing,
-                    onClick = onSync,
-                )
-            }
-        }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.20f))
     }
 }
 
@@ -132,8 +146,8 @@ internal fun EmptyLedgerState(
 @Composable
 internal fun LedgerEmptyOrFirstSync(
     state: LedgerUiState,
+    recordCtaSlot: LedgerRecordCtaSlot?,
     onClearFilters: () -> Unit,
-    onSync: () -> Unit,
     onManualAdd: () -> Unit,
 ) {
     if (state.isFirstSync) {
@@ -141,8 +155,8 @@ internal fun LedgerEmptyOrFirstSync(
     } else {
         EmptyLedgerState(
             state = state,
+            recordCtaSlot = recordCtaSlot,
             onClearFilters = onClearFilters,
-            onSync = onSync,
             onManualAdd = onManualAdd,
         )
     }
