@@ -179,27 +179,6 @@ fun MerchantAliasesScreen(
                 body = stringResource(R.string.merchant_management_readonly_hint),
             )
         }
-        MerchantManagementOverviewSection(catalog = state.catalog, aliases = state.aliases)
-
-        MerchantCatalogListSection(
-            catalog = state.catalog,
-            readOnly = state.readOnly,
-            busy = state.busy,
-            actions = MerchantCatalogListActions(
-                onRename = catalogDialogController::openRename,
-                onToggle = actions.catalog.onToggle,
-                onMerge = catalogDialogController::openMerge,
-                onDelete = { deletingCatalog = it },
-            ),
-        )
-
-        MerchantAliasListSection(
-            aliases = state.aliases,
-            readOnly = state.readOnly,
-            busy = state.busy,
-            onToggleAlias = actions.alias.onToggle,
-            onDeleteAlias = { deletingAlias = it },
-        )
 
         if (!state.readOnly) {
             MerchantManagementToolsSection(
@@ -257,6 +236,33 @@ fun MerchantAliasesScreen(
                         aliasMessage = null
                     },
                 ),
+            )
+        }
+
+        if (state.catalog.isEmpty() && state.aliases.isEmpty()) {
+            SettingsInlineEmpty(
+                title = stringResource(R.string.merchant_aliases_empty_combined_title),
+                body = stringResource(R.string.merchant_aliases_empty_combined_body),
+            )
+        } else {
+            MerchantCatalogListSection(
+                catalog = state.catalog,
+                readOnly = state.readOnly,
+                busy = state.busy,
+                actions = MerchantCatalogListActions(
+                    onRename = catalogDialogController::openRename,
+                    onToggle = actions.catalog.onToggle,
+                    onMerge = catalogDialogController::openMerge,
+                    onDelete = { deletingCatalog = it },
+                ),
+            )
+
+            MerchantAliasListSection(
+                aliases = state.aliases,
+                readOnly = state.readOnly,
+                busy = state.busy,
+                onToggleAlias = actions.alias.onToggle,
+                onDeleteAlias = { deletingAlias = it },
             )
         }
     }

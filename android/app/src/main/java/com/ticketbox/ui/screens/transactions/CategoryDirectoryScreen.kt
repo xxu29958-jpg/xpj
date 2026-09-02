@@ -91,37 +91,19 @@ fun CategoryDirectoryScreen(
             },
         ),
     ) {
-        CategoryDirectoryIntro(canModify = state.canModify)
-        DefaultCategoriesCard()
-        CustomCategoriesCard(
-            state = state,
-            onRetry = viewModel::refresh,
-            onDelete = { pendingDelete = it },
-        )
-    }
-}
-
-@Composable
-private fun CategoryDirectoryIntro(
-    canModify: Boolean,
-) {
-    AppContentCard {
-        Text(
-            text = stringResource(R.string.category_directory_intro_title),
-            style = MaterialTheme.typography.titleMedium,
-        )
-        Text(
-            text = stringResource(R.string.category_directory_intro_body),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        if (!canModify) {
+        if (!state.canModify) {
             Text(
                 text = stringResource(R.string.category_directory_readonly),
                 color = MaterialTheme.colorScheme.tertiary,
                 style = MaterialTheme.typography.bodySmall,
             )
         }
+        DefaultCategoriesCard()
+        CustomCategoriesCard(
+            state = state,
+            onRetry = viewModel::refresh,
+            onDelete = { pendingDelete = it },
+        )
     }
 }
 

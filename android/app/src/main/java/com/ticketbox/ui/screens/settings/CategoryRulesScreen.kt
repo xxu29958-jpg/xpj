@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material3.MaterialTheme
@@ -30,8 +29,6 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RuleApplicationBatch
 import com.ticketbox.domain.model.RuleApplyConfirmedResult
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.components.AppAction
-import com.ticketbox.ui.components.AppActionRow
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleDraftForm
@@ -243,12 +240,6 @@ private fun CategoryRulesContent(
         onUndoDelete = actions.onUndoDelete,
         onDismissUndo = actions.onDismissUndo,
     )
-    CategoryRuleCreateSection(
-        form = editor.form,
-        busy = state.busy,
-        readOnly = state.readOnly,
-        actions = categoryRuleCreateActions(editor, actions),
-    )
     CategoryRuleListSection(
         state = state,
         editor = editor,
@@ -277,37 +268,137 @@ private fun CategoryRuleListSection(
     actions: CategoryRulesActions,
     onRequestDelete: (CategoryRule) -> Unit,
 ) {
-    SettingsSection(title = stringResource(R.string.category_rules_section_list), icon = Icons.Filled.Category) {
-        if (state.rules.isEmpty()) {
-            SettingsListStateSlot(
-                loading = state.rulesLoading,
-                hasData = false,
-                copy = SettingsStateSlotCopy(
-                    loadingTitle = stringResource(R.string.category_rules_loading_title),
-                    loadingBody = stringResource(R.string.category_rules_loading_body),
-                    emptyText = stringResource(R.string.category_rule_list_empty),
-                    emptyTitle = stringResource(R.string.category_rules_summary_empty),
-                    emptyBody = stringResource(R.string.category_rule_list_empty),
-                ),
-            )
+    val form = editor.form
+    SettingsSection(
+        title = stringResource(R.string.category_rules_section_list),
+        icon = Icons.Filled.Category,
+        trailing = if (!state.readOnly && form == null) {
+            {
+                TextButton(
+                    enabled = !state.busy,
+                    onClick = { editor.onFormChange(CategoryRuleDraftForm()) },
+                ) {
+                    Text(stringResource(R.string.category_rule_editor_submit_create))
+                }
+            }
         } else {
-            CategoryRuleList(
-                rules = state.rules,
-                readOnly = state.readOnly,
-                onToggleRule = actions.onToggleRule,
-                onEditRule = { rule ->
-                    if (!state.readOnly) {
-                        editor.onFormChange(CategoryRuleDraftForm.fromRule(rule))
-                    }
-                },
-                onDeleteRule = { rule ->
-                    if (!state.readOnly) {
-                        onRequestDelete(rule)
-                    }
-                },
+            null
+        },
+    ) {
+        CategoryRuleListNote(readOnly = state.readOnly, hasActiveForm = form != null)
+        if (form != null && !state.readOnly) {
+            CategoryRuleEditorSlot(
+                form = form,
+                busy = state.busy,
+                editor = editor,
+                actions = actions,
             )
         }
+        CategoryRuleListBody(
+            state = state,
+            editor = editor,
+            actions = actions,
+            onRequestDelete = onRequestDelete,
+        )
     }
+}
+
+@Composable
+private fun CategoryRuleListNote(
+    readOnly: Boolean,
+    hasActiveForm: Boolean,
+) {
+    if (readOnly) {
+        Text(
+            text = stringResource(R.string.common_readonly_ledger),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
+    } else if (!hasActiveForm) {
+        Text(
+            text = stringResource(R.string.category_rules_create_prompt_body),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+}
+
+@Composable
+private fun CategoryRuleListBody(
+    state: CategoryRulesContentState,
+    editor: CategoryRulesEditorBinding,
+    actions: CategoryRulesActions,
+    onRequestDelete: (CategoryRule) -> Unit,
+) {
+    if (state.rules.isEmpty()) {
+        SettingsListStateSlot(
+            loading = state.rulesLoading,
+            hasData = false,
+            copy = SettingsStateSlotCopy(
+                loadingTitle = stringResource(R.string.category_rules_loading_title),
+                loadingBody = stringResource(R.string.category_rules_loading_body),
+                emptyText = stringResource(R.string.category_rule_list_empty),
+                emptyTitle = stringResource(R.string.category_rules_summary_empty),
+                emptyBody = stringResource(R.string.category_rule_list_empty),
+            ),
+        )
+    } else {
+        CategoryRuleList(
+            rules = state.rules,
+            readOnly = state.readOnly,
+            onToggleRule = actions.onToggleRule,
+            onEditRule = { rule ->
+                if (!state.readOnly) {
+                    editor.onFormChange(CategoryRuleDraftForm.fromRule(rule))
+                }
+            },
+            onDeleteRule = { rule ->
+                if (!state.readOnly) {
+                    onRequestDelete(rule)
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun CategoryRuleEditorSlot(
+    form: CategoryRuleDraftForm,
+    busy: Boolean,
+    editor: CategoryRulesEditorBinding,
+    actions: CategoryRulesActions,
+) {
+    Text(
+        text = stringResource(
+            if (form.editingRule == null) {
+                R.string.category_rules_section_create
+            } else {
+                R.string.category_rules_section_edit
+            },
+        ),
+        style = MaterialTheme.typography.titleSmall,
+    )
+    CategoryRuleEditorCard(
+        form = form,
+        busy = busy,
+        onFormChange = editor.onFormChange,
+        onSubmit = {
+            form.submit(
+                fieldsRequiredMessage = editor.validationFieldsMessage,
+                priorityInvalidMessage = editor.validationPriorityMessage,
+                onInvalid = { message -> editor.onFormChange(form.copy(localMessage = message)) },
+                onValid = { rule, keyword, category, priority ->
+                    if (rule == null) {
+                        actions.onCreateRule(keyword, category, priority)
+                    } else {
+                        actions.onUpdateRule(rule, keyword, category, priority)
+                    }
+                    editor.onFormChange(null)
+                },
+            )
+        },
+        onCancel = { editor.onFormChange(null) },
+    )
 }
 
 @Composable
@@ -368,106 +459,6 @@ private fun CategoryRuleUndoPanel(
                 TextButton(onClick = onUndoDelete) { Text(stringResource(R.string.category_rules_undo_button)) }
             }
         }
-    }
-}
-
-private fun categoryRuleCreateActions(
-    editor: CategoryRulesEditorBinding,
-    actions: CategoryRulesActions,
-): CategoryRuleCreateSectionActions = CategoryRuleCreateSectionActions(
-    onStartCreate = { editor.onFormChange(CategoryRuleDraftForm()) },
-    onFormChange = editor.onFormChange,
-    onSubmit = {
-        editor.form?.let { activeForm ->
-            activeForm.submit(
-                fieldsRequiredMessage = editor.validationFieldsMessage,
-                priorityInvalidMessage = editor.validationPriorityMessage,
-                onInvalid = { message -> editor.onFormChange(activeForm.copy(localMessage = message)) },
-                onValid = { rule, keyword, category, priority ->
-                    if (rule == null) {
-                        actions.onCreateRule(keyword, category, priority)
-                    } else {
-                        actions.onUpdateRule(rule, keyword, category, priority)
-                    }
-                    editor.onFormChange(null)
-                },
-            )
-        }
-    },
-    onCancel = { editor.onFormChange(null) },
-)
-
-private data class CategoryRuleCreateSectionActions(
-    val onStartCreate: () -> Unit,
-    val onFormChange: (CategoryRuleDraftForm) -> Unit,
-    val onSubmit: () -> Unit,
-    val onCancel: () -> Unit,
-)
-
-@Composable
-private fun CategoryRuleCreateSection(
-    form: CategoryRuleDraftForm?,
-    busy: Boolean,
-    readOnly: Boolean,
-    actions: CategoryRuleCreateSectionActions,
-) {
-    if (readOnly) {
-        Text(
-            text = stringResource(R.string.common_readonly_ledger),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        return
-    }
-    SettingsSection(
-        title = if (form == null) {
-            stringResource(R.string.category_rules_section_manage)
-        } else if (form.editingRule == null) {
-            stringResource(R.string.category_rules_section_create)
-        } else {
-            stringResource(R.string.category_rules_section_edit)
-        },
-        icon = Icons.Filled.Category,
-    ) {
-        if (form == null) {
-            CategoryRuleCreatePrompt(
-                busy = busy,
-                onStartCreate = actions.onStartCreate,
-            )
-        } else {
-            CategoryRuleEditorCard(
-                form = form,
-                busy = busy,
-                onFormChange = actions.onFormChange,
-                onSubmit = actions.onSubmit,
-                onCancel = actions.onCancel,
-            )
-        }
-    }
-}
-
-@Composable
-private fun CategoryRuleCreatePrompt(
-    busy: Boolean,
-    onStartCreate: () -> Unit,
-) {
-    SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        Text(
-            text = stringResource(R.string.category_rules_create_prompt_title),
-            style = MaterialTheme.typography.titleSmall,
-        )
-        Text(
-            text = stringResource(R.string.category_rules_create_prompt_body),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-        )
-        AppActionRow(
-            primary = AppAction(
-                text = stringResource(R.string.category_rule_editor_submit_create),
-                enabled = !busy,
-                icon = Icons.Filled.Add,
-                onClick = onStartCreate,
-            ),
-        )
     }
 }
 

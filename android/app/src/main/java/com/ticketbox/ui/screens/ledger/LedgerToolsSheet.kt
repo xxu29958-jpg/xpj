@@ -1,37 +1,25 @@
 package com.ticketbox.ui.screens.ledger
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Category
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.FileDownload
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppAdaptiveEqualControlRow
+import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.components.AppSegmentedControl
 import com.ticketbox.ui.components.AppSegmentedItem
@@ -40,11 +28,8 @@ import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.buildAppTagFilterChoices
-import com.ticketbox.ui.design.AppAlpha
-import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
-import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.LedgerUiState
 import com.ticketbox.viewmodel.LedgerViewMode
 
@@ -72,7 +57,6 @@ internal data class LedgerToolsSheetActions(
     val onViewModeChange: (LedgerViewMode) -> Unit,
     val onSync: () -> Unit,
     val onExportCsv: () -> Unit,
-    val onOpenGlobalSearch: () -> Unit,
     val onOpenLibrary: () -> Unit,
     val onDismiss: () -> Unit,
 )
@@ -88,10 +72,11 @@ internal fun LedgerToolsSheet(
         title = stringResource(R.string.ledger_tools_title),
         subtitle = stringResource(R.string.ledger_tools_subtitle),
     ) {
+        // W2-B: 全局搜索已提为页头一级入口，sheet 内不再保留重复入口；
+        // 本段只留当前列表的关键词筛选能力。
         LedgerSearchTools(
             query = ledger.query,
             onQueryChange = actions.onQueryChange,
-            onOpenGlobalSearch = actions.onOpenGlobalSearch,
         )
         LedgerToolDivider()
         LedgerFilterTools(
@@ -215,7 +200,6 @@ private fun LedgerFilterTools(
 private fun LedgerSearchTools(
     query: String,
     onQueryChange: (String) -> Unit,
-    onOpenGlobalSearch: () -> Unit,
 ) {
     LedgerToolSection(title = stringResource(R.string.ledger_tools_search_title)) {
         AppTextInput(
@@ -226,13 +210,6 @@ private fun LedgerSearchTools(
             ),
             actions = AppTextInputActions(onValueChange = onQueryChange),
             modifier = Modifier.fillMaxWidth(),
-        )
-        LedgerInlineButton(
-            text = stringResource(R.string.ledger_tools_global_search),
-            modifier = Modifier.fillMaxWidth(),
-            enabled = true,
-            onClick = onOpenGlobalSearch,
-            icon = Icons.Default.Search,
         )
     }
 }
@@ -344,6 +321,11 @@ private data class LedgerOptionListState(
     val labelPrefix: String = "",
 )
 
+/**
+ * W2-B: 分类/标签选择从整行单选长清单改为紧凑 chip 流——13 个默认分类 +
+ * 标签不再把视图/导出/资料库挤出两屏。选中语义不变（空值=全部）。
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun LedgerOptionList(
     state: LedgerOptionListState,
@@ -355,64 +337,23 @@ private fun LedgerOptionList(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelMedium,
         )
-        Column(modifier = Modifier.fillMaxWidth()) {
-            LedgerOptionRow(
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+        ) {
+            AppFilterChip(
                 label = state.allLabel,
                 selected = state.selectedValue.isBlank(),
                 onClick = { onValueChange("") },
             )
             state.options.forEach { option ->
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.subtle))
-                LedgerOptionRow(
+                AppFilterChip(
                     label = "${state.labelPrefix}$option",
                     selected = state.selectedValue == option,
                     onClick = { onValueChange(option) },
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun LedgerOptionRow(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    val visuals = LocalThemeVisuals.current
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = AppSpacing.controlMinHeight)
-            .clip(RoundedCornerShape(AppRadius.extraSmall))
-            .then(
-                if (selected) {
-                    Modifier.background(visuals.chipSelected.copy(alpha = AppAlpha.soft))
-                } else {
-                    Modifier
-                },
-            )
-            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
-            .padding(horizontal = AppSpacing.compactPadding, vertical = AppSpacing.smallGap),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            modifier = Modifier.weight(1f),
-            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = if (selected) AppTextHierarchy.heading.weight else AppTextHierarchy.body.weight,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (selected) {
-            Icon(
-                imageVector = Icons.Filled.Check,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(18.dp),
-            )
         }
     }
 }

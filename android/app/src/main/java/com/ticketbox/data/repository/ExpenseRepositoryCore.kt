@@ -406,7 +406,13 @@ internal class ExpenseRepositoryCore(
                 combine(
                     expenseDao.observeConfirmed(ledgerId),
                     expenseDao.observeConfirmedStreamOffsets(ledgerId),
-                ) { roots, offsets -> confirmedStreamFromCache(roots, offsets) }
+                ) { _, _ ->
+                    // Query flows notify independently, even after one database
+                    // transaction. Read the pair together instead of combining
+                    // a new refund with the preceding root notification.
+                    val snapshot = expenseDao.getConfirmedStreamSnapshot(ledgerId)
+                    confirmedStreamFromCache(snapshot.roots, snapshot.offsets)
+                }
             }
 
     fun activeLedgerIdOrLegacy(): String = ledgerRequestGuard.activeLedgerIdOrLegacy()

@@ -209,12 +209,12 @@ private fun SearchControlSection(
                 supportingText = { Text(stringResource(R.string.global_search_filter_amount_hint)) },
             ),
         )
+        SearchScopeSelector(state = state, onScopeChange = actions.onScopeChange)
         SearchFilterChips(
             state = state,
             onCategoryChange = actions.onCategoryChange,
             onOpenMonthPicker = onOpenMonthPicker,
         )
-        SearchScopeSelector(state = state, onScopeChange = actions.onScopeChange)
     }
 }
 
@@ -247,8 +247,9 @@ private fun SearchScopeSelector(
 }
 
 /**
- * Adaptive filter chips below the search box: the month chip opens the shared
- * [MonthPickerSheet], then category chips wrap instead of hiding options offscreen.
+ * W2-B 渐进披露：月份 chip + 分类默认收起为一个入口 chip，关键词任务与
+ * 结果不再被十几颗分类 chip 挤下首屏；已有选中分类时自动展开（选中态
+ * 必须可见且可取消）。纯展示状态，不新增事实/owner。
  */
 @Composable
 private fun SearchFilterChips(
@@ -256,6 +257,8 @@ private fun SearchFilterChips(
     onCategoryChange: (String) -> Unit,
     onOpenMonthPicker: () -> Unit,
 ) {
+    var showAllCategories by rememberSaveable { mutableStateOf(false) }
+    val categoriesExpanded = showAllCategories || state.categoryFilter.isNotBlank()
     AppCompactChips {
         FlowRow(
             modifier = Modifier.fillMaxWidth(),
@@ -278,16 +281,31 @@ private fun SearchFilterChips(
                     },
                 ),
             )
-            SelectableFilterChip(
-                selected = state.categoryFilter.isBlank(),
-                label = stringResource(R.string.global_search_filter_category_all),
-                onClick = { onCategoryChange("") },
-            )
-            state.availableCategories.forEach { category ->
+            if (categoriesExpanded) {
                 SelectableFilterChip(
-                    selected = state.categoryFilter == category,
-                    label = category,
-                    onClick = { onCategoryChange(category) },
+                    selected = state.categoryFilter.isBlank(),
+                    label = stringResource(R.string.global_search_filter_category_all),
+                    onClick = { onCategoryChange("") },
+                )
+                state.availableCategories.forEach { category ->
+                    SelectableFilterChip(
+                        selected = state.categoryFilter == category,
+                        label = category,
+                        onClick = { onCategoryChange(category) },
+                    )
+                }
+                if (state.categoryFilter.isBlank()) {
+                    SelectableFilterChip(
+                        selected = false,
+                        label = stringResource(R.string.global_search_filter_category_less),
+                        onClick = { showAllCategories = false },
+                    )
+                }
+            } else {
+                SelectableFilterChip(
+                    selected = false,
+                    label = stringResource(R.string.global_search_filter_category_more),
+                    onClick = { showAllCategories = true },
                 )
             }
         }

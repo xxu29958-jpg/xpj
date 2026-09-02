@@ -51,12 +51,10 @@
     <string name="ledger_empty_title_month">%1$s 还没有已确认账单</string>
     <string name="ledger_empty_title_category">还没有 %1$s 分类账单</string>
     <string name="ledger_empty_title_default">本地还没有已确认账单</string>
-    <string name="ledger_empty_body_filtered">可以切换月份、分类或标签，或先更新账本。</string>
+    <string name="ledger_empty_body_filtered">可以切换月份、分类或标签，或下拉刷新。</string>
     <string name="ledger_empty_body_readonly">当前角色可查看已入账记录，不能手动记账。</string>
     <string name="ledger_empty_body_default">在待确认页确认几笔账单后，账本会在这里显示。</string>
     <string name="ledger_empty_reset_filters">重置筛选</string>
-    <string name="ledger_empty_update_ledger">更新账本</string>
-    <string name="ledger_empty_manual_add">手动记一笔</string>
 
     <!-- LedgerInlineFilters：内联 chip 筛选 -->
     <string name="ledger_inline_month_all">全部月份</string>
@@ -64,8 +62,8 @@
     <string name="ledger_inline_month_prev">上一个月</string>
     <string name="ledger_inline_month_next">下一个月</string>
     <string name="ledger_inline_category_all">全部分类</string>
-    <string name="ledger_inline_filter">工具</string>
-    <string name="ledger_inline_filter_count">工具 · %1$d 项</string>
+    <string name="ledger_inline_filter">筛选</string>
+    <string name="ledger_inline_filter_count">筛选 · %1$d 项</string>
     <string name="ledger_inline_searched">已搜索</string>
     <string name="ledger_inline_search_note">搜索备注</string>
     <string name="ledger_inline_more">更多</string>
@@ -79,7 +77,6 @@
     <string name="ledger_header_status_synced">已同步 %1$s</string>
     <string name="ledger_header_status_offline">离线数据</string>
     <string name="ledger_header_eyebrow">小票夹</string>
-    <string name="ledger_header_title">流水</string>
     <string name="ledger_header_total_suffix">%1$s 支出</string>
     <string name="ledger_header_total_current_list">当前列表合计</string>
     <string name="ledger_header_count_label">账单</string>
@@ -149,12 +146,11 @@
 
     <!-- LedgerToolsSheet：账本工具 sheet -->
     <string name="ledger_tools_title">账本工具</string>
-    <string name="ledger_tools_subtitle">搜索、筛选、资料库与导出</string>
+    <string name="ledger_tools_subtitle">筛选、资料库与导出</string>
     <string name="ledger_tools_library">资料库</string>
     <string name="ledger_tools_view_title">显示方式</string>
     <string name="ledger_tools_search_label">筛选关键词</string>
     <string name="ledger_tools_search_placeholder">商家、分类、备注</string>
-    <string name="ledger_tools_global_search">全局搜索</string>
     <string name="ledger_tools_exporting">导出中</string>
     <string name="ledger_tools_export">导出表格</string>
     <string name="ledger_tools_syncing">更新中</string>

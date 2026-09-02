@@ -122,8 +122,13 @@ private fun LedgerPrimaryPane(
             item {
                 LedgerEmptyOrFirstSync(
                     state = state,
+                    recordCtaSlot = ledgerRecordCtaSlot(
+                        readOnly = state.readOnly,
+                        hasItems = state.items.isNotEmpty(),
+                        isFirstSync = state.isFirstSync,
+                        hasFilters = state.filter.hasFilters,
+                    ),
                     onClearFilters = actions.onClearFilters,
-                    onSync = actions.onSync,
                     onManualAdd = { if (!state.readOnly) chromeState.showManualSheet = true },
                 )
             }

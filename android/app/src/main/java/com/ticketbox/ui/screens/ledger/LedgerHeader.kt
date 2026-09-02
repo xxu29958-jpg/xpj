@@ -21,8 +21,9 @@ import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.LedgerUiState
 
 /**
- * Compact ledger header: one product identity row and one factual summary row.
- * The transaction register remains the visual center of the screen.
+ * W2-B 流水头部：删除与导航壳重复的「流水」标题，金额成为唯一视觉重心
+ * （tabular 墨色大数字回答「当前可见列表合计多少」），笔数与新鲜度降为
+ * 伴生行。合计只表达 server-owned signed streamAmountCents 的可见合计。
  */
 @Composable
 internal fun LedgerHeader(
@@ -30,39 +31,27 @@ internal fun LedgerHeader(
 ) {
     val summary = state.summary
     val statusText = ledgerHeaderStatusText(state, ledgerSyncEvidence(state))
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = AppSpacing.miniGap),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
     ) {
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-        ) {
-            Text(
-                text = stringResource(R.string.ledger_header_title),
-                color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = statusText,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.labelSmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        Column(
-            horizontalAlignment = Alignment.End,
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+        // 口径提示：过滤后可见列表的 server stream 合计，不是账户支出/净资产。
+        Text(
+            text = stringResource(R.string.ledger_header_total_current_list),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1,
+        )
+        Row(
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         ) {
             Text(
                 text = formatAmount(summary.totalAmountCents, LocalCurrencyCode.current),
                 color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.titleLarge.copy(
+                style = MaterialTheme.typography.headlineMedium.copy(
                     fontWeight = FontWeight.SemiBold,
                 ).tabularNum(),
                 maxLines = 1,
@@ -71,9 +60,18 @@ internal fun LedgerHeader(
             Text(
                 text = stringResource(R.string.ledger_header_count_value, summary.itemCount),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.labelSmall.tabularNum(),
+                style = MaterialTheme.typography.labelMedium.tabularNum(),
+                modifier = Modifier.padding(bottom = AppSpacing.tinyGap),
+                maxLines = 1,
             )
         }
+        Text(
+            text = statusText,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
