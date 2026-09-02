@@ -26,6 +26,7 @@
 {% else %}
 <div class="debt-list">
   {% for debt in rows %}
+  {% if debt.is_member %}
   <a class="debt-row{% if debt.recede %} is-receded{% endif %}" href="/web/debts/{{ debt.public_id }}?ledger_id={{ selected_ledger_id }}"
      aria-label="{{ debt.name }},{{ debt.member_headline }}{% if debt.show_progress %},还剩 {{ debt.remaining_label }} 没对上{% endif %},{{ debt.status_label }}">
     <div class="debt-row-main">
@@ -42,6 +43,19 @@
       {% endif %}
     </div>
   </a>
+  {% else %}
+  <a class="debt-row{% if debt.recede %} is-receded{% endif %}" href="/web/debts/{{ debt.public_id }}?ledger_id={{ selected_ledger_id }}"
+     aria-label="{{ debt.name }},{{ debt.direction_label }},剩余 {{ debt.remaining_label }},{{ debt.status_label }}">
+    <div class="debt-row-main">
+      <div class="debt-name">{{ debt.name }}</div>
+      <div class="debt-member-line">{{ debt.direction_label }} · 本金 {{ debt.principal_label }}</div>
+    </div>
+    <div class="debt-row-side">
+      <span class="product-status{% if debt.status_tone %} {{ _tone[debt.status_tone] }}{% endif %}">{{ debt.status_label }}</span>
+      <span class="debt-row-remaining">{{ debt.remaining_label }}</span>
+    </div>
+  </a>
+  {% endif %}
   {% endfor %}
 </div>
 {% endif %}

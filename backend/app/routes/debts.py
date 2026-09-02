@@ -4,8 +4,8 @@ Thin route layer (§1): parse + auth + delegate to the shared command services
 (``debt_command_service`` / ``debt_proposal_command_service``) + return a
 schema. No business logic, no SQL, no raw-exception leakage.
 
-- ``GET /api/debts`` — ledger-scoped list with derived ``remaining`` / ``paid``.
-- ``GET /api/debts/receivables`` — account-scoped cross-ledger creditor discovery.
+- ``GET /api/debts`` — ledger list, or the authenticated account's payables lens.
+- ``GET /api/debts/receivables`` — personal local and cross-ledger receivables.
 - ``GET /api/debts/{public_id}`` — one Debt; 404 ``debt_not_found``.
 - ``POST /api/debts`` — create one external/manual Debt.
 - ``POST /api/debts/{public_id}/repayments`` — record a committed repayment (§3.1).
@@ -37,6 +37,8 @@ bump, no second fact insert — §2.1 "replay does not bump").
 """
 
 from __future__ import annotations
+
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.orm import Session
@@ -80,7 +82,8 @@ from app.services.debt_proposal_command_service import (
 from app.services.debt_service import (
     get_participant_debt_response,
     list_debts,
-    list_member_receivables_for_account,
+    list_payables_for_account,
+    list_receivables_for_account,
     list_repayment_facts,
     list_repayment_proposals,
 )
@@ -94,13 +97,14 @@ router = APIRouter(
 
 @router.get("", response_model=DebtListResponse)
 def get_debts(
+    lens: Literal["ledger", "payables"] = Query(default="ledger"),
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> DebtListResponse:
-    # ADR-0049 §3.2: each member row carries the server-authoritative viewer_is_debtor
-    # for the authenticated account, so the communal list row frames the relationship
-    # from the viewer's side (a bill_split member Debt's owner may be a non-owner member
-    # → owner-relative direction alone can't frame it). External rows stay None.
+    # Personal views use the authenticated actor, never a client-supplied account.
+    # Omission deliberately retains the ledger-wide contract used by other consumers.
+    if lens == "payables":
+        return list_payables_for_account(db, tenant_id=auth.tenant_id, account_id=auth.account_id)
     return list_debts(db, tenant_id=auth.tenant_id, viewer_account_id=auth.account_id)
 
 
@@ -109,13 +113,9 @@ def get_debt_receivables(
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> DebtListResponse:
-    # ADR-0049 P3b / ⑤c (creditor discovery): the ACCOUNT-scoped list of cross-ledger
-    # member Debts this account is the creditor of. A bill_split member Debt lives in
-    # the debtor's ledger, so the ledger-scoped GET "" can't show the sender (creditor)
-    # their receivable — this closes that gap. Shell-redacted (ledger_id=None, §5.2):
-    # the creditor never learns which ledger the debtor parked the obligation in.
-    # Declared BEFORE GET "/{public_id}" so "receivables" is not captured as an id.
-    return list_member_receivables_for_account(db, account_id=auth.account_id)
+    # The query owner combines local personal receivables with privacy-redacted
+    # cross-ledger creditor discovery. Clients do not reconstruct participant roles.
+    return list_receivables_for_account(db, tenant_id=auth.tenant_id, account_id=auth.account_id)
 
 
 @router.get("/{public_id}", response_model=DebtResponse)
