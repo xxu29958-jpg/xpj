@@ -21,6 +21,9 @@ internal fun ExpenseFactViewModel.publishCorrectionOutcome(
             _uiState.update {
                 it.copy(
                     expense = outcome.expense,
+                    factBundle = null,
+                    factBundleLoadState = ExpenseDetailDataLoadState.Loading,
+                    factBundleMessage = null,
                     correction = CorrectionFormState(),
                     message = UiText.res(
                         if (outcome.refreshPending) {
@@ -38,6 +41,7 @@ internal fun ExpenseFactViewModel.publishCorrectionOutcome(
                 )
             }
             // All fact consumers re-read server truth; no local revision publication.
+            loadExpenseFactBundle()
             loadExpenseItems()
             loadExpenseSplits()
             loadExpenseRevisions()

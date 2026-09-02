@@ -46,6 +46,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
+import com.ticketbox.domain.model.DefaultExpenseCategories
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseLineageStatus
 import com.ticketbox.ui.components.AppAdaptiveAmountRowDefaults
@@ -496,18 +497,18 @@ private fun LedgerAmountOrPending(
  * 自定义/未知分类回退首字，不为无事实的分类硬造图形。
  */
 private val ledgerCategoryIcons: Map<String, ImageVector> = mapOf(
-    "餐饮" to Icons.Filled.Restaurant,
-    "交通" to Icons.Filled.DirectionsBus,
-    "购物" to Icons.Filled.ShoppingBag,
-    "娱乐" to Icons.Filled.Theaters,
-    "医疗" to Icons.Filled.MedicalServices,
-    "教育" to Icons.Filled.School,
-    "住房" to Icons.Filled.Home,
-    "通讯" to Icons.Filled.Phone,
-    "AI订阅" to Icons.Filled.SmartToy,
-    "数码" to Icons.Filled.Devices,
-    "游戏" to Icons.Filled.SportsEsports,
-    "生活" to Icons.Filled.Weekend,
+    DefaultExpenseCategories.DINING to Icons.Filled.Restaurant,
+    DefaultExpenseCategories.TRANSIT to Icons.Filled.DirectionsBus,
+    DefaultExpenseCategories.SHOPPING to Icons.Filled.ShoppingBag,
+    DefaultExpenseCategories.ENTERTAINMENT to Icons.Filled.Theaters,
+    DefaultExpenseCategories.MEDICAL to Icons.Filled.MedicalServices,
+    DefaultExpenseCategories.EDUCATION to Icons.Filled.School,
+    DefaultExpenseCategories.HOUSING to Icons.Filled.Home,
+    DefaultExpenseCategories.TELECOM to Icons.Filled.Phone,
+    DefaultExpenseCategories.AI_SUBSCRIPTION to Icons.Filled.SmartToy,
+    DefaultExpenseCategories.DIGITAL to Icons.Filled.Devices,
+    DefaultExpenseCategories.GAMES to Icons.Filled.SportsEsports,
+    DefaultExpenseCategories.LIFE to Icons.Filled.Weekend,
 )
 
 @Composable

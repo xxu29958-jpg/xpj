@@ -59,8 +59,9 @@ class LedgerHeaderEntryTest {
         render(LedgerUiState(readOnly = true))
 
         assertRecordCtaCount(0)
-        composeRule.onNodeWithText("只读模式").assertExists()
-        composeRule.onNodeWithText("可能不是最新。").assertExists()
+        // 权限条/新鲜度条都把标题与正文合成一个 AnnotatedString 节点，断言子串即可。
+        composeRule.onNodeWithText("只读模式", substring = true).assertExists()
+        composeRule.onNodeWithText("可能不是最新。", substring = true).assertExists()
     }
 
     @Test
