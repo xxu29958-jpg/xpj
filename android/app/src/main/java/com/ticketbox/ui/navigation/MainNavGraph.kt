@@ -49,9 +49,11 @@ import com.ticketbox.ui.components.LocalAppAdaptivePaneDirective
 import com.ticketbox.ui.components.LocalPrimaryNavigationInsetHandled
 import com.ticketbox.ui.components.LocalPrimaryStatusInsetHandled
 import com.ticketbox.ui.design.AppAdaptiveLayoutPolicy
+import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppMotion
 import com.ticketbox.ui.design.AppPrimaryNavigationMode
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
 import com.ticketbox.ui.design.toAppAdaptiveLayoutPolicy
 import com.ticketbox.ui.design.toAppAdaptivePaneDirective
@@ -274,12 +276,13 @@ private fun MainDomainTopBar(
                 Text(
                     text = stringResource(domain.labelRes),
                     modifier = Modifier.weight(1f),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = AppTextHierarchy.heading.weight,
                 )
                 AppAccountButton(onClick = onOpenWorkspace)
             }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
         }
     }
 }

@@ -34,6 +34,7 @@ import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.PageRole
 import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.design.AppAdaptiveContentWidth
 import com.ticketbox.ui.design.AppSpacing
 
 /**
@@ -76,6 +77,8 @@ fun BindServerScreen(
                 role = PageRole.Auth,
                 hasBottomBar = false,
             ),
+            // 绑定是单一主任务焦点内容：中宽以上窗口居中封顶焦点宽度。
+            contentWidth = AppAdaptiveContentWidth.Focus,
             verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
         ),
     ) {

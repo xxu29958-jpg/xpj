@@ -6,6 +6,10 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.runtime.compositionLocalOf
+
+/** 「减少动态效果」的 CompositionLocal 透传:owner 是 BackgroundSettings,这里只发布,不复制判断。 */
+val LocalReduceMotion = compositionLocalOf { false }
 
 /**
  * 运动 token —— 时长 + 缓动曲线，所有动画都必须从这里挑组合，

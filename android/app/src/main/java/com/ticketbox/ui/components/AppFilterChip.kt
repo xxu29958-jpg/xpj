@@ -1,7 +1,6 @@
 package com.ticketbox.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
@@ -82,18 +81,12 @@ fun AppFilterChip(
     } else {
         MaterialTheme.colorScheme.onSurfaceVariant
     }
-    val borderColor = if (selected) {
-        MaterialTheme.colorScheme.primary.copy(alpha = AppAlpha.medium)
-    } else {
-        MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium)
-    }
     Row(
         modifier = modifier
             .defaultMinSize(minHeight = AppSpacing.controlMinHeight)
             .alpha(if (options.enabled) 1f else AppAlpha.strong)
             .clip(shape)
             .background(containerColor)
-            .border(width = 1.dp, color = borderColor, shape = shape)
             .selectable(
                 selected = selected,
                 enabled = options.enabled,

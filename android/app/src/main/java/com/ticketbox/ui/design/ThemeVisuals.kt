@@ -50,6 +50,9 @@ data class ThemeVisuals(
 
 val LocalThemeVisuals = compositionLocalOf { themeVisualsForSkin(AppSkin.Default) }
 
+/** 当前已解析的渲染主题本身,供需要按 skin 切换图片资产等资源的消费点读取(如 mascot)。 */
+val LocalAppSkin = compositionLocalOf { AppSkin.Default }
+
 fun themeVisualsForSkin(skin: AppSkin): ThemeVisuals {
     return when (skin) {
         AppSkin.Paper -> ThemeVisuals(

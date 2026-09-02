@@ -117,6 +117,20 @@ class AppPageScaffoldTest {
                 maxWidth = AppAdaptiveBreakpoints.expandedWidthMin,
             ),
         )
+        assertEquals(
+            AppAdaptiveBreakpoints.focusContentMaxWidth,
+            AppAdaptiveBreakpoints.contentMaxWidthFor(
+                policy = AppAdaptiveContentWidth.Focus,
+                maxWidth = AppAdaptiveBreakpoints.mediumWidthMin,
+            ),
+        )
+        assertEquals(
+            null,
+            AppAdaptiveBreakpoints.contentMaxWidthFor(
+                policy = AppAdaptiveContentWidth.Focus,
+                maxWidth = AppAdaptiveBreakpoints.mediumWidthMin - 1.dp,
+            ),
+        )
     }
 
     @Test

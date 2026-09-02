@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.activity.compose.BackHandler
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.runtime.Composable
@@ -22,7 +23,6 @@ import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppAdaptivePaneScaffold
 import com.ticketbox.ui.components.AppAdaptivePanePurpose
 import com.ticketbox.ui.components.AppAdaptivePaneStructures
-import com.ticketbox.ui.components.AppAdaptiveSupportingPane
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.AppListStateContent
@@ -35,6 +35,7 @@ import com.ticketbox.ui.components.AppScrollableRefreshState
 import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.appAdaptiveSupportingPaneContent
 import com.ticketbox.ui.components.rememberAppHaptics
+import com.ticketbox.ui.design.AppAdaptiveContentWidth
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
 import com.ticketbox.ui.screens.pending.EmptyPendingState
@@ -65,6 +66,12 @@ import com.ticketbox.ui.screens.pending.PendingUndoRejectBanner
 import com.ticketbox.ui.screens.pending.PendingReviewSheetHostActions
 import com.ticketbox.ui.screens.pending.PendingReviewSheetHost
 import com.ticketbox.ui.screens.pending.PendingReviewSheetHostState
+import com.ticketbox.ui.screens.pending.PendingSupportingPaneBody
+import com.ticketbox.ui.screens.pending.PendingSupportingPaneContent
+import com.ticketbox.ui.screens.pending.pendingSupportingPaneContent
+import com.ticketbox.ui.screens.pending.pendingPaneExit
+import com.ticketbox.ui.screens.pending.PendingUploadEntrySlot
+import com.ticketbox.ui.screens.pending.pendingUploadEntrySlot
 import com.ticketbox.ui.screens.pending.PendingScreenChromeActions
 import com.ticketbox.ui.screens.pending.PendingToolsSheet
 import com.ticketbox.ui.screens.pending.PendingTop
@@ -129,6 +136,14 @@ fun PendingScreen(
     }
     val haptics = rememberAppHaptics()
     val adaptivePolicy = LocalAppAdaptiveLayoutPolicy.current
+    val uploadEntrySlot = pendingUploadEntrySlot(
+        bodyState = bodyState,
+        readOnly = readOnly,
+    )
+    val supportingContent = pendingSupportingPaneContent(
+        showsSupportingPane = adaptivePolicy.showsSupportingPane,
+        activeSheet = state.activeSheet,
+    )
     val authorityTone = when {
         readOnly -> DataAuthorityTone.ReadOnly
         blockingRefresh -> DataAuthorityTone.Refreshing
@@ -211,22 +226,39 @@ fun PendingScreen(
         }
     }
 
-    PendingReviewSheetHost(
-        state = PendingReviewSheetHostState(
-            sheet = state.activeSheet,
-            categoryOptions = state.categoryOptions,
-            actionInProgressIds = state.actionInProgressIds,
-            readyCount = queueCounts.readyToConfirm,
-            missingAmountSkip = queueCounts.needsAmount,
-            duplicateSkip = queueCounts.duplicate,
-            bulkRunning = state.bulkConfirm.running,
-            bulkConfirmed = state.bulkConfirm.succeeded,
-            bulkTotal = state.bulkConfirm.total,
-            reviewRemaining = state.reviewRemaining,
-            statusMessage = state.message?.asString(),
-        ),
-        actions = sheetActions,
+    val reviewSheetState = PendingReviewSheetHostState(
+        sheet = state.activeSheet,
+        categoryOptions = state.categoryOptions,
+        actionInProgressIds = state.actionInProgressIds,
+        readyCount = queueCounts.readyToConfirm,
+        missingAmountSkip = queueCounts.needsAmount,
+        duplicateSkip = queueCounts.duplicate,
+        bulkRunning = state.bulkConfirm.running,
+        bulkConfirmed = state.bulkConfirm.succeeded,
+        bulkTotal = state.bulkConfirm.total,
+        reviewRemaining = state.reviewRemaining,
+        statusMessage = state.message?.asString(),
     )
+    // expanded 下复核由 supporting pane 常驻承接，其余宽度维持现有 modal sheet；
+    // 两种形态互斥，复用同一份 state/actions，不新造 review owner。
+    // pane 形态始终安装并消费 Back：仅在退出权允许时 dismiss，在途 mutation
+    // 进行中 Back 为 no-op——不得把 Back 透传给 NavHost/Activity 离开当前页、
+    // 隐藏在途 mutation（与 pane 退出按钮同一裁决）。
+    if (supportingContent is PendingSupportingPaneContent.Review) {
+        val paneExit = pendingPaneExit(
+            sheet = state.activeSheet,
+            actionInProgressIds = state.actionInProgressIds,
+            bulkRunning = state.bulkConfirm.running,
+        )
+        BackHandler {
+            if (paneExit.enabled) sheetActions.onDismiss()
+        }
+    } else {
+        PendingReviewSheetHost(
+            state = reviewSheetState,
+            actions = sheetActions,
+        )
+    }
 
     AppAdaptivePaneScaffold(
         structure = AppAdaptivePaneStructures.Inbox,
@@ -238,6 +270,9 @@ fun PendingScreen(
                     layout = AppScrollableContentLayout(
                         horizontalPadding = AppSpacing.cardPaddingSmall,
                         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+                        // 600–840dp 单窗格不再把队列/空态拉满整宽：
+                        // 内容居中并封顶 secondary 宽度，compact 维持全宽。
+                        contentWidth = AppAdaptiveContentWidth.Secondary,
                     ),
                 ),
                 refresh = AppScrollableRefreshState(
@@ -252,6 +287,7 @@ fun PendingScreen(
                             counts = queueCounts,
                             uploading = state.uploading,
                             readOnly = readOnly,
+                            showUploadAction = uploadEntrySlot == PendingUploadEntrySlot.Header,
                         ),
                         onUploadScreenshot = chromeActions.onUploadScreenshot,
                         trailingAction = if (state.items.isNotEmpty()) {
@@ -377,6 +413,7 @@ fun PendingScreen(
                             compact = displayMode == PendingDisplayMode.Compact,
                             showInlineActions = showInlineActions,
                             busy = actionBusy,
+                            readOnly = readOnly,
                         ),
                         actions = PendingExpenseReviewActions(
                             canMutate = canMutate,
@@ -398,9 +435,10 @@ fun PendingScreen(
         supportingPane = appAdaptiveSupportingPaneContent(
             purpose = AppAdaptivePanePurpose.IntakeAndTriage,
         ) {
-            AppAdaptiveSupportingPane(
-                role = AppPageRole.Pending,
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+            PendingSupportingPaneBody(
+                content = supportingContent,
+                reviewState = reviewSheetState,
+                reviewActions = sheetActions,
             ) {
                 PendingTriagePane(
                     state = triagePaneState,

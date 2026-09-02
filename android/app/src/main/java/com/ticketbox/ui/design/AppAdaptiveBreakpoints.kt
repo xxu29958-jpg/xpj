@@ -16,6 +16,7 @@ enum class AppAdaptiveContentWidth {
     Secondary,
     Wide,
     TwoPane,
+    Focus,
 }
 
 object AppAdaptiveBreakpoints {
@@ -28,6 +29,13 @@ object AppAdaptiveBreakpoints {
     val secondaryContentMaxWidth: Dp = 720.dp
     val wideContentMaxWidth: Dp = 840.dp
     val twoPaneContentMaxWidth: Dp = 1040.dp
+
+    /**
+     * 单一主任务焦点内容（空态引导、绑定/入门表单）在中宽以上窗口的列宽上限：
+     * 内容居中、主操作不再横跨整窗。compact 单栏不适用（全宽）。
+     * 当前真实消费者：收件空态卡、BindServerScreen。
+     */
+    val focusContentMaxWidth: Dp = 480.dp
 
     val pairedActionInlineMinWidth: Dp = 320.dp
     val contentActionInlineMinWidth: Dp = 360.dp
@@ -42,23 +50,22 @@ object AppAdaptiveBreakpoints {
 
     fun contentMaxWidthFor(policy: AppAdaptiveContentWidth, maxWidth: Dp): Dp? {
         val mode = pageModeFor(maxWidth)
+        if (mode == AppAdaptivePageMode.SingleColumn) return null
+
         return when (policy) {
             AppAdaptiveContentWidth.FullWidth -> null
-            AppAdaptiveContentWidth.Secondary -> when (mode) {
-                AppAdaptivePageMode.SingleColumn -> null
-                AppAdaptivePageMode.WideContent,
-                AppAdaptivePageMode.TwoPane -> secondaryContentMaxWidth
+            AppAdaptiveContentWidth.Secondary -> secondaryContentMaxWidth
+            AppAdaptiveContentWidth.Wide -> if (mode == AppAdaptivePageMode.WideContent) {
+                wideContentMaxWidth
+            } else {
+                twoPaneContentMaxWidth
             }
-            AppAdaptiveContentWidth.Wide -> when (mode) {
-                AppAdaptivePageMode.SingleColumn -> null
-                AppAdaptivePageMode.WideContent -> wideContentMaxWidth
-                AppAdaptivePageMode.TwoPane -> twoPaneContentMaxWidth
+            AppAdaptiveContentWidth.TwoPane -> if (mode == AppAdaptivePageMode.TwoPane) {
+                twoPaneContentMaxWidth
+            } else {
+                null
             }
-            AppAdaptiveContentWidth.TwoPane -> when (mode) {
-                AppAdaptivePageMode.SingleColumn,
-                AppAdaptivePageMode.WideContent -> null
-                AppAdaptivePageMode.TwoPane -> twoPaneContentMaxWidth
-            }
+            AppAdaptiveContentWidth.Focus -> focusContentMaxWidth
         }
     }
 }

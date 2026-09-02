@@ -82,6 +82,7 @@ internal fun TicketboxApp(
         skin = resolvedSkin,
         currency = appState.currency,
         currencyDisplay = appState.currencyDisplay,
+        reduceMotion = appState.backgroundSettings.reduceMotion,
     ) {
         TicketboxContent(
             appState = appState,

@@ -33,7 +33,9 @@ import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.design.AppRadius
+import com.ticketbox.ui.design.LocalAppSkin
 import com.ticketbox.ui.design.LocalChartTokens
+import com.ticketbox.ui.design.LocalReduceMotion
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalGoalTokens
 import com.ticketbox.ui.design.LocalSkeletonTokens
@@ -173,6 +175,7 @@ fun TicketboxTheme(
     skin: AppSkin,
     currency: CurrencyCode = CurrencyCode.Default,
     currencyDisplay: CurrencyDisplay = CurrencyDisplay.Base,
+    reduceMotion: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val view = LocalView.current
@@ -197,6 +200,8 @@ fun TicketboxTheme(
             CompositionLocalProvider(
                 LocalContentColor provides MaterialTheme.colorScheme.onBackground,
                 LocalThemeVisuals provides themeVisualsForSkin(skin),
+                LocalAppSkin provides skin,
+                LocalReduceMotion provides reduceMotion,
                 LocalStateTokens provides stateTokensForSkin(skin),
                 LocalChartTokens provides chartTokensForSkin(skin),
                 LocalGoalTokens provides goalTokensForSkin(skin),
