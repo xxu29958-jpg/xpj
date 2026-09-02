@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.design.AppAdaptiveBreakpoints
 import com.ticketbox.ui.design.AppSpacing
 
@@ -17,14 +18,22 @@ internal enum class AppAdaptiveMetricGridMode {
     TwoColumn,
 }
 
+/**
+ * 紧凑指标（短标签 + 小号金额）的双列门槛：默认阈值面向大卡片，胶囊内容 300dp 已足够两列。
+ * 实测约束（W2-C review-fix 真机图）：360dp 屏 @480dpi 内容区 x72..1008px → 真实 grid
+ * maxWidth 312dp（两侧各 24dp 页边距），阈值必须低于 312 而非 360。
+ */
+internal val AppAdaptiveMetricGridCompactMinWidth = 300.dp
+
 @Composable
 fun AppAdaptiveMetricGrid(
     itemCount: Int,
     modifier: Modifier = Modifier,
+    twoColumnMinWidth: Dp = AppAdaptiveBreakpoints.mediumWidthMin,
     item: @Composable (index: Int, modifier: Modifier) -> Unit,
 ) {
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-        when (resolveAppAdaptiveMetricGridMode(maxWidth)) {
+        when (resolveAppAdaptiveMetricGridMode(maxWidth, twoColumnMinWidth)) {
             AppAdaptiveMetricGridMode.SingleColumn -> AppAdaptiveMetricGridColumn(
                 itemCount = itemCount,
                 item = item,
@@ -78,8 +87,11 @@ private fun AppAdaptiveMetricGridTwoColumn(
     }
 }
 
-internal fun resolveAppAdaptiveMetricGridMode(maxWidth: Dp): AppAdaptiveMetricGridMode =
-    if (maxWidth < AppAdaptiveBreakpoints.mediumWidthMin) {
+internal fun resolveAppAdaptiveMetricGridMode(
+    maxWidth: Dp,
+    twoColumnMinWidth: Dp = AppAdaptiveBreakpoints.mediumWidthMin,
+): AppAdaptiveMetricGridMode =
+    if (maxWidth < twoColumnMinWidth) {
         AppAdaptiveMetricGridMode.SingleColumn
     } else {
         AppAdaptiveMetricGridMode.TwoColumn

@@ -88,6 +88,32 @@ class DebtListViewModelCapabilityTest {
     }
 
     @Test
+    fun refreshFailureWithResolvedCurrencyKeepsCommandEligible() = runTest(dispatcher) {
+        // W2-C 主审 R1 不变量：已知币种后普通列表刷新失败不得禁合法 command —— error 呈现，
+        // 但 homeCurrencyResolved 不清空、草稿保留、submitDraft 仍可达创建路径。
+        val repo = FakeDebtActions(
+            listResult = Result.success(listOf(sampleDebt("cny-debt").copy(homeCurrencyCode = "CNY"))),
+            createResult = Result.success(sampleDebt("created")),
+        )
+        val viewModel = DebtListViewModel(repo)
+        advanceUntilIdle()
+        assertEquals(true, viewModel.state.value.homeCurrencyResolved)
+
+        viewModel.updateDraftCounterparty("小王")
+        viewModel.updateDraftAmount("1200")
+        repo.listResult = Result.failure(RuntimeException("offline"))
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.error != null)
+        assertEquals(true, viewModel.state.value.homeCurrencyResolved)
+        assertEquals("小王", viewModel.state.value.addDraft.counterpartyLabel)
+        viewModel.submitDraft()
+        advanceUntilIdle()
+        assertEquals(1, repo.createDrafts.size)
+    }
+
+    @Test
     fun conflictingRecordAndEnvelopeCapabilityFailsClosed() = runTest(dispatcher) {
         // R6 P1-1 冲突裁决：record=JPY 而信封 capability=CNY = binding 漂移（ADR-0061
         // C02 声明 installation currency 不可热切换，漂移即异常）→ fail closed：创建

@@ -30,6 +30,7 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
 import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppAdaptiveMetricGrid
+import com.ticketbox.ui.components.AppAdaptiveMetricGridCompactMinWidth
 import com.ticketbox.ui.components.AppAdaptiveTrailingActionRow
 import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppListRow
@@ -228,7 +229,10 @@ private fun DebtGoalOverviewSection(summary: DebtGoalListSummary) {
         stringResource(R.string.debt_goal_metric_open_debts) to
             stringResource(R.string.debt_goal_metric_debt_count, summary.openDebtCount),
     )
-    AppAdaptiveMetricGrid(itemCount = metrics.size) { index, metricModifier ->
+    AppAdaptiveMetricGrid(
+        itemCount = metrics.size,
+        twoColumnMinWidth = AppAdaptiveMetricGridCompactMinWidth,
+    ) { index, metricModifier ->
         val (label, value) = metrics[index]
         MetricPill(label = label, value = value, modifier = metricModifier)
     }

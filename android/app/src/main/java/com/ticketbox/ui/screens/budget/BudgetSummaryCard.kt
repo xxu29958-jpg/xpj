@@ -16,6 +16,7 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppAdaptiveMetricGrid
+import com.ticketbox.ui.components.AppAdaptiveMetricGridCompactMinWidth
 import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.SkeletonBlock
@@ -132,7 +133,10 @@ private fun BudgetSummaryPlaceholder(loading: Boolean) {
         ) {
             SkeletonBlock(modifier = Modifier.fillMaxWidth(0.8f).height(AppSpacing.cardPadding + AppSpacing.tinyGap))
             SkeletonBlock(modifier = Modifier.fillMaxWidth().height(AppSpacing.compactGap))
-            AppAdaptiveMetricGrid(itemCount = BUDGET_SUMMARY_PLACEHOLDER_METRICS) { _, metricModifier ->
+            AppAdaptiveMetricGrid(
+                itemCount = BUDGET_SUMMARY_PLACEHOLDER_METRICS,
+                twoColumnMinWidth = AppAdaptiveMetricGridCompactMinWidth,
+            ) { _, metricModifier ->
                 SkeletonBlock(
                     modifier = metricModifier.height(AppSpacing.controlMinHeight + AppSpacing.cardPaddingSmall),
                 )
@@ -164,7 +168,10 @@ private fun BudgetMetricRows(
         stringResource(R.string.budget_summary_metric_excluded) to
             formatDisplayAmount(budget.excludedAmountCents, currencyDisplay),
     )
-    AppAdaptiveMetricGrid(itemCount = metrics.size) { index, metricModifier ->
+    AppAdaptiveMetricGrid(
+        itemCount = metrics.size,
+        twoColumnMinWidth = AppAdaptiveMetricGridCompactMinWidth,
+    ) { index, metricModifier ->
         val (label, value) = metrics[index]
         MetricPill(
             label = label,

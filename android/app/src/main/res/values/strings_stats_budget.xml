@@ -376,7 +376,7 @@
     <string name="debt_create_label_amount">金额</string>
     <string name="debt_create_save">保存</string>
     <string name="debt_create_submitting">保存中…</string>
-    <string name="debt_create_currency_unconfirmed">账本还没有欠款记录，无法确认账本币种口径，暂不能新建欠款。</string>
+    <string name="debt_create_currency_unconfirmed">暂时无法确认账本币种口径，暂不能新建欠款。可检查网络后重试。</string>
     <string name="currency_unconfirmed_write_blocked">账本币种口径还没确认，暂时不能提交；请稍后重试。</string>
     <string name="debt_create_validation_error">请填写欠款对象和大于 0 的金额。</string>
     <string name="debt_create_added">已记录欠款。</string>

@@ -11,9 +11,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -32,6 +30,7 @@ import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
 import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
 import com.ticketbox.ui.components.AppAdaptiveEditActionMode
+import com.ticketbox.ui.components.AppBusyGuardedSheet
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppOutlinedButtonOptions
@@ -346,15 +345,19 @@ internal fun DebtNoteCard(text: String) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DebtActionSheet(
     state: DebtDetailUiState,
     viewModel: DebtDetailViewModel,
     onClose: () -> Unit,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(onDismissRequest = onClose, sheetState = sheetState) {
+    // VM 的 dismissAction 在提交中吞掉关闭；sheet 本体也必须否决 Hidden，
+    // 否则 Back/下滑把失败草稿藏进不可见 modal（同 income-busy-hidden 反例）。
+    AppBusyGuardedSheet(
+        isSubmitting = state.isSubmitting,
+        onDismiss = onClose,
+        skipPartiallyExpanded = true,
+    ) {
         DebtActionForm(
             state = state,
             viewModel = viewModel,

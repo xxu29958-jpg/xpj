@@ -23,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -493,11 +494,18 @@ private fun DebtDraftForm(
         }
         // 空账本 fail closed（PR#255 R4 P1）：列表加载完成但币种仍无 record 级权威依据
         // （空账本）时，说明创建为何禁用 —— 兜底 CNY 口径提交会放大零小数账本 100×。
+        // R1 用户可见重试：加载失败同样走到这里，refresh 重试保留草稿、不碰提交门。
         if (!state.homeCurrencyResolved && !state.isLoading) {
-            AppStatusBanner(
-                message = UiText.res(R.string.debt_create_currency_unconfirmed),
-                tone = MessageTone.Info,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                AppStatusBanner(
+                    message = UiText.res(R.string.debt_create_currency_unconfirmed),
+                    tone = MessageTone.Info,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = viewModel::refresh, enabled = !state.isSubmitting) {
+                    Text(stringResource(R.string.common_retry))
+                }
+            }
         }
         AppSheetActionRow(
             primary = AppSheetAction(

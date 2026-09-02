@@ -15,6 +15,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -24,6 +25,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -136,10 +138,19 @@ internal fun RelationsRoute(
 }
 
 /** 域级新建抽屉的呈现把手：RelationsRoute 只读这些状态与动作，创建链路细节全在 host 内。 */
-private class RelationsComposerHandles(
+internal class RelationsComposerHandles(
     val canModify: Boolean,
     val isParsingBill: Boolean,
     val flashMessage: UiText?,
+    /** 创建链路错误（OCR 识别/准备失败、首载失败）：主 chrome 必须可见，不得静默。 */
+    val error: UiText?,
+    val actions: RelationsComposerActions,
+)
+
+/** composer 动作组（镜像 DebtListScreenActions 惯例，独立类型以符合构造参数门）。 */
+internal class RelationsComposerActions(
+    /** 用户可见重试（R1）：仅重试读（refresh），保留草稿，不碰 command 资格门。 */
+    val onRetry: () -> Unit,
     val onAddDebt: () -> Unit,
     val onParseBillImage: () -> Unit,
 )
@@ -162,21 +173,73 @@ private fun RelationsComposerHost(
     )
     val composerState by composerViewModel.state.collectAsStateWithLifecycle()
     var showAddSheet by rememberSaveable { mutableStateOf(false) }
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
     val parseScope = rememberCoroutineScope()
     val debtBillPicker = rememberDebtBillImageLauncher(composerViewModel, context, parseScope)
+    // 重入信号（R1，同 tab 列表 StatsRoutes.DebtRoute）：每次进入往来域 reload composer——
+    // 切账本离开再进入时角色/币种随 reload 重解析（VM 跨 route 存活，旧账本残留不得困住入口）。
+    LaunchedEffect(Unit) { composerViewModel.reload() }
+    // 同账本币种未决（首载失败 fail-closed）时打开入口即重试读；在途不重复发，健康不打搅。
+    val retryCurrencyIfUnresolved = {
+        if (!composerState.homeCurrencyResolved && !composerState.isLoading) composerViewModel.refresh()
+    }
 
+    RelationsComposerOverlays(
+        composerViewModel = composerViewModel,
+        composerState = composerState,
+        showAddSheet = showAddSheet,
+        onSheetVisibility = { showAddSheet = it },
+        onCreatedRefresh = onCreatedRefresh,
+    )
+
+    return RelationsComposerHandles(
+        canModify = composerState.canModify,
+        isParsingBill = composerState.isParsingBill,
+        flashMessage = composerState.flashMessage,
+        error = composerState.error,
+        actions = RelationsComposerActions(
+            onRetry = { composerViewModel.refresh() },
+            onAddDebt = {
+                retryCurrencyIfUnresolved()
+                composerViewModel.resetDraft()
+                // 欠我 tab 方向预选应收（表单 chips 仍可改）；我欠 tab 保持默认我欠。
+                if (selectedView == ObligationsView.OWED_TO_ME) {
+                    composerViewModel.updateDraftDirection(DebtDirections.OWED_TO_ME)
+                }
+                showAddSheet = true
+            },
+            onParseBillImage = {
+                retryCurrencyIfUnresolved()
+                debtBillPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            },
+        ),
+    )
+}
+
+/**
+ * composer 的覆盖层（新建抽屉 + 一次性副作用）：sheetState 只服务抽屉故收进这里；
+ * 抽屉可见性仍由 host 持有（onSheetVisibility），成功落账经 onCreatedRefresh 通知列表。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RelationsComposerOverlays(
+    composerViewModel: DebtListViewModel,
+    composerState: DebtListUiState,
+    showAddSheet: Boolean,
+    onSheetVisibility: (Boolean) -> Unit,
+    onCreatedRefresh: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     RelationsComposerEffects(
         composerViewModel = composerViewModel,
         composerState = composerState,
         onAddSucceeded = {
-            showAddSheet = false
+            onSheetVisibility(false)
             onCreatedRefresh()
             composerViewModel.resetDraft()
         },
         onBillParsePrefill = {
-            showAddSheet = true
+            onSheetVisibility(true)
             composerViewModel.ackBillParsePrefill()
         },
     )
@@ -186,26 +249,9 @@ private fun RelationsComposerHost(
             state = composerState,
             viewModel = composerViewModel,
             sheetState = sheetState,
-            onClose = { showAddSheet = false; composerViewModel.resetDraft() },
+            onClose = { onSheetVisibility(false); composerViewModel.resetDraft() },
         )
     }
-
-    return RelationsComposerHandles(
-        canModify = composerState.canModify,
-        isParsingBill = composerState.isParsingBill,
-        flashMessage = composerState.flashMessage,
-        onAddDebt = {
-            composerViewModel.resetDraft()
-            // 欠我 tab 方向预选应收（表单 chips 仍可改）；我欠 tab 保持默认我欠。
-            if (selectedView == ObligationsView.OWED_TO_ME) {
-                composerViewModel.updateDraftDirection(DebtDirections.OWED_TO_ME)
-            }
-            showAddSheet = true
-        },
-        onParseBillImage = {
-            debtBillPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-        },
-    )
 }
 
 /** 域级新建抽屉的一次性信号/成功/flash 副作用（镜像 DebtListScreen 的既有惯例）。 */
@@ -282,7 +328,7 @@ private fun RelationsPrimaryPane(
 
 /** 主域首屏 chrome：tabs（任务视角切换）+ 单主 CTA；OCR 为 quiet 入口。作为列表首项随内容滚动。 */
 @Composable
-private fun ObligationsPrimaryChrome(
+internal fun ObligationsPrimaryChrome(
     selectedView: ObligationsView,
     onSelectView: (ObligationsView) -> Unit,
     composer: RelationsComposerHandles,
@@ -299,15 +345,28 @@ private fun ObligationsPrimaryChrome(
                     icon = Icons.Default.Add,
                     modifier = Modifier.weight(1f),
                     enabled = !composer.isParsingBill,
-                    onClick = composer.onAddDebt,
+                    onClick = composer.actions.onAddDebt,
                 )
                 DebtBillParseIconButton(
                     isParsingBill = composer.isParsingBill,
-                    onClick = composer.onParseBillImage,
+                    onClick = composer.actions.onParseBillImage,
                 )
             }
         }
         composer.flashMessage?.let { AppStatusBanner(message = it, tone = MessageTone.Success) }
+        // 错误可见且可继续（R1）：banner 旁给用户重试，不再只有静默文案。
+        composer.error?.let { error ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                AppStatusBanner(
+                    message = error,
+                    tone = MessageTone.Danger,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = composer.actions.onRetry, enabled = !composer.isParsingBill) {
+                    Text(stringResource(R.string.common_retry))
+                }
+            }
+        }
     }
 }
 

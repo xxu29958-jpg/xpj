@@ -1,4 +1,4 @@
-package com.ticketbox.ui.screens
+package com.ticketbox.ui.components
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,13 +21,13 @@ import org.junit.Rule
 import org.junit.Test
 
 /**
- * W2-C 收入编辑忙碌守门（真机反例 income-busy-hidden.png）：只守 onDismissRequest
- * 挡不住 Back/下滑把 sheet 动画到 Hidden——页面被不可见 modal 遮住、会话悬空。
- * 这里用真实下滑手势走同一条 AnchoredDraggable 路径：忙碌时 Hidden 必须被否决、
- * 内容留在屏上；空闲时下滑正常收起并回调 dismiss。VM 层的 dismiss 守卫是另一层，
- * 不能替代本平台覆盖。
+ * 忙碌守门抽屉的真实手势合同（真机反例 tmp/w2c/income-busy-hidden.png）：只守
+ * onDismissRequest 挡不住 Back/下滑把 sheet 动画到 Hidden——页面被不可见 modal 遮住、
+ * 在途写的草稿悬空。这里用真实下滑手势走同一条 AnchoredDraggable 路径：忙碌时 Hidden
+ * 必须被否决、内容留在屏上；空闲时下滑正常收起并回调 dismiss。VM 层的 dismiss 守卫是
+ * 另一层，不能替代本平台覆盖。
  */
-class IncomePlanBusyGuardedSheetTest {
+class AppBusyGuardedSheetTest {
 
     @get:Rule
     val composeRule = createComposeRule()
@@ -41,7 +41,7 @@ class IncomePlanBusyGuardedSheetTest {
         composeRule.setContent {
             TicketboxTheme(skin = AppSkin.Default) {
                 if (!harness.dismissed) {
-                    IncomePlanBusyGuardedSheet(
+                    AppBusyGuardedSheet(
                         isSubmitting = harness.submitting,
                         onDismiss = { harness.dismissed = true },
                     ) {
@@ -90,7 +90,7 @@ class IncomePlanBusyGuardedSheetTest {
     }
 
     private companion object {
-        const val SHEET_CONTENT_TAG = "income_plan_busy_guarded_sheet_content"
+        const val SHEET_CONTENT_TAG = "busy_guarded_sheet_content"
         const val SWIPE_ATTEMPTS = 3
         val SHEET_CONTENT_HEIGHT = 400.dp
     }

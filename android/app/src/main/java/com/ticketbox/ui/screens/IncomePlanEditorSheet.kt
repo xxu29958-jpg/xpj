@@ -2,22 +2,17 @@ package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.components.AppAction
+import com.ticketbox.ui.components.AppBusyGuardedSheet
 import com.ticketbox.ui.components.AppSheetActionRow
 import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.viewmodel.IncomePlanDraftField
@@ -41,7 +36,7 @@ internal fun IncomePlanEditSheetHost(
     editViewModel: IncomePlanEditViewModel,
 ) {
     if (state.session == null) return
-    IncomePlanBusyGuardedSheet(
+    AppBusyGuardedSheet(
         isSubmitting = state.isSubmitting,
         onDismiss = editViewModel::dismiss,
     ) {
@@ -112,34 +107,5 @@ private fun EditIncomePlanSheet(
                 )
             }
         }
-    }
-}
-
-/**
- * 忙碌守门抽屉：onDismissRequest 守门不够——Back/手势仍会把 sheet 动画到 Hidden，
- * 遮住页面又不交还会话（真机反例 income-busy-hidden.png）。复用 RecurringEditorSheet
- * 的平台惯例：confirmValueChange 在忙碌时否决 Hidden，rememberUpdatedState 保证手势
- * 回调读到最新 busy；提交开始再 show() 一次，抢回刚好在 busy 置位前被预授权的 hide，
- * 失败结算不会把草稿留在隐藏抽屉里。抽成无 VM 组件以便真实 Compose 手势回归。
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-internal fun IncomePlanBusyGuardedSheet(
-    isSubmitting: Boolean,
-    onDismiss: () -> Unit,
-    content: @Composable () -> Unit,
-) {
-    val busy = rememberUpdatedState(isSubmitting)
-    val sheetState = rememberModalBottomSheetState(
-        confirmValueChange = { targetValue -> targetValue != SheetValue.Hidden || !busy.value },
-    )
-    LaunchedEffect(isSubmitting) {
-        if (isSubmitting) sheetState.show()
-    }
-    ModalBottomSheet(
-        onDismissRequest = { if (!isSubmitting) onDismiss() },
-        sheetState = sheetState,
-    ) {
-        content()
     }
 }
