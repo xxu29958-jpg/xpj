@@ -50,7 +50,7 @@ def test_web_currency_conflict_keeps_draft_money_in_its_submitted_currency(
     )
 
     assert response.status_code == 409, response.text
-    assert "币种已在其它端改变" in response.text
+    assert "账本现值已经改为" in response.text
     assert "不能直接重试" in response.text
     assert 'name="original_currency" value="CNY"' in response.text
     assert ">CNY<" in response.text
