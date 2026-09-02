@@ -5,10 +5,12 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.viewmodel.CreateDebtGoalViewModel
 import com.ticketbox.viewmodel.DebtDetailViewModel
 import com.ticketbox.viewmodel.DebtGoalViewModel
+import com.ticketbox.viewmodel.DebtRepaymentHistoryViewModel
 import com.ticketbox.viewmodel.MemberRepaymentProposalViewModel
 import com.ticketbox.viewmodel.createDebtGoalViewModelFactory
 import com.ticketbox.viewmodel.debtDetailViewModelFactory
 import com.ticketbox.viewmodel.debtGoalViewModelFactory
+import com.ticketbox.viewmodel.debtRepaymentHistoryViewModelFactory
 import com.ticketbox.viewmodel.memberRepaymentProposalViewModelFactory
 
 internal data class DebtGoalRouteViewModels(
@@ -16,6 +18,7 @@ internal data class DebtGoalRouteViewModels(
     val createGoal: CreateDebtGoalViewModel,
     val linkedDetail: DebtDetailViewModel,
     val linkedProposal: MemberRepaymentProposalViewModel,
+    val linkedRepaymentHistory: DebtRepaymentHistoryViewModel,
 )
 
 @Composable
@@ -39,5 +42,9 @@ internal fun rememberDebtGoalRouteViewModels(screenFactory: MainScreenFactory): 
         linkedProposal = viewModel(
             key = DebtGoalLinkedProposalViewModelKey,
             factory = memberRepaymentProposalViewModelFactory(screenFactory.debtRepository.proposals),
+        ),
+        linkedRepaymentHistory = viewModel(
+            key = DebtGoalLinkedRepaymentHistoryViewModelKey,
+            factory = debtRepaymentHistoryViewModelFactory(screenFactory.debtRepaymentRepository),
         ),
     )

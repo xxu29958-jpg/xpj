@@ -72,6 +72,8 @@ internal enum class ProductSecondaryPage(val route: String) {
     InsightsDataQuality("product/insights/data-quality"),
     // 往来域：还债计划。
     DebtGoals("product/obligations/repayment-plans"),
+    // 往来域：全账本往来（个人透镜之上的账本完整视图，W2-C）。
+    AllDebts("product/obligations/debts"),
     // 往来域：还款复核。
     RepaymentDrafts(REPAYMENT_DRAFT_BASE_ROUTE),
 }
@@ -282,6 +284,7 @@ internal val ProductSecondaryPage.surfaceRole: SurfaceRole
         ProductSecondaryPage.GlobalSearch,
         ProductSecondaryPage.TransactionsLibrary,
         ProductSecondaryPage.DebtGoals,
+        ProductSecondaryPage.AllDebts,
         ProductSecondaryPage.RepaymentDrafts,
         -> SurfaceRole.Ledger
 

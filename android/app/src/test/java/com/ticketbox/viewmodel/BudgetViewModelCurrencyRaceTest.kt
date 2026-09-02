@@ -91,7 +91,7 @@ private class RecoverableDebtActions(
 ) : DebtActions by unsupportedRaceDebtActions() {
     override fun canModifyLedger(): Boolean = true
 
-    override suspend fun listDebts(): Result<DebtListPage> =
+    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens): Result<DebtListPage> =
         if (online) Result.success(page) else Result.failure(IllegalStateException("offline"))
 }
 

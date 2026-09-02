@@ -21,6 +21,10 @@ import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
+import com.ticketbox.ui.components.AppScrollableContent
+import com.ticketbox.ui.components.AppScrollableContentChrome
+import com.ticketbox.ui.components.AppScrollableContentLayout
+import com.ticketbox.ui.components.AppScrollableRefreshState
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.ReceivablesUiState
@@ -49,6 +53,16 @@ fun ReceivablesScreen(
         onBack = onBack,
     )
 
+    if (resolvedChrome.embeddedInDomain) {
+        // W2-C 主域嵌入态：无大标题；首项 tabs+单主 CTA，导航区沉列表尾（与 DebtListScreen 同构）。
+        ReceivablesEmbeddedContent(
+            state = state,
+            chrome = resolvedChrome,
+            onOpenReceivable = onOpenReceivable,
+            onRefresh = viewModel::refresh,
+        )
+        return
+    }
     AppSecondaryScrollableContent(
         chrome = AppSecondaryPageChrome(
             role = AppPageRole.Ledger,
@@ -79,6 +93,47 @@ fun ReceivablesScreen(
         )
     }
 }
+
+/** W2-C 主域嵌入态（无大标题；topChrome 首项 + 导航区沉列表尾），与 DebtListEmbeddedContent 同构。 */
+@Composable
+private fun ReceivablesEmbeddedContent(
+    state: ReceivablesUiState,
+    chrome: RelationsListChrome,
+    onOpenReceivable: (Debt) -> Unit,
+    onRefresh: () -> Unit,
+) {
+    AppScrollableContent(
+        chrome = AppScrollableContentChrome(
+            role = AppPageRole.Ledger,
+            layout = AppScrollableContentLayout(
+                hasBottomBar = false,
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
+            ),
+        ),
+        refresh = AppScrollableRefreshState(
+            isRefreshing = ReadableRefreshIndicator.isActive(
+                loading = state.isLoading,
+                hasReadableData = state.receivables.isNotEmpty(),
+            ),
+            onRefresh = onRefresh,
+        ),
+    ) {
+        chrome.topChrome?.let { top ->
+            item(key = "obligations-top-chrome") { top() }
+        }
+        readableListInlineError(hasRows = state.receivables.isNotEmpty(), error = state.error)?.let { err ->
+            item { AppStatusBanner(message = err, tone = MessageTone.Danger) }
+        }
+        receivablesSection(
+            state = state,
+            onOpenReceivable = onOpenReceivable,
+        )
+        chrome.domainNavigation?.let { navigation ->
+            item(key = "obligations-domain-navigation") { navigation() }
+        }
+    }
+}
+
 private fun LazyListScope.receivablesSection(
     state: ReceivablesUiState,
     onOpenReceivable: (Debt) -> Unit,

@@ -33,6 +33,7 @@ internal object PlanDestinationTestTags {
     const val Budget = "plan_destination_budget"
     const val BudgetAdvice = "plan_destination_budget_advice"
     const val SpendingGoal = "plan_destination_spending_goal"
+    const val DebtGoal = "plan_destination_debt_goal"
     const val Recurring = "plan_destination_recurring"
     const val IncomePlans = "plan_destination_income_plans"
 }
@@ -54,6 +55,7 @@ internal data class PlanBudgetNavigationActions(
 internal data class PlanScreenActions(
     val budgetNavigation: PlanBudgetNavigationActions,
     val onOpenSpendingGoal: () -> Unit,
+    val onOpenDebtGoal: () -> Unit,
     val onOpenRecurring: () -> Unit,
     val onOpenIncomePlans: () -> Unit,
     val onRefresh: () -> Unit,
@@ -123,6 +125,7 @@ private fun PlanPrimaryPane(
         item {
             PlanGoalsSection(
                 onOpenSpendingGoal = actions.onOpenSpendingGoal,
+                onOpenDebtGoal = actions.onOpenDebtGoal,
             )
         }
         if (!showSupportingPane) {

@@ -17,19 +17,16 @@ import retrofit2.http.Multipart
 import retrofit2.http.Part
 import retrofit2.http.POST
 import retrofit2.http.Path
+import retrofit2.http.Query
 
 interface DebtApi {
-    // ADR-0049 §2 (slice 8): Debt entity surface. The list is ledger-scoped via the session
-    // token (no query params); create accepts an external/manual Debt and carries the
-    // ADR-0042 intent-time idempotency key (nullable for Retrofit ergonomics — the repository
-    // always supplies a UUID). Both routes return the server-derived fold shape.
+    // Default reads the full ledger. The optional task lens is resolved by the server for
+    // the authenticated account, never by filtering owner-relative direction on the client.
     @GET("api/debts")
-    suspend fun debts(): DebtListResponseDto
+    suspend fun debts(@Query("lens") lens: String? = null): DebtListResponseDto
 
-    // ADR-0049 P3b / ⑤c (slice ⑤c-2) creditor discovery: the ACCOUNT-scoped (cross-ledger) list of
-    // member Debts this account is the creditor of — "money owed to me" that the ledger-scoped
-    // GET /api/debts can't surface (a bill_split member Debt lives in the debtor's ledger). Every row
-    // is a member receivable (viewer_is_debtor=false), ledger_id redacted to null (§5.2). Read-only.
+    // Personal receivables in the active ledger plus cross-ledger member receivables.
+    // Only cross-ledger rows have a redacted ledger_id; external rows are included too.
     @GET("api/debts/receivables")
     suspend fun debtReceivables(): DebtListResponseDto
 

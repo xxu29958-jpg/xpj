@@ -9,9 +9,11 @@ import com.ticketbox.data.remote.dto.MemberRepaymentProposalCreateRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalRejectRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalWithdrawRequestDto
 import com.ticketbox.data.remote.dto.RepaymentCreateRequestDto
+import com.ticketbox.data.remote.dto.RepaymentVoidCreateRequestDto
 import com.ticketbox.domain.model.DebtBillSuggestion
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtDirections
+import com.ticketbox.domain.model.DebtListLens
 import com.ticketbox.domain.model.MemberRepaymentProposal
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -27,7 +29,7 @@ import java.util.UUID
  */
 interface DebtActions {
     fun canModifyLedger(): Boolean
-    suspend fun listDebts(): Result<DebtListPage>
+    suspend fun listDebts(lens: DebtListLens = DebtListLens.Ledger): Result<DebtListPage>
     suspend fun getDebt(publicId: String): Result<Debt>
     suspend fun createDebt(draft: DebtDraft): Result<Debt>
     suspend fun parseDebtBillImage(fileName: String, contentType: String?, bytes: ByteArray): Result<DebtBillSuggestion>
@@ -42,6 +44,13 @@ interface DebtActions {
         reason: String,
     ): Result<Debt>
     suspend fun voidDebt(publicId: String, expectedRowVersion: Long, reason: String): Result<Debt>
+
+    suspend fun voidRepayment(
+        publicId: String,
+        repaymentPublicId: String,
+        expectedRowVersion: Long,
+        reason: String,
+    ): Result<Debt>
 
     // ADR-0049 §7.0 / 8e-6e: set / correct this external Debt's repayment-rhythm classification
     // (debt_kind). [expectedRowVersion] is the §2.1 OCC carrier (the local Debt's row_version); the
@@ -62,11 +71,8 @@ data class DebtListPage(
 )
 
 /**
- * ADR-0049 P3b / ⑤c (slice ⑤c-2) the creditor-discovery read surface, split from [DebtActions] so
- * the read-only receivables ViewModel depends only on this one method (and its test fake stays
- * tiny). ACCOUNT-scoped (cross-ledger), NOT ledger-scoped: it lists the member Debts this account is
- * the creditor of that live in OTHER ledgers (a bill_split Debt is owned by the debtor's ledger), so
- * the ledger-scoped [DebtActions.listDebts] can never surface them. Read-only — no viewer guard.
+ * Personal receivables: this account's local ledger obligations plus cross-ledger member
+ * receivables. The server selects participants and redacts cross-ledger identity. Read-only.
  */
 interface ReceivablesActions {
     suspend fun listReceivables(): Result<List<Debt>>
@@ -118,6 +124,7 @@ interface DebtProposalActions {
 class DebtRepository(
     private val apiProvider: ApiServiceProvider,
 ) : DebtActions, ReceivablesActions {
+    val repayments: DebtRepaymentQueries = DebtRepaymentRepository(apiProvider)
     private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
     private val errorHandler = NetworkErrorHandler(
         serverUrlProvider = { apiProvider.currentSession()?.serverUrl },
@@ -134,10 +141,15 @@ class DebtRepository(
 
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
 
-    override suspend fun listDebts(): Result<DebtListPage> =
+    override suspend fun listDebts(lens: DebtListLens): Result<DebtListPage> =
         errorHandler.safeCall {
             ledgerRequestGuard.guardedCall { api ->
-                val response = api.debts()
+                val response = api.debts(
+                    lens = when (lens) {
+                        DebtListLens.Ledger -> null
+                        DebtListLens.Payables -> "payables"
+                    },
+                )
                 DebtListPage(
                     debts = response.items.map { it.toDomain() },
                     ledgerHomeCurrencyCode = response.homeCurrencyCode,
@@ -150,9 +162,31 @@ class DebtRepository(
             ledgerRequestGuard.guardedCall { api -> api.debt(publicId).toDomain() }
         }
 
-    // ADR-0049 P3b / ⑤c (slice ⑤c-2): the cross-ledger member receivables this account is the
-    // creditor of. Account-scoped — same ledger token transport, but the server keys on the
-    // account, so the active ledger does not change the result (no per-ledger stale-clear needed).
+    override suspend fun voidRepayment(
+        publicId: String,
+        repaymentPublicId: String,
+        expectedRowVersion: Long,
+        reason: String,
+    ): Result<Debt> {
+        if (!canModifyLedger()) return Result.failure(RepositoryException(DEBT_VIEWER_READONLY))
+        val cleanReason = reason.trim()
+        if (cleanReason.isEmpty()) return Result.failure(RepositoryException("请填写作废原因。"))
+        return errorHandler.safeCall {
+            ledgerRequestGuard.guardedCall { api ->
+                api.voidDebtRepayment(
+                    publicId = publicId,
+                    request = RepaymentVoidCreateRequestDto(
+                        repaymentPublicId = repaymentPublicId,
+                        reason = cleanReason,
+                        expectedRowVersion = expectedRowVersion,
+                    ),
+                    idempotencyKey = UUID.randomUUID().toString(),
+                ).toDomain()
+            }
+        }
+    }
+
+    // Local and cross-ledger receivables share the same session/ledger response guard.
     override suspend fun listReceivables(): Result<List<Debt>> =
         errorHandler.safeCall {
             ledgerRequestGuard.guardedCall { api ->

@@ -762,21 +762,21 @@ private data class KindArgs(val publicId: String, val expectedRowVersion: Long, 
 
 private class FakeDebtDetailActions(
     private val canModify: Boolean = true,
-    var getResult: Result<Debt> = Result.success(sampleDebt()),
-    var writeResult: Result<Debt> = Result.success(sampleDebt()),
+    var getResult: Result<Debt> = Result.success(sampleDebt("d1")),
+    var writeResult: Result<Debt> = Result.success(sampleDebt("d1")),
 ) : DebtActions {
     val repaymentCalls = mutableListOf<WriteArgs>()
     val adjustmentCalls = mutableListOf<WriteArgs>()
     val voidCalls = mutableListOf<WriteArgs>()
     val setKindCalls = mutableListOf<KindArgs>()
-    var setKindResult: Result<Debt> = Result.success(sampleDebt())
+    var setKindResult: Result<Debt> = Result.success(sampleDebt("d1"))
 
     /** When set, getDebt() stalls until completed — used to interleave a slow load. */
     var getGate: CompletableDeferred<Unit>? = null
 
     override fun canModifyLedger(): Boolean = canModify
 
-    override suspend fun listDebts(): Result<DebtListPage> =
+    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens): Result<DebtListPage> =
         Result.success(DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = null))
 
     override suspend fun getDebt(publicId: String): Result<Debt> {
@@ -813,6 +813,13 @@ private class FakeDebtDetailActions(
         adjustmentCalls += WriteArgs(publicId, expectedRowVersion, amountCents, reason)
         return writeResult
     }
+
+    override suspend fun voidRepayment(
+        publicId: String,
+        repaymentPublicId: String,
+        expectedRowVersion: Long,
+        reason: String,
+    ): Result<Debt> = Result.failure(UnsupportedOperationException())
 
     override suspend fun voidDebt(
         publicId: String,

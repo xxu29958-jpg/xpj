@@ -31,7 +31,11 @@ interface IncomePlanActions {
         expectedBinding: LogicalSessionBinding,
         draft: IncomePlanDraft,
     ): Result<IncomePlan>
-    suspend fun update(publicId: String, patch: IncomePlanPatch): Result<IncomePlan>
+    suspend fun update(
+        expectedBinding: LogicalSessionBinding,
+        publicId: String,
+        patch: IncomePlanPatch,
+    ): Result<IncomePlan>
 
     /**
      * ADR-0042 Slice F: offline-aware update. Direct PATCH first; on
@@ -141,6 +145,7 @@ class IncomePlanRepository(
     }
 
     override suspend fun update(
+        expectedBinding: LogicalSessionBinding,
         publicId: String,
         patch: IncomePlanPatch,
     ): Result<IncomePlan> {
@@ -148,7 +153,7 @@ class IncomePlanRepository(
             return Result.failure(RepositoryException("当前角色为只读，无法修改账本。"))
         }
         return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
+            ledgerRequestGuard.bindExact(expectedBinding).call { api ->
                 api.updateIncomePlan(
                     publicId,
                     patch.toUpdateRequest(),

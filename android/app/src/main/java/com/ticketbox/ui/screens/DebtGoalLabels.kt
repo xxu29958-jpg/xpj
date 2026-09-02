@@ -64,6 +64,7 @@ internal fun debtActionTitleRes(action: DebtAction): Int = when (action) {
     DebtAction.Repayment -> R.string.debt_action_repayment_title
     DebtAction.Adjustment -> R.string.debt_action_adjustment_title
     DebtAction.Void -> R.string.debt_action_void_title
+    DebtAction.RepaymentVoid -> R.string.debt_action_repayment_void_title
 }
 
 /** Amount-field label for a [DebtAction] (adjustment is a signed delta, hence its own copy). */

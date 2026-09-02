@@ -373,7 +373,7 @@
     <string name="debt_create_sheet_title">记一笔欠款</string>
     <string name="debt_create_label_direction">方向</string>
     <string name="debt_create_label_counterparty">欠款对象</string>
-    <string name="debt_create_label_amount">金额（%1$s）</string>
+    <string name="debt_create_label_amount">金额</string>
     <string name="debt_create_save">保存</string>
     <string name="debt_create_submitting">保存中…</string>
     <string name="debt_create_currency_unconfirmed">账本还没有欠款记录，无法确认账本币种口径，暂不能新建欠款。</string>
@@ -443,8 +443,8 @@
     <string name="debt_action_currency_unsupported">这笔欠款的币种暂不受支持，请升级小票夹后再操作。</string>
     <string name="debt_action_adjustment_title">调整本金</string>
     <string name="debt_action_void_title">作废欠款</string>
-    <string name="debt_action_amount_label">金额（%1$s）</string>
-    <string name="debt_action_adjustment_amount_label">调整金额（%1$s）</string>
+    <string name="debt_action_amount_label">金额</string>
+    <string name="debt_action_adjustment_amount_label">调整金额</string>
     <string name="debt_action_adjustment_increase">增加欠款</string>
     <string name="debt_action_adjustment_decrease">减少欠款</string>
     <string name="debt_action_reason_label">原因</string>
@@ -457,6 +457,24 @@
     <string name="debt_action_repayment_done">已记一笔还款。</string>
     <string name="debt_action_adjustment_done">已记录调整。</string>
     <string name="debt_action_void_done">已作废这笔欠款。</string>
+    <!-- 单笔还款作废（external/manual）：与整笔作废欠款不同——只撤销一条还款事实，原记录永久可追溯。 -->
+    <string name="debt_action_repayment_void_title">作废这笔还款</string>
+    <string name="debt_action_repayment_void_target_label">作废对象</string>
+    <string name="debt_action_repayment_void_target_value">%1$s · %2$s</string>
+    <string name="debt_action_repayment_void_warning">作废后这笔还款不再计入已还金额，但会保留在还款记录里。</string>
+    <string name="debt_action_repayment_void_done">已作废这笔还款。</string>
+    <string name="debt_repayment_history_load_failed">还款记录加载失败，请稍后再试。</string>
+    <!-- 还款记录段（只读历史，GET /api/debts/{id}/repayments 分页，newest-first）：金额按父欠款
+         本位币显示；已作废行沉降并保留作废原因；分页一次一页（无 snapshot cursor，不拼假 timeline）。 -->
+    <string name="debt_repayment_history_title">还款记录</string>
+    <string name="debt_repayment_history_empty">还没有还款记录。</string>
+    <string name="debt_repayment_history_total">共 %1$d 条</string>
+    <string name="debt_repayment_history_newer">较新记录</string>
+    <string name="debt_repayment_history_older">较早记录</string>
+    <string name="debt_repayment_voided_badge">已作废</string>
+    <string name="debt_repayment_voided_reason">作废原因：%1$s</string>
+    <string name="debt_repayment_void_action">作废</string>
+    <string name="debt_repayment_original_amount">原币 %1$s</string>
     <string name="debt_action_failed">操作失败，请稍后再试。</string>
 
     <!-- ADR-0049 §7.0 / 8e-6e 外部债还款类型（影响“预计还清时间”的估算方式；仅外部债，成员债不分类）。

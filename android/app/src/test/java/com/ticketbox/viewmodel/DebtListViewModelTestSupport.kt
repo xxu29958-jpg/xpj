@@ -8,6 +8,7 @@ import com.ticketbox.domain.model.DebtBillSuggestion
 import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.DebtLinkStatuses
+import com.ticketbox.domain.model.DebtListLens
 import com.ticketbox.domain.model.DebtSourceTypes
 import kotlinx.coroutines.CompletableDeferred
 
@@ -23,6 +24,7 @@ internal class FakeDebtActions(
     val createDrafts = mutableListOf<DebtDraft>()
     val parseBillCalls = mutableListOf<String>()
     var listCalls = 0
+    val listLenses = mutableListOf<DebtListLens>()
 
     /** When set, listDebts() stalls until completed — used to interleave a slow load. */
     var listGate: CompletableDeferred<Unit>? = null
@@ -32,8 +34,9 @@ internal class FakeDebtActions(
 
     override fun canModifyLedger(): Boolean = canModify
 
-    override suspend fun listDebts(): Result<DebtListPage> {
+    override suspend fun listDebts(lens: DebtListLens): Result<DebtListPage> {
         listCalls++
+        listLenses += lens
         // Capture the result at entry so a stalled load returns the snapshot it started with, even
         // if a newer load swaps listResult in the meantime.
         val captured = listResult
@@ -69,6 +72,13 @@ internal class FakeDebtActions(
         amountCents: Long,
         reason: String,
     ): Result<Debt> = Result.success(sampleDebt(publicId))
+
+    override suspend fun voidRepayment(
+        publicId: String,
+        repaymentPublicId: String,
+        expectedRowVersion: Long,
+        reason: String,
+    ): Result<Debt> = Result.failure(UnsupportedOperationException())
 
     override suspend fun voidDebt(
         publicId: String,

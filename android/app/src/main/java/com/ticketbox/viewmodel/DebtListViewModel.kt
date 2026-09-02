@@ -11,6 +11,7 @@ import com.ticketbox.domain.model.DebtBillSuggestion
 import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.DebtKinds
+import com.ticketbox.domain.model.DebtListLens
 import com.ticketbox.domain.model.DebtSourceTypes
 import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.UiText
@@ -111,6 +112,7 @@ data class DebtDraftUi(
 
 class DebtListViewModel(
     private val repository: DebtActions,
+    private val lens: DebtListLens = DebtListLens.Ledger,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(DebtListUiState(canModify = repository.canModifyLedger()))
@@ -154,7 +156,7 @@ class DebtListViewModel(
         val gen = ++loadGeneration
         _state.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
-            val result = repository.listDebts()
+            val result = repository.listDebts(lens)
             // Drop a load superseded by a newer refresh (which set isLoading and owns clearing it).
             if (gen != loadGeneration) return@launch
             result.fold(

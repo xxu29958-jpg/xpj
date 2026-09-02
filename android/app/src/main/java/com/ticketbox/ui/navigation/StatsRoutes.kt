@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ticketbox.domain.model.DebtListLens
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.mascot.rememberMascotController
 import com.ticketbox.ui.screens.BudgetScreen
@@ -43,6 +44,7 @@ import com.ticketbox.viewmodel.CreateDebtGoalViewModel
 import com.ticketbox.viewmodel.DebtDetailViewModel
 import com.ticketbox.viewmodel.DebtGoalViewModel
 import com.ticketbox.viewmodel.DebtListViewModel
+import com.ticketbox.viewmodel.DebtRepaymentHistoryViewModel
 import com.ticketbox.viewmodel.IncomePlanViewModel
 import com.ticketbox.viewmodel.MemberRepaymentProposalViewModel
 import com.ticketbox.viewmodel.MonthlyStatsViewModel
@@ -54,6 +56,7 @@ import com.ticketbox.viewmodel.budgetViewModelFactory
 import com.ticketbox.viewmodel.createDebtGoalViewModelFactory
 import com.ticketbox.viewmodel.debtDetailViewModelFactory
 import com.ticketbox.viewmodel.debtGoalViewModelFactory
+import com.ticketbox.viewmodel.debtRepaymentHistoryViewModelFactory
 import com.ticketbox.viewmodel.debtViewModelFactory
 import com.ticketbox.viewmodel.incomePlanViewModelFactory
 import com.ticketbox.viewmodel.memberRepaymentProposalViewModelFactory
@@ -74,10 +77,13 @@ internal const val DebtDetailViewModelKey = "debt-detail"
 internal const val MemberRepaymentProposalViewModelKey = "member-repayment-proposal"
 internal const val DebtGoalLinkedDetailViewModelKey = "debt-goal-linked-detail"
 internal const val DebtGoalLinkedProposalViewModelKey = "debt-goal-linked-proposal"
+internal const val DebtGoalLinkedRepaymentHistoryViewModelKey = "debt-goal-linked-repayment-history"
 // ⑤b-2: 应收(欠我的)的详情子页用自己的一组单例 VM（与 DebtRoute 的 debt-detail / member-repayment-
 // proposal 隔离），避免两个 overlay 共享同一实例的庆祝去重 / 上一笔 status 跨面串扰。
 internal const val ReceivablesDetailViewModelKey = "receivables-detail"
 internal const val ReceivablesProposalViewModelKey = "receivables-proposal"
+internal const val ReceivablesRepaymentHistoryViewModelKey = "receivables-repayment-history"
+internal const val DebtRepaymentHistoryViewModelKey = "debt-repayment-history"
 internal const val RepaymentDraftInboxViewModelKey = "repayment-draft-inbox"
 
 @Composable
@@ -163,6 +169,7 @@ internal fun DebtGoalRoute(
             openDebtId = openLinkedDebtId,
             detailViewModel = routeModels.linkedDetail,
             proposalViewModel = routeModels.linkedProposal,
+            historyViewModel = routeModels.linkedRepaymentHistory,
             onBack = {
                 linkedDebtId = null
                 routeModels.debtGoal.refresh()
@@ -198,10 +205,14 @@ internal fun DebtRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
     chromeOverride: RelationsListChrome? = null,
+    lens: DebtListLens = DebtListLens.Ledger,
+    listRefreshRevision: Int = 0,
 ) {
+    // W2-C：VM key 按 lens 区分——个人透镜不得复用/闪现全账本缓存 state（同一
+    // ViewModelStore 内「我欠」(payables) 与全账本页 (ledger) 是两份实例）。
     val debtListViewModel: DebtListViewModel = viewModel(
-        key = DebtListViewModelKey,
-        factory = debtViewModelFactory(screenFactory.debtRepository),
+        key = "$DebtListViewModelKey:${lens.name}",
+        factory = debtViewModelFactory(screenFactory.debtRepository, lens),
     )
     val detailViewModel: DebtDetailViewModel = viewModel(
         key = DebtDetailViewModelKey,
@@ -213,6 +224,10 @@ internal fun DebtRoute(
         key = MemberRepaymentProposalViewModelKey,
         factory = memberRepaymentProposalViewModelFactory(screenFactory.debtRepository.proposals),
     )
+    val repaymentHistoryViewModel: DebtRepaymentHistoryViewModel = viewModel(
+        key = DebtRepaymentHistoryViewModelKey,
+        factory = debtRepaymentHistoryViewModelFactory(screenFactory.debtRepaymentRepository),
+    )
     val context = LocalContext.current
     val parseScope = rememberCoroutineScope()
     val debtBillPicker = rememberDebtBillImageLauncher(debtListViewModel, context, parseScope)
@@ -221,6 +236,8 @@ internal fun DebtRoute(
     }
     // 每次进入都 reload，避免账本切换后短暂显示上一账本的数据。
     LaunchedEffect(Unit) { debtListViewModel.reload() }
+    // 域级新建抽屉（RelationsRoute composer）落账后 bump revision，这里刷新可见列表。
+    LaunchedEffect(listRefreshRevision) { if (listRefreshRevision > 0) debtListViewModel.refresh() }
     // 列表与详情互斥；详情返回时刷新列表以接收最新折叠状态。
     var detailDebtId by rememberSaveable { mutableStateOf<String?>(null) }
     val openDebtId = detailDebtId
@@ -229,6 +246,7 @@ internal fun DebtRoute(
             openDebtId = openDebtId,
             detailViewModel = detailViewModel,
             proposalViewModel = proposalViewModel,
+            historyViewModel = repaymentHistoryViewModel,
             onBack = {
                 detailDebtId = null
                 debtListViewModel.refresh()
@@ -248,7 +266,7 @@ internal fun DebtRoute(
 }
 
 @Composable
-private fun rememberDebtBillImageLauncher(
+internal fun rememberDebtBillImageLauncher(
     viewModel: DebtListViewModel,
     context: Context,
     scope: CoroutineScope,
@@ -286,6 +304,7 @@ private fun DebtDetailHost(
     openDebtId: String,
     detailViewModel: DebtDetailViewModel,
     proposalViewModel: MemberRepaymentProposalViewModel,
+    historyViewModel: DebtRepaymentHistoryViewModel,
     onBack: () -> Unit,
 ) {
     LaunchedEffect(openDebtId) { detailViewModel.loadDebt(openDebtId) }
@@ -296,6 +315,7 @@ private fun DebtDetailHost(
         DebtDetailScreen(
             viewModel = detailViewModel,
             proposalViewModel = proposalViewModel,
+            historyViewModel = historyViewModel,
             onBack = onBack,
         )
         DebtSettleCelebrationOverlay(
@@ -319,6 +339,7 @@ internal fun ReceivablesRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
     chromeOverride: RelationsListChrome? = null,
+    listRefreshRevision: Int = 0,
 ) {
     val viewModel: ReceivablesViewModel = viewModel(
         key = ReceivablesViewModelKey,
@@ -332,7 +353,13 @@ internal fun ReceivablesRoute(
         key = ReceivablesProposalViewModelKey,
         factory = memberRepaymentProposalViewModelFactory(screenFactory.debtRepository.proposals),
     )
+    val repaymentHistoryViewModel: DebtRepaymentHistoryViewModel = viewModel(
+        key = ReceivablesRepaymentHistoryViewModelKey,
+        factory = debtRepaymentHistoryViewModelFactory(screenFactory.debtRepaymentRepository),
+    )
     LaunchedEffect(Unit) { viewModel.reload() }
+    // 域级新建抽屉（RelationsRoute composer，方向预选应收）落账后 bump revision，这里刷新。
+    LaunchedEffect(listRefreshRevision) { if (listRefreshRevision > 0) viewModel.refresh() }
     var detailDebtId by rememberSaveable { mutableStateOf<String?>(null) }
     val openDebtId = detailDebtId
     if (openDebtId != null) {
@@ -340,6 +367,7 @@ internal fun ReceivablesRoute(
             openDebtId = openDebtId,
             detailViewModel = detailViewModel,
             proposalViewModel = proposalViewModel,
+            historyViewModel = repaymentHistoryViewModel,
             onBack = {
                 detailDebtId = null
                 viewModel.refresh()

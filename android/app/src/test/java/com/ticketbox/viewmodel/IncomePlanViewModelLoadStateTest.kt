@@ -102,7 +102,11 @@ private class LoadStateIncomePlanRepository(
         draft: IncomePlanDraft,
     ): Result<IncomePlan> = Result.success(plan("created"))
 
-    override suspend fun update(publicId: String, patch: IncomePlanPatch): Result<IncomePlan> =
+    override suspend fun update(
+        expectedBinding: LogicalSessionBinding,
+        publicId: String,
+        patch: IncomePlanPatch,
+    ): Result<IncomePlan> =
         Result.success(plan(publicId))
 
     override suspend fun archive(

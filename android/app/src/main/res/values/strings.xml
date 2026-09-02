@@ -37,15 +37,14 @@
     <string name="nav_domain_plans">计划</string>
     <string name="nav_domain_insights">洞察</string>
     <!-- 往来域（Obligations）根页：我欠 / 欠我 双视图与往来任务入口 -->
-    <string name="relations_title">往来</string>
     <string name="relations_i_owe_tab">我欠</string>
     <string name="relations_owed_to_me_tab">欠我</string>
-    <string name="relations_i_owe_subtitle">需要我继续处理的欠款、还款与分期。</string>
-    <string name="relations_owed_to_me_subtitle">我替别人垫付、等待确认或收回的往来。</string>
     <string name="relations_bill_splits">拆账</string>
     <string name="relations_repayment_review">还款复核</string>
-    <string name="relations_debt_goals">还债计划</string>
+    <string name="relations_debt_goals">还债目标</string>
     <string name="relations_task_section_title">往来任务</string>
+    <!-- W2-C：全账本往来二级页入口（个人透镜之上保留账本完整视图）；行内副标题带当前账本名。 -->
+    <string name="relations_all_debts">全部往来</string>
     <string name="navigation_open_account">打开账户与设置</string>
 
     <!-- BiometricAuthManager：本地生物识别解锁的系统弹窗 + 错误文案（release REQUIRE_LOCAL_UNLOCK=true 时可见，经 onError→AppViewModel→LoginScreen） -->

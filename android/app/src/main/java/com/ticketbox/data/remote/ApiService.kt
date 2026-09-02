@@ -14,6 +14,7 @@ import com.ticketbox.data.remote.api.ServerSettingsApi
 import com.ticketbox.data.remote.api.ReportsApi
 import com.ticketbox.data.remote.api.GoalsApi
 import com.ticketbox.data.remote.api.DebtApi
+import com.ticketbox.data.remote.api.DebtRepaymentApi
 import com.ticketbox.data.remote.api.DebtProposalApi
 import com.ticketbox.data.remote.api.RepaymentDraftApi
 import com.ticketbox.data.remote.api.DashboardApi
@@ -48,6 +49,7 @@ interface ApiService :
     ReportsApi,
     GoalsApi,
     DebtApi,
+    DebtRepaymentApi,
     DebtProposalApi,
     RepaymentDraftApi,
     DashboardApi,

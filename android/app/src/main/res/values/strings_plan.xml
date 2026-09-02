@@ -16,6 +16,9 @@
     <string name="plan_section_goals">目标</string>
     <string name="plan_spending_goal_title">消费目标</string>
     <string name="plan_spending_goal_subtitle">给总支出或某个分类设一个上限</string>
+    <!-- W2-C：还债目标入口进计划 hub（共享 DebtGoalRoute，不复制 surface）；与目的地页同名。 -->
+    <string name="plan_debt_goal_title">还债目标</string>
+    <string name="plan_debt_goal_subtitle">跟踪关联欠款的清偿进度</string>
     <string name="plan_section_ongoing">固定安排</string>
     <string name="plan_recurring_title">固定支出</string>
     <string name="plan_recurring_loading">正在读取周期安排</string>
@@ -30,12 +33,7 @@
     <string name="plan_income_error">收入计划暂时无法读取</string>
     <string name="plan_income_empty">还没有收入安排</string>
     <string name="plan_income_summary">本月 %1$d 项有效 · 预计 %2$s · 历史 %3$d 条</string>
-    <string name="plan_action_wait">读取中</string>
-    <string name="plan_action_set">设置</string>
-    <string name="plan_action_adjust">调整</string>
-    <string name="plan_action_view">查看</string>
-    <string name="plan_action_manage">管理</string>
-    <string name="plan_action_open">打开</string>
+    <!-- W2-C：入口行动词统一为 chevron（旧 设置/调整/查看/管理/打开/读取中 动词族退役）。 -->
     <string name="budget_advice_page_title">预算建议</string>
     <string name="budget_advice_page_subtitle">%1$s · 收支结构与分类额度</string>
     <string name="budget_advice_back_to_plan">返回计划</string>

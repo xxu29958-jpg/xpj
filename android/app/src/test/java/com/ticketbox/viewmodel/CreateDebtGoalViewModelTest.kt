@@ -254,7 +254,7 @@ private class FakeCreateDebtActions(
     private val listResult: Result<List<Debt>> = Result.success(emptyList()),
 ) : DebtActions {
     override fun canModifyLedger(): Boolean = canModify
-    override suspend fun listDebts(): Result<DebtListPage> =
+    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens): Result<DebtListPage> =
         listResult.map { DebtListPage(debts = it, ledgerHomeCurrencyCode = null) }
     override suspend fun getDebt(publicId: String): Result<Debt> =
         Result.failure(UnsupportedOperationException())
@@ -277,6 +277,13 @@ private class FakeCreateDebtActions(
         publicId: String,
         expectedRowVersion: Long,
         amountCents: Long,
+        reason: String,
+    ): Result<Debt> = Result.failure(UnsupportedOperationException())
+
+    override suspend fun voidRepayment(
+        publicId: String,
+        repaymentPublicId: String,
+        expectedRowVersion: Long,
         reason: String,
     ): Result<Debt> = Result.failure(UnsupportedOperationException())
 

@@ -19,7 +19,7 @@ internal class CapabilityDebtActions(
 
     override fun canModifyLedger(): Boolean = canModify
 
-    override suspend fun listDebts(): Result<DebtListPage> {
+    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens): Result<DebtListPage> {
         listCalls += 1
         return Result.success(page)
     }

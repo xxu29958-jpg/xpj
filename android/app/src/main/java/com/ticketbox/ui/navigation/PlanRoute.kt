@@ -63,6 +63,7 @@ internal fun PlanRoute(
                 onOpenAdvice = { shellState.openSecondaryPage(ProductSecondaryPage.BudgetAdvice) },
             ),
             onOpenSpendingGoal = { shellState.openSecondaryPage(ProductSecondaryPage.SpendingGoal) },
+            onOpenDebtGoal = { shellState.openSecondaryPage(ProductSecondaryPage.DebtGoals) },
             onOpenRecurring = { shellState.openSecondaryPage(ProductSecondaryPage.Recurring) },
             onOpenIncomePlans = { shellState.openSecondaryPage(ProductSecondaryPage.IncomePlans) },
             onRefresh = {

@@ -1,6 +1,8 @@
 package com.ticketbox.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -10,10 +12,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetState
@@ -27,8 +32,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
@@ -47,6 +57,10 @@ import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryPageSlots
 import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
+import com.ticketbox.ui.components.AppScrollableContent
+import com.ticketbox.ui.components.AppScrollableContentChrome
+import com.ticketbox.ui.components.AppScrollableContentLayout
+import com.ticketbox.ui.components.AppScrollableRefreshState
 import com.ticketbox.ui.components.AppSheetAction
 import com.ticketbox.ui.components.AppSheetActionRow
 import com.ticketbox.ui.components.AppSheetScaffold
@@ -55,8 +69,9 @@ import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.PrimaryCtaButton
-import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.design.AppIconSize
+import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.tabularNum
@@ -71,7 +86,7 @@ import com.ticketbox.viewmodel.updateDraftKind
 import kotlinx.coroutines.delay
 
 /** 操作成功提示的展示时长，到点自动收起，与既有 undo 卡片的定时关闭同一惯例。 */
-private const val DebtFlashDismissMillis = 4000L
+internal const val DebtFlashDismissMillis = 4000L
 
 data class DebtListScreenActions(
     val onBack: () -> Unit,
@@ -155,6 +170,10 @@ private fun DebtListContent(
         backText = stringResource(R.string.debt_list_topbar_back),
         onBack = callbacks.onBack,
     )
+    if (resolvedChrome.embeddedInDomain) {
+        DebtListEmbeddedContent(state = state, chrome = resolvedChrome, callbacks = callbacks)
+        return
+    }
     AppSecondaryScrollableContent(
         chrome = AppSecondaryPageChrome(
             role = AppPageRole.Ledger,
@@ -172,7 +191,19 @@ private fun DebtListContent(
             ),
             onRefresh = callbacks.onRefresh,
         ),
-        slots = AppSecondaryPageSlots(actions = debtListHeaderActions(state, callbacks)),
+        slots = AppSecondaryPageSlots(
+            actions = if (state.canModify) {
+                {
+                    DebtListHeaderActions(
+                        isParsingBill = state.isParsingBill,
+                        onParseBillImage = callbacks.onParseBillImage,
+                        onAddDebt = callbacks.onAddDebt,
+                    )
+                }
+            } else {
+                null
+            },
+        ),
     ) {
         resolvedChrome.domainNavigation?.let { navigation ->
             item(key = "obligations-domain-navigation") { navigation() }
@@ -187,47 +218,97 @@ private fun DebtListContent(
     }
 }
 
-private fun debtListHeaderActions(
+/**
+ * W2-C 主域嵌入态：shell 已有域名——无大标题/头部动作；首项是 RelationsRoute 的
+ * tabs+单主 CTA（topChrome），导航区沉到列表尾，真实欠款内容占上半屏。
+ */
+@Composable
+private fun DebtListEmbeddedContent(
     state: DebtListUiState,
+    chrome: RelationsListChrome,
     callbacks: DebtListScreenCallbacks,
-): (@Composable () -> Unit)? =
-    if (state.canModify) {
-        {
-            DebtListHeaderActions(
-                isParsingBill = state.isParsingBill,
-                onParseBillImage = callbacks.onParseBillImage,
-                onAddDebt = callbacks.onAddDebt,
-            )
+) {
+    AppScrollableContent(
+        chrome = AppScrollableContentChrome(
+            role = AppPageRole.Ledger,
+            layout = AppScrollableContentLayout(
+                hasBottomBar = false,
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
+            ),
+        ),
+        refresh = AppScrollableRefreshState(
+            isRefreshing = ReadableRefreshIndicator.isActive(
+                loading = state.isLoading,
+                hasReadableData = state.debts.isNotEmpty(),
+            ),
+            onRefresh = callbacks.onRefresh,
+        ),
+    ) {
+        chrome.topChrome?.let { top ->
+            item(key = "obligations-top-chrome") { top() }
         }
-    } else {
-        null
+        state.flashMessage?.let { msg ->
+            item { AppStatusBanner(message = msg, tone = MessageTone.Success) }
+        }
+        readableListInlineError(hasRows = state.debts.isNotEmpty(), error = state.error)?.let { err ->
+            item { AppStatusBanner(message = err, tone = MessageTone.Danger) }
+        }
+        debtListSection(state = state, onOpenDebt = callbacks.onOpenDebt)
+        chrome.domainNavigation?.let { navigation ->
+            item(key = "obligations-domain-navigation") { navigation() }
+        }
     }
+}
 
+/** 二级页头部动作：单主 CTA「记一笔欠款」+ OCR 安静图标入口（不再两颗整行大按钮上下堆挤）。 */
 @Composable
 private fun DebtListHeaderActions(
     isParsingBill: Boolean,
     onParseBillImage: () -> Unit,
     onAddDebt: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        QuietOutlinedButton(
-            text = stringResource(
-                if (isParsingBill) {
-                    R.string.debt_list_parse_bill_busy
-                } else {
-                    R.string.debt_list_parse_bill
-                },
-            ),
-            leadingIcon = Icons.Default.Search,
-            enabled = !isParsingBill,
-            onClick = onParseBillImage,
-        )
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+    ) {
         PrimaryCtaButton(
             text = stringResource(R.string.debt_list_add),
             icon = Icons.Default.Add,
+            modifier = Modifier.weight(1f),
             enabled = !isParsingBill,
             onClick = onAddDebt,
         )
+        DebtBillParseIconButton(isParsingBill = isParsingBill, onClick = onParseBillImage)
+    }
+}
+
+/**
+ * 「识别还款账单」的安静图标入口（主列表 chrome 与二级页头部共用）：busy 时禁用并把反馈收在
+ * 控件内（小型进度指示替代图标），不与主 CTA 争视觉。图形沿用产品既有 ReceiptLong 票据语言。
+ */
+@Composable
+internal fun DebtBillParseIconButton(isParsingBill: Boolean, onClick: () -> Unit) {
+    val description = stringResource(
+        if (isParsingBill) R.string.debt_list_parse_bill_busy else R.string.debt_list_parse_bill,
+    )
+    Box(
+        modifier = Modifier
+            .size(AppSpacing.controlMinHeight)
+            .clip(RoundedCornerShape(AppRadius.extraSmall))
+            .clickable(role = Role.Button, enabled = !isParsingBill, onClick = onClick)
+            .semantics { contentDescription = description },
+        contentAlignment = Alignment.Center,
+    ) {
+        if (isParsingBill) {
+            CircularProgressIndicator(modifier = Modifier.size(AppIconSize.standard), strokeWidth = 2.dp)
+        } else {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ReceiptLong,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(AppIconSize.standard),
+            )
+        }
     }
 }
 private fun LazyListScope.debtListSection(
@@ -357,7 +438,7 @@ private fun ExternalDebtRow(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DebtAddSheet(
+internal fun DebtAddSheet(
     state: DebtListUiState,
     viewModel: DebtListViewModel,
     sheetState: SheetState,

@@ -18,7 +18,7 @@ import com.ticketbox.ui.design.AppPrimaryNavigationMode
 import com.ticketbox.ui.design.AppWindowWidthClass
 import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
 import com.ticketbox.ui.navigation.ObligationsNavigationActions
-import com.ticketbox.ui.navigation.ObligationsView
+import com.ticketbox.ui.navigation.ObligationsTaskNavigation
 import com.ticketbox.ui.navigation.RelationsAdaptivePaneConsumer
 import com.ticketbox.ui.screens.plan.PlanBudgetNavigationActions
 import com.ticketbox.ui.screens.plan.PlanDestinationTestTags
@@ -37,8 +37,9 @@ import org.junit.Test
  * 218-B1 适配（替代原 StatsPlanningMenuTest）：Stats 头部的「规划」下拉菜单随五域导航骨架被
  * 删除，规划入口迁往新域——Budget / BudgetAdvice / SpendingGoal / Recurring / IncomePlans 落在
  * Plan 域根
- * [PlanScreen]（[PlanDestinationTestTags] 钉住各入口行），DebtGoals 落在往来(Obligations)域的
- * 任务行（[RelationsAdaptivePaneConsumer] 的支持面板导航）。本测试钉住新现实下的等价行为：
+ * [PlanScreen]（[PlanDestinationTestTags] 钉住各入口行）。W2-C：DebtGoals 从 Plan hub「目标」段
+ * 与往来(Obligations)域任务行双向可达（共享同一 DebtGoalRoute，不复制 surface）。
+ * 本测试钉住新现实下的等价行为：
  * 入口可见（testTag + 文案）且点击分发到对应回调。旧菜单的展开/收起态播报与菜单钮 48dp 触控
  * 断言随菜单本身一并删除（B1 后无任何等价 UI 可断言）。
  */
@@ -65,6 +66,7 @@ class PlanningDestinationsNavigationTest {
                             onOpenAdvice = { hits.budgetAdvice++ },
                         ),
                         onOpenSpendingGoal = { hits.spendingGoal++ },
+                        onOpenDebtGoal = { hits.debtGoal++ },
                         onOpenRecurring = { hits.recurring++ },
                         onOpenIncomePlans = { hits.incomePlans++ },
                         onRefresh = {},
@@ -87,6 +89,11 @@ class PlanningDestinationsNavigationTest {
             tag = PlanDestinationTestTags.SpendingGoal,
             label = context.getString(R.string.plan_spending_goal_title),
             assertHit = { assertEquals(1, hits.spendingGoal) },
+        )
+        assertPlanDestination(
+            tag = PlanDestinationTestTags.DebtGoal,
+            label = context.getString(R.string.plan_debt_goal_title),
+            assertHit = { assertEquals(1, hits.debtGoal) },
         )
         assertPlanDestination(
             tag = PlanDestinationTestTags.Recurring,
@@ -113,13 +120,17 @@ class PlanningDestinationsNavigationTest {
                     LocalAppAdaptiveLayoutPolicy provides expandedSupportingPolicy,
                 ) {
                     RelationsAdaptivePaneConsumer(
-                        selectedView = ObligationsView.I_OWE,
-                        onSelectView = {},
-                        actions = ObligationsNavigationActions(
-                            onOpenBillSplits = {},
-                            onOpenRepaymentReview = {},
-                            onOpenDebtGoals = { debtGoals++ },
-                        ),
+                        navigation = {
+                            ObligationsTaskNavigation(
+                                actions = ObligationsNavigationActions(
+                                    onOpenAllDebts = {},
+                                    onOpenBillSplits = {},
+                                    onOpenRepaymentReview = {},
+                                    onOpenDebtGoals = { debtGoals++ },
+                                ),
+                                ledgerName = null,
+                            )
+                        },
                         primaryPane = {},
                     )
                 }
@@ -151,6 +162,7 @@ class PlanningDestinationsNavigationTest {
         var budget: Int = 0,
         var budgetAdvice: Int = 0,
         var spendingGoal: Int = 0,
+        var debtGoal: Int = 0,
         var recurring: Int = 0,
         var incomePlans: Int = 0,
     )
