@@ -36,7 +36,7 @@ body {
     margin-block-end: var(--space-8);
 }
 
-/* 登录页 data-theme 由首屏前 cookie bootstrap 还原 (login.html inline script),
+/* 登录页 data-theme 由服务端 _read_ui_theme SSR 直出 (web_auth.py 注入 ui_theme),
    非固定 paper: 与 shell.css 同源的 [data-theme] 双 colorway 切换在此自给
    (本页不加载 shell.css), 玄夜会话进入登录页 mark 不换色即反例。 */
 .auth-brand .brand-mark-img {

@@ -250,7 +250,7 @@ def test_inbox_pending_header_has_native_upload_form_and_flat_queue_summary(
     assert response.status_code == 200
     body = response.text
     form = re.search(
-        r'<form class="inbox-upload-form" method="post"'
+        r'<form class="inbox-upload-form" id="capture" method="post"'
         r' action="/web/pending/upload\?ledger_id=owner" data-inbox-capture'
         r' enctype="multipart/form-data">.*?</form>',
         body,

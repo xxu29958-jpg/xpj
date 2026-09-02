@@ -8,6 +8,7 @@ never inherit the legacy local owner projection.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -161,7 +162,7 @@ def test_valid_desktop_bridge_projects_bound_viewer_and_its_ledger(
     # The bound ledger renders as the selected ledger with the session's role
     # stamped on it — a viewer principal stays read-only.
     assert "Desktop 绑定账本" in response.text
-    assert 'name="ledger_id" value="owner"' in response.text
+    assert re.search(r'href="/web/pending\?ledger_id=owner"', response.text) is not None
     assert "ledger-role-viewer" in response.text
     # The desktop product surface carries the route back to the manager UI.
     assert 'class="manager-home-link" href="/"' in response.text

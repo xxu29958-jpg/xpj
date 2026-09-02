@@ -20,8 +20,8 @@ val LocalSwipeActionTokens = compositionLocalOf { swipeActionTokensForSkin(AppSk
 
 fun swipeActionTokensForSkin(skin: AppSkin): SwipeActionTokens = when (skin) {
     AppSkin.Paper -> SwipeActionTokens(
-        confirm = SwipeAction(Color(0xFF176B5B), Color(0xFFFFFFFF), Color(0xFFFFFFFF)),
-        ignore = SwipeAction(Color(0xFF66716B), Color(0xFFFFFFFF), Color(0xFFFFFFFF)),
+        confirm = SwipeAction(Color(0xFF14504A), Color(0xFFFFFFFF), Color(0xFFFFFFFF)),
+        ignore = SwipeAction(Color(0xFF57514A), Color(0xFFFFFFFF), Color(0xFFFFFFFF)),
         delete = SwipeAction(Color(0xFFA83D32), Color(0xFFFFFFFF), Color(0xFFFFFFFF)),
     )
     AppSkin.Midnight -> SwipeActionTokens(

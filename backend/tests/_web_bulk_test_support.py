@@ -25,6 +25,7 @@ def seed_pending_with_amount(
     web_client: TestClient,
     amount_yuan: str = "10.00",
     merchant: str = "测试",
+    category: str = "其他",
     *,
     identity,
 ) -> int:
@@ -36,7 +37,7 @@ def seed_pending_with_amount(
         data={
             "amount_yuan": amount_yuan,
             "merchant": merchant,
-            "category": "其他",
+            "category": category,
             "note": "",
             "ledger_id": "owner",
         },

@@ -24,7 +24,7 @@ fun goalTokensForSkin(skin: AppSkin): GoalTokens {
     return when (skin) {
         AppSkin.Paper -> GoalTokens(
             idle = GoalStateTokens(Color(0xFFEDF1EE), Color(0xFF66716B), Color(0xFFDCE2DD)),
-            onTrack = GoalStateTokens(Color(0xFFE1F0EA), Color(0xFF176B5B), Color(0xFFC5DED5)),
+            onTrack = GoalStateTokens(Color(0xFFE1F0EA), Color(0xFF14504A), Color(0xFFC5DED5)),
             nearLimit = GoalStateTokens(Color(0xFFF8EEDC), Color(0xFF8A5A18), Color(0xFFE6D2A9)),
             exceeded = GoalStateTokens(Color(0xFFF8E6E2), Color(0xFFA83D32), Color(0xFFEBC8C1)),
             expired = GoalStateTokens(Color(0xFFE9EDEA), Color(0xFF7A847E), Color(0xFFD8DEDA)),

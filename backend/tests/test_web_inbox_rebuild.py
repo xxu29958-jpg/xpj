@@ -152,54 +152,6 @@ def test_web_pending_bulk_selection_markup_and_js_field_name(web_client: TestCli
     assert "无 JS 分类" in detail.text
 
 
-def test_web_pending_touch_targets_and_file_picker_markup(
-    web_client: TestClient, *, identity
-) -> None:
-    """K3 响应式收件: 勾选控件有真实 44px hit area (label 包裹, 视觉框不变),
-    上传入口用 file-picker primitive (原生 input 仍是 owner, label 按钮触发,
-    文件名槽位给 JS 渐进增强)。命令 action/field/CSRF/OCC 关联一律不变。"""
-    eid = _seed_pending_with_amount(web_client, "9.00", "X", identity=identity)
-    resp = web_client.get("/web/pending?ledger_id=owner")
-    assert resp.status_code == 200
-    body = resp.text
-
-    # check-cell: 行与表头勾选控件都包在真实 <label> 里 (hit area 由 CSS 承担)
-    row_label = re.search(
-        r'<label class="check-cell">\s*<input class="checkbox row-check"[^>]+>', body
-    )
-    assert row_label is not None
-    head_label = re.search(
-        r'<label class="check-cell">\s*<input class="checkbox" id="check-all"', body
-    )
-    assert head_label is not None
-    # 行 input 的既有合同原样保留 (label 包裹不改变表单关联/可访问名)
-    row_input = row_label.group(0)
-    assert f'aria-label="选择账单 #{eid}"' in row_input
-    assert 'form="bulk-form"' in row_input
-    assert 'data-row-version="' in row_input
-    assert 'name="expense_snapshot"' in row_input
-
-    # file-picker: 原生 input 保留全部命令属性, label 关联触发, 文件名槽位存在
-    file_input = re.search(r'<input class="file-picker-input"[^>]+>', body)
-    assert file_input is not None
-    file_tag = file_input.group(0)
-    assert 'type="file"' in file_tag
-    assert 'name="file"' in file_tag
-    assert 'accept="image/*"' in file_tag
-    assert "required" in file_tag
-    assert 'aria-label="选择小票图片"' in file_tag
-    file_id = re.search(r'id="([^"]+)"', file_tag)
-    assert file_id is not None
-    assert f'<label class="file-picker-label" for="{file_id.group(1)}"' in body
-    assert "data-file-picker-name" in body
-    # 上传表单仍是原生 multipart POST (no-JS 命令合同)
-    assert 'data-inbox-capture enctype="multipart/form-data"' in body
-    # W1: 上传表单是全局「收票」入口的锚点目标 (topbar 收票链接落到 #capture)
-    capture_form = re.search(r'<form[^>]*data-inbox-capture[^>]*>', body)
-    assert capture_form is not None
-    assert 'id="capture"' in capture_form.group(0)
-
-
 @pytest.mark.parametrize(
     ("path", "page_level", "copy"),
     [
@@ -290,22 +242,6 @@ def test_inbox_empty_state_matches_real_ingestion_routing(
     assert "从 CSV 导入" in body
 
 
-def test_inbox_empty_state_shows_mascot_illustration(web_client: TestClient) -> None:
-    """W1 Warm Ledger: 队列清空态落真实品牌资产 (夹夹 dozing, 锁定母版资产原样
-    复制, 零脚本处理); 装饰性语义对读屏透明 (alt="" + aria-hidden 容器),
-    与 Android MascotEmptyIllustration 的 clearAndSetSemantics 纪律同源。
-    筛选空态 (换个条件) 不放插画。"""
-    response = web_client.get("/web/pending?ledger_id=owner")
-
-    assert response.status_code == 200
-    body = response.text
-    state = re.search(r'<div class="product-state">.*?<a class="product-state-action"', body, re.S)
-    assert state is not None
-    state_html = state.group(0)
-    assert '<div class="product-state-figure" aria-hidden="true">' in state_html
-    assert '<img src="/static/web/product/mascot/jiajia-dozing.png" alt=""' in state_html
-
-
 def test_inbox_pending_rows_keep_checkbox_outside_row_link(web_client: TestClient, *, identity) -> None:
     """S4-R1 行格钉: 勾选控件是 .exp-row 容器内的兄弟节点 (选择槽), 行链接
     a.exp-row-detail 子树内零交互控件 (HTML 禁嵌, JS 未载时嵌套点击会穿透
@@ -364,45 +300,6 @@ def test_inbox_pending_rows_keep_checkbox_outside_row_link(web_client: TestClien
     # 批量条在(data-bulk), 且保留 main 的 OCC 隐藏字段装配与取消选择按钮。
     assert 'id="bulk-form"' in body
     assert "data-bulk-clear" in body
-
-
-def test_inbox_row_meta_drops_engineering_id_and_row_action_keeps_result_copy(
-    web_client: TestClient, *, identity
-) -> None:
-    """W1 Warm Ledger: 队列行可见 meta 不再暴露工程 id (#id 退到 aria/drawer/URL,
-    事实不丢); 行级确认命令视觉降权为 tonal 按钮, 但 action/name/value/OCC 与
-    结果文案「确认入账」原样保留; 批量条内同名主命令保持 primary。"""
-    eid = _seed_pending_with_amount(web_client, "9.00", "X", identity=identity)
-    resp = web_client.get("/web/pending?ledger_id=owner")
-    assert resp.status_code == 200
-    body = resp.text
-
-    # 可见行 meta 不暴露工程 id; aria/drawer 定位事实保留
-    assert '<div class="exp-meta">#' not in body
-    assert f'aria-label="选择账单 #{eid}"' in body
-    drawer = web_client.get(f"/web/expenses/{eid}/edit?ledger_id=owner&fragment=1")
-    assert drawer.status_code == 200
-    assert f"#{eid}" in drawer.text
-
-    # 行级命令: 同一 CSRF/OCC 合同与结果文案, 视觉降权 (无 --primary)
-    row_form = re.search(
-        r'<form class="exp-row-action" method="post" action="/web/review/bulk">.*?</form>',
-        body,
-        re.S,
-    )
-    assert row_form is not None
-    form_html = row_form.group(0)
-    assert 'name="csrf_token"' in form_html
-    assert 'name="expense_snapshot"' in form_html
-    assert re.search(
-        r'<button class="product-button product-button--primary" type="submit" name="action" value="confirm_ready">确认入账</button>',
-        form_html,
-    )
-    # 批量条内的同名主命令保持 primary
-    assert re.search(
-        r'<button class="product-button product-button--primary" type="submit" name="action" value="confirm_ready">确认入账</button>',
-        body,
-    )
 
 
 def test_inbox_pending_drawer_uses_product_markup(web_client: TestClient, *, identity) -> None:

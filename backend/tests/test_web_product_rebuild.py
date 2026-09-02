@@ -16,6 +16,7 @@ S3 落「壳基座」: base.html / _sidebar_nav.html 重写 + product 设计系�
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
@@ -34,12 +35,24 @@ _RETIRED_GLOBAL_STACK = (
 )
 
 
-def _demote_owner_ledger_to_viewer() -> None:
+@pytest.fixture
+def owner_ledger_viewer() -> Iterator[None]:
     with SessionLocal() as db:
         member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1))
         assert member is not None
+        original_role = member.role
         member.role = "viewer"
         db.commit()
+    try:
+        yield
+    finally:
+        with SessionLocal() as db:
+            member = db.scalar(
+                select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1)
+            )
+            assert member is not None
+            member.role = original_role
+            db.commit()
 
 
 def _assert_shell_chrome_has_no_inline_style(body: str) -> None:
@@ -114,10 +127,11 @@ def test_product_shell_mobile_task_order_and_capture_search_entries(
     assert 'href="/web/search?ledger_id=owner"' in topbar_html
 
 
-def test_product_shell_capture_entry_hidden_for_viewer(web_client: TestClient) -> None:
+def test_product_shell_capture_entry_hidden_for_viewer(
+    web_client: TestClient,
+    owner_ledger_viewer: None,
+) -> None:
     """W1: 收票是写入口, viewer 不渲染; 搜索只读可用, 保留。"""
-    _demote_owner_ledger_to_viewer()
-
     response = web_client.get("/web/pending?ledger_id=owner")
     assert response.status_code == 200
     topbar = re.search(r'<header class="product-topbar">.*?</header>', response.text, re.S)
@@ -144,7 +158,7 @@ def test_account_switcher_is_native_disclosure_without_false_local_logout(
     assert 'action="/web/auth/logout"' not in body
     assert "退出登录" not in body
     # 账本切换 rows 仍是真实 GET 链接, 不被披露组件吃掉
-    assert re.search(r'<a class="row[^"]*" href="/web/pending\?ledger_id=', body) is not None
+    assert re.search(r'<a class="row[^"]*"\s+href="/web/pending\?ledger_id=', body) is not None
 
 
 @pytest.mark.parametrize(
@@ -391,11 +405,12 @@ def test_secondary_product_routes_follow_canonical_ownership(
     assert 'data-page="transactions" data-page-level="secondary"' in recycle_bin.text
 
 
-def test_viewer_primary_page_keeps_read_only_shell(web_client: TestClient) -> None:
+def test_viewer_primary_page_keeps_read_only_shell(
+    web_client: TestClient,
+    owner_ledger_viewer: None,
+) -> None:
     """viewer 角色壳契约: 五域导航保持可见 (只读可浏览), 顶栏/侧栏标注只读,
     正文前置 readonly-callout, 写面动作由页面隐藏 (本例以预算保存表单为证)。"""
-    _demote_owner_ledger_to_viewer()
-
     page = web_client.get("/web/confirmed?ledger_id=owner")
     assert page.status_code == 200
     body = page.text
