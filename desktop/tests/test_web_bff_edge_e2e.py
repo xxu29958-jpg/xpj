@@ -52,6 +52,9 @@ _BROWSER_SECRET = "browser-secret-must-not-reach-backend"
 _RESPONSE_SECRET = "backend-secret-must-not-reach-browser"
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _THEME_SCRIPT = (_REPO_ROOT / "backend" / "app" / "static" / "web" / "desktop" / "theme.js").read_bytes()
+_APPEARANCE_BOOTSTRAP_SCRIPT = (
+    _REPO_ROOT / "backend" / "app" / "static" / "web" / "appearance-bootstrap.js"
+).read_bytes()
 _DESKTOP_BOOT_SCRIPT = (_REPO_ROOT / "backend" / "app" / "static" / "web" / "desktop.js").read_bytes()
 _UI_HTML = _REPO_ROOT / "desktop" / "backend_manager" / "ui.html"
 
@@ -124,6 +127,8 @@ _THEME_HTML = """<!doctype html>
     <button type="button" data-theme-mode="midnight">玄夜</button>
     <button type="button" data-theme-mode="system">跟随系统</button>
   </div>
+  <!-- 与生产 base.html/login.html 同序: 外观合同 bootstrap 必须先于 theme.js。 -->
+  <script src="/static/web/appearance-bootstrap.js"></script>
   <script src="/static/web/desktop/theme.js"></script>
   <script src="/static/web/desktop.js"></script>
   <script src="/static/web/desktop/theme-fixture.js"></script>
@@ -226,6 +231,9 @@ class _ConsumerHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/static/web/desktop-e2e-consumer.js":
             self._send(200, _CONSUMER_SCRIPT.encode(), "text/javascript; charset=utf-8")
+            return
+        if self.path == "/static/web/appearance-bootstrap.js":
+            self._send(200, _APPEARANCE_BOOTSTRAP_SCRIPT, "text/javascript; charset=utf-8")
             return
         if self.path == "/static/web/desktop/theme.js":
             self._send(200, _THEME_SCRIPT, "text/javascript; charset=utf-8")
@@ -386,6 +394,7 @@ def test_real_edge_theme_change_stays_in_the_browser(tmp_path: Path) -> None:
     assert observed[0] == ("GET", "/web")
     # The static fetches race; order between them is not contractual.
     assert sorted(observed[1:]) == [
+        ("GET", "/static/web/appearance-bootstrap.js"),
         ("GET", "/static/web/desktop.js"),
         ("GET", "/static/web/desktop/theme-fixture.js"),
         ("GET", "/static/web/desktop/theme.js"),
