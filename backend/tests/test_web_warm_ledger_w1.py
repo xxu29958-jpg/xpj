@@ -79,7 +79,7 @@ def test_inbox_row_meta_drops_engineering_id_and_keeps_command_contract(
     eid = _seed_pending_with_amount(
         web_client,
         "9.00",
-        "X",
+        "盒马",
         category="餐饮",
         identity=identity,
     )
