@@ -2,6 +2,8 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.remote.dto.ExpenseDto
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
@@ -75,8 +77,11 @@ internal class ExpenseRepositoryPendingSyncTest {
 
         val preEnrichment = async { repository.syncPending().getOrThrow() }
         firstRequestStarted.await()
-        val terminal = async { repository.syncPending().getOrThrow() }
-        yield()
+        // safeCall uses IO: enter that context undispatched so this caller joins
+        // the active run before releasing its response, not merely the test scheduler.
+        val terminal = async(Dispatchers.IO, start = CoroutineStart.UNDISPATCHED) {
+            repository.syncPending().getOrThrow()
+        }
         firstResponseCanReturn.complete(Unit)
 
         assertEquals("识别后", preEnrichment.await().single().merchant)
