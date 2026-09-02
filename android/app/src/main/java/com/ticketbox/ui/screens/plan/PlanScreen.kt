@@ -1,14 +1,9 @@
 package com.ticketbox.ui.screens.plan
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
@@ -145,30 +140,15 @@ private fun PlanPrimaryPane(
 private fun PlanProductHeader(
     month: String,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-        verticalAlignment = Alignment.Top,
-    ) {
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-        ) {
-            Text(
-                text = stringResource(R.string.plan_page_title),
-                color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.displayMedium,
-            )
-            Text(
-                text = stringResource(
-                    R.string.plan_page_month_context,
-                    displayMonthLabel(month),
-                ),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
+    // shell 已承载「计划」一级标题，body 不再重复大字标题，只留当前月份口径。
+    Text(
+        text = stringResource(
+            R.string.plan_page_month_context,
+            displayMonthLabel(month),
+        ),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.bodyMedium,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
 }

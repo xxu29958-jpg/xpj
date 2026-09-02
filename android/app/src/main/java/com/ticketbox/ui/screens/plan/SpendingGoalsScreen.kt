@@ -14,7 +14,6 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.asString
-import com.ticketbox.ui.components.AppContentCard
 import com.ticketbox.ui.components.AppContentStateCopy
 import com.ticketbox.ui.components.AppContentStateSpec
 import com.ticketbox.ui.components.AppContentStateSlot
@@ -75,8 +74,8 @@ internal fun SpendingGoalsScreen(
         ),
     ) {
         item {
-            SpendingGoalsMonthCard(
-                month = state.month,
+            MonthSwitcher(
+                month = displayMonthLabel(state.month),
                 onPreviousMonth = viewModel::previousMonth,
                 onNextMonth = viewModel::nextMonth,
             )
@@ -113,21 +112,6 @@ private fun SpendingGoalsStatus(state: SpendingGoalsUiState) {
                 AppStatusBanner(message = it, tone = MessageTone.Danger)
             }
         }
-    }
-}
-
-@Composable
-private fun SpendingGoalsMonthCard(
-    month: String,
-    onPreviousMonth: () -> Unit,
-    onNextMonth: () -> Unit,
-) {
-    AppContentCard {
-        MonthSwitcher(
-            month = displayMonthLabel(month),
-            onPreviousMonth = onPreviousMonth,
-            onNextMonth = onNextMonth,
-        )
     }
 }
 

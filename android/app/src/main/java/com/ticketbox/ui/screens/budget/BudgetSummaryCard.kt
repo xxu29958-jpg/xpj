@@ -16,11 +16,14 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppAdaptiveMetricGrid
+import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.SkeletonBlock
 import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.design.LocalStateTokens
 import com.valentinilk.shimmer.shimmer
 
 @Composable
@@ -51,10 +54,45 @@ internal fun BudgetSummarySection(
             BudgetSummaryPlaceholder(loading)
             return@BudgetOpenSection
         }
+        BudgetSummaryHero(
+            budget = configuredBudget,
+            currencyDisplay = currencyDisplay,
+        )
         BudgetProgressBar(progress = configuredBudget.spentProgress)
         BudgetMetricRows(
             budget = configuredBudget,
             currencyDisplay = currencyDisplay,
+        )
+    }
+}
+
+@Composable
+private fun BudgetSummaryHero(
+    budget: BudgetMonthly,
+    currencyDisplay: CurrencyDisplay,
+) {
+    val label = stringResource(
+        if (budget.isOverBudget) R.string.budget_summary_metric_overspent else R.string.budget_summary_metric_remaining,
+    )
+    val value = formatDisplayAmount(
+        if (budget.isOverBudget) budget.overspentAmountCents else budget.remainingAmountCents,
+        currencyDisplay,
+    )
+    val amountColor = if (budget.isOverBudget) {
+        LocalStateTokens.current.danger.fg
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
+        Text(
+            text = label,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelLarge,
+        )
+        AppAmountText(
+            text = value,
+            role = AppAmountRole.Hero,
+            color = amountColor,
         )
     }
 }
@@ -114,19 +152,9 @@ private fun BudgetMetricRows(
     budget: BudgetMonthly,
     currencyDisplay: CurrencyDisplay,
 ) {
-    val remainingLabel = if (budget.isOverBudget) {
-        stringResource(R.string.budget_summary_metric_overspent)
-    } else {
-        stringResource(R.string.budget_summary_metric_remaining)
-    }
-    val remainingValue = formatDisplayAmount(
-        if (budget.isOverBudget) budget.overspentAmountCents else budget.remainingAmountCents,
-        currencyDisplay,
-    )
     val metrics = listOf(
         stringResource(R.string.budget_summary_metric_total) to
             formatDisplayAmount(budget.availableAmountCents, currencyDisplay),
-        remainingLabel to remainingValue,
         stringResource(R.string.budget_summary_metric_spent) to
             formatDisplayAmount(budget.spentAmountCents, currencyDisplay),
         stringResource(R.string.budget_summary_metric_flex) to

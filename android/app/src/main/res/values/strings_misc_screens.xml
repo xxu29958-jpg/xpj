@@ -34,7 +34,7 @@
     <string name="income_plan_source_rental">租金</string>
     <string name="income_plan_source_other">其它</string>
     <string name="income_plan_frequency_monthly">每月固定</string>
-    <string name="income_plan_frequency_one_time">实际到账</string>
+    <string name="income_plan_frequency_one_time">单笔预计</string>
 
     <!-- GlobalSearchScreen：全局搜索 -->
     <string name="global_search_back">返回账本</string>
@@ -155,10 +155,10 @@
     <string name="app_currency_switched">已切换为%1$s默认记账币种</string>
 
     <!-- IncomePlanScreen：二级页收口文案（短标签，避免说明书式段落） -->
-    <string name="income_plan_header_subtitle_compact">到账与固定收入</string>
+    <string name="income_plan_header_subtitle_compact">每月固定与单笔预计</string>
     <string name="income_plan_add_action_short">添加</string>
     <string name="income_plan_total_meta">已记录 %1$d 项</string>
-    <string name="income_plan_empty_body_compact">添加第一笔到账收入。</string>
+    <string name="income_plan_empty_body_compact">添加第一笔收入计划。</string>
     <!-- W2-C 收入编辑与 hero 口径：预计=现有本月计划合计投影；截至今日=服务端按计划公式 aggregate -->
     <string name="income_plan_edit_sheet_title">编辑收入</string>
     <string name="income_plan_edit_action">编辑</string>

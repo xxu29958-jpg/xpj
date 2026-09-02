@@ -2,7 +2,6 @@
 <!-- 计划一级页：把未来意图组织为真实状态工作区，不展示技术实体名。 -->
 <!-- 218-B1：PlanScreen / PlanOverviewComponents 所需键；218-B4 迁入预算建议（BudgetAdvice）二级屏键；消费目标三段流（列表/创建/详情）键。 -->
 <resources>
-    <string name="plan_page_title">计划</string>
     <string name="plan_page_month_context">%1$s的预算、目标与固定安排</string>
     <string name="plan_section_month">本月边界</string>
     <string name="plan_budget_title">月度预算</string>
@@ -101,8 +100,6 @@
     <string name="spending_goal_edit_validation">请填写目标名称和大于 0 的支出上限。</string>
     <string name="spending_goal_edit_saved">消费目标已更新。</string>
     <string name="spending_goal_edit_failed">消费目标没有更新成功，请稍后再试。</string>
-    <string name="spending_goal_archive_section">归档目标</string>
-    <string name="spending_goal_archive_hint">归档后不会继续出现在目标列表，历史设置仍会保留在回收站。</string>
     <string name="spending_goal_archive_action">归档这个目标</string>
     <string name="spending_goal_archive_dialog_title">归档这个消费目标？</string>
     <string name="spending_goal_archive_dialog_body">归档后将停止跟踪并移入回收站，不会删除历史账单。</string>

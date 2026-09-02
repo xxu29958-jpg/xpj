@@ -305,7 +305,6 @@
     <string name="debt_goal_topbar_title">还债目标</string>
     <string name="debt_goal_intro_body">跟踪关联欠款的清偿，全部还清即达成目标。</string>
     <string name="debt_goal_overview_title">目标概况</string>
-    <string name="debt_goal_overview_subtitle">只汇总当前账本中已确认的还债目标。</string>
     <string name="debt_goal_metric_active">当前目标</string>
     <string name="debt_goal_metric_achieved">已达成</string>
     <string name="debt_goal_metric_review">需要复核</string>
@@ -314,15 +313,12 @@
     <string name="debt_goal_metric_goal_count">%1$d 个</string>
     <string name="debt_goal_metric_debt_count">%1$d 笔</string>
     <string name="debt_goal_list_title">目标列表</string>
-    <string name="debt_goal_list_subtitle">还债目标与开销目标分开管理；当前页只处理欠款清偿。</string>
     <string name="debt_goal_empty_title">还没有还债目标</string>
     <string name="debt_goal_empty_body">把一笔或多笔欠款关联到目标后，这里会显示它们的清偿进度。</string>
     <string name="debt_goal_card_needs_review">需要复核</string>
     <string name="debt_goal_row_meta">已结清 %1$d/%2$d 笔 · 剩余 %3$d 笔</string>
     <string name="debt_goal_progress_title">清偿进度</string>
-    <string name="debt_goal_progress_subtitle">达成状态以已确认结果为准，页面仅展示当前结果。</string>
     <string name="debt_goal_detail_links_title">关联欠款</string>
-    <string name="debt_goal_detail_links_subtitle">每笔欠款的状态来自已确认结果；作废项需复核后处理。</string>
     <string name="debt_goal_link_meta">%1$s · 剩余 %2$s · 本金 %3$s</string>
     <string name="debt_goal_review_title">需要复核</string>
     <string name="debt_goal_review_body_achieved">目标已达成，但有关联欠款被判作废。请确认如何处理。</string>
