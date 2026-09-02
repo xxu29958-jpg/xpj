@@ -1,28 +1,20 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-theme="paper">
+<html lang="zh-CN" data-theme="{{ ui_theme or 'paper' }}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="csrf-token" content="{{ csrf_token }}">
   <title>连接小票夹 — 小票夹</title>
-  <link rel="icon" type="image/svg+xml" href="/static/web/icon.svg">
+  <link rel="icon" type="image/png" href="/static/web/product/brand/favicon-48.png">
   <link rel="stylesheet" href="/static/shared/tokens.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/web/pages/auth-login.css?v={{ asset_version }}">
-  <script>
-    /* 登录页无 SSR theme 上下文：首屏前从 ui_theme cookie 还原已解析主题
-       (paper/midnight)，与 theme.js 的 cookie 语义同源，绝不解析 "system"。 */
-    try {
-      var _t = document.cookie.match(/(?:^|;\s*)ui_theme=(paper|midnight)(?:;|$)/);
-      if (_t) document.documentElement.setAttribute("data-theme", _t[1]);
-    } catch (_) {}
-  </script>
   <script defer src="/static/shared/csrf.js?v={{ asset_version }}"></script>
 </head>
 <body>
   <main class="auth-layout">
     <section class="auth-story" aria-label="关于小票夹">
       <div class="auth-brand">
-        <img class="auth-brand-mark" src="/static/web/icon.svg" alt="" aria-hidden="true">
+        {% include "_brand_mark.html" %}
         <span class="auth-brand-name">小票夹</span>
       </div>
       <h1 class="auth-title">把每张小票，<br>变成全家都看得懂的账</h1>

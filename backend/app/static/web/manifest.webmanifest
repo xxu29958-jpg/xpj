@@ -7,19 +7,19 @@
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#f5f1e8",
-  "theme_color": "#1f6feb",
+  "theme_color": "#0d3d38",
   "lang": "zh-CN",
   "icons": [
     {
-      "src": "/static/web/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/static/web/product/brand/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/static/web/icon-maskable.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/static/web/product/brand/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "maskable"
     }
   ]

@@ -1,29 +1,28 @@
-{# 顶栏右上角 ledger 切换器（带下拉） #}
-{# 上下文：selected_ledger_id, selected_ledger_name, selected_ledger_role, ledger_options, request.url.path #}
+{# 顶栏「我」账户面板 (W1 repair): 根是 <details> 原生披露 — 无 JS 可开合、
+   键盘 Enter/Space、读屏自动暴露 expanded 状态; ledger-switcher.js 只做
+   点外部 / Escape 关闭的便利层。≤64rem popover 是相对 sticky mobile-chrome
+   的全宽 sheet (shell.css); >64rem 是右锚 panel。
+   上下文：selected_ledger_id, selected_ledger_name, selected_ledger_role,
+   selected_ledger_is_default, ledger_options, request, q, csrf_token。 #}
 {% set _name = selected_ledger_name or '未选择' %}
 {% set _initial = _name[:1] if _name else '夹' %}
 {% set _role = selected_ledger_role or 'owner' %}
 {% set _role_zh = {'owner': '拥有者', 'member': '成员', 'viewer': '只读'}.get(_role, _role|upper) %}
 {% set _ledger_kind = '个人账本' if selected_ledger_is_default else '共享账本' %}
-{# 218-D S3: 矿壳以 .ledger-switcher-wrap 作定位锚 (product/shell.css),
-   让绝对定位的 .ledger-popover 对齐切换器而非顶栏。 #}
 <div class="ledger-switcher-wrap">
-<div class="ledger-switcher" id="ledger-switcher" data-open="false">
-  <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-  <div class="ledger-avatar">{{ _initial }}</div>
-  <div class="ledger-name">{{ _name }}<span class="ledger-kind"> · {{ _ledger_kind }}</span></div>
-  <div class="role-badge ledger-role-chip ledger-role-{{ _role }} {{ _role }}">{{ _role_zh }}</div>
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-       stroke-linecap="round" stroke-linejoin="round">
-    <polyline points="6 9 12 15 18 9"/>
-  </svg>
-  <div class="ledger-popover" id="ledger-popover">
+<details class="ledger-switcher" id="ledger-switcher">
+  <summary class="chrome-trigger ledger-switcher-trigger" aria-label="账户与账本">
+    <span class="ledger-avatar" aria-hidden="true">{{ _initial }}</span>
+    <span class="ledger-name">{{ _name }}<span class="ledger-kind"> · {{ _ledger_kind }}</span></span>
+    <span class="role-badge ledger-role-chip ledger-role-{{ _role }} {{ _role }}">{{ _role_zh }}</span>
+  </summary>
+  <div class="chrome-popover ledger-popover" id="ledger-popover">
     <div class="head">切换账本</div>
     {% for opt in ledger_options %}
     {% set _opt_role = opt.role or 'owner' %}
     <a class="row {% if opt.ledger_id == selected_ledger_id %}on{% endif %}"
        href="{{ request.url.path }}?ledger_id={{ opt.ledger_id }}{% for k, v in request.query_params.multi_items() %}{% if k != 'ledger_id' %}&{{ k }}={{ v }}{% endif %}{% endfor %}">
-      <div class="ledger-avatar ledger-avatar--sm">{{ opt.name[:1] if opt.name else '夹' }}</div>
+      <div class="ledger-avatar ledger-avatar--sm" aria-hidden="true">{{ opt.name[:1] if opt.name else '夹' }}</div>
       <div class="meta">
         <div class="name">{{ opt.name }}{% if opt.is_default %} · 默认{% endif %}</div>
         <div class="sub">{{ opt.ledger_id }}</div>
@@ -31,6 +30,28 @@
       <div class="role-badge ledger-role-chip ledger-role-{{ _opt_role }} {{ _opt_role }}">{{ {'owner': '拥有者', 'member': '成员', 'viewer': '只读'}.get(_opt_role, _opt_role|upper) }}</div>
     </a>
     {% endfor %}
+    {# ≤40rem 顶栏只留 收票/我 — 搜索与外观收进本面板 (shell.css 的
+       .ledger-mobile-links 仅在 ≤40rem 显示; 宽屏由 topbar 独立入口承担)。
+       搜索是真实路由链接; 外观与 topbar 实例共用同一 _appearance_control.html
+       partial + theme.js 多实例绑定。 #}
+    <div class="ledger-mobile-links">
+      <a class="row ledger-mobile-link" href="/web/search{{ q }}">
+        <div class="meta"><div class="name">搜索</div></div>
+      </a>
+      {% set _appearance_nested = true %}
+      {% include "_appearance_control.html" %}
+    </div>
+    {# 只有真实 browser session 才渲染登出 (既有 POST /web/auth/logout,
+       服务端撤销 token)。loopback Owner 没有 cookie/session 可撤销；desktop
+       bridge 的 unpair/revoke 由 Manager 承担，且 BFF 不代理 /web/auth。 #}
+    {% if request.state.web_session_auth and request.state.web_session_platform != "desktop" %}
+    <div class="ledger-popover-foot">
+      <form method="post" action="/web/auth/logout">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="ledger-logout">退出登录</button>
+      </form>
+    </div>
+    {% endif %}
   </div>
-</div>
+</details>
 </div>

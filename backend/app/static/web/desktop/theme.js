@@ -48,7 +48,8 @@
   };
 
   app.currentTextureMode = function currentTextureMode() {
-    return readStored(TEXTURE_STORAGE_KEY, TEXTURE_MODES, "flat");
+    // W1: 无显式偏好的新会话默认 fiber (纸纹上背景层); 显式 flat 永远尊重。
+    return readStored(TEXTURE_STORAGE_KEY, TEXTURE_MODES, "fiber");
   };
 
   app.currentAccentMode = function currentAccentMode() {
@@ -78,7 +79,7 @@
   };
 
   app.applyTextureMode = function applyTextureMode(mode) {
-    if (!TEXTURE_MODES.includes(mode)) mode = "flat";
+    if (!TEXTURE_MODES.includes(mode)) mode = "fiber";
     document.documentElement.setAttribute("data-texture", mode);
     store(TEXTURE_STORAGE_KEY, mode);
     syncPressed("[data-texture-mode]", mode);
@@ -98,35 +99,30 @@
   }
 
   app.initThemeControl = function initThemeControl() {
-    const root = document.getElementById("appearance-popover");
-    if (!root) return;
+    // W1: 外观控件可多实例 (topbar 一枚, ≤40rem「我」popover 内一枚) —
+    // 每个实例独立绑定, aria-pressed 由 syncPressed 跨文档同步。
+    const roots = document.querySelectorAll("[data-appearance-popover]");
+    if (!roots.length) return;
 
     // 对齐本地值（anti-FOUC bootstrap 之外的兜底：脚本被裁切/禁用后重进时
     // 也保证 <html> 属性、存储与按钮态三者一致）。
     app.applyTextureMode(app.currentTextureMode());
     app.applyAccentMode(app.currentAccentMode());
 
-    bindAxis(root, "data-theme-mode", app.applyThemeMode);
-    bindAxis(root, "data-texture-mode", app.applyTextureMode);
-    bindAxis(root, "data-accent-mode", app.applyAccentMode);
-    syncAppearanceControl();
+    roots.forEach((root) => {
+      bindAxis(root, "data-theme-mode", app.applyThemeMode);
+      bindAxis(root, "data-texture-mode", app.applyTextureMode);
+      bindAxis(root, "data-accent-mode", app.applyAccentMode);
 
-    // popover 行为：点外部 / Esc 关闭（<details> 原生开合之外的便利层）。
-    const host = root.closest(".appearance");
-    if (host) {
-      document.addEventListener("click", (event) => {
-        if (host.hasAttribute("open") && !host.contains(event.target)) {
-          host.removeAttribute("open");
-        }
-      });
-      document.addEventListener("keydown", (event) => {
-        if (event.key === "Escape" && host.hasAttribute("open")) {
-          host.removeAttribute("open");
-          const trigger = host.querySelector("[data-appearance-trigger]");
-          if (trigger && typeof trigger.focus === "function") trigger.focus();
-        }
-      });
-    }
+      // popover 行为：点外部 / Esc 关闭（<details> 原生开合之外的便利层,
+      // 共享 helper 在 core.js）。nested 实例 (≤40rem「我」popover 内静态铺开)
+      // 不绑关闭——它不是浮层。
+      const host = root.closest(".appearance");
+      if (host && !host.classList.contains("appearance--nested")) {
+        app.bindDisclosureDismiss(host, "[data-appearance-trigger]");
+      }
+    });
+    syncAppearanceControl();
 
     if (typeof window.matchMedia === "function") {
       window.matchMedia(DARK_QUERY).addEventListener("change", () => {

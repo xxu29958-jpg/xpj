@@ -35,9 +35,16 @@
     {% if can_write %}
     {# ledger 必须在 multipart body 解析前完成授权，因此放在 query；csrf 留在
        body。timezone 由 JS 渐进写入 action query，无 JS 时后端使用默认时区。 #}
-    <form class="inbox-upload-form" method="post" action="/web/pending/upload{{ _q }}" data-inbox-capture enctype="multipart/form-data">
+    <form class="inbox-upload-form" id="capture" method="post" action="/web/pending/upload{{ _q }}" data-inbox-capture enctype="multipart/form-data">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <input class="inbox-upload-file" type="file" name="file" accept="image/*" required aria-label="选择小票图片">
+      {# K3 file-picker primitive: 原生 input 仍是 owner (type/name/accept/
+         required/aria-label 不变, clipped 但可聚焦), label 按钮原生触发,
+         文件名槽位由 core.js initFilePickers 渐进填充, 绝不自动提交。 #}
+      <span class="file-picker">
+        <input class="file-picker-input" id="inbox-upload-file" type="file" name="file" accept="image/*" required aria-label="选择小票图片">
+        <label class="file-picker-label" for="inbox-upload-file">选择小票图片</label>
+        <span class="file-picker-name" data-file-picker-name aria-live="polite"></span>
+      </span>
       <button class="product-button product-button--primary" type="submit">上传小票</button>
     </form>
     {% endif %}
@@ -149,7 +156,10 @@
   <div class="exp-head">
     <div>
       {% if can_write %}
-      <input class="checkbox" id="check-all" type="checkbox" aria-label="选择全部账单">
+      {# K3 check-cell: label 包裹提供 hit area (coarse 44px), 原生 toggle 不变。 #}
+      <label class="check-cell">
+        <input class="checkbox" id="check-all" type="checkbox" aria-label="选择全部账单">
+      </label>
       {% endif %}
     </div>
     <div aria-hidden="true">凭证</div>
@@ -186,14 +196,16 @@
   <div class="exp-row" data-expense-id="{{ e.id }}">
     <div class="exp-row-selector"{% if not can_write %} aria-hidden="true"{% endif %}>
       {% if can_write %}
-      <input class="checkbox row-check"
-           type="checkbox"
-           name="expense_snapshot"
-           value="{{ e.id }}:{{ e.row_version }}"
-           form="bulk-form"
-           data-id="{{ e.id }}"
-           data-row-version="{{ e.row_version }}"
-           aria-label="选择账单 #{{ e.id }}">
+      <label class="check-cell">
+        <input class="checkbox row-check"
+             type="checkbox"
+             name="expense_snapshot"
+             value="{{ e.id }}:{{ e.row_version }}"
+             form="bulk-form"
+             data-id="{{ e.id }}"
+             data-row-version="{{ e.row_version }}"
+             aria-label="选择账单 #{{ e.id }}">
+      </label>
       {% endif %}
     </div>
     <a class="exp-row-detail"
@@ -217,7 +229,7 @@
       </div>
       <div>
         <div class="exp-merch">{{ e.merchant or '待识别商家' }}</div>
-        <div class="exp-meta">#{{ e.id }} · {{ e.source_label }}</div>
+        <div class="exp-meta">{{ e.source_label }}</div>
       </div>
       <div>
         {% if not e.needs_category %}
@@ -263,6 +275,10 @@
   {% else %}
   <div class="product-state">
     {% if filter == 'all' %}
+    <div class="product-state-figure" aria-hidden="true">
+      <img src="/static/web/product/mascot/jiajia-dozing.png" alt=""
+           width="259" height="342" loading="lazy" decoding="async">
+    </div>
     <div class="product-state-title">收件队列已经清空</div>
     <div class="product-state-body">
       新上传的截图、OCR 识别结果和导入草稿会出现在这里；手动记账可直接在流水中查看。

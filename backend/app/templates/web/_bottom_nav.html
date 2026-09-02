@@ -1,0 +1,22 @@
+{# 移动五域主导航 (W1 IA-B): ≤64rem 的 fixed 底部 nav (拇指区, 纯文字项,
+   safe-area 由 shell.css 承担); >64rem 隐藏, 桌面 sidebar 域轨是唯一主导航。
+   页级 is_* 标志在 base.html 单一计算, 本 partial 只消费。
+   上下文: q, _domain, pending_count。 #}
+<nav class="mobile-primary-nav" aria-label="产品领域">
+  <a class="nav-item {% if _domain == 'inbox' %}active{% endif %}" href="/web/pending{{ q }}"{% if _domain == 'inbox' %} aria-current="location"{% endif %}>
+    <span>收件</span>
+    {% if pending_count %}<span class="nav-badge">{{ pending_count }}</span>{% endif %}
+  </a>
+  <a class="nav-item {% if _domain == 'transactions' %}active{% endif %}" href="/web/confirmed{{ q }}"{% if _domain == 'transactions' %} aria-current="location"{% endif %}>
+    <span>流水</span>
+  </a>
+  <a class="nav-item {% if _domain == 'obligations' %}active{% endif %}" href="/web/debts{{ q }}"{% if _domain == 'obligations' %} aria-current="location"{% endif %}>
+    <span>往来</span>
+  </a>
+  <a class="nav-item {% if _domain == 'plans' %}active{% endif %}" href="/web/budgets{{ q }}"{% if _domain == 'plans' %} aria-current="location"{% endif %}>
+    <span>计划</span>
+  </a>
+  <a class="nav-item {% if _domain == 'insights' %}active{% endif %}" href="/web/overview{{ q }}"{% if _domain == 'insights' %} aria-current="location"{% endif %}>
+    <span>洞察</span>
+  </a>
+</nav>

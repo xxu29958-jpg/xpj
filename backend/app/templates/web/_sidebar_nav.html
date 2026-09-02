@@ -1,7 +1,10 @@
-{# 产品壳侧边导航 (218-D S3, 移植自产品矿): 品牌 + 窄屏五域主导航 + 窄屏当前域页签
-   + 桌面五域主导航/当前域子导航 + 底部账本摘要。 #}
+{# 产品壳侧边导航 (218-D S3, 移植自产品矿): 品牌 + 桌面五域主导航/当前域子导航
+   + 底部账本摘要。窄屏导航已移出 (K3 响应式收件片 → W1 IA-B): 域内页签
+   _mobile_nav.html 在 main 首元素, 五域主导航 _bottom_nav.html 是 fixed
+   底部 nav; 本文件只保留桌面域轨。 #}
 {# 五域 IA: 收件/流水/往来/计划/洞察为稳定产品域, 路由名只是传输契约。
-   域归属由 base.html 集中判定(_domain), 本文件只补页级标志。
+   域归属与页级 is_* 标志全部由 base.html 集中判定(_domain/_edit_origin/is_*),
+   本文件只消费, 不再自行推导。
    与矿的差异(以 main 事实为准):
    - 保留 main S1 的页级标签措辞(待确认/疑似重复/还款捕获/AI 预算建议等,
      既有测试契约); 218-D S4 起 /web 根 303→/web/pending (矿 IA 收件首域),
@@ -11,99 +14,19 @@
      保留 canonical 路由, 访问其时高亮「资料库」;
    - nav-subnav 沿用 <nav> 元素(矿改用了 div): 既有测试选择器契约 + 导航 landmark 语义。 #}
 {# 上下文：selected_ledger_id (-> q), selected_ledger_name, selected_ledger_role,
-            request.url.path, _domain, _edit_origin,
+            request.url.path, _domain, _edit_origin, is_* 标志 (base.html),
             pending_count, suspected_duplicate_count（来自 _base_ctx） #}
-{% set _p = request.url.path %}
-{% set is_pending = '/pending' in _p or ('/expenses/' in _p and _edit_origin == 'pending') %}
-{% set is_duplicates = '/duplicates' in _p or ('/expenses/' in _p and _edit_origin == 'duplicates') %}
-{% set is_confirmed = '/confirmed' in _p or ('/expenses/' in _p and _edit_origin == 'confirmed') %}
-{% set is_search = '/search' in _p %}
-{% set is_categories = '/categories' in _p %}
-{% set is_merchants = '/merchants' in _p %}
-{% set is_tags = '/tags' in _p %}
-{% set is_rules = '/rules' in _p %}
-{% set is_recycle_bin = '/recycle-bin' in _p %}
-{# 资料库 section 页面上高亮「资料库」入口: hub + 五个 section  canonical 路由。 #}
-{% set is_library = '/library' in _p or is_categories or is_merchants or is_tags or is_rules or is_recycle_bin %}
-{% set is_import = '/import' in _p or '/export' in _p %}
-{% set is_debts = '/debts' in _p %}
-{% set is_receivables = '/receivables' in _p %}
-{% set is_bill_split_inbox = '/bill-splits/inbox' in _p %}
-{% set is_bill_split_sent = '/bill-splits/sent' in _p %}
-{% set is_repayment_drafts = '/repayment-drafts' in _p %}
-{% set is_budgets = '/budgets' in _p %}
-{% set is_goals = '/goals' in _p and '/debt-goals' not in _p %}
-{% set is_debt_goals = '/debt-goals' in _p %}
-{% set is_income_plans = '/income-plans' in _p %}
-{% set is_budget_advise = '/budget-advise' in _p %}
-{% set is_recurring = '/recurring' in _p %}
-{% set is_overview = '/overview' in _p %}
-{% set is_dashboard_cards = '/dashboard/cards' in _p %}
-{% set is_reports = '/reports' in _p %}
-{% set is_data_quality = '/data-quality' in _p %}
 {% set _role = selected_ledger_role or 'owner' %}
 {% set _role_zh = {'owner': '拥有者', 'member': '成员', 'viewer': '只读'}.get(_role, '未知角色') %}
 
 <aside class="sidebar">
   <div class="brand" aria-label="小票夹">
-    <img class="brand-mark" src="/static/web/icon.svg" alt="" aria-hidden="true">
+    {% include "_brand_mark.html" %}
     <div>
       <div class="brand-name">小票夹</div>
       <div class="brand-product">私人账本</div>
     </div>
   </div>
-
-  <nav class="mobile-primary-nav" aria-label="产品领域">
-    <a class="nav-item {% if _domain == 'inbox' %}active{% endif %}" href="/web/pending{{ q }}"{% if _domain == 'inbox' %} aria-current="location"{% endif %}>
-      <span>收件</span>
-      {% if pending_count %}<span class="nav-badge">{{ pending_count }}</span>{% endif %}
-    </a>
-    <a class="nav-item {% if _domain == 'transactions' %}active{% endif %}" href="/web/confirmed{{ q }}"{% if _domain == 'transactions' %} aria-current="location"{% endif %}>
-      <span>流水</span>
-    </a>
-    <a class="nav-item {% if _domain == 'obligations' %}active{% endif %}" href="/web/debts{{ q }}"{% if _domain == 'obligations' %} aria-current="location"{% endif %}>
-      <span>往来</span>
-    </a>
-    <a class="nav-item {% if _domain == 'plans' %}active{% endif %}" href="/web/budgets{{ q }}"{% if _domain == 'plans' %} aria-current="location"{% endif %}>
-      <span>计划</span>
-    </a>
-    <a class="nav-item {% if _domain == 'insights' %}active{% endif %}" href="/web/overview{{ q }}"{% if _domain == 'insights' %} aria-current="location"{% endif %}>
-      <span>洞察</span>
-    </a>
-  </nav>
-
-  {# 窄屏第二行：只渲染当前域的页级链接, 横向滚动; 工作区兜底域整行不渲染。 #}
-  {% if _domain != 'workspace' %}
-  <nav class="mobile-plan-nav" aria-label="当前领域页面">
-    {% if _domain == 'inbox' %}
-      <a class="{% if is_pending %}active{% endif %}" href="/web/pending{{ q }}"{% if is_pending %} aria-current="page"{% endif %}>待确认{% if pending_count %}<span class="nav-badge">{{ pending_count }}</span>{% endif %}</a>
-      <a class="{% if is_duplicates %}active{% endif %}" href="/web/duplicates{{ q }}"{% if is_duplicates %} aria-current="page"{% endif %}>疑似重复{% if suspected_duplicate_count %}<span class="nav-badge">{{ suspected_duplicate_count }}</span>{% endif %}</a>
-    {% elif _domain == 'transactions' %}
-      <a class="{% if is_confirmed %}active{% endif %}" href="/web/confirmed{{ q }}"{% if is_confirmed %} aria-current="page"{% endif %}>已确认</a>
-      <a class="{% if is_search %}active{% endif %}" href="/web/search{{ q }}"{% if is_search %} aria-current="page"{% endif %}>搜索</a>
-      <a class="{% if is_library %}active{% endif %}" href="/web/library{{ q }}"{% if is_library %} aria-current="page"{% endif %}>资料库</a>
-      <a class="{% if is_import %}active{% endif %}" href="/web/import{{ q }}"{% if is_import %} aria-current="page"{% endif %}>导入导出</a>
-    {% elif _domain == 'obligations' %}
-      <a class="{% if is_debts %}active{% endif %}" href="/web/debts{{ q }}"{% if is_debts %} aria-current="page"{% endif %}>欠款</a>
-      <a class="{% if is_receivables %}active{% endif %}" href="/web/receivables{{ q }}"{% if is_receivables %} aria-current="page"{% endif %}>欠我的</a>
-      <a class="{% if is_bill_split_inbox %}active{% endif %}" href="/web/bill-splits/inbox{{ q }}"{% if is_bill_split_inbox %} aria-current="page"{% endif %}>拆账收件箱</a>
-      <a class="{% if is_bill_split_sent %}active{% endif %}" href="/web/bill-splits/sent{{ q }}"{% if is_bill_split_sent %} aria-current="page"{% endif %}>已发拆账</a>
-      <a class="{% if is_repayment_drafts %}active{% endif %}" href="/web/repayment-drafts{{ q }}"{% if is_repayment_drafts %} aria-current="page"{% endif %}>还款捕获</a>
-    {% elif _domain == 'plans' %}
-      <a class="{% if is_budgets %}active{% endif %}" href="/web/budgets{{ q }}"{% if is_budgets %} aria-current="page"{% endif %}>预算</a>
-      <a class="{% if is_goals %}active{% endif %}" href="/web/goals{{ q }}"{% if is_goals %} aria-current="page"{% endif %}>目标</a>
-      <a class="{% if is_debt_goals %}active{% endif %}" href="/web/debt-goals{{ q }}"{% if is_debt_goals %} aria-current="page"{% endif %}>还债目标</a>
-      <a class="{% if is_income_plans %}active{% endif %}" href="/web/income-plans{{ q }}"{% if is_income_plans %} aria-current="page"{% endif %}>收入记录</a>
-      <a class="{% if is_budget_advise %}active{% endif %}" href="/web/budget-advise{{ q }}"{% if is_budget_advise %} aria-current="page"{% endif %}>AI 预算建议</a>
-      <a class="{% if is_recurring %}active{% endif %}" href="/web/recurring{{ q }}"{% if is_recurring %} aria-current="page"{% endif %}>固定支出</a>
-    {% elif _domain == 'insights' %}
-      <a class="{% if is_overview %}active{% endif %}" href="/web/overview{{ q }}"{% if is_overview %} aria-current="page"{% endif %}>总览</a>
-      <a class="{% if is_reports %}active{% endif %}" href="/web/reports{{ q }}"{% if is_reports %} aria-current="page"{% endif %}>报表</a>
-      <a class="{% if is_data_quality %}active{% endif %}" href="/web/data-quality{{ q }}"{% if is_data_quality %} aria-current="page"{% endif %}>数据体检</a>
-      <a class="{% if is_dashboard_cards %}active{% endif %}" href="/web/dashboard/cards{{ q }}"{% if is_dashboard_cards %} aria-current="page"{% endif %}>模块设置</a>
-    {% endif %}
-  </nav>
-  {% endif %}
 
   <nav class="desktop-nav" aria-label="产品导航">
     <div class="nav-primary">

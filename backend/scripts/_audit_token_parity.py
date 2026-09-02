@@ -6,8 +6,14 @@ Android 视觉分叉)。本 lane 把它变成硬检查,逐主题(paper/midnight)
 theme 级 Mono 退役证明(任一 source 重现 Mono 即 FAIL)。
 
 覆盖面(2026-06 从 54 项扩到 ~230,把整套子调色板纳入机器守护):
-  - core:`tokens.css` ↔ `ThemeVisuals.kt` 13 个 brand/surface/text token
-    (含半透明的 `--brand-primary-bg`,midnight 端为 rgba)。
+  - core:`tokens.css` ↔ `ThemeVisuals.kt` 15 个 brand/surface/text token
+    (含半透明的 `--brand-primary-bg`,midnight 端为 rgba;`--surface-raised`
+    ↔ `surfaceRaised` 同为不透明实色,直接比对)。
+  - core-rgb:`--brand-focus-ring` ↔ `ThemeVisuals.focusRing` **只比 RGB**:
+    CSS 端 token 自带主题光晕 alpha(paper .42 / midnight .55,accent 轴同构),
+    Android 端字段按 `ThemeVisualsTest` 合同必须保持不透明,渲染 alpha 由
+    consumer 自持(`AppTextInput` focused border 用 `AppAlpha.heavy`=.72);
+    若整值比对会把平台各自持有的 alpha 误报成漂移。
   - state-fg:`tokens.css` ↔ `StateTokens.kt` 5 个 tone 的 **fg**(状态文字色)。
   - chart:`tokens.css` ↔ `ChartTokens.kt` 全量(series×8 + sequential/diverging +
     axis/grid + tooltip/legend + sankey + overspend/empty)。
@@ -96,6 +102,12 @@ _CORE_MAPPING: tuple[tuple[str, str], ...] = (
     ("--text-meta", "textMeta"),
     ("--text-faint", "textFaint"),
     ("--text-on-primary", "textOnPrimary"),
+    ("--surface-raised", "surfaceRaised"),
+)
+
+# `--brand-focus-ring` ↔ focusRing 只镜像 RGB,alpha 各端自持(见模块 docstring)。
+_CORE_RGB_MAPPING: tuple[tuple[str, str], ...] = (
+    ("--brand-focus-ring", "focusRing"),
 )
 
 # tokens.css state fg ↔ StateTokens tone(只比 fg;bg/border 在 midnight 刻意分叉)
@@ -273,6 +285,18 @@ def _check_core_and_state(css, visuals, state_fg, problems: list[str]) -> int:
     for theme in _THEMES:
         for css_var, field in _CORE_MAPPING:
             msg = _diff(theme, css_var, css[theme].get(css_var), visuals[theme].get(field), f"ThemeVisuals.{field}")
+            if msg:
+                problems.append(msg)
+            checked += 1
+        for css_var, field in _CORE_RGB_MAPPING:
+            want, got = css[theme].get(css_var), visuals[theme].get(field)
+            msg = _diff(
+                theme,
+                f"{css_var} (rgb)",
+                want[-6:] if want else None,
+                got[-6:] if got else None,
+                f"ThemeVisuals.{field}",
+            )
             if msg:
                 problems.append(msg)
             checked += 1

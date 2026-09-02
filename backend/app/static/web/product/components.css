@@ -18,8 +18,6 @@ p {
     align-items: end;
     gap: var(--space-6);
     margin-block-end: var(--space-7);
-    padding-block-end: var(--space-6);
-    border-block-end: 1px solid var(--border-card);
 }
 
 .product-page-heading {
@@ -27,13 +25,13 @@ p {
     gap: var(--space-2);
 }
 
+/* W1 Warm Ledger: 中文层级靠字重/字号/灰度, 不用拉丁大写追踪 ——
+   letterspacing 用在中文上是后台味本体, 从中文 eyebrow 退役。 */
 .product-eyebrow,
 .dt-eyebrow {
     color: var(--brand-primary-strong);
-    font-size: var(--type-meta-size);
-    font-weight: var(--type-meta-weight);
-    letter-spacing: var(--type-meta-tracking);
-    text-transform: uppercase;
+    font-size: var(--type-caption-size);
+    font-weight: var(--type-subtitle-weight);
 }
 
 .page-title,
@@ -78,6 +76,7 @@ p {
     gap: var(--space-3);
 }
 
+/* W1: commandbar 去卡片相框 — 筛选条是内容区的一段节奏, 不是被框住的表单。 */
 .product-commandbar,
 .toolbar {
     display: flex;
@@ -85,10 +84,6 @@ p {
     align-items: center;
     gap: var(--space-3);
     margin-block-end: var(--space-5);
-    padding: var(--space-3);
-    border: 1px solid var(--border-card);
-    border-radius: var(--radius-md);
-    background: var(--surface-card);
 }
 
 .spacer,
@@ -96,12 +91,25 @@ p {
     flex: 1;
 }
 
+/* W1: segmented tonal strip — 一个圆角色面容器, active 段实心浮起;
+   窄屏横滚不折行 (六枚筛选在 360 不再折成两行描边 pill)。 */
 .seg,
 .product-segments {
     display: flex;
     min-width: 0;
-    flex-wrap: wrap;
+    max-width: 100%;
+    flex-wrap: nowrap;
     gap: var(--space-1);
+    padding: var(--space-1);
+    overflow-x: auto;
+    border-radius: var(--radius-pill);
+    background: var(--surface-sunken);
+    scrollbar-width: none;
+}
+
+.seg::-webkit-scrollbar,
+.product-segments::-webkit-scrollbar {
+    display: none;
 }
 
 .seg a,
@@ -111,15 +119,17 @@ p {
 .product-segments button {
     display: inline-flex;
     min-height: var(--space-9);
+    flex: 0 0 auto;
     align-items: center;
     gap: var(--space-2);
     padding: var(--space-2) var(--space-4);
     border: 0;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-pill);
     background: transparent;
     color: var(--text-muted);
     cursor: pointer;
     text-decoration: none;
+    white-space: nowrap;
 }
 
 .seg a:hover,
@@ -127,7 +137,6 @@ p {
 .filter-tab:hover,
 .product-segments a:hover,
 .product-segments button:hover {
-    background: var(--surface-sunken);
     color: var(--text-default);
 }
 
@@ -136,8 +145,9 @@ p {
 .filter-tab.is-active,
 .product-segments [aria-current="page"],
 .product-segments [aria-selected="true"] {
-    background: var(--brand-primary-bg);
-    color: var(--brand-primary-strong);
+    background: var(--surface-card);
+    box-shadow: var(--shadow-card);
+    color: var(--text-default);
     font-weight: var(--type-subtitle-weight);
 }
 
@@ -150,8 +160,11 @@ p {
     font-variant-numeric: tabular-nums;
 }
 
+/* W1 Warm Ledger: 按钮三级制 — 默认 tonal 色面 (无描边), primary 实心强调,
+   danger tonal 危险色面, quiet 纯文本。描边白底按钮从 product 语言退役。 */
 .dt-btn,
 .product-button,
+.file-picker-label,
 button.dt-btn,
 a.dt-btn {
     display: inline-flex;
@@ -160,51 +173,64 @@ a.dt-btn {
     justify-content: center;
     gap: var(--space-2);
     padding: var(--space-2) var(--space-5);
-    border: 1px solid var(--border-input);
+    border: 0;
     border-radius: var(--radius-sm);
-    background: var(--surface-card);
+    background: var(--surface-sunken);
     color: var(--text-default);
     cursor: pointer;
     font-size: var(--type-body-size);
     font-weight: var(--type-subtitle-weight);
     text-decoration: none;
     transition:
-        border-color var(--motion-fast) var(--ease-standard),
         background var(--motion-fast) var(--ease-standard),
         color var(--motion-fast) var(--ease-standard),
         transform var(--motion-fast) var(--ease-standard);
 }
 
 .dt-btn:hover,
-.product-button:hover {
-    border-color: var(--control-border-hover);
-    background: var(--surface-sunken);
+.product-button:hover,
+.file-picker-label:hover {
+    background: var(--border-card);
 }
 
 .dt-btn:active,
-.product-button:active {
+.product-button:active,
+.file-picker-label:active {
     transform: translateY(var(--space-1));
 }
 
 .dt-btn.primary,
 .product-button--primary {
-    border-color: var(--brand-primary);
     background: var(--brand-primary);
     color: var(--text-on-primary);
 }
 
+.dt-btn.primary:hover,
+.product-button--primary:hover {
+    background: var(--brand-primary-strong);
+}
+
 .dt-btn.danger,
 .product-button--danger {
-    border-color: var(--state-danger-border);
     background: var(--state-danger-bg);
     color: var(--state-danger-fg);
 }
 
+.dt-btn.danger:hover,
+.product-button--danger:hover {
+    background: var(--state-danger-border);
+}
+
 .dt-btn.ghost,
 .product-button--quiet {
-    border-color: transparent;
     background: transparent;
     color: var(--text-muted);
+}
+
+.dt-btn.ghost:hover,
+.product-button--quiet:hover {
+    background: var(--surface-sunken);
+    color: var(--text-default);
 }
 
 .dt-btn--sm {
@@ -226,11 +252,13 @@ button[disabled] {
     opacity: .48;
 }
 
+/* W1: 面板/卡片实色 + 暖阴影分层, 不描边。 */
 .dt-card,
 .product-panel {
-    border: 1px solid var(--border-card);
-    border-radius: var(--radius-md);
+    border: 0;
+    border-radius: var(--radius-card);
     background: var(--surface-card);
+    box-shadow: var(--shadow-card);
 }
 
 .dt-card {
@@ -277,6 +305,7 @@ button[disabled] {
     margin-block-start: var(--space-1);
 }
 
+/* W1: 状态/chip 是色面标签 — 12% 状态色底 + 同色深字, 无描边。 */
 .dt-pill,
 .product-status,
 .dt-tag,
@@ -286,7 +315,7 @@ button[disabled] {
     align-items: center;
     gap: var(--space-1);
     padding: var(--space-1) var(--space-3);
-    border: 1px solid var(--state-neutral-border);
+    border: 0;
     border-radius: var(--radius-pill);
     background: var(--state-neutral-bg);
     color: var(--state-neutral-fg);
@@ -301,28 +330,24 @@ button[disabled] {
 
 .dt-pill.ok,
 .product-status--success {
-    border-color: var(--state-success-border);
     background: var(--state-success-bg);
     color: var(--state-success-fg);
 }
 
 .dt-pill.warn,
 .product-status--warning {
-    border-color: var(--state-warn-border);
     background: var(--state-warn-bg);
     color: var(--state-warn-fg);
 }
 
 .dt-pill.danger,
 .product-status--danger {
-    border-color: var(--state-danger-border);
     background: var(--state-danger-bg);
     color: var(--state-danger-fg);
 }
 
 .dt-pill.info,
 .product-status--info {
-    border-color: var(--state-info-border);
     background: var(--state-info-bg);
     color: var(--state-info-fg);
 }
@@ -333,6 +358,7 @@ button[disabled] {
     gap: var(--space-2);
 }
 
+/* W1: 反馈带 tonal — 状态色面承担语气, 不再描边。 */
 .dt-alert,
 .callout-info,
 .product-feedback {
@@ -342,28 +368,25 @@ button[disabled] {
     gap: var(--space-4);
     margin-block-end: var(--space-5);
     padding: var(--space-4) var(--space-5);
-    border: 1px solid var(--state-info-border);
-    border-radius: var(--radius-sm);
+    border: 0;
+    border-radius: var(--radius-md);
     background: var(--state-info-bg);
     color: var(--state-info-fg);
 }
 
 .dt-alert.success,
 .product-feedback--success {
-    border-color: var(--state-success-border);
     background: var(--state-success-bg);
     color: var(--state-success-fg);
 }
 
 .product-feedback--warning {
-    border-color: var(--state-warn-border);
     background: var(--state-warn-bg);
     color: var(--state-warn-fg);
 }
 
 .dt-alert.danger,
 .product-feedback--error {
-    border-color: var(--state-danger-border);
     background: var(--state-danger-bg);
     color: var(--state-danger-fg);
 }
@@ -371,7 +394,6 @@ button[disabled] {
 /* --danger 与 --error 同语义 (旧命名); 422 role=alert 反馈条统一危险色,
    此前仅旧 pages/repayment_drafts.css 定义, product 栈页缺该变体。 */
 .product-feedback--danger {
-    border-color: var(--state-danger-border);
     background: var(--state-danger-bg);
     color: var(--state-danger-fg);
 }
@@ -411,6 +433,7 @@ button[disabled] {
     }
 }
 
+/* W1: 空态是编辑式引导区, 不是虚线工程占位框。 */
 .product-state,
 .empty-cell,
 .dt-card--empty,
@@ -421,8 +444,8 @@ button[disabled] {
     justify-items: start;
     gap: var(--space-3);
     padding: var(--space-8);
-    border: 1px dashed var(--border-input);
-    border-radius: var(--radius-md);
+    border: 0;
+    border-radius: var(--radius-card);
     background: var(--surface-sunken);
     color: var(--text-muted);
 }
@@ -433,6 +456,20 @@ button[disabled] {
     color: var(--text-default);
     font-size: var(--type-title-size);
     font-weight: var(--type-title-weight);
+}
+
+/* W1: 空态插画槽 — 真实锁定夹夹资产原样入容器, 只做尺度/投影,
+   不抠图不改色; aria-hidden 装饰, 事实由 title/body 文本承担。 */
+.product-state-figure {
+    margin-block-end: var(--space-5);
+}
+
+.product-state-figure img {
+    display: block;
+    width: calc(var(--space-12) * 2.5);
+    height: auto;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
 }
 
 .empty-body,
@@ -533,9 +570,10 @@ textarea:focus {
 .product-table-wrap {
     max-width: 100%;
     overflow-x: auto;
-    border: 1px solid var(--border-card);
-    border-radius: var(--radius-md);
+    border: 0;
+    border-radius: var(--radius-card);
     background: var(--surface-card);
+    box-shadow: var(--shadow-card);
 }
 
 .dt-table,
@@ -545,16 +583,15 @@ textarea:focus {
     color: var(--text-default);
 }
 
+/* W1: 中文表头去全大写追踪 (同 eyebrow 退役理由), 保留发丝分隔。 */
 .dt-table th,
 .product-table th {
     padding: var(--space-3) var(--space-4);
     border-block-end: 1px solid var(--border-card);
     color: var(--text-meta);
-    font-size: var(--type-meta-size);
-    font-weight: var(--type-meta-weight);
-    letter-spacing: var(--type-meta-tracking);
+    font-size: var(--type-caption-size);
+    font-weight: var(--type-subtitle-weight);
     text-align: start;
-    text-transform: uppercase;
 }
 
 .dt-table td,
@@ -645,6 +682,71 @@ textarea:focus {
     content: "";
 }
 
+/* K3 check-cell primitive: 视觉框保持 20px, 真实 <label> 包裹让原生 toggle
+   零 JS 可用; hit area 在 coarse 下经 ::before 外溢到 --target-min, 不撑开
+   所在 grid 列 (点击伪元素区域 = 点击 label)。今日 consumer: 收件行 checkbox
+   与 check-all。 */
+.check-cell {
+    position: relative;
+    display: inline-grid;
+    place-items: center;
+}
+
+@media (pointer: coarse) {
+    .check-cell::before {
+        position: absolute;
+        inset: calc((var(--space-6) - var(--target-min)) / 2);
+        content: "";
+    }
+}
+
+/* K3 file-picker primitive: 原生 input 仍是 owner (clipped 但可聚焦, 键盘/
+   读屏/no-JS 不变), 真实 <label for> 承担按钮外观, 文件名槽位只由 JS 渐进
+   填充, 绝不自动提交。consumer: 收件上传 + CSV 导入。 */
+.file-picker {
+    position: relative;
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+/* specificity 借 current product-shell scope (body.product-shell) 盖过通用
+   input:not(...) 规则, 不动 legacy import 页, 不用 !important。 */
+body.product-shell .file-picker > input.file-picker-input {
+    position: absolute;
+    width: 1px;
+    min-width: 0;
+    height: 1px;
+    min-height: 0;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+}
+
+.file-picker-input:focus-visible + .file-picker-label {
+    outline: var(--space-1) solid var(--brand-focus-ring);
+    outline-offset: var(--space-1);
+}
+
+.file-picker-name {
+    max-width: calc(var(--space-12) * 3);
+    overflow: hidden;
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.file-picker-name:empty {
+    display: none;
+}
+
+/* W1: 批量条浮为 tonal 悬浮条 (无描边); ≤64rem 抬到 fixed 底部 nav 之上。 */
 .bulk-bar {
     position: sticky;
     inset-block-end: var(--space-4);
@@ -654,10 +756,31 @@ textarea:focus {
     gap: var(--space-3);
     margin-block-start: var(--space-5);
     padding: var(--space-3);
-    border: 1px solid var(--control-border);
-    border-radius: var(--radius-md);
+    border: 0;
+    border-radius: var(--radius-lg);
     background: var(--surface-raised);
     box-shadow: var(--shadow-raised);
+}
+
+@media (max-width: 64rem) {
+    .bulk-bar {
+        inset-block-end: calc(var(--space-10) + var(--space-2) + env(safe-area-inset-bottom) + var(--space-3));
+        flex-wrap: wrap;
+    }
+
+    /* 窄屏重排: 两个输入各占整行, 命令按钮均分一行, 不横向溢出。 */
+    .bulk-bar .bulk-field {
+        width: 100% !important;
+    }
+
+    .bulk-bar .product-button {
+        flex: 1;
+        min-height: var(--target-min);
+    }
+
+    .bulk-bar .spacer {
+        display: none;
+    }
 }
 
 /* no-JS fail-open (收件域收口片冻结): 未增强时批量条原生可见、表单可原生
@@ -845,9 +968,9 @@ textarea:focus {
     display: grid;
     gap: var(--space-1);
     padding: var(--space-3) var(--space-4);
-    border: 1px solid var(--state-warn-border);
-    border-radius: var(--radius-sm);
-    background: var(--surface-card);
+    border: 0;
+    border-radius: var(--radius-md);
+    background: var(--surface-sunken);
 }
 
 .expense-conflict-compare-row {
@@ -946,5 +1069,14 @@ textarea:focus {
     .dt-card--empty,
     .empty-state {
         padding: var(--space-6);
+    }
+}
+
+/* K3: coarse 触达地板 (width 管密度, pointer 管目标尺寸)。 */
+@media (pointer: coarse) {
+    .filter-tab,
+    .product-segments a,
+    .product-segments button {
+        min-height: var(--target-min);
     }
 }

@@ -1,8 +1,23 @@
 from __future__ import annotations
 
+from hashlib import sha256
 from pathlib import Path
 
 from tests._infra.ci_gap import load_ci_gap_audit as _load
+
+
+def _prevalidated_powershell_command(mod: object, workflow: Path, text: str) -> object:
+    """Build the same command shape emitted after workflow parsing.
+
+    This release-grouping test is platform independent; PowerShell AST behavior
+    is covered separately and must not depend on pwsh being installed on Linux.
+    """
+    return mod.WorkflowCommand(  # type: ignore[attr-defined]
+        workflow,
+        text,
+        shell="powershell",
+        powershell_ast_digest=sha256(text.encode("utf-8")).hexdigest(),
+    )
 
 
 def test_ci_gap_release_apk_policy_requires_real_single_github_invocation(tmp_path: Path) -> None:
@@ -64,15 +79,15 @@ def test_ci_gap_gitea_release_apk_policy_requires_one_bounded_invocation() -> No
     mod = _load()
     workflow = Path("C:/.gitea/workflows/windows-ci.yml")
     split = [
-        mod.WorkflowCommand(
+        _prevalidated_powershell_command(
+            mod,
             workflow,
             ".\\gradlew.bat --no-daemon :app:assembleGrayRelease",
-            shell="powershell",
         ),
-        mod.WorkflowCommand(
+        _prevalidated_powershell_command(
+            mod,
             workflow,
             ".\\gradlew.bat --no-daemon :app:assembleInternalRelease",
-            shell="powershell",
         ),
     ]
     expected = [
@@ -80,11 +95,11 @@ def test_ci_gap_gitea_release_apk_policy_requires_one_bounded_invocation() -> No
     ]
     assert mod._gitea_ci_release_apk_policy_violations(split) == expected
 
-    combined = mod.WorkflowCommand(
+    combined = _prevalidated_powershell_command(
+        mod,
         workflow,
         ".\\gradlew.bat --no-daemon --max-workers=2 "
         ":app:assembleGrayRelease :app:assembleInternalRelease",
-        shell="powershell",
     )
     assert mod._gitea_ci_release_apk_policy_violations([combined]) == []
 

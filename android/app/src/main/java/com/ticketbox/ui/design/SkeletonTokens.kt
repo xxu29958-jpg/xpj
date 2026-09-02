@@ -24,11 +24,11 @@ val LocalSkeletonTokens = compositionLocalOf { skeletonTokensForSkin(AppSkin.Def
 
 fun skeletonTokensForSkin(skin: AppSkin): SkeletonTokens = when (skin) {
     AppSkin.Paper -> SkeletonTokens(
-        base = Color(0x1417201C),
+        base = Color(0x141D1A15),
         shine = Color(0x33FFFFFF),
     )
     AppSkin.Midnight -> SkeletonTokens(
-        base = Color(0x1469BFA4),
-        shine = Color(0x2469BFA4),
+        base = Color(0x1470BFA5),
+        shine = Color(0x2470BFA5),
     )
 }

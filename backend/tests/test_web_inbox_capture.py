@@ -250,7 +250,7 @@ def test_inbox_pending_header_has_native_upload_form_and_flat_queue_summary(
     assert response.status_code == 200
     body = response.text
     form = re.search(
-        r'<form class="inbox-upload-form" method="post"'
+        r'<form class="inbox-upload-form" id="capture" method="post"'
         r' action="/web/pending/upload\?ledger_id=owner" data-inbox-capture'
         r' enctype="multipart/form-data">.*?</form>',
         body,
@@ -262,10 +262,11 @@ def test_inbox_pending_header_has_native_upload_form_and_flat_queue_summary(
     assert 'name="ledger_id"' not in form_html
     assert 'name="timezone"' not in form_html
     assert re.search(
-        r'<input class="inbox-upload-file" type="file" name="file"'
-        r' accept="image/\*" required',
+        r'<input class="file-picker-input" id="inbox-upload-file" type="file"'
+        r' name="file" accept="image/\*" required',
         form_html,
     )
+    assert '<label class="file-picker-label" for="inbox-upload-file">' in form_html
     assert "上传小票" in form_html
     assert "导入与导出" in body
 
