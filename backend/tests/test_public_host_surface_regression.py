@@ -165,7 +165,8 @@ def test_public_host_login_form_is_reachable(client: TestClient) -> None:
     pub = _public_client()
     resp = pub.get("/web/auth/login")
     assert resp.status_code == 200
-    assert "绑定码" in resp.text
+    assert "连接码" in resp.text
+    assert 'name="pairing_code"' in resp.text
 
 
 # ── No path should return 200 for raw uploads/ ──────────────────────────────

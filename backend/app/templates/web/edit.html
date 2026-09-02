@@ -56,7 +56,7 @@
         {% if can_write %}<button type="submit" hidden tabindex="-1" aria-hidden="true"></button>{% endif %}
 
         {% set core_fields_prefix = 'expense-' ~ e.id %}
-        {% set core_fields_reload_href = request.url %}
+        {% set core_fields_reload_href = edit_current_href %}
         {% include "_expense_core_fields.html" %}
 
         {% if can_write %}

@@ -205,8 +205,8 @@ def test_web_edit_renders_category_datalist_with_used_category(web_client: TestC
     assert detail.status_code == 200
     assert f'for="expense-{expense_id}-amount-yuan"' in detail.text
     assert f'id="expense-{expense_id}-amount-yuan"' in detail.text
-    assert 'list="category-options"' in detail.text
-    assert '<datalist id="category-options">' in detail.text
+    assert f'list="expense-{expense_id}-category-options"' in detail.text
+    assert f'<datalist id="expense-{expense_id}-category-options">' in detail.text
     assert '<option value="测试专属分类">' in detail.text  # the ledger's own
     assert '<option value="餐饮">' in detail.text  # a default
 
@@ -214,7 +214,8 @@ def test_web_edit_renders_category_datalist_with_used_category(web_client: TestC
     assert drawer.status_code == 200
     assert f'for="drawer-expense-{expense_id}-amount-yuan"' in drawer.text
     assert f'id="drawer-expense-{expense_id}-amount-yuan"' in drawer.text
-    assert 'list="category-options-drawer"' in drawer.text
+    assert f'list="drawer-expense-{expense_id}-category-options"' in drawer.text
+    assert f'<datalist id="drawer-expense-{expense_id}-category-options">' in drawer.text
     assert 'name="expense_time"' in drawer.text
     assert 'name="tags"' in drawer.text
 

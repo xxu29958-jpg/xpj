@@ -118,11 +118,16 @@ def _validated_currency_snapshot(
             field_errors={"original_currency": exc.message},
         )
     if not allow_currency_change and submitted_currency != frozen_currency:
-        message = "账单币种已冻结，不能在编辑金额时更改。"
+        message = (
+            "账单币种已在其它端改变；金额草稿仍按原币种保留，"
+            "不能直接重试。请先载入账本现值，再按当前币种重新填写。"
+        )
         return None, _failure(
             message,
             form_values=form_values,
             field_errors={"original_currency": message},
+            status_code=409,
+            conflict=True,
         )
     return submitted_currency, None
 

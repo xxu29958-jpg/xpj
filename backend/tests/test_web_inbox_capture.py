@@ -270,7 +270,7 @@ def test_inbox_pending_header_has_native_upload_form_and_flat_queue_summary(
     assert "导入与导出" in body
 
     assert "inbox-summary-item" not in body
-    assert "inbox-queue-line" in body
+    assert "product-page-summary" in body
     assert "笔待整理" in body
 
     static_root = Path(__file__).resolve().parents[1] / "app" / "static" / "web"

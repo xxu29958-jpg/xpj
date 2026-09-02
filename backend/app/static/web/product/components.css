@@ -881,6 +881,10 @@ textarea:focus {
     color: var(--text-default);
 }
 
+.expense-conflict-value--multiline {
+    white-space: pre-wrap;
+}
+
 .expense-conflict-reload {
     color: var(--brand-primary-strong);
     font-weight: var(--type-subtitle-weight);

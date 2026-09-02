@@ -13,17 +13,27 @@
 {% set _p = core_fields_prefix %}
 <div class="expense-core-fields" data-expense-core-fields>
   {% if conflict_current %}
+  {% set _currency_conflict = e.original_currency_code != conflict_current.original_currency_code %}
   {# OCC 409: 写入被拒绝 = role="alert"; 数据主权事件 = warning tone, 不升级
      danger。草稿 (submitted) 已在字段值里, hidden expected_row_version 已是
-     current; 用户核对后点原来的保存/确认即重试, 不造 merge state。 #}
+     current；同币种可核对后重试，币种已变则只能载入现值重填，不造 merge state。 #}
   <div class="product-feedback product-feedback--warning expense-conflict" role="alert">
     <span class="expense-conflict-lead">这条账单已在其它端被修改</span>
+    {% if _currency_conflict %}
+    <span>你的金额草稿仍按 {{ e.original_currency_code }} 保留，但账本现值已经改为 {{ conflict_current.original_currency_code }}，不能直接重试。请放弃修改并载入现值，再按当前币种重新填写金额。</span>
+    {% else %}
     <span>你的这次保存没有写入——可能是家人在另一台设备上先保存了。表单里仍是你的填写；对照账本现值后再次保存即可，不用刷新页面。</span>
+    {% endif %}
     <div class="expense-conflict-compare">
       <div class="expense-conflict-compare-row expense-conflict-compare-head" aria-hidden="true">
         <span></span><span>你的填写</span><span>账本现值</span>
       </div>
       <dl class="expense-conflict-compare-list">
+        <div class="expense-conflict-compare-row">
+          <dt>币种</dt>
+          <dd>{{ e.original_currency_code }}</dd>
+          <dd>{{ conflict_current.original_currency_code }}</dd>
+        </div>
         <div class="expense-conflict-compare-row">
           <dt>金额</dt>
           <dd>{% if e.original_amount_value %}{{ e.amount_symbol }}{{ e.original_amount_value }}{% else %}待补{% endif %}</dd>
@@ -38,6 +48,21 @@
           <dt>分类</dt>
           <dd>{{ e.category_input or '待分类' }}</dd>
           <dd>{% if conflict_current.needs_category %}待分类{% else %}{{ conflict_current.category }}{% endif %}</dd>
+        </div>
+        <div class="expense-conflict-compare-row">
+          <dt>消费时间</dt>
+          <dd>{{ e.expense_time_local or '未填写' }}</dd>
+          <dd>{{ conflict_current.expense_time_local or '未填写' }}</dd>
+        </div>
+        <div class="expense-conflict-compare-row">
+          <dt>标签</dt>
+          <dd>{{ e.tags or '未填写' }}</dd>
+          <dd>{{ conflict_current.tags or '未填写' }}</dd>
+        </div>
+        <div class="expense-conflict-compare-row">
+          <dt>备注</dt>
+          <dd class="expense-conflict-value--multiline">{{ e.note or '未填写' }}</dd>
+          <dd class="expense-conflict-value--multiline">{{ conflict_current.note or '未填写' }}</dd>
         </div>
       </dl>
     </div>
