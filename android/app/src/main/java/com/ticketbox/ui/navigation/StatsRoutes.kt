@@ -45,6 +45,7 @@ import com.ticketbox.viewmodel.DebtDetailViewModel
 import com.ticketbox.viewmodel.DebtGoalViewModel
 import com.ticketbox.viewmodel.DebtListViewModel
 import com.ticketbox.viewmodel.DebtRepaymentHistoryViewModel
+import com.ticketbox.viewmodel.IncomePlanEditViewModel
 import com.ticketbox.viewmodel.IncomePlanViewModel
 import com.ticketbox.viewmodel.MemberRepaymentProposalViewModel
 import com.ticketbox.viewmodel.MonthlyStatsViewModel
@@ -58,6 +59,7 @@ import com.ticketbox.viewmodel.debtDetailViewModelFactory
 import com.ticketbox.viewmodel.debtGoalViewModelFactory
 import com.ticketbox.viewmodel.debtRepaymentHistoryViewModelFactory
 import com.ticketbox.viewmodel.debtViewModelFactory
+import com.ticketbox.viewmodel.incomePlanEditViewModelFactory
 import com.ticketbox.viewmodel.incomePlanViewModelFactory
 import com.ticketbox.viewmodel.memberRepaymentProposalViewModelFactory
 import com.ticketbox.viewmodel.mergeStatsUiState
@@ -69,6 +71,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 internal const val IncomePlanViewModelKey = "income-plans"
+internal const val IncomePlanEditViewModelKey = "income-plan-edit"
 internal const val DebtGoalViewModelKey = "debt-goals"
 internal const val CreateDebtGoalViewModelKey = "create-debt-goal"
 internal const val DebtListViewModelKey = "debts"
@@ -133,8 +136,19 @@ internal fun IncomePlanRoute(
             onDataChanged = onDataChanged,
         ),
     )
+    // 编辑会话 VM 与列表 VM 分离（同 DebtRepaymentHistoryViewModel 先例）：打开时捕获 binding +
+    // rowVersion baseline，成功 receipt 独立展示，列表刷新失败不吞「已更新收入」。
+    val incomePlanEditViewModel: IncomePlanEditViewModel = viewModel(
+        key = IncomePlanEditViewModelKey,
+        factory = incomePlanEditViewModelFactory(
+            repository = screenFactory.incomePlanRepository,
+            debts = screenFactory.debtRepository,
+            onDataChanged = onDataChanged,
+        ),
+    )
     IncomePlanScreen(
         viewModel = incomePlanViewModel,
+        editViewModel = incomePlanEditViewModel,
         currency = LocalCurrencyDisplay.current,
         onBack = onBack,
     )

@@ -366,6 +366,10 @@
     <string name="debt_list_parse_bill_busy">识别中…</string>
     <string name="debt_list_empty_title">还没有欠款记录</string>
     <string name="debt_list_empty_body">记一笔外部欠款后，这里会显示它的方向、金额和清偿进度。</string>
+    <string name="debt_list_empty_body_readonly">当前账本还没有往来记录。</string>
+    <string name="debt_list_empty_payables_title">你目前没有要还的欠款</string>
+    <string name="debt_list_empty_payables_body">用上方「记一笔欠款」记下后，这里会显示金额和清偿进度。</string>
+    <string name="debt_list_empty_payables_body_readonly">账本内记下的往来，可以在下方「全部往来」查看。</string>
     <string name="debt_list_card_principal">本金 %1$s</string>
     <string name="debt_list_section_family">家人</string>
     <string name="debt_list_section_external">外部</string>
@@ -683,9 +687,8 @@
     <string name="recurring_items_load_failed_body">列表暂未同步完成，已有的固定支出不会因此消失。</string>
     <string name="recurring_item_merchant_fallback">未填写商家</string>
     <string name="recurring_item_anomaly_higher">本月偏高 %1$d%%</string>
-    <string name="recurring_action_pause">暂停</string>
-    <string name="recurring_action_resume">恢复</string>
-    <string name="recurring_action_archive">归档</string>
+    <string name="recurring_action_pause_description">暂停固定支出</string>
+    <string name="recurring_action_resume_description">继续固定支出</string>
     <string name="recurring_action_archive_description">归档固定支出</string>
     <string name="recurring_candidates_card_title">固定支出候选（未确认）</string>
     <string name="recurring_candidates_card_subtitle">识别自最近账单，仅供参考；采用后才进入正式固定支出。</string>
@@ -845,9 +848,6 @@
     <string name="recurring_pending_note">已保存在本机，同步完成后才计入计划。</string>
     <string name="recurring_pending_kind_create">新建</string>
     <string name="recurring_pending_kind_update">修改</string>
-    <string name="recurring_action_edit">编辑</string>
-    <string name="recurring_action_edit_description">编辑固定支出</string>
-    <string name="recurring_action_restore">恢复</string>
     <string name="recurring_action_restore_description">恢复固定支出</string>
     <string name="recurring_meta_next_no_reminder">未设置日期 · 不会提醒</string>
     <string name="recurring_meta_observed_count">已记录 %1$d 次</string>

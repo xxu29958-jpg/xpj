@@ -167,8 +167,9 @@ jobs:
         working-directory: android
         # CodeQL observes compiler invocations. Keep dependency/wrapper caches,
         # but force these compile-only tasks to execute instead of restoring
-        # compiler outputs from Gradle's build cache.
-        run: ./gradlew --no-daemon --no-build-cache --max-workers=2 :app:compileGrayDebugKotlin :app:compileGrayDebugJavaWithJavac :app:compileInternalDebugKotlin :app:compileInternalDebugJavaWithJavac
+        # compiler outputs from Gradle's build cache. Serialize the two variants:
+        # parallel traced compilations exhausted the shared Kotlin daemon heap.
+        run: ./gradlew --no-daemon --no-build-cache --max-workers=1 :app:compileGrayDebugKotlin :app:compileGrayDebugJavaWithJavac :app:compileInternalDebugKotlin :app:compileInternalDebugJavaWithJavac
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@1ad29ea4a422cce9a242a9fae469541dcd08addc # v4

@@ -323,13 +323,13 @@ private fun LazyListScope.debtListSection(
         )
     ) {
         ReadableListBodyState.Loading -> item(key = "debt-list-loading") {
-            DebtListNoRowsStateSection(loading = true)
+            DebtListNoRowsStateSection(loading = true, lens = state.lens, canModify = state.canModify)
         }
         ReadableListBodyState.LoadFailed -> item(key = "debt-list-error") {
             state.error?.let { DebtListLoadFailedSection(error = it) }
         }
         ReadableListBodyState.Empty -> item(key = "debt-list-empty") {
-            DebtListNoRowsStateSection(loading = false)
+            DebtListNoRowsStateSection(loading = false, lens = state.lens, canModify = state.canModify)
         }
         ReadableListBodyState.Content -> debtRowsSection(
             debts = state.debts,

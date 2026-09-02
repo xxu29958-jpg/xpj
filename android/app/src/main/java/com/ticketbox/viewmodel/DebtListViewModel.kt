@@ -65,6 +65,8 @@ data class DebtListUiState(
      * 重置为 false 重新等待。
      */
     val homeCurrencyResolved: Boolean = false,
+    /** 当前列表的任务视角（全账本 / 个人应付）：只用于空态文案按 lens+角色说诚实，不改变查询语义。 */
+    val lens: DebtListLens = DebtListLens.Ledger,
 )
 
 data class DebtDraftUi(
@@ -115,7 +117,9 @@ class DebtListViewModel(
     private val lens: DebtListLens = DebtListLens.Ledger,
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(DebtListUiState(canModify = repository.canModifyLedger()))
+    private val _state = MutableStateFlow(
+        DebtListUiState(canModify = repository.canModifyLedger(), lens = lens),
+    )
     val state: StateFlow<DebtListUiState> = _state.asStateFlow()
 
     // Monotonic load token (mirrors DebtGoalViewModel): a refresh applies its result only if it is
