@@ -66,6 +66,9 @@ internal data class PendingExpenseReviewItem(
     val compact: Boolean,
     val showInlineActions: Boolean,
     val busy: Boolean,
+    // Viewer 没有写命令：readOnly 时行内不渲染 mutation CTA（禁用态会暗示
+    // 「别的时候能」，是撒谎投影）；busy 是唯一合法的禁用理由。
+    val readOnly: Boolean,
 )
 
 @Immutable
@@ -116,6 +119,7 @@ internal fun PendingExpenseReviewRow(
                     PendingExpenseAmountBlock(
                         expense = item.expense,
                         actions = actions,
+                        readOnly = item.readOnly,
                         modifier = if (stacked) {
                             amountModifier
                         } else {
@@ -207,6 +211,7 @@ private fun RowScope.PendingExpenseTextBlock(item: PendingExpenseReviewItem) {
 private fun PendingExpenseAmountBlock(
     expense: Expense,
     actions: PendingExpenseReviewActions,
+    readOnly: Boolean,
     modifier: Modifier = Modifier,
     stacked: Boolean = false,
 ) {
@@ -217,17 +222,20 @@ private fun PendingExpenseAmountBlock(
     ) {
         PendingAmountValue(expense = expense)
         PendingExpenseExchangeMetaText(expense = expense, stacked = stacked)
-        TextButton(
-            enabled = actions.canMutate,
-            onClick = actions.onPrimaryAction,
-            modifier = Modifier.heightIn(min = AppSpacing.controlMinHeight),
-            contentPadding = PaddingValues(horizontal = AppSpacing.smallGap, vertical = AppSpacing.none),
-        ) {
-            Text(
-                text = stringResource(pendingPrimaryActionLabelRes(expense)),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+        // Viewer 无写命令：不渲染 mutation CTA；busy 经 canMutate 只禁用。
+        if (!readOnly) {
+            TextButton(
+                enabled = actions.canMutate,
+                onClick = actions.onPrimaryAction,
+                modifier = Modifier.heightIn(min = AppSpacing.controlMinHeight),
+                contentPadding = PaddingValues(horizontal = AppSpacing.smallGap, vertical = AppSpacing.none),
+            ) {
+                Text(
+                    text = stringResource(pendingPrimaryActionLabelRes(expense)),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }

@@ -23,14 +23,11 @@ import com.ticketbox.R
 import com.ticketbox.ui.components.ClearCelebration
 import com.ticketbox.ui.design.AppMotion
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.LocalStateTokens
-import com.ticketbox.ui.design.LocalThemeVisuals
+import com.ticketbox.ui.mascot.MascotArt
 import com.ticketbox.ui.mascot.MascotController
 import com.ticketbox.ui.mascot.MascotEvent
-import com.ticketbox.ui.mascot.MascotPlaceholder
 import com.ticketbox.ui.mascot.MascotState
 import com.ticketbox.ui.mascot.MascotStateMachine
-import com.ticketbox.ui.mascot.mascotPalette
 import com.ticketbox.viewmodel.DebtGoalCelebration
 import kotlinx.coroutines.delay
 
@@ -42,7 +39,7 @@ import kotlinx.coroutines.delay
  *
  * 浮现同一拍 [mascot] 收到 [MascotEvent.MilestoneReached]（夹夹撒花，荣誉归双方与关系，非奖励「催到钱」，
  * MASCOT_BRIEF §4.1）。视觉复用通用 [ClearCelebration]，时长对齐 [MascotStateMachine.ONE_SHOT_DURATION_MS] 的
- * [MascotState.Celebrating]（3600ms，里程碑级隆重）；占位形象 [MascotPlaceholder] 是 ADR-0048 集成线的过渡渲染。
+ * [MascotState.Celebrating]（3600ms，里程碑级隆重）；形象由 [MascotArt] 品牌原生资产渲染。
  * 用 [clearAndSetSemantics] 把整段并成一个 Polite liveRegion 节点，让屏幕阅读器一次性、不打断地播报里程碑。
  *
  * 与 ⑤ 的单笔浮层并行而独立（不同路由、不同文案；§6.6「单笔两清的喜悦由详情屏 ⑤ 独占」，⑥ 只在整个计划达成时撒）。
@@ -87,9 +84,8 @@ internal fun DebtGoalCelebrationOverlay(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         ) {
-            MascotPlaceholder(
+            MascotArt(
                 state = mascot.state,
-                palette = mascotPalette(LocalThemeVisuals.current, LocalStateTokens.current),
                 size = 72.dp,
             )
             ClearCelebration(

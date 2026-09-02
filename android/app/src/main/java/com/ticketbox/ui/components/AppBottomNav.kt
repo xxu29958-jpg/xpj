@@ -24,6 +24,7 @@ import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
@@ -123,7 +124,7 @@ fun AppBottomNav(
             modifier = Modifier.fillMaxWidth(),
         ) {
             HorizontalDivider(
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.opaque),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium),
             )
             Row(
                 modifier = Modifier
@@ -167,7 +168,12 @@ private fun AppBottomNavItemView(
     item: AppPrimaryNavItem,
     selected: Boolean,
 ) {
-    val content = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    // Warm Ledger 激活态：tonal pill 承载选中，而不是一条描边小指示线。
+    val content = if (selected) {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(AppBottomNavLayout.ItemGap, Alignment.CenterVertically),
@@ -178,22 +184,24 @@ private fun AppBottomNavItemView(
                     width = AppBottomNavLayout.IndicatorWidth,
                     height = AppBottomNavLayout.IndicatorHeight,
                 )
+                .clip(CircleShape)
                 .background(
-                    color = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
-                    shape = CircleShape,
+                    color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
                 ),
-        )
-        Icon(
-            imageVector = item.icon,
-            contentDescription = null,
-            tint = content,
-            modifier = Modifier.size(AppBottomNavLayout.IconSize),
-        )
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = item.icon,
+                contentDescription = null,
+                tint = content,
+                modifier = Modifier.size(AppBottomNavLayout.IconSize),
+            )
+        }
         Text(
             text = item.label,
             color = content,
             style = MaterialTheme.typography.labelSmall,
-            fontWeight = if (selected) AppTextHierarchy.body.weight else AppTextHierarchy.caption.weight,
+            fontWeight = if (selected) AppTextHierarchy.heading.weight else AppTextHierarchy.caption.weight,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -202,8 +210,8 @@ private fun AppBottomNavItemView(
 
 private object AppBottomNavLayout {
     val ItemMinHeight: Dp = AppSpacing.controlMinHeight
-    val IndicatorWidth: Dp = 18.dp
-    val IndicatorHeight: Dp = 2.dp
+    val IndicatorWidth: Dp = 56.dp
+    val IndicatorHeight: Dp = 28.dp
     val ItemGap: Dp = 3.dp
-    val IconSize: Dp = 18.dp
+    val IconSize: Dp = 20.dp
 }

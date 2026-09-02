@@ -5,8 +5,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.ticketbox.ui.design.LocalStateTokens
-import com.ticketbox.ui.design.LocalThemeVisuals
 
 /**
  * 空态里的夹夹:打盹姿态([MascotState.Dozing] 闭眼),给各列表的「暂无数据」卡片
@@ -14,19 +12,17 @@ import com.ticketbox.ui.design.LocalThemeVisuals
  * (controller / one-shot),直接喂固定状态即可——欢迎挥手 / 确认撒花那类一次性动作走
  * [MascotController] 事件线,不在这里。
  *
- * 配色走 [mascotPalette] 单源(渲染主题 paper/midnight 自动换色),禁止另起映射。
- * 渲染是 [MascotPlaceholder] 原生 Compose 画布;消费面只关心 state + palette。
- * 装饰性:文案卡片已用标题 + 正文表达空态含义,故用 [clearAndSetSemantics] 清空语义,
- * 让 TalkBack 跳过这张图,不重复播报。
+ * 渲染是 [MascotArt] 图片宿主(品牌原生图片资产,paper/midnight 按渲染主题自动换源);
+ * 消费面只关心 state。装饰性:文案卡片已用标题 + 正文表达空态含义,故用
+ * [clearAndSetSemantics] 清空语义,让 TalkBack 跳过这张图,不重复播报。
  */
 @Composable
 fun MascotEmptyIllustration(
     modifier: Modifier = Modifier,
     size: Dp = 96.dp,
 ) {
-    MascotPlaceholder(
+    MascotArt(
         state = MascotState.Dozing,
-        palette = mascotPalette(LocalThemeVisuals.current, LocalStateTokens.current),
         modifier = modifier.clearAndSetSemantics {},
         size = size,
     )

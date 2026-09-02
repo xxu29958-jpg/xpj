@@ -108,7 +108,7 @@ internal fun PendingTop(
             trailingAction?.invoke()
         }
 
-        if (!state.readOnly) {
+        if (state.showUploadAction) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
@@ -128,6 +128,7 @@ internal data class PendingTopState(
     val counts: PendingQueueCounts,
     val uploading: Boolean,
     val readOnly: Boolean,
+    val showUploadAction: Boolean,
 )
 
 @Composable

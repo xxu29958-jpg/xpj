@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 启动图标自适应底场色：与 W1 冻结的 icon-maskable-512.png 全出血场色同源 -->
+    <color name="ic_launcher_background">#0B413E</color>
+</resources>
