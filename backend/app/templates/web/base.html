@@ -154,21 +154,10 @@
   <title>{% block title %}小票夹 网页版{% endblock %}</title>
 
   {# 外观轴 anti-FOUC bootstrap: 质感/强调色是纯本地偏好, 无 SSR cookie;
-     首屏前从 localStorage 还原到 <html data-*>, 非法值一律忽略 (回落默认)。
-     theme.js 是同一对 key 的唯一运行时写入者。 #}
-  <script>
-    try {
-      var _appearanceStorage = window.localStorage;
-      var _texture = _appearanceStorage.getItem("ui-texture");
-      var _accent = _appearanceStorage.getItem("ui-accent");
-      if (_texture === "flat" || _texture === "fiber") {
-        document.documentElement.setAttribute("data-texture", _texture);
-      }
-      if (/^(evergreen|ink|ochre|plum)$/.test(_accent || "")) {
-        document.documentElement.setAttribute("data-accent", _accent);
-      }
-    } catch (_) {}
-  </script>
+     首屏前从 localStorage 还原到 <html data-*>。CSP script-src 'self' 杀一切
+     inline script —— bootstrap 必须是无 defer 的外部文件 (auth/login.html
+     共享同一脚本); theme.js 是同一对 key 的唯一运行时写入者。 #}
+  <script src="/static/web/appearance-bootstrap.js?v={{ asset_version }}"></script>
 
   <link rel="stylesheet" href="/static/shared/tokens.css?v={{ asset_version }}">
 

@@ -266,7 +266,9 @@ def test_inbox_pending_header_has_native_upload_form_and_flat_queue_summary(
         r' name="file" accept="image/\*" required',
         form_html,
     )
-    assert '<label class="file-picker-label" for="inbox-upload-file">' in form_html
+    # 原生常显 file input: 代理 label 按钮与 JS 文件名槽整体退役。
+    assert "file-picker-label" not in form_html
+    assert "data-file-picker-name" not in form_html
     assert "上传小票" in form_html
     assert "导入与导出" in body
 

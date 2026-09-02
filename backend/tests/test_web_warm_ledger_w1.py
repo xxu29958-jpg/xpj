@@ -47,10 +47,10 @@ def test_web_pending_touch_targets_and_file_picker_markup(
         'aria-label="选择小票图片"',
     ):
         assert contract in file_tag
-    file_id = re.search(r'id="([^"]+)"', file_tag)
-    assert file_id is not None
-    assert f'<label class="file-picker-label" for="{file_id.group(1)}"' in body
-    assert "data-file-picker-name" in body
+    # 原生 input 常显是唯一事实 owner: 选中文件名由浏览器原生呈现, 无 JS /
+    # JS 失败时用户仍看到将上传的文件; 代理 label 与 JS 文件名槽整体退役。
+    assert "file-picker-label" not in body
+    assert "data-file-picker-name" not in body
     assert 'data-inbox-capture enctype="multipart/form-data"' in body
     capture_form = re.search(r'<form[^>]*data-inbox-capture[^>]*>', body)
     assert capture_form is not None
