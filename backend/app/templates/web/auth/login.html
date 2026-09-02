@@ -6,6 +6,9 @@
   <meta name="csrf-token" content="{{ csrf_token }}">
   <title>连接小票夹 — 小票夹</title>
   <link rel="icon" type="image/png" href="/static/web/product/brand/favicon-48.png">
+  {# 与 base.html 共享的外观 bootstrap: 首屏前恢复 ui-texture/ui-accent
+     本地偏好 (CSP 合规外部脚本)。 #}
+  <script src="/static/web/appearance-bootstrap.js?v={{ asset_version }}"></script>
   <link rel="stylesheet" href="/static/shared/tokens.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/web/pages/auth-login.css?v={{ asset_version }}">
   <script defer src="/static/shared/csrf.js?v={{ asset_version }}"></script>

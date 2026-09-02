@@ -84,9 +84,22 @@ def test_product_shell_exposes_local_appearance_axes_without_fake_upload_entry(
     theme_js = web_client.get("/static/web/desktop/theme.js")
     assert theme_js.status_code == 200
     assert "localStorage" in theme_js.text
-    assert 'setAttribute("data-texture"' in theme_js.text
-    assert 'setAttribute("data-accent"' in theme_js.text
+    assert "const prefs = window.TicketboxAppearance" in theme_js.text
+    assert 'prefs.write("texture"' in theme_js.text
+    assert 'prefs.write("accent"' in theme_js.text
     assert "fetch(" not in theme_js.text
+
+
+def test_product_shell_restores_appearance_axes_via_external_bootstrap(
+    web_client: TestClient,
+) -> None:
+    """质感/强调色在首屏前由外部 appearance-bootstrap.js 恢复 —— inline
+    bootstrap 在 script-src 'self' 下静默死亡; 外部文件由 base 与 login 共享。"""
+    response = web_client.get("/web/pending?ledger_id=owner")
+
+    assert response.status_code == 200
+    assert '<script src="/static/web/appearance-bootstrap.js' in response.text
+    assert "localStorage" not in response.text
 
 
 def test_product_shell_topbar_carries_compact_brand_identity(

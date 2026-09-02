@@ -141,25 +141,14 @@ a {
     padding: 0 var(--space-3) var(--space-7);
 }
 
-/* W1 品牌 mark: 双 colorway 由 html[data-theme] 切换 (SSR 直出无 FOUC);
-   尺寸按槽位 — sidebar 40 / topbar 24 (login 48 在 auth-login.css)。 */
+/* W1 品牌 mark: 单 img SSR 直出当前 colorway, 运行时 theme.js 从受信任
+   资产映射换 src (双 img display:none 双下载已退役); 尺寸按槽位 — sidebar 40 /
+   topbar 24 (login 48 在 auth-login.css)。 */
 .brand-mark-img {
     display: block;
     width: var(--space-9);
     height: auto;
     flex: 0 0 auto;
-}
-
-.brand-mark-img--midnight {
-    display: none;
-}
-
-[data-theme="midnight"] .brand-mark-img {
-    display: none;
-}
-
-[data-theme="midnight"] .brand-mark-img--midnight {
-    display: block;
 }
 
 .topbar-brand .brand-mark-img {

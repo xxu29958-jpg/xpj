@@ -36,25 +36,13 @@ body {
     margin-block-end: var(--space-8);
 }
 
-/* 登录页 data-theme 由服务端 _read_ui_theme SSR 直出 (web_auth.py 注入 ui_theme),
-   非固定 paper: 与 shell.css 同源的 [data-theme] 双 colorway 切换在此自给
-   (本页不加载 shell.css), 玄夜会话进入登录页 mark 不换色即反例。 */
+/* 登录页 data-theme 与品牌 mark 色款都由服务端 _read_ui_theme SSR 直出
+   (web_auth.py 注入 ui_theme): 单 img 无运行时切换 (本页不加载 shell.css
+   与 theme.js, 尺寸槽位在此自给)。 */
 .auth-brand .brand-mark-img {
     display: block;
     width: var(--space-10);
     height: auto;
-}
-
-.auth-brand .brand-mark-img--midnight {
-    display: none;
-}
-
-[data-theme="midnight"] .auth-brand .brand-mark-img {
-    display: none;
-}
-
-[data-theme="midnight"] .auth-brand .brand-mark-img--midnight {
-    display: block;
 }
 
 .auth-brand-name {

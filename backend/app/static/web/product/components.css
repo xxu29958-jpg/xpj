@@ -164,7 +164,6 @@ p {
    danger tonal 危险色面, quiet 纯文本。描边白底按钮从 product 语言退役。 */
 .dt-btn,
 .product-button,
-.file-picker-label,
 button.dt-btn,
 a.dt-btn {
     display: inline-flex;
@@ -188,14 +187,12 @@ a.dt-btn {
 }
 
 .dt-btn:hover,
-.product-button:hover,
-.file-picker-label:hover {
+.product-button:hover {
     background: var(--border-card);
 }
 
 .dt-btn:active,
-.product-button:active,
-.file-picker-label:active {
+.product-button:active {
     transform: translateY(var(--space-1));
 }
 
@@ -700,50 +697,48 @@ textarea:focus {
     }
 }
 
-/* K3 file-picker primitive: 原生 input 仍是 owner (clipped 但可聚焦, 键盘/
-   读屏/no-JS 不变), 真实 <label for> 承担按钮外观, 文件名槽位只由 JS 渐进
-   填充, 绝不自动提交。consumer: 收件上传 + CSV 导入。 */
-.file-picker {
-    position: relative;
-    display: inline-flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-3);
-}
-
-/* specificity 借 current product-shell scope (body.product-shell) 盖过通用
+/* file-picker primitive: 原生 file input 常显是唯一 owner — 选中文件名由
+   浏览器原生呈现 (无 JS / JS 失败都诚实, 键盘/读屏/no-JS 语义天然正确),
+   ::file-selector-button 承担 tonal 按钮外观, 绝不自动提交。
+   consumer: 收件上传。specificity 借 body.product-shell 盖过通用
    input:not(...) 规则, 不动 legacy import 页, 不用 !important。 */
-body.product-shell .file-picker > input.file-picker-input {
-    position: absolute;
-    width: 1px;
-    min-width: 0;
-    height: 1px;
-    min-height: 0;
-    margin: -1px;
-    padding: 0;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    clip-path: inset(50%);
-    white-space: nowrap;
-    border: 0;
+.file-picker {
+    display: inline-flex;
+    min-width: min(100%, calc(var(--space-12) * 4));
 }
 
-.file-picker-input:focus-visible + .file-picker-label {
+body.product-shell .file-picker > input.file-picker-input {
+    width: 100%;
+    min-height: var(--target-min);
+    padding: var(--space-1) var(--space-2);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: var(--surface-sunken);
+    color: var(--text-meta);
+    font: inherit;
+    font-size: var(--type-caption-size);
+}
+
+body.product-shell .file-picker > input.file-picker-input::file-selector-button {
+    min-height: calc(var(--target-min) - var(--space-2));
+    margin-inline-end: var(--space-3);
+    padding: var(--space-2) var(--space-4);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: var(--brand-primary-bg);
+    color: var(--brand-primary);
+    cursor: pointer;
+    font: inherit;
+    font-weight: var(--type-subtitle-weight);
+}
+
+body.product-shell .file-picker > input.file-picker-input::file-selector-button:hover {
+    background: var(--border-card);
+}
+
+body.product-shell .file-picker > input.file-picker-input:focus-visible {
     outline: var(--space-1) solid var(--brand-focus-ring);
     outline-offset: var(--space-1);
-}
-
-.file-picker-name {
-    max-width: calc(var(--space-12) * 3);
-    overflow: hidden;
-    color: var(--text-meta);
-    font-size: var(--type-caption-size);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.file-picker-name:empty {
-    display: none;
 }
 
 /* W1: 批量条浮为 tonal 悬浮条 (无描边); ≤64rem 抬到 fixed 底部 nav 之上。 */

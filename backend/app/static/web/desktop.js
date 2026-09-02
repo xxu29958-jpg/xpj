@@ -31,7 +31,6 @@
     call("initDragReorder");
     call("initSplitLayout");
     call("initInboxCapture");
-    call("initFilePickers");
     call("initInboxEnrichmentWatch");
   }
 

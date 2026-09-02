@@ -1,6 +1,7 @@
-{# 品牌 mark: 纸面/玄夜双 colorway 同源剪影 (ImageGen 锁定母版, 禁止手造/脚本改);
-   由 html[data-theme] CSS 切换 (shell.css / auth-login.css 同源两条); data-theme
-   全部由服务端 _read_ui_theme SSR 直出 (app 页经 base.html, login 经 web_auth),
-   无 FOUC; 尺寸由容器槽位决定 — sidebar 40 / topbar 24 / login 48。 #}
-<img class="brand-mark-img" src="/static/web/product/brand/brand-mark.png" alt="" aria-hidden="true">
-<img class="brand-mark-img brand-mark-img--midnight" src="/static/web/product/brand/brand-mark-midnight.png" alt="" aria-hidden="true">
+{# 品牌 mark: 纸面/玄夜双 colorway 同源剪影 (ImageGen 锁定母版, 禁止手造/脚本改)。
+   单 img SSR 直出当前色款 (ui_theme 由服务端 _read_ui_theme 注入);
+   theme.js 主题切换时从受信任资产映射换 src (login 无主题开关, 只消费 SSR)。
+   尺寸由容器槽位决定 — sidebar 40 / topbar 24 / login 48。 #}
+<img class="brand-mark-img"
+     src="{{ '/static/web/product/brand/brand-mark-midnight.png' if (ui_theme or 'paper') == 'midnight' else '/static/web/product/brand/brand-mark.png' }}"
+     alt="" aria-hidden="true">

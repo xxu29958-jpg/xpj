@@ -148,20 +148,6 @@
     } catch (_) {}
   };
 
-  // K3 file-picker primitive 的渐进增强: 选中后把文件名写进 [data-file-picker-name]
-  // 槽位 (aria-live 读屏播报); input 仍是命令 owner, 绝不自动提交。
-  app.initFilePickers = function initFilePickers() {
-    document.querySelectorAll(".file-picker-input").forEach(function (input) {
-      const scope = input.closest(".file-picker");
-      const slot = scope && scope.querySelector("[data-file-picker-name]");
-      if (!slot) return;
-      input.addEventListener("change", function () {
-        const file = input.files && input.files[0];
-        slot.textContent = file ? file.name : "";
-      });
-    });
-  };
-
   app.initInboxEnrichmentWatch = function initInboxEnrichmentWatch() {
     const marker = document.querySelector("[data-inbox-enrichment-watch]");
     if (!marker) return;

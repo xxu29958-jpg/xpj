@@ -37,13 +37,12 @@
        body。timezone 由 JS 渐进写入 action query，无 JS 时后端使用默认时区。 #}
     <form class="inbox-upload-form" id="capture" method="post" action="/web/pending/upload{{ _q }}" data-inbox-capture enctype="multipart/form-data">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      {# K3 file-picker primitive: 原生 input 仍是 owner (type/name/accept/
-         required/aria-label 不变, clipped 但可聚焦), label 按钮原生触发,
-         文件名槽位由 core.js initFilePickers 渐进填充, 绝不自动提交。 #}
+      {# 原生 file input 常显是唯一事实 owner (type/name/accept/required/
+         aria-label 不变): 选中文件名由浏览器原生呈现 — 无 JS 或 JS 失败时
+         用户仍看到将上传的文件; 按钮外观由 ::file-selector-button 承担,
+         绝不自动提交。 #}
       <span class="file-picker">
         <input class="file-picker-input" id="inbox-upload-file" type="file" name="file" accept="image/*" required aria-label="选择小票图片">
-        <label class="file-picker-label" for="inbox-upload-file">选择小票图片</label>
-        <span class="file-picker-name" data-file-picker-name aria-live="polite"></span>
       </span>
       <button class="product-button product-button--primary" type="submit">上传小票</button>
     </form>

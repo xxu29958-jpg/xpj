@@ -67,10 +67,15 @@ def test_login_form_renders(client: TestClient) -> None:
     assert "APP_TOKEN" not in resp.text
     assert 'type="password"' not in resp.text
     assert 'action="/web/auth/login"' in resp.text
-    # W1 品牌 mark: 双 colorway 同源剪影两枚 img 都渲染；SSR data-theme
-    # 决定可见项，图形资产是锁定母版。
-    assert '<img class="brand-mark-img" src="/static/web/product/brand/brand-mark.png"' in resp.text
-    assert '<img class="brand-mark-img brand-mark-img--midnight" src="/static/web/product/brand/brand-mark-midnight.png"' in resp.text
+    # 品牌 mark 单 img SSR: 只渲染当前 colorway 一枚 (双 img 的 display:none
+    # 仍会双下载); theme.js 运行时只从受信任资产映射切换。
+    # login 无主题开关, 只消费 SSR。
+    assert resp.text.count('class="brand-mark-img"') == 1
+    assert 'src="/static/web/product/brand/brand-mark.png"' in resp.text
+    assert "data-src-" not in resp.text
+    # 外观 bootstrap 是 CSP 合规的外部脚本 (inline 在 script-src 'self' 下必死),
+    # login 与 app 页共享, 首屏前恢复 ui-texture / ui-accent 本地偏好。
+    assert '<script src="/static/web/appearance-bootstrap.js' in resp.text
     cookie_header = resp.headers.get("set-cookie", "")
     assert PAIRING_ATTEMPT_COOKIE_NAME in cookie_header
     assert "Secure" in cookie_header
@@ -87,6 +92,9 @@ def test_login_form_ssr_theme_respects_cookie_under_strict_csp(client: TestClien
 
     assert response.status_code == 200
     assert '<html lang="zh-CN" data-theme="midnight">' in response.text
+    # midnight SSR 直出单 img 玄夜色款 (无双下载)。
+    assert response.text.count('class="brand-mark-img"') == 1
+    assert 'src="/static/web/product/brand/brand-mark-midnight.png"' in response.text
     assert "script-src 'self'" in response.headers["content-security-policy"]
     assert "document.cookie.match" not in response.text
 
