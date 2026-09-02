@@ -56,6 +56,7 @@ body {
     min-height: 100dvh;
     margin: 0;
     background: var(--surface-app);
+    background-image: var(--surface-app-image, none);
     color: var(--text-default);
 }
 
@@ -362,34 +363,120 @@ a {
     color: var(--text-default);
 }
 
-/* 主题三态分段控件（晨纸 / 玄夜 / 跟随系统）；选中态由 aria-pressed 表达。 */
-.theme-control {
+/* 外观 popover (主题/质感/强调色三轴, <details> 原生开合, 无 JS 可用)。
+   三轴语义: theme.js 写入 localStorage + <html data-*>, tokens.css 外观轴段
+   承载全部值; 这里只摆 chrome。 */
+.appearance {
+    position: relative;
+}
+
+.appearance-trigger {
     display: inline-flex;
+    min-height: var(--space-9);
     align-items: center;
+    padding: var(--space-2) var(--space-4);
     border: 1px solid var(--border-input);
     border-radius: var(--radius-sm);
     background: var(--surface-card);
-    overflow: hidden;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: var(--type-caption-size);
+    font-weight: var(--type-subtitle-weight);
+    list-style: none;
 }
 
-.theme-choice {
+.appearance-trigger::-webkit-details-marker {
+    display: none;
+}
+
+.appearance-trigger:hover {
+    border-color: var(--control-border-hover);
+    color: var(--text-default);
+}
+
+.appearance[open] .appearance-trigger {
+    border-color: var(--control-border-active);
+    color: var(--text-default);
+}
+
+.appearance-popover {
+    position: absolute;
+    inset-block-start: calc(100% + var(--space-2));
+    inset-inline-end: 0;
+    z-index: var(--z-drawer);
+    display: grid;
+    min-width: calc(var(--space-12) * 4);
+    gap: var(--space-4);
+    padding: var(--space-4);
+    border: 1px solid var(--border-input);
+    border-radius: var(--radius-md);
+    background: var(--surface-raised);
+    box-shadow: var(--shadow-raised);
+}
+
+.appearance-group {
+    display: grid;
+    gap: var(--space-2);
+}
+
+.appearance-label {
+    color: var(--text-meta);
+    font-size: var(--type-meta-size);
+    font-weight: var(--type-meta-weight);
+    letter-spacing: var(--type-meta-tracking);
+}
+
+.appearance-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+}
+
+.appearance-choice {
+    display: inline-flex;
     min-height: var(--space-9);
+    align-items: center;
+    gap: var(--space-2);
     padding: var(--space-2) var(--space-3);
-    border: none;
+    border: 0;
+    border-radius: var(--radius-sm);
     background: transparent;
     color: var(--text-muted);
     cursor: pointer;
     font-size: var(--type-caption-size);
 }
 
-.theme-choice:hover {
+.appearance-choice:hover {
+    background: var(--surface-sunken);
     color: var(--text-default);
 }
 
-.theme-choice[aria-pressed="true"] {
+.appearance-choice[aria-pressed="true"] {
     background: var(--brand-primary-bg);
     color: var(--brand-primary-strong);
-    font-weight: var(--type-meta-weight);
+    font-weight: var(--type-subtitle-weight);
+}
+
+.appearance-swatch {
+    width: var(--space-3);
+    height: var(--space-3);
+    border-radius: var(--radius-pill);
+}
+
+.appearance-swatch--evergreen {
+    background: var(--accent-swatch-evergreen);
+}
+
+.appearance-swatch--ink {
+    background: var(--accent-swatch-ink);
+}
+
+.appearance-swatch--ochre {
+    background: var(--accent-swatch-ochre);
+}
+
+.appearance-swatch--plum {
+    background: var(--accent-swatch-plum);
 }
 
 .month-picker {
@@ -688,9 +775,8 @@ a {
         top: calc(var(--space-10) * 2 + var(--space-9));
     }
 
-    .topbar-domain,
-    .topbar-title,
-    .topbar-ledger {
+    /* 移动端保留压缩位置感: 域名 + 账本名 (截断); 页题让位给正文页头。 */
+    .topbar-title {
         display: none;
     }
 
@@ -714,6 +800,13 @@ a {
     }
 
     .ledger-popover {
+        position: fixed;
+        inset-block-start: calc(var(--space-10) * 3);
+        inset-inline: var(--space-4);
+        min-width: 0;
+    }
+
+    .appearance-popover {
         position: fixed;
         inset-block-start: calc(var(--space-10) * 3);
         inset-inline: var(--space-4);

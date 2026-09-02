@@ -210,6 +210,42 @@ def test_web_edit_rejects_overlong_transaction_fields_before_database_write(
     assert after == before
 
 
+def _assert_conflict_reload_and_retry(
+    web_client: TestClient,
+    *,
+    expense_id: int,
+    identity,
+    conflict_body: str,
+    draft: dict[str, str],
+) -> None:
+    current = _expense_payload(web_client, expense_id, identity=identity)
+    token_markup = f'name="expected_row_version" value="{current["row_version"]}"'
+    assert token_markup in conflict_body
+
+    reload_href = f"/web/expenses/{expense_id}/edit?ledger_id=owner"
+    assert f'href="{reload_href}"' in conflict_body
+    reloaded = web_client.get(reload_href)
+    assert reloaded.status_code == 200, reloaded.text
+    assert "Authoritative Merchant" in reloaded.text
+    assert "Stale Overwrite" not in reloaded.text
+    assert token_markup in reloaded.text
+    assert current["merchant"] == "Authoritative Merchant"
+
+    retry = web_client.post(
+        f"/web/expenses/{expense_id}/save",
+        data={
+            **draft,
+            "expected_row_version": str(current["row_version"]),
+            "original_currency": current["original_currency_code"],
+        },
+        follow_redirects=False,
+    )
+    assert retry.status_code == 303, retry.text
+    assert _expense_payload(web_client, expense_id, identity=identity)["merchant"] == (
+        "Stale Overwrite"
+    )
+
+
 def test_web_edit_stale_write_returns_409_with_authoritative_values(
     web_client: TestClient,
     *,
@@ -228,23 +264,28 @@ def test_web_edit_stale_write_returns_409_with_authoritative_values(
             "amount_yuan": "8.00",
             "merchant": "Authoritative Merchant",
             "category": "餐饮",
-            "note": "",
-            "tags": "",
+            "note": "账本现值备注",
+            "tags": "远端标签",
+            "expense_time": "2026-09-02T14:30",
         },
     )
     assert intervening.status_code == 303, intervening.text
 
+    draft = {
+        "ledger_id": "owner",
+        "amount_yuan": "8.00",
+        "merchant": "Stale Overwrite",
+        "category": "餐饮",
+        "note": "我的备注",
+        "tags": "本地标签",
+        "expense_time": "2026-09-01T09:15",
+    }
     response = web_client.post(
         f"/web/expenses/{expense_id}/save",
         data={
-            "ledger_id": "owner",
+            **draft,
             "expected_row_version": str(stale["row_version"]),
             "original_currency": stale["original_currency_code"],
-            "amount_yuan": "8.00",
-            "merchant": "Stale Overwrite",
-            "category": "餐饮",
-            "note": "",
-            "tags": "",
         },
         follow_redirects=False,
     )
@@ -253,12 +294,23 @@ def test_web_edit_stale_write_returns_409_with_authoritative_values(
     assert "已在其它端被修改" in response.text
     assert "Authoritative Merchant" in response.text
     assert "Stale Overwrite" in response.text
-    assert (
-        f'name="expected_row_version" value="{stale["row_version"]}"'
-        in response.text
+    assert "你的填写" in response.text
+    assert "账本现值" in response.text
+    assert "我的备注" in response.text
+    assert "账本现值备注" in response.text
+    assert "本地标签" in response.text
+    assert "远端标签" in response.text
+    assert "2026-09-01T09:15" in response.text
+    assert "2026-09-02T14:30" in response.text
+    assert 'data-page-level="tertiary"' in response.text
+    assert "/static/web/product/detail.css" in response.text
+    _assert_conflict_reload_and_retry(
+        web_client,
+        expense_id=expense_id,
+        identity=identity,
+        conflict_body=response.text,
+        draft=draft,
     )
-    after = _expense_payload(web_client, expense_id, identity=identity)
-    assert after["merchant"] == "Authoritative Merchant"
 
 
 def test_web_search_renders_expense_amount_with_record_currency(

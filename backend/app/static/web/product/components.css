@@ -649,7 +649,7 @@ textarea:focus {
     position: sticky;
     inset-block-end: var(--space-4);
     z-index: var(--z-sticky);
-    display: none;
+    display: flex;
     align-items: center;
     gap: var(--space-3);
     margin-block-start: var(--space-5);
@@ -660,8 +660,17 @@ textarea:focus {
     box-shadow: var(--shadow-raised);
 }
 
-.bulk-bar.on {
-    display: flex;
+/* no-JS fail-open (收件域收口片冻结): 未增强时批量条原生可见、表单可原生
+   提交 —— presentation 可用性不得变成 command eligibility。bulk-bar.js 完整
+   初始化后置 data-bulk-enhanced，那时未选中态才隐藏，选中态由 .on 恢复。 */
+.bulk-bar[data-bulk-enhanced]:not(.on) {
+    display: none;
+}
+
+/* 未增强时计数恒为 0 且无法变化、「取消选择」无意义：隐藏，不说谎。 */
+.bulk-bar:not([data-bulk-enhanced]) .bulk-selection-status,
+.bulk-bar:not([data-bulk-enhanced]) [data-bulk-clear] {
+    display: none;
 }
 
 .bulk-field {
@@ -796,6 +805,92 @@ textarea:focus {
     color: var(--state-warn-fg);
 }
 
+/* ── 编辑 core-fields 共享组件 (drawer / 完整整理页共用 _expense_core_fields.html) ──
+   展示层唯一 owner: 字段排版、错误挂载、OCC 冲突对比条。值/选项/hidden
+   command fields/OCC token 由各真实 consumer 表单提供。 */
+
+.expense-core-fields {
+    display: grid;
+    gap: var(--space-5);
+}
+
+.product-field > span:first-child {
+    color: var(--text-default);
+    font-size: var(--type-caption-size);
+    font-weight: var(--type-subtitle-weight);
+}
+
+.error-text {
+    color: var(--state-danger-fg);
+    font-size: var(--type-caption-size);
+    line-height: var(--type-caption-line);
+}
+
+/* OCC 冲突横幅 (409 重渲染): warning tone + role="alert" — 写入被拒绝,
+   用户必须行动; 冲突本身是中性数据主权事件, 不升级 danger。
+   三栏对比: 字段 / 你的填写 / 账本现值; 草稿保留, hidden token 已是
+   current 值, 原保存/确认按钮即重试, 不造 merge state。 */
+.expense-conflict {
+    display: grid;
+    justify-content: stretch;
+    gap: var(--space-3);
+}
+
+.expense-conflict-lead {
+    font-size: var(--type-subtitle-size);
+    font-weight: var(--type-subtitle-weight);
+}
+
+.expense-conflict-compare {
+    display: grid;
+    gap: var(--space-1);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--state-warn-border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-card);
+}
+
+.expense-conflict-compare-row {
+    display: grid;
+    grid-template-columns: minmax(calc(var(--space-12) * 1.25), auto) minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--space-4);
+    align-items: baseline;
+    padding-block: var(--space-1);
+}
+
+.expense-conflict-compare-head {
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
+
+.expense-conflict-compare-list {
+    display: grid;
+    gap: var(--space-1);
+    margin: 0;
+}
+
+.expense-conflict-compare-row dt {
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
+
+.expense-conflict-compare-row dd {
+    min-width: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+    color: var(--text-default);
+}
+
+.expense-conflict-value--multiline {
+    white-space: pre-wrap;
+}
+
+.expense-conflict-reload {
+    color: var(--brand-primary-strong);
+    font-weight: var(--type-subtitle-weight);
+    text-underline-offset: var(--space-1);
+}
+
 .sr-only {
     position: absolute;
     width: 1px;
@@ -831,7 +926,7 @@ textarea:focus {
         grid-template-columns: minmax(0, 1fr);
     }
 
-    .bulk-bar.on {
+    .bulk-bar {
         align-items: stretch;
         flex-direction: column;
     }

@@ -122,6 +122,18 @@ def test_web_pending_bulk_selection_markup_and_js_field_name(web_client: TestCli
     _assert_bulk_bar_runtime_contract(js_path)
     _assert_review_keyboard_runtime_contract(js_path)
 
+    # JS 只增强显隐：没有 JS 时批量命令仍必须可见并可原生提交；增强初始化后，
+    # 未选中态才隐藏，选中态由 .on 恢复。不能把 query/presentation 可用性变成
+    # command eligibility。
+    components_css = web_client.get("/static/web/product/components.css")
+    assert components_css.status_code == 200
+    assert re.search(r"\.bulk-bar\s*\{[^}]*display:\s*flex", components_css.text, re.S)
+    assert re.search(
+        r"\.bulk-bar\[data-bulk-enhanced\]:not\(\.on\)\s*\{[^}]*display:\s*none",
+        components_css.text,
+        re.S,
+    )
+
     # 原生 checkbox 自带 id:row_version，无 JS 仍提交相同 OCC 快照。
     token = _row_version(web_client, eid, identity=identity)
     no_js = web_client.post(
@@ -310,6 +322,19 @@ def test_inbox_pending_drawer_uses_product_markup(web_client: TestClient, *, ide
     assert 'class="drawer-receipt"' not in body
     assert "dt-" not in body
     assert 'style="' not in body
+
+    full = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
+    assert full.status_code == 200
+    assert 'data-domain="inbox"' in full.text
+    assert 'data-body-stack="product"' in full.text
+    assert "完整整理账单" in full.text
+    assert "小票明细" in full.text
+    assert "家庭拆账" in full.text
+    assert "dt-" not in full.text
+    # 抽屉与完整整理页消费同一个 core-field presentation partial；值、hidden
+    # command fields 与 OCC 仍分别由各真实表单提供。
+    assert 'data-expense-core-fields' in body
+    assert 'data-expense-core-fields' in full.text
 
 
 def test_inbox_duplicates_pair_renders_side_by_side_product_markup(web_client: TestClient, *, identity) -> None:

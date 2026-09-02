@@ -1,9 +1,13 @@
-/* Theme control for /web desktop shell.
+/* Appearance control for /web product shell — 主题 × 质感 × 强调色 三条本地偏好轴。
  *
  * 用户偏好是本地 mode：paper / midnight 直接渲染，system 解析到平台明暗。
  * 渲染主题（<html data-theme> 与 ui_theme cookie）永远只有 paper / midnight ——
  * cookie 供 SSR 首屏避免闪烁，因此只保存已解析值，绝不保存 "system"。
- * 主题是浏览器本地偏好：不登录、不上传、不跨端同步。
+ *
+ * 质感 (data-texture: flat|fiber) 与强调色 (data-accent: evergreen|ink|ochre|plum)
+ * 是同一级的浏览器本地偏好：只写 localStorage + <html> 属性，没有 cookie
+ * (SSR 不需要它们: base.html 的 anti-FOUC bootstrap 在首屏前直接还原本地值)。
+ * 三条轴都不登录、不上传、不跨端同步，不产生任何服务端事实。
  */
 (function (window, document) {
   "use strict";
@@ -13,6 +17,21 @@
   const MODES = ["paper", "midnight", "system"];
   const DARK_QUERY = "(prefers-color-scheme: dark)";
   const MODE_STORAGE_KEY = "ui-theme-mode";
+
+  const TEXTURE_MODES = ["flat", "fiber"];
+  const TEXTURE_STORAGE_KEY = "ui-texture";
+  const ACCENT_MODES = ["evergreen", "ink", "ochre", "plum"];
+  const ACCENT_STORAGE_KEY = "ui-accent";
+
+  function readStored(key, allowed, fallback) {
+    let saved = null;
+    try { saved = localStorage.getItem(key); } catch (_) {}
+    return allowed.includes(saved) ? saved : fallback;
+  }
+
+  function store(key, value) {
+    try { localStorage.setItem(key, value); } catch (_) {}
+  }
 
   function systemDark() {
     return typeof window.matchMedia === "function" && window.matchMedia(DARK_QUERY).matches;
@@ -25,35 +44,90 @@
   };
 
   app.currentThemeMode = function currentThemeMode() {
-    let saved = null;
-    try { saved = localStorage.getItem(MODE_STORAGE_KEY); } catch (_) {}
-    return MODES.includes(saved) ? saved : "paper";
+    return readStored(MODE_STORAGE_KEY, MODES, "paper");
   };
 
-  function syncThemeControl(mode) {
-    const control = document.getElementById("theme-control");
-    if (!control) return;
-    control.querySelectorAll("[data-theme-mode]").forEach((btn) => {
-      btn.setAttribute("aria-pressed", btn.getAttribute("data-theme-mode") === mode ? "true" : "false");
+  app.currentTextureMode = function currentTextureMode() {
+    return readStored(TEXTURE_STORAGE_KEY, TEXTURE_MODES, "flat");
+  };
+
+  app.currentAccentMode = function currentAccentMode() {
+    return readStored(ACCENT_STORAGE_KEY, ACCENT_MODES, "evergreen");
+  };
+
+  function syncPressed(selector, current) {
+    document.querySelectorAll(selector).forEach((btn) => {
+      const value = btn.getAttribute(selector.slice(1, -1));
+      btn.setAttribute("aria-pressed", value === current ? "true" : "false");
     });
+  }
+
+  function syncAppearanceControl() {
+    syncPressed("[data-theme-mode]", app.currentThemeMode());
+    syncPressed("[data-texture-mode]", app.currentTextureMode());
+    syncPressed("[data-accent-mode]", app.currentAccentMode());
   }
 
   app.applyThemeMode = function applyThemeMode(mode) {
     if (!MODES.includes(mode)) mode = "paper";
     const resolved = app.resolveThemeMode(mode);
     document.documentElement.setAttribute("data-theme", resolved);
-    try { localStorage.setItem(MODE_STORAGE_KEY, mode); } catch (_) {}
+    store(MODE_STORAGE_KEY, mode);
     document.cookie = "ui_theme=" + resolved + ";path=/;max-age=31536000;samesite=lax";
-    syncThemeControl(mode);
+    syncPressed("[data-theme-mode]", mode);
   };
 
-  app.initThemeControl = function initThemeControl() {
-    const control = document.getElementById("theme-control");
-    if (!control) return;
-    control.querySelectorAll("[data-theme-mode]").forEach((btn) => {
-      btn.addEventListener("click", () => app.applyThemeMode(btn.getAttribute("data-theme-mode")));
+  app.applyTextureMode = function applyTextureMode(mode) {
+    if (!TEXTURE_MODES.includes(mode)) mode = "flat";
+    document.documentElement.setAttribute("data-texture", mode);
+    store(TEXTURE_STORAGE_KEY, mode);
+    syncPressed("[data-texture-mode]", mode);
+  };
+
+  app.applyAccentMode = function applyAccentMode(mode) {
+    if (!ACCENT_MODES.includes(mode)) mode = "evergreen";
+    document.documentElement.setAttribute("data-accent", mode);
+    store(ACCENT_STORAGE_KEY, mode);
+    syncPressed("[data-accent-mode]", mode);
+  };
+
+  function bindAxis(root, attr, apply) {
+    root.querySelectorAll("[" + attr + "]").forEach((btn) => {
+      btn.addEventListener("click", () => apply(btn.getAttribute(attr)));
     });
-    syncThemeControl(app.currentThemeMode());
+  }
+
+  app.initThemeControl = function initThemeControl() {
+    const root = document.getElementById("appearance-popover");
+    if (!root) return;
+
+    // 对齐本地值（anti-FOUC bootstrap 之外的兜底：脚本被裁切/禁用后重进时
+    // 也保证 <html> 属性、存储与按钮态三者一致）。
+    app.applyTextureMode(app.currentTextureMode());
+    app.applyAccentMode(app.currentAccentMode());
+
+    bindAxis(root, "data-theme-mode", app.applyThemeMode);
+    bindAxis(root, "data-texture-mode", app.applyTextureMode);
+    bindAxis(root, "data-accent-mode", app.applyAccentMode);
+    syncAppearanceControl();
+
+    // popover 行为：点外部 / Esc 关闭（<details> 原生开合之外的便利层）。
+    const host = root.closest(".appearance");
+    if (host) {
+      document.addEventListener("click", (event) => {
+        if (host.hasAttribute("open") && !host.contains(event.target)) {
+          host.removeAttribute("open");
+        }
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && host.hasAttribute("open")) {
+          host.removeAttribute("open");
+          const trigger = host.querySelector("[data-appearance-trigger]");
+          if (trigger && typeof trigger.focus === "function") trigger.focus();
+        }
+      });
+    }
+
     if (typeof window.matchMedia === "function") {
       window.matchMedia(DARK_QUERY).addEventListener("change", () => {
         // 仅 system mode 跟随平台配色变化；显式 paper/midnight 不被系统覆盖。

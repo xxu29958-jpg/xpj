@@ -10,6 +10,7 @@ coverage gets its own file instead of banking debt. Helpers are local copies
 from __future__ import annotations
 
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -87,7 +88,7 @@ def test_web_confirmed_fact_shows_split_invite_card(web_client: TestClient) -> N
 
 
 def test_web_pending_edit_hides_split_invite_card(web_client: TestClient) -> None:
-    """拆账 only makes sense after入账；a pending expense must not show the卡."""
+    """Pending 的完整整理页不拥有 confirmed-only split-invite surface。"""
     _add_owner_ledger_member(display="家人乙")
     with SessionLocal() as db:
         e = Expense(
@@ -108,6 +109,10 @@ def test_web_pending_edit_hides_split_invite_card(web_client: TestClient) -> Non
     resp = web_client.get(f"/web/expenses/{pending_id}/edit?ledger_id=owner")
     assert resp.status_code == 200
     assert "找家人分摊" not in resp.text
+    edit_template = (
+        Path(__file__).resolve().parents[1] / "app/templates/web/edit.html"
+    ).read_text(encoding="utf-8")
+    assert "split_invite" not in edit_template
 
 
 def test_web_edit_received_split_hides_invite_card(web_client: TestClient) -> None:

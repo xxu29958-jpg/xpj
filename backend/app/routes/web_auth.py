@@ -127,12 +127,15 @@ def web_login_form(
     next: str | None = None,  # noqa: A002 - matches `?next=` convention
     error: str | None = None,
 ) -> HTMLResponse:
+    error_message = ""
+    if error:
+        error_message = _ERROR_MESSAGES.get(error, _GENERIC_ERROR_MESSAGE)
     response = templates.TemplateResponse(
         request=request,
         name="auth/login.html",
         context={
             "next_url": _safe_next_url(next),
-            "error_message": _ERROR_MESSAGES.get(error or "", "") if error else "",
+            "error_message": error_message,
             "backend_version": BACKEND_VERSION,
             "asset_version": STATIC_ASSET_VERSION,
         },
@@ -230,11 +233,13 @@ def web_whoami(
 
 
 _ERROR_MESSAGES = {
-    "invalid_pairing_code": "绑定码不正确，请重新输入 8 位数字。",
-    "invalid_token": "登录已失效，请重新输入绑定码。",
-    "pairing_attempt_expired": "登录页面已过期，请刷新后重新输入绑定码。",
+    "invalid_pairing_code": "连接码不正确，请重新输入 8 位数字。",
+    "invalid_token": "连接已失效，请重新输入连接码。",
+    "pairing_attempt_expired": "连接页面已过期，请刷新后重新输入连接码。",
+    "pairing_attempt_closed": "这次连接已经结束，请重新获取连接码。",
     "rate_limited": "请求过于频繁，请稍后再试。",
 }
+_GENERIC_ERROR_MESSAGE = "暂时无法连接，请重新获取连接码后再试。"
 
 
 def _redirect_login(*, next: str, error: str) -> RedirectResponse:  # noqa: A002

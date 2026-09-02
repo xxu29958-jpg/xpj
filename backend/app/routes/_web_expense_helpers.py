@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.routes._web_expense_return_context import (
     edit_context_params,
+    flow_href,
     resolve_return_to,
     return_context_params,
     return_href,
@@ -183,7 +184,6 @@ def _overlay_submitted_expense_values(
     if not form_values:
         return
     view_keys = {
-        "expected_row_version": "row_version",
         "amount_yuan": "original_amount_value",
         "merchant": "merchant",
         "category": "category_input",
@@ -196,6 +196,17 @@ def _overlay_submitted_expense_values(
     for form_key, view_key in view_keys.items():
         if form_key in form_values:
             expense_view[view_key] = form_values[form_key]
+    submitted_currency = (form_values.get("original_currency") or "").strip().upper()
+    if submitted_currency:
+        try:
+            currency_input = _currency_input_view(submitted_currency)
+        except AppError:
+            pass
+        else:
+            if submitted_currency != expense_view["original_currency_code"]:
+                expense_view["fx_meta"] = None
+            expense_view["original_currency_code"] = submitted_currency
+            expense_view["amount_symbol"] = currency_input["currency_symbol"]
 
 
 def web_edit_context(
@@ -223,6 +234,8 @@ def web_edit_context(
     )
     current_expense_view = expense_view.copy()
     _overlay_submitted_expense_values(expense_view, form_values)
+    if form_values and not conflict and form_values.get("expected_row_version"):
+        expense_view["row_version"] = form_values["expected_row_version"]
     ctx["expense"] = expense_view
     ctx["conflict_current"] = current_expense_view if conflict else None
     ctx["confirm_idempotency_key"] = (form_values or {}).get("idempotency_key") or str(uuid4())
@@ -239,6 +252,11 @@ def web_edit_context(
         return_tag=return_tag,
         return_query=return_query,
     )
+    ctx["edit_current_href"] = flow_href(
+        f"/web/expenses/{expense_id}/edit",
+        ledger_id=selected_id,
+        **ctx["edit_return_fields"],
+    )
     ctx["edit_return_href"] = return_href(
         return_to,
         ledger_id=selected_id,
@@ -252,7 +270,9 @@ def web_edit_context(
     ctx["edit_return_label"] = return_label(return_to)
     record_currency = expense.home_currency_code or ctx["home_currency_code"]
     ctx["currency_input"] = _currency_input_view(record_currency)
-    ctx["expense_currency_input"] = _currency_input_view(expense.original_currency_code or record_currency)
+    ctx["expense_currency_input"] = _currency_input_view(
+        expense_view["original_currency_code"] or record_currency
+    )
     ctx["receipt_items"] = _web_item_rows(
         db,
         expense_id,

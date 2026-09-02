@@ -215,7 +215,8 @@ def test_web_reports_static_echarts_vendor_is_self_hosted(client: TestClient) ->
     reports_js = client.get("/static/web/reports.js")
     reports_css = client.get("/static/web/pages/reports.css")
     reports_feature_css = client.get("/static/web/features/_reports_goals.css")
-    pending_css = client.get("/static/web/pages/pending.css")
+    product_components_css = client.get("/static/web/product/components.css")
+    retired_pending_css = client.get("/static/web/pages/pending.css")
     bulk_bar_css = client.get("/static/web/components/bulk-bar.css")
 
     assert script.status_code == 200
@@ -231,13 +232,15 @@ def test_web_reports_static_echarts_vendor_is_self_hosted(client: TestClient) ->
     assert ".reports-export-dialog" not in reports_css.text
     assert reports_feature_css.status_code == 200
     assert ".reports-export-dialog" not in reports_feature_css.text
-    assert pending_css.status_code == 200
-    assert "#d6e3ee" not in pending_css.text
-    assert "#d1e5d3" not in pending_css.text
-    assert "@media (max-width: 900px)" in pending_css.text
-    assert "grid-template-columns: 24px minmax(0, 1fr)" in pending_css.text
-    assert "grid-template-columns: 56px minmax(0, 1fr) auto" in pending_css.text
-    assert ".exp-row:not(.has-check) > .exp-row-selector" in pending_css.text
+    assert product_components_css.status_code == 200
+    assert re.search(r"\.bulk-bar\s*\{[^}]*display:\s*flex", product_components_css.text, re.S)
+    assert re.search(
+        r"\.bulk-bar\[data-bulk-enhanced\]:not\(\.on\)\s*\{[^}]*display:\s*none",
+        product_components_css.text,
+        re.S,
+    )
+    # 收件域收口片: 旧页级 pages/pending.css 物理退役, 不再可被引用。
+    assert retired_pending_css.status_code == 404
     assert bulk_bar_css.status_code == 200
     assert "@media (max-width: 720px)" in bulk_bar_css.text
     assert ".bulk-bar .bulk-field" in bulk_bar_css.text

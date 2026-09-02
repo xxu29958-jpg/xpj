@@ -52,6 +52,30 @@ def _assert_shell_chrome_has_no_inline_style(body: str) -> None:
     assert 'style="' not in topbar.group(0)
 
 
+def test_product_shell_exposes_local_appearance_axes_without_fake_upload_entry(
+    web_client: TestClient,
+) -> None:
+    response = web_client.get("/web/pending?ledger_id=owner")
+
+    assert response.status_code == 200
+    body = response.text
+    assert "data-appearance-trigger" in body
+    assert 'id="appearance-popover"' in body
+    assert 'data-theme-mode="paper"' in body
+    assert 'data-theme-mode="midnight"' in body
+    assert "data-texture-mode" in body
+    assert "data-accent-mode" in body
+    assert "自定义背景" not in body
+    assert "即将支持" not in body
+
+    theme_js = web_client.get("/static/web/desktop/theme.js")
+    assert theme_js.status_code == 200
+    assert "localStorage" in theme_js.text
+    assert 'setAttribute("data-texture"' in theme_js.text
+    assert 'setAttribute("data-accent"' in theme_js.text
+    assert "fetch(" not in theme_js.text
+
+
 @pytest.mark.parametrize(
     ("path", "page_level"),
     [

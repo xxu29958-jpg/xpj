@@ -171,6 +171,14 @@
       drawer.querySelectorAll("[data-drawer-close]").forEach(function (b) {
         b.addEventListener("click", close);
       });
+      // K3: 冲突横幅的「放弃修改，载入现值」在抽屉内原地重取 fragment
+      // (fresh OCC token + 权威字段值), 不把用户踢出队列。
+      drawer.querySelectorAll("[data-drawer-reload]").forEach(function (link) {
+        link.addEventListener("click", function (e) {
+          e.preventDefault();
+          refetchCurrent();
+        });
+      });
       bindDrawerForm();
     }
 
