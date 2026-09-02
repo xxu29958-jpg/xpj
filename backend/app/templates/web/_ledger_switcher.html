@@ -41,10 +41,10 @@
       {% set _appearance_nested = true %}
       {% include "_appearance_control.html" %}
     </div>
-    {# 浏览器会话的真实登出 (既有 POST /web/auth/logout, 服务端撤销 token);
-       desktop bridge 会话不渲染 — 桌面面的 unpair/revoke 由 Manager 承担,
-       且 BFF 不代理 /web/auth。 #}
-    {% if request.state.web_session_platform != "desktop" %}
+    {# 只有真实 browser session 才渲染登出 (既有 POST /web/auth/logout,
+       服务端撤销 token)。loopback Owner 没有 cookie/session 可撤销；desktop
+       bridge 的 unpair/revoke 由 Manager 承担，且 BFF 不代理 /web/auth。 #}
+    {% if request.state.web_session_auth and request.state.web_session_platform != "desktop" %}
     <div class="ledger-popover-foot">
       <form method="post" action="/web/auth/logout">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

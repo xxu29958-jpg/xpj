@@ -72,6 +72,24 @@ def test_public_host_with_valid_cookie_renders_dashboard(client: TestClient, *, 
     assert SESSION_COOKIE_NAME not in resp.headers.get("set-cookie", "")
 
 
+def test_public_host_session_renders_real_logout_form(client: TestClient, *, identity) -> None:
+    token = _mint_session(client, identity=identity)
+    pub = _public_client()
+    response = pub.get(
+        "/web/pending",
+        headers={"Cookie": f"{SESSION_COOKIE_NAME}={token}"},
+    )
+
+    assert response.status_code == 200, response.text
+    logout = re.search(
+        r'<form method="post" action="/web/auth/logout"[^>]*>.*?</form>',
+        response.text,
+        re.DOTALL,
+    )
+    assert logout is not None
+    assert 'name="csrf_token"' in logout.group(0)
+
+
 def test_public_bulk_form_native_post_uses_rendered_csrf_token(
     client: TestClient,
     *,

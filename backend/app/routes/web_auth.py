@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.errors import AppError
 from app.network_boundary import pairing_rate_limit_key
-from app.routes.web_common import _safe_same_site_redirect_path, templates
+from app.routes.web_common import _read_ui_theme, _safe_same_site_redirect_path, templates
 from app.services.identity_service import (
     ENROLLMENT_PROOF_COOKIE_SECONDS,
     WEB_SESSION_TTL_SECONDS,
@@ -138,6 +138,7 @@ def web_login_form(
             "error_message": error_message,
             "backend_version": BACKEND_VERSION,
             "asset_version": STATIC_ASSET_VERSION,
+            "ui_theme": _read_ui_theme(request),
         },
     )
     if _read_pairing_attempt(request) is None:

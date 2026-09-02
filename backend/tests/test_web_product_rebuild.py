@@ -128,14 +128,12 @@ def test_product_shell_capture_entry_hidden_for_viewer(web_client: TestClient) -
     assert 'href="/web/search?ledger_id=owner"' in topbar_html
 
 
-def test_account_switcher_is_native_disclosure_with_logout(
+def test_account_switcher_is_native_disclosure_without_false_local_logout(
     web_client: TestClient,
 ) -> None:
     """W1 repair: 「我」面板是 <details> 原生披露 (无 JS 可开合/键盘/读屏诚实),
-    不再是 clickable div; 浏览器会话提供真实 CSRF POST 登出入口 (命令 owner
-    是既有 POST /web/auth/logout, 303 跳回登录页, 副作用不变); 切换账本 rows
-    保持真实链接。整页结构断言 — 面板内还有嵌套 appearance <details>,
-    不能用 nested-HTML regex 截断检查。"""
+    不再是 clickable div；loopback Owner 没有 browser session，因此不能伪装
+    出一个实际无法退出本机 Owner 面的登出动作。切换账本 rows 保持真实链接。"""
     response = web_client.get("/web/pending?ledger_id=owner")
 
     assert response.status_code == 200
@@ -143,15 +141,8 @@ def test_account_switcher_is_native_disclosure_with_logout(
 
     assert '<details class="ledger-switcher" id="ledger-switcher">' in body
     assert re.search(r'<summary[^>]+aria-label="账户与账本"', body) is not None
-    # 登出: 浏览器会话的真实命令表单 (CSRF hidden 必备), 收在面板内
-    logout = re.search(
-        r'<form method="post" action="/web/auth/logout"[^>]*>.*?</form>',
-        body,
-        re.S,
-    )
-    assert logout is not None
-    assert 'name="csrf_token"' in logout.group(0)
-    assert body.index('id="ledger-switcher"') < body.index('action="/web/auth/logout"')
+    assert 'action="/web/auth/logout"' not in body
+    assert "退出登录" not in body
     # 账本切换 rows 仍是真实 GET 链接, 不被披露组件吃掉
     assert re.search(r'<a class="row[^"]*" href="/web/pending\?ledger_id=', body) is not None
 

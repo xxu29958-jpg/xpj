@@ -33,6 +33,7 @@
 :root {
     --font-product: "Ticketbox Sans", "Microsoft YaHei UI", "PingFang SC", sans-serif;
     --font-numeric: "Cascadia Mono", "SFMono-Regular", "Roboto Mono", monospace;
+    --mobile-chrome-block-size: calc(var(--space-10) + var(--space-2));
 }
 
 *,
@@ -811,11 +812,16 @@ details[open] > .chrome-trigger {
        W1 IA-B: 全带高 56px (min-height), 是 ≤64rem 唯一顶部 chrome。 */
     .product-topbar {
         position: static;
-        min-height: calc(var(--space-10) + var(--space-2));
+        min-height: var(--mobile-chrome-block-size);
         padding: var(--space-2) var(--space-4);
         border-block-end: 0;
         background: transparent;
         backdrop-filter: none;
+    }
+
+    /* 顶栏「收票」锚点必须把真实 file command 完整放到 sticky chrome 下方。 */
+    #capture {
+        scroll-margin-block-start: calc(var(--mobile-chrome-block-size) + var(--space-3));
     }
 
     /* 品牌并入 topbar (sidebar 已隐藏); ≤64rem 全部宽度生效。 */

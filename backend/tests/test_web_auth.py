@@ -67,8 +67,8 @@ def test_login_form_renders(client: TestClient) -> None:
     assert "APP_TOKEN" not in resp.text
     assert 'type="password"' not in resp.text
     assert 'action="/web/auth/login"' in resp.text
-    # W1 品牌 mark: 双 colorway 同源剪影两枚 img 都渲染 (纸面默认 + 玄夜由
-    # cookie bootstrap 还原 data-theme 后 CSS 切换); 图形资产是锁定母版。
+    # W1 品牌 mark: 双 colorway 同源剪影两枚 img 都渲染；SSR data-theme
+    # 决定可见项，图形资产是锁定母版。
     assert '<img class="brand-mark-img" src="/static/web/product/brand/brand-mark.png"' in resp.text
     assert '<img class="brand-mark-img brand-mark-img--midnight" src="/static/web/product/brand/brand-mark-midnight.png"' in resp.text
     cookie_header = resp.headers.get("set-cookie", "")
@@ -77,6 +77,18 @@ def test_login_form_renders(client: TestClient) -> None:
     assert "HttpOnly" in cookie_header
     assert "Path=/web/auth" in cookie_header
     assert "samesite=strict" in cookie_header.lower()
+
+
+def test_login_form_ssr_theme_respects_cookie_under_strict_csp(client: TestClient) -> None:
+    response = client.get(
+        "/web/auth/login",
+        headers={"Cookie": "ui_theme=midnight"},
+    )
+
+    assert response.status_code == 200
+    assert '<html lang="zh-CN" data-theme="midnight">' in response.text
+    assert "script-src 'self'" in response.headers["content-security-policy"]
+    assert "document.cookie.match" not in response.text
 
 
 def test_login_form_shows_error_param(client: TestClient) -> None:

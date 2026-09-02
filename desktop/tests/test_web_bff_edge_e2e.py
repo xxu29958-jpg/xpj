@@ -119,7 +119,7 @@ _THEME_HTML = """<!doctype html>
 <html lang="zh-CN" data-theme="paper">
 <head><meta charset="utf-8"><title>主题桥接</title></head>
 <body>
-  <div id="appearance-popover" role="group" aria-label="主题">
+  <div id="appearance-popover" data-appearance-popover role="group" aria-label="主题">
     <button type="button" data-theme-mode="paper">晨纸</button>
     <button type="button" data-theme-mode="midnight">玄夜</button>
     <button type="button" data-theme-mode="system">跟随系统</button>
