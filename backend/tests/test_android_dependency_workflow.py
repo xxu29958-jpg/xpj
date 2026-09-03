@@ -31,7 +31,10 @@ def _assert_codeql_workload_contract(steps: list[dict[str, object]]) -> None:
     assert set(init) == {"name", "uses", "with"}
     assert init["with"] == {"languages": "java-kotlin", "build-mode": "manual"}
     assert set(analyze) == {"name", "uses", "with"}
-    assert analyze["with"] == {"category": "/language:java-kotlin"}
+    assert analyze["with"] == {
+        "category": "/language:java-kotlin",
+        "wait-for-processing": True,
+    }
     assert set(build) == {"name", "working-directory", "run"}
     assert build["working-directory"] == "android"
     assert shlex.split(str(build["run"])) == [
@@ -54,6 +57,26 @@ def _assert_codeql_workload_contract(steps: list[dict[str, object]]) -> None:
         str(analyze["uses"]),
     )
     assert str(init["uses"]).rsplit("@", 1)[1] == str(analyze["uses"]).rsplit("@", 1)[1]
+
+
+def _assert_required_codeql_context_job(workflow: dict[str, object]) -> None:
+    jobs = workflow["jobs"]
+    scripted_analyze = next(
+        step
+        for step in jobs["analyze-scripted"]["steps"]
+        if step["name"] == "Perform CodeQL Analysis"
+    )
+    assert scripted_analyze["with"]["wait-for-processing"] is True
+    required = jobs["codeql"]
+    assert required["name"] == "CodeQL"
+    assert required["if"] == "${{ always() }}"
+    assert set(required["needs"]) == {"analyze-scripted", "analyze-android"}
+    enforce = next(
+        step
+        for step in required["steps"]
+        if step["name"] == "Enforce required CodeQL context"
+    )
+    assert "verify_codeql_required_context.py" in enforce["run"]
 
 
 def test_pr_scan_consumes_trusted_main_artifact_without_a_secret() -> None:
@@ -166,6 +189,7 @@ def test_android_cloud_builds_share_one_java_and_sdk_contract() -> None:
         "steps"
     ]
     _assert_codeql_workload_contract(codeql_steps)
+    _assert_required_codeql_context_job(workflows["codeql.yml"])
 
     java_version = (_ROOT / "android" / ".java-version").read_text(
         encoding="utf-8"

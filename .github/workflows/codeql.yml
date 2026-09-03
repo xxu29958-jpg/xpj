@@ -105,6 +105,9 @@ jobs:
         uses: github/codeql-action/analyze@1ad29ea4a422cce9a242a9fae469541dcd08addc # v4
         with:
           category: "/language:${{ matrix.language }}"
+          # Wait until GitHub Code Scanning finishes processing SARIF so the
+          # required CodeQL context is not racing the job conclusion.
+          wait-for-processing: true
 
   analyze-android-execution:
     name: Analyze (java-kotlin) execution
@@ -175,6 +178,7 @@ jobs:
         uses: github/codeql-action/analyze@1ad29ea4a422cce9a242a9fae469541dcd08addc # v4
         with:
           category: "/language:java-kotlin"
+          wait-for-processing: true
 
   analyze-android:
     name: Analyze (java-kotlin)
@@ -216,3 +220,35 @@ jobs:
           EXECUTION_SHA: ${{ needs.analyze-android-execution.outputs.qualification_sha }}
           EXECUTION_SOURCE_SHA: ${{ needs.analyze-android-execution.outputs.qualification_source_sha }}
         run: python -E -S backend/scripts/verify_scoped_ci_results.py --label CodeQL --scope-key ANDROID_SCOPE --lane EXECUTION
+
+  codeql:
+    name: CodeQL
+    needs:
+      - analyze-scripted
+      - analyze-android
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+
+      - name: Verify qualification SHA
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python -E -S backend/scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
+
+      - name: Enforce required CodeQL context
+        env:
+          BASH_ENV: ""
+          ENV: ""
+          EXPECTED_SHA: ${{ github.sha }}
+          SCRIPTED_RESULT: ${{ needs.analyze-scripted.result }}
+          ANDROID_RESULT: ${{ needs.analyze-android.result }}
+        run: python -E -S backend/scripts/verify_codeql_required_context.py

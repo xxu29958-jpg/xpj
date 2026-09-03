@@ -41,6 +41,7 @@ _FULL_PATHS = {
     "backend/scripts/release_audit.py",
     "backend/scripts/report_qualification_sha.py",
     "backend/scripts/verify_backend_ci_results.py",
+    "backend/scripts/verify_codeql_required_context.py",
 }
 _ALWAYS_ON_CONTRACT_PATHS = {
     "backend/tests/_infra/android_test_qualification.py",
@@ -208,6 +209,13 @@ _WINDOWS_INSTALLATION_HEALTH_FILES = installation_health_python_dependencies() |
 _WINDOWS_DATASET_MAINTENANCE_PREFIXES = (
     "backend/app/database/_dataset_",
 )
+# Desktop Edge E2E reads these shared /web assets verbatim
+# (appearance-bootstrap.js, desktop.js, desktop/theme.js, and the templates
+# that load them). A web-only PR must not skip the Desktop lane.
+_SHARED_WEB_DESKTOP_PREFIXES = (
+    "backend/app/static/web/",
+    "backend/app/templates/web/",
+)
 _FROZEN_DESKTOP_PREFIXES = (
     "desktop/backend_manager/",
     "desktop/packaging/",
@@ -253,6 +261,10 @@ _PREFIX_SCOPE_RULES = (
     (("android/",), ("android",)),
     (_FROZEN_DESKTOP_PREFIXES, ("desktop", "windows")),
     (("desktop/",), ("desktop",)),
+    (
+        _SHARED_WEB_DESKTOP_PREFIXES,
+        ("postgres", "backend_frozen", "desktop"),
+    ),
     (
         _WINDOWS_DATASET_MAINTENANCE_PREFIXES,
         ("postgres", "backend_frozen", "windows"),

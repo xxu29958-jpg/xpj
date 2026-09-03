@@ -21,9 +21,8 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.job
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -44,10 +43,10 @@ class MerchantAliasViewModelTest {
         try {
             block()
         } finally {
-            activeViewModels.forEach {
-                it.viewModelScope.coroutineContext.job.cancelAndJoin()
-            }
             advanceUntilIdle()
+            activeViewModels.forEach { it.viewModelScope.cancel() }
+            advanceUntilIdle()
+            activeViewModels.clear()
             Dispatchers.resetMain()
         }
     }

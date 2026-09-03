@@ -193,6 +193,20 @@ def test_installation_health_transitive_dependencies_select_windows() -> None:
         assert scopes["windows"], dependency
 
 
+def test_shared_web_surface_selects_desktop_edge_consumer() -> None:
+    for path in (
+        "backend/app/static/web/appearance-bootstrap.js",
+        "backend/app/static/web/desktop/theme.js",
+        "backend/app/static/web/desktop.js",
+        "backend/app/templates/web/base.html",
+    ):
+        _assert_path_scopes((path,), "postgres", "backend_frozen", "desktop")
+    ordinary = classify_ci_paths(["backend/app/services/report_service.py"])
+    assert ordinary["postgres"] is True
+    assert ordinary["backend_frozen"] is True
+    assert ordinary["desktop"] is False
+
+
 def test_desktop_build_contract_runs_tests_and_packaging() -> None:
     for path in (
         "desktop/backend_manager/__main__.py",
@@ -249,6 +263,7 @@ def test_ci_policy_and_unknown_paths_fail_closed_to_full() -> None:
         "backend/scripts/release_audit.py",
         "backend/scripts/report_qualification_sha.py",
         "backend/scripts/verify_backend_ci_results.py",
+        "backend/scripts/verify_codeql_required_context.py",
     ):
         assert classify_ci_paths([path]) == all_ci_scopes()
     assert classify_ci_paths(["new-surface/config.toml"]) == all_ci_scopes()
@@ -257,6 +272,41 @@ def test_ci_policy_and_unknown_paths_fail_closed_to_full() -> None:
     assert classify_ci_paths(["docs/runbook/CI.md "]) == all_ci_scopes()
     assert classify_ci_paths(["   "]) == all_ci_scopes()
     assert classify_ci_paths([]) == all_ci_scopes()
+
+
+def test_required_codeql_context_needs_every_analysis_lane() -> None:
+    from scripts.verify_codeql_required_context import verify
+
+    ok, message = verify(
+        {
+            "EXPECTED_SHA": "abc",
+            "SCRIPTED_RESULT": "success",
+            "ANDROID_RESULT": "success",
+        }
+    )
+    assert ok is True
+    assert "abc" in message
+    ok, message = verify({"SCRIPTED_RESULT": "success", "ANDROID_RESULT": "success"})
+    assert ok is False
+    assert "EXPECTED_SHA" in message
+    ok, message = verify(
+        {
+            "EXPECTED_SHA": "abc",
+            "SCRIPTED_RESULT": "failure",
+            "ANDROID_RESULT": "success",
+        }
+    )
+    assert ok is False
+    assert "scripted" in message
+    ok, message = verify(
+        {
+            "EXPECTED_SHA": "abc",
+            "SCRIPTED_RESULT": "success",
+            "ANDROID_RESULT": "skipped",
+        }
+    )
+    assert ok is False
+    assert "Android" in message
 
 
 def test_scope_output_derives_postgres_matrix_from_release_policy(tmp_path) -> None:

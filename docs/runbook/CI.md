@@ -20,7 +20,7 @@
 
 触发条件：
 
-- GitHub: push 到 `main`，以及 pull_request 到 `main`。PR 始终跑 Backend 快速合同；PostgreSQL、Desktop、Android、Windows packaging 只在对应路径受影响时跑。主 CI、CodeQL Android 和 Connected 复用同一 `ci_scope.py` 分类权威；`main`、完整资格、未知路径、空 diff 或分类失败均 fail closed 到全量。
+- GitHub: push 到 `main`，以及 pull_request 到 `main`。PR 始终跑 Backend 快速合同；PostgreSQL、Desktop、Android、Windows packaging 只在对应路径受影响时跑。共享 `/web` 静态资源与模板（`backend/app/static/web/`、`backend/app/templates/web/`）同时选中 PostgreSQL、冻结 Backend 与 Desktop，因为 Desktop Edge E2E 直接执行这些文件。主 CI、CodeQL Android 和 Connected 复用同一 `ci_scope.py` 分类权威；`main`、完整资格、未知路径、空 diff 或分类失败均 fail closed 到全量。required 检查名 `CodeQL` 由 workflow 内始终运行的同名 job（GitHub Actions）在 exact SHA 上发布；Code Scanning 的 Analyze job 绿灯不能代替这个 context。
 - Android NVD producer: 每日 02:17 UTC、相关生产者输入合入 `main` 或手动触发；仅生产者读取 `NVD_API_KEY`。它优先增量复用兼容的旧产物，首次或不兼容时冷启动，离线扫描通过后上传保留 3 天的不可变数据库产物。
 - local-Gitea: push 到 `main`、`feat/**`、`fix/**`、`perf/**`、`refactor/**`、`codex/**`
 - 默认分支完整资格：`repository_dispatch`，type 为 `qualification`
