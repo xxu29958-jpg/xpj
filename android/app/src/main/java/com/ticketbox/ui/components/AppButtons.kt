@@ -33,7 +33,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
@@ -54,6 +53,7 @@ private const val ControlBorderIdleAlpha = 0.46f
 private const val ControlBorderPressedAlpha = 0.82f
 private const val ControlContainerIdleAlpha = 0.98f
 private const val ControlContainerPressedAlpha = 1f
+private const val PrimaryDisabledContentAlpha = 0.58f
 
 data class AppOutlinedButtonOptions(
     val enabled: Boolean = true,
@@ -74,6 +74,12 @@ fun AppPrimaryButton(
 ) {
     val visuals = LocalThemeVisuals.current
     val shape = RoundedCornerShape(AppRadius.small)
+    // 禁用淡化走内容色级 alpha，不用 Modifier.alpha：后者在 disabled→enabled 翻转时会摘除
+    // 链上的 graphicsLayer 元素（结构手术），eb49 实机曾因此永久丢失外侧 background/border
+    // 绘制（合同回归见 AppPrimaryButtonRenderTest）。盒体填充两态均为满色，视觉不变。
+    val contentColor = MaterialTheme.colorScheme.onPrimary.copy(
+        alpha = if (enabled) 1f else PrimaryDisabledContentAlpha,
+    )
     Box(
         modifier = modifier
             .height(AppSpacing.controlMinHeight)
@@ -84,7 +90,6 @@ fun AppPrimaryButton(
                 color = visuals.primaryDark.copy(alpha = 0.74f),
                 shape = shape,
             )
-            .alpha(if (enabled) 1f else 0.58f)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -95,12 +100,12 @@ fun AppPrimaryButton(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onPrimary,
+                tint = contentColor,
                 modifier = Modifier.size(AppIconSize.standard),
             )
             Text(
                 text = text,
-                color = MaterialTheme.colorScheme.onPrimary,
+                color = contentColor,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = AppTextHierarchy.heading.weight,
                 maxLines = 1,

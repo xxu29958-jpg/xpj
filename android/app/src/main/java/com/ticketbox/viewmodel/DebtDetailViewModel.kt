@@ -8,6 +8,7 @@ import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtLinkStatuses
+import com.ticketbox.domain.model.DebtRepayment
 import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.parseAmountCents
@@ -18,15 +19,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * ADR-0049 §3 (slice 8c) 欠款详情 + 记账管理 —— 进入欠款详情后记还款（§3.1）/ 调整本金（§3.3）/
- * 作废欠款（§3.5）。三类写都是直接提交事实（external/manual 欠款；成员/拆账欠款走 slice8d 的对方
- * 确认流程，后端 [guard_direct_fact_writable] 对其返回 409），均带 §2.1 OCC 载体
- * （[DebtDetailUiState.debt] 的 `rowVersion`）。提交成功后用服务端折叠后的 [Debt] 原子替换本地态，
- * 故下一次写自动用新的 `rowVersion`。
- *
- * 一个统一的动作面板（[activeAction]）承载三类写：还款只填金额、调整填金额+原因、作废只填原因，
- * 让详情屏保持纯渲染。详情自身的数据由进入时的 [refresh] 拉取（账本隔离 + 始终最新），写返回的
- * 折叠态直接覆盖本地 [debt]，无需再次拉取。
+ * 欠款详情与 external/manual 事实动作：记还款、调整本金、作废欠款或作废一笔还款。
+ * 同一个动作面板与提交 owner 持有目标和草稿。每次命令携带已读取的 parent Debt rowVersion，
+ * 成功原子换入服务端折叠后的 Debt；成员/拆账的写仍走对方确认流程。
  */
 data class DebtDetailUiState(
     val isLoading: Boolean = false,
@@ -34,6 +29,7 @@ data class DebtDetailUiState(
     val canModify: Boolean = true,
     val error: UiText? = null,
     val activeAction: DebtAction? = null,
+    val repaymentToVoid: DebtRepayment? = null,
     val amountInput: String = "",
     val reasonInput: String = "",
     // Adjustment is a signed delta, but the decimal keyboard exposes no minus key, so the amount
@@ -62,8 +58,8 @@ data class DebtDetailUiState(
         get() = debt?.let { CurrencyCode.fromStorageKeyOrNull(it.homeCurrencyCode) == null } == true
 }
 
-/** The three direct fact writes a detail action panel can submit (ADR-0049 §3.1 / §3.3 / §3.5). */
-enum class DebtAction { Repayment, Adjustment, Void }
+/** Direct facts; single-payment void also requires the selected immutable repayment identity. */
+enum class DebtAction { Repayment, Adjustment, Void, RepaymentVoid }
 
 /**
  * A one-shot member-debt 两清 celebration signal (ADR-0049 §5.2 / slice 8e-4): the viewer witnessed a
@@ -116,6 +112,7 @@ class DebtDetailViewModel(
                     debt = null,
                     error = null,
                     activeAction = null,
+                    repaymentToVoid = null,
                     amountInput = "",
                     reasonInput = "",
                     adjustmentIncrease = true,
@@ -167,10 +164,17 @@ class DebtDetailViewModel(
         }
     }
 
-    fun openAction(action: DebtAction) {
+    fun openAction(action: DebtAction, repayment: DebtRepayment? = null) {
+        val current = _state.value
+        if (current.isSubmitting) return
+        if (action == DebtAction.RepaymentVoid) {
+            val debt = current.debt ?: return
+            if (!current.canModify || !debt.isDirectWritable || debt.isVoided || repayment?.isActive != true) return
+        }
         _state.update {
             it.copy(
                 activeAction = action,
+                repaymentToVoid = repayment.takeIf { action == DebtAction.RepaymentVoid },
                 amountInput = "",
                 reasonInput = "",
                 adjustmentIncrease = true,
@@ -192,9 +196,11 @@ class DebtDetailViewModel(
     }
 
     fun dismissAction() {
+        if (_state.value.isSubmitting) return
         _state.update {
             it.copy(
                 activeAction = null,
+                repaymentToVoid = null,
                 amountInput = "",
                 reasonInput = "",
                 validationError = null,
@@ -205,41 +211,19 @@ class DebtDetailViewModel(
 
     fun submit() {
         val current = _state.value
+        if (current.isSubmitting || !current.canModify) return
         val debt = current.debt ?: return
         val action = current.activeAction ?: return
-        // R10⑤：Void 不带金额解析（仅 rowVersion+reason），未知码下保活；金额动作（还款/调整）
-        // 维持 R7-2 fail closed —— fromStorageKey 的静默 Default 回落会把零小数币种的输入
-        // 放大 100×（"1200" → 120000 minor）。
-        val currency = CurrencyCode.fromStorageKeyOrNull(debt.homeCurrencyCode)
-        if (action != DebtAction.Void && currency == null) {
-            _state.update { it.copy(validationError = UiText.res(R.string.debt_action_currency_unsupported)) }
-            return
-        }
-        // 元→分走共享 BigDecimal 解析器（§3 禁 Double 存金额）；按本笔欠款服务端
-        // homeCurrencyCode 扩位（JPY 零小数币种不 ×100）。sign-agnostic，>0 magnitude 由
-        // validateDebtAction 按动作类型校验（调整的正负来自 adjustmentIncrease 开关）。
-        val amountCents = currency?.let { parseAmountCents(current.amountInput, it) }
-        val reason = current.reasonInput.trim()
-        validateDebtAction(action, amountCents, reason)?.let { errorRes ->
+        if (action == DebtAction.RepaymentVoid && current.repaymentToVoid == null) return
+        val input = current.actionInput(debt, action)
+        input.errorRes?.let { errorRes ->
             _state.update { it.copy(validationError = UiText.res(errorRes)) }
             return
         }
         _state.update { it.copy(isSubmitting = true) }
-        val magnitude = amountCents ?: 0L
         viewModelScope.launch {
-            val result = when (action) {
-                DebtAction.Repayment ->
-                    repository.recordRepayment(debt.publicId, debt.rowVersion, magnitude)
-                DebtAction.Adjustment ->
-                    repository.recordAdjustment(
-                        debt.publicId,
-                        debt.rowVersion,
-                        if (current.adjustmentIncrease) magnitude else -magnitude,
-                        reason,
-                    )
-                DebtAction.Void ->
-                    repository.voidDebt(debt.publicId, debt.rowVersion, reason)
-            }
+            val result = repository.performAction(debt, action, input)
+            if (loadedPublicId != debt.publicId) return@launch
             result.fold(
                 onSuccess = { updated ->
                     // Supersede any in-flight refresh so its stale fold can't revert this committed
@@ -251,6 +235,7 @@ class DebtDetailViewModel(
                         it.copy(
                             debt = updated,
                             activeAction = null,
+                            repaymentToVoid = null,
                             amountInput = "",
                             reasonInput = "",
                             isSubmitting = false,
@@ -303,6 +288,44 @@ class DebtDetailViewModel(
     }
 }
 
+/** Parsed input for one attempt, not a second draft or settlement owner. */
+private data class DebtActionInput(
+    val amountCents: Long?,
+    val reason: String,
+    val repaymentPublicId: String?,
+    @param:StringRes val errorRes: Int?,
+)
+
+private fun DebtDetailUiState.actionInput(debt: Debt, action: DebtAction): DebtActionInput {
+    val currency = CurrencyCode.fromStorageKeyOrNull(debt.homeCurrencyCode)
+    val magnitude = currency?.let { parseAmountCents(amountInput, it) }
+    val reason = reasonInput.trim()
+    // Only amount commands require a supported currency; voids carry identity, OCC and reason.
+    val error = if ((action == DebtAction.Repayment || action == DebtAction.Adjustment) && currency == null) {
+        R.string.debt_action_currency_unsupported
+    } else {
+        validateDebtAction(action, magnitude, reason)
+    }
+    return DebtActionInput(
+        amountCents = if (action == DebtAction.Adjustment && !adjustmentIncrease) magnitude?.unaryMinus() else magnitude,
+        reason = reason,
+        repaymentPublicId = repaymentToVoid?.publicId,
+        errorRes = error,
+    )
+}
+
+private suspend fun DebtActions.performAction(debt: Debt, action: DebtAction, input: DebtActionInput): Result<Debt> =
+    when (action) {
+        DebtAction.Repayment -> recordRepayment(debt.publicId, debt.rowVersion, requireNotNull(input.amountCents))
+        DebtAction.Adjustment -> recordAdjustment(
+            debt.publicId, debt.rowVersion, requireNotNull(input.amountCents), input.reason,
+        )
+        DebtAction.Void -> voidDebt(debt.publicId, debt.rowVersion, input.reason)
+        DebtAction.RepaymentVoid -> voidRepayment(
+            debt.publicId, requireNotNull(input.repaymentPublicId), debt.rowVersion, input.reason,
+        )
+    }
+
 // §5.2 边沿检测（提到顶层让 DebtDetailViewModel 守住 detekt TooManyFunctions 阈值，逻辑不变）：crossedEdge
 // （本 VM 内先见非-cleared、后变 cleared）= 在场目击两清，返回庆祝信号；否则 null。首次见已 cleared 的债
 // prev=null → 不撒（P1#4）；!isForgiven → forgive 走 §5.6 暖语分叉不撒；viewerIsDebtor != null → 非当事方
@@ -343,7 +366,7 @@ private fun validateDebtAction(action: DebtAction, amountCents: Long?, reason: S
         } else {
             null
         }
-    DebtAction.Void -> if (reason.isEmpty()) R.string.debt_action_void_validation else null
+    DebtAction.Void, DebtAction.RepaymentVoid -> if (reason.isEmpty()) R.string.debt_action_void_validation else null
 }
 
 @StringRes
@@ -351,4 +374,5 @@ private fun debtActionDoneRes(action: DebtAction): Int = when (action) {
     DebtAction.Repayment -> R.string.debt_action_repayment_done
     DebtAction.Adjustment -> R.string.debt_action_adjustment_done
     DebtAction.Void -> R.string.debt_action_void_done
+    DebtAction.RepaymentVoid -> R.string.debt_action_repayment_void_done
 }

@@ -29,6 +29,8 @@ import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
 import com.ticketbox.ui.components.AppAdaptiveEditActionMode
+import com.ticketbox.ui.components.AppAdaptiveMetricGrid
+import com.ticketbox.ui.components.AppAdaptiveMetricGridCompactMinWidth
 import com.ticketbox.ui.components.AppAdaptiveTrailingActionRow
 import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppListRow
@@ -45,6 +47,7 @@ import com.ticketbox.ui.components.PrimaryCtaButton
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.tabularNum
+import com.ticketbox.ui.screens.budget.MetricPill
 import com.ticketbox.viewmodel.DebtGoalUiState
 import com.ticketbox.viewmodel.DebtGoalViewModel
 import kotlinx.coroutines.delay
@@ -189,7 +192,6 @@ private fun LazyListScope.debtGoalListSection(
     item {
         DebtGoalOpenSection(
             title = stringResource(R.string.debt_goal_list_title),
-            subtitle = stringResource(R.string.debt_goal_list_subtitle),
         ) {
             AppListStateContent(
                 state = AppListStateSpec(
@@ -214,56 +216,25 @@ private fun LazyListScope.debtGoalListSection(
 
 @Composable
 private fun DebtGoalOverviewSection(summary: DebtGoalListSummary) {
-    DebtGoalOpenSection(
-        title = stringResource(R.string.debt_goal_overview_title),
-        subtitle = stringResource(R.string.debt_goal_overview_subtitle),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-    ) {
-        DebtGoalMetricRow(
-            label = stringResource(R.string.debt_goal_metric_active),
-            value = stringResource(R.string.debt_goal_metric_goal_count, summary.activeGoalCount),
-        )
-        DebtGoalRowDivider()
-        DebtGoalMetricRow(
-            label = stringResource(R.string.debt_goal_metric_achieved),
-            value = stringResource(R.string.debt_goal_metric_goal_count, summary.achievedGoalCount),
-        )
-        DebtGoalRowDivider()
-        DebtGoalMetricRow(
-            label = stringResource(R.string.debt_goal_metric_review),
-            value = stringResource(R.string.debt_goal_metric_goal_count, summary.reviewGoalCount),
-        )
-        DebtGoalRowDivider()
-        DebtGoalMetricRow(
-            label = stringResource(R.string.debt_goal_metric_linked_debts),
-            value = stringResource(R.string.debt_goal_metric_debt_count, summary.linkedDebtCount),
-        )
-        DebtGoalRowDivider()
-        DebtGoalMetricRow(
-            label = stringResource(R.string.debt_goal_metric_open_debts),
-            value = stringResource(R.string.debt_goal_metric_debt_count, summary.openDebtCount),
-        )
-    }
-}
-
-@Composable
-private fun DebtGoalMetricRow(label: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.titleMedium.tabularNum(),
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
+    // 概况降为紧凑指标格：真正目标列表尽快进首屏，统计不再占半屏五行。
+    val metrics = listOf(
+        stringResource(R.string.debt_goal_metric_active) to
+            stringResource(R.string.debt_goal_metric_goal_count, summary.activeGoalCount),
+        stringResource(R.string.debt_goal_metric_achieved) to
+            stringResource(R.string.debt_goal_metric_goal_count, summary.achievedGoalCount),
+        stringResource(R.string.debt_goal_metric_review) to
+            stringResource(R.string.debt_goal_metric_goal_count, summary.reviewGoalCount),
+        stringResource(R.string.debt_goal_metric_linked_debts) to
+            stringResource(R.string.debt_goal_metric_debt_count, summary.linkedDebtCount),
+        stringResource(R.string.debt_goal_metric_open_debts) to
+            stringResource(R.string.debt_goal_metric_debt_count, summary.openDebtCount),
+    )
+    AppAdaptiveMetricGrid(
+        itemCount = metrics.size,
+        twoColumnMinWidth = AppAdaptiveMetricGridCompactMinWidth,
+    ) { index, metricModifier ->
+        val (label, value) = metrics[index]
+        MetricPill(label = label, value = value, modifier = metricModifier)
     }
 }
 
@@ -356,7 +327,6 @@ private fun LazyListScope.debtGoalDetailSection(
     item {
         DebtGoalOpenSection(
             title = stringResource(R.string.debt_goal_detail_links_title),
-            subtitle = stringResource(R.string.debt_goal_detail_links_subtitle),
         ) {
             if (isPureExternal) {
                 DebtPlanSortToggle(mode = callbacks.sortMode, onModeChange = callbacks.onSortModeChange)

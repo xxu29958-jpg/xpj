@@ -1041,7 +1041,7 @@ private class RecoverableLedgerDebtActions(
 ) : DebtActions by unsupportedLedgerDebtActions() {
     override fun canModifyLedger(): Boolean = true
 
-    override suspend fun listDebts(): Result<DebtListPage> =
+    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens): Result<DebtListPage> =
         if (online) {
             Result.success(DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "CNY"))
         } else {
@@ -1055,7 +1055,7 @@ private class DeferredLedgerDebtActions : DebtActions by unsupportedLedgerDebtAc
 
     override fun canModifyLedger(): Boolean = true
 
-    override suspend fun listDebts(): Result<DebtListPage> {
+    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens): Result<DebtListPage> {
         val gate = CompletableDeferred<Result<DebtListPage>>()
         calls += gate
         return gate.await()

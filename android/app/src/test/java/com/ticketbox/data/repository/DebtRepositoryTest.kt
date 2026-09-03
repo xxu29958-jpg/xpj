@@ -21,6 +21,7 @@ import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.DebtKinds
 import com.ticketbox.domain.model.DebtLinkStatuses
+import com.ticketbox.domain.model.DebtListLens
 import com.ticketbox.domain.model.DebtSourceTypes
 import com.ticketbox.domain.model.MemberProposalStatuses
 import com.ticketbox.security.LocalSessionIdentity
@@ -39,6 +40,17 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class DebtRepositoryTest {
+
+    @Test
+    fun personalLensReachesServerWhileDefaultLedgerReadStaysUnfiltered() = runTest {
+        val handler = DebtApiHandler()
+        val repository = repository(handler)
+
+        repository.listDebts().getOrThrow()
+        repository.listDebts(DebtListLens.Payables).getOrThrow()
+
+        assertEquals(listOf(null, "payables"), handler.listLenses)
+    }
 
     @Test
     fun listDebtsMapsDomainModels() = runTest {
@@ -757,6 +769,7 @@ private fun proposalDto(publicId: String = "p1", proposed: Long = 20_000L): Memb
     )
 
 private class DebtApiHandler : InvocationHandler {
+    val listLenses = mutableListOf<String?>()
     val createCalls = mutableListOf<CreateDebtCall>()
     val parseBillCalls = mutableListOf<MultipartBody.Part>()
     val repaymentCalls = mutableListOf<RepaymentCall>()
@@ -806,6 +819,7 @@ private class DebtApiHandler : InvocationHandler {
         val values = args.orEmpty()
         return when (method.name) {
             "debts" -> {
+                listLenses += values[0] as String?
                 debtsError?.let { throw it }
                 debtsResult ?: DebtListResponseDto(items = listOf(debtDto()))
             }

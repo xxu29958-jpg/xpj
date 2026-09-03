@@ -17,10 +17,14 @@ internal class CapabilityDebtActions(
     var listCalls = 0
         private set
 
+    /** 测试延迟钩：挂起 listDebts 直至放行（模拟弱网下币种解析晚于用户点行）。 */
+    var listDebtsGate: (suspend () -> Unit)? = null
+
     override fun canModifyLedger(): Boolean = canModify
 
-    override suspend fun listDebts(): Result<DebtListPage> {
+    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens): Result<DebtListPage> {
         listCalls += 1
+        listDebtsGate?.invoke()
         return Result.success(page)
     }
 }

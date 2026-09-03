@@ -11,9 +11,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -32,6 +30,7 @@ import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
 import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
 import com.ticketbox.ui.components.AppAdaptiveEditActionMode
+import com.ticketbox.ui.components.AppBusyGuardedSheet
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppOutlinedButtonOptions
@@ -47,11 +46,11 @@ import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.DebtAction
 import com.ticketbox.viewmodel.DebtDetailUiState
 import com.ticketbox.viewmodel.DebtDetailViewModel
+import com.ticketbox.viewmodel.DebtRepaymentHistoryViewModel
 import com.ticketbox.viewmodel.MemberProposalUiState
 import com.ticketbox.viewmodel.MemberRepaymentProposalViewModel
 import kotlinx.coroutines.delay
@@ -75,10 +74,12 @@ private const val DebtDetailFlashDismissMillis = 4000L
 fun DebtDetailScreen(
     viewModel: DebtDetailViewModel,
     proposalViewModel: MemberRepaymentProposalViewModel,
+    historyViewModel: DebtRepaymentHistoryViewModel,
     onBack: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val proposalState by proposalViewModel.state.collectAsStateWithLifecycle()
+    val historyState by historyViewModel.state.collectAsStateWithLifecycle()
     val debt = state.debt
 
     DebtDetailEffects(
@@ -86,6 +87,7 @@ fun DebtDetailScreen(
         proposalState = proposalState,
         viewModel = viewModel,
         proposalViewModel = proposalViewModel,
+        historyViewModel = historyViewModel,
     )
 
     val callbacks = DebtDetailScreenCallbacks(
@@ -93,14 +95,23 @@ fun DebtDetailScreen(
         onRefresh = {
             viewModel.refresh()
             if (debt?.isMember == true) proposalViewModel.refresh()
+            historyViewModel.refresh()
         },
         onSelectKind = viewModel::selectKind,
         onOpenAction = viewModel::openAction,
     )
     DebtDetailContent(
         state = state,
-        proposalState = proposalState,
-        proposalViewModel = proposalViewModel,
+        panels = DebtDetailPanels(
+            proposalState = proposalState,
+            proposalViewModel = proposalViewModel,
+            historyState = historyState,
+            historyCallbacks = DebtRepaymentHistoryCallbacks(
+                onVoidRepayment = { viewModel.openAction(DebtAction.RepaymentVoid, it) },
+                onLoadPage = historyViewModel::loadPage,
+                onRetry = historyViewModel::refresh,
+            ),
+        ),
         callbacks = callbacks,
     )
     if (state.activeAction != null) {
@@ -125,10 +136,15 @@ private fun DebtDetailEffects(
     proposalState: MemberProposalUiState,
     viewModel: DebtDetailViewModel,
     proposalViewModel: MemberRepaymentProposalViewModel,
+    historyViewModel: DebtRepaymentHistoryViewModel,
 ) {
     val debt = state.debt
     LaunchedEffect(debt?.publicId, debt?.isMember) {
         if (debt != null && debt.isMember) proposalViewModel.load(debt.publicId)
+    }
+    // canonical 版本变化（还款/调整/作废/单笔还款作废成功后折叠换入）使旧记录失效，重读历史。
+    LaunchedEffect(debt?.publicId, debt?.rowVersion) {
+        if (debt != null) historyViewModel.loadDebt(debt.publicId, debt.rowVersion)
     }
     LaunchedEffect(proposalState.foldChangedAt) {
         if (proposalState.foldChangedAt > 0) viewModel.refresh()
@@ -238,31 +254,10 @@ internal fun DebtActionPanel(debt: Debt, canModify: Boolean, onAction: (DebtActi
 private fun DebtActionButtons(onAction: (DebtAction) -> Unit, amountActionsEnabled: Boolean) {
     AppAdaptiveEditActionLayout(actionCount = if (amountActionsEnabled) 3 else 1, compact = false) { mode ->
         when (mode) {
-            AppAdaptiveEditActionMode.Stacked -> Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-            ) {
-                if (amountActionsEnabled) {
-                    AppPrimaryButton(
-                        text = stringResource(R.string.debt_action_repayment_title),
-                        icon = Icons.Filled.Check,
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = { onAction(DebtAction.Repayment) },
-                    )
-                    QuietOutlinedButton(
-                        text = stringResource(R.string.debt_action_adjustment_title),
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = { onAction(DebtAction.Adjustment) },
-                    )
-                }
-                AppOutlinedButton(
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = { onAction(DebtAction.Void) },
-                    options = AppOutlinedButtonOptions(danger = true),
-                ) {
-                    Text(stringResource(R.string.debt_action_void_title))
-                }
-            }
+            AppAdaptiveEditActionMode.Stacked -> DebtActionButtonsStacked(
+                onAction = onAction,
+                amountActionsEnabled = amountActionsEnabled,
+            )
             AppAdaptiveEditActionMode.Compact,
             AppAdaptiveEditActionMode.Inline -> Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -290,6 +285,50 @@ private fun DebtActionButtons(onAction: (DebtAction) -> Unit, amountActionsEnabl
     }
 }
 
+/** 窄屏堆叠态：记还款独占主视觉；调整/作废收成同权重安静二级行（danger 语义色区分破坏动作）。 */
+@Composable
+private fun DebtActionButtonsStacked(onAction: (DebtAction) -> Unit, amountActionsEnabled: Boolean) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+    ) {
+        if (amountActionsEnabled) {
+            AppPrimaryButton(
+                text = stringResource(R.string.debt_action_repayment_title),
+                icon = Icons.Filled.Check,
+                modifier = Modifier.fillMaxWidth(),
+                onClick = { onAction(DebtAction.Repayment) },
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+            ) {
+                QuietOutlinedButton(
+                    text = stringResource(R.string.debt_action_adjustment_title),
+                    modifier = Modifier.weight(1f),
+                    onClick = { onAction(DebtAction.Adjustment) },
+                )
+                AppOutlinedButton(
+                    modifier = Modifier.weight(1f),
+                    onClick = { onAction(DebtAction.Void) },
+                    options = AppOutlinedButtonOptions(danger = true),
+                ) {
+                    Text(stringResource(R.string.debt_action_void_title))
+                }
+            }
+        } else {
+            // R10⑤：币种未知（支持集外）时只剩 Void 安全出口，独占一行。
+            AppOutlinedButton(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = { onAction(DebtAction.Void) },
+                options = AppOutlinedButtonOptions(danger = true),
+            ) {
+                Text(stringResource(R.string.debt_action_void_title))
+            }
+        }
+    }
+}
+
 @Composable
 internal fun DebtNoteCard(text: String) {
     AppSectionGroup(
@@ -306,15 +345,19 @@ internal fun DebtNoteCard(text: String) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DebtActionSheet(
     state: DebtDetailUiState,
     viewModel: DebtDetailViewModel,
     onClose: () -> Unit,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(onDismissRequest = onClose, sheetState = sheetState) {
+    // VM 的 dismissAction 在提交中吞掉关闭；sheet 本体也必须否决 Hidden，
+    // 否则 Back/下滑把失败草稿藏进不可见 modal（同 income-busy-hidden 反例）。
+    AppBusyGuardedSheet(
+        isSubmitting = state.isSubmitting,
+        onDismiss = onClose,
+        skipPartiallyExpanded = true,
+    ) {
         DebtActionForm(
             state = state,
             viewModel = viewModel,
@@ -333,7 +376,8 @@ private fun DebtActionForm(
 ) {
     val action = state.activeAction ?: return
     AppSheetScaffold(title = stringResource(debtActionTitleRes(action))) {
-        if (action != DebtAction.Void) {
+        // 金额输入只属于还款/调整；整笔作废(Void)与单笔还款作废(RepaymentVoid)都不带金额。
+        if (action == DebtAction.Repayment || action == DebtAction.Adjustment) {
             AppAmountInput(
                 state = AppAmountInputState(
                     label = stringResource(debtActionAmountLabelRes(action)),
@@ -351,6 +395,12 @@ private fun DebtActionForm(
         if (action == DebtAction.Adjustment) {
             DebtAdjustmentSignChips(increase = state.adjustmentIncrease, onSelect = viewModel::setAdjustmentSign)
         }
+        // 单笔还款作废：选中还款的只读摘要确认作废对象，无金额输入。
+        if (action == DebtAction.RepaymentVoid) {
+            state.repaymentToVoid?.let { repayment ->
+                DebtRepaymentVoidTarget(repayment = repayment, homeCurrencyCode = state.debt?.homeCurrencyCode)
+            }
+        }
         if (action != DebtAction.Repayment) {
             AppTextInput(
                 state = AppTextInputState(
@@ -361,13 +411,7 @@ private fun DebtActionForm(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-        if (action == DebtAction.Void) {
-            Text(
-                stringResource(R.string.debt_action_void_warning),
-                style = MaterialTheme.typography.bodySmall,
-                color = LocalStateTokens.current.warn.fg,
-            )
-        }
+        DebtActionWarning(action)
         state.validationError?.let { err ->
             AppStatusBanner(message = err, tone = MessageTone.Danger)
         }

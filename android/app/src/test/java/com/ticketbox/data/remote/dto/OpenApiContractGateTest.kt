@@ -153,6 +153,10 @@ class OpenApiContractGateTest {
         // the forward check is the forbid protection; the home-currency-only DTOs intentionally omit
         // the optional foreign-currency fields (a subset of the schema, so the forward check passes).
         Pairing(RepaymentCreateRequestDto::class, "RepaymentCreateRequest"),
+        Pairing(RepaymentFactDto::class, "RepaymentFactResponse"),
+        Pairing(RepaymentFactListDto::class, "RepaymentFactListResponse"),
+        Pairing(RepaymentVoidFactDto::class, "RepaymentVoidFactResponse"),
+        Pairing(RepaymentVoidCreateRequestDto::class, "RepaymentVoidCreateRequest"),
         Pairing(DebtAdjustmentCreateRequestDto::class, "DebtAdjustmentCreateRequest"),
         Pairing(DebtVoidCreateRequestDto::class, "DebtVoidCreateRequest"),
         // ADR-0049 §3.7 / §4 (slice 8e-3) creditor-forgive body (expected_row_version only),

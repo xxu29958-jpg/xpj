@@ -416,7 +416,7 @@ private class FakeRepayableDebtActions(
     var listGate: CompletableDeferred<Unit>? = null
 
     override fun canModifyLedger(): Boolean = canModify
-    override suspend fun listDebts(): Result<DebtListPage> {
+    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens): Result<DebtListPage> {
         // Capture at entry so a stalled load returns the snapshot it started with.
         val captured = listResult
         listGate?.await()
@@ -438,6 +438,13 @@ private class FakeRepayableDebtActions(
         amountCents: Long,
         reason: String,
     ): Result<Debt> = Result.success(debt(publicId))
+
+    override suspend fun voidRepayment(
+        publicId: String,
+        repaymentPublicId: String,
+        expectedRowVersion: Long,
+        reason: String,
+    ): Result<Debt> = Result.failure(UnsupportedOperationException())
 
     override suspend fun voidDebt(publicId: String, expectedRowVersion: Long, reason: String): Result<Debt> =
         Result.success(debt(publicId))

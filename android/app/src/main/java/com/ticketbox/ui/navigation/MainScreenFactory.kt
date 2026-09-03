@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModelProvider
 import com.ticketbox.data.repository.BudgetRepository
 import com.ticketbox.data.repository.CategoryPreferenceRepository
 import com.ticketbox.data.repository.DebtRepository
+import com.ticketbox.data.repository.DebtRepaymentQueries
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.IncomePlanActions
 import com.ticketbox.data.repository.LedgerRepository
@@ -26,6 +27,7 @@ internal class MainScreenFactory(
     val reportsRepository: ReportsActions get() = repositories.reportsRepository
     val incomePlanRepository: IncomePlanActions get() = repositories.incomePlanRepository
     val debtRepository: DebtRepository get() = repositories.debtRepository
+    val debtRepaymentRepository: DebtRepaymentQueries get() = repositories.debtRepository.repayments
     val repaymentDraftRepository: RepaymentDraftRepository get() = repositories.repaymentDraftRepository
     val outboxRepository: OutboxRepository get() = repositories.outboxRepository
     val tagRepository: TagRepository get() = repositories.tagRepository

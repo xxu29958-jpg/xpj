@@ -14,6 +14,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.EventRepeat
 import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.Handshake
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.HorizontalDivider
@@ -49,7 +50,6 @@ import com.ticketbox.viewmodel.RecurringUiState
 private data class PlanRowModel(
     val title: String,
     val subtitle: String,
-    val trailing: String,
     val icon: ImageVector,
     val testTag: String,
     val onClick: () -> Unit,
@@ -69,11 +69,6 @@ internal fun PlanBudgetSection(
                 model = PlanRowModel(
                     title = stringResource(R.string.plan_budget_title),
                     subtitle = planBudgetFallbackSummary(state),
-                    trailing = if (state.loading) {
-                        stringResource(R.string.plan_action_wait)
-                    } else {
-                        stringResource(R.string.plan_action_set)
-                    },
                     icon = Icons.Filled.AccountBalanceWallet,
                     testTag = PlanDestinationTestTags.Budget,
                     onClick = actions.onOpenBudget,
@@ -90,7 +85,6 @@ internal fun PlanBudgetSection(
             model = PlanRowModel(
                 title = stringResource(R.string.plan_budget_advice_title),
                 subtitle = stringResource(R.string.plan_budget_advice_subtitle),
-                trailing = stringResource(R.string.plan_action_open),
                 icon = Icons.Filled.Tune,
                 testTag = PlanDestinationTestTags.BudgetAdvice,
                 onClick = actions.onOpenAdvice,
@@ -136,7 +130,7 @@ private fun PlanConfiguredBudget(
                     style = MaterialTheme.typography.displayMedium.tabularNum(),
                 )
             }
-            PlanRowTrailing(stringResource(R.string.plan_action_adjust))
+            PlanRowChevron(modifier = Modifier.align(Alignment.CenterVertically))
         }
         BudgetProgressBar(progress = budget.spentProgress)
         Text(
@@ -163,6 +157,7 @@ private fun PlanConfiguredBudget(
 @Composable
 internal fun PlanGoalsSection(
     onOpenSpendingGoal: () -> Unit,
+    onOpenDebtGoal: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         PlanSectionTitle(stringResource(R.string.plan_section_goals))
@@ -171,10 +166,18 @@ internal fun PlanGoalsSection(
             model = PlanRowModel(
                 title = stringResource(R.string.plan_spending_goal_title),
                 subtitle = stringResource(R.string.plan_spending_goal_subtitle),
-                trailing = stringResource(R.string.plan_action_view),
                 icon = Icons.Filled.Flag,
                 testTag = PlanDestinationTestTags.SpendingGoal,
                 onClick = onOpenSpendingGoal,
+            ),
+        )
+        PlanDestinationRow(
+            model = PlanRowModel(
+                title = stringResource(R.string.plan_debt_goal_title),
+                subtitle = stringResource(R.string.plan_debt_goal_subtitle),
+                icon = Icons.Filled.Handshake,
+                testTag = PlanDestinationTestTags.DebtGoal,
+                onClick = onOpenDebtGoal,
             ),
         )
     }
@@ -194,7 +197,6 @@ internal fun PlanFixedArrangementsSection(
             model = PlanRowModel(
                 title = stringResource(R.string.plan_recurring_title),
                 subtitle = planRecurringSummary(recurring),
-                trailing = stringResource(R.string.plan_action_manage),
                 icon = Icons.Filled.EventRepeat,
                 testTag = PlanDestinationTestTags.Recurring,
                 onClick = onOpenRecurring,
@@ -204,7 +206,6 @@ internal fun PlanFixedArrangementsSection(
             model = PlanRowModel(
                 title = stringResource(R.string.plan_income_title),
                 subtitle = planIncomeSummary(income),
-                trailing = stringResource(R.string.plan_action_manage),
                 icon = Icons.Filled.Payments,
                 testTag = PlanDestinationTestTags.IncomePlans,
                 onClick = onOpenIncomePlans,
@@ -262,36 +263,23 @@ private fun PlanDestinationRow(
             )
         }
         Spacer(modifier = Modifier.width(AppSpacing.smallGap))
-        PlanRowTrailing(
-            label = model.trailing,
+        PlanRowChevron(
             modifier = Modifier.align(Alignment.CenterVertically),
         )
     }
 }
 
+/** W2-C：入口行 trailing 统一为 chevron（旧 设置/调整/查看/管理/打开 动词族退役）。 */
 @Composable
-private fun PlanRowTrailing(
-    label: String,
+private fun PlanRowChevron(
     modifier: Modifier = Modifier,
 ) {
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            color = MaterialTheme.colorScheme.primary,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Medium,
-        )
-        Icon(
-            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(AppSpacing.cardPadding),
-        )
-    }
+    Icon(
+        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+        contentDescription = null,
+        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier.size(AppSpacing.cardPadding),
+    )
 }
 
 @Composable

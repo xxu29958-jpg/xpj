@@ -48,7 +48,6 @@ internal fun DebtPlanProgressCard(
 ) {
     DebtGoalOpenSection(
         title = stringResource(R.string.debt_goal_progress_title),
-        subtitle = stringResource(R.string.debt_goal_progress_subtitle),
     ) {
         DebtStatusBadge(
             text = stringResource(debtGoalEvaluationLabelRes(evaluation.evaluationState)),

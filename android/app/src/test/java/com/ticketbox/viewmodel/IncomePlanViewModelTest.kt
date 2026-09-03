@@ -521,7 +521,11 @@ class IncomePlanViewModelTest {
             return createResult ?: Result.success(stub(draft.label))
         }
 
-        override suspend fun update(publicId: String, patch: com.ticketbox.data.repository.IncomePlanPatch) =
+        override suspend fun update(
+            expectedBinding: LogicalSessionBinding,
+            publicId: String,
+            patch: com.ticketbox.data.repository.IncomePlanPatch,
+        ) =
             Result.success(stub(publicId))
 
         override suspend fun archive(

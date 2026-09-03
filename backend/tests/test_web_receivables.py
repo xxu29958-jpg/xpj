@@ -21,7 +21,8 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.models import Account, Debt, Ledger, LedgerMember, Repayment
 from app.routes.web_receivables import _receivable_row_view
-from app.services.debt_service import create_bill_split_debt
+from app.schemas import DebtCreateRequest
+from app.services.debt_service import create_bill_split_debt, create_debt
 from app.services.time_service import now_utc
 
 
@@ -100,7 +101,8 @@ def test_web_receivables_remote_returns_403(client: TestClient) -> None:
 
 def test_web_receivables_empty_renders_premium_empty_state(web_client: TestClient) -> None:
     html = _page(web_client)
-    assert "还没有待对上的款" in html
+    # W2-C 合并 lens 后与 Android receivables_empty_title 三端同词。
+    assert "还没有欠你的款" in html
     assert "product-state" in html
 
 
@@ -222,6 +224,8 @@ def _row(**overrides) -> SimpleNamespace:
         "principal_amount_cents": 2500,
         "remaining_amount_cents": 2500,
         "home_currency_code": "CNY",
+        "direction": "owed_to_me",
+        "original_currency_code": None,
     }
     base.update(overrides)
     return SimpleNamespace(**base)
@@ -253,3 +257,94 @@ def test_view_voided_recedes_neutral() -> None:
     assert view["status_label"] == "已不算"
     assert view["status_tone"] == ""  # voided is neutral, never danger (红线②)
     assert view["recede"] is True
+
+
+# ── same-ledger external receivable rows (W2-C 合并 lens: viewer 自己的 external 应收) ──
+def test_view_member_row_keeps_communal_framing() -> None:
+    view = _receivable_row_view(_row())
+    assert view["is_member"] is True
+    assert "我帮你垫的" in view["member_headline"]
+    assert view["status_label"] == "进行中"
+    assert view["status_tone"] == ""
+    assert view["show_progress"] is True
+    assert view["direction_label"] is None
+
+
+def test_view_external_receivable_is_accounting_row() -> None:
+    """External 应收 = 会计行 (方向徽章+会计状态词+本金脚注)，不走 member communal 框架。"""
+    view = _receivable_row_view(
+        _row(
+            counterparty_type="external",
+            counterparty_label="小周 · 演出票",
+            viewer_is_debtor=None,  # external 行无 member 角色 (§3.2)
+            direction="owed_to_me",
+        )
+    )
+    assert view["is_member"] is False
+    assert view["direction_label"] == "应收"
+    assert view["member_headline"] is None  # 不落入「我帮你垫的 / TA 们之间」框架
+    assert view["status_label"] == "未结清"  # 会计状态词,不是 member「进行中」
+    assert view["status_tone"] == ""
+    assert view["show_progress"] is False  # 会计行无 communal 进度条
+    assert view["principal_label"] == "¥25.00"
+    assert view["remaining_label"] == "¥25.00"
+    assert view["recede"] is False
+
+
+def test_view_external_voided_row_uses_accounting_tone() -> None:
+    """作废应收 = 会计行 danger 沉降 (镜像 debtLinkStatusTone；member 永不红红线只管 communal 行)。"""
+    view = _receivable_row_view(
+        _row(
+            counterparty_type="external",
+            viewer_is_debtor=None,
+            direction="owed_to_me",
+            status="voided",
+        )
+    )
+    assert view["is_member"] is False
+    assert view["status_label"] == "已作废"
+    assert view["status_tone"] == "danger"
+    assert view["recede"] is True
+    assert view["show_progress"] is False
+
+
+def test_view_fx_member_row_badges_viewer_relative_receivable() -> None:
+    """外币 member 债被 FX 防御退回会计行 (``_is_member_view`` False，与 /web/debts 同轴)，
+    但 ``direction`` 是 owner-relative「i_owe」(债务人口径)。viewer 在本 endpoint 恒为债权人,
+    方向徽章必须 viewer-relative 仍读「应收」,不得照搬 owner 口径变「应付」。"""
+    view = _receivable_row_view(
+        _row(
+            direction="i_owe",  # owner-relative：债务人说「我欠」→ viewer 是债权人
+            original_currency_code="USD",  # FX → _is_member_view False → 会计行
+        )
+    )
+    assert view["is_member"] is False
+    assert view["direction_label"] == "应收"
+
+
+def test_web_receivables_external_row_uses_accounting_framing(web_client: TestClient, *, identity) -> None:
+    """同账本 external 应收入页：会计框架 (应收/未结清/无进度条)，非 member 关系行。"""
+    owner_id = _owner_account_id()
+    with SessionLocal() as db:
+        debt = create_debt(
+            db,
+            tenant_id="owner",
+            created_by_account_id=owner_id,
+            owner_account_id=owner_id,
+            payload=DebtCreateRequest(
+                direction="owed_to_me",
+                counterparty_type="external",
+                counterparty_label="小周 · 演出票",
+                principal_amount_cents=32_000,
+            ),
+        )
+        public_id = debt.public_id
+    html = _page(web_client)
+    assert "小周 · 演出票" in html
+    assert "应收" in html  # 会计方向徽章 (正向 RED：合并前 member-only 实现无此产出)
+    assert "应付" not in html  # viewer 恒是债权人，owner-relative direction 不得外翻
+    assert "未结清" in html  # 会计状态词
+    assert "¥320.00" in html  # exact 剩余金额正向呈现
+    assert f'href="/web/debts/{public_id}?ledger_id=owner"' in html  # 行可点开既有详情
+    assert "debt-progress" not in html  # 会计行无 communal 进度条
+    assert "我帮你垫的" not in html

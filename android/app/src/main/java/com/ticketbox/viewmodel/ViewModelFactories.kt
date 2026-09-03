@@ -6,6 +6,7 @@ import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.repository.BudgetActions
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtProposalActions
+import com.ticketbox.data.repository.DebtRepaymentQueries
 import com.ticketbox.data.repository.ExpenseRepositoryBackgroundTaskActions
 import com.ticketbox.data.repository.ExpenseFactActions
 import com.ticketbox.data.repository.ExpenseRepository
@@ -20,6 +21,7 @@ import com.ticketbox.data.repository.RepaymentDraftActions
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.data.repository.RuleRepository
 import com.ticketbox.data.repository.TagActions
+import com.ticketbox.domain.model.DebtListLens
 
 @Suppress("UNCHECKED_CAST")
 fun appViewModelFactory(
@@ -108,6 +110,17 @@ fun incomePlanViewModelFactory(
 }
 
 @Suppress("UNCHECKED_CAST")
+fun incomePlanEditViewModelFactory(
+    repository: IncomePlanActions,
+    debts: DebtActions,
+    onDataChanged: () -> Unit = {},
+): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        return IncomePlanEditViewModel(repository, debts, onDataChanged = onDataChanged) as T
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 fun debtGoalViewModelFactory(
     repository: ReportsActions,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
@@ -119,9 +132,10 @@ fun debtGoalViewModelFactory(
 @Suppress("UNCHECKED_CAST")
 fun debtViewModelFactory(
     repository: DebtActions,
+    lens: DebtListLens = DebtListLens.Ledger,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return DebtListViewModel(repository) as T
+        return DebtListViewModel(repository, lens) as T
     }
 }
 
@@ -131,6 +145,15 @@ fun debtDetailViewModelFactory(
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return DebtDetailViewModel(repository) as T
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+fun debtRepaymentHistoryViewModelFactory(
+    repository: DebtRepaymentQueries,
+): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        return DebtRepaymentHistoryViewModel(repository) as T
     }
 }
 

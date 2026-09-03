@@ -642,7 +642,7 @@ internal class FakeApiService(
         idempotencyKey: String?,
         timezone: String?,
     ): GoalDto = unsupported()
-    override suspend fun debts(): com.ticketbox.data.remote.dto.DebtListResponseDto = unsupported()
+    override suspend fun debts(lens: String?): com.ticketbox.data.remote.dto.DebtListResponseDto = unsupported()
     override suspend fun debtReceivables(): com.ticketbox.data.remote.dto.DebtListResponseDto = unsupported()
     override suspend fun createDebt(
         request: com.ticketbox.data.remote.dto.DebtCreateRequestDto,
@@ -652,6 +652,12 @@ internal class FakeApiService(
         file: MultipartBody.Part,
     ): com.ticketbox.data.remote.dto.DebtBillParseResponseDto = unsupported()
     override suspend fun debt(publicId: String): com.ticketbox.data.remote.dto.DebtDto = unsupported()
+    override suspend fun debtRepayments(publicId: String, page: Int): com.ticketbox.data.remote.dto.RepaymentFactListDto = unsupported()
+    override suspend fun voidDebtRepayment(
+        publicId: String,
+        request: com.ticketbox.data.remote.dto.RepaymentVoidCreateRequestDto,
+        idempotencyKey: String?,
+    ): com.ticketbox.data.remote.dto.DebtDto = unsupported()
     override suspend fun recordDebtRepayment(
         publicId: String,
         request: com.ticketbox.data.remote.dto.RepaymentCreateRequestDto,

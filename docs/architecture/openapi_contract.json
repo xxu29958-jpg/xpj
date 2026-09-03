@@ -18765,6 +18765,20 @@
         "operationId": "get_debts_api_debts_get",
         "parameters": [
           {
+            "in": "query",
+            "name": "lens",
+            "required": false,
+            "schema": {
+              "default": "ledger",
+              "enum": [
+                "ledger",
+                "payables"
+              ],
+              "title": "Lens",
+              "type": "string"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,

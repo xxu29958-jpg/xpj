@@ -1,6 +1,7 @@
 package com.ticketbox.ui.screens.recurring
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,20 +12,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -34,9 +38,6 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.ui.components.AppAdaptiveAmountRowDefaults
 import com.ticketbox.ui.components.AppAdaptiveAmountRowStyle
-import com.ticketbox.ui.components.AppAdaptiveContentActionRow
-import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
-import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppAdaptiveEditAmountRow
 import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.AppErrorState
@@ -188,6 +189,8 @@ private fun RecurringItemsCardHeader(state: RecurringItemsCardState, itemCount: 
 /**
  * 列表第一眼：名称、每月计划金额、下次日期、状态。baseline 永远是计划金额，
  * 不显示 last_amount；观察 meta（次数/最近）仅 occurrenceCount>0 时降层级露出。
+ * W2-C：行本体即编辑入口（active/paused）；暂停/恢复/归档收成行尾安静图标钮，
+ * 不再每条目三个整行大按钮。
  */
 @Composable
 private fun RecurringItemRow(
@@ -199,8 +202,19 @@ private fun RecurringItemRow(
 ) {
     val meta = recurringItemMeta(item)
     val archived = item.status == "archived"
+    val capabilities = recurringRowCapabilities(item.status)
+    val editable = canModify && capabilities.editable && interaction.editEnabled
     Column(
-        modifier = Modifier.then(if (archived) Modifier.alpha(AppAlpha.opaque) else Modifier),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (editable) {
+                    Modifier.clickable(role = Role.Button) { interaction.onEdit(item) }
+                } else {
+                    Modifier
+                },
+            )
+            .then(if (archived) Modifier.alpha(AppAlpha.opaque) else Modifier),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
         AppAdaptiveEditAmountRow(
@@ -212,21 +226,14 @@ private fun RecurringItemRow(
         ) {
             RecurringItemMetaColumn(item = item, meta = meta)
         }
-        if (canModify) {
-            AppAdaptiveContentActionRow(
-                wideActionWeight = 0.92f,
-                content = { RecurringStatusChips(item, meta) },
-                action = { actionModifier ->
-                    RecurringRowActions(
-                        modifier = actionModifier,
-                        item = item,
-                        interaction = interaction,
-                        actions = actions,
-                    )
-                },
-            )
-        } else {
-            RecurringStatusChips(item, meta)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(modifier = Modifier.weight(1f)) { RecurringStatusChips(item, meta) }
+            if (canModify) {
+                RecurringRowIconActions(item = item, capabilities = capabilities, actions = actions)
+            }
         }
     }
 }
@@ -275,106 +282,57 @@ private fun recurringNextDateText(meta: RecurringItemMeta): String =
         },
     )
 
+/** 行尾安静生命周期动作（图标级）：active→暂停、paused→恢复，且均可归档；archived→恢复。 */
 @Composable
-private fun RecurringRowActions(
-    modifier: Modifier = Modifier,
+private fun RecurringRowIconActions(
     item: RecurringItem,
-    interaction: RecurringItemInteraction,
+    capabilities: RecurringRowCapabilities,
     actions: RecurringItemActions,
 ) {
-    val capabilities = recurringRowCapabilities(item.status)
-    AppAdaptiveEditActionLayout(
-        actionCount = if (capabilities.lifecycleActions) 3 else 1,
-        compact = false,
-        modifier = modifier,
-        stackTwoActionsOnNarrow = true,
-    ) { mode ->
-        if (mode == AppAdaptiveEditActionMode.Stacked) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-            ) {
-                RecurringRowActionButtons(
-                    item = item,
-                    capabilities = capabilities,
-                    interaction = interaction,
-                    actions = actions,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        } else {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap, Alignment.End),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                RecurringRowActionButtons(
-                    item = item,
-                    capabilities = capabilities,
-                    interaction = interaction,
-                    actions = actions,
-                    modifier = Modifier,
+    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
+        when {
+            capabilities.restorable -> RecurringQuietIconAction(
+                icon = Icons.Filled.Restore,
+                description = stringResource(R.string.recurring_action_restore_description),
+                onClick = { actions.onRestore(item.publicId, item.rowVersion) },
+            )
+            capabilities.lifecycleActions -> {
+                if (item.status == "active") {
+                    RecurringQuietIconAction(
+                        icon = Icons.Filled.Pause,
+                        description = stringResource(R.string.recurring_action_pause_description),
+                        onClick = { actions.onPause(item.publicId, item.rowVersion) },
+                    )
+                } else {
+                    RecurringQuietIconAction(
+                        icon = Icons.Filled.PlayArrow,
+                        description = stringResource(R.string.recurring_action_resume_description),
+                        onClick = { actions.onResume(item.publicId, item.rowVersion) },
+                    )
+                }
+                RecurringQuietIconAction(
+                    icon = Icons.Filled.DeleteOutline,
+                    description = stringResource(R.string.recurring_action_archive_description),
+                    onClick = { actions.onArchive(item.publicId) },
                 )
             }
         }
     }
 }
 
+/** 安静图标钮：onSurfaceVariant 单色，不抢行内金额/状态层级；contentDescription 双态都在。 */
 @Composable
-private fun RecurringRowActionButtons(
-    item: RecurringItem,
-    capabilities: RecurringRowCapabilities,
-    interaction: RecurringItemInteraction,
-    actions: RecurringItemActions,
-    modifier: Modifier = Modifier,
+private fun RecurringQuietIconAction(
+    icon: ImageVector,
+    description: String,
+    onClick: () -> Unit,
 ) {
-    if (capabilities.editable) {
-        TextButton(
-            modifier = modifier,
-            enabled = interaction.editEnabled,
-            onClick = { interaction.onEdit(item) },
-        ) {
-            Icon(
-                Icons.Filled.Edit,
-                contentDescription = stringResource(R.string.recurring_action_edit_description),
-            )
-            Text(stringResource(R.string.recurring_action_edit))
-        }
-    }
-    if (capabilities.lifecycleActions) {
-        when (item.status) {
-            "active" -> TextButton(
-                modifier = modifier,
-                onClick = { actions.onPause(item.publicId, item.rowVersion) },
-            ) {
-                Text(stringResource(R.string.recurring_action_pause))
-            }
-            "paused" -> TextButton(
-                modifier = modifier,
-                onClick = { actions.onResume(item.publicId, item.rowVersion) },
-            ) {
-                Text(stringResource(R.string.recurring_action_resume))
-            }
-        }
-        TextButton(modifier = modifier, onClick = { actions.onArchive(item.publicId) }) {
-            Icon(
-                Icons.Filled.DeleteOutline,
-                contentDescription = stringResource(R.string.recurring_action_archive_description),
-            )
-            Text(stringResource(R.string.recurring_action_archive))
-        }
-    }
-    if (capabilities.restorable) {
-        TextButton(
-            modifier = modifier,
-            onClick = { actions.onRestore(item.publicId, item.rowVersion) },
-        ) {
-            Icon(
-                Icons.Filled.Restore,
-                contentDescription = stringResource(R.string.recurring_action_restore_description),
-            )
-            Text(stringResource(R.string.recurring_action_restore))
-        }
+    IconButton(onClick = onClick) {
+        Icon(
+            imageVector = icon,
+            contentDescription = description,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

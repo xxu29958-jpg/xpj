@@ -5,6 +5,10 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import androidx.compose.ui.res.stringResource
+import com.ticketbox.R
+import com.ticketbox.domain.model.DebtListLens
+import com.ticketbox.ui.screens.RelationsListChrome
 
 internal class MainProductRouteDependencies(
     val runtime: MainNavigationRuntime,
@@ -202,6 +206,20 @@ internal fun NavGraphBuilder.addObligationRoutes(
             DebtGoalRoute(
                 screenFactory = screenFactory,
                 onBack = onBack,
+            )
+        }
+        // 全账本往来二级页（W2-C）：ledger lens 的完整账本视图，标题带当前账本名。
+        composable(ProductSecondaryPage.AllDebts.route) {
+            DebtRoute(
+                screenFactory = screenFactory,
+                onBack = onBack,
+                lens = DebtListLens.Ledger,
+                chromeOverride = RelationsListChrome(
+                    title = stringResource(R.string.relations_all_debts),
+                    subtitle = screenFactory.ledgerRepository.currentLedgerName(),
+                    backText = stringResource(R.string.debt_list_topbar_back),
+                    onBack = onBack,
+                ),
             )
         }
         composable(

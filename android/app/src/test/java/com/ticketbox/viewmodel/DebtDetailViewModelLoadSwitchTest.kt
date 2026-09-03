@@ -69,7 +69,7 @@ private class SwitchingDebtActions(
 
     override fun canModifyLedger(): Boolean = true
 
-    override suspend fun listDebts(): Result<DebtListPage> =
+    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens): Result<DebtListPage> =
         Result.success(DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = null))
 
     override suspend fun getDebt(publicId: String): Result<Debt> {
@@ -98,6 +98,13 @@ private class SwitchingDebtActions(
         amountCents: Long,
         reason: String,
     ): Result<Debt> = Result.success(switchDebt(publicId))
+
+    override suspend fun voidRepayment(
+        publicId: String,
+        repaymentPublicId: String,
+        expectedRowVersion: Long,
+        reason: String,
+    ): Result<Debt> = Result.failure(UnsupportedOperationException())
 
     override suspend fun voidDebt(publicId: String, expectedRowVersion: Long, reason: String): Result<Debt> =
         Result.success(switchDebt(publicId))

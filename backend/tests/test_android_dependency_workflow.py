@@ -38,7 +38,7 @@ def _assert_codeql_workload_contract(steps: list[dict[str, object]]) -> None:
         "./gradlew",
         "--no-daemon",
         "--no-build-cache",
-        "--max-workers=2",
+        "--max-workers=1",
         ":app:compileGrayDebugKotlin",
         ":app:compileGrayDebugJavaWithJavac",
         ":app:compileInternalDebugKotlin",

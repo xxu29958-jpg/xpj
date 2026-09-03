@@ -508,7 +508,7 @@ internal class StubApi(
         idempotencyKey: String?,
         timezone: String?,
     ): GoalDto = ledgerUnsupported()
-    override suspend fun debts(): com.ticketbox.data.remote.dto.DebtListResponseDto = ledgerUnsupported()
+    override suspend fun debts(lens: String?): com.ticketbox.data.remote.dto.DebtListResponseDto = ledgerUnsupported()
     override suspend fun debtReceivables(): com.ticketbox.data.remote.dto.DebtListResponseDto = ledgerUnsupported()
     override suspend fun createDebt(
         request: com.ticketbox.data.remote.dto.DebtCreateRequestDto,
@@ -518,6 +518,12 @@ internal class StubApi(
         file: MultipartBody.Part,
     ): com.ticketbox.data.remote.dto.DebtBillParseResponseDto = ledgerUnsupported()
     override suspend fun debt(publicId: String): com.ticketbox.data.remote.dto.DebtDto = ledgerUnsupported()
+    override suspend fun debtRepayments(publicId: String, page: Int): com.ticketbox.data.remote.dto.RepaymentFactListDto = ledgerUnsupported()
+    override suspend fun voidDebtRepayment(
+        publicId: String,
+        request: com.ticketbox.data.remote.dto.RepaymentVoidCreateRequestDto,
+        idempotencyKey: String?,
+    ): com.ticketbox.data.remote.dto.DebtDto = ledgerUnsupported()
     override suspend fun recordDebtRepayment(
         publicId: String,
         request: com.ticketbox.data.remote.dto.RepaymentCreateRequestDto,
