@@ -198,13 +198,36 @@ def test_shared_web_surface_selects_desktop_edge_consumer() -> None:
         "backend/app/static/web/appearance-bootstrap.js",
         "backend/app/static/web/desktop/theme.js",
         "backend/app/static/web/desktop.js",
+        "backend/app/static/shared/tokens.css",
         "backend/app/templates/web/base.html",
+        "backend/app/routes/web_pending.py",
+        "backend/app/routes/_web_money_views.py",
     ):
         _assert_path_scopes((path,), "postgres", "backend_frozen", "desktop")
+    _assert_path_scopes(
+        ("backend/app/routes/web_auth.py",),
+        "postgres",
+        "backend_frozen",
+    )
+    _assert_path_scopes(
+        ("backend/app/static/owner/app.css",),
+        "postgres",
+        "backend_frozen",
+    )
     ordinary = classify_ci_paths(["backend/app/services/report_service.py"])
     assert ordinary["postgres"] is True
     assert ordinary["backend_frozen"] is True
     assert ordinary["desktop"] is False
+
+
+def test_desktop_bff_static_prefixes_follow_allowlist() -> None:
+    prefixes = ci_gap_trigger_scope.desktop_bff_static_repo_prefixes()
+    assert prefixes
+    assert "backend/app/static/web/" in prefixes
+    assert "backend/app/static/shared/" in prefixes
+    assert "backend/app/static/owner/" not in prefixes
+    for prefix in prefixes:
+        _assert_path_scopes((f"{prefix}probe.css",), "postgres", "backend_frozen", "desktop")
 
 
 def test_desktop_build_contract_runs_tests_and_packaging() -> None:
