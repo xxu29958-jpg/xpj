@@ -11,6 +11,7 @@ import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.ui.screens.expense.TAG_TAGS_FIELD
+import com.ticketbox.ui.screens.expense.TAG_TIME_ROW
 import com.ticketbox.ui.screens.expense.TAG_VALUE_SCORE_FIELD
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.ExpenseEditUiState
@@ -48,7 +49,8 @@ class ExpenseEditScreenContractTest {
             }
         }
 
-        composeRule.onNodeWithText("选日期").performScrollTo().performClick()
+        // 日期 picker 的主路径是点时间行本身；「选时间」仍是行内安静动作。
+        composeRule.onNodeWithTag(TAG_TIME_ROW).performScrollTo().performClick()
         composeRule.onNodeWithText("选择日期").assertIsDisplayed()
         composeRule.onNodeWithText("取消").performClick()
 

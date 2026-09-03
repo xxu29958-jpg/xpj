@@ -50,7 +50,26 @@
     <string name="expense_edit_category_field_label">分类</string>
     <string name="expense_edit_note_field_label">备注</string>
     <string name="expense_edit_source_label">来源：%1$s</string>
-    <string name="expense_edit_confidence_label">识别置信度：%1$d%%</string>
+    <!-- 编辑页来源 quiet meta：来源与识别可信度并一行 -->
+    <string name="expense_edit_source_confidence_meta">来源：%1$s · 识别可信度 %2$d%%</string>
+    <!-- 编辑页分类选择行 + 选择 sheet -->
+    <string name="expense_edit_category_uncategorized">未分类</string>
+    <string name="expense_edit_category_sheet_title">选择分类</string>
+    <string name="expense_edit_category_sheet_subtitle">点选一个分类，或在下方自己填写。</string>
+    <string name="expense_edit_category_custom_label">自定义分类</string>
+    <string name="expense_edit_category_custom_placeholder">例如：宠物、房租</string>
+    <!-- 编辑页时间行 -->
+    <string name="expense_edit_time_unset">未设置时间</string>
+    <!-- 编辑页证据段（小票截图） -->
+    <string name="expense_edit_evidence_title">小票截图</string>
+    <!-- 明细/拆账折叠行摘要 -->
+    <string name="expense_edit_details_row_loading">加载中…</string>
+    <string name="expense_edit_details_row_failed">加载失败</string>
+    <string name="expense_edit_details_row_count">%1$d 条</string>
+    <string name="expense_edit_details_row_count_total">%1$d 条 · %2$s</string>
+    <!-- 折叠行的无障碍状态描述 -->
+    <string name="expense_edit_details_row_expanded">已展开</string>
+    <string name="expense_edit_details_row_collapsed">已收起</string>
     <!-- 来源标签：镜像后端 web_stats_service.SOURCE_LABELS，让来源行显示
          人话而不是 bill_split_received 这种裸 token；未知来源回退原值。 -->
     <string name="expense_edit_source_iphone">iPhone</string>
@@ -101,7 +120,6 @@
     <string name="expense_edit_more_value_score_short_label">值不值</string>
     <string name="expense_edit_more_regret_score_label">后悔指数，1-5</string>
     <string name="expense_edit_more_regret_score_short_label">后悔指数</string>
-    <string name="expense_edit_more_score_placeholder">1-5</string>
     <string name="expense_edit_more_raw_text_collapse_button">收起识别原文</string>
     <string name="expense_edit_more_raw_text_expand_button">查看识别原文</string>
     <string name="expense_edit_more_recognize_running_button">识别中</string>
@@ -124,12 +142,9 @@
     <string name="expense_edit_splits_footer_diff_label">差额</string>
     <string name="expense_edit_splits_footer_even_hint">点击均分可平账</string>
 
-    <!-- EditDraftPreviewCard / OcrProgressCard / ExpenseDateField -->
+    <!-- EditDraftPreviewCard（已退役）/ OcrProgressCard / 证据段 -->
     <string name="expense_edit_preview_image_loading">截图加载中</string>
     <string name="expense_edit_preview_image_saved">截图已保存</string>
-    <string name="expense_edit_preview_draft_label">识别草稿</string>
-    <string name="expense_edit_preview_merchant_empty">待填写商家</string>
-    <string name="expense_edit_preview_confidence_pill">可信度 %1$d%%</string>
     <string name="expense_edit_preview_image_button_loading">加载中</string>
     <string name="expense_edit_preview_image_button_collapse">收起截图</string>
     <string name="expense_edit_preview_image_button_open">看原图</string>
@@ -138,10 +153,12 @@
     <string name="expense_edit_ocr_progress_title">正在重新识别截图</string>
     <string name="expense_edit_ocr_progress_body">识别结果只会更新草稿，仍需要你核对后确认入账。</string>
     <string name="expense_edit_date_section_title">消费时间</string>
+    <!-- 时间行整行可点开日期 picker；此串只作无障碍点击标签，不再是可见按钮 -->
     <string name="expense_edit_date_pick_date_button">选日期</string>
     <string name="expense_edit_date_pick_time_button">选时间</string>
     <string name="expense_edit_date_use_now_button">设为现在</string>
-    <string name="expense_edit_date_clear_button">清除</string>
+    <!-- 草稿被改离已存值时出现：回到已存值（草稿恢复，不是事实清除） -->
+    <string name="expense_edit_undo_change_button">撤销修改</string>
 
     <!-- ExpenseEditV1DetailsSection：小票明细 / 家庭拆账 只读面板 -->
     <string name="expense_edit_v1_items_title">小票明细</string>

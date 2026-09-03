@@ -3,7 +3,7 @@
   <ManuallySuppressedIssues/>
   <CurrentIssues>
     <ID>CyclomaticComplexMethod:ExpenseEditScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun ExpenseEditScreen</ID>
-    <ID>CyclomaticComplexMethod:ExpenseEditV1Details.kt:@Composable private fun ExpenseItemsPanel</ID>
+    <ID>CyclomaticComplexMethod:ExpenseEditV1Details.kt:@Composable internal fun ExpenseItemsPanel</ID>
     <ID>CyclomaticComplexMethod:ExpenseMappers.kt:fun ExpenseDraft.toRequest: ExpenseUpdateRequest</ID>
     <ID>CyclomaticComplexMethod:FamilyMembersScreen.kt:@Composable fun FamilyMembersScreen</ID>
     <ID>CyclomaticComplexMethod:ImmersiveBackground.kt:@Composable fun TicketboxBackgroundLayer</ID>
@@ -30,7 +30,7 @@
     <ID>LongMethod:DuplicateConfirmSheet.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable internal fun DuplicateConfirmSheetContent</ID>
     <ID>LongMethod:ExpenseEditMoreSection.kt:@Composable internal fun ExpenseEditMoreSection</ID>
     <ID>LongMethod:ExpenseEditScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun ExpenseEditScreen</ID>
-    <ID>LongMethod:ExpenseEditV1Details.kt:@Composable private fun ExpenseItemsPanel</ID>
+    <ID>LongMethod:ExpenseEditV1Details.kt:@Composable internal fun ExpenseItemsPanel</ID>
     <ID>LongMethod:FamilyMembersScreen.kt:@Composable fun FamilyMembersScreen</ID>
     <ID>LongMethod:FamilyMembersScreen.kt:@Composable private fun FamilyMemberRow</ID>
     <ID>LongMethod:ImmersiveBackground.kt:@Composable fun TicketboxBackgroundLayer</ID>

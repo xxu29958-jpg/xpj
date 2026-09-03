@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
@@ -327,6 +328,9 @@ fun AppPageScrollableColumn(
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
+                            // 只约束最大宽度让栏与正文列对齐；横向 inset 由栏自己负责
+                            // （AppFloatingActionBar 已 padding screenHorizontal），这里不再叠一层。
+                            .appPageContentWidthOnly(resolvedContentMaxWidth)
                             .onSizeChanged { bottomBarHeight = with(density) { it.height.toDp() } },
                     ) {
                         bottomBar()
@@ -450,6 +454,15 @@ private fun Modifier.appPageContentWidth(maxWidth: Dp?): Modifier =
         fillMaxSize()
     } else {
         widthIn(max = maxWidth).fillMaxSize()
+    }
+
+// 宽度专用版：浮动底栏只需要横向对齐正文，[appPageContentWidth] 的
+// fillMaxSize 会把栏拉成整屏高，不能用在那里。
+private fun Modifier.appPageContentWidthOnly(maxWidth: Dp?): Modifier =
+    if (maxWidth == null) {
+        fillMaxWidth()
+    } else {
+        widthIn(max = maxWidth).fillMaxWidth()
     }
 
 @Composable

@@ -256,13 +256,10 @@ internal fun ExpenseEditSourceInfo(
     val labelRes = expenseSourceLabelRes(source)
     val display = labelRes?.let { stringResource(it) } ?: source
     Text(
-        stringResource(R.string.expense_edit_source_label, display),
+        text = confidence?.let {
+            stringResource(R.string.expense_edit_source_confidence_meta, display, (it * 100).toInt())
+        } ?: stringResource(R.string.expense_edit_source_label, display),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.bodySmall,
     )
-    confidence?.let {
-        Text(
-            stringResource(R.string.expense_edit_confidence_label, (it * 100).toInt()),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
 }

@@ -94,7 +94,7 @@ private fun CurrencySummaryRow(
 }
 
 @Composable
-private fun ExpenseCurrencyChoices(
+internal fun ExpenseCurrencyChoices(
     currency: CurrencyCode,
     enabled: Boolean,
     onCurrencySelect: (CurrencyCode) -> Unit,
