@@ -44,5 +44,7 @@
 
     <!-- AppAmountInput：金额输入 -->
     <string name="components_amount_input_placeholder">输入金额</string>
+    <!-- 金额框内可点币种尾随的无障碍点击标签 -->
+    <string name="components_amount_input_switch_currency">切换币种</string>
 
 </resources>

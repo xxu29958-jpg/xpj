@@ -2,225 +2,23 @@ package com.ticketbox.ui.screens.expense
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.DpSize
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.ticketbox.R
-import com.ticketbox.domain.model.Expense
-import com.ticketbox.domain.model.ProtectedImage
-import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppFilterChipOptions
-import com.ticketbox.ui.components.AppAsyncImage
-import com.ticketbox.ui.components.AppAsyncImageLayout
-import com.ticketbox.ui.components.AppAsyncImagePresentation
 import com.ticketbox.ui.components.AppLoadingState
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppOutlinedButtonOptions
 import com.ticketbox.ui.components.AppSectionHeader
-import com.ticketbox.ui.components.StatusPill
-import com.ticketbox.ui.components.formatExpenseExchangeMeta
-import com.ticketbox.ui.components.formatExpensePrimaryAmount
 import com.ticketbox.ui.design.AppAlpha
-import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.AppTextHierarchy
-
-internal data class EditDraftPreviewState(
-    val expense: Expense,
-    val previewImage: ProtectedImage?,
-    val imageLoading: Boolean,
-    val ocrRunning: Boolean,
-    val readOnly: Boolean,
-    val showLargeImage: Boolean,
-)
-
-internal data class EditDraftPreviewActions(
-    val onToggleLargeImage: () -> Unit,
-    val onRetryOcr: () -> Unit,
-)
-
-internal data class ExpenseDateFieldState(
-    val expenseTime: String,
-    val enabled: Boolean = true,
-)
-
-internal data class ExpenseDateFieldActions(
-    val onPickDate: () -> Unit,
-    val onPickTime: () -> Unit,
-    val onUseNow: () -> Unit,
-    val onClear: () -> Unit,
-)
-
-@Composable
-internal fun EditDraftPreviewCard(
-    state: EditDraftPreviewState,
-    actions: EditDraftPreviewActions,
-) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (state.expense.imagePath != null) {
-                AppAsyncImage(
-                    image = state.previewImage,
-                    presentation = AppAsyncImagePresentation(
-                        placeholder = if (state.imageLoading) {
-                            stringResource(R.string.expense_edit_preview_image_loading)
-                        } else {
-                            stringResource(R.string.expense_edit_preview_image_saved)
-                        },
-                        contentDescription = stringResource(R.string.components_async_image_content_description),
-                        contentScale = ContentScale.Crop,
-                    ),
-                    layout = AppAsyncImageLayout(
-                        compact = true,
-                        compactSize = DpSize(width = 104.dp, height = 136.dp),
-                    ),
-                )
-            }
-            EditDraftPreviewDetails(
-                modifier = Modifier.weight(1f),
-                state = state,
-                actions = actions,
-            )
-        }
-        ExpenseEditRowDivider()
-    }
-}
-
-@Composable
-private fun EditDraftPreviewDetails(
-    state: EditDraftPreviewState,
-    actions: EditDraftPreviewActions,
-    modifier: Modifier = Modifier,
-) {
-    val expense = state.expense
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-    ) {
-        Text(
-            text = stringResource(R.string.expense_edit_preview_draft_label),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelLarge,
-        )
-        Text(
-            text = expense.merchant?.takeIf { it.isNotBlank() }
-                ?: stringResource(R.string.expense_edit_preview_merchant_empty),
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        AppAmountText(
-            modifier = Modifier.fillMaxWidth(),
-            text = formatExpensePrimaryAmount(expense),
-            color = MaterialTheme.colorScheme.onSurface,
-            role = AppAmountRole.Medium,
-            minFontSize = 18.sp,
-        )
-        formatExpenseExchangeMeta(expense)?.let { meta ->
-            Text(
-                text = meta,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        EditDraftPreviewPills(expense)
-        if (expense.imagePath != null) {
-            EditDraftPreviewActionsRow(state = state, actions = actions)
-        }
-    }
-}
-
-@Composable
-private fun EditDraftPreviewPills(expense: Expense) {
-    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
-        StatusPill(expense.category)
-        expense.confidence?.let {
-            StatusPill(
-                stringResource(R.string.expense_edit_preview_confidence_pill, (it * 100).toInt()),
-                active = false,
-            )
-        }
-    }
-}
-
-@Composable
-private fun EditDraftPreviewActionsRow(
-    state: EditDraftPreviewState,
-    actions: EditDraftPreviewActions,
-) {
-    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
-        AppOutlinedButton(
-            modifier = Modifier
-                .weight(0.82f)
-                .height(AppSpacing.controlMinHeight),
-            options = AppOutlinedButtonOptions(
-                enabled = !state.imageLoading,
-                contentPadding = PaddingValues(horizontal = AppSpacing.smallGap, vertical = 0.dp),
-            ),
-            onClick = actions.onToggleLargeImage,
-        ) {
-            PreviewActionText(
-                when {
-                    state.imageLoading -> stringResource(R.string.expense_edit_preview_image_button_loading)
-                    state.showLargeImage -> stringResource(R.string.expense_edit_preview_image_button_collapse)
-                    else -> stringResource(R.string.expense_edit_preview_image_button_open)
-                },
-            )
-        }
-        if (!state.readOnly) {
-            AppOutlinedButton(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(AppSpacing.controlMinHeight),
-                options = AppOutlinedButtonOptions(
-                    enabled = !state.ocrRunning,
-                    contentPadding = PaddingValues(horizontal = AppSpacing.smallGap, vertical = 0.dp),
-                ),
-                onClick = actions.onRetryOcr,
-            ) {
-                PreviewActionText(
-                    if (state.ocrRunning) {
-                        stringResource(R.string.expense_edit_preview_recognize_running_button)
-                    } else {
-                        stringResource(R.string.expense_edit_preview_recognize_retry_button)
-                    },
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun PreviewActionText(text: String) {
-    Text(
-        text = text,
-        maxLines = 1,
-        softWrap = false,
-        overflow = TextOverflow.Ellipsis,
-        style = MaterialTheme.typography.labelMedium,
-        fontWeight = AppTextHierarchy.body.weight,
-    )
-}
 
 @Composable
 internal fun OcrProgressCard() {
@@ -274,33 +72,6 @@ internal fun SelectableCategoryChip(
         onClick = onClick,
         label = label,
         options = AppFilterChipOptions(enabled = enabled),
-    )
-}
-
-@Composable
-internal fun ExpenseDateField(
-    state: ExpenseDateFieldState,
-    actions: ExpenseDateFieldActions,
-) {
-    ExpenseDateControl(
-        state = ExpenseDateControlState(
-            title = stringResource(R.string.expense_edit_date_section_title),
-            expenseTime = state.expenseTime,
-            enabled = state.enabled,
-            showClear = state.expenseTime.isNotBlank(),
-        ),
-        labels = ExpenseDateControlLabels(
-            pickDate = stringResource(R.string.expense_edit_date_pick_date_button),
-            pickTime = stringResource(R.string.expense_edit_date_pick_time_button),
-            useNow = stringResource(R.string.expense_edit_date_use_now_button),
-            clear = stringResource(R.string.expense_edit_date_clear_button),
-        ),
-        actions = ExpenseDateControlActions(
-            onPickDate = actions.onPickDate,
-            onPickTime = actions.onPickTime,
-            onUseNow = actions.onUseNow,
-            onClear = actions.onClear,
-        ),
     )
 }
 

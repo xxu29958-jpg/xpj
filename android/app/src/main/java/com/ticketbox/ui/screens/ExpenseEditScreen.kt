@@ -2,10 +2,14 @@ package com.ticketbox.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -13,9 +17,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DuplicateStatusValues
@@ -26,9 +29,6 @@ import com.ticketbox.domain.model.isUncategorizedExpenseCategory
 import com.ticketbox.domain.model.normalizeExpenseCategory
 import com.ticketbox.domain.model.recordCurrencyDisplay
 import com.ticketbox.ui.components.AppPageRole
-import com.ticketbox.ui.components.AppAsyncImage
-import com.ticketbox.ui.components.AppAsyncImageLayout
-import com.ticketbox.ui.components.AppAsyncImagePresentation
 import com.ticketbox.ui.components.DuplicateNotice
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryPageSlots
@@ -39,20 +39,29 @@ import com.ticketbox.ui.components.nowUtcIso
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.formatMinorAmountInput
 import com.ticketbox.ui.components.parseMinorAmount
+import com.ticketbox.ui.components.sanitizeMinorAmountInput
+import com.ticketbox.ui.design.AppAdaptiveContentWidth
+import com.ticketbox.ui.design.AppAdaptivePaneTokens
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.screens.expense.EditDraftPreviewCard
-import com.ticketbox.ui.screens.expense.EditDraftPreviewActions
-import com.ticketbox.ui.screens.expense.EditDraftPreviewState
-import com.ticketbox.ui.screens.expense.ExpenseDateField
-import com.ticketbox.ui.screens.expense.ExpenseDateFieldActions
-import com.ticketbox.ui.screens.expense.ExpenseDateFieldState
-import com.ticketbox.ui.screens.expense.ExpenseCurrencyFieldOptions
+import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
+import com.ticketbox.ui.design.appAdaptiveSupportingPaneWidth
 import com.ticketbox.ui.screens.expense.ExpenseEditActionBar
 import com.ticketbox.ui.screens.expense.ExpenseEditActionBarActions
 import com.ticketbox.ui.screens.expense.ExpenseEditActionBarState
-import com.ticketbox.ui.screens.expense.ExpenseEditCategoryField
-import com.ticketbox.ui.screens.expense.ExpenseCurrencyFields
+import com.ticketbox.ui.screens.expense.ExpenseEditAmountCluster
+import com.ticketbox.ui.screens.expense.ExpenseEditAmountClusterActions
+import com.ticketbox.ui.screens.expense.ExpenseEditAmountClusterState
+import com.ticketbox.ui.screens.expense.ExpenseEditCategorySelector
+import com.ticketbox.ui.screens.expense.ExpenseEditCategorySelectorActions
+import com.ticketbox.ui.screens.expense.ExpenseEditCategorySelectorState
 import com.ticketbox.ui.screens.expense.ExpenseEditDatePicker
+import com.ticketbox.ui.screens.expense.ExpenseEditTimePicker
+import com.ticketbox.ui.screens.expense.ExpenseEditDetailsActions
+import com.ticketbox.ui.screens.expense.ExpenseEditDetailsSection
+import com.ticketbox.ui.screens.expense.ExpenseEditDetailsState
+import com.ticketbox.ui.screens.expense.ExpenseEditEvidenceActions
+import com.ticketbox.ui.screens.expense.ExpenseEditEvidenceSection
+import com.ticketbox.ui.screens.expense.ExpenseEditEvidenceState
 import com.ticketbox.ui.screens.expense.ExpenseEditMerchantField
 import com.ticketbox.ui.screens.expense.ExpenseEditMoreSection
 import com.ticketbox.ui.screens.expense.ExpenseEditMoreSectionActions
@@ -61,11 +70,10 @@ import com.ticketbox.ui.screens.expense.ExpenseEditNoteField
 import com.ticketbox.ui.screens.expense.ExpenseEditRecognizeTextDialog
 import com.ticketbox.ui.screens.expense.ExpenseEditRejectDialog
 import com.ticketbox.ui.screens.expense.ExpenseEditSourceInfo
-import com.ticketbox.ui.screens.expense.ExpenseEditTimePicker
+import com.ticketbox.ui.screens.expense.ExpenseEditTimeRow
+import com.ticketbox.ui.screens.expense.ExpenseEditTimeRowActions
+import com.ticketbox.ui.screens.expense.ExpenseEditTimeRowState
 import com.ticketbox.ui.screens.expense.ExpenseDetailActionButtonRow
-import com.ticketbox.ui.screens.expense.ExpenseEditV1DetailsActions
-import com.ticketbox.ui.screens.expense.ExpenseEditV1DetailsSection
-import com.ticketbox.ui.screens.expense.ExpenseEditV1DetailsState
 import com.ticketbox.ui.screens.expense.initialExpenseAmountInputMinor
 import com.ticketbox.ui.screens.expense.ItemsEditorSheetActions
 import com.ticketbox.ui.screens.expense.ItemsEditorSheet
@@ -239,6 +247,10 @@ fun ExpenseEditScreen(
     var showTimePicker by remember(currentExpense.id) { mutableStateOf(false) }
     var showRejectDialog by remember(currentExpense.id) { mutableStateOf(false) }
     var showLargeImage by remember(currentExpense.id) { mutableStateOf(false) }
+    var categorySheetOpen by remember(currentExpense.id) { mutableStateOf(false) }
+    var currencyExpanded by rememberSaveable(currentExpense.id) {
+        mutableStateOf(currency != FxContract.HomeCurrency)
+    }
     var amountFocused by remember(currentExpense.id) { mutableStateOf(false) }
     val rawTextDisplay = currentExpense.rawText?.takeIf { it.isNotBlank() }
         ?: stringResource(R.string.expense_edit_raw_text_empty)
@@ -360,6 +372,145 @@ fun ExpenseEditScreen(
         primaryActions.onConfirm(draft)
     }
 
+    // 宽屏（pane policy 判定可放辅列，含折叠屏姿态约束）：表单主列 + 证据辅列同屏对照
+    // （看票填单不来回滚）；否则保持单栏。与 Stats / Plan / Ledger 用同一份判定。
+    val wideTwoColumn = LocalAppAdaptiveLayoutPolicy.current.showsSupportingPane
+
+    val evidenceSections: @Composable () -> Unit = {
+        if (currentExpense.imagePath != null) {
+            ExpenseEditEvidenceSection(
+                state = ExpenseEditEvidenceState(
+                    previewImage = previewImage,
+                    fullImage = state.fullImage,
+                    imageLoading = state.imageLoading,
+                    ocrRunning = state.ocrRunning,
+                    readOnly = readOnly,
+                    showLargeImage = showLargeImage,
+                ),
+                actions = ExpenseEditEvidenceActions(
+                    onToggleLargeImage = {
+                        if (!showLargeImage && state.fullImage == null) {
+                            mediaActions.onLoadFullImage()
+                        }
+                        showLargeImage = !showLargeImage
+                    },
+                    onRetryOcr = mediaActions.onRetryOcr,
+                ),
+            )
+        }
+    }
+
+    val formSections: @Composable () -> Unit = {
+        ExpenseEditAmountCluster(
+            state = ExpenseEditAmountClusterState(
+                currency = currency,
+                amountText = amountText,
+                currencyExpanded = currencyExpanded,
+                enabled = !readOnly,
+            ),
+            actions = ExpenseEditAmountClusterActions(
+                onCurrencyChange = { code ->
+                    currency = code
+                    amountText = sanitizeMinorAmountInput(amountText, code)
+                },
+                onAmountChange = { amountText = it },
+                onAmountFocusChanged = { amountFocused = it },
+                onToggleCurrency = { currencyExpanded = !currencyExpanded },
+            ),
+        )
+        ExpenseEditMerchantField(
+            merchant = merchant,
+            onMerchantChange = { merchant = it },
+            enabled = !readOnly,
+        )
+        ExpenseEditCategorySelector(
+            state = ExpenseEditCategorySelectorState(
+                category = category,
+                categories = state.categories,
+                enabled = !readOnly,
+                sheetOpen = categorySheetOpen,
+            ),
+            actions = ExpenseEditCategorySelectorActions(
+                onCategoryChange = { category = it },
+                onOpenSheet = { categorySheetOpen = true },
+                onDismissSheet = { categorySheetOpen = false },
+            ),
+        )
+        ExpenseEditNoteField(
+            note = note,
+            onNoteChange = { note = it },
+            enabled = !readOnly,
+        )
+        ExpenseEditTimeRow(
+            state = ExpenseEditTimeRowState(
+                expenseTime = expenseTime,
+                baselineExpenseTime = currentExpense.expenseTime.orEmpty(),
+                enabled = !readOnly,
+            ),
+            actions = ExpenseEditTimeRowActions(
+                onPickDate = { showDatePicker = true },
+                onPickTime = { showTimePicker = true },
+                onUseNow = { expenseTime = nowUtcIso() },
+                onUndoChange = { expenseTime = currentExpense.expenseTime.orEmpty() },
+            ),
+        )
+        // 来源 quiet meta：单栏按定稿跟在时间行后；宽屏由证据辅列承载，
+        // 主列不再重复（否则 1440 同行信息出现两次）。
+        if (!wideTwoColumn) {
+            ExpenseEditSourceInfo(
+                source = currentExpense.source,
+                confidence = currentExpense.confidence,
+            )
+        }
+        ExpenseEditDetailsSection(
+            state = ExpenseEditDetailsState(
+                expenseId = currentExpense.id,
+                expenseItems = state.expenseItems,
+                expenseSplits = state.expenseSplits,
+                itemsLoading = state.itemsLoading,
+                splitsLoading = state.splitsLoading,
+                itemsLoadState = state.itemsLoadState,
+                splitsLoadState = state.splitsLoadState,
+                itemsMessage = state.itemsMessage,
+                splitsMessage = state.splitsMessage,
+                itemsMessageTone = state.itemsMessageTone,
+                splitsMessageTone = state.splitsMessageTone,
+            ),
+            actions = ExpenseEditDetailsActions(
+                onAcknowledgeItemsMismatch = itemizationActions.onAcknowledgeItemsMismatch,
+                onEditItems = if (state.readOnly) null else itemizationActions.onEditItems,
+                onEditSplits = if (state.readOnly) null else splitEditingActions.onEditSplits,
+            ),
+        )
+        ExpenseEditMoreSection(
+            state = ExpenseEditMoreSectionState(
+                tags = tags,
+                valueScoreText = valueScoreText,
+                regretScoreText = regretScoreText,
+                valueScoreBaseline = currentExpense.valueScore,
+                regretScoreBaseline = currentExpense.regretScore,
+                rawTextDisplay = rawTextDisplay,
+                moreExpanded = moreExpanded,
+                rawTextExpanded = rawTextExpanded,
+                ocrRunning = state.ocrRunning,
+                saving = state.saving,
+                readOnly = readOnly,
+                canRecognize = expense.status == "pending",
+            ),
+            actions = ExpenseEditMoreSectionActions(
+                onTagsChange = { tags = it },
+                onValueScoreChange = { valueScoreText = it },
+                onRegretScoreChange = { regretScoreText = it },
+                onValueScoreUndo = { valueScoreText = currentExpense.valueScore?.toString().orEmpty() },
+                onRegretScoreUndo = { regretScoreText = currentExpense.regretScore?.toString().orEmpty() },
+                onToggleMore = { moreExpanded = !moreExpanded },
+                onToggleRawText = { rawTextExpanded = !rawTextExpanded },
+                onRetryOcr = mediaActions.onRetryOcr,
+                onRecognizeText = mediaActions.onOpenRecognizeText,
+            ),
+        )
+    }
+
     AppSecondaryScrollableColumn(
         chrome = AppSecondaryPageChrome(
             role = AppPageRole.Edit,
@@ -368,6 +519,7 @@ fun ExpenseEditScreen(
             backText = stringResource(R.string.expense_edit_primary_back_button),
             onBack = handleBack,
             hasBottomBar = false,
+            contentWidth = AppAdaptiveContentWidth.Wide,
             verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
         ),
         // 操作栏浮在底部：底部空间由实测栏高让出（见 AppPageScrollableColumn），
@@ -419,135 +571,52 @@ fun ExpenseEditScreen(
             OcrProgressCard()
         }
 
-        ExpenseCurrencyFields(
-            currency = currency,
-            onCurrencyChange = {
-                currency = it
-            },
-            amountText = amountText,
-            onAmountChange = { amountText = it },
-            options = ExpenseCurrencyFieldOptions(
-                enabled = !readOnly,
-                autoFocusAmount = false,
-                onAmountFocusChanged = { amountFocused = it },
-                showSectionTitle = false,
-            ),
-        )
-        ExpenseEditMerchantField(
-            merchant = merchant,
-            onMerchantChange = { merchant = it },
-            enabled = !readOnly,
-        )
-        ExpenseEditCategoryField(
-            category = category,
-            categories = state.categories,
-            onCategoryChange = { category = it },
-            enabled = !readOnly,
-        )
-        ExpenseEditNoteField(
-            note = note,
-            onNoteChange = { note = it },
-            enabled = !readOnly,
-        )
-        ExpenseDateField(
-            state = ExpenseDateFieldState(
-                expenseTime = expenseTime,
-                enabled = !readOnly,
-            ),
-            actions = ExpenseDateFieldActions(
-                onPickDate = { showDatePicker = true },
-                onPickTime = { showTimePicker = true },
-                onUseNow = { expenseTime = nowUtcIso() },
-                onClear = { expenseTime = "" },
-            ),
-        )
-        ExpenseEditSourceInfo(
-            source = currentExpense.source,
-            confidence = currentExpense.confidence,
-        )
-
-        EditDraftPreviewCard(
-            state = EditDraftPreviewState(
-                expense = currentExpense,
-                previewImage = previewImage,
-                imageLoading = state.imageLoading,
-                ocrRunning = state.ocrRunning,
-                readOnly = readOnly,
-                showLargeImage = showLargeImage,
-            ),
-            actions = EditDraftPreviewActions(
-                onToggleLargeImage = {
-                    if (!showLargeImage && state.fullImage == null) {
-                        mediaActions.onLoadFullImage()
-                    }
-                    showLargeImage = !showLargeImage
-                },
-                onRetryOcr = mediaActions.onRetryOcr,
-            ),
-        )
-
-        if (showLargeImage && currentExpense.imagePath != null) {
-            AppAsyncImage(
-                image = state.fullImage ?: previewImage,
-                presentation = AppAsyncImagePresentation(
-                    placeholder = if (state.imageLoading) {
-                        stringResource(R.string.expense_edit_large_image_loading)
-                    } else {
-                        stringResource(R.string.expense_edit_large_image_failed)
-                    },
-                    contentDescription = stringResource(R.string.components_async_image_content_description),
-                    contentScale = ContentScale.Fit,
-                ),
-                layout = AppAsyncImageLayout(displayHeight = 420.dp),
-            )
+        if (wideTwoColumn) {
+            ExpenseEditTwoColumnLayout(form = formSections) {
+                evidenceSections()
+                ExpenseEditSourceInfo(
+                    source = currentExpense.source,
+                    confidence = currentExpense.confidence,
+                )
+            }
+        } else {
+            evidenceSections()
+            formSections()
         }
-
-        ExpenseEditV1DetailsSection(
-            state = ExpenseEditV1DetailsState(
-                expenseItems = state.expenseItems,
-                expenseSplits = state.expenseSplits,
-                itemsLoading = state.itemsLoading,
-                splitsLoading = state.splitsLoading,
-                itemsLoadState = state.itemsLoadState,
-                splitsLoadState = state.splitsLoadState,
-                itemsMessage = state.itemsMessage,
-                splitsMessage = state.splitsMessage,
-                itemsMessageTone = state.itemsMessageTone,
-                splitsMessageTone = state.splitsMessageTone,
-            ),
-            actions = ExpenseEditV1DetailsActions(
-                onAcknowledgeItemsMismatch = itemizationActions.onAcknowledgeItemsMismatch,
-                onEditItems = if (state.readOnly) null else itemizationActions.onEditItems,
-                onEditSplits = if (state.readOnly) null else splitEditingActions.onEditSplits,
-            ),
-        )
-
-        ExpenseEditMoreSection(
-            state = ExpenseEditMoreSectionState(
-                tags = tags,
-                valueScoreText = valueScoreText,
-                regretScoreText = regretScoreText,
-                rawTextDisplay = rawTextDisplay,
-                moreExpanded = moreExpanded,
-                rawTextExpanded = rawTextExpanded,
-                ocrRunning = state.ocrRunning,
-                saving = state.saving,
-                readOnly = readOnly,
-                canRecognize = expense.status == "pending",
-            ),
-            actions = ExpenseEditMoreSectionActions(
-                onTagsChange = { tags = it },
-                onValueScoreChange = { valueScoreText = it },
-                onRegretScoreChange = { regretScoreText = it },
-                onToggleMore = { moreExpanded = !moreExpanded },
-                onToggleRawText = { rawTextExpanded = !rawTextExpanded },
-                onRetryOcr = mediaActions.onRetryOcr,
-                onRecognizeText = mediaActions.onOpenRecognizeText,
-            ),
-        )
 
         // 保存 / 确认入账 / 删除 与校验提示现在浮在底部操作栏（见 bottomBar），
         // 不再钉在长表单滚动末尾。
+    }
+}
+
+/**
+ * 宽屏双列：表单主列吃剩余宽度，证据辅列按实测可用宽度走 [appAdaptiveSupportingPaneWidth]
+ * （与 AppAdaptivePaneScaffold 同一份口径：保 primaryMinWidth，gutter 用 paneGutter）。
+ */
+@Composable
+private fun ExpenseEditTwoColumnLayout(
+    form: @Composable () -> Unit,
+    supporting: @Composable () -> Unit,
+) {
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val supportingWidth = appAdaptiveSupportingPaneWidth(maxWidth)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppAdaptivePaneTokens.paneGutter),
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+            ) {
+                form()
+            }
+            Column(
+                modifier = Modifier.width(supportingWidth),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+            ) {
+                supporting()
+            }
+        }
     }
 }
 

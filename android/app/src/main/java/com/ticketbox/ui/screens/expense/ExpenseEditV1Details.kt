@@ -63,68 +63,8 @@ internal data class ExpenseBillSplitInvitePanelActions(
     val onCancelInvite: (publicId: String) -> Unit,
 )
 
-internal data class ExpenseEditV1DetailsState(
-    val expenseItems: ExpenseItems?,
-    val expenseSplits: ExpenseSplits?,
-    val itemsLoading: Boolean,
-    val splitsLoading: Boolean,
-    val itemsLoadState: ExpenseDetailDataLoadState,
-    val splitsLoadState: ExpenseDetailDataLoadState,
-    val itemsMessage: UiText?,
-    val splitsMessage: UiText?,
-    val itemsMessageTone: MessageTone,
-    val splitsMessageTone: MessageTone,
-)
-
-internal data class ExpenseEditV1DetailsActions(
-    val onAcknowledgeItemsMismatch: () -> Unit = {},
-    val onEditItems: (() -> Unit)? = null,
-    val onEditSplits: (() -> Unit)? = null,
-)
-
 @Composable
-internal fun ExpenseEditV1DetailsSection(
-    state: ExpenseEditV1DetailsState,
-    actions: ExpenseEditV1DetailsActions = ExpenseEditV1DetailsActions(),
-) {
-    val currencyDisplay = LocalCurrencyDisplay.current
-    val itemsState = DetailLoadState(
-        loading = state.itemsLoading,
-        loadState = state.itemsLoadState,
-        message = state.itemsMessage,
-        messageTone = state.itemsMessageTone,
-    )
-    val splitsState = DetailLoadState(
-        loading = state.splitsLoading,
-        loadState = state.splitsLoadState,
-        message = state.splitsMessage,
-        messageTone = state.splitsMessageTone,
-    )
-
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-    ) {
-        ExpenseItemsPanel(
-            expenseItems = state.expenseItems,
-            state = itemsState,
-            currencyDisplay = currencyDisplay,
-            onAcknowledgeMismatch = actions.onAcknowledgeItemsMismatch,
-            onEditItems = actions.onEditItems,
-        )
-        ExpenseDetailDivider()
-        ExpenseSplitsPanel(
-            expenseSplits = state.expenseSplits,
-            state = splitsState,
-            currencyDisplay = currencyDisplay,
-            onEditSplits = actions.onEditSplits,
-        )
-        ExpenseDetailDivider()
-    }
-}
-
-@Composable
-private fun ExpenseItemsPanel(
+internal fun ExpenseItemsPanel(
     expenseItems: ExpenseItems?,
     state: DetailLoadState,
     currencyDisplay: CurrencyDisplay,
@@ -143,13 +83,10 @@ private fun ExpenseItemsPanel(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-        DetailHeader(
-            title = stringResource(R.string.expense_edit_v1_items_title),
-            subtitle = stringResource(R.string.expense_edit_v1_items_subtitle),
-            trailing = expenseItems
-                ?.takeIf { presentation.showAuthoritativeTotal }
-                ?.itemsTotalAmountCents
-                ?.let { formatDisplayAmount(it, currencyDisplay) },
+        Text(
+            text = stringResource(R.string.expense_edit_v1_items_subtitle),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
         )
         onEditItems?.takeIf { presentation.showAction }?.let { editItemsAction ->
             ExpenseDetailActionButtonRow(
@@ -326,7 +263,7 @@ private fun ItemsSumAcknowledgedBanner(
 }
 
 @Composable
-private fun ExpenseSplitsPanel(
+internal fun ExpenseSplitsPanel(
     expenseSplits: ExpenseSplits?,
     state: DetailLoadState,
     currencyDisplay: CurrencyDisplay,
@@ -345,13 +282,10 @@ private fun ExpenseSplitsPanel(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-        DetailHeader(
-            title = stringResource(R.string.expense_edit_v1_splits_title),
-            subtitle = stringResource(R.string.expense_edit_v1_splits_subtitle),
-            trailing = expenseSplits
-                ?.takeIf { presentation.showAuthoritativeTotal }
-                ?.splitsTotalAmountCents
-                ?.let { formatDisplayAmount(it, currencyDisplay) },
+        Text(
+            text = stringResource(R.string.expense_edit_v1_splits_subtitle),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
         )
         editSplitsAction?.let {
             ExpenseSplitsActionButton(expenseSplits = expenseSplits, onEditSplits = it)
@@ -620,7 +554,7 @@ private fun TotalReconcileLine(
 }
 
 @Composable
-private fun ExpenseDetailReconcileStatus.label(): String = stringResource(
+internal fun ExpenseDetailReconcileStatus.label(): String = stringResource(
     when (this) {
         ExpenseDetailReconcileStatus.Matched -> R.string.expense_edit_v1_reconcile_match_pill
         ExpenseDetailReconcileStatus.Diff -> R.string.expense_edit_v1_reconcile_diff_pill
@@ -700,13 +634,13 @@ private fun ExpenseSplitRow(split: ExpenseSplit, currencyDisplay: CurrencyDispla
     }
 }
 
-private data class DetailStateCopy(
+internal data class DetailStateCopy(
     val loadingTitle: String,
     val loadingBody: String,
     val emptyText: String,
 )
 
-private data class DetailLoadState(
+internal data class DetailLoadState(
     val loading: Boolean,
     val loadState: ExpenseDetailDataLoadState,
     val message: UiText?,
@@ -798,6 +732,6 @@ private fun splitSubtitle(split: ExpenseSplit): String {
 }
 
 @Composable
-private fun ExpenseDetailDivider() {
+internal fun ExpenseDetailDivider() {
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
 }
