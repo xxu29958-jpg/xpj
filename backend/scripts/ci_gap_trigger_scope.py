@@ -41,6 +41,7 @@ _FULL_PATHS = {
     "backend/scripts/release_audit.py",
     "backend/scripts/report_qualification_sha.py",
     "backend/scripts/verify_backend_ci_results.py",
+    "backend/scripts/verify_codeql_required_context.py",
 }
 _ALWAYS_ON_CONTRACT_PATHS = {
     "backend/tests/_infra/android_test_qualification.py",
@@ -208,6 +209,55 @@ _WINDOWS_INSTALLATION_HEALTH_FILES = installation_health_python_dependencies() |
 _WINDOWS_DATASET_MAINTENANCE_PREFIXES = (
     "backend/app/database/_dataset_",
 )
+_REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+_WEB_BFF_SOURCE = _REPO_ROOT / "desktop" / "backend_manager" / "web_bff.py"
+_DESKTOP_PRODUCT_SCOPES = ("postgres", "backend_frozen", "desktop")
+_DESKTOP_BFF_AUTH_ROUTES = frozenset({"backend/app/routes/web_auth.py"})
+
+
+def desktop_bff_static_repo_prefixes() -> tuple[str, ...]:
+    """Map Desktop BFF ``/static/.../`` allowlist entries onto repo prefixes."""
+    tree = ast.parse(_WEB_BFF_SOURCE.read_text(encoding="utf-8"))
+    function = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "allowed_target"
+    )
+    prefixes: list[str] = []
+    for node in ast.walk(function):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if not isinstance(func, ast.Attribute) or func.attr != "startswith":
+            continue
+        values: list[str] = []
+        for arg in node.args:
+            if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                values.append(arg.value)
+            elif isinstance(arg, ast.Tuple):
+                values.extend(
+                    elt.value
+                    for elt in arg.elts
+                    if isinstance(elt, ast.Constant) and isinstance(elt.value, str)
+                )
+        for value in values:
+            if value.startswith("/static/") and value.endswith("/"):
+                prefixes.append(f"backend/app{value}")
+    unique = tuple(dict.fromkeys(prefixes))
+    if not unique:
+        raise RuntimeError("desktop BFF allowed_target has no /static/ prefixes")
+    return unique
+
+
+# Desktop BFF proxies /web and /static/{web,shared}; Edge E2E also reads
+# those files from disk. /web/auth is rejected by the BFF, so web_auth.py
+# stays on the ordinary backend/app rule via the exact exclusion below.
+_SHARED_WEB_DESKTOP_PREFIXES = (
+    *desktop_bff_static_repo_prefixes(),
+    "backend/app/templates/web/",
+    "backend/app/routes/web_",
+    "backend/app/routes/_web_",
+)
 _FROZEN_DESKTOP_PREFIXES = (
     "desktop/backend_manager/",
     "desktop/packaging/",
@@ -247,12 +297,17 @@ _EXACT_SCOPE_RULES = {
     _CROSS_RUNTIME_RELEASE_CONFIG: ("postgres", "desktop", "windows"),
     "backend/app/version.py": ("postgres", "desktop", "windows"),
     "backend/packaging/windows-build-toolchain.json": ("postgres", "windows"),
+    **dict.fromkeys(_DESKTOP_BFF_AUTH_ROUTES, ("postgres", "backend_frozen")),
 }
 _PREFIX_SCOPE_RULES = (
     (_DOC_PREFIXES, ()),
     (("android/",), ("android",)),
     (_FROZEN_DESKTOP_PREFIXES, ("desktop", "windows")),
     (("desktop/",), ("desktop",)),
+    (
+        _SHARED_WEB_DESKTOP_PREFIXES,
+        _DESKTOP_PRODUCT_SCOPES,
+    ),
     (
         _WINDOWS_DATASET_MAINTENANCE_PREFIXES,
         ("postgres", "backend_frozen", "windows"),
