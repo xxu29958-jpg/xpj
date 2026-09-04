@@ -66,9 +66,6 @@ class StatsAdaptiveExperienceTest {
         for (size in listOf(360.dp to AppAdaptiveLayoutPolicy.Compact, 768.dp to medium, 1440.dp to expanded)) {
             composeRule.runOnIdle { viewport.value = size }
             composeRule.onNode(hasText("自定义总览") and hasClickAction()).assertIsDisplayed()
-            composeRule.onNodeWithTag("overview-module-recent_uploads").performScrollTo()
-            composeRule.onNodeWithText(context.getString(R.string.dashboard_ledger_scope), useUnmergedTree = true)
-                .assertIsDisplayed()
             val tab = composeRule.onNode(hasText(context.getString(R.string.stats_tab_overview)) and hasClickAction())
                 .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
             val result = composeRule.onNodeWithText(context.getString(R.string.stats_overview_month_spend_label))
@@ -79,6 +76,9 @@ class StatsAdaptiveExperienceTest {
             assertTrue("Filters precede the views they control", filter.bottom <= tab.top)
             assertTrue("Views precede their results", tab.bottom <= result.top)
         }
+        composeRule.onNodeWithTag("overview-module-recent_uploads").performScrollTo()
+        composeRule.onNodeWithText(context.getString(R.string.dashboard_ledger_scope), useUnmergedTree = true)
+            .assertIsDisplayed()
     }
 
     @Test
