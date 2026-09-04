@@ -36,17 +36,18 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class LedgerViewModelTest {
-    private fun ledgerTest(block: suspend TestScope.() -> Unit) = runTest {
-        val dispatcher = StandardTestDispatcher(testScheduler)
-        Dispatchers.setMain(dispatcher)
-        try {
-            block()
-        } finally {
-            Dispatchers.resetMain()
-        }
+private fun ledgerTest(block: suspend TestScope.() -> Unit) = runTest {
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    Dispatchers.setMain(dispatcher)
+    try {
+        block()
+    } finally {
+        Dispatchers.resetMain()
     }
+}
 
+@OptIn(ExperimentalCoroutinesApi::class)
+class LedgerExportViewModelTest {
     @Test
     fun exportRetainsDownloadedFileUntilDestinationReturns() = ledgerTest {
         val fake = FakeLedgerActions(
@@ -102,6 +103,10 @@ class LedgerViewModelTest {
         }
     }
 
+}
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class LedgerViewModelTest {
     @Test
     fun derivesSummaryFromFilteredItemsAndKeepsViewModeInState() = ledgerTest {
         val fake = FakeLedgerActions(
