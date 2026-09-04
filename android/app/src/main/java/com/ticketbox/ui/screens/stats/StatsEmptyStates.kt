@@ -21,12 +21,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
+import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppFilterChipOptions
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
+import com.ticketbox.ui.screens.StatsProductLoadingState
+import com.ticketbox.viewmodel.StatsUiState
 
 @Composable
 internal fun StatsMonthChip(
@@ -117,5 +121,24 @@ private fun SkeletonBlock(
                 .clip(RoundedCornerShape(AppRadius.pill))
                 .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f)),
         )
+    }
+}
+
+/** stats 不可读三态（loading / error / empty），与迁移前逐条一致。 */
+@Composable
+internal fun StatsUnreadableState(
+    state: StatsUiState,
+    onRefresh: () -> Unit,
+) {
+    when {
+        state.loading -> StatsProductLoadingState()
+        state.statsLoadError != null -> AppErrorState(
+            title = stringResource(R.string.stats_error_card_title),
+            body = state.statsLoadError.asString().ifBlank {
+                stringResource(R.string.stats_error_card_body)
+            },
+            onRetry = onRefresh,
+        )
+        else -> EmptyStatsCard(onRefresh = onRefresh)
     }
 }
