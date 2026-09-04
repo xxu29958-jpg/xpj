@@ -57,6 +57,7 @@ import com.ticketbox.ui.components.AppAdaptiveAmountRowDefaults
 import com.ticketbox.ui.components.AppAdaptiveContentActionStateRow
 import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.AppEndAlignedAmountStatusText
+import com.ticketbox.ui.components.autosizeMinFontSize
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatDisplayAmount
@@ -371,38 +372,42 @@ internal fun LedgerExpenseListRow(
                 onLongClick = actions.onEnterSelection,
             ),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = AppSpacing.miniGap, vertical = rowMetrics.rowPadding),
-            horizontalArrangement = Arrangement.spacedBy(rowMetrics.itemSpacing),
+        AppAdaptiveContentActionStateRow(
+            modifier = Modifier.padding(horizontal = AppSpacing.miniGap, vertical = rowMetrics.rowPadding),
             verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Row(
-                modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(rowMetrics.itemSpacing),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (state.selection.enabled) {
-                    Checkbox(checked = state.selection.selected, onCheckedChange = null)
+            content = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(rowMetrics.itemSpacing),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (state.selection.enabled) {
+                        Checkbox(checked = state.selection.selected, onCheckedChange = null)
+                    }
+                    LedgerCategoryMark(category = expense.category, density = AppListDensity.Compact)
+                    LedgerListTextBlock(
+                        expense = expense,
+                        metaText = metaText,
+                        lineageStatus = state.lineageStatus,
+                        modifier = Modifier.weight(1f),
+                    )
                 }
-                LedgerCategoryMark(category = expense.category, density = AppListDensity.Compact)
-                LedgerListTextBlock(
-                    expense = expense,
-                    metaText = metaText,
-                    lineageStatus = state.lineageStatus,
-                    modifier = Modifier.weight(1f),
+            },
+            action = { amountModifier, stacked ->
+                LedgerAmountOrPending(
+                    amountCents = expense.amountCents,
+                    display = CurrencyDisplay.forRecord(expense.homeCurrencyCode ?: expense.homeCurrency.storageKey),
+                    modifier = if (stacked) {
+                        amountModifier
+                    } else {
+                        amountModifier.widthIn(
+                            min = AppAdaptiveAmountRowDefaults.statusMinWidth,
+                            max = AppAdaptiveAmountRowDefaults.secondaryMetaInlineMaxWidth,
+                        )
+                    },
                 )
-            }
-            LedgerAmountOrPending(
-                amountCents = expense.amountCents,
-                display = CurrencyDisplay.forRecord(expense.homeCurrencyCode ?: expense.homeCurrency.storageKey),
-                modifier = Modifier.widthIn(
-                    min = AppAdaptiveAmountRowDefaults.statusMinWidth,
-                    max = AppAdaptiveAmountRowDefaults.secondaryMetaInlineMaxWidth,
-                ),
-            )
-        }
+            },
+        )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.subtle))
     }
 }
@@ -513,6 +518,7 @@ private fun LedgerAmountOrPending(
                 modifier = Modifier.fillMaxWidth(),
                 text = formatDisplayAmount(it, display),
                 role = AppAmountRole.Medium,
+                minFontSize = AppAmountRole.Compact.autosizeMinFontSize,
                 color = MaterialTheme.colorScheme.onSurface,
             )
         } ?: AppEndAlignedAmountStatusText(

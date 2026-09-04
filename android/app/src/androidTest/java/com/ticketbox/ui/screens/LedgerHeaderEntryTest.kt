@@ -23,6 +23,12 @@ import com.ticketbox.domain.model.ConfirmedStreamItem
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseLineageStatus
 import com.ticketbox.domain.model.ExpenseSourceValues
+import com.ticketbox.domain.model.MONEY_MINOR_MAX
+import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.screens.ledger.LedgerExpenseItemActions
+import com.ticketbox.ui.screens.ledger.LedgerExpenseItemState
+import com.ticketbox.ui.screens.ledger.LedgerExpenseListRow
+import com.ticketbox.ui.screens.ledger.LedgerExpenseSelectionState
 import com.ticketbox.ui.screens.ledger.LedgerHeader
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.LedgerUiState
@@ -63,6 +69,35 @@ class LedgerHeaderEntryTest {
             !result.hasVisualOverflow && (0 until result.lineCount).none(result::isLineEllipsized)
         })
         composeRule.onNodeWithText("1 笔", substring = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun compactListRowKeepsWholeMaximumAmountAtLargeFont() {
+        val expense = (confirmedRow(MONEY_MINOR_MAX) as ConfirmedStreamItem.ExpenseRow).root
+        composeRule.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 1.8f)) {
+                TicketboxTheme(skin = AppSkin.Default) {
+                    Box(Modifier.width(328.dp)) {
+                        LedgerExpenseListRow(
+                            state = LedgerExpenseItemState(
+                                expense = expense,
+                                selection = LedgerExpenseSelectionState(enabled = false, selected = false),
+                            ),
+                            actions = LedgerExpenseItemActions({}, {}, {}),
+                        )
+                    }
+                }
+            }
+        }
+        val results = mutableListOf<TextLayoutResult>()
+        composeRule.onNodeWithText(formatAmount(MONEY_MINOR_MAX), useUnmergedTree = true)
+            .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(results) }
+        assertTrue("Row amount layout must be available", results.isNotEmpty())
+        assertTrue("A financial row amount must not lose digits", results.all { result ->
+            !result.hasVisualOverflow && (0 until result.lineCount).none(result::isLineEllipsized)
+        })
+        composeRule.onNodeWithText("咖啡店").assertIsDisplayed()
     }
 
     @Test
