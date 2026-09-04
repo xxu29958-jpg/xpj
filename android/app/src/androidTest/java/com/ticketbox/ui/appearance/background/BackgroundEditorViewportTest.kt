@@ -5,7 +5,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.Window
 import android.view.inspector.WindowInspector
-import androidx.annotation.RequiresApi
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
@@ -32,7 +31,6 @@ import com.ticketbox.ui.screens.settings.BackgroundEditorScreen
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.BackgroundEditorState
 import org.junit.Assert.assertEquals
-import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -40,9 +38,7 @@ class BackgroundEditorViewportTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
     @Test
-    @RequiresApi(29)
     fun compositionUsesTheGlobalCanvasEvenUnderTheLocalUnlockBanner() {
-        assumeTrue(Build.VERSION.SDK_INT >= 29)
         compose.runOnUiThread { compose.activity.enableEdgeToEdge() }
         val skin = mutableStateOf(AppSkin.Paper)
         compose.setContent {
@@ -85,10 +81,12 @@ class BackgroundEditorViewportTest {
 
     private fun assertSystemBarIcons(lightAppearance: Boolean) {
         compose.runOnIdle {
-            val window = requireNotNull(WindowInspector.getGlobalWindowViews().firstNotNullOfOrNull(::dialogWindow))
-            val bars = WindowInsetsControllerCompat(window, window.decorView)
-            assertEquals("Editor status icon appearance", lightAppearance, bars.isAppearanceLightStatusBars)
-            assertEquals("Editor navigation icon appearance", lightAppearance, bars.isAppearanceLightNavigationBars)
+            if (Build.VERSION.SDK_INT >= 29) {
+                val window = requireNotNull(WindowInspector.getGlobalWindowViews().firstNotNullOfOrNull(::dialogWindow))
+                val bars = WindowInsetsControllerCompat(window, window.decorView)
+                assertEquals("Editor status icon appearance", lightAppearance, bars.isAppearanceLightStatusBars)
+                assertEquals("Editor navigation icon appearance", lightAppearance, bars.isAppearanceLightNavigationBars)
+            }
         }
     }
 
