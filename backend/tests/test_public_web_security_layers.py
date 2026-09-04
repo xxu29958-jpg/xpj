@@ -74,7 +74,7 @@ def test_cloudflare_access_required_blocks_static_web_asset(
 ) -> None:
     with _access_env(monkeypatch):
         pub = _public_client()
-        resp = pub.get("/static/web/web.css")
+        resp = pub.get("/static/web/product/shell.css")
 
     assert resp.status_code == 403
     assert resp.json()["error"] == "cloudflare_access_required"
@@ -103,7 +103,7 @@ def test_valid_cloudflare_access_jwt_reaches_next_web_session_layer(
             headers={"Cf-Access-Jwt-Assertion": "good-jwt"},
         )
         asset = pub.get(
-            "/static/web/web.css",
+            "/static/web/product/shell.css",
             headers={"Cf-Access-Jwt-Assertion": "good-jwt"},
         )
 

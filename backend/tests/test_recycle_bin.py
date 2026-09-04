@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import timedelta
 
 import pytest
@@ -333,8 +334,7 @@ def test_web_recycle_bin_workbench_structure_owner(
     assert response.status_code == 200
     body = response.text
     # 五域 IA：回收站仍归流水域，但 section 父级已经收口到资料库 hub。
-    assert 'aria-label="面包屑"' in body
-    assert 'class="rb-breadcrumb-parent" href="/web/library?ledger_id=owner">资料库</a>' in body
+    assert re.search(r'<nav\b[^>]*aria-label="面包屑"[^>]*>\s*<a[^>]*href="/web/library\?ledger_id=owner">资料库</a>', body)
     # 工作台面板 + 产品表格 (取代旧 dt-card KPI + dt-table)。
     assert 'aria-label="可恢复项目"' in body
     assert 'class="product-table"' in body

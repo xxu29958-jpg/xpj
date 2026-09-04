@@ -3,19 +3,17 @@
 {% set product_body_domain = 'transactions' %}
 {% block title %}回收站 · 资料库 · 小票夹{% endblock %}
 
-{# C5c-1 增量 2: 回收站改挂资料库 (本页 12-14 行旧注释约定的兑现)。
-   页面级 CSS 仍走 pages/recycle-bin.css, 经 page_scripts 块挂载;
-   base.html 的 _product_body_domains 已把本页切到 product 栈。 #}
-{% block page_scripts %}
-<link rel="stylesheet" href="/static/web/pages/recycle-bin.css?v={{ asset_version }}">
-{% endblock %}
-
+{# C4 旧栈收官: 页面级 pages/recycle-bin.css 的活样式 (工作台面板 / 页头 hero
+   计数 / ≤720px 行重构与 422 锚) 归并进 product 流水域 transactions.css, 旧
+   文件物理退役; 面包屑换用资料库共用 library-breadcrumb 词汇, 产品表格回到
+   共享 .product-table 组件 (W1 中文表头口径), product-feedback--success /
+   product-state-action 复用 components.css 既有件。 #}
 {% block content %}
 {# C5c-1: 面包屑父级从纯文本「流水」改为可点击的 /web/library 资料库 hub。 #}
-<nav class="rb-breadcrumb" aria-label="面包屑">
-  <a class="rb-breadcrumb-parent" href="/web/library{{ q }}">资料库</a>
-  <span class="rb-breadcrumb-sep" aria-hidden="true">/</span>
-  <span class="rb-breadcrumb-current" aria-current="page">回收站</span>
+<nav class="library-breadcrumb" aria-label="面包屑">
+  <a class="library-breadcrumb-parent" href="/web/library{{ q }}">资料库</a>
+  <span class="library-breadcrumb-sep" aria-hidden="true">/</span>
+  <span class="library-breadcrumb-current" aria-current="page">回收站</span>
 </nav>
 
 <header class="product-page-header">

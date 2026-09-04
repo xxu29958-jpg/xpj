@@ -1,9 +1,0 @@
-/* v0.8 - Budget dashboard */
-
-.budget-excluded {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    align-items: center;
-    margin-top: 14px;
-}

@@ -1,7 +1,0 @@
-/* v0.4-alpha3 slice 2 - Data Quality dashboard
- *
- * W3 洞察片: data_quality 正文迁 product 洞察域 (quality-metrics/quality-actions),
- * 原 .summary-card.is-* / .dq-action-list / .page-footer-hint 零引用, 已物理删除。
- * .page-hint 仍被 debt_goals/import_batch 等 LEGACY 页使用, 保留。 */
-
-.page-hint { color: var(--text-muted); font-size: 13px; margin-top: -8px; margin-bottom: 16px; }
