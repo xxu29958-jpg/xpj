@@ -176,8 +176,14 @@ def test_budget_advise_render_follows_zero_decimal_home(jpy_env, web_client: Tes
         "/web/budget-advise?ledger_id=owner&month=2026-05&savings_target_yuan=1200",
     )
     assert page.status_code == 200, page.text
-    assert "¥1200 储蓄目标" in page.text
-    assert "¥12.00 储蓄目标" not in page.text
+    assert re.search(
+        r"<small>\s*储蓄目标\s*</small>\s*<strong>\s*−\s*¥1200\s*</strong>",
+        page.text,
+    )
+    assert not re.search(
+        r"<small>\s*储蓄目标\s*</small>\s*<strong>\s*−\s*¥12\.00\s*</strong>",
+        page.text,
+    )
     assert "储蓄目标（JPY）" in page.text
     assert "备用金（JPY）" in page.text
     assert "储蓄目标（元）" not in page.text
@@ -222,7 +228,10 @@ def test_render_lanes_still_work_on_cny_default(web_client: TestClient, *, ident
         "/web/budget-advise?ledger_id=owner&month=2026-05&savings_target_yuan=12",
     )
     assert advise.status_code == 200, advise.text
-    assert "¥12.00 储蓄目标" in advise.text
+    assert re.search(
+        r"<small>\s*储蓄目标\s*</small>\s*<strong>\s*−\s*¥12\.00\s*</strong>",
+        advise.text,
+    )
     assert 'step="0.01"' in advise.text
 
 
