@@ -835,6 +835,8 @@ fieldset.budget-excluded .hint {
 .recurring-row-merchant {
     color: var(--text-default);
     font-weight: var(--type-subtitle-weight);
+    /* 超长连写商户名 (无空格/连字符) 可断行：flex 项 min-content 不再撑破行网格。 */
+    overflow-wrap: anywhere;
 }
 
 .recurring-row-meta {
