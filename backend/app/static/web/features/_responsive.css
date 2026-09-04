@@ -8,17 +8,6 @@
         gap: var(--space-3);
     }
     .goal-row-head { align-items: flex-start; flex-direction: column; }
-    .reports-chart-canvas,
-    .reports-chart-canvas-large {
-        min-height: 240px;
-        height: 300px;
-        max-height: none;
-    }
-    .dashboard-card-grid { grid-template-columns: 1fr; }
-    .dashboard-card-settings-head { display: none; }
-    .dashboard-card-setting-row {
-        grid-template-columns: 1fr;
-        gap: var(--space-3);
-    }
-    .dashboard-card-position span { display: inline; }
+    /* W3 洞察片: reports-chart-canvas / dashboard-card-* 随洞察域迁移零引用,
+       旧媒体规则已物理删除 (新规则见 product/domains/insights.css)。 */
 }

@@ -75,9 +75,10 @@ def test_overview_renders_hero_lanes_and_modules(web_client: TestClient, *, iden
     assert resp.status_code == 200
     body = resp.text
 
-    # 域归属 + 页面级 CSS 挂载。
+    # 域归属 + 洞察域模块挂载 (W3: 页级 pages/overview.css 已并入域模块并物理删除)。
     assert 'data-domain="insights"' in body
-    assert "/static/web/pages/overview.css" in body
+    assert "/static/web/product/domains/insights.css" in body
+    assert "/static/web/pages/overview.css" not in body
 
     # 页头本月脉搏状态行 + hero 关键数字层级 (exponent 投影: cur/int/dec 三段)。
     assert "本月概览" in body

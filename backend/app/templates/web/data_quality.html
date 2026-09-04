@@ -1,95 +1,112 @@
 {% extends "base.html" %}
+{% set product_body_domain = 'insights' %}
 {% block title %}数据体检 — 小票夹{% endblock %}
 {% block content %}
-<h1 class="page-title page-title--compact">数据体检</h1>
-<p class="page-hint">读取自当前账本「{{ selected_ledger_name }}」。所有数字均为只读统计，刷新本页可重新计算。</p>
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">洞察 · 数据体检</span>
+    <h1 class="page-title">数据体检</h1>
+    <p class="product-page-summary">读取自当前账本「{{ selected_ledger_name }}」。所有数字均为只读统计，刷新本页可重新计算。</p>
+  </div>
+</header>
 {% if not can_write %}
-<div class="readonly-callout">只读角色可以查看体检结果；需要修改账单、处理重复项或新增规则时，请联系拥有者或成员。</div>
+<div class="product-feedback product-feedback--warning">只读角色可以查看体检结果；需要修改账单、处理重复项或新增规则时，请联系拥有者或成员。</div>
 {% endif %}
 
-<div class="kpi-strip kpi-strip--fluid">
-  <div class="kpi-cell primary">
-    <div class="label">待确认总数</div>
-    <div class="val">{{ summary.pending_total }}</div>
-    <div class="foot">含缺金额 / 缺商家 / 疑似重复</div>
-  </div>
-  <div class="kpi-cell {{ 'is-warning' if summary.missing_amount > 0 else '' }}">
-    <div class="label">缺金额</div>
-    <div class="val">{{ summary.missing_amount }}</div>
-    <div class="foot">需要补金额才能确认</div>
-  </div>
-  <div class="kpi-cell {{ 'is-warning' if summary.missing_merchant > 0 else '' }}">
-    <div class="label">缺商家</div>
-    <div class="val">{{ summary.missing_merchant }}</div>
-    <div class="foot">分类规则匹配失效来源</div>
-  </div>
-  <div class="kpi-cell {{ 'is-warning' if summary.missing_category > 0 else '' }}">
-    <div class="label">未分类</div>
-    <div class="val">{{ summary.missing_category }}</div>
-    <div class="foot">含已确认 + 待确认</div>
-  </div>
-  <div class="kpi-cell {{ 'is-danger' if summary.suspected_duplicates > 0 else '' }}">
-    <div class="label">疑似重复</div>
-    <div class="val">{{ summary.suspected_duplicates }}</div>
-    <div class="foot">不会自动入账，等待人工裁决</div>
-  </div>
-  <div class="kpi-cell">
-    <div class="label">已确认无图</div>
-    <div class="val">{{ summary.confirmed_without_image }}</div>
-    <div class="foot">原图被清理或从未上传</div>
-  </div>
-  <div class="kpi-cell is-positive">
-    <div class="label">可一键确认</div>
-    <div class="val">{{ summary.ready_to_confirm_categorized }}</div>
-    <div class="foot">金额 + 商家齐 + 有类目 + 非重复 + 汇率就绪</div>
-  </div>
-  <div class="kpi-cell">
-    <div class="label">最久待确认</div>
-    <div class="val">
-      {% if summary.oldest_pending_age_days is none %}—{% else %}{{ summary.oldest_pending_age_days }} 天{% endif %}
+{# 消费级顺序: 下一步待办优先, 完整指标明细在后; 不造综合健康分。 #}
+<section class="product-panel product-panel--padded">
+  <div class="product-panel-header">
+    <div>
+      <div class="product-panel-title">建议操作</div>
+      <div class="product-panel-subtitle">按影响入账的程度排序，逐项处理后账单更完整</div>
     </div>
-    <div class="foot">距今录入的天数</div>
+  </div>
+  <div class="quality-actions">
+    {% if summary.missing_amount > 0 %}
+    <a class="quality-action" href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=missing_amount">
+      <span><strong>{{ summary.missing_amount }} 条缺金额</strong></span>
+      <span>{% if can_write %}去补金额{% else %}查看缺金额{% endif %} →</span>
+    </a>
+    {% endif %}
+    {% if summary.missing_merchant > 0 %}
+    <a class="quality-action" href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=missing_merchant">
+      <span><strong>{{ summary.missing_merchant }} 条缺商家</strong></span>
+      <span>{% if can_write %}去补商家{% else %}查看缺商家{% endif %} →</span>
+    </a>
+    {% endif %}
+    {% if summary.suspected_duplicates > 0 %}
+    <a class="quality-action" href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=duplicate">
+      <span><strong>{{ summary.suspected_duplicates }} 条疑似重复</strong></span>
+      <span>{% if can_write %}去人工裁决{% else %}查看疑似重复{% endif %} →</span>
+    </a>
+    {% endif %}
+    {% if summary.ready_to_confirm_categorized > 0 %}
+    <a class="quality-action" href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=ready">
+      <span>
+        <strong>{{ summary.ready_to_confirm_categorized }} 条可批量确认</strong>
+        <small>{% if can_write %}需手动勾选，不会自动确认{% else %}只读角色不能确认{% endif %}</small>
+      </span>
+      <span>{% if can_write %}去待确认{% else %}查看可确认项{% endif %} →</span>
+    </a>
+    {% endif %}
+    {% if summary.missing_category > 0 %}
+    <a class="quality-action" href="/web/rules?ledger_id={{ selected_ledger_id }}">
+      <span><strong>{{ summary.missing_category }} 条未分类</strong></span>
+      <span>{% if can_write %}新增分类规则{% else %}查看分类规则{% endif %} →</span>
+    </a>
+    {% endif %}
+    {% if summary.pending_total == 0 and summary.missing_category == 0 and summary.suspected_duplicates == 0 %}
+    <div class="quality-action">
+      <span><strong>数据状态良好。继续保持。</strong></span>
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+<div class="quality-metrics">
+  <div class="quality-metric is-primary">
+    <span class="quality-metric-label">待确认总数</span>
+    <span class="quality-metric-value">{{ summary.pending_total }}</span>
+    <span class="quality-metric-note">含缺金额 / 缺商家 / 疑似重复</span>
+  </div>
+  <div class="quality-metric{% if summary.missing_amount > 0 %} is-warning{% endif %}">
+    <span class="quality-metric-label">缺金额</span>
+    <span class="quality-metric-value">{{ summary.missing_amount }}</span>
+    <span class="quality-metric-note">需要补金额才能确认</span>
+  </div>
+  <div class="quality-metric{% if summary.missing_merchant > 0 %} is-warning{% endif %}">
+    <span class="quality-metric-label">缺商家</span>
+    <span class="quality-metric-value">{{ summary.missing_merchant }}</span>
+    <span class="quality-metric-note">分类规则匹配失效来源</span>
+  </div>
+  <div class="quality-metric{% if summary.missing_category > 0 %} is-warning{% endif %}">
+    <span class="quality-metric-label">未分类</span>
+    <span class="quality-metric-value">{{ summary.missing_category }}</span>
+    <span class="quality-metric-note">含已确认 + 待确认</span>
+  </div>
+  <div class="quality-metric{% if summary.suspected_duplicates > 0 %} is-danger{% endif %}">
+    <span class="quality-metric-label">疑似重复</span>
+    <span class="quality-metric-value">{{ summary.suspected_duplicates }}</span>
+    <span class="quality-metric-note">不会自动入账，等待人工裁决</span>
+  </div>
+  <div class="quality-metric">
+    <span class="quality-metric-label">已确认无图</span>
+    <span class="quality-metric-value">{{ summary.confirmed_without_image }}</span>
+    <span class="quality-metric-note">手录或原图已清理，不影响入账</span>
+  </div>
+  <div class="quality-metric is-success">
+    <span class="quality-metric-label">可一键确认</span>
+    <span class="quality-metric-value">{{ summary.ready_to_confirm_categorized }}</span>
+    <span class="quality-metric-note">金额 + 商家齐 + 有类目 + 非重复 + 汇率就绪</span>
+  </div>
+  <div class="quality-metric">
+    <span class="quality-metric-label">最久待确认</span>
+    <span class="quality-metric-value">
+      {% if summary.oldest_pending_age_days is none %}—{% else %}{{ summary.oldest_pending_age_days }} 天{% endif %}
+    </span>
+    <span class="quality-metric-note">距今录入的天数</span>
   </div>
 </div>
 
-<div class="dt-card">
-  <h2>建议操作</h2>
-  <ul class="dq-action-list">
-    {% if summary.missing_amount > 0 %}
-    <li>
-      <strong>{{ summary.missing_amount }} 条缺金额：</strong>
-      <a href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=missing_amount">{% if can_write %}去补金额{% else %}查看缺金额{% endif %} →</a>
-    </li>
-    {% endif %}
-    {% if summary.missing_merchant > 0 %}
-    <li>
-      <strong>{{ summary.missing_merchant }} 条缺商家：</strong>
-      <a href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=missing_merchant">{% if can_write %}去补商家{% else %}查看缺商家{% endif %} →</a>
-    </li>
-    {% endif %}
-    {% if summary.suspected_duplicates > 0 %}
-    <li>
-      <strong>{{ summary.suspected_duplicates }} 条疑似重复：</strong>
-      <a href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=duplicate">{% if can_write %}去人工裁决{% else %}查看疑似重复{% endif %} →</a>
-    </li>
-    {% endif %}
-    {% if summary.ready_to_confirm_categorized > 0 %}
-    <li>
-      <strong>{{ summary.ready_to_confirm_categorized }} 条可批量确认：</strong>
-      <a href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=ready">{% if can_write %}去待确认{% else %}查看可确认项{% endif %} →</a>
-      <span class="hint">{% if can_write %}需手动勾选，不会自动确认{% else %}只读角色不能确认{% endif %}</span>
-    </li>
-    {% endif %}
-    {% if summary.missing_category > 0 %}
-    <li>
-      <strong>{{ summary.missing_category }} 条未分类：</strong>
-      <a href="/web/rules?ledger_id={{ selected_ledger_id }}">{% if can_write %}新增分类规则{% else %}查看分类规则{% endif %} →</a>
-    </li>
-    {% endif %}
-    {% if summary.pending_total == 0 and summary.missing_category == 0 and summary.suspected_duplicates == 0 %}
-    <li class="dq-empty">数据状态良好。继续保持。</li>
-    {% endif %}
-  </ul>
-  <p class="page-footer-hint">本页快照生成于 {{ generated_at_local }}。</p>
-</div>
+<p class="text-meta">本页快照生成于 {{ generated_at_local }}。</p>
 {% endblock %}

@@ -228,8 +228,13 @@ def test_web_reports_static_echarts_vendor_is_self_hosted(client: TestClient) ->
     assert "reports-overview-data" in reports_js.text
     assert "rgba(15,23,42" not in reports_js.text
     assert reports_css.status_code == 200
-    assert ".report-export-dialog::backdrop" in reports_css.text
+    # W3 洞察片: 导出 dialog 样式随 reports 正文迁 product 洞察域, 旧栈不再携带。
+    assert ".report-export-dialog" not in reports_css.text
     assert ".reports-export-dialog" not in reports_css.text
+    product_insights_css = client.get("/static/web/product/domains/insights.css")
+    assert product_insights_css.status_code == 200
+    assert ".report-export-dialog::backdrop" in product_insights_css.text
+    assert ".reports-export-dialog" not in product_insights_css.text
     assert reports_feature_css.status_code == 200
     assert ".reports-export-dialog" not in reports_feature_css.text
     assert product_components_css.status_code == 200

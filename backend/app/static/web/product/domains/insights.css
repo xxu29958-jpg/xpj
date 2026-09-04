@@ -576,11 +576,15 @@
         grid-column: 1;
     }
 
-    .quality-metrics,
-    .report-metrics,
     .reports-controls,
     .report-grid {
         grid-template-columns: minmax(0, 1fr);
+    }
+
+    /* 360 首屏密度: 摘要指标两列, 趋势/操作尽早入屏 (真实设备验收反馈)。 */
+    .quality-metrics,
+    .report-metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .report-span-4,
@@ -595,12 +599,28 @@
         display: none;
     }
 
+    /* 360 紧凑行: 标题独占首行不折字, 第二行 显示 | 顺序(定宽小输入) 两端分布。
+       触屏无 HTML5 拖拽, 数字输入是手机重排主路径, 保持可见可达。 */
     .layout-editor-row {
         grid-template-columns: minmax(0, 1fr) auto;
+        gap: var(--space-2) var(--space-4);
+    }
+
+    .layout-editor-title {
+        grid-column: 1 / -1;
     }
 
     .layout-position {
-        grid-column: 1 / -1;
+        display: inline-flex;
+        align-items: center;
+        justify-self: end;
+        gap: var(--space-2);
+    }
+
+    /* 级联注记: components.css 的 input:not([type=hidden]):not(...) {width:100%}
+       特异性 (0,3,1); 本规则用 (0,3,1) 同级 + 域文件后加载取胜, 不改全局 token。 */
+    .layout-editor-row .layout-position input.product-input {
+        width: calc(var(--space-12) + var(--space-4));
     }
 
     .report-explanation {
@@ -622,5 +642,71 @@
     .report-chart,
     .report-chart--tall {
         min-height: calc(var(--space-12) * 4);
+    }
+}
+
+/* ── 总览页 (W3: 自 pages/overview.css 并入, 原文件整删) ──────────────────
+   泳道头 hairline 分隔 / 页头右轨状态行与行动组。product-panel/product-progress/
+   cluster/pill-row/product-state-action 通用件以 components.css 为准, 不再重复定义。 */
+.insight-lane-heading {
+    display: flex;
+    grid-column: 1 / -1;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding-block: var(--space-3);
+    border-block-end: 1px solid var(--border-card); /* 1px 发丝分界 */
+}
+
+.insight-lane-heading:not(:first-child) {
+    margin-block-start: var(--space-4);
+}
+
+.insight-lane-heading h2,
+.insight-lane-heading p {
+    margin: 0;
+}
+
+.insight-lane-heading h2 {
+    color: var(--text-default);
+    font-size: var(--type-title-size);
+    line-height: var(--type-title-line);
+}
+
+.insight-lane-heading p {
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
+
+.ov-side {
+    display: grid;
+    justify-items: end;
+    gap: var(--space-2);
+}
+
+.ov-status {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: var(--type-caption-size);
+    line-height: var(--type-caption-line);
+}
+
+@media (max-width: 40rem) {
+    .insight-lane-heading {
+        align-items: flex-start;
+        flex-direction: column;
+        grid-column: 1;
+    }
+
+    .ov-side {
+        justify-items: start;
+    }
+}
+
+/* 窄屏页头 (照 recycle-bin 720px 范式): 状态行与行动组整行下移到标题下方,
+   避免标题被右轨挤压折行。 */
+@media (max-width: 720px) {
+    .product-page-header:has(> .ov-side) {
+        grid-template-columns: minmax(0, 1fr);
     }
 }

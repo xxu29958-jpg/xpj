@@ -1,14 +1,7 @@
-/* v0.4-alpha3 slice 2 - Data Quality dashboard */
+/* v0.4-alpha3 slice 2 - Data Quality dashboard
+ *
+ * W3 洞察片: data_quality 正文迁 product 洞察域 (quality-metrics/quality-actions),
+ * 原 .summary-card.is-* / .dq-action-list / .page-footer-hint 零引用, 已物理删除。
+ * .page-hint 仍被 debt_goals/import_batch 等 LEGACY 页使用, 保留。 */
 
-.summary-card.is-warning { background: var(--state-warn-bg); }
-.summary-card.is-warning .summary-card-num { color: var(--state-warn-fg); }
-.summary-card.is-danger { background: var(--state-danger-bg); }
-.summary-card.is-danger .summary-card-num { color: var(--state-danger-fg); }
-.summary-card.is-positive { background: var(--state-success-bg); }
-.summary-card.is-positive .summary-card-num { color: var(--state-success-fg); }
-.dq-action-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
-.dq-action-list li { padding: 8px 12px; background: var(--surface-card); border-radius: 6px; border-left: 3px solid var(--brand-primary); font-size: 13px; }
-.dq-action-list li.dq-empty { border-left-color: var(--state-success-border); color: var(--state-success-fg); }
-.dq-action-list li .hint { color: var(--text-meta); font-size: 12px; margin-left: 6px; }
 .page-hint { color: var(--text-muted); font-size: 13px; margin-top: -8px; margin-bottom: 16px; }
-.page-footer-hint { color: var(--text-meta); font-size: 11px; margin-top: 12px; }

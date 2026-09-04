@@ -2,16 +2,11 @@
 {% block title %}总览 · 洞察 · 小票夹{% endblock %}
 
 {# 218-D S2 洞察域首页 (移植自产品矿 /web/overview, 适配 main 现状):
-   数据全走 _dashboard_data_payload 既有口径; 页面级 CSS 走 pages/overview.css
-   (218-D S3 裁决: 保留页级文件 — 本页 S2 适配标记 insight-sequence /
-   insight-lane-heading / ov-side / ov-status 在矿的域模块中无对应样式,
-   并入 domains/insights.css 留给 S4 洞察域页面重绘片),
-   经 base.html 的 page_styles 块挂载 (S3 起 base 提供独立样式块);
+   数据全走 _dashboard_data_payload 既有口径; 页面级样式已并入
+   product/domains/insights.css (W3 洞察片: 本页泳道头/右轨/窄屏页头规则迁入,
+   原 pages/overview.css 整文件退役; product-panel 族通用件以 components.css 为准);
    分类环图复用 main 既有 echarts + category-donut.js (desktop.js boot 自动 init),
    且只在 reports 卡可见且有分类数据时才下载 (PR #253 P2-3)。 #}
-{% block page_styles %}
-<link rel="stylesheet" href="/static/web/pages/overview.css?v={{ asset_version }}">
-{% endblock %}
 
 {% block page_scripts %}
 {% if overview_load_charts %}
@@ -73,7 +68,7 @@
 {% else %}
 {# 泳道归属固定 (信息架构), 组内卡片按模块设置持久化的 position 渲染 (PR #253
    P2-1); 卡片全隐藏的泳道整组不出 (P2-2)。 #}
-<section class="insight-sequence" aria-label="本月任务与事实">
+<section class="insight-grid" aria-label="本月任务与事实">
   {% for lane in overview_lanes %}
   <header class="insight-lane-heading">
     <h2>{{ lane.title }}</h2>
