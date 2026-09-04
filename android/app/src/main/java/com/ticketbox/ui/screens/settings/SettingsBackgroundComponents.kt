@@ -121,7 +121,7 @@ internal fun BuiltInBackgroundCard(
     val visuals = themeVisualsForSkin(skin)
     val cardShape = RoundedCornerShape(AppRadius.large)
     val containerColor = if (selected) {
-        visuals.glassTint.copy(alpha = 0.88f)
+        visuals.paperCard.copy(alpha = 0.88f)
     } else {
         visuals.solidCard.copy(alpha = 0.94f)
     }
@@ -272,7 +272,7 @@ internal fun GradientPreview(
                 .fillMaxWidth(0.70f)
                 .height(30.dp)
                 .clip(RoundedCornerShape(12.dp))
-                .background(visuals.glassTint.copy(alpha = 0.70f))
+                .background(visuals.paperCard.copy(alpha = 0.70f))
                 .border(
                     width = 1.dp,
                     color = Color.White.copy(alpha = 0.32f),

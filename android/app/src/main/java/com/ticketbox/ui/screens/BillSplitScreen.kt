@@ -41,7 +41,7 @@ import com.ticketbox.ui.components.AppAdaptiveTrailingActionRow
 import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.AppFilterChip
-import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.AppPaperCard
 import com.ticketbox.ui.components.AppListStateContent
 import com.ticketbox.ui.components.AppListStateSpec
 import com.ticketbox.ui.components.AppPageRole
@@ -179,7 +179,7 @@ private fun InboxCard(
             onRetry = chrome.onRetry,
         )
         ReadableListBodyState.Empty,
-        ReadableListBodyState.Content -> AppGlassCard(containerAlpha = 0.94f) {
+        ReadableListBodyState.Content -> AppPaperCard {
             AppListStateContent(
                 modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
                 state = AppListStateSpec(
@@ -222,7 +222,7 @@ private fun SentCard(
             onRetry = chrome.onRetry,
         )
         ReadableListBodyState.Empty,
-        ReadableListBodyState.Content -> AppGlassCard(containerAlpha = 0.94f) {
+        ReadableListBodyState.Content -> AppPaperCard {
             AppListStateContent(
                 modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
                 state = AppListStateSpec(

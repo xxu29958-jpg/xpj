@@ -354,6 +354,18 @@ def test_product_shell_owns_month_picker_styles(web_client: TestClient) -> None:
     assert "height: var(--space-9)" in css.text
 
 
+def test_product_shell_self_hosts_consumer_figure_font(web_client: TestClient) -> None:
+    css = web_client.get("/static/web/product/shell.css")
+
+    assert css.status_code == 200
+    assert 'font-family: "Ticketbox Figures"' in css.text
+    assert 'url("../fonts/Inter-Regular.woff2")' in css.text
+    assert re.search(
+        r'--font-numeric:\s*"Ticketbox Figures",\s*"Ticketbox Sans",\s*sans-serif',
+        css.text,
+    )
+
+
 def test_primary_mutations_keep_real_csrf_and_occ_contracts(
     web_client: TestClient,
     identity,

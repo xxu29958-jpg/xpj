@@ -13,7 +13,7 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.AppPaperCard
 import com.ticketbox.ui.components.AppListStateContent
 import com.ticketbox.ui.components.AppListStateMessage
 import com.ticketbox.ui.components.AppListStateSpec
@@ -163,7 +163,7 @@ private fun ReceivablesListStateCard(
     loading: Boolean,
     error: UiText?,
 ) {
-    AppGlassCard(modifier = Modifier.fillMaxWidth()) {
+    AppPaperCard(modifier = Modifier.fillMaxWidth()) {
         AppListStateContent(
             modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
             state = AppListStateSpec(

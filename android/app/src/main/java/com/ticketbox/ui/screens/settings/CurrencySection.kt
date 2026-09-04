@@ -96,7 +96,7 @@ private fun CurrencyOptionCard(
 ) {
     val visuals = LocalThemeVisuals.current
     val container = if (selected) {
-        visuals.glassTint.copy(alpha = 0.78f)
+        visuals.paperCard.copy(alpha = 0.78f)
     } else {
         MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f)
     }

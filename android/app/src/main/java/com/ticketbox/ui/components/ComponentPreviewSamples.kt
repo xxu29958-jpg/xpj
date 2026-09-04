@@ -54,7 +54,7 @@ private fun AppVisualComponentsPreview() {
                     )
                 }
             }
-            AppGlassCard {
+            AppPaperCard {
                 Row(
                     modifier = Modifier.padding(20.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),

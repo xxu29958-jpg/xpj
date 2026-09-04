@@ -35,7 +35,7 @@ import com.ticketbox.domain.model.MemberRepaymentProposal
 import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
-import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.AppPaperCard
 import com.ticketbox.ui.components.AppSheetAction
 import com.ticketbox.ui.components.AppSheetActionRow
 import com.ticketbox.ui.components.AppSheetScaffold
@@ -89,7 +89,7 @@ internal fun MemberProposalSection(
 @Composable
 private fun DebtorProposalCard(state: MemberProposalUiState, viewModel: MemberRepaymentProposalViewModel) {
     val pending = state.pendingProposal
-    AppGlassCard(modifier = Modifier.fillMaxWidth()) {
+    AppPaperCard(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
@@ -142,7 +142,7 @@ private fun CreditorProposalCard(
     viewModel: MemberRepaymentProposalViewModel,
 ) {
     val pending = state.pendingProposal
-    AppGlassCard(modifier = Modifier.fillMaxWidth()) {
+    AppPaperCard(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),

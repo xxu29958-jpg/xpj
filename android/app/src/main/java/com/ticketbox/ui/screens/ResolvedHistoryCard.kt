@@ -23,7 +23,7 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.MemberProposalStatuses
 import com.ticketbox.domain.model.MemberRepaymentProposal
-import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.AppPaperCard
 import com.ticketbox.ui.components.displayDate
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
@@ -45,9 +45,9 @@ internal fun ResolvedHistoryCard(resolved: List<MemberRepaymentProposal>) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     val shown = if (expanded) resolved else resolved.take(RESOLVED_HISTORY_COLLAPSED_COUNT)
     // Recession (§3.3) is carried per-row (sunk type/color + per-element alphas below); the card keeps a
-    // normal glass container so it stays legible — stacking a whole-card alpha on top would compound with
+    // normal paper container so it stays legible — stacking a whole-card alpha on top would compound with
     // the row alphas and risk the midnight contrast the design flagged.
-    AppGlassCard(modifier = Modifier.fillMaxWidth()) {
+    AppPaperCard(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),

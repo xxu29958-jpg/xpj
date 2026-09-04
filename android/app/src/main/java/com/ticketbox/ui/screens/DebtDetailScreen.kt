@@ -61,7 +61,7 @@ private const val DebtDetailFlashDismissMillis = 4000L
 /**
  * ADR-0049 §3 (slice 8c) 欠款详情 + 记账管理 —— [DebtRoute] 内的子页（与欠款列表互斥渲染，自带
  * [BackHandler]：返回回到列表，再返回才关 overlay，[[project_overlay_screen_needs_own_backhandler]]）。
- * 镜像 [DebtListScreen] 的生活流骨架（[AppScrollableContent] + secondary header + [AppGlassCard] +
+ * 镜像 [DebtListScreen] 的生活流骨架（[AppScrollableContent] + secondary header + [AppPaperCard] +
  * [AppStatusBanner]）。记还款 / 调整 / 作废三类直接写只对 external/manual 欠款开放（[Debt.isDirectWritable]）；
  * 成员/拆账欠款显示走对方确认流程的提示而非按钮。统一动作面板（[DebtActionSheet]）按 [DebtAction] 渲染
  * 相应字段，写成功后 ViewModel 把折叠后的欠款换入本地态。
