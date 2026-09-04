@@ -16,7 +16,7 @@ class MainQuickActionsTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun viewerMenuKeepsReviewAndRemovesWriteActions() {
+    fun viewerGetsATruthfulReadOnlyInboxAction() {
         var selected: ShortcutTarget? = null
         composeRule.setContent {
             TicketboxTheme(skin = AppSkin.Default) {
@@ -27,10 +27,8 @@ class MainQuickActionsTest {
             }
         }
 
-        composeRule.onNodeWithContentDescription("快捷操作").performClick()
-        composeRule.onNodeWithText("传小票").assertDoesNotExist()
-        composeRule.onNodeWithText("记一笔").assertDoesNotExist()
-        composeRule.onNodeWithText("去确认").assertIsDisplayed().performClick()
+        composeRule.onNodeWithContentDescription("快捷操作").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("查看待确认账单").assertIsDisplayed().performClick()
 
         composeRule.runOnIdle {
             assertEquals(ShortcutTarget.ReviewPending, selected)

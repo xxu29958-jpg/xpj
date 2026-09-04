@@ -31,6 +31,21 @@ internal fun MainQuickActionsButton(
     onAction: (ShortcutTarget) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val targets = quickActionTargets(canModify)
+    if (!canModify) {
+        val target = targets.single()
+        IconButton(
+            onClick = { onAction(target) },
+            modifier = modifier.size(AppSpacing.controlMinHeight),
+        ) {
+            Icon(
+                imageVector = target.icon,
+                contentDescription = stringResource(R.string.shortcut_review_long_label),
+            )
+        }
+        return
+    }
+
     var expanded by remember { mutableStateOf(false) }
     Box(modifier = modifier) {
         IconButton(
@@ -46,7 +61,7 @@ internal fun MainQuickActionsButton(
             expanded = expanded,
             onDismissRequest = { expanded = false },
         ) {
-            quickActionTargets(canModify).forEach { target ->
+            targets.forEach { target ->
                 DropdownMenuItem(
                     text = { Text(stringResource(target.labelRes)) },
                     leadingIcon = {
