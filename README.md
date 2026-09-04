@@ -2,7 +2,7 @@
 
 小票夹是一个**本地优先、由 Owner 管理的家庭财务事实系统**。
 
-账务事实、身份、离线意图和收据附件保存在受管 Windows 安装中；iPhone UploadLink、Android、浏览器账本和 Desktop Manager 通过受约束能力访问。OCR、分类和外部模型只生成建议，最终入账与更正由用户确认。
+账务事实、身份和收据附件保存在受管 Windows 安装中；尚未送达的离线意图保存在发起端。iPhone UploadLink、Android、浏览器账本和 Desktop Manager 通过受约束能力访问。OCR、分类和外部模型只生成建议，最终入账与更正由用户确认。
 
 ```text
 iPhone UploadLink / Android 上传
@@ -20,7 +20,7 @@ pending 草稿与 OCR/分类建议
 
 - 主数据不托管到商业云；远程访问只改变网络路径，不改变数据权威。
 - Windows 是当前正式宿主，不依赖 Docker、WSL 或 Linux shell。
-- PostgreSQL 与附件共同构成服务端持久事实；Android Room 和前端缓存是可重建投影。
+- PostgreSQL 与附件共同构成服务端持久事实；Android 已确认读模型和前端缓存是可重建投影，但未送达的 Room outbox intent 不是缓存，不得丢弃。
 - Account、Ledger、Device、Token、UploadLink、Pairing 等身份与能力由后端裁决。
 - `/owner` 是本机管理面；公网 `/web`、UploadLink 与 API 只开放明确 allowlist，并执行对应鉴权。
 - OCR、分类和 AI 不得自动覆盖用户确认过的财务事实。
@@ -42,16 +42,16 @@ pending 草稿与 OCR/分类建议
 
 ## 开始工作
 
-1. 先读 [`AGENTS.md`](AGENTS.md)：它是 Codex、Claude Code 和开发者唯一默认加载的施工合同。
-2. 再按当前责任使用 [`docs/README.md`](docs/README.md) 定位需要的架构、runbook、专题规则或 ADR。
+1. 先恢复用户当前 Goal、Owner 裁决和任务合同，再读 [`AGENTS.md`](AGENTS.md)。
+2. 按当前责任使用 [`docs/README.md`](docs/README.md) 定位需要的架构、runbook、专题规则或 ADR。
 3. 修改前确认分支/worktree、exact HEAD 和工作区状态；不要从 README 猜当前阶段。
 4. 验证强度按风险和任务退出门决定，不机械执行所有历史清单。
 
 Claude Code 通过 [`CLAUDE.md`](CLAUDE.md) 导入同一份 `AGENTS.md`，不维护第二套规则。
 
-## 常用权威入口
+## 常用仓库入口
 
-### 当前契约
+### 施工与文档入口
 
 - [仓库工作合同](AGENTS.md)
 - [文档导览](docs/README.md)
