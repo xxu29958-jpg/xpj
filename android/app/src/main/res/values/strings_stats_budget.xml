@@ -8,8 +8,6 @@
     <string name="stats_month_picker_description"></string>
     <string name="stats_category_empty_title">%1$s 还没有分类支出</string>
     <string name="stats_category_empty_body">确认几笔账单后，这里会显示分类占比。</string>
-    <string name="stats_header_title">洞察</string>
-    <string name="stats_header_subtitle">已入账支出的变化与构成</string>
     <string name="stats_filter_all_months">全部月份</string>
     <string name="stats_filter_pick_month_description">选择月份</string>
     <string name="stats_filter_all_tags">全部标签</string>
@@ -19,7 +17,7 @@
     <string name="stats_filter_tags_load_failed">标签暂时打不开</string>
 
     <!-- StatsOverviewCard：本月支出 hero 卡 -->
-    <string name="stats_overview_month_spend_label">本月支出</string>
+    <string name="stats_overview_month_spend_label">本月已入账支出</string>
     <string name="stats_overview_local_estimate_badge">离线数据</string>
     <string name="stats_overview_count_label">账单</string>
     <string name="stats_overview_count_value">%1$d 笔</string>

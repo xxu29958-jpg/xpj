@@ -24,8 +24,9 @@ internal fun DataQualityEntryCard(
     summary: DataQualitySummary?,
     loadState: DataQualityLoadState,
     onClick: () -> Unit,
+    showDivider: Boolean = true,
 ) {
-    AppListRow(onClick = onClick) {
+    AppListRow(onClick = onClick, showDivider = showDivider) {
         Column(
             modifier = Modifier
                 .weight(1f)

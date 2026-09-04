@@ -19,8 +19,8 @@ import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.domain.model.StatsTab
 import com.ticketbox.domain.model.moneyPercent
 import com.ticketbox.ui.asString
-import com.ticketbox.ui.components.AppAdaptivePaneScaffold
 import com.ticketbox.ui.components.AppAdaptivePanePurpose
+import com.ticketbox.ui.components.AppAdaptivePaneScaffold
 import com.ticketbox.ui.components.AppAdaptivePaneStructures
 import com.ticketbox.ui.components.AppAdaptiveSupportingPane
 import com.ticketbox.ui.components.AppDataAuthorityStrip
@@ -35,11 +35,12 @@ import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.MonthPickerListState
 import com.ticketbox.ui.components.MonthPickerSheet
 import com.ticketbox.ui.components.appAdaptiveSupportingPaneContent
-import com.ticketbox.ui.screens.stats.EmptyStatsCard
-import com.ticketbox.ui.screens.stats.StatsTopPanel
-import com.ticketbox.ui.screens.stats.StatsTopPanelActions
+import com.ticketbox.ui.design.AppAdaptiveContentWidth
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
+import com.ticketbox.ui.screens.stats.EmptyStatsCard
+import com.ticketbox.ui.screens.stats.StatsFilterControls
+import com.ticketbox.ui.screens.stats.StatsViewTabs
 import com.ticketbox.viewmodel.StatsFilterOptionsLoadState
 import com.ticketbox.viewmodel.StatsSource
 import com.ticketbox.viewmodel.StatsUiState
@@ -61,6 +62,13 @@ data class StatsReportActions(
     val onGranularityChange: (ReportGranularity) -> Unit,
     val onRankingMetricChange: (ReportRankingMetric) -> Unit,
 )
+
+/**
+ * 平窗(Compact/Medium/无竖铰链的 Expanded): 单主列, 筛选+页签+状态贴在结果上方。
+ * 真实竖铰链(ExpandedSupporting + vertical hinge, 两个物理半屏): 保留官方双 pane,
+ * 左页页签+结果, 右页筛选+状态 —— Insights 结构仅此一个真实 consumer。
+ */
+private enum class StatsControlsMode { FiltersAndTabs, Tabs }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -96,27 +104,44 @@ fun StatsScreen(
         onOpenMonthPicker = { showMonthPicker = true },
         onTabChange = { selectedStatsTab = it },
     )
-    AppAdaptivePaneScaffold(
-        structure = AppAdaptivePaneStructures.Insights,
-        policy = adaptivePolicy,
-        primaryPane = {
-            StatsPrimaryPane(
-                paneState = paneState,
-                paneActions = paneActions,
-                showSupportingPane = adaptivePolicy.showsSupportingPane,
-            )
-        },
-        supportingPane = appAdaptiveSupportingPaneContent(
-            purpose = AppAdaptivePanePurpose.InsightControls,
-        ) {
-            AppAdaptiveSupportingPane(role = AppPageRole.Stats) {
-                StatsAdaptiveControls(
+    if (adaptivePolicy.usesOfficialVerticalHingeBounds) {
+        AppAdaptivePaneScaffold(
+            structure = AppAdaptivePaneStructures.Insights,
+            policy = adaptivePolicy,
+            primaryPane = {
+                StatsPrimaryPane(
                     paneState = paneState,
                     paneActions = paneActions,
+                    controlsMode = StatsControlsMode.Tabs,
                 )
-            }
-        },
-    )
+            },
+            supportingPane = appAdaptiveSupportingPaneContent(
+                purpose = AppAdaptivePanePurpose.InsightControls,
+            ) {
+                AppAdaptiveSupportingPane(role = AppPageRole.Stats) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
+                    ) {
+                        StatsFilterControls(
+                            state = paneState.screenState,
+                            onOpenMonthPicker = paneActions.onOpenMonthPicker,
+                            onTagChange = paneActions.screenActions.filters.onTagChange,
+                        )
+                        StatsStatusMessages(
+                            state = paneState.screenState,
+                            selectedTab = paneState.selectedTab,
+                        )
+                    }
+                }
+            },
+        )
+    } else {
+        StatsPrimaryPane(
+            paneState = paneState,
+            paneActions = paneActions,
+            controlsMode = StatsControlsMode.FiltersAndTabs,
+        )
+    }
 }
 
 private data class StatsAdaptivePaneState(
@@ -134,7 +159,7 @@ private data class StatsAdaptivePaneActions(
 private fun StatsPrimaryPane(
     paneState: StatsAdaptivePaneState,
     paneActions: StatsAdaptivePaneActions,
-    showSupportingPane: Boolean,
+    controlsMode: StatsControlsMode,
 ) {
     val state = paneState.screenState
     val actions = paneActions.screenActions
@@ -144,6 +169,7 @@ private fun StatsPrimaryPane(
             layout = AppScrollableContentLayout(
                 horizontalPadding = AppSpacing.cardPaddingSmall,
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
+                contentWidth = AppAdaptiveContentWidth.Wide,
             ),
         ),
         refresh = AppScrollableRefreshState(
@@ -154,11 +180,29 @@ private fun StatsPrimaryPane(
             onRefresh = actions.onRefresh,
         ),
     ) {
-        if (!showSupportingPane) {
-            item {
-                StatsAdaptiveControls(
-                    paneState = paneState,
-                    paneActions = paneActions,
+        item {
+            when (controlsMode) {
+                StatsControlsMode.FiltersAndTabs -> Column(
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
+                ) {
+                    StatsFilterControls(
+                        state = state,
+                        onOpenMonthPicker = paneActions.onOpenMonthPicker,
+                        onTagChange = actions.filters.onTagChange,
+                    )
+                    StatsViewTabs(
+                        selectedTab = paneState.selectedTab,
+                        onTabChange = paneActions.onTabChange,
+                    )
+                    StatsStatusMessages(
+                        state = state,
+                        selectedTab = paneState.selectedTab,
+                    )
+                }
+
+                StatsControlsMode.Tabs -> StatsViewTabs(
+                    selectedTab = paneState.selectedTab,
+                    onTabChange = paneActions.onTabChange,
                 )
             }
         }
@@ -190,35 +234,34 @@ private fun StatsPrimaryPane(
     }
 }
 
+/**
+ * 来源/离线/通知状态的统一出口：Backend 且无消息时不渲染，避免空容器占位。
+ * 口径与迁移前 StatsAdaptiveControls 逐条一致，UI 不现算任何业务事实。
+ */
 @Composable
-private fun StatsAdaptiveControls(
-    paneState: StatsAdaptivePaneState,
-    paneActions: StatsAdaptivePaneActions,
+private fun StatsStatusMessages(
+    state: StatsUiState,
+    selectedTab: StatsTab,
 ) {
-    val state = paneState.screenState
-    val actions = paneActions.screenActions
+    val authorityTone = statsAuthorityTone(state)?.takeIf { it != DataAuthorityTone.Backend }
+    val message = state.message
+    val trendMessage = if (selectedTab == StatsTab.Trend) {
+        reportsTrendStatusMessage(state)
+    } else {
+        null
+    }
+    if (authorityTone == null && message == null && trendMessage == null) return
     Column(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
     ) {
-        StatsTopPanel(
-            state = state,
-            selectedTab = paneState.selectedTab,
-            actions = StatsTopPanelActions(
-                onOpenMonthPicker = paneActions.onOpenMonthPicker,
-                onTagChange = actions.filters.onTagChange,
-                onTabChange = paneActions.onTabChange,
-            ),
-        )
-        statsAuthorityTone(state)?.takeIf { it != DataAuthorityTone.Backend }?.let { tone ->
+        authorityTone?.let { tone ->
             AppDataAuthorityStrip(tone = tone)
         }
-        state.message?.let { message ->
-            AppStatusBanner(message = message, tone = MessageTone.Neutral)
+        message?.let {
+            AppStatusBanner(message = it, tone = MessageTone.Neutral)
         }
-        if (paneState.selectedTab == StatsTab.Trend) {
-            reportsTrendStatusMessage(state)?.let { message ->
-                AppStatusBanner(message = message, tone = MessageTone.Danger)
-            }
+        trendMessage?.let {
+            AppStatusBanner(message = it, tone = MessageTone.Danger)
         }
     }
 }

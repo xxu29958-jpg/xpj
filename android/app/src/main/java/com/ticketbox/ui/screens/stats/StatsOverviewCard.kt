@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,6 +24,7 @@ import com.ticketbox.domain.model.MonthComparison
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.domain.model.ReportTrendPoint
 import com.ticketbox.ui.components.AppAmountText
+import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
@@ -32,6 +32,8 @@ import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.design.AppWindowWidthClass
+import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.tabularNum
@@ -50,9 +52,11 @@ internal fun StatsOverviewCard(
     comparison: MonthComparison?,
     trendData: StatsOverviewTrendData = StatsOverviewTrendData(),
     statsSource: StatsSource = StatsSource.Backend,
+    tagScope: TagScopeInsightModel? = null,
 ) {
     val evidenceOnly = false
     val currencyDisplay = LocalCurrencyDisplay.current
+    val compactWindow = LocalAppAdaptiveLayoutPolicy.current.widthClass == AppWindowWidthClass.Compact
     val hasCurrentConfirmedSpend = stats.count > 0 && stats.totalAmountCents > 0L
     val hasTrendData = trendData.reportTrend.any { it.amountCents > 0L }
 
@@ -78,23 +82,24 @@ internal fun StatsOverviewCard(
                 hasCurrentConfirmedSpend = hasCurrentConfirmedSpend,
                 comparison = comparison,
                 currencyDisplay = currencyDisplay,
+                tagScope = tagScope,
             )
         }
         if (!evidenceOnly) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
             ) {
                 CompactMetric(
                     label = stringResource(R.string.stats_overview_count_label),
                     value = stringResource(R.string.stats_overview_count_value, stats.count),
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f, fill = compactWindow),
                 )
                 CompactMetric(
                     label = stringResource(R.string.stats_overview_recent7_label),
                     value = recent7DaysAmountCents?.let { formatDisplayAmount(it, currencyDisplay) }
                         ?: stringResource(R.string.stats_overview_recent7_unavailable),
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f, fill = compactWindow),
                 )
             }
         }
@@ -107,7 +112,6 @@ internal fun StatsOverviewCard(
                 currencyDisplay = currencyDisplay,
             )
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
     }
 }
 
@@ -118,8 +122,12 @@ private fun OverviewAmountHeader(
     hasCurrentConfirmedSpend: Boolean,
     comparison: MonthComparison?,
     currencyDisplay: CurrencyDisplay,
+    tagScope: TagScopeInsightModel?,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
+        if (tagScope != null) {
+            TagScopeContextRow(model = tagScope, statsSource = statsSource)
+        }
         OverviewTitleRow(
             title = stringResource(R.string.stats_overview_month_spend_label),
             showLocalBadge = statsSource == StatsSource.LocalFallback,
@@ -143,6 +151,50 @@ private fun OverviewAmountHeader(
                 )
             }
         }
+        if (tagScope != null) {
+            Text(
+                text = if (tagScope.hasSpend) {
+                    stringResource(R.string.stats_tag_scope_confirmed_caption, tagScope.count)
+                } else {
+                    stringResource(R.string.stats_tag_scope_empty_caption)
+                },
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
+/**
+ * 标签筛选时 hero 的作用域行：左为上下文（#标签 · 月份），右为来源标签。
+ * 事实与 Trend 页 TagScopeInsight 完全同源（tagScopeInsightModel / tagScopeSourceLabelRes），
+ * 只改层级表达，不新算任何数。
+ */
+@Composable
+private fun TagScopeContextRow(
+    model: TagScopeInsightModel,
+    statsSource: StatsSource,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            modifier = Modifier.weight(1f),
+            text = stringResource(R.string.stats_tag_scope_subtitle, model.tag, displayMonthLabel(model.month)),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = stringResource(tagScopeSourceLabelRes(statsSource)),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

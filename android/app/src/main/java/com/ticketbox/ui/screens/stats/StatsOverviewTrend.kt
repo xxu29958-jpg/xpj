@@ -23,6 +23,8 @@ import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.design.AppWindowWidthClass
+import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
 import com.ticketbox.ui.design.tabularNum
 
 private const val HeroTrendDominantPeakPercent = 75
@@ -129,6 +131,7 @@ private fun HeroTrendFactStrip(
     summary: HeroSpendTrendSummary,
     currencyDisplay: CurrencyDisplay,
 ) {
+    val compactWindow = LocalAppAdaptiveLayoutPolicy.current.widthClass == AppWindowWidthClass.Compact
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight),
@@ -136,18 +139,18 @@ private fun HeroTrendFactStrip(
         HeroTrendFact(
             label = stringResource(R.string.stats_overview_trend_active_buckets_label),
             value = stringResource(R.string.stats_overview_trend_active_buckets_value, summary.positivePointCount),
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f, fill = compactWindow),
         )
         HeroTrendFact(
             label = stringResource(R.string.stats_overview_trend_peak_share_label),
             value = stringResource(R.string.stats_overview_trend_peak_share_value, summary.peakSharePercent),
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f, fill = compactWindow),
         )
         HeroTrendFact(
             label = stringResource(R.string.stats_overview_trend_other_average_label),
             value = formatDisplayAmount(summary.otherAverageAmountCents, currencyDisplay),
             isAmount = true,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f, fill = compactWindow),
         )
     }
 }

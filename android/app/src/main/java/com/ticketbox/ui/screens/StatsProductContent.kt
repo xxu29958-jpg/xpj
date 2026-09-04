@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -32,6 +33,7 @@ import com.ticketbox.ui.screens.stats.StatsOverviewCard
 import com.ticketbox.ui.screens.stats.StatsOverviewTrendData
 import com.ticketbox.ui.screens.stats.StatsInsightSurface
 import com.ticketbox.ui.screens.stats.TagScopeInsight
+import com.ticketbox.ui.screens.stats.tagScopeInsightModel
 import com.ticketbox.viewmodel.StatsUiState
 import com.valentinilk.shimmer.shimmer
 
@@ -57,7 +59,7 @@ private fun LazyListScope.statsOverviewItems(
 ) {
     val stats = state.stats ?: return
     item {
-        StatsFlatSection {
+        StatsInsightSurface {
             StatsOverviewCard(
                 stats = stats,
                 statsSource = state.statsSource,
@@ -66,27 +68,25 @@ private fun LazyListScope.statsOverviewItems(
                 trendData = StatsOverviewTrendData(
                     reportTrend = state.reportsOverview?.trend.orEmpty(),
                 ),
+                tagScope = tagScopeInsightModel(stats = stats, selectedTag = state.selectedTag),
             )
         }
     }
     item {
-        DataQualityEntryCard(
-            summary = state.dataQuality,
-            loadState = state.dataQualityLoadState,
-            onClick = onOpenDataQuality,
-        )
-    }
-    if (state.selectedTag.isNotBlank()) {
-        item {
-            StatsFlatSection {
-                TagScopeInsight(
-                    stats = stats,
-                    selectedTag = state.selectedTag,
-                    statsSource = state.statsSource,
-                )
-            }
+        // 数据健康入口是独立可点对象：surface 给边界，行内不再带底部分隔线。
+        StatsInsightSurface(
+            contentPadding = PaddingValues(horizontal = AppSpacing.cardPaddingSmall),
+        ) {
+            DataQualityEntryCard(
+                summary = state.dataQuality,
+                loadState = state.dataQualityLoadState,
+                onClick = onOpenDataQuality,
+                showDivider = false,
+            )
         }
-    } else {
+    }
+    // 标签筛选时作用域已由 hero 卡表达（同一 state.stats），不再重复第二个金额块。
+    if (state.selectedTag.isBlank()) {
         state.lifestyleStats?.takeIf(LifestyleStats::hasReadableInsight)?.let { lifestyle ->
             item {
                 StatsFlatSection {
