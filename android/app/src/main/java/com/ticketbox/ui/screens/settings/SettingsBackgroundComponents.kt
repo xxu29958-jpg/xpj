@@ -71,7 +71,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
-import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.ConnectionDiagnostics
@@ -347,42 +346,5 @@ internal fun BackgroundSwitchLine(
             enabled = enabled,
             onCheckedChange = onCheckedChange,
         )
-    }
-}
-
-@Composable
-internal fun CropSafeZones() {
-    Column(modifier = Modifier.fillMaxSize()) {
-        SafeZoneBand(stringResource(R.string.appearance_crop_safezone_top), 0.15f)
-        Box(
-            modifier = Modifier
-                .weight(0.70f)
-                .fillMaxWidth()
-                .border(1.dp, Color.White.copy(alpha = 0.55f), RoundedCornerShape(18.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = stringResource(R.string.appearance_crop_safezone_reading),
-                color = Color.White.copy(alpha = 0.82f),
-                style = MaterialTheme.typography.labelMedium,
-            )
-        }
-        SafeZoneBand(stringResource(R.string.appearance_crop_safezone_bottom), 0.15f)
-    }
-}
-
-@Composable
-internal fun ColumnScope.SafeZoneBand(
-    text: String,
-    weight: Float,
-) {
-    Box(
-        modifier = Modifier
-            .weight(weight)
-            .fillMaxWidth()
-            .background(Color.Black.copy(alpha = 0.30f)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(text = text, color = Color.White, style = MaterialTheme.typography.labelMedium)
     }
 }

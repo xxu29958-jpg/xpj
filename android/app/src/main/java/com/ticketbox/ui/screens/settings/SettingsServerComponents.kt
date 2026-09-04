@@ -73,7 +73,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
-import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.ConnectionDiagnostics
@@ -451,82 +450,3 @@ private fun accountRoleLabelRes(role: String): Int = when (role.trim()) {
 @StringRes
 private fun accountScopeLabelRes(isDefault: Boolean): Int =
     if (isDefault) R.string.settings_account_scope_personal else R.string.settings_account_scope_shared
-
-@Composable
-internal fun PreviewRoleCard(
-    title: String,
-    role: SurfaceRole,
-    settings: BackgroundSettings,
-    skin: AppSkin,
-    content: @Composable () -> Unit,
-) {
-    val visuals = themeVisualsForSkin(skin)
-    val outerShape = RoundedCornerShape(AppRadius.large)
-    val innerShape = RoundedCornerShape(AppRadius.medium)
-    val contentAlpha = resolveCardContainerAlpha(settings.immersionMode, role)
-    val contentContainerColor = when (role) {
-        SurfaceRole.Today,
-        SurfaceRole.Pending,
-        SurfaceRole.Stats -> visuals.glassTint.copy(alpha = contentAlpha)
-        SurfaceRole.Ledger,
-        SurfaceRole.Edit,
-        SurfaceRole.Settings,
-        SurfaceRole.Auth -> visuals.solidCard.copy(alpha = contentAlpha)
-    }
-
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = AppTextHierarchy.body.weight,
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(178.dp)
-                .shadow(
-                    elevation = 8.dp,
-                    shape = outerShape,
-                    clip = false,
-                    ambientColor = visuals.shadowTint.copy(alpha = 0.08f),
-                    spotColor = visuals.shadowTint.copy(alpha = 0.06f),
-                )
-                .clip(outerShape)
-                .border(
-                    width = 1.dp,
-                    color = Color.White.copy(alpha = 0.30f),
-                    shape = outerShape,
-                ),
-        ) {
-            TicketboxBackgroundLayer(settings = settings, skin = skin, surfaceRole = role)
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(resolveGlobalScrim(settings, skin, role)),
-            )
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(AppSpacing.compactGap),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(innerShape)
-                        .background(contentContainerColor)
-                        .border(
-                            width = 1.dp,
-                            color = Color.White.copy(alpha = 0.32f),
-                            shape = innerShape,
-                        )
-                        .padding(AppSpacing.compactPadding),
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        content()
-                    }
-                }
-            }
-        }
-    }
-}

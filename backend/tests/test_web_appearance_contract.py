@@ -39,7 +39,7 @@ function makeContext(preset, brandAttrs) {{
     }},
     querySelectorAll: (selector) => selector.startsWith(".brand-mark-img") ? [brand] : [],
   }};
-  const window = {{ localStorage }};
+  const window = {{ localStorage, addEventListener: () => {{}} }};
   const context = {{ window, document, localStorage }};
   vm.runInNewContext(fs.readFileSync(__BOOTSTRAP__, "utf8"), context);
   return {{ store, attrs, brand, context }};

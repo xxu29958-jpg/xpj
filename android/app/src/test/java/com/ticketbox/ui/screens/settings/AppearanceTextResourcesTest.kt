@@ -2,7 +2,6 @@ package com.ticketbox.ui.screens.settings
 
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
-import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.ImmersionMode
 import com.ticketbox.ui.appearance.BackgroundCatalog
 import com.ticketbox.ui.appearance.BuiltInBackgroundCategory
@@ -26,7 +25,5 @@ class AppearanceTextResourcesTest {
         assertEquals(R.string.appearance_background_category_minimal, builtInBackgroundCategoryNameRes(BuiltInBackgroundCategory.Minimal))
         assertEquals(R.string.appearance_background_name_paper, builtInBackgroundNameRes(paper))
         assertEquals(R.string.appearance_background_description_paper_warm, builtInBackgroundDescriptionRes(warm))
-        assertEquals(R.string.appearance_crop_mode_name_center, cropModeNameRes(BackgroundCropMode.Center))
-        assertEquals(R.string.appearance_crop_mode_description_bottom, cropModeDescriptionRes(BackgroundCropMode.Bottom))
     }
 }

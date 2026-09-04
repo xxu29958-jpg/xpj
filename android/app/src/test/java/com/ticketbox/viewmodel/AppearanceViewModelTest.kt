@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import com.ticketbox.R
 import com.ticketbox.data.repository.FakeTicketboxSettingsStore
 import com.ticketbox.domain.model.BackgroundSource
+import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.ImmersionMode
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
@@ -20,18 +21,19 @@ import kotlin.test.assertEquals
 @OptIn(ExperimentalCoroutinesApi::class)
 class AppearanceViewModelTest {
     @Test
-    fun saveBackgroundImageSuccessShowsSuccessToneAndUpdatesSettings() = appearanceTest {
+    fun appliedBackgroundShowsSuccessToneAndUpdatesSettings() = appearanceTest {
         val settingsStore = FakeTicketboxSettingsStore()
-        val vm = AppearanceViewModel(settingsStore)
+        val vm = AppearanceViewModel(settingsStore, FakeBackgroundImages())
         advanceUntilIdle()
 
-        vm.saveBackgroundImage("  C:\\app\\backgrounds\\custom_background.jpg  ")
+        vm.editBackground(BackgroundSettings().withCustomImage("C:\\app\\backgrounds\\custom_background.jpg"))
+        vm.applyBackgroundDraft()
         advanceUntilIdle()
 
         val state = vm.uiState.value
         assertEquals(BackgroundSource.CustomImage, state.backgroundSettings.source)
         assertEquals("C:\\app\\backgrounds\\custom_background.jpg", state.backgroundSettings.customImagePath)
-        assertEquals(UiText.res(R.string.appearance_message_background_updated), state.message)
+        assertEquals(UiText.res(R.string.appearance_message_background_applied), state.message)
         assertEquals(MessageTone.Success, state.messageTone)
     }
 
@@ -40,7 +42,7 @@ class AppearanceViewModelTest {
         val settingsStore = FakeTicketboxSettingsStore().apply {
             backgroundWriteFailure = IllegalStateException()
         }
-        val vm = AppearanceViewModel(settingsStore)
+        val vm = AppearanceViewModel(settingsStore, FakeBackgroundImages())
         advanceUntilIdle()
 
         vm.setImmersionMode(ImmersionMode.Focus)
@@ -53,13 +55,19 @@ class AppearanceViewModelTest {
     }
 
     @Test
-    fun backgroundImageCopyFailureShowsDangerTone() = appearanceTest {
-        val vm = AppearanceViewModel(FakeTicketboxSettingsStore())
+    fun restoringThemePreservesAppliedBackgroundOnWriteFailure() = appearanceTest {
+        val original = BackgroundSettings().withCustomImage("/private/background.image")
+        val store = FakeTicketboxSettingsStore()
+        store.saveBackgroundSettings(original)
+        val vm = AppearanceViewModel(store, FakeBackgroundImages())
+        advanceUntilIdle()
+        store.backgroundWriteFailure = IllegalStateException()
+
+        vm.clearBackgroundImage()
         advanceUntilIdle()
 
-        vm.backgroundImageCopyFailed("背景图片没有复制成功。")
-
-        assertEquals(UiText.raw("背景图片没有复制成功。"), vm.uiState.value.message)
+        assertEquals(original, vm.uiState.value.backgroundSettings)
+        assertEquals(UiText.res(R.string.appearance_message_background_save_failed), vm.uiState.value.message)
         assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
     }
 

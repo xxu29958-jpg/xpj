@@ -1010,3 +1010,167 @@ details[open] > .chrome-trigger {
 .manager-home-link:hover {
     color: var(--text-default);
 }
+
+/* --- 自定义背景（全局背景批）----------------------------------------------
+   reader/render owner 是 appearance-bootstrap.js 的 TicketboxBackground：
+   单一 IDB record → <html data-user-bg> + --surface-user-image* 三个 var。
+   body::before 固定层以可见视口为取景基准，页面伸长 / 换路由不改变构图；
+   auth/login（auth-login.css）同管线同规则。用户图在场时替换纸纹层
+   （--surface-app-image 是质感轴的纹理，不是用户图容器）。 */
+html[data-user-bg] body {
+    background: transparent;
+    background-image: none;
+}
+
+html[data-user-bg] body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background-color: var(--surface-app);
+    /* 共享阅读保护：veil(tokens.css 按主题出值) 盖在用户图上,
+       任意合法图片都压成氛围, 正文可读; 不进入任何页面级 CSS。 */
+    background-image: var(--surface-user-veil), var(--surface-user-image);
+    background-repeat: no-repeat;
+    background-size: auto, var(--surface-user-image-size, cover);
+    background-position: 0 0, var(--surface-user-image-position, center);
+    animation: user-bg-in 0.35s ease-out;
+}
+
+@keyframes user-bg-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* 背景编辑面（desktop/background.js 创建）：原生 <dialog> top-layer,
+   焦点隔离 / Esc / 焦点回触发器走原生语义；全屏拖动层 + 底部控制条。
+   预览直改 root var 走真实页面管线，编辑面本身不含样卡。 */
+.bg-editor {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    /* 非 top-layer 回退（无 showModal 的旧浏览器）下仍盖住页面 */
+    z-index: var(--z-modal);
+    flex-direction: column;
+    justify-content: flex-end;
+}
+
+.bg-editor[open] {
+    display: flex;
+}
+
+.bg-editor::backdrop {
+    /* 真实页面必须可见（实时预览对象），遮罩只收焦点不收视线 */
+    background: transparent;
+}
+
+.bg-editor-stage {
+    position: absolute;
+    inset: 0;
+    cursor: grab;
+    touch-action: none;
+}
+
+.bg-editor-stage:active {
+    cursor: grabbing;
+}
+
+.bg-editor-bar {
+    position: relative;
+    display: grid;
+    gap: var(--space-3);
+    width: min(34rem, calc(100% - var(--space-6)));
+    margin: 0 auto var(--space-4);
+    padding: var(--space-4) var(--space-5);
+    border: 1px solid var(--surface-sunken);
+    border-radius: var(--radius-lg);
+    background: var(--surface-raised);
+    box-shadow: var(--shadow-raised);
+}
+
+.bg-editor-hint,
+.bg-editor-status {
+    margin: 0;
+    font-size: var(--type-caption-size);
+    line-height: var(--type-caption-line);
+}
+
+.bg-editor-hint {
+    color: var(--text-muted);
+}
+
+.bg-editor-status {
+    color: var(--state-danger-fg);
+}
+
+.bg-editor-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.bg-editor-controls button {
+    min-height: var(--target-min);
+    padding: var(--space-2) var(--space-4);
+    border: 1px solid var(--surface-sunken);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-default);
+    font: inherit;
+    font-size: var(--type-caption-size);
+    cursor: pointer;
+}
+
+.bg-editor-controls button:hover {
+    background: var(--surface-sunken);
+}
+
+.bg-editor-controls button:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+
+.bg-editor-nudge {
+    display: inline-flex;
+    gap: var(--space-1);
+}
+
+.bg-editor-nudge button {
+    min-width: var(--target-min);
+    padding-inline: var(--space-2);
+}
+
+.bg-editor-actions {
+    display: inline-flex;
+    gap: var(--space-2);
+    margin-inline-start: auto;
+}
+
+.bg-editor-controls .bg-editor-apply {
+    border-color: transparent;
+    background: var(--brand-primary-bg);
+    color: var(--brand-primary-strong);
+    font-weight: var(--type-subtitle-weight);
+}
+
+/* 外观 popover 背景轴（_appearance_control.html）。 */
+.appearance-choice:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+
+.appearance-status {
+    margin: var(--space-2) 0 0;
+    color: var(--state-danger-fg);
+    font-size: var(--type-caption-size);
+    line-height: var(--type-caption-line);
+}
