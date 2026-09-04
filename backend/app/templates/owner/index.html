@@ -72,54 +72,88 @@
   </div>
 </div>
 
-<div class="stat-grid">
-  <div class="stat">
-    <div class="num">{{ pending_count }}</div>
-    <div class="label">待确认账单</div>
+<div class="card">
+  <h2>总览<span class="owner-scope">你管理的全部账本</span></h2>
+  <div class="stat-grid">
+    <div class="stat">
+      <div class="num">{{ pending_count }}</div>
+      <div class="label">待确认账单</div>
+    </div>
+    <div class="stat">
+      <div class="num">{{ confirmed_count }}</div>
+      <div class="label">已入账账单</div>
+    </div>
+    <div class="stat">
+      <div class="num">{{ active_upload_link_count }}</div>
+      <div class="label">上传链接</div>
+    </div>
   </div>
-  <div class="stat">
-    <div class="num">{{ confirmed_count }}</div>
-    <div class="label">已入账账单</div>
-  </div>
-  <div class="stat">
-    <div class="num">{{ active_device_count }}</div>
-    <div class="label">活跃设备</div>
-  </div>
-  <div class="stat">
-    <div class="num">{{ active_upload_link_count }}</div>
-    <div class="label">上传链接</div>
+  <div class="quick-links mt-4">
+    <a class="owner-action-link" href="/web/pending?ledger_id={{ primary_tenant_id }}" target="_blank">
+      <span class="owner-action-icon" aria-hidden="true"><svg><use href="#owner-icon-web"></use></svg></span>
+      <span>处理主账本待确认</span>
+    </a>
   </div>
 </div>
 
+{% if ledger_health %}
 <div class="card">
-  <h2>服务状态</h2>
-  <div class="kv-grid">
-    <span class="kv-key">后端版本</span>
-    <span class="kv-val">{{ backend_version }}</span>
-    <span class="kv-key">账号系统版本</span>
-    <span class="kv-val">{{ identity_schema }}</span>
-    <span class="kv-key">数据库状态</span>
-    <span class="kv-val">
-      {% if database_status == 'ok' %}<span class="badge badge-ok">正常</span>
-      {% else %}<span class="badge badge-err">缺失</span>{% endif %}
-    </span>
-    <span class="kv-key">上传目录</span>
-    <span class="kv-val">
-      {% if upload_dir_status == 'ok' %}<span class="badge badge-ok">正常</span>
-      {% else %}<span class="badge badge-err">缺失</span>{% endif %}
-    </span>
-    <span class="kv-key">本机管理后台</span>
-    <span class="kv-val"><span class="badge badge-ok">{{ owner_console_status }}</span></span>
-    <span class="kv-key">当前账号</span>
-    <span class="kv-val">{{ account_name }}</span>
-    <span class="kv-key">当前账本</span>
-    <span class="kv-val">{{ ledger_name }}</span>
-  </div>
+  <h2>账本健康<span class="owner-scope">逐账本</span></h2>
+  <table>
+    <thead>
+      <tr>
+        <th>账本</th>
+        <th class="text-end">待确认</th>
+        <th class="text-end">可入账</th>
+        <th class="text-end">疑似重复</th>
+        <th class="text-end">缺商家</th>
+        <th class="text-end">未分类</th>
+        <th class="text-end">最久</th>
+        <th class="text-end">外部欠款</th>
+        <th>目标复核</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in ledger_health %}
+      <tr>
+        <td>
+          {{ row.name }}
+          {% if row.is_default %}<span class="badge badge-ok">默认</span>{% endif %}
+        </td>
+        <td class="text-end">{{ row.pending }}</td>
+        <td class="text-end">{{ row.ready_to_confirm }}</td>
+        <td class="text-end">
+          {% if row.suspected_duplicates > 0 %}
+            <span class="badge badge-warn">{{ row.suspected_duplicates }}</span>
+          {% else %}0{% endif %}
+        </td>
+        <td class="text-end">{{ row.missing_merchant }}</td>
+        <td class="text-end">{{ row.missing_category }}</td>
+        <td class="text-end">
+          {% if row.oldest_pending_age_days is none %}—{% else %}{{ row.oldest_pending_age_days }}d{% endif %}
+        </td>
+        <td class="text-end">{{ row.open_external_debt_count }}</td>
+        <td>
+          {% if row.debt_goal_needs_review %}
+          <a href="/web/debt-goals?ledger_id={{ row.ledger_id }}" target="_blank"><span class="badge badge-warn">需复核</span></a>
+          {% else %}—{% endif %}
+        </td>
+        <td>
+          <a class="text-link" href="/web?ledger_id={{ row.ledger_id }}" target="_blank">/web</a>
+          ·
+          <a class="text-link" href="/web/data-quality?ledger_id={{ row.ledger_id }}" target="_blank">体检</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
 </div>
+{% endif %}
 
 {% if dq_summary %}
 <div class="card">
-  <h2>运营快照 · {{ ledger_name }}</h2>
+  <h2>运营快照<span class="owner-scope">主账本 · {{ ledger_name }}</span></h2>
   <div class="stat-grid">
     <div class="stat">
       <div class="num">{{ dq_summary.pending_total }}</div>
@@ -175,7 +209,7 @@
 
 {% if budget_status %}
 <div class="card">
-  <h2>预算状态 · {{ budget_status.ledger_name }}</h2>
+  <h2>预算状态<span class="owner-scope">主账本 · {{ budget_status.ledger_name }}</span></h2>
   <div class="stat-grid">
     <div class="stat">
       <div class="num">{% if budget_status.configured %}{{ home_currency_symbol }}{{ budget_status.total_amount_yuan }}{% else %}未配置{% endif %}</div>
@@ -209,7 +243,7 @@
 
 {% if recurring_ops %}
 <div class="card">
-  <h2>Recurring / 通知草稿状态</h2>
+  <h2>Recurring / 通知草稿状态<span class="owner-scope">你管理的全部账本</span></h2>
   <p class="hint">只读运维视图：正式固定支出只做提醒和对比，不会自动入账；Android 通知草稿只上传结构化字段，不上传通知原文。</p>
   <div class="stat-grid">
     <div class="stat">
@@ -240,15 +274,15 @@
   <div class="quick-links mt-4">
     <span>近 24 小时通知草稿：{{ recurring_ops.notification_recent_24h_count }}</span>
     <span>已归档固定支出：{{ recurring_ops.archived_count }}</span>
-    <a href="/web/recurring?ledger_id={{ primary_tenant_id }}" target="_blank">查看固定支出</a>
-    <a href="/web/pending?ledger_id={{ primary_tenant_id }}" target="_blank">查看待确认</a>
+    <a href="/web/recurring?ledger_id={{ primary_tenant_id }}" target="_blank">主账本固定支出</a>
+    <a href="/web/pending?ledger_id={{ primary_tenant_id }}" target="_blank">主账本待确认</a>
   </div>
 </div>
 {% endif %}
 
 {% if rule_audit %}
 <div class="card">
-  <h2>规则应用审计</h2>
+  <h2>规则应用审计<span class="owner-scope">主账本 · {{ rule_audit.selected_ledger_name }}</span></h2>
   <p class="hint">只读：展示最近分类规则批量应用记录，不提供规则编辑或回滚操作。</p>
   {% if not rule_audit.rows %}
   <p class="meta">当前账本暂无规则应用批次。</p>
@@ -293,98 +327,72 @@
 </div>
 {% endif %}
 
-{% if windows_tasks %}
 <div class="card">
-  <h2>Windows 计划任务</h2>
-  <p class="hint">只读：在 Windows 任务计划程序中创建/编辑/启停任务。</p>
-  <table>
-    <thead>
-      <tr>
-        <th>任务</th>
-        <th>状态</th>
-        <th>上次运行</th>
-        <th>上次结果</th>
-        <th>下次运行</th>
-        <th>备注</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for task in windows_tasks %}
-      <tr>
-        <td>{{ task.name }}</td>
-        <td>
-          {% if not task.available %}<span class="badge badge-err">不可用</span>
-          {% elif task.status == 'Ready' %}<span class="badge badge-ok">就绪</span>
-          {% elif task.status == 'Running' %}<span class="badge badge-ok">运行中</span>
-          {% elif task.status == 'Disabled' %}<span class="badge badge-warn">已禁用</span>
-          {% else %}<span class="badge badge-warn">{{ task.status }}</span>{% endif %}
-        </td>
-        <td>{{ task.last_run or '—' }}</td>
-        <td>
-          {% if task.last_result_failed %}<span class="badge badge-err">{{ task.last_result }}</span>
-          {% else %}{{ task.last_result or '—' }}{% endif %}
-        </td>
-        <td>{{ task.next_run or '—' }}</td>
-        <td>{{ task.note or '—' }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <h2>本机<span class="owner-scope">当前账号 · {{ account_name }}</span></h2>
+  <div class="kv-grid">
+    <span class="kv-key">已连接设备</span>
+    <span class="kv-val">{{ active_device_count }} 个 · <a class="text-link" href="/owner/devices">管理设备</a></span>
+    <span class="kv-key">后端版本</span>
+    <span class="kv-val">{{ backend_version }}</span>
+    <span class="kv-key">账号系统版本</span>
+    <span class="kv-val">{{ identity_schema }}</span>
+    <span class="kv-key">数据库状态</span>
+    <span class="kv-val">
+      {% if database_status == 'ok' %}<span class="badge badge-ok">正常</span>
+      {% else %}<span class="badge badge-err">缺失</span>{% endif %}
+    </span>
+    <span class="kv-key">上传目录</span>
+    <span class="kv-val">
+      {% if upload_dir_status == 'ok' %}<span class="badge badge-ok">正常</span>
+      {% else %}<span class="badge badge-err">缺失</span>{% endif %}
+    </span>
+    <span class="kv-key">本机管理后台</span>
+    <span class="kv-val"><span class="badge badge-ok">{{ owner_console_status }}</span></span>
+    <span class="kv-key">当前账号</span>
+    <span class="kv-val">{{ account_name }}</span>
+    <span class="kv-key">当前账本</span>
+    <span class="kv-val">{{ ledger_name }}</span>
+  </div>
+  {% if windows_tasks %}
+  <details class="owner-fold">
+    <summary>Windows 计划任务（{{ windows_tasks|length }}）</summary>
+    <p class="hint">只读：在 Windows 任务计划程序中创建/编辑/启停任务。</p>
+    <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>任务</th>
+          <th>状态</th>
+          <th>上次运行</th>
+          <th>上次结果</th>
+          <th>下次运行</th>
+          <th>备注</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for task in windows_tasks %}
+        <tr>
+          <td>{{ task.name }}</td>
+          <td>
+            {% if not task.available %}<span class="badge badge-err">不可用</span>
+            {% elif task.status == 'Ready' %}<span class="badge badge-ok">就绪</span>
+            {% elif task.status == 'Running' %}<span class="badge badge-ok">运行中</span>
+            {% elif task.status == 'Disabled' %}<span class="badge badge-warn">已禁用</span>
+            {% else %}<span class="badge badge-warn">{{ task.status }}</span>{% endif %}
+          </td>
+          <td>{{ task.last_run or '—' }}</td>
+          <td>
+            {% if task.last_result_failed %}<span class="badge badge-err">{{ task.last_result }}</span>
+            {% else %}{{ task.last_result or '—' }}{% endif %}
+          </td>
+          <td>{{ task.next_run or '—' }}</td>
+          <td>{{ task.note or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </details>
+  {% endif %}
 </div>
-{% endif %}
-
-{% if ledger_health %}
-<div class="card">
-  <h2>账本健康</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>账本</th>
-        <th class="text-end">待确认</th>
-        <th class="text-end">可入账</th>
-        <th class="text-end">疑似重复</th>
-        <th class="text-end">缺商家</th>
-        <th class="text-end">未分类</th>
-        <th class="text-end">最久</th>
-        <th class="text-end">外部欠款</th>
-        <th>目标复核</th>
-        <th>操作</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in ledger_health %}
-      <tr>
-        <td>
-          {{ row.name }}
-          {% if row.is_default %}<span class="badge badge-ok">默认</span>{% endif %}
-        </td>
-        <td class="text-end">{{ row.pending }}</td>
-        <td class="text-end">{{ row.ready_to_confirm }}</td>
-        <td class="text-end">
-          {% if row.suspected_duplicates > 0 %}
-            <span class="badge badge-warn">{{ row.suspected_duplicates }}</span>
-          {% else %}0{% endif %}
-        </td>
-        <td class="text-end">{{ row.missing_merchant }}</td>
-        <td class="text-end">{{ row.missing_category }}</td>
-        <td class="text-end">
-          {% if row.oldest_pending_age_days is none %}—{% else %}{{ row.oldest_pending_age_days }}d{% endif %}
-        </td>
-        <td class="text-end">{{ row.open_external_debt_count }}</td>
-        <td>
-          {% if row.debt_goal_needs_review %}
-          <a href="/web/debt-goals?ledger_id={{ row.ledger_id }}" target="_blank"><span class="badge badge-warn">需复核</span></a>
-          {% else %}—{% endif %}
-        </td>
-        <td>
-          <a href="/web?ledger_id={{ row.ledger_id }}" target="_blank">/web</a>
-          ·
-          <a href="/web/data-quality?ledger_id={{ row.ledger_id }}" target="_blank">体检</a>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-{% endif %}
 {% endblock %}

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -85,3 +87,47 @@ def test_owner_index_ready_stat_uses_categorized_caliber(local_client: TestClien
 
     body = local_client.get("/owner").text
     assert '<div class="num">1</div>\n      <div class="label">可一键入账</div>' in body
+
+
+def test_owner_home_keeps_managed_and_primary_ledger_scopes_distinct(local_client: TestClient) -> None:
+    """Moving home sections must not relabel a primary-ledger count as the total."""
+    from sqlalchemy import select
+
+    from app.database import SessionLocal
+    from app.models import Expense, LedgerMember
+    from app.services import owner_console_service as svc
+    from app.services.ledger_service import create_ledger
+
+    with SessionLocal() as db:
+        before = svc.get_index_vm(db)
+        owner_id = db.scalar(select(LedgerMember.account_id).where(
+            LedgerMember.ledger_id == before.primary_tenant_id,
+            LedgerMember.role == "owner",
+        ))
+        other = create_ledger(db, account_id=owner_id, name="旅行账本", auth=None)
+        for ledger_id, count in [(before.primary_tenant_id, 2), (other.ledger_id, 5)]:
+            db.add_all([
+                Expense(tenant_id=ledger_id, amount_cents=1850, merchant="早餐",
+                        category="餐饮", status="pending", source="manual", duplicate_status="none")
+                for _ in range(count)
+            ])
+        db.commit()
+        vm = svc.get_index_vm(db)
+        rows = {row.ledger_id: row for row in svc.list_ledger_health(db)}
+
+    assert vm.pending_count == before.pending_count + 7
+    assert vm.dq_summary.pending_total == before.dq_summary.pending_total + 2
+    assert rows[other.ledger_id].pending == 5
+    response = local_client.get("/owner")
+    assert response.status_code == 200
+    text = " ".join(re.sub(r"<[^>]+>", " ", response.text).split())
+    assert "你管理的全部账本" in text
+    assert "当前账号" in text
+    assert "主账本" in text
+    assert vm.ledger_name in text and "旅行账本" in text
+    assert re.search(rf"\b{vm.pending_count}\s+待确认", text)
+    assert f"/web/data-quality?ledger_id={other.ledger_id}" in response.text
+    audit_heading = re.search(r"<h2>规则应用审计(.*?)</h2>", response.text, re.DOTALL)
+    assert audit_heading is not None
+    assert vm.ledger_name in audit_heading.group(1)
+    assert "全部账本" not in audit_heading.group(1)
