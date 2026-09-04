@@ -25,7 +25,7 @@
 ) %}
 {% set _is_obligations_context = (
   '/debts' in _path or '/receivables' in _path or '/bill-splits' in _path or
-  '/repayment-drafts' in _path
+  '/repayment-drafts' in _path or '/family' in _path
 ) %}
 {# 轴2 IA (#228): 还债目标是前瞻/规划面, 归计划域而非往来(与矿的分歧点, 以 main 语义为准)。 #}
 {% set _is_plans_context = (
@@ -74,6 +74,7 @@
 {% set is_bill_split_inbox = '/bill-splits/inbox' in _path %}
 {% set is_bill_split_sent = '/bill-splits/sent' in _path %}
 {% set is_repayment_drafts = '/repayment-drafts' in _path %}
+{% set is_family = '/family' in _path %}
 {% set is_budgets = '/budgets' in _path %}
 {% set is_goals = '/goals' in _path and '/debt-goals' not in _path %}
 {% set is_debt_goals = '/debt-goals' in _path %}

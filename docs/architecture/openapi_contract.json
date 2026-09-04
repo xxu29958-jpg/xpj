@@ -1147,48 +1147,6 @@
         "title": "Body_owner_learning_maintenance_dismiss_post_owner_learning_maintenance_dismiss_decision_post",
         "type": "object"
       },
-      "Body_owner_ledger_invite_post_owner_ledgers__ledger_id__invitations_post": {
-        "properties": {
-          "note": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Note"
-          },
-          "role": {
-            "title": "Role",
-            "type": "string"
-          },
-          "ttl_days": {
-            "default": 7,
-            "title": "Ttl Days",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "role"
-        ],
-        "title": "Body_owner_ledger_invite_post_owner_ledgers__ledger_id__invitations_post",
-        "type": "object"
-      },
-      "Body_owner_ledger_member_role_post_owner_ledgers__ledger_id__members__member_id__role_post": {
-        "properties": {
-          "role": {
-            "title": "Role",
-            "type": "string"
-          }
-        },
-        "required": [
-          "role"
-        ],
-        "title": "Body_owner_ledger_member_role_post_owner_ledgers__ledger_id__members__member_id__role_post",
-        "type": "object"
-      },
       "Body_owner_ledgers_post_owner_ledgers_post": {
         "properties": {
           "name": {
@@ -2606,6 +2564,90 @@
           }
         },
         "title": "Body_web_expense_undo_web_expenses__expense_id__undo_post",
+        "type": "object"
+      },
+      "Body_web_family_invite_revoke_web_family_invitations__public_id__revoke_post": {
+        "properties": {
+          "csrf_token": {
+            "default": "",
+            "title": "Csrf Token",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_family_invite_revoke_web_family_invitations__public_id__revoke_post",
+        "type": "object"
+      },
+      "Body_web_family_invite_web_family_invitations_post": {
+        "properties": {
+          "csrf_token": {
+            "default": "",
+            "title": "Csrf Token",
+            "type": "string"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "ttl_days": {
+            "default": 7,
+            "title": "Ttl Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "title": "Body_web_family_invite_web_family_invitations_post",
+        "type": "object"
+      },
+      "Body_web_family_member_disable_web_family_members__member_id__disable_post": {
+        "properties": {
+          "csrf_token": {
+            "default": "",
+            "title": "Csrf Token",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_family_member_disable_web_family_members__member_id__disable_post",
+        "type": "object"
+      },
+      "Body_web_family_member_role_web_family_members__member_id__role_post": {
+        "properties": {
+          "csrf_token": {
+            "default": "",
+            "title": "Csrf Token",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "title": "Body_web_family_member_role_web_family_members__member_id__role_post",
+        "type": "object"
+      },
+      "Body_web_family_transfer_owner_web_family_members__member_id__transfer_owner_post": {
+        "properties": {
+          "confirmed": {
+            "default": "",
+            "title": "Confirmed",
+            "type": "string"
+          },
+          "csrf_token": {
+            "default": "",
+            "title": "Csrf Token",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_family_transfer_owner_web_family_members__member_id__transfer_owner_post",
         "type": "object"
       },
       "Body_web_forgive_member_debt_web_debts__public_id__forgive_post": {
@@ -34748,314 +34790,6 @@
         ]
       }
     },
-    "/owner/ledgers/{ledger_id}/invitations": {
-      "post": {
-        "operationId": "owner_ledger_invite_post_owner_ledgers__ledger_id__invitations_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "ledger_id",
-            "required": true,
-            "schema": {
-              "title": "Ledger Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/x-www-form-urlencoded": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_owner_ledger_invite_post_owner_ledgers__ledger_id__invitations_post"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "text/html": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Owner Ledger Invite Post",
-        "tags": [
-          "owner-console"
-        ]
-      }
-    },
-    "/owner/ledgers/{ledger_id}/invitations/{public_id}/revoke": {
-      "post": {
-        "operationId": "owner_ledger_invite_revoke_post_owner_ledgers__ledger_id__invitations__public_id__revoke_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "ledger_id",
-            "required": true,
-            "schema": {
-              "title": "Ledger Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "public_id",
-            "required": true,
-            "schema": {
-              "title": "Public Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "text/html": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Owner Ledger Invite Revoke Post",
-        "tags": [
-          "owner-console"
-        ]
-      }
-    },
-    "/owner/ledgers/{ledger_id}/members": {
-      "get": {
-        "operationId": "owner_ledger_members_get_owner_ledgers__ledger_id__members_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "ledger_id",
-            "required": true,
-            "schema": {
-              "title": "Ledger Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "text/html": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Owner Ledger Members Get",
-        "tags": [
-          "owner-console"
-        ]
-      }
-    },
-    "/owner/ledgers/{ledger_id}/members/{member_id}/disable": {
-      "post": {
-        "operationId": "owner_ledger_member_disable_post_owner_ledgers__ledger_id__members__member_id__disable_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "ledger_id",
-            "required": true,
-            "schema": {
-              "title": "Ledger Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "member_id",
-            "required": true,
-            "schema": {
-              "title": "Member Id",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "text/html": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Owner Ledger Member Disable Post",
-        "tags": [
-          "owner-console"
-        ]
-      }
-    },
-    "/owner/ledgers/{ledger_id}/members/{member_id}/role": {
-      "post": {
-        "operationId": "owner_ledger_member_role_post_owner_ledgers__ledger_id__members__member_id__role_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "ledger_id",
-            "required": true,
-            "schema": {
-              "title": "Ledger Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "member_id",
-            "required": true,
-            "schema": {
-              "title": "Member Id",
-              "type": "integer"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/x-www-form-urlencoded": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_owner_ledger_member_role_post_owner_ledgers__ledger_id__members__member_id__role_post"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "text/html": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Owner Ledger Member Role Post",
-        "tags": [
-          "owner-console"
-        ]
-      }
-    },
-    "/owner/ledgers/{ledger_id}/members/{member_id}/transfer-owner": {
-      "post": {
-        "operationId": "owner_ledger_member_transfer_owner_post_owner_ledgers__ledger_id__members__member_id__transfer_owner_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "ledger_id",
-            "required": true,
-            "schema": {
-              "title": "Ledger Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "member_id",
-            "required": true,
-            "schema": {
-              "title": "Member Id",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "text/html": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Owner Ledger Member Transfer Owner Post",
-        "tags": [
-          "owner-console"
-        ]
-      }
-    },
     "/owner/ledgers/{ledger_id}/unarchive": {
       "post": {
         "description": "Restore an archived ledger, then redirect back to the management page.",
@@ -39336,6 +39070,375 @@
         "summary": "Web Export Csv",
         "tags": [
           "web"
+        ]
+      }
+    },
+    "/web/family": {
+      "get": {
+        "operationId": "web_family_web_family_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ledger Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Family",
+        "tags": [
+          "web-app"
+        ]
+      }
+    },
+    "/web/family/invitations": {
+      "post": {
+        "operationId": "web_family_invite_web_family_invitations_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ledger Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_family_invite_web_family_invitations_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Family Invite",
+        "tags": [
+          "web-app"
+        ]
+      }
+    },
+    "/web/family/invitations/{public_id}/revoke": {
+      "post": {
+        "operationId": "web_family_invite_revoke_web_family_invitations__public_id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ledger Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_family_invite_revoke_web_family_invitations__public_id__revoke_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Family Invite Revoke",
+        "tags": [
+          "web-app"
+        ]
+      }
+    },
+    "/web/family/members/{member_id}/disable": {
+      "post": {
+        "operationId": "web_family_member_disable_web_family_members__member_id__disable_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "member_id",
+            "required": true,
+            "schema": {
+              "title": "Member Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ledger Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_family_member_disable_web_family_members__member_id__disable_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Family Member Disable",
+        "tags": [
+          "web-app"
+        ]
+      }
+    },
+    "/web/family/members/{member_id}/role": {
+      "post": {
+        "operationId": "web_family_member_role_web_family_members__member_id__role_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "member_id",
+            "required": true,
+            "schema": {
+              "title": "Member Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ledger Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_family_member_role_web_family_members__member_id__role_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Family Member Role",
+        "tags": [
+          "web-app"
+        ]
+      }
+    },
+    "/web/family/members/{member_id}/transfer-owner": {
+      "post": {
+        "operationId": "web_family_transfer_owner_web_family_members__member_id__transfer_owner_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "member_id",
+            "required": true,
+            "schema": {
+              "title": "Member Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ledger Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_family_transfer_owner_web_family_members__member_id__transfer_owner_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Family Transfer Owner",
+        "tags": [
+          "web-app"
         ]
       }
     },

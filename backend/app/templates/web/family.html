@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% set page_title = '家庭' %}
+{% set product_body_domain = 'obligations' %}
+{% block title %}家庭 · 往来 · 小票夹{% endblock %}
+
+{% macro role_label(role) -%}
+  {{ {'owner': '拥有者', 'member': '成员', 'viewer': '只读'}.get(role, role) }}
+{%- endmacro %}
+{% macro moment(value) -%}
+  {{ value[:16] | replace('T', ' ') if value else '—' }}
+{%- endmacro %}
+
+{% block content %}
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">往来 / 家庭</span>
+    <h1 class="page-title">家庭成员</h1>
+    <p class="product-page-summary">一起记这本账的人都在这里。拥有者可以邀请家人，并决定谁能记账、谁只查看。</p>
+  </div>
+</header>
+
+{% if error %}
+<div class="product-feedback product-feedback--danger" role="alert">{{ error }}</div>
+{% endif %}
+
+{% if not can_manage_family %}
+<div class="product-feedback" role="status">当前角色可以查看家庭成员；邀请和权限由账本拥有者管理。</div>
+{% endif %}
+
+{% if invitation_token %}
+<section class="product-panel product-panel--padded family-invite-reveal" aria-labelledby="family-invite-token-title">
+  <div class="product-panel-header">
+    <div>
+      <h2 class="product-panel-title" id="family-invite-token-title">邀请已生成</h2>
+      <p class="product-panel-subtitle">这段邀请明文仅显示一次。现在复制并私下发给家人，不要把设备绑定码发给对方。</p>
+    </div>
+    <span class="product-status product-status--success">待分享</span>
+  </div>
+  <label class="product-field family-token-field">
+    <span>邀请明文</span>
+    <textarea class="product-input" rows="2" readonly>{{ invitation_token }}</textarea>
+  </label>
+  <p class="hint">手机长按或电脑全选即可复制；刷新或离开后不会再次显示。</p>
+</section>
+{% endif %}
+
+{% if can_manage_family %}
+<section class="product-panel product-panel--padded" aria-labelledby="family-invite-title">
+  <div class="product-panel-header">
+    <div>
+      <h2 class="product-panel-title" id="family-invite-title">邀请家人</h2>
+      <p class="product-panel-subtitle">“成员”可以记账，“只读”只能查看。邀请最长 30 天有效。</p>
+    </div>
+  </div>
+  <form method="post" action="/web/family/invitations?ledger_id={{ selected_ledger_id }}" class="product-form-grid family-invite-form">
+    {{ csrf_field|safe }}
+    <label class="product-field">
+      <span>权限</span>
+      <select class="product-input" name="role">
+        <option value="member"{% if submitted_role == 'member' %} selected{% endif %}>成员 · 可以记账</option>
+        <option value="viewer"{% if submitted_role == 'viewer' %} selected{% endif %}>只读 · 只能查看</option>
+      </select>
+    </label>
+    <label class="product-field">
+      <span>称呼或备注</span>
+      <input class="product-input" type="text" name="note" maxlength="80" value="{{ submitted_note }}" placeholder="例如：妈妈">
+    </label>
+    <label class="product-field">
+      <span>有效天数</span>
+      <input class="product-input" type="number" name="ttl_days" min="1" max="30" value="{{ submitted_ttl_days }}">
+    </label>
+    <div class="family-form-action">
+      <button class="product-button product-button--primary" type="submit">生成邀请</button>
+    </div>
+  </form>
+</section>
+{% endif %}
+
+<section class="product-panel product-panel--padded" aria-labelledby="family-members-title">
+  <div class="product-panel-header">
+    <div>
+      <h2 class="product-panel-title" id="family-members-title">这本账的成员</h2>
+      <p class="product-panel-subtitle">{{ members | length }} 人，包括已停用成员。</p>
+    </div>
+  </div>
+  <div class="family-member-list">
+  {% for member in members %}
+    <article class="family-member{% if member.disabled_at %} is-disabled{% endif %}">
+      <div class="family-member-identity">
+        <strong>{{ member.account_name }}</strong>
+        <span>{{ '本人' if member.is_self else '家庭成员' }} · 加入于 {{ moment(member.created_at) }}</span>
+      </div>
+      <div class="family-member-state">
+        <span class="product-status{% if member.role == 'owner' %} product-status--success{% elif member.role == 'viewer' %} product-status--info{% endif %}">{{ role_label(member.role) }}</span>
+        {% if member.disabled_at %}<span class="product-status">已停用</span>{% endif %}
+      </div>
+      {% if can_manage_family and not member.disabled_at and member.role != 'owner' and not member.is_self %}
+      <div class="family-member-actions">
+        <form method="post" action="/web/family/members/{{ member.member_id }}/role?ledger_id={{ selected_ledger_id }}" class="product-inline-form">
+          {{ csrf_field|safe }}
+          <label class="sr-only" for="family-role-{{ member.member_id }}">调整 {{ member.account_name }} 的权限</label>
+          <select class="product-input" id="family-role-{{ member.member_id }}" name="role">
+            <option value="member"{% if member.role == 'member' %} selected{% endif %}>成员</option>
+            <option value="viewer"{% if member.role == 'viewer' %} selected{% endif %}>只读</option>
+          </select>
+          <button class="product-button" type="submit">保存权限</button>
+        </form>
+        <details class="family-member-more">
+          <summary>更多</summary>
+          <div class="family-member-more-body">
+            <form method="post" action="/web/family/members/{{ member.member_id }}/disable?ledger_id={{ selected_ledger_id }}" data-confirm="停用 {{ member.account_name }}？对方将立刻失去这本账的访问权限。">
+              {{ csrf_field|safe }}
+              <button class="product-button" type="submit">停用成员</button>
+            </form>
+            <form method="post" action="/web/family/members/{{ member.member_id }}/transfer-owner?ledger_id={{ selected_ledger_id }}" data-confirm="把这本账转让给 {{ member.account_name }}？你将变为普通成员。">
+              {{ csrf_field|safe }}
+              <label class="family-transfer-confirm">
+                <input type="checkbox" name="confirmed" value="yes" required>
+                <span>我确认转让后自己不再是拥有者</span>
+              </label>
+              <button class="product-button" type="submit">转让拥有者</button>
+            </form>
+          </div>
+        </details>
+      </div>
+      {% endif %}
+    </article>
+  {% else %}
+    <div class="product-state">
+      <div class="product-state-title">还没有成员</div>
+      <div class="product-state-body">拥有者可以先生成一份邀请。</div>
+    </div>
+  {% endfor %}
+  </div>
+</section>
+
+{% if can_manage_family %}
+<details class="product-panel product-panel--padded family-disclosure"{% if invitations %} open{% endif %}>
+  <summary>已发邀请 · {{ invitations | length }}</summary>
+  <div class="family-invitation-list">
+  {% for invitation in invitations %}
+    <article class="family-invitation">
+      <div>
+        <strong>{{ invitation.note or '未填写称呼' }}</strong>
+        <p>{{ role_label(invitation.role) }} · {{ moment(invitation.created_at) }} 发出 · {{ moment(invitation.expires_at) }} 到期</p>
+      </div>
+      {% if invitation.used_at %}
+      <span class="product-status product-status--success">已接受</span>
+      {% elif invitation.revoked_at %}
+      <span class="product-status">已撤销</span>
+      {% else %}
+      <div class="family-invitation-action">
+        <span class="product-status product-status--info">待接受</span>
+        <form method="post" action="/web/family/invitations/{{ invitation.public_id }}/revoke?ledger_id={{ selected_ledger_id }}" data-confirm="撤销给 {{ invitation.note or '这位家人' }} 的邀请？原邀请明文会立即失效。">
+          {{ csrf_field|safe }}
+          <button class="product-button" type="submit">撤销邀请</button>
+        </form>
+      </div>
+      {% endif %}
+    </article>
+  {% else %}
+    <div class="product-state"><div class="product-state-body">还没有邀请记录。</div></div>
+  {% endfor %}
+  </div>
+</details>
+
+<details class="product-panel product-panel--padded family-disclosure">
+  <summary>成员记录 · 最近 {{ audit_logs | length }} 条</summary>
+  <ol class="family-audit-list">
+  {% for item in audit_logs %}
+    <li>
+      <span>{{ moment(item.created_at) }}</span>
+      <strong>{{ {
+        'invitation_created': '创建邀请',
+        'invitation_accepted': '接受邀请',
+        'invitation_revoked': '撤销邀请',
+        'member_role_changed': '调整角色',
+        'member_disabled': '停用成员',
+        'owner_transferred': '转让拥有者'
+      }.get(item.action, item.action) }}</strong>
+      <span>{{ item.actor_account_name or '系统' }}{% if item.target_account_name %} → {{ item.target_account_name }}{% endif %}</span>
+    </li>
+  {% else %}
+    <li><span>还没有成员操作记录。</span></li>
+  {% endfor %}
+  </ol>
+</details>
+{% endif %}
+{% endblock %}

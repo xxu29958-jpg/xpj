@@ -13,6 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 import app.routes.web_expense_offsets as web_expense_offsets
+import app.routes.web_family as web_family
 import app.routes.web_library as web_library
 from app.auth import get_current_app_context
 from app.config import DATA_ROOT, get_settings
@@ -397,6 +398,7 @@ app.include_router(web_expense_offsets.router)
 app.include_router(web_expense_lifecycle.router)
 app.include_router(web_expense_items.router)
 app.include_router(web_expense_splits.router)
+app.include_router(web_family.router)
 app.include_router(web_media.router)
 app.include_router(web_pending.router)
 app.include_router(web_inbox_capture.router)
