@@ -71,7 +71,7 @@ internal fun ledgerMonthPickerListState(loadState: LedgerMonthsLoadState): Month
 // filter is client-side, so exporting under it would silently dump the
 // unfiltered scope. Disable the affordance instead of mis-scoping the file.
 internal fun ledgerExportAvailable(state: LedgerUiState): Boolean =
-    state.items.isNotEmpty() && !state.exporting && state.dataQualityFilter == null
+    state.items.isNotEmpty() && !state.exporting && state.exportFile == null && state.dataQualityFilter == null
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

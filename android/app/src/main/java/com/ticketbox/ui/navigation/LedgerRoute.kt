@@ -1,5 +1,6 @@
 package com.ticketbox.ui.navigation
 
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -7,19 +8,16 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
-import com.ticketbox.R
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.ui.screens.LedgerLaunchRequest
 import com.ticketbox.ui.screens.LedgerScreen
 import com.ticketbox.ui.screens.LedgerScreenActions
+import com.ticketbox.viewmodel.LedgerExportOutcome
 import com.ticketbox.viewmodel.LedgerViewModel
 
 @Composable
@@ -41,11 +39,6 @@ internal fun LedgerRoute(
     }
     val state by ledgerViewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    var pendingExport by remember { mutableStateOf<CsvExport?>(null) }
-    // ADR-0044: stringResource 是 @Composable-only,导出回调要的文案在此提升为已解析文本。
-    val exportCancelledMessage = stringResource(R.string.ledger_msg_export_cancelled)
-    val exportSucceededMessage = stringResource(R.string.ledger_msg_export_succeeded)
-    val exportFailedMessage = stringResource(R.string.ledger_msg_export_failed)
 
     SyncLedgerAfterExpenseEdit(shellState, ledgerViewModel)
     SyncLedgerVocabulary(shellState, ledgerViewModel)
@@ -54,22 +47,29 @@ internal fun LedgerRoute(
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/csv"),
     ) { uri ->
-        val exportFile = pendingExport
-        pendingExport = null
-        if (uri == null || exportFile == null) {
-            ledgerViewModel.exportFinished(exportCancelledMessage)
+        val exportFile = ledgerViewModel.uiState.value.exportFile
+        if (uri == null) {
+            ledgerViewModel.exportFinished(LedgerExportOutcome.Cancelled)
+            return@rememberLauncherForActivityResult
+        }
+        if (exportFile == null) {
+            ledgerViewModel.exportFinished(LedgerExportOutcome.Failed)
             return@rememberLauncherForActivityResult
         }
         writeCsvExport(context, uri, exportFile) { ok ->
-            ledgerViewModel.exportFinished(if (ok) exportSucceededMessage else exportFailedMessage)
+            ledgerViewModel.exportFinished(if (ok) LedgerExportOutcome.Saved else LedgerExportOutcome.Failed)
         }
     }
 
     LaunchedEffect(state.exportFile) {
         val exportFile = state.exportFile ?: return@LaunchedEffect
-        pendingExport = exportFile
-        exportLauncher.launch(exportFile.fileName)
+        if (state.exportDestinationPending) return@LaunchedEffect
         ledgerViewModel.exportLaunchHandled()
+        try {
+            exportLauncher.launch(exportFile.fileName)
+        } catch (_: ActivityNotFoundException) {
+            ledgerViewModel.exportFinished(LedgerExportOutcome.Failed)
+        }
     }
 
     LedgerScreen(

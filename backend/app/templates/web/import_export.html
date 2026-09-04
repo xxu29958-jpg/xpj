@@ -67,7 +67,17 @@
       </div>
       <div class="product-field">
         <label for="export-category">分类（可选）</label>
-        <input type="text" id="export-category" name="category" placeholder="如：餐饮">
+        <input type="text" id="export-category" name="category" list="export-categories" placeholder="全部分类">
+        <datalist id="export-categories">
+          {% for category in export_categories %}<option value="{{ category }}">{% endfor %}
+        </datalist>
+      </div>
+      <div class="product-field">
+        <label for="export-tag">标签（可选）</label>
+        <input type="text" id="export-tag" name="tag" list="export-tags" placeholder="全部标签">
+        <datalist id="export-tags">
+          {% for tag in export_tags %}<option value="{{ tag }}">{% endfor %}
+        </datalist>
       </div>
       <div class="product-field export-submit-field">
         <button type="submit" class="product-button product-button--primary">下载 CSV</button>

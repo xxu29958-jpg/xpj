@@ -1,6 +1,7 @@
 package com.ticketbox.ui.screens
 
 import com.ticketbox.domain.model.ConfirmedStreamItem
+import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseLineageStatus
 import com.ticketbox.ui.components.MonthPickerListState
@@ -51,6 +52,11 @@ class LedgerScreenSheetsTest {
         assertFalse(
             ledgerExportAvailable(
                 LedgerUiState(items = listOf(exportFixtureItem), exporting = true),
+            ),
+        )
+        assertFalse(
+            ledgerExportAvailable(
+                LedgerUiState(items = listOf(exportFixtureItem), exportFile = CsvExport("ledger.csv", byteArrayOf(1))),
             ),
         )
     }

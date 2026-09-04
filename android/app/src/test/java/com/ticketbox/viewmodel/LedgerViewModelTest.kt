@@ -31,6 +31,8 @@ import java.lang.reflect.Proxy
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -42,6 +44,61 @@ class LedgerViewModelTest {
             block()
         } finally {
             Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun exportRetainsDownloadedFileUntilDestinationReturns() = ledgerTest {
+        val fake = FakeLedgerActions(
+            expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "早餐店")),
+        )
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
+        advanceUntilIdle()
+        vm.setMonthFilter(FIXTURE_MONTH)
+        advanceUntilIdle()
+
+        vm.exportCsv()
+        advanceUntilIdle()
+        val downloaded = assertNotNull(vm.uiState.value.exportFile)
+        assertFalse(vm.uiState.value.exportDestinationPending)
+        vm.exportLaunchHandled()
+
+        // The recreated route must obtain the original bytes from its retained VM.
+        assertEquals(downloaded, assertNotNull(vm.uiState.value.exportFile))
+        assertTrue(vm.uiState.value.exportDestinationPending)
+        vm.exportCsv()
+        advanceUntilIdle()
+        assertEquals(1, fake.exportCallCount, "An open save picker must not replace the file")
+    }
+
+    @Test
+    fun exportSettlementReleasesFileAndReportsTheActualOutcome() = ledgerTest {
+        val cases = listOf(
+            Triple(LedgerExportOutcome.Saved, R.string.ledger_msg_export_succeeded, MessageTone.Success),
+            Triple(LedgerExportOutcome.Cancelled, R.string.ledger_msg_export_cancelled, MessageTone.Info),
+            Triple(LedgerExportOutcome.Failed, R.string.ledger_msg_export_failed, MessageTone.Danger),
+        )
+        for ((outcome, message, tone) in cases) {
+            val fake = FakeLedgerActions(
+                expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "早餐店")),
+            )
+            val vm = LedgerViewModel(fake, CapabilityDebtActions())
+            advanceUntilIdle()
+            vm.setMonthFilter(FIXTURE_MONTH)
+            advanceUntilIdle()
+            vm.exportCsv()
+            advanceUntilIdle()
+            vm.exportLaunchHandled()
+
+            vm.exportFinished(outcome)
+
+            assertNull(vm.uiState.value.exportFile)
+            assertFalse(vm.uiState.value.exportDestinationPending)
+            assertEquals(UiText.res(message), vm.uiState.value.message)
+            assertEquals(tone, vm.uiState.value.messageTone)
+            vm.exportCsv()
+            advanceUntilIdle()
+            assertEquals(2, fake.exportCallCount, "Every settled outcome allows a fresh attempt")
         }
     }
 

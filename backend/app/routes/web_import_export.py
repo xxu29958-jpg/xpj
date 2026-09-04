@@ -25,6 +25,7 @@ from app.routes.web_common import (
     _with_ledger,
     templates,
 )
+from app.services.category_service import list_ledger_category_options
 from app.services.csv_import_batch_service import (
     MAX_CSV_IMPORT_ROWS,
     apply_csv_import_batch,
@@ -35,6 +36,7 @@ from app.services.csv_import_batch_service import (
 )
 from app.services.spending_contract_service import accounting_datetime_label
 from app.services.stats_service import export_confirmed_csv
+from app.services.tag_service import list_tags
 
 router = APIRouter(prefix="/web", tags=["web"])
 
@@ -84,6 +86,8 @@ def web_import_form(
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id)
     ctx["max_rows"] = MAX_CSV_IMPORT_ROWS
+    ctx["export_categories"] = list_ledger_category_options(db, tenant_id=selected_id)
+    ctx["export_tags"] = list_tags(db, selected_id)
     ctx["flash_message"] = msg
     ctx["q"] = "?ledger_id=" + selected_id
     return templates.TemplateResponse(
