@@ -1,47 +1,49 @@
 # 小票夹文档导览
 
-按"读者意图"分到 5 个子目录 + 2 个常驻目录。先选你今天的角色，再翻对应入口。
+仓库施工先读根目录 [`AGENTS.md`](../AGENTS.md)。本页只是按责任找文档的索引，不是第二套规则，也不要求每个任务通读全部材料。
 
-| 你想 | 进哪个目录 |
+## 按责任进入
+
+| 当前责任 | 入口 |
 |---|---|
-| 开始写代码前必读规则 | [rules/](rules/) |
-| 理解系统怎么搭、API 长什么样 | [architecture/](architecture/) |
-| 部署 / 备份 / 排障 / 升级 | [runbook/](runbook/) |
-| 看产品路线、设计参考、未来能力 | [roadmap/](roadmap/) |
-| 查当前版本（v1.2）的设计资产和收口报告 | [current/](current/) |
-| 看某个具体技术选型为什么这么定 | [DECISIONS/](DECISIONS/)（人读索引见 [DECISIONS/README.md](DECISIONS/README.md)，机器状态/关系查询见 [adr-registry.json](current/adr-registry.json)）|
-| 拿设计稿原图与色板预览 | [design_reference/](design_reference/) |
+| 施工边界、验证、停止条件 | [`AGENTS.md`](../AGENTS.md)；需要细节时再读 [`rules/ENGINEERING_RULES.md`](rules/ENGINEERING_RULES.md) 对应章节 |
+| 系统结构、API、身份、安全 | [`architecture/`](architecture/) |
+| Windows 安装、服务、备份、恢复、排障 | [`runbook/`](runbook/)、[`../distribution/`](../distribution/)、[`../desktop/`](../desktop/) |
+| 依赖、代码质量、错误文案 | [`rules/DEPENDENCIES.md`](rules/DEPENDENCIES.md)、[`rules/CODE_QUALITY_STANDARDS.md`](rules/CODE_QUALITY_STANDARDS.md)、[`rules/ERROR_MESSAGE_MAPPING.md`](rules/ERROR_MESSAGE_MAPPING.md) |
+| 产品路线和设计参考 | [`roadmap/`](roadmap/)、[`design_reference/`](design_reference/) |
+| 有日期/基线的审查与状态快照 | [`current/`](current/) |
+| 查询某项长期决定为什么存在 | [`DECISIONS/README.md`](DECISIONS/README.md) |
 
-## 渐进阅读（与 [AGENTS.md](../AGENTS.md) 一致）
+## 渐进阅读
 
-先恢复用户当前 Goal、Owner 裁决和任务专属合同，再按责任选读项目文档；不要为机械合规而每次通读整本
-ARCHITECTURE / API。先用目录、版本 / 最近变更和搜索定位，随后完整读取当前责任实际依赖的章节：
+1. 先恢复用户当前 Goal、Owner 裁决、任务合同和 exact HEAD。
+2. 沿真实调用链、目录和测试定位责任面。
+3. 只读取会改变本次判断的架构章节、runbook、专题规则和 ADR。
+4. 历史文档、旧 ADR、旧测试和旧工作流必须拿当前代码与运行事实复核。
+5. 只有修改 ADR/治理工具本身时，才加载 [`rules/ADR_CONTRACT_STANDARD.md`](rules/ADR_CONTRACT_STANDARD.md)。
 
-1. [rules/ENGINEERING_RULES.md](rules/ENGINEERING_RULES.md) — 定位后完整读取当前责任章节及其明确引用；后端 / Android 补充见 §14
-2. [architecture/](architecture/) — 当前任务涉及的架构、结构、API 或安全章节
-3. [rules/REFERENCES.md](rules/REFERENCES.md) — 当前机制对应的官方资料和依赖来源
-4. [DECISIONS/](DECISIONS/) — 用 [adr-registry.json](current/adr-registry.json) 和索引定位；选中后完整读取并复核真实代码
-5. [rules/ADR_CONTRACT_STANDARD.md](rules/ADR_CONTRACT_STANDARD.md) — 仅在修改 ADR / 治理工具时完整读取
+不要把“读过更多文档”当成正确性的替代品。一个局部任务通常不需要整本读取 `ARCHITECTURE.md`、`API.md`、全部 ADR 或整个规则目录。
 
-只有任务横跨整份文档、修改文档本身或上位合同明确要求时才整本读取。历史文档与旧实现都是审计对象，
-不能覆盖当前 Goal、Owner 裁决、官方语义和真实运行事实。OCR / 分类 / 重复检测 / 缩略图任务追加读取
-[roadmap/V2_ROADMAP.md](roadmap/V2_ROADMAP.md) 的相关章节。
+## ADR 使用边界
 
-## 版本真值源
+ADR 保存长期决定及其理由，不是当前任务列表，也不自动证明实现已经符合。
 
-[architecture/VERSION.md](architecture/VERSION.md) 是后端 / Android 版本号的唯一权威。任何文档、CI、脚本里的版本字符串必须与这份对齐。当前 `v1.2.0`。
+- 先用 [`DECISIONS/README.md`](DECISIONS/README.md)、代码搜索或 [`current/adr-registry.json`](current/adr-registry.json) 定位相关决定。
+- registry、状态表和依赖图只对其中标注的 review base 有效；基线早于当前 HEAD 时，它们只能作为检索线索。
+- 选中 ADR 后读取正文，并与当前代码、迁移、测试和 active contract 交叉核对。
+- 常规 bugfix、局部重构、样式、测试和既有决定的实现不需要新 ADR。
+- 决策方向改变时写后继 ADR并声明关系；不要改写历史正文来伪造“当时已经实现”。
 
-## 目录约定
+## 目录角色
 
-- **rules/**：约束类。改动需要谨慎，常引用为"必读"。
-- **architecture/**：契约类。改动等于改契约，要同步代码。
-- **runbook/**：操作类。读者多是运维角色，步骤要可粘贴执行。
-- **roadmap/**：规划类。多是规划、对照、参考；落地后逐步沉到 architecture/。
-- **current/**：版本资产。每发布一个 minor 就替换；过期内容直接删除（git 历史里仍可追溯）。
-- **DECISIONS/**：ADR。已接受的决策本体保留历史；schema-v2 用 front matter，legacy 正文由 hash baseline
-  冻结、当前符合性由 calibration overlay 表达。方向改变写新 ADR 并声明 `amends` / `supersedes`。
-- **design_reference/**：设计稿。`thumbnails/*.png` 是真值，文字说明在该目录的 README.md。
+- **rules/**：长期工程细则和专题标准。`AGENTS.md` 才是唯一默认施工入口。
+- **architecture/**：当前跨模块契约；行为改变时与代码同步。
+- **runbook/**：可执行操作步骤；必须说明前置、失败和恢复。
+- **roadmap/**：未来计划与参考，不是当前施工授权。
+- **current/**：带日期和基线的状态/审查产物；过期后不应继续作为默认入口。
+- **DECISIONS/**：不可改写的决定历史及后继关系。
+- **design_reference/**：设计资产和参考图。
 
-## 这次重组的范围
+## 版本
 
-参见根目录 [CHANGELOG](current/CHANGELOG.md)。简言之：把 v0.9 之前的扁平 70+ 文档按上面五分类重排；删除已过时的 DESIGN_TARGETS.md、ANDROID_AUTO_CAPTURE.md 与 v0.4/v0.5/v0.8 历史收口快照（git 历史里仍可追溯）；把 ROLLBACK.md 从"v0.3 一次性迁移"重写为通用版本回滚 runbook。
+[`architecture/VERSION.md`](architecture/VERSION.md) 是版本号的权威入口；代码位置和发布状态必须由该文件列出的真实源核对。不要在本导览复制易过期进度叙事。
