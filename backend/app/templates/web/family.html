@@ -97,7 +97,10 @@
       </div>
       <div class="family-member-state">
         <span class="product-status{% if member.role == 'owner' %} product-status--success{% elif member.role == 'viewer' %} product-status--info{% endif %}">{{ role_label(member.role) }}</span>
-        {% if member.disabled_at %}<span class="product-status">已停用 · 停用于 {{ member.disabled_label }}</span>{% endif %}
+        {% if member.disabled_at %}
+        <span class="product-status">已停用</span>
+        <span class="family-state-meta">停用于 {{ member.disabled_label }}</span>
+        {% endif %}
       </div>
       {% if can_manage_family and not member.disabled_at and member.role != 'owner' and not member.is_self %}
       <div class="family-member-actions">
@@ -150,9 +153,15 @@
         <p>{{ role_label(invitation.role) }} · {{ invitation.created_label }} 发出 · {{ invitation.expires_label }} 到期</p>
       </div>
       {% if invitation.state == 'used' %}
-      <span class="product-status product-status--success">已接受 · {{ invitation.used_by_account_name or '家庭成员' }} · {{ invitation.used_label }}</span>
+      <div class="family-invitation-state">
+        <span class="product-status product-status--success">已接受</span>
+        <span class="family-state-meta">{{ invitation.used_by_account_name or '家庭成员' }} · {{ invitation.used_label }}</span>
+      </div>
       {% elif invitation.state == 'revoked' %}
-      <span class="product-status">已撤销 · {{ invitation.revoked_label }}</span>
+      <div class="family-invitation-state">
+        <span class="product-status">已撤销</span>
+        <span class="family-state-meta">{{ invitation.revoked_label }}</span>
+      </div>
       {% elif invitation.state == 'expired' %}
       <span class="product-status">已过期</span>
       {% else %}

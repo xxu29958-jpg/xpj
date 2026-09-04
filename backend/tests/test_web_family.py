@@ -10,7 +10,7 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import Invitation, Ledger, LedgerMember
+from app.models import Invitation, Ledger, LedgerAuditLog, LedgerMember
 from app.routes import owner_ledgers
 from app.routes.web_auth import SESSION_COOKIE_NAME
 from tests._web_public_session_support import PUBLIC_HOST, mint_session, public_client
@@ -57,7 +57,7 @@ def _accept_member(
         json=invitation_accept_payload(
             invite_token,
             account_name=account_name,
-            device_name=f"{account_name}-phone",
+            device_name="pytest-family-phone",
         ),
     )
     assert accepted.status_code == 200, accepted.text
@@ -201,6 +201,21 @@ def test_owner_changes_role_and_disables_member(
     assert "停用成员" in after.text
 
 
+def test_accepted_invitation_keeps_long_member_name_outside_status_pill(
+    client: TestClient,
+    web_client: TestClient,
+) -> None:
+    invite_token, _ = _create_invitation(web_client, note="长名字家人")
+    account_name = "家" * 120
+    _accept_member(client, invite_token, account_name=account_name)
+
+    response = web_client.get("/web/family?ledger_id=owner")
+
+    assert response.status_code == 200
+    assert '<span class="product-status product-status--success">已接受</span>' in response.text
+    assert f'<span class="family-state-meta">{account_name} ·' in response.text
+
+
 def test_viewer_sees_roster_without_owner_commands(
     client: TestClient,
     web_client: TestClient,
@@ -264,6 +279,27 @@ def test_expired_invitation_is_localized_and_not_presented_as_usable(
     assert "已过期" in response.text
     assert "旧邀请" in response.text
     assert f"/web/family/invitations/{public_id}/revoke" not in response.text
+
+    stale_submit = web_client.post(
+        f"/web/family/invitations/{public_id}/revoke?ledger_id=owner",
+        data={"csrf_token": _csrf(response.text)},
+    )
+
+    assert stale_submit.status_code == 400
+    assert "邀请码无效、已过期或已被使用" in stale_submit.text
+    with SessionLocal() as db:
+        invitation = db.scalar(
+            select(Invitation).where(Invitation.public_id == public_id)
+        )
+        revoked_audit = db.scalar(
+            select(LedgerAuditLog)
+            .where(LedgerAuditLog.invitation_public_id == public_id)
+            .where(LedgerAuditLog.action == "invitation_revoked")
+            .limit(1)
+        )
+        assert invitation is not None
+        assert invitation.revoked_at is None
+        assert revoked_audit is None
 
 
 def test_owner_transfers_the_single_owner_role(

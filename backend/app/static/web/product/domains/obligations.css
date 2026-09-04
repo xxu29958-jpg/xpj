@@ -811,12 +811,25 @@
 .family-form-action,
 .family-invite-handoff,
 .family-invitation-action,
+.family-invitation-state,
 .family-member-actions,
 .family-member-state {
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-3);
     align-items: center;
+}
+
+.family-invitation-state,
+.family-member-state {
+    min-width: 0;
+}
+
+.family-state-meta {
+    min-width: 0;
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+    overflow-wrap: anywhere;
 }
 
 .family-token-field textarea {
