@@ -404,6 +404,7 @@ a {
     display: inline-flex;
     min-height: var(--space-9);
     align-items: center;
+    gap: var(--space-2);
     padding: var(--space-2) var(--space-3);
     border: 0;
     border-radius: var(--radius-sm);
@@ -414,6 +415,20 @@ a {
     font-weight: var(--type-subtitle-weight);
     text-decoration: none;
     white-space: nowrap;
+}
+
+.topbar-shortcut-hint {
+    min-inline-size: var(--space-5);
+    padding: 0 var(--space-1);
+    border: 1px solid var(--border-card);
+    border-block-end-color: var(--border-input);
+    border-radius: var(--radius-xs);
+    background: var(--surface-sunken);
+    color: var(--text-meta);
+    font: inherit;
+    font-size: var(--type-meta-size);
+    line-height: var(--space-5);
+    text-align: center;
 }
 
 .topbar-action:hover {
@@ -953,6 +968,10 @@ details[open] > .chrome-trigger {
     .topbar-brand-name,
     .product-topbar > .topbar-search,
     .product-topbar > .appearance {
+        display: none;
+    }
+
+    .topbar-shortcut-hint {
         display: none;
     }
 

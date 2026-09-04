@@ -32,6 +32,12 @@ _REVIEW_KEYBOARD_FIXTURE = (
 _REVIEW_KEYBOARD_JS = (
     _REPO_ROOT / "backend" / "app" / "static" / "web" / "desktop" / "review-keyboard.js"
 )
+_SHELL_KEYBOARD_FIXTURE = (
+    _REPO_ROOT / "backend" / "tests" / "fixtures" / "shell_keyboard_contract.html"
+)
+_SHELL_KEYBOARD_JS = (
+    _REPO_ROOT / "backend" / "app" / "static" / "web" / "desktop" / "shell-keyboard.js"
+)
 _EDGE_CDP: ModuleType | None = None
 
 
@@ -140,6 +146,37 @@ def _assert_review_keyboard_behaves_in_real_edge(tmp_path: Path) -> None:
         "drawerArrow": {"active": "row-1", "prevented": False},
         "confirm": {"active": "row-1", "prevented": True},
         "confirmCalls": 1,
+    }
+
+
+def test_shell_shortcuts_preserve_typing_and_permission_boundaries_in_real_edge(
+    tmp_path: Path,
+) -> None:
+    page = _write_fixture(
+        tmp_path,
+        "shell-keyboard-contract.html",
+        _SHELL_KEYBOARD_FIXTURE.read_text(encoding="utf-8").replace(
+            "__SHELL_KEYBOARD_URI__",
+            html.escape(_SHELL_KEYBOARD_JS.as_uri(), quote=True),
+        ),
+    )
+    probe = _evaluate_fixture(
+        tmp_path,
+        page=page,
+        width=1024,
+        height=768,
+        profile_name="edge-shell-keyboard-contract",
+    )
+
+    assert probe == {
+        "search": True,
+        "capture": True,
+        "modified": False,
+        "composing": False,
+        "input": False,
+        "drawer": False,
+        "absent": False,
+        "clicks": {"search": 1, "capture": 1},
     }
 
 

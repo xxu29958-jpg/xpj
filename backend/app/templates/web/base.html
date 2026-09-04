@@ -167,6 +167,7 @@
   <script defer src="/static/web/desktop/theme.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/desktop/background.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/desktop/ledger-switcher.js?v={{ asset_version }}"></script>
+  <script defer src="/static/web/desktop/shell-keyboard.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/desktop/receipt-skeletons.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/desktop/drawer.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/desktop/review-keyboard.js?v={{ asset_version }}"></script>
@@ -217,9 +218,15 @@
       {# W1 IA-B: 全局安静入口 — 搜索全角色可达; 收票是 can_write-gated 的
          真实 GET 导航 (#capture 锚到收件上传组), upload command owner 不变。
          ≤40rem 两枚让位进「我」popover (见 _ledger_switcher.html)。 #}
-      <a class="topbar-action topbar-search" href="/web/search{{ q }}">搜索</a>
+      <a class="topbar-action topbar-search" href="/web/search{{ q }}"
+         data-shell-shortcut="search" aria-keyshortcuts="/" title="搜索（/）">
+        <span>搜索</span><kbd class="topbar-shortcut-hint" aria-hidden="true">/</kbd>
+      </a>
       {% if can_write %}
-      <a class="topbar-action topbar-capture" href="/web/pending{{ q }}#capture">收票</a>
+      <a class="topbar-action topbar-capture" href="/web/pending{{ q }}#capture"
+         data-shell-shortcut="capture" aria-keyshortcuts="U" title="收票（U）">
+        <span>收票</span><kbd class="topbar-shortcut-hint" aria-hidden="true">U</kbd>
+      </a>
       {% endif %}
       {# 外观入口 (冻结片合同): 单一「外观」popover 聚合 主题/质感/强调色
          三条本地偏好轴。<details> 原生可开合, 无 JS 也可用; 三轴语义与

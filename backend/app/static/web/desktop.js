@@ -23,6 +23,7 @@
     call("initThemeControl");
     call("initBackgroundControl");
     call("initLedgerSwitcher");
+    call("initShellKeyboard");
     call("initDrawer");
     call("initReviewKeyboard");
     call("initBulkBar");
