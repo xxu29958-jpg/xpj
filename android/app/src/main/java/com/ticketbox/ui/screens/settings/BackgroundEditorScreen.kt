@@ -25,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,12 +37,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundSettings
@@ -60,6 +63,7 @@ import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.theme.configureTicketboxSystemBars
 import com.ticketbox.viewmodel.BackgroundEditorState
 
 /**
@@ -92,6 +96,10 @@ private fun BackgroundEditorContent(
     currentSkin: AppSkin,
     actions: BackgroundEditorActions,
 ) {
+    val view = LocalView.current
+    SideEffect {
+        configureTicketboxSystemBars((view.parent as DialogWindowProvider).window, view, currentSkin)
+    }
     val draft = editor.settings
     var previewRole by remember { mutableStateOf(SurfaceRole.Ledger) }
     Box(modifier = Modifier.fillMaxSize()) {

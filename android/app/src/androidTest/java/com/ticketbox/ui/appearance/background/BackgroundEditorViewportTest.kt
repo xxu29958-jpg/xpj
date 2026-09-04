@@ -1,5 +1,11 @@
 package com.ticketbox.ui.appearance.background
 
+import android.os.Build
+import android.view.View
+import android.view.ViewGroup
+import android.view.Window
+import android.view.inspector.WindowInspector
+import androidx.annotation.RequiresApi
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
@@ -7,10 +13,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowInsetsControllerCompat
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundSettings
@@ -23,6 +32,7 @@ import com.ticketbox.ui.screens.settings.BackgroundEditorScreen
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.BackgroundEditorState
 import org.junit.Assert.assertEquals
+import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -30,12 +40,15 @@ class BackgroundEditorViewportTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
     @Test
+    @RequiresApi(29)
     fun compositionUsesTheGlobalCanvasEvenUnderTheLocalUnlockBanner() {
+        assumeTrue(Build.VERSION.SDK_INT >= 29)
         compose.runOnUiThread { compose.activity.enableEdgeToEdge() }
+        val skin = mutableStateOf(AppSkin.Paper)
         compose.setContent {
-            TicketboxTheme(skin = AppSkin.Paper) {
+            TicketboxTheme(skin = skin.value) {
                 Box(Modifier.fillMaxSize().testTag("applied-viewport")) {
-                    ImmersiveBackgroundScaffold(BackgroundSettings(), AppSkin.Paper, SurfaceRole.Settings) {
+                    ImmersiveBackgroundScaffold(BackgroundSettings(), skin.value, SurfaceRole.Settings) {
                         // Same existing shell constraints: advisory banner, then weighted body.
                         Column(Modifier.fillMaxSize()) {
                             AppStatusBanner(
@@ -49,7 +62,7 @@ class BackgroundEditorViewportTest {
                             Box(Modifier.weight(1f)) {
                                 BackgroundEditorScreen(
                                     editor = BackgroundEditorState(BackgroundSettings()),
-                                    currentSkin = AppSkin.Paper,
+                                    currentSkin = skin.value,
                                     actions = BackgroundEditorActions({}, {}, {}),
                                 )
                             }
@@ -65,5 +78,27 @@ class BackgroundEditorViewportTest {
         assertEquals("Preview top origin", applied.top, preview.top, 1f)
         assertEquals("Preview canvas width", applied.width, preview.width, 1f)
         assertEquals("Preview canvas height", applied.height, preview.height, 1f)
+        assertSystemBarIcons(lightAppearance = true)
+        compose.runOnIdle { skin.value = AppSkin.Midnight }
+        assertSystemBarIcons(lightAppearance = false)
+    }
+
+    private fun assertSystemBarIcons(lightAppearance: Boolean) {
+        compose.runOnIdle {
+            val window = requireNotNull(WindowInspector.getGlobalWindowViews().firstNotNullOfOrNull(::dialogWindow))
+            val bars = WindowInsetsControllerCompat(window, window.decorView)
+            assertEquals("Editor status icon appearance", lightAppearance, bars.isAppearanceLightStatusBars)
+            assertEquals("Editor navigation icon appearance", lightAppearance, bars.isAppearanceLightNavigationBars)
+        }
+    }
+
+    private fun dialogWindow(view: View): Window? {
+        if (view is DialogWindowProvider) return view.window
+        if (view is ViewGroup) {
+            for (index in 0 until view.childCount) {
+                dialogWindow(view.getChildAt(index))?.let { return it }
+            }
+        }
+        return null
     }
 }
