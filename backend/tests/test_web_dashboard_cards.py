@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from html.parser import HTMLParser
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -162,6 +164,64 @@ def test_web_dashboard_cards_viewer_can_read_but_not_save(web_client: TestClient
     )
     assert denied.status_code == 403
     assert denied.json()["error"] == "permission_denied"
+
+
+class _NativePostForms(HTMLParser):
+    """Read server-emitted hidden controls; never synthesize a CSRF token."""
+
+    def __init__(self, html: str) -> None:
+        super().__init__()
+        self.forms: dict[str, dict[str, str]] = {}
+        self.current: dict[str, str] | None = None
+        self.feed(html)
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        values = dict(attrs)
+        if tag == "form" and values.get("method", "").lower() == "post":
+            self.current = self.forms.setdefault(values.get("action", ""), {})
+        if tag == "input" and self.current is not None and values.get("type") == "hidden":
+            name = values.get("name")
+            if name in {"ledger_id", "csrf_token"}:
+                self.current[name] = values.get("value") or ""
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "form":
+            self.current = None
+
+
+def test_dashboard_native_forms_save_and_reset_without_javascript(
+    web_client: TestClient, identity
+) -> None:
+    """Missing SSR CSRF controls must fail through the real browser-peer guard."""
+    with TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 53004)) as browser:
+        route = "/web/dashboard/cards"
+        page = browser.get(f"{route}?ledger_id=owner")
+        assert page.status_code == 200
+        forms = _NativePostForms(page.text).forms
+        order = ["goals", *[key for key in WEB_CARD_KEYS if key != "goals"]]
+        payload = _dashboard_form_payload(order, hidden={"reports"})
+        payload.pop("ledger_id")
+        payload.update(forms[f"{route}/save"])
+        headers = {"Origin": "http://127.0.0.1", "Referer": str(page.url)}
+        saved = browser.post(f"{route}/save", data=payload, headers=headers, follow_redirects=False)
+        assert saved.status_code == 303, saved.text
+        persisted = browser.get("/api/dashboard/cards?surface=web", headers=identity.app_headers)
+        assert persisted.status_code == 200
+        cards = persisted.json()["items"]
+        assert cards[0]["key"] == "goals"
+        assert next(card for card in cards if card["key"] == "reports")["visible"] is False
+
+        reset = browser.post(
+            f"{route}/reset",
+            data=forms[f"{route}/reset"],
+            headers=headers,
+            follow_redirects=False,
+        )
+        assert reset.status_code == 303, reset.text
+        restored = browser.get("/api/dashboard/cards?surface=web", headers=identity.app_headers)
+        assert restored.status_code == 200
+        assert [card["key"] for card in restored.json()["items"]] == WEB_CARD_KEYS
+        assert all(card["visible"] for card in restored.json()["items"])
 
 
 _TINY_PNG = (

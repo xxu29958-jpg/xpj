@@ -1,43 +1,45 @@
 {% extends "base.html" %}
+{% set product_body_domain = 'insights' %}
 {% block title %}仪表盘卡片 — 小票夹{% endblock %}
 {% block content %}
-<div class="page-header-row">
-  <div>
-    <h1 class="page-title page-title--compact">仪表盘卡片</h1>
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">洞察 · 模块设置</span>
+    <h1 class="page-title">仪表盘卡片</h1>
     {# 218-D S4-R2: /web 根已 303→/web/pending, 卡片归属页是 /web/overview;
        返回链与说明文案同步, 不再把用户送进收件域。 #}
-    <p class="page-hint">调整当前账本在总览页的卡片顺序和可见状态。拖动卡片可以排序，保存后生效。</p>
+    <p class="product-page-summary">调整当前账本在总览页的卡片顺序和可见状态。拖动卡片可以排序，保存后生效。</p>
   </div>
-  <a class="dt-btn" href="/web/overview{{ q }}">返回总览</a>
-</div>
+  <div class="product-page-actions">
+    <a class="product-button" href="/web/overview{{ q }}">返回总览</a>
+  </div>
+</header>
 
 {% if message %}
-<div class="dt-alert success">{{ message }}</div>
+<div class="product-feedback product-feedback--success">{{ message }}</div>
 {% endif %}
 
-<div class="dt-card dashboard-card-settings-card">
-  <form method="post" action="/web/dashboard/cards/save" class="dashboard-card-settings" id="dashboard-cards-form">
+<section class="product-panel product-panel--padded">
+  <form method="post" action="/web/dashboard/cards/save" class="layout-editor" id="dashboard-cards-form">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <div class="dashboard-card-settings-head">
+    {{ csrf_field|safe }}
+    <div class="layout-editor-head">
       <span>卡片</span>
       <span>显示</span>
       <span>排序</span>
     </div>
-    <div data-drag-reorder id="dashboard-cards-list">
+    <div class="layout-editor-list" data-drag-reorder id="dashboard-cards-list">
     {% for item in dashboard_cards %}
-      <div class="dashboard-card-setting-row"
+      <div class="layout-editor-row"
            data-dashboard-card-row="{{ item.key }}"
            data-reorder-key="{{ item.key }}"
            draggable="{{ 'true' if can_write else 'false' }}">
         <input type="hidden" name="card_key" value="{{ item.key }}">
-        <div class="dashboard-card-setting-title">
-          <span class="dashboard-card-drag-handle" aria-hidden="true">⋮⋮</span>
-          <div>
-            <strong>{{ item.title }}</strong>
-            <span>{{ item.key }}</span>
-          </div>
+        <div class="layout-editor-title">
+          <span class="layout-drag-handle" aria-hidden="true">⋮⋮</span>
+          <strong>{{ item.title }}</strong>
         </div>
-        <label class="dashboard-card-switch">
+        <label class="product-check">
           <input
             type="checkbox"
             name="visible_key"
@@ -47,9 +49,10 @@
           >
           <span>显示</span>
         </label>
-        <label class="dashboard-card-position">
-          <span>顺序</span>
+        <label class="layout-position">
+          <span class="text-meta">顺序</span>
           <input
+            class="product-input"
             type="number"
             name="card_position"
             value="{{ item.position }}"
@@ -64,34 +67,27 @@
     </div>
 
     {% if can_write %}
-    <div class="actions dashboard-card-actions">
-      <button type="submit" class="dt-btn primary">保存卡片</button>
+    <div class="cluster">
+      <button type="submit" class="product-button product-button--primary">保存卡片</button>
     </div>
     {% else %}
-    <p class="meta">只读角色可以查看当前布局，但不能保存修改。</p>
+    <p class="text-meta">只读角色可以查看当前布局，但不能保存修改。</p>
     {% endif %}
   </form>
 
   {% if can_write %}
-  <form method="post" action="/web/dashboard/cards/reset" class="dashboard-card-reset">
+  <form method="post" action="/web/dashboard/cards/reset" class="layout-reset">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <button type="submit" class="dt-btn">恢复默认卡片</button>
+    {{ csrf_field|safe }}
+    <button type="submit" class="product-button">恢复默认卡片</button>
   </form>
   {% endif %}
-</div>
+</section>
+{% endblock %}
 
-<script>
-// v0.10 progressive enhancement: 拖排后 sync position 数字输入框，让现有 form POST 不变.
-(function () {
-  var list = document.getElementById('dashboard-cards-list');
-  if (!list) return;
-  list.addEventListener('drag-reorder-change', function () {
-    var rows = list.querySelectorAll('[data-reorder-key]');
-    rows.forEach(function (row, idx) {
-      var posInput = row.querySelector('[data-card-position]');
-      if (posInput) posInput.value = idx;
-    });
-  });
-})();
-</script>
+{# v0.10 progressive enhancement: 拖排后 sync position 数字输入框, 让现有 form POST 不变。
+   原内联 <script> 在 CSP script-src 'self' 下不执行 (拖排保存不落库的真实反例),
+   外迁为合规外部脚本; 数字输入本身仍是无 JS 的排序兜底, 不引入第二排序系统。 #}
+{% block page_scripts %}
+  <script defer src="/static/web/desktop/dashboard-cards.js?v={{ asset_version }}"></script>
 {% endblock %}

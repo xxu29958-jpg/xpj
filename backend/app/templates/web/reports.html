@@ -1,44 +1,49 @@
 {% extends "base.html" %}
+{% set product_body_domain = 'insights' %}
 {% block title %}报表 · 小票夹{% endblock %}
 
 {% block content %}
 {% set r = report %}
 {% set _earliest_month = six_month_trend[0].month if six_month_trend else r.month %}
 
-<div class="page-header">
-  <div class="page-eyebrow">REPORTS · {{ _earliest_month }} → {{ r.month }}</div>
-  <h1 class="page-title">动态报表，六个月看清节奏。</h1>
-  <div class="page-sub">
-    按当前账本的已确认账单聚合，时间口径为记账时间（无记账时间时取确认时间）。
-    CSV 导出走结构化数据，不依赖图表渲染层。
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">洞察 · 报表</span>
+    <h1 class="page-title">动态报表，六个月看清节奏。</h1>
+    <p class="product-page-summary">
+      {{ _earliest_month }} → {{ r.month }} · 当前账本已确认账单的月度回顾，按记账时间统计。
+      切换粒度与排行口径看节奏，明细数据可导出 CSV。
+    </p>
   </div>
-</div>
+</header>
 
 {# 趋势粒度 / 商家排行口径：GET 链接 segmented 控件（切换走整页刷新，无 JS 依赖）。
-   每个链接保留另一维度的当前取值、账本和月份，月份本身由顶栏月份切换器统一管理。
+   每个链接保留另一维度的当前取值、当前商家分类筛选（merchant_category, 现有 Owner
+   提供的真实查询参数）、账本和月份，月份本身由顶栏月份切换器统一管理。
    & 写字面量（与 pending.html 顶栏 seg 同惯例），保持一条链接里分隔符一致。 #}
-<div class="toolbar reports-toolbar">
-  <div class="seg-group">
-    <span class="dt-eyebrow">趋势粒度</span>
-    <div class="seg">
+{% set _mc = '&merchant_category=' ~ (r.merchant_category | urlencode) if r.merchant_category else '' %}
+<div class="reports-controls">
+  <div class="reports-control-group">
+    <span class="product-eyebrow">趋势粒度</span>
+    <div class="product-segments">
       {% for value, label in granularity_options %}
-      <a class="{% if r.granularity == value %}is-active{% endif %}"
-         href="/web/reports?ledger_id={{ selected_ledger_id }}&month={{ r.month }}&granularity={{ value }}&ranking_metric={{ r.ranking_metric }}">{{ label }}</a>
+      <a {% if r.granularity == value %}aria-current="page"{% endif %}
+         href="/web/reports?ledger_id={{ selected_ledger_id }}&month={{ r.month }}&granularity={{ value }}&ranking_metric={{ r.ranking_metric }}{{ _mc }}">{{ label }}</a>
       {% endfor %}
     </div>
   </div>
-  <div class="seg-group">
-    <span class="dt-eyebrow">排行口径</span>
-    <div class="seg">
+  <div class="reports-control-group">
+    <span class="product-eyebrow">排行口径</span>
+    <div class="product-segments">
       {% for value, label in ranking_metric_options %}
-      <a class="{% if r.ranking_metric == value %}is-active{% endif %}"
-         href="/web/reports?ledger_id={{ selected_ledger_id }}&month={{ r.month }}&granularity={{ r.granularity }}&ranking_metric={{ value }}">{{ label }}</a>
+      <a {% if r.ranking_metric == value %}aria-current="page"{% endif %}
+         href="/web/reports?ledger_id={{ selected_ledger_id }}&month={{ r.month }}&granularity={{ r.granularity }}&ranking_metric={{ value }}{{ _mc }}">{{ label }}</a>
       {% endfor %}
     </div>
   </div>
 </div>
 
-{# KPI strip #}
+{# 关键指标 #}
 {% set _cur = six_month_trend[-1].amount_cents if six_month_trend else 0 %}
 {% set _prev = six_month_trend[-2].amount_cents if six_month_trend and (six_month_trend | length) > 1 else 0 %}
 {% set _over = namespace(count=0) %}
@@ -47,131 +52,147 @@
     {% set _over.count = _over.count + 1 %}
   {% endif %}
 {% endfor %}
-<div class="kpi-strip">
-  <div class="kpi-cell">
-    <div class="label">本月支出</div>
-    <div class="val" title="{{ home_currency_symbol }}{{ r.total_amount_yuan }}"><span class="yuan">{{ home_currency_symbol }}</span>{{ r.total_amount_yuan }}</div>
-    <div class="foot">
+<div class="report-metrics">
+  <div class="report-metric is-primary">
+    <span class="report-metric-label">本月支出</span>
+    <span class="report-metric-value" title="{{ home_currency_symbol }}{{ r.total_amount_yuan }}"><small>{{ home_currency_symbol }}</small>{{ r.total_amount_yuan }}</span>
+    <span class="report-metric-note">
       {% if _prev > 0 %}
-      <span>较上月 {{ '%+.1f' % ((_cur - _prev) / _prev * 100) }}%</span>
+      较上月 {{ '%+.1f' % ((_cur - _prev) / _prev * 100) }}%
       {% else %}
-      <span>上月无数据</span>
+      上月无数据
       {% endif %}
-      <span> · 同比 {{ home_currency_symbol }}{{ r.year_over_year_delta_amount_yuan }}</span>
-    </div>
+      · 同比 {{ home_currency_symbol }}{{ r.year_over_year_delta_amount_yuan }}
+    </span>
   </div>
-  <div class="kpi-cell">
-    <div class="label">六月均值</div>
-    <div class="val"><span class="yuan">{{ home_currency_symbol }}</span>{{ six_month_average_amount_yuan }}</div>
-    <div class="foot">范围 {{ _earliest_month }} – {{ r.month }}</div>
+  <div class="report-metric">
+    <span class="report-metric-label">六月均值</span>
+    <span class="report-metric-value"><small>{{ home_currency_symbol }}</small>{{ six_month_average_amount_yuan }}</span>
+    <span class="report-metric-note">范围 {{ _earliest_month }} – {{ r.month }}</span>
   </div>
-  <div class="kpi-cell">
-    <div class="label">入账笔数</div>
-    <div class="val">{{ r.count }} <span class="yuan yuan--caption">笔</span></div>
+  <div class="report-metric">
+    <span class="report-metric-label">入账笔数</span>
+    <span class="report-metric-value">{{ r.count }} <small>笔</small></span>
     {% if r.previous_count %}
-    <div class="foot">上月 {{ r.previous_count }} 笔</div>
+    <span class="report-metric-note">上月 {{ r.previous_count }} 笔</span>
     {% endif %}
   </div>
-  <div class="kpi-cell">
-    <div class="label">超支月份</div>
-    <div class="val">{{ _over.count }} <span class="yuan yuan--caption">个月</span></div>
-    <div class="foot">最近 6 个月内</div>
+  <div class="report-metric{% if _over.count %} is-warning{% endif %}">
+    <span class="report-metric-label">超支月份</span>
+    <span class="report-metric-value">{{ _over.count }} <small>个月</small></span>
+    <span class="report-metric-note">最近 6 个月内</span>
   </div>
 </div>
 
 {# 月度趋势(六个月)— trend-chart.js initTrendChart 经 desktop.js boot() 自动挂载。
-   f134d050 删容器时保留了渲染器;数据与上方 KPI 同源(six_month_trend)。#}
-<div class="dash-grid dash-grid--gap">
-  <div class="col-12">
-    <div class="dt-card">
-      <div class="card-head">
-        <div>
-          <div class="card-title">月度趋势</div>
-          <div class="card-sub card-sub--gap">柱：实际支出 · 虚线：预算 · 曲线：趋势</div>
-        </div>
-        <div class="legend">
-          <span><span class="legend-dot legend-dot--actual"></span>实际</span>
-          <span><span class="legend-dot legend-dot--budget"></span>预算</span>
-          <span><span class="legend-dot legend-dot--trend"></span>趋势</span>
-        </div>
+   f134d050 删容器时保留了渲染器;数据与上方指标同源(six_month_trend)。
+   trend-chart.js 不加 is-chart-rendered, 无 JS 数据诚实由 details 数据表承担。 #}
+<div class="report-grid">
+  <section class="product-panel product-panel--padded report-span-12">
+    <div class="product-panel-header">
+      <div>
+        <div class="product-panel-title">月度趋势</div>
+        <div class="product-panel-subtitle">柱：实际支出 · 虚线：预算 · 曲线：趋势</div>
       </div>
-      <div id="chart-trend" class="chart-canvas tall"
-           data-series='{{ six_month_trend | tojson }}'></div>
+      <div class="report-legend">
+        <span><span class="report-legend-mark"></span>实际</span>
+        <span><span class="report-legend-mark is-budget"></span>预算</span>
+        <span><span class="report-legend-mark is-trend"></span>趋势</span>
+      </div>
     </div>
-  </div>
-</div>
+    <div id="chart-trend" class="report-chart report-chart--tall"
+         data-series='{{ six_month_trend | tojson }}'></div>
+    <details class="report-data-disclosure">
+      <summary class="product-panel-subtitle">查看数据表</summary>
+      <div class="product-table-wrap">
+        <table class="product-table">
+          <thead>
+            <tr>
+              <th>月份</th>
+              <th class="amount">支出</th>
+              <th class="amount">预算</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for item in six_month_trend %}
+            <tr>
+              <td>{{ item.month }}</td>
+              <td class="amount">{{ home_currency_symbol }}{{ item.amount_yuan }}</td>
+              <td class="amount">{% if item.budget_cents > 0 %}{{ home_currency_symbol }}{{ item.budget_yuan }}{% else %}—{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  </section>
 
 {% if monthly_report %}
-<div class="dash-grid dash-grid--gap">
-  <div class="col-5">
-    <div class="dt-card">
-      <div class="card-head">
-        <div>
-          <div class="card-title">月报摘要</div>
-          <div class="card-sub card-sub--gap">{{ monthly_report.year_month }} · 本月账单汇总</div>
-        </div>
-      </div>
-      <div class="report-summary-grid">
-        <div>
-          <div class="label">本月合计</div>
-          <div class="val val--lg"><span class="yuan">{{ home_currency_symbol }}</span>{{ monthly_report.total_amount_yuan }}</div>
-        </div>
-        <div>
-          <div class="label">较上月</div>
-          <div class="val val--lg">
-            {% if monthly_report.delta_pct is not none %}
-              {{ '%+.1f' % monthly_report.delta_pct }}%
-            {% else %}
-              —
-            {% endif %}
-          </div>
-        </div>
-      </div>
-      <div class="report-top-categories">
-        {% for c in monthly_report.top_categories[:4] %}
-        <div class="report-top-category-row">
-          <span>{{ c.category }}</span>
-          <span class="num">{{ home_currency_symbol }}{{ c.amount_yuan }}</span>
-        </div>
-        {% else %}
-        <div class="empty-state-hint">本月还没有已确认账单。</div>
-        {% endfor %}
+  <section class="product-panel product-panel--padded report-span-5">
+    <div class="product-panel-header">
+      <div>
+        <div class="product-panel-title">月报摘要</div>
+        <div class="product-panel-subtitle">{{ monthly_report.year_month }} · 本月账单汇总</div>
       </div>
     </div>
-  </div>
+    <div class="report-summary">
+      <div>
+        <span>本月合计</span>
+        <strong><small>{{ home_currency_symbol }}</small>{{ monthly_report.total_amount_yuan }}</strong>
+      </div>
+      <div>
+        <span>较上月</span>
+        <strong>
+          {% if monthly_report.delta_pct is not none %}
+            {{ '%+.1f' % monthly_report.delta_pct }}%
+          {% else %}
+            —
+          {% endif %}
+        </strong>
+      </div>
+    </div>
+    <div class="report-ranked-list">
+      {% for c in monthly_report.top_categories[:4] %}
+      <div class="report-ranked-row">
+        <span>{{ c.category }}</span>
+        <strong class="num">{{ home_currency_symbol }}{{ c.amount_yuan }}</strong>
+      </div>
+      {% else %}
+      <div class="text-meta">本月还没有已确认账单。</div>
+      {% endfor %}
+    </div>
+  </section>
 
-  <div class="col-7">
-    <div class="dt-card">
-      <div class="card-head">
-        <div>
-          <div class="card-title">预算解释</div>
-          <div class="card-sub card-sub--gap">当前分类对照历史节奏</div>
-        </div>
-      </div>
-      <div class="report-explain-list">
-        {% for item in budget_explanations %}
-        <div class="report-explain-row">
-          <div>
-            <div class="report-explain-category">{{ item.category }}</div>
-            <div class="card-sub">{{ item.verdict_label }}</div>
-          </div>
-          <div class="num">{{ home_currency_symbol }}{{ item.actual_yuan }}</div>
-          <div class="card-sub">
-            {% if item.p75_yuan %}
-              P75 {{ home_currency_symbol }}{{ item.p75_yuan }}
-            {% else %}
-              无历史
-            {% endif %}
-          </div>
-        </div>
-        {% else %}
-        <div class="empty-state-hint">还没有可解释分类。</div>
-        {% endfor %}
+  <section class="product-panel product-panel--padded report-span-7">
+    <div class="product-panel-header">
+      <div>
+        <div class="product-panel-title">预算解释</div>
+        <div class="product-panel-subtitle">当前分类对照历史节奏</div>
       </div>
     </div>
-  </div>
-</div>
+    <div class="report-explanations">
+      {% for item in budget_explanations %}
+      <div class="report-explanation">
+        <div>
+          <strong>{{ item.category }}</strong>
+          <span>{{ item.verdict_label }}</span>
+        </div>
+        <strong class="num">{{ home_currency_symbol }}{{ item.actual_yuan }}</strong>
+        <span>
+          {% if item.p75_yuan %}
+            P75 {{ home_currency_symbol }}{{ item.p75_yuan }}
+          {% else %}
+            无历史
+          {% endif %}
+        </span>
+      </div>
+      {% else %}
+      <div class="text-meta">还没有可解释分类。</div>
+      {% endfor %}
+    </div>
+  </section>
 {% endif %}
+</div>
 
 {# ADR-0026 / ADR-0039: /web reports charts are rendered by reports.js from the
    server-injected #reports-overview-data JSON. The `report` view model is a
@@ -179,98 +200,173 @@
    / category_comparison), so one tojson dump drives all three ECharts. #}
 <script type="application/json" id="reports-overview-data">{{ report | tojson }}</script>
 
-<div class="dash-grid">
+<div class="report-grid">
   {# 支出趋势 — reports.js renderTrend（按所选粒度的本月走势）#}
-  <div class="col-8">
-    <div class="dt-card reports-panel">
-      <div class="card-head">
-        <div>
-          <div class="card-title">支出趋势</div>
-          <div class="card-sub card-sub--gap">按所选粒度的本月支出走势</div>
-        </div>
-        <button type="button" id="reports-export-png" class="dt-btn ghost">导出 PNG</button>
+  <section class="product-panel product-panel--padded reports-panel report-span-8">
+    <div class="product-panel-header">
+      <div>
+        <div class="product-panel-title">支出趋势</div>
+        <div class="product-panel-subtitle">按所选粒度的本月支出走势</div>
       </div>
-      <div id="reports-trend-chart" class="chart-canvas tall"></div>
+      <button type="button" id="reports-export-png" class="product-button product-button--quiet product-button--small">导出 PNG</button>
     </div>
-  </div>
+    <p class="chart-fallback">图表需要启用 JavaScript 才能渲染；原始数据见下方表格。</p>
+    <div id="reports-trend-chart" class="report-chart report-chart--tall"></div>
+    <details class="report-data-disclosure">
+      <summary class="product-panel-subtitle">查看数据表</summary>
+      <div class="product-table-wrap">
+        <table class="product-table">
+          <thead>
+            <tr>
+              <th>时间</th>
+              <th class="amount">支出</th>
+              <th class="amount">笔数</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for point in r.trend %}
+            <tr>
+              <td>{{ point.label }}</td>
+              <td class="amount">{{ home_currency_symbol }}{{ point.amount_yuan }}</td>
+              <td class="amount">{{ point.count }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  </section>
 
   {# 分类对比 — reports.js renderCategory（本月 vs 上月 vs 去年同月）#}
-  <div class="col-4">
-    <div class="dt-card reports-panel">
-      <div class="card-head">
-        <div class="card-title">分类对比</div>
-        <div class="card-sub">本月 vs 上月 vs 去年同月</div>
+  <section class="product-panel product-panel--padded reports-panel report-span-4">
+    <div class="product-panel-header">
+      <div>
+        <div class="product-panel-title">分类对比</div>
+        <div class="product-panel-subtitle">本月 vs 上月 vs 去年同月</div>
       </div>
-      <div id="reports-category-chart" class="chart-canvas tall"></div>
     </div>
-  </div>
+    <p class="chart-fallback">图表需要启用 JavaScript 才能渲染；原始数据见下方表格。</p>
+    <div id="reports-category-chart" class="report-chart report-chart--tall"></div>
+    <details class="report-data-disclosure">
+      <summary class="product-panel-subtitle">查看数据表</summary>
+      <div class="product-table-wrap">
+        <table class="product-table">
+          <thead>
+            <tr>
+              <th>分类</th>
+              <th class="amount">本月</th>
+              <th class="amount">上月</th>
+              <th class="amount">去年同月</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for row in r.category_comparison %}
+            <tr>
+              <td>{{ row.category }}</td>
+              <td class="amount">{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
+              <td class="amount">{{ home_currency_symbol }}{{ row.previous_amount_yuan }}</td>
+              <td class="amount">{{ home_currency_symbol }}{{ row.year_over_year_amount_yuan }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  </section>
 
   {# 商家排行 — reports.js renderMerchant #}
-  <div class="col-12">
-    <div class="dt-card reports-panel">
-      <div class="card-head">
-        <div>
-          <div class="card-title">商家排行</div>
-          <div class="card-sub card-sub--gap">按本月{{ '笔数' if report.ranking_metric == 'count' else '支出金额' }}降序 · 前 8 名</div>
-        </div>
-        <a class="dt-btn ghost" href="/web/reports/export.csv?{{ report_export_query }}">导出 CSV</a>
+  <section class="product-panel product-panel--padded reports-panel report-span-12">
+    <div class="product-panel-header">
+      <div>
+        <div class="product-panel-title">商家排行</div>
+        <div class="product-panel-subtitle">按本月{{ '笔数' if report.ranking_metric == 'count' else '支出金额' }}降序 · 前 8 名</div>
       </div>
-      <div id="reports-merchant-chart" class="chart-canvas tall"></div>
+      <a class="product-button product-button--quiet product-button--small" href="/web/reports/export.csv?{{ report_export_query }}">导出 CSV</a>
     </div>
-  </div>
+    <p class="chart-fallback">图表需要启用 JavaScript 才能渲染；原始数据见下方表格。</p>
+    <div id="reports-merchant-chart" class="report-chart report-chart--tall"></div>
+    <details class="report-data-disclosure">
+      <summary class="product-panel-subtitle">查看数据表</summary>
+      <div class="product-table-wrap">
+        <table class="product-table">
+          <thead>
+            <tr>
+              <th>商家</th>
+              <th class="amount">{{ '笔数' if report.ranking_metric == 'count' else '支出' }}</th>
+              <th class="amount">{% if report.ranking_metric == 'count' %}支出{% else %}笔数{% endif %}</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for row in r.merchant_ranking %}
+            <tr>
+              <td>{{ row.merchant }}</td>
+              {% if report.ranking_metric == 'count' %}
+              <td class="amount">{{ row.count }}</td>
+              <td class="amount">{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
+              {% else %}
+              <td class="amount">{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
+              <td class="amount">{{ row.count }}</td>
+              {% endif %}
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  </section>
 
   {# 大额支出 Top 5 — 原 /web/stats 页唯一不可替代内容,随 IA 归并迁来 (UI/UX 批 14)。
      结构化表格,不依赖图表渲染层。 #}
-  <div class="col-12">
-    <div class="dt-card">
-      <div class="card-head">
-        <div>
-          <div class="card-title">大额支出</div>
-          <div class="card-sub card-sub--gap">本月金额最高的前 5 笔已确认支出</div>
-        </div>
+  <section class="product-panel product-panel--padded report-span-12">
+    <div class="product-panel-header">
+      <div>
+        <div class="product-panel-title">大额支出</div>
+        <div class="product-panel-subtitle">本月金额最高的前 5 笔已确认支出</div>
       </div>
-      {% if top_expenses %}
-      <table class="dt-table">
+    </div>
+    {% if top_expenses %}
+    <div class="product-table-wrap">
+      <table class="product-table">
         <thead>
           <tr>
             <th>商家</th>
-            <th class="th-narrow">分类</th>
-            <th class="th-narrow">日期</th>
-            <th class="th-amount text-end">金额</th>
+            <th>分类</th>
+            <th>日期</th>
+            <th class="amount">金额</th>
           </tr>
         </thead>
         <tbody>
         {% for row in top_expenses %}
           <tr>
             <td>{{ row.merchant }}</td>
-            <td><span class="dt-tag">{{ row.category }}</span></td>
-            <td class="meta">{{ row.expense_time }}</td>
+            <td>{{ row.category }}</td>
+            <td class="text-meta">{{ row.expense_time }}</td>
             <td class="amount">{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
           </tr>
         {% endfor %}
         </tbody>
       </table>
-      {% else %}
-      <div class="empty-state">
-        <div class="empty-state-title">本月还没有已确认账单可统计</div>
-        <div class="empty-state-hint">确认账单后,这里会列出本月金额最高的几笔。</div>
-      </div>
-      {% endif %}
     </div>
-  </div>
+    {% else %}
+    <div class="product-state">
+      <div class="product-state-title">本月还没有已确认账单可统计</div>
+      <div class="product-state-body">确认账单后,这里会列出本月金额最高的几笔。</div>
+    </div>
+    {% endif %}
+  </section>
 </div>
 
 {# PNG export of the trend chart (reports.js bindExport) #}
 <dialog id="reports-export-dialog"
         class="report-export-dialog">
-  <form method="dialog" class="m-0">
+  <form method="dialog">
     <div class="report-export-dialog__head">
       <strong>趋势图 PNG</strong>
-      <button class="dt-btn ghost" value="close">关闭</button>
+      <button class="product-button product-button--quiet product-button--small" value="close">关闭</button>
     </div>
     <img id="reports-export-image" alt="趋势图 PNG 预览"
          class="report-export-dialog__image" />
-    <div class="card-sub card-sub--gap-loose">右键图片可另存为 PNG。</div>
+    <div class="product-panel-subtitle">右键图片可另存为 PNG。</div>
   </form>
 </dialog>
 {% endblock %}
