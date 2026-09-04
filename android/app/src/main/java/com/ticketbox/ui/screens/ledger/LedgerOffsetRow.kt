@@ -136,7 +136,7 @@ internal fun LedgerOffsetRow(
             }
         }
         HorizontalDivider(
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium),
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.subtle),
         )
     }
 }

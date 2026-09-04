@@ -40,9 +40,38 @@
     font-size: var(--type-title-size);
 }
 
+/* 票面头条: 当期合计的唯一大数字 (summary 不再重复金额文本, 金额只出现一次) */
+.confirmed-hero-amount {
+    margin: 0;
+    max-inline-size: 100%;
+    color: var(--text-default);
+    font-family: var(--font-numeric);
+    font-size: var(--type-display-size);
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--type-display-weight);
+    letter-spacing: -.02em;
+    line-height: var(--type-display-line);
+    overflow-wrap: anywhere;
+}
+
 .ledger-stream {
     overflow: hidden;
     padding: 0;
+    position: relative;
+}
+
+/* 票夹刻: coral 侧夹咬住票面右缘上段 — 品牌右侧夹的 CSS 形态 (装饰, 不接收事件,
+   不进 AX 树; 与状态色正交, 状态仍走 state/goal 族) */
+.ledger-stream::before {
+    content: "";
+    position: absolute;
+    inset-block-start: var(--space-6);
+    inset-inline-end: 0;
+    width: var(--space-2);
+    height: var(--space-10);
+    border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+    background: var(--brand-clip);
+    pointer-events: none;
 }
 
 .confirmed-batch-head,
@@ -56,16 +85,23 @@
 
 .confirmed-batch-head {
     grid-template-columns: var(--space-7) auto 1fr;
-    min-height: var(--space-10);
+    min-height: var(--space-9);
     border-block-end: 1px solid var(--border-card);
     color: var(--text-muted);
+    font-size: var(--type-caption-size);
 }
 
+.confirmed-batch-head .hint {
+    overflow: hidden;
+    min-width: 0;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 票内日期戳: 不再是贯穿色带, 只出 stamp 文字与日合计 */
 .lday {
     grid-template-columns: minmax(0, 1fr) auto auto;
     min-height: var(--space-9);
-    border-block-end: 1px solid var(--border-card);
-    background: var(--surface-sunken);
     color: var(--text-meta);
     font-size: var(--type-caption-size);
 }
@@ -81,6 +117,11 @@
     font-variant-numeric: tabular-nums;
 }
 
+.lday-s {
+    color: var(--text-default);
+    font-weight: var(--type-subtitle-weight);
+}
+
 /* 行结构: 选择槽 (.lrow-sel, 仅 expense root 行) 与整行链接 (a.timeline-row-detail)
    兄弟并列, /web/confirmed 是唯一 consumer; 容器只出「选择器 | 链接」两列, 内容
    三列网格收在行链接上, 链接内零交互控件。offset 行 (refund/chargeback/reversal)
@@ -90,6 +131,15 @@
     min-height: calc(var(--space-12) + var(--space-3));
     border-block-end: 1px solid var(--border-card);
     color: var(--text-default);
+}
+
+/* 票带穿孔: 日组交界处换成断齿小计规线, 行尾不再叠一条实线 */
+.timeline-row:has(+ .lday) {
+    border-block-end: none;
+}
+
+.timeline-row + .lday {
+    border-block-start: 1px dashed var(--border-card);
 }
 
 .timeline-row.lrow.has-check {
@@ -163,6 +213,7 @@
 
 .lrow-merch {
     overflow: hidden;
+    font-size: var(--type-subtitle-size);
     font-weight: var(--type-subtitle-weight);
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -182,8 +233,9 @@
     font-variant-numeric: tabular-nums;
 }
 
+/* 行金额升一级 (title 18px): 票带上金额是主角, 商家/meta 退居其次 */
 .amt-main {
-    font-size: var(--type-subtitle-size);
+    font-size: var(--type-title-size);
     font-weight: var(--type-title-weight);
 }
 
@@ -201,6 +253,24 @@
     grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
     gap: var(--space-5);
     margin-block-start: var(--space-6);
+}
+
+/* 宽屏台面: 票带限宽 46rem 让金额贴近对象; 本月概况 (热力图/来源, 既有真实内容)
+   收作右侧 sticky 便签; <80rem 维持单列堆叠, 消费者与顺序不变 */
+@media (min-width: 80rem) {
+    .confirmed-desk {
+        display: grid;
+        align-items: start;
+        gap: var(--space-6);
+        grid-template-columns: minmax(0, 46rem) minmax(20rem, 1fr);
+    }
+
+    .confirmed-desk .month-overview {
+        grid-template-columns: minmax(0, 1fr);
+        margin-block-start: 0;
+        position: sticky;
+        inset-block-start: var(--space-6);
+    }
 }
 
 .heatmap {

@@ -1,16 +1,29 @@
 package com.ticketbox.ui.screens
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.ConfirmedStreamItem
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseLineageStatus
 import com.ticketbox.domain.model.ExpenseSourceValues
+import com.ticketbox.ui.screens.ledger.LedgerHeader
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.LedgerUiState
 import org.junit.Assert.assertTrue
@@ -29,6 +42,28 @@ import org.junit.Test
 class LedgerHeaderEntryTest {
     @get:Rule
     val composeRule = createComposeRule()
+
+    @Test
+    fun compactHeaderKeepsWholeAmountAndCountAtLargeFont() {
+        composeRule.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 1.8f)) {
+                TicketboxTheme(skin = AppSkin.Default) {
+                    Box(Modifier.width(328.dp)) {
+                        LedgerHeader(LedgerUiState(items = listOf(confirmedRow(1234567890L))))
+                    }
+                }
+            }
+        }
+        val results = mutableListOf<TextLayoutResult>()
+        composeRule.onNode(hasText("¥", substring = true))
+            .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(results) }
+        assertTrue("Amount layout must be available", results.isNotEmpty())
+        assertTrue("A financial total must not lose digits", results.all { result ->
+            !result.hasVisualOverflow && (0 until result.lineCount).none(result::isLineEllipsized)
+        })
+        composeRule.onNodeWithText("1 笔", substring = true).assertIsDisplayed()
+    }
 
     @Test
     fun writerContentKeepsSingleRecordCta() {
@@ -99,13 +134,13 @@ class LedgerHeaderEntryTest {
     }
 }
 
-private fun confirmedRow(): ConfirmedStreamItem = ConfirmedStreamItem.ExpenseRow(
+private fun confirmedRow(amountCents: Long = 1280L): ConfirmedStreamItem = ConfirmedStreamItem.ExpenseRow(
     streamDate = "2026-09-01",
-    streamAmountCents = 1280L,
+    streamAmountCents = amountCents,
     root = Expense(
         id = 1L,
         publicId = "ledger-entry-1",
-        amountCents = 1280L,
+        amountCents = amountCents,
         merchant = "咖啡店",
         category = "餐饮",
         note = null,
@@ -130,5 +165,5 @@ private fun confirmedRow(): ConfirmedStreamItem = ConfirmedStreamItem.ExpenseRow
         rejectedAt = null,
     ),
     lineageStatus = ExpenseLineageStatus.Confirmed,
-    lineageHomeNetCents = 1280L,
+    lineageHomeNetCents = amountCents,
 )

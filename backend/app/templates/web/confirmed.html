@@ -25,8 +25,9 @@
   <div class="product-page-heading">
     <span class="product-eyebrow">流水 / 已确认</span>
     <h1 class="page-title">已确认流水</h1>
+    <p class="confirmed-hero-amount"><span class="sr-only">{{ selected_month }} 合计 </span>{{ home_currency_symbol }}{{ month_total_amount_yuan }}</p>
     <p class="product-page-summary">
-      {{ selected_month }} 共 {{ month_total_count }} 笔，合计 {{ home_currency_symbol }}{{ month_total_amount_yuan }}。打开任意一行可查看详情与变更记录。
+      {{ selected_month }} · 共 {{ month_total_count }} 笔 · 打开任意一行可查看详情与变更记录。
     </p>
   </div>
 </header>
@@ -52,6 +53,7 @@
 </div>
 {% endif %}
 
+<div class="confirmed-desk">
 <section class="product-panel ledger-stream" aria-label="已确认流水">
   {% if expenses %}
   {# 分组日期是 server-owned stream_date (expense 按请求时区的本地日,
@@ -206,6 +208,7 @@
     </div>
   </div>
 </section>
+</div>
 
 {% if can_write and expenses %}
 {# 批量更正: 一个 native form, 共享更正理由, 两个语义分开的行动组 (改分类/改标签)。

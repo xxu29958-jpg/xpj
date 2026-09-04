@@ -46,6 +46,9 @@ data class ThemeVisuals(
     val textFaint: Color,
     val textOnPrimary: Color,
     val brandPrimaryBg: Color,
+    // 票面 coral 夹刻:纯品牌装饰(票/侧夹的形状色),不承载状态语义;
+    // 镜像 shared/tokens.css 的 --brand-clip。只服务票面夹刻装饰,无消费者勿用。
+    val clipCoral: Color,
 )
 
 val LocalThemeVisuals = compositionLocalOf { themeVisualsForSkin(AppSkin.Default) }
@@ -95,6 +98,7 @@ fun themeVisualsForSkin(skin: AppSkin): ThemeVisuals {
             textFaint = Color(0xFFABA294),
             textOnPrimary = Color(0xFFFFFFFF),
             brandPrimaryBg = Color(0xFFE2ECDF),
+            clipCoral = Color(0xFFC2492F),
         )
         AppSkin.Midnight -> ThemeVisuals(
             primary = Color(0xFF70BFA5),
@@ -136,6 +140,7 @@ fun themeVisualsForSkin(skin: AppSkin): ThemeVisuals {
             textFaint = Color(0xFF57503F),
             textOnPrimary = Color(0xFF0E1A17),
             brandPrimaryBg = Color(0x2E70BFA5),
+            clipCoral = Color(0xFFEE6A4D),
         )
     }
 }
