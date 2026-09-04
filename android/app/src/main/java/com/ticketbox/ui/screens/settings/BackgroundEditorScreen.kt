@@ -18,11 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -40,10 +36,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundSettings
@@ -65,23 +63,31 @@ import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.BackgroundEditorState
 
 /**
- * 全局背景编辑面（visual-ledger 全局背景批）：**真正全屏编辑**。
- *
- * 诚实构图预览的退出门：预览舞台铺满整个编辑窗口（WORKSPACE 路由无顶栏、
- * 二级页激活时无底部主导航，content innerPadding 为 0），与全局
- * ImmersiveBackgroundScaffold 的渲染区域同为整个 Compose 画布——renderer 的
- * BoxWithConstraints 拿到的就是真实 viewport，cover 构图与主页面像素级一致；
- * 系统栏 inset 只垫给浮动 chrome（顶部栏 / 控制面板），绝不垫给舞台，避免
- * 「编辑面扣完栏再换 crop」。旧 0.42 屏高小舞台宽高比不同，用户选定的主体
- * 在 Apply 后会被另裁，已退役。
- *
- * 产品语言与 Web 编辑面一致：真实渲染管线全屏实时预览 + 底部浮动控制条。
- * draft / saving / message 全部由 AppearanceViewModel 唯一拥有：本屏只回调，
- * 不持有文件、不持有可能丢失的本地草稿。取消无副作用，应用在 VM 发布成功后
- * editor 置空，导航随之回外观页。
+ * 独立的全窗口编辑面，不继承设置页或安全提示横幅扣减后的内容高度。
+ * 舞台和全局背景使用相同画布，系统栏 inset 只作用于浮动控件。
+ * 草稿、保存和取消仍由 AppearanceViewModel 拥有；没有第二套编辑状态。
  */
 @Composable
 internal fun BackgroundEditorScreen(
+    editor: BackgroundEditorState,
+    currentSkin: AppSkin,
+    actions: BackgroundEditorActions,
+) {
+    Dialog(
+        onDismissRequest = actions.onCancel,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+            dismissOnBackPress = !editor.saving,
+            dismissOnClickOutside = false,
+        ),
+    ) {
+        BackgroundEditorContent(editor, currentSkin, actions)
+    }
+}
+
+@Composable
+private fun BackgroundEditorContent(
     editor: BackgroundEditorState,
     currentSkin: AppSkin,
     actions: BackgroundEditorActions,
@@ -155,6 +161,7 @@ private fun BackgroundEditorStage(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .testTag("background-editor-viewport")
             .onSizeChanged { viewportSize = it }
             .then(
                 if (canGesture) {
@@ -279,21 +286,7 @@ private fun BackgroundEditorControlPanel(
         ) {
             AppStatusBanner(message = editor.message, tone = MessageTone.Danger)
             BackgroundEditorPanelLabel(text = stringResource(R.string.background_editor_section_preview_role))
-            AppCompactChips {
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
-                    verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-                ) {
-                    backgroundEditorPreviewRoles.forEach { role ->
-                        AppFilterChip(
-                            label = stringResource(backgroundEditorRoleNameRes(role)),
-                            selected = previewRole == role,
-                            onClick = { onRoleSelect(role) },
-                        )
-                    }
-                }
-            }
+            BackgroundEditorRolePicker(previewRole, onRoleSelect)
             if (draft.source == BackgroundSource.CustomImage) {
                 BackgroundEditorPanelLabel(text = stringResource(R.string.background_editor_section_composition))
                 BackgroundEditorCompositionControls(
@@ -314,27 +307,7 @@ private fun BackgroundEditorControlPanel(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-                AppSecondaryButton(
-                    text = stringResource(R.string.background_editor_cancel_button),
-                    modifier = Modifier.weight(1f),
-                    enabled = !editor.saving,
-                    onClick = actions.onCancel,
-                )
-                AppPrimaryButton(
-                    text = stringResource(
-                        if (editor.saving) {
-                            R.string.background_editor_applying
-                        } else {
-                            R.string.background_editor_apply_button
-                        },
-                    ),
-                    icon = Icons.Filled.Check,
-                    modifier = Modifier.weight(1f),
-                    enabled = !editor.saving,
-                    onClick = actions.onApply,
-                )
-            }
+            BackgroundEditorFooter(editor.saving, actions)
         }
     }
 }
@@ -350,146 +323,52 @@ private fun BackgroundEditorPanelLabel(
     )
 }
 
-/**
- * 构图控制：缩放 +/-、四向微调（水平/竖直均可点按，不只三档）、三档 anchor
- * 快捷与重置。全部换算走 [BackgroundTransformGeometry]，不猜像素。
- */
 @Composable
-private fun BackgroundEditorCompositionControls(
-    transform: BackgroundTransform,
-    enabled: Boolean,
-    onTransformChange: (BackgroundTransform) -> Unit,
+private fun BackgroundEditorRolePicker(
+    previewRole: SurfaceRole,
+    onRoleSelect: (SurfaceRole) -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-    ) {
-        BackgroundActionButton(
-            text = stringResource(R.string.background_editor_zoom_out),
-            modifier = Modifier.weight(1f),
-            enabled = enabled && transform.scale > BackgroundTransformGeometry.MIN_SCALE,
-            onClick = {
-                onTransformChange(
-                    BackgroundTransformGeometry.zoomed(transform, 1f / BackgroundTransformGeometry.ZOOM_STEP),
+    AppCompactChips {
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+        ) {
+            backgroundEditorPreviewRoles.forEach { role ->
+                AppFilterChip(
+                    label = stringResource(backgroundEditorRoleNameRes(role)),
+                    selected = previewRole == role,
+                    onClick = { onRoleSelect(role) },
                 )
-            },
-        )
-        BackgroundActionButton(
-            text = stringResource(R.string.background_editor_reset),
-            modifier = Modifier.weight(1f),
-            enabled = enabled && transform != BackgroundTransform(),
-            onClick = { onTransformChange(BackgroundTransform()) },
-        )
-        BackgroundActionButton(
-            text = stringResource(R.string.background_editor_zoom_in),
-            modifier = Modifier.weight(1f),
-            enabled = enabled && transform.scale < BackgroundTransformGeometry.MAX_SCALE,
-            onClick = {
-                onTransformChange(
-                    BackgroundTransformGeometry.zoomed(transform, BackgroundTransformGeometry.ZOOM_STEP),
-                )
-            },
-        )
-    }
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap, Alignment.CenterHorizontally),
-    ) {
-        BackgroundEditorNudgeButton(
-            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-            contentDescription = stringResource(R.string.background_editor_nudge_left),
-            enabled = enabled,
-            onClick = {
-                onTransformChange(
-                    BackgroundTransformGeometry.nudged(transform, -BackgroundTransformGeometry.OFFSET_STEP, 0f),
-                )
-            },
-        )
-        BackgroundEditorNudgeButton(
-            imageVector = Icons.Filled.KeyboardArrowUp,
-            contentDescription = stringResource(R.string.background_editor_nudge_up),
-            enabled = enabled,
-            onClick = {
-                onTransformChange(
-                    BackgroundTransformGeometry.nudged(transform, 0f, -BackgroundTransformGeometry.OFFSET_STEP),
-                )
-            },
-        )
-        BackgroundEditorNudgeButton(
-            imageVector = Icons.Filled.KeyboardArrowDown,
-            contentDescription = stringResource(R.string.background_editor_nudge_down),
-            enabled = enabled,
-            onClick = {
-                onTransformChange(
-                    BackgroundTransformGeometry.nudged(transform, 0f, BackgroundTransformGeometry.OFFSET_STEP),
-                )
-            },
-        )
-        BackgroundEditorNudgeButton(
-            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-            contentDescription = stringResource(R.string.background_editor_nudge_right),
-            enabled = enabled,
-            onClick = {
-                onTransformChange(
-                    BackgroundTransformGeometry.nudged(transform, BackgroundTransformGeometry.OFFSET_STEP, 0f),
-                )
-            },
-        )
-    }
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-    ) {
-        AppFilterChip(
-            modifier = Modifier.weight(1f),
-            label = stringResource(R.string.background_editor_anchor_top),
-            selected = transform.offsetY <= -1f + 0.01f,
-            onClick = {
-                onTransformChange(
-                    BackgroundTransformGeometry.clamped(transform.copy(offsetY = -1f)),
-                )
-            },
-        )
-        AppFilterChip(
-            modifier = Modifier.weight(1f),
-            label = stringResource(R.string.background_editor_anchor_center),
-            selected = kotlin.math.abs(transform.offsetY) < 0.01f,
-            onClick = {
-                onTransformChange(
-                    BackgroundTransformGeometry.clamped(transform.copy(offsetY = 0f)),
-                )
-            },
-        )
-        AppFilterChip(
-            modifier = Modifier.weight(1f),
-            label = stringResource(R.string.background_editor_anchor_bottom),
-            selected = transform.offsetY >= 1f - 0.01f,
-            onClick = {
-                onTransformChange(
-                    BackgroundTransformGeometry.clamped(transform.copy(offsetY = 1f)),
-                )
-            },
-        )
+            }
+        }
     }
 }
 
 @Composable
-private fun BackgroundEditorNudgeButton(
-    imageVector: ImageVector,
-    contentDescription: String,
-    enabled: Boolean,
-    onClick: () -> Unit,
+private fun BackgroundEditorFooter(
+    saving: Boolean,
+    actions: BackgroundEditorActions,
 ) {
-    IconButton(onClick = onClick, enabled = enabled) {
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(AppRadius.pill))
-                .background(
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = AppAlpha.medium),
-                )
-                .padding(AppSpacing.smallGap),
-        ) {
-            Icon(imageVector = imageVector, contentDescription = contentDescription)
-        }
+    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
+        AppSecondaryButton(
+            text = stringResource(R.string.background_editor_cancel_button),
+            modifier = Modifier.weight(1f),
+            enabled = !saving,
+            onClick = actions.onCancel,
+        )
+        AppPrimaryButton(
+            text = stringResource(
+                if (saving) {
+                    R.string.background_editor_applying
+                } else {
+                    R.string.background_editor_apply_button
+                },
+            ),
+            icon = Icons.Filled.Check,
+            modifier = Modifier.weight(1f),
+            enabled = !saving,
+            onClick = actions.onApply,
+        )
     }
 }
