@@ -809,6 +809,7 @@
 }
 
 .family-form-action,
+.family-invite-handoff,
 .family-invitation-action,
 .family-member-actions,
 .family-member-state {
@@ -835,16 +836,12 @@
     gap: var(--space-5);
     align-items: center;
     padding-block: var(--space-4);
-    border-block-start: 1px solid var(--border-subtle);
+    border-block-start: 1px solid var(--border-card);
 }
 
 .family-member:first-child,
 .family-invitation:first-child {
     border-block-start: 0;
-}
-
-.family-member.is-disabled {
-    opacity: .64;
 }
 
 .family-member-identity {
@@ -931,7 +928,7 @@
 
 .family-audit-list li {
     display: grid;
-    grid-template-columns: minmax(8rem, auto) minmax(7rem, auto) minmax(0, 1fr);
+    grid-template-columns: minmax(8rem, auto) minmax(7rem, auto) minmax(0, 1fr) auto;
     gap: var(--space-4);
 }
 

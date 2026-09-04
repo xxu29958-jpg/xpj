@@ -6,9 +6,10 @@
 {% macro role_label(role) -%}
   {{ {'owner': '拥有者', 'member': '成员', 'viewer': '只读'}.get(role, role) }}
 {%- endmacro %}
-{% macro moment(value) -%}
-  {{ value[:16] | replace('T', ' ') if value else '—' }}
-{%- endmacro %}
+
+{% block page_scripts %}
+<script defer src="/static/web/family.js?v={{ asset_version }}"></script>
+{% endblock %}
 
 {% block content %}
 <header class="product-page-header">
@@ -38,9 +39,13 @@
   </div>
   <label class="product-field family-token-field">
     <span>邀请明文</span>
-    <textarea class="product-input" rows="2" readonly>{{ invitation_token }}</textarea>
+    <textarea class="product-input" rows="2" readonly data-family-invite-token>{{ invitation_token }}</textarea>
   </label>
-  <p class="hint">手机长按或电脑全选即可复制；刷新或离开后不会再次显示。</p>
+  <div class="family-invite-handoff">
+    <button class="product-button product-button--primary" type="button" data-family-copy-button>复制邀请明文</button>
+    <span class="hint" data-family-copy-status aria-live="polite">也可以长按或全选上面的明文手动复制。</span>
+  </div>
+  <p class="hint">对方尚未绑定时：在 Android 绑定页点“我有家庭邀请”；已经绑定时：打开“设置 → 加入家庭账本”。粘贴这段明文即可，不要使用你的设备绑定码。</p>
 </section>
 {% endif %}
 
@@ -67,7 +72,7 @@
     </label>
     <label class="product-field">
       <span>有效天数</span>
-      <input class="product-input" type="number" name="ttl_days" min="1" max="30" value="{{ submitted_ttl_days }}">
+      <input class="product-input" type="number" name="ttl_days" min="1" max="30" value="{{ submitted_ttl_days }}" required>
     </label>
     <div class="family-form-action">
       <button class="product-button product-button--primary" type="submit">生成邀请</button>
@@ -88,11 +93,11 @@
     <article class="family-member{% if member.disabled_at %} is-disabled{% endif %}">
       <div class="family-member-identity">
         <strong>{{ member.account_name }}</strong>
-        <span>{{ '本人' if member.is_self else '家庭成员' }} · 加入于 {{ moment(member.created_at) }}</span>
+        <span>{{ '本人' if member.is_self else '家庭成员' }} · 加入于 {{ member.created_label }}</span>
       </div>
       <div class="family-member-state">
         <span class="product-status{% if member.role == 'owner' %} product-status--success{% elif member.role == 'viewer' %} product-status--info{% endif %}">{{ role_label(member.role) }}</span>
-        {% if member.disabled_at %}<span class="product-status">已停用</span>{% endif %}
+        {% if member.disabled_at %}<span class="product-status">已停用 · 停用于 {{ member.disabled_label }}</span>{% endif %}
       </div>
       {% if can_manage_family and not member.disabled_at and member.role != 'owner' and not member.is_self %}
       <div class="family-member-actions">
@@ -142,12 +147,14 @@
     <article class="family-invitation">
       <div>
         <strong>{{ invitation.note or '未填写称呼' }}</strong>
-        <p>{{ role_label(invitation.role) }} · {{ moment(invitation.created_at) }} 发出 · {{ moment(invitation.expires_at) }} 到期</p>
+        <p>{{ role_label(invitation.role) }} · {{ invitation.created_label }} 发出 · {{ invitation.expires_label }} 到期</p>
       </div>
-      {% if invitation.used_at %}
-      <span class="product-status product-status--success">已接受</span>
-      {% elif invitation.revoked_at %}
-      <span class="product-status">已撤销</span>
+      {% if invitation.state == 'used' %}
+      <span class="product-status product-status--success">已接受 · {{ invitation.used_by_account_name or '家庭成员' }} · {{ invitation.used_label }}</span>
+      {% elif invitation.state == 'revoked' %}
+      <span class="product-status">已撤销 · {{ invitation.revoked_label }}</span>
+      {% elif invitation.state == 'expired' %}
+      <span class="product-status">已过期</span>
       {% else %}
       <div class="family-invitation-action">
         <span class="product-status product-status--info">待接受</span>
@@ -169,7 +176,7 @@
   <ol class="family-audit-list">
   {% for item in audit_logs %}
     <li>
-      <span>{{ moment(item.created_at) }}</span>
+      <span>{{ item.created_label }}</span>
       <strong>{{ {
         'invitation_created': '创建邀请',
         'invitation_accepted': '接受邀请',
@@ -178,7 +185,11 @@
         'member_disabled': '停用成员',
         'owner_transferred': '转让拥有者'
       }.get(item.action, item.action) }}</strong>
-      <span>{{ item.actor_account_name or '系统' }}{% if item.target_account_name %} → {{ item.target_account_name }}{% endif %}</span>
+      <span>
+        {{ item.actor_account_name or '系统' }}{% if item.target_account_name %} → {{ item.target_account_name }}{% endif %}
+        {% if item.previous_role or item.new_role %} · {{ role_label(item.previous_role) if item.previous_role else '—' }} → {{ role_label(item.new_role) if item.new_role else '—' }}{% endif %}
+      </span>
+      <span class="product-status{% if item.result == 'success' %} product-status--success{% endif %}">{{ '成功' if item.result == 'success' else item.result }}</span>
     </li>
   {% else %}
     <li><span>还没有成员操作记录。</span></li>

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import asdict
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, Form, Request, Response
 from fastapi.responses import HTMLResponse
@@ -23,9 +25,56 @@ from app.routes.web_common import (
     templates,
 )
 from app.services import invitation_service
+from app.services.invitation_audit import LedgerAuditSummary
+from app.services.invitation_invites import InvitationSummary
+from app.services.invitation_members import MemberSummary
+from app.services.spending_contract_service import accounting_datetime_label
+from app.services.time_service import ensure_utc, now_utc
 from app.tenants import AuthContext
 
 router = APIRouter(prefix="/web/family", tags=["web-app"])
+
+
+def _instant(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return ensure_utc(datetime.fromisoformat(value))
+    except ValueError:
+        return None
+
+
+def _local_moment(value: str | None) -> str:
+    return accounting_datetime_label(_instant(value)) or "—"
+
+
+def _member_view(item: MemberSummary) -> dict:
+    view = asdict(item)
+    view["created_label"] = _local_moment(view["created_at"])
+    view["disabled_label"] = _local_moment(view["disabled_at"])
+    return view
+
+
+def _invitation_view(item: InvitationSummary, *, current_time: datetime) -> dict:
+    view = asdict(item)
+    for field in ("created_at", "expires_at", "used_at", "revoked_at"):
+        view[f"{field.removesuffix('_at')}_label"] = _local_moment(view[field])
+    expires_at = _instant(view["expires_at"])
+    if view["used_at"]:
+        view["state"] = "used"
+    elif view["revoked_at"]:
+        view["state"] = "revoked"
+    elif expires_at is not None and expires_at <= current_time:
+        view["state"] = "expired"
+    else:
+        view["state"] = "active"
+    return view
+
+
+def _audit_view(item: LedgerAuditSummary) -> dict:
+    view = asdict(item)
+    view["created_label"] = _local_moment(view["created_at"])
+    return view
 
 
 def _family_actor(
@@ -69,6 +118,7 @@ def _render_family(
     )
     selected = _selected_option(options, selected_id)
     can_manage = selected.role == "owner"
+    current_time = now_utc()
     ctx = _base_ctx(
         request,
         db=db,
@@ -78,18 +128,31 @@ def _render_family(
         sidebar_counts=_sidebar_counts(db, selected_id),
     )
     ctx.update(
-        members=invitation_service.list_members(
-            db,
-            ledger_id=selected_id,
-            requester_account_id=actor_id,
-        ),
+        members=[
+            _member_view(item)
+            for item in invitation_service.list_members(
+                db,
+                ledger_id=selected_id,
+                requester_account_id=actor_id,
+            )
+        ],
         invitations=(
-            invitation_service.list_invitations(db, ledger_id=selected_id)
+            [
+                _invitation_view(item, current_time=current_time)
+                for item in invitation_service.list_invitations(
+                    db, ledger_id=selected_id
+                )
+            ]
             if can_manage
             else []
         ),
         audit_logs=(
-            invitation_service.list_audit_logs(db, ledger_id=selected_id, limit=50)
+            [
+                _audit_view(item)
+                for item in invitation_service.list_audit_logs(
+                    db, ledger_id=selected_id, limit=50
+                )
+            ]
             if can_manage
             else []
         ),

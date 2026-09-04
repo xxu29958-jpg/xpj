@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import re
+from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import Ledger, LedgerMember
+from app.models import Invitation, Ledger, LedgerMember
 from app.routes import owner_ledgers
 from app.routes.web_auth import SESSION_COOKIE_NAME
 from tests._web_public_session_support import PUBLIC_HOST, mint_session, public_client
@@ -120,6 +121,11 @@ def test_owner_creates_one_time_invitation_and_can_revoke_it(
 
     assert "仅显示一次" in created_html
     assert "妈妈" in created_html
+    assert created_html.count(invite_token) == 1
+    assert 'data-family-copy-button' in created_html
+    assert 'src="/static/web/family.js' in created_html
+    assert "我有家庭邀请" in created_html
+    assert "设置 → 加入家庭账本" in created_html
     listed = web_client.get("/web/family?ledger_id=owner")
     assert listed.status_code == 200
     assert invite_token not in listed.text
@@ -181,6 +187,7 @@ def test_owner_changes_role_and_disables_member(
     changed = web_client.get(role.headers["location"])
     assert "爸爸" in changed.text
     assert "只读" in changed.text
+    assert "成员 → 只读" in changed.text
 
     disabled = web_client.post(
         f"/web/family/members/{member_id}/disable?ledger_id=owner",
@@ -190,6 +197,7 @@ def test_owner_changes_role_and_disables_member(
     assert disabled.status_code == 303
     after = web_client.get(disabled.headers["location"])
     assert "已停用" in after.text
+    assert "停用于" in after.text
     assert "停用成员" in after.text
 
 
@@ -229,6 +237,33 @@ def test_invalid_member_change_keeps_the_roster_and_error_on_the_same_page(
     assert response.headers["content-type"].startswith("text/html")
     assert "成员角色只能是成员或只读" in response.text
     assert "爸爸" in response.text
+
+
+def test_expired_invitation_is_localized_and_not_presented_as_usable(
+    web_client: TestClient,
+) -> None:
+    _create_invitation(web_client, note="旧邀请")
+    with SessionLocal() as db:
+        invitation = db.scalar(
+            select(Invitation)
+            .where(Invitation.ledger_id == "owner")
+            .order_by(Invitation.id.desc())
+            .limit(1)
+        )
+        assert invitation is not None
+        invitation.created_at = datetime(2026, 1, 1, 10, 0, tzinfo=UTC)
+        invitation.expires_at = datetime(2026, 1, 1, 11, 0, tzinfo=UTC)
+        public_id = invitation.public_id
+        db.commit()
+
+    response = web_client.get("/web/family?ledger_id=owner")
+
+    assert response.status_code == 200
+    assert "2026-01-01 18:00" in response.text
+    assert "2026-01-01 19:00" in response.text
+    assert "已过期" in response.text
+    assert "旧邀请" in response.text
+    assert f"/web/family/invitations/{public_id}/revoke" not in response.text
 
 
 def test_owner_transfers_the_single_owner_role(
