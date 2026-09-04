@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+from html.parser import HTMLParser
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -45,6 +46,20 @@ from app.services.owner_console_service._common import (
     _amount_yuan as _owner_amount_yuan,
 )
 from app.services.time_service import current_month
+
+
+class _RenderedText(HTMLParser):
+    def __init__(self, html: str) -> None:
+        super().__init__()
+        self.parts: list[str] = []
+        self.feed(html)
+
+    def handle_data(self, data: str) -> None:
+        self.parts.append(data)
+
+    @property
+    def text(self) -> str:
+        return " ".join("".join(self.parts).split())
 
 
 def test_product_currency_minor_metadata_is_explicit_and_closed() -> None:
@@ -239,7 +254,11 @@ def test_confirmed_search_and_reports_use_zero_fraction_home_amounts(
             f"/web/confirmed?ledger_id=owner&month={month}"
         )
         assert confirmed.status_code == 200, confirmed.text
-        assert f"{month} 共 1 笔，合计 ¥1234。" in confirmed.text
+        assert (
+            f'<span class="sr-only">{month} 合计 </span>¥1234'
+            in confirmed.text
+        )
+        assert f"{month} · 共 1 笔 ·" in confirmed.text
         assert '<span class="lday-s">¥1,234</span>' in confirmed.text
         assert "¥12.34" not in confirmed.text
 
@@ -254,7 +273,10 @@ def test_confirmed_search_and_reports_use_zero_fraction_home_amounts(
             f"/web/reports?ledger_id=owner&month={month}"
         )
         assert reports.status_code == 200, reports.text
-        assert '<span class="yuan">¥</span>206' in reports.text
+        report_text = _RenderedText(reports.text).text
+        assert "六月均值 ¥206 " in report_text
+        assert "本月支出 ¥1234 " in report_text
+        assert "¥12.34" not in report_text
         assert '"amount_yuan": 1234' in reports.text
     finally:
         get_settings.cache_clear()

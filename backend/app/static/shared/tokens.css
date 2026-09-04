@@ -26,6 +26,11 @@
     --surface-raised: #fffdf8;
     --surface-nav: #faf6ee;
     --surface-sunken: #efe9dc;
+    /* 自定义背景遮罩（全局背景批）：用户照片亮度不可预知，同一固定层上叠
+       --surface-app 基调 veil 保正文可读；reader/render owner 是
+       appearance-bootstrap.js TicketboxBackground，消费点 shell.css /
+       auth-login.css 的 body::before。 */
+    --surface-user-veil: linear-gradient(rgba(246, 242, 234, 0.58), rgba(246, 242, 234, 0.58));
 
     /* Text — 暖墨四级, meta 级在暖纸/卡上保 ≥4.5:1, 最重 SemiBold 即止 */
     --text-default: #1d1a15;
@@ -40,6 +45,9 @@
     --brand-accent: #7fae9f;
     --brand-primary-bg: #e2ecdf;
     --brand-focus-ring: rgba(20, 80, 74, 0.42);
+    /* 票夹 coral — 品牌右侧夹的专用色: 只做票据「夹」形 / 当期聚焦标记,
+       不承载状态语义 (状态留在 state/goal 族), 镜像 Android ThemeVisuals.clipCoral */
+    --brand-clip: #c2492f;
 
     /* State */
     --state-success-bg: #e7efdd; --state-success-fg: #236a57; --state-success-border: #c8dbb4;
@@ -148,6 +156,9 @@
     --surface-raised: #272319;
     --surface-nav: #12100b;
     --surface-sunken: #221e15;
+    /* 自定义背景遮罩（全局背景批）：同 paper 块注释；深色下文为浅色，
+       veil 略强一档。 */
+    --surface-user-veil: linear-gradient(rgba(20, 18, 13, 0.66), rgba(20, 18, 13, 0.66));
 
     /* Text */
     --text-default: #ece7db;
@@ -162,6 +173,8 @@
     --brand-accent: #33584c;
     --brand-primary-bg: #70bfa52e;
     --brand-focus-ring: rgba(112, 191, 165, 0.55);
+    /* 票夹 coral 夜间版 — 同一右侧夹; 比 danger-fg #e0836f 更红更饱和, 不承载状态语义 */
+    --brand-clip: #ee6a4d;
 
     /* State */
     --state-success-bg: rgba(168, 184, 138, 0.14); --state-success-fg: #77c3a9; --state-success-border: rgba(168, 184, 138, 0.30);

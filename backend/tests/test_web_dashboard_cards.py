@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from _web_native_form_support import hidden_post_forms
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -162,6 +163,42 @@ def test_web_dashboard_cards_viewer_can_read_but_not_save(web_client: TestClient
     )
     assert denied.status_code == 403
     assert denied.json()["error"] == "permission_denied"
+
+
+def test_dashboard_native_forms_save_and_reset_without_javascript(
+    web_client: TestClient, identity
+) -> None:
+    """Missing SSR CSRF controls must fail through the real browser-peer guard."""
+    with TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 53004)) as browser:
+        route = "/web/dashboard/cards"
+        page = browser.get(f"{route}?ledger_id=owner")
+        assert page.status_code == 200
+        forms = hidden_post_forms(page.text)
+        order = ["goals", *[key for key in WEB_CARD_KEYS if key != "goals"]]
+        payload = _dashboard_form_payload(order, hidden={"reports"})
+        payload.pop("ledger_id")
+        # Keep the user's multi-value card order; only take scope/token from SSR.
+        payload.update({name: forms[f"{route}/save"][name] for name in ("ledger_id", "csrf_token")})
+        headers = {"Origin": "http://127.0.0.1", "Referer": str(page.url)}
+        saved = browser.post(f"{route}/save", data=payload, headers=headers, follow_redirects=False)
+        assert saved.status_code == 303, saved.text
+        persisted = browser.get("/api/dashboard/cards?surface=web", headers=identity.app_headers)
+        assert persisted.status_code == 200
+        cards = persisted.json()["items"]
+        assert cards[0]["key"] == "goals"
+        assert next(card for card in cards if card["key"] == "reports")["visible"] is False
+
+        reset = browser.post(
+            f"{route}/reset",
+            data=forms[f"{route}/reset"],
+            headers=headers,
+            follow_redirects=False,
+        )
+        assert reset.status_code == 303, reset.text
+        restored = browser.get("/api/dashboard/cards?surface=web", headers=identity.app_headers)
+        assert restored.status_code == 200
+        assert [card["key"] for card in restored.json()["items"]] == WEB_CARD_KEYS
+        assert all(card["visible"] for card in restored.json()["items"])
 
 
 _TINY_PNG = (

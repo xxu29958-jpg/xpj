@@ -29,6 +29,7 @@ import com.ticketbox.domain.model.ExpenseLineageStatus
 import com.ticketbox.domain.model.StreamOffset
 import com.ticketbox.domain.model.StreamOffsetKind
 import com.ticketbox.ui.components.AppAdaptiveAmountRowDefaults
+import com.ticketbox.ui.components.AppAdaptiveContentActionStateRow
 import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
@@ -102,41 +103,51 @@ internal fun LedgerOffsetRow(
             .fillMaxWidth()
             .combinedClickable(onClick = onOpen),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = AppSpacing.miniGap, vertical = rowMetrics.rowPadding),
-            horizontalArrangement = Arrangement.spacedBy(rowMetrics.itemSpacing),
+        AppAdaptiveContentActionStateRow(
+            modifier = Modifier.padding(horizontal = AppSpacing.miniGap, vertical = rowMetrics.rowPadding),
             verticalAlignment = Alignment.CenterVertically,
-        ) {
-            LedgerOffsetKindChip(kind = offset.kind)
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-            ) {
-                Text(
-                    text = item.root.merchant?.takeIf { it.isNotBlank() }
-                        ?: stringResource(R.string.ledger_item_merchant_empty),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = AppTextHierarchy.body.weight,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = offset.category,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.labelSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            if (offset.kind.isMoneyEvent) {
-                LedgerOffsetInflowAmount(offset = offset)
-            }
-        }
+            content = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(rowMetrics.itemSpacing),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    LedgerOffsetKindChip(kind = offset.kind)
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+                    ) {
+                        Text(
+                            text = item.root.merchant?.takeIf { it.isNotBlank() }
+                                ?: stringResource(R.string.ledger_item_merchant_empty),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = AppTextHierarchy.body.weight,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = offset.category,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            },
+            action = { amountModifier, stacked ->
+                if (offset.kind.isMoneyEvent) {
+                    LedgerOffsetInflowAmount(
+                        offset = offset,
+                        modifier = amountModifier,
+                        constrainInline = !stacked,
+                    )
+                }
+            },
+        )
         HorizontalDivider(
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium),
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.subtle),
         )
     }
 }
@@ -168,7 +179,11 @@ private fun LedgerOffsetKindChip(kind: StreamOffsetKind) {
 }
 
 @Composable
-private fun LedgerOffsetInflowAmount(offset: StreamOffset, modifier: Modifier = Modifier) {
+private fun LedgerOffsetInflowAmount(
+    offset: StreamOffset,
+    modifier: Modifier = Modifier,
+    constrainInline: Boolean = true,
+) {
     val text = stringResource(
         R.string.ledger_offset_inflow_amount,
         formatDisplayAmount(
@@ -176,11 +191,16 @@ private fun LedgerOffsetInflowAmount(offset: StreamOffset, modifier: Modifier = 
             CurrencyDisplay.forRecord(offset.originalCurrencyCode),
         ),
     )
-    Box(
-        modifier = modifier.widthIn(
+    val amountModifier = if (constrainInline) {
+        modifier.widthIn(
             min = AppAdaptiveAmountRowDefaults.statusMinWidth,
             max = AppAdaptiveAmountRowDefaults.secondaryMetaInlineMaxWidth,
-        ),
+        )
+    } else {
+        modifier
+    }
+    Box(
+        modifier = amountModifier,
         contentAlignment = Alignment.CenterEnd,
     ) {
         AppEndAlignedAmountText(

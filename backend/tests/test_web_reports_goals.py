@@ -227,11 +227,13 @@ def test_web_reports_static_echarts_vendor_is_self_hosted(client: TestClient) ->
     assert reports_js.status_code == 200
     assert "reports-overview-data" in reports_js.text
     assert "rgba(15,23,42" not in reports_js.text
-    assert reports_css.status_code == 200
-    assert ".report-export-dialog::backdrop" in reports_css.text
-    assert ".reports-export-dialog" not in reports_css.text
-    assert reports_feature_css.status_code == 200
-    assert ".reports-export-dialog" not in reports_feature_css.text
+    assert reports_css.status_code == 404
+    # 导出 dialog 由产品洞察域承载，旧样式已物理退役。
+    product_insights_css = client.get("/static/web/product/domains/insights.css")
+    assert product_insights_css.status_code == 200
+    assert ".report-export-dialog::backdrop" in product_insights_css.text
+    assert ".reports-export-dialog" not in product_insights_css.text
+    assert reports_feature_css.status_code == 404
     assert product_components_css.status_code == 200
     assert re.search(r"\.bulk-bar\s*\{[^}]*display:\s*flex", product_components_css.text, re.S)
     assert re.search(
@@ -241,10 +243,7 @@ def test_web_reports_static_echarts_vendor_is_self_hosted(client: TestClient) ->
     )
     # 收件域收口片: 旧页级 pages/pending.css 物理退役, 不再可被引用。
     assert retired_pending_css.status_code == 404
-    assert bulk_bar_css.status_code == 200
-    assert "@media (max-width: 720px)" in bulk_bar_css.text
-    assert ".bulk-bar .bulk-field" in bulk_bar_css.text
-    assert "flex-basis: 100%" in bulk_bar_css.text
+    assert bulk_bar_css.status_code == 404
     assert "cdn.jsdelivr" not in reports_js.text
     assert "unpkg.com" not in reports_js.text
 
@@ -305,7 +304,11 @@ def test_web_goals_create_archive_and_viewer_guard(web_client: TestClient, *, id
     assert "¥640.00 / ¥800.00" in page.text
     assert "80%" in page.text
     assert "保存目标" in page.text
-    assert "/static/web/pages/goals.css?v=" in page.text
+    # C2 计划片: goals 正文迁 product 计划域 — 挂 plans 域模块; 旧 pages/goals.css
+    # 物理退役 (不再挂载, 静态路由 404)。
+    assert "/static/web/product/domains/plans.css?v=" in page.text
+    assert "/static/web/pages/goals.css" not in page.text
+    assert web_client.get("/static/web/pages/goals.css").status_code == 404
     assert "/static/web/pages/budgets.css" not in page.text
 
     match = re.search(r"/web/goals/([^/]+)/archive", page.text)

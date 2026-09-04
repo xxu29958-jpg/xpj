@@ -72,7 +72,6 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.AppThemeMode
-import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.BackgroundSource
 import com.ticketbox.domain.model.CategoryRule
@@ -126,7 +125,9 @@ data class AppearancePreferenceActions(
 data class AppearanceBackgroundActions(
     val onOpenGallery: () -> Unit,
     val onPickCustomImage: () -> Unit,
-    val onPreviewThemeDefault: () -> Unit,
+    // 全局背景批:进入统一编辑面调整当前背景构图/沉浸;draft 由 VM 持有。
+    val onEditBackground: (BackgroundSettings) -> Unit,
+    // 「恢复主题背景」:一次发布回 ThemeDefault 并清掉自定义图(成功后才删旧文件)。
     val onClearBackgroundImage: () -> Unit,
 )
 
@@ -219,16 +220,17 @@ fun AppearanceScreen(
                         )
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
+                        val hasBackground = appearance.backgroundSettings.source != BackgroundSource.ThemeDefault
                         BackgroundActionButton(
-                            text = stringResource(R.string.appearance_background_follow_theme),
+                            text = stringResource(R.string.appearance_background_edit_composition),
                             modifier = Modifier.weight(1f),
-                            onClick = actions.background.onPreviewThemeDefault,
+                            enabled = hasBackground,
+                            onClick = { actions.background.onEditBackground(appearance.backgroundSettings) },
                         )
                         BackgroundActionButton(
-                            text = stringResource(R.string.appearance_background_clear_image),
+                            text = stringResource(R.string.appearance_background_restore_theme),
                             modifier = Modifier.weight(1f),
-                            enabled = appearance.backgroundSettings.source == BackgroundSource.CustomImage &&
-                                appearance.backgroundSettings.customImagePath != null,
+                            enabled = hasBackground,
                             onClick = actions.background.onClearBackgroundImage,
                         )
                     }

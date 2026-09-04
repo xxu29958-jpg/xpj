@@ -7,6 +7,15 @@ import kotlin.test.assertTrue
 
 class BackgroundSettingsTest {
     @Test
+    fun changingImageStartsCenteredInsteadOfReusingAnotherImagesComposition() {
+        val current = BackgroundSettings().withCustomImage("first.image")
+            .copy(transform = BackgroundTransform(scale = 3f, offsetX = 1f, offsetY = -1f))
+
+        assertEquals(BackgroundTransform(), current.withCustomImage("second.image").transform)
+        assertEquals(BackgroundTransform(), current.withBuiltInBackground("harbor").transform)
+    }
+
+    @Test
     fun defaultSettingsFollowThemeWithBalancedImmersion() {
         val settings = BackgroundSettings()
 
@@ -42,7 +51,7 @@ class BackgroundSettingsTest {
     fun clearBackgroundReturnsToThemeDefault() {
         val settings = BackgroundSettings().withCustomImage("C:\\app\\backgrounds\\custom_background.jpg")
 
-        val cleared = settings.withoutCustomImage()
+        val cleared = settings.withoutBackground()
 
         assertEquals(BackgroundSource.ThemeDefault, cleared.source)
         assertEquals(null, cleared.builtInBackgroundId)

@@ -86,7 +86,6 @@ val PageRole.density: PageDensity
 
 object AppPageDefaults {
     val HorizontalPadding: Dp = AppSpacing.screenHorizontal
-    val ImeStatusBarFallback: Dp = 44.dp
 
     val BottomContentExtraPadding: Dp =
         AppSpacing.bottomContentPadding + AppSpacing.sectionGap + AppSpacing.cardGap
@@ -296,14 +295,13 @@ fun AppPageScrollableColumn(
         CompositionLocalProvider(LocalAppImeVisible provides keyboardVisible) {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                 val resolvedContentMaxWidth = resolvedContentMaxWidth(chrome.contentWidth)
-                val visibleStatusPadding = layout.visibleStatusPadding()
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .fillMaxHeight()
                         .appPageContentWidth(resolvedContentMaxWidth)
                         .padding(
-                            top = visibleStatusPadding,
+                            top = layout.statusPadding,
                             // 栏自带导航栏 inset，实测高度已覆盖 bottomViewportPadding
                             // 的导航栏份额，二者取一不叠加。
                             bottom = if (bottomBar != null) bottomBarHeight else layout.bottomViewportPadding,
@@ -384,7 +382,6 @@ fun AppScrollableContent(
         CompositionLocalProvider(LocalAppImeVisible provides keyboardVisible) {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                 val resolvedContentMaxWidth = resolvedContentMaxWidth(chrome.layout.contentWidth)
-                val visibleStatusPadding = layout.visibleStatusPadding()
                 PullToRefreshBox(
                     isRefreshing = refresh.isRefreshing,
                     onRefresh = refresh.onRefresh,
@@ -392,8 +389,9 @@ fun AppScrollableContent(
                     state = refreshState,
                     indicator = {
                         // Material3 默认 indicator，避免下拉时只见手指不见反馈。
-                        // 位置在 status bar 下方一格，与列表 contentPadding 一致。
-                        AppPullToRefreshIndicator(refreshState, refresh.isRefreshing, visibleStatusPadding)
+                        // 位置在页面视口上沿下方一格：shell 已接管状态栏时 statusPadding 为 0，
+                        // 未接管（二级页）时为实测状态栏高，均不再额外叠加。
+                        AppPullToRefreshIndicator(refreshState, refresh.isRefreshing, layout.statusPadding)
                     },
                 ) {
                     Box(
@@ -402,7 +400,7 @@ fun AppScrollableContent(
                             .fillMaxHeight()
                             .appPageContentWidth(resolvedContentMaxWidth)
                             .padding(
-                                top = visibleStatusPadding,
+                                top = layout.statusPadding,
                                 bottom = if (chrome.bottomBar != null) bottomBarHeight else layout.bottomViewportPadding,
                             )
                             .clipToBounds(),
@@ -480,13 +478,6 @@ private fun BoxScope.AppPullToRefreshIndicator(
             .padding(top = topPadding + AppSpacing.miniGap),
     )
 }
-
-private fun AppPageLayoutValues.visibleStatusPadding(): Dp =
-    if (statusPadding == 0.dp) {
-        AppPageDefaults.ImeStatusBarFallback
-    } else {
-        statusPadding
-    }
 
 private fun BoxWithConstraintsScope.resolvedContentMaxWidth(
     contentWidth: AppAdaptiveContentWidth,

@@ -249,3 +249,30 @@ body {
         animation-duration: 0s !important;
     }
 }
+
+/* 自定义背景（全局背景批）：与 product/shell.css 同一管线 — 同一 owner
+   (appearance-bootstrap.js TicketboxBackground)、同一组 var、同一 body::before
+   固定层；登录页不加载 shell.css，规则在此平行声明，取舍一致。 */
+html[data-user-bg] body {
+    background: transparent;
+    background-image: none;
+}
+
+html[data-user-bg] body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background-color: var(--surface-app);
+    /* 共享阅读保护：与 shell.css 同一 veil token, login 同管线。 */
+    background-image: var(--surface-user-veil), var(--surface-user-image);
+    background-repeat: no-repeat;
+    background-size: auto, var(--surface-user-image-size, cover);
+    background-position: 0 0, var(--surface-user-image-position, center);
+    animation: user-bg-in 0.35s ease-out;
+}
+
+@keyframes user-bg-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}

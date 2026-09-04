@@ -71,7 +71,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
-import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.ConnectionDiagnostics
@@ -109,39 +108,6 @@ import com.ticketbox.ui.theme.colorSchemeForSkin
 import com.ticketbox.viewmodel.SettingsUiState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-
-@Composable
-internal fun PreviewReceipt(
-    title: String,
-    amount: String,
-    subtitle: String,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-        ) {
-            Text(title, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-        }
-        Text(amount, color = MaterialTheme.colorScheme.onSurface, fontWeight = AppTextHierarchy.heading.weight)
-    }
-}
-
-@Composable
-internal fun rememberLocalImage(path: String): ImageBitmap? {
-    var image by remember(path) { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(path) {
-        image = withContext(Dispatchers.IO) {
-            BitmapFactory.decodeFile(path)?.asImageBitmap()
-        }
-    }
-    return image
-}
 
 @Composable
 internal fun CategoryRuleCard(

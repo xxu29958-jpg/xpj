@@ -40,9 +40,38 @@
     font-size: var(--type-title-size);
 }
 
+/* 票面头条: 当期合计的唯一大数字 (summary 不再重复金额文本, 金额只出现一次) */
+.confirmed-hero-amount {
+    margin: 0;
+    max-inline-size: 100%;
+    color: var(--text-default);
+    font-family: var(--font-numeric);
+    font-size: var(--type-display-size);
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--type-display-weight);
+    letter-spacing: -.02em;
+    line-height: var(--type-display-line);
+    overflow-wrap: anywhere;
+}
+
 .ledger-stream {
     overflow: hidden;
     padding: 0;
+    position: relative;
+}
+
+/* 票夹刻: coral 侧夹咬住票面右缘上段 — 品牌右侧夹的 CSS 形态 (装饰, 不接收事件,
+   不进 AX 树; 与状态色正交, 状态仍走 state/goal 族) */
+.ledger-stream::before {
+    content: "";
+    position: absolute;
+    inset-block-start: var(--space-6);
+    inset-inline-end: 0;
+    width: var(--space-2);
+    height: var(--space-10);
+    border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+    background: var(--brand-clip);
+    pointer-events: none;
 }
 
 .confirmed-batch-head,
@@ -56,16 +85,23 @@
 
 .confirmed-batch-head {
     grid-template-columns: var(--space-7) auto 1fr;
-    min-height: var(--space-10);
+    min-height: var(--space-9);
     border-block-end: 1px solid var(--border-card);
     color: var(--text-muted);
+    font-size: var(--type-caption-size);
 }
 
+.confirmed-batch-head .hint {
+    overflow: hidden;
+    min-width: 0;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 票内日期戳: 不再是贯穿色带, 只出 stamp 文字与日合计 */
 .lday {
     grid-template-columns: minmax(0, 1fr) auto auto;
     min-height: var(--space-9);
-    border-block-end: 1px solid var(--border-card);
-    background: var(--surface-sunken);
     color: var(--text-meta);
     font-size: var(--type-caption-size);
 }
@@ -81,6 +117,11 @@
     font-variant-numeric: tabular-nums;
 }
 
+.lday-s {
+    color: var(--text-default);
+    font-weight: var(--type-subtitle-weight);
+}
+
 /* 行结构: 选择槽 (.lrow-sel, 仅 expense root 行) 与整行链接 (a.timeline-row-detail)
    兄弟并列, /web/confirmed 是唯一 consumer; 容器只出「选择器 | 链接」两列, 内容
    三列网格收在行链接上, 链接内零交互控件。offset 行 (refund/chargeback/reversal)
@@ -90,6 +131,15 @@
     min-height: calc(var(--space-12) + var(--space-3));
     border-block-end: 1px solid var(--border-card);
     color: var(--text-default);
+}
+
+/* 票带穿孔: 日组交界处换成断齿小计规线, 行尾不再叠一条实线 */
+.timeline-row:has(+ .lday) {
+    border-block-end: none;
+}
+
+.timeline-row + .lday {
+    border-block-start: 1px dashed var(--border-card);
 }
 
 .timeline-row.lrow.has-check {
@@ -163,6 +213,7 @@
 
 .lrow-merch {
     overflow: hidden;
+    font-size: var(--type-subtitle-size);
     font-weight: var(--type-subtitle-weight);
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -182,8 +233,9 @@
     font-variant-numeric: tabular-nums;
 }
 
+/* 行金额升一级 (title 18px): 票带上金额是主角, 商家/meta 退居其次 */
 .amt-main {
-    font-size: var(--type-subtitle-size);
+    font-size: var(--type-title-size);
     font-weight: var(--type-title-weight);
 }
 
@@ -201,6 +253,24 @@
     grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
     gap: var(--space-5);
     margin-block-start: var(--space-6);
+}
+
+/* 宽屏台面: 票带限宽 46rem 让金额贴近对象; 本月概况 (热力图/来源, 既有真实内容)
+   收作右侧 sticky 便签; <80rem 维持单列堆叠, 消费者与顺序不变 */
+@media (min-width: 80rem) {
+    .confirmed-desk {
+        display: grid;
+        align-items: start;
+        gap: var(--space-6);
+        grid-template-columns: minmax(0, 46rem) minmax(20rem, 1fr);
+    }
+
+    .confirmed-desk .month-overview {
+        grid-template-columns: minmax(0, 1fr);
+        margin-block-start: 0;
+        position: sticky;
+        inset-block-start: var(--space-6);
+    }
 }
 
 .heatmap {
@@ -635,13 +705,6 @@
     margin-block-start: var(--space-1);
 }
 
-.import-export-panel .product-field > span:first-child,
-.uncategorized-bulkbar .product-field > span:first-child {
-    color: var(--text-default);
-    font-size: var(--type-caption-size);
-    font-weight: var(--type-subtitle-weight);
-}
-
 .import-upload-form {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: end;
@@ -755,16 +818,13 @@
 }
 
 .uncategorized-bulkbar {
-    position: sticky;
-    inset-block-end: 0;
-    z-index: var(--z-sticky);
     display: flex;
+    flex-wrap: wrap;
     align-items: end;
     justify-content: flex-end;
     gap: var(--space-3);
     padding: var(--space-4) var(--space-6);
-    border-block-start: 1px solid var(--border-card);
-    background: var(--surface-raised);
+    border-block-end: 1px solid var(--border-card);
 }
 
 .uncategorized-category-field {
@@ -791,6 +851,145 @@
 
     .uncategorized-category-field {
         width: 100%;
+    }
+}
+
+/* ── C4 旧栈收官补遗 ────────────────────────────────────────────────────
+   未分类 ≤40rem 行卡 (勾选+商家+金额首行, 时间/分类换行 meta; 表头视觉隐藏但
+   留在无障碍树, 同 merchant-catalog 模式); 导入批次页头部动作 / 完成态 / 筛选行 /
+   错误文本断行; 批次统计 ≤48rem 两列成对 (--pair 变体, 可导入↔错误并排对照,
+   覆盖共享单列收叠 —— 同优先级靠文件内顺序, 高优先级靠 .import-metrics--pair)。 */
+
+@media (max-width: 40rem) {
+    .uncategorized-table thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+
+    .uncategorized-table tbody {
+        display: block;
+    }
+
+    .uncategorized-table tbody tr {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        column-gap: var(--space-3);
+        row-gap: var(--space-1);
+        padding: var(--space-3) var(--space-4);
+        border-block-end: 1px solid var(--border-card); /* 1px 发丝分界 */
+    }
+
+    .uncategorized-table tbody tr:last-child {
+        border-block-end: 0;
+    }
+
+    .uncategorized-table tbody td {
+        display: block;
+        padding: 0;
+        border-block-end: 0;
+    }
+
+    .uncategorized-table tbody td:first-child {
+        width: auto;
+    }
+
+    /* 首行 = 勾选 + 商家 (弹性主身份) + 金额 (右端); 时间/分类换行安静 meta。 */
+    .uncategorized-table tbody td:nth-child(3) {
+        order: 2;
+        flex: 1 1 auto;
+        font-weight: var(--type-subtitle-weight);
+    }
+
+    .uncategorized-table tbody td:nth-child(4) {
+        order: 3;
+    }
+
+    .uncategorized-table tbody td:nth-child(2) {
+        order: 4;
+        min-width: 0;
+    }
+
+    .uncategorized-table tbody td:nth-child(5) {
+        order: 5;
+    }
+
+    .uncategorized-table tbody td:nth-child(2),
+    .uncategorized-table tbody td:nth-child(5) {
+        color: var(--text-meta);
+        font-size: var(--type-caption-size);
+    }
+
+    .uncategorized-table .uncategorized-note {
+        max-width: 100%;
+        font-weight: normal;
+    }
+}
+
+.import-batch-head-side,
+.import-batch-done,
+.import-batch-filter {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+/* 唯一全选钉在批量条左端 (动作区仍右对齐收拢), ≤40rem 表头隐藏后仍可达。 */
+.uncategorized-select-all {
+    align-self: center;
+    margin-inline-end: auto;
+}
+
+.import-batch-filter {
+    align-items: end;
+}
+
+.import-batch-filter .product-field {
+    min-width: calc(var(--space-12) * 2.5);
+}
+
+/* 行预览 panel 头: 窄屏筛选行换到标题下, 不与标题挤压。 */
+.import-batch-rows .product-panel-header {
+    flex-wrap: wrap;
+}
+
+/* 行预览表: 表头不换行 (7 列挤压下 CJK 表头被压成竖字 —— before/after 原图
+   均见); 单元格内容照常折行, 宽出部分由 product-table-wrap 容器内滚动。 */
+.import-batch-rows .product-table th {
+    white-space: nowrap;
+}
+
+.import-apply-form {
+    align-items: end;
+}
+
+.import-row-error {
+    color: var(--state-danger-fg);
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 48rem) {
+    .import-metrics--pair {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .import-metrics--pair .import-metric {
+        border-block-end: 1px solid var(--border-card);
+        border-inline-end: 0;
+    }
+
+    .import-metrics--pair .import-metric:nth-child(odd) {
+        border-inline-end: 1px solid var(--border-card);
+    }
+
+    .import-metrics--pair .import-metric:nth-last-child(-n+2) {
+        border-block-end: 0;
     }
 }
 
@@ -910,6 +1109,198 @@
     color: inherit;
     font-weight: var(--type-subtitle-weight);
     text-underline-offset: var(--space-1);
+}
+
+/* ── 回收站 (C4 旧栈收官: 归并自退役的 pages/recycle-bin.css, 活样式原样保留) ──
+   工作台面板 = 单容器 (hairline 行分隔) + panel 头 + 共享 .product-table; 页头
+   右侧 hero 计数; 行内 422 错误块锚在被提交行 (C5b-2)。旧 --font-num 换产品
+   token --font-numeric; product-feedback--success / product-state-action 复用
+   components.css 既有件; 触及共享选择器的规则一律 .rb-panel 作用域, 不外溢。 */
+
+.rb-header-stats {
+    display: grid;
+    justify-items: end;
+    gap: var(--space-1);
+}
+
+.rb-header-count {
+    color: var(--text-default);
+    font-family: var(--font-numeric);
+    font-size: var(--type-hero-size);
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--type-hero-weight);
+    letter-spacing: -0.01em;
+    line-height: var(--type-hero-line);
+}
+
+.rb-header-caption {
+    color: var(--text-muted);
+    font-size: var(--type-caption-size);
+}
+
+/* 页头收叠跟共享组件的 56rem 断点 (原页面级 720px 规则并入); 计数随之左对齐
+   横排, 768 验收宽度不再右漂。 */
+@media (max-width: 56rem) {
+    .rb-header-stats {
+        grid-auto-flow: column;
+        align-items: baseline;
+        justify-items: start;
+        gap: var(--space-3);
+    }
+}
+
+.rb-panel {
+    overflow: hidden;
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-md);
+    background: var(--surface-card);
+}
+
+.rb-panel-header {
+    display: grid;
+    gap: var(--space-1);
+    padding: var(--space-5) var(--space-5) var(--space-4);
+    border-block-end: 1px solid var(--border-card); /* 1px 发丝分界 */
+}
+
+.rb-panel-title {
+    color: var(--text-default);
+    font-size: var(--type-title-size);
+    font-weight: var(--type-title-weight);
+    line-height: var(--type-title-line);
+}
+
+.rb-panel-subtitle {
+    color: var(--text-muted);
+    font-size: var(--type-caption-size);
+}
+
+/* 窄屏/长文案: 包裹可横向滚动, 行内容不挤压变形。 */
+.rb-table-wrap {
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+/* 类型列: 第四级 meta, 窄列。 */
+.rb-kind-cell {
+    color: var(--text-muted);
+    font-size: var(--type-caption-size);
+    white-space: nowrap;
+}
+
+/* 项目列: 标题 (strong body) + 明细 (caption meta) 双层节奏。 */
+.rb-item-title {
+    color: var(--text-default);
+    font-weight: var(--type-subtitle-weight);
+}
+
+.rb-item-detail {
+    margin-top: var(--space-1);
+    color: var(--text-muted);
+    font-size: var(--type-caption-size);
+}
+
+/* 操作列: 行内 422 错误块 (C5b-2 锚) 收进单元格密度; viewer 只读注记。 */
+.rb-restore-form {
+    display: inline-flex;
+}
+
+.rb-row-error {
+    margin-block-end: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--type-caption-size);
+}
+
+.rb-readonly {
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
+
+/* 空态: 回资料库域行动链接 (product-state-action 在 components.css)。 */
+.rb-state-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-5);
+}
+
+/* ≤720px 行重构 (与 merchant-catalog 同断点, 原值保留): 行 = 两列网格, 类型/
+   项目/状态纵排左列, 恢复按钮右轨居中; 行内 422 错误块拉通整行, 操作单元格
+   display:contents 让子件直接参与行网格 (锚点属性全在元素上)。表头不
+   display:none (读屏丢列关联): th 盒归零 + 文本 .rb-sr-only 视觉隐藏。 */
+@media (max-width: 720px) {
+    .rb-panel-header {
+        padding: var(--space-4) var(--space-4) var(--space-3);
+    }
+
+    .rb-panel .product-table thead th {
+        padding: 0;
+        border-block-end: 0;
+    }
+
+    .rb-sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        clip-path: inset(50%);
+        white-space: nowrap;
+        border: 0;
+    }
+
+    .rb-panel .product-table tbody tr {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        column-gap: var(--space-3);
+        padding: var(--space-3-5) var(--space-4);
+        border-block-end: 1px solid var(--border-card); /* 1px 发丝分界 */
+    }
+
+    .rb-panel .product-table tbody tr:last-child {
+        border-block-end: 0;
+    }
+
+    .rb-panel .product-table td {
+        padding: 0;
+        border-block-end: 0;
+    }
+
+    .rb-kind-cell {
+        grid-column: 1;
+        grid-row: 1;
+    }
+
+    .rb-item-cell {
+        grid-column: 1;
+        grid-row: 2;
+        margin-top: var(--space-1);
+    }
+
+    .rb-status-cell {
+        grid-column: 1;
+        grid-row: 3;
+        margin-top: var(--space-2);
+    }
+
+    .rb-action-cell {
+        display: contents;
+    }
+
+    .rb-restore-form,
+    .rb-readonly {
+        grid-column: 2;
+        grid-row: 1 / span 3;
+        align-self: center;
+    }
+
+    .rb-row-error {
+        grid-column: 1 / -1;
+        grid-row: 4;
+        margin-top: var(--space-2);
+        margin-block-end: 0;
+    }
 }
 
 /* 窄屏商家目录: 行重构为纵向节奏, 操作簇整行可见 (390px 实测操作列被横向

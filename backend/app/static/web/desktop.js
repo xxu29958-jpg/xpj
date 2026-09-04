@@ -21,6 +21,7 @@
     }
 
     call("initThemeControl");
+    call("initBackgroundControl");
     call("initLedgerSwitcher");
     call("initDrawer");
     call("initReviewKeyboard");

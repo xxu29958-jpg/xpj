@@ -46,6 +46,12 @@ enum class LedgerMonthsLoadState {
     Failed,
 }
 
+enum class LedgerExportOutcome {
+    Saved,
+    Cancelled,
+    Failed,
+}
+
 data class LedgerSummaryUi(
     val totalAmountCents: Long = 0L,
     val itemCount: Int = 0,
@@ -81,6 +87,7 @@ data class LedgerUiState(
     val monthsLoadState: LedgerMonthsLoadState = LedgerMonthsLoadState.Unknown,
     val readOnly: Boolean = false,
     val exportFile: CsvExport? = null,
+    val exportDestinationPending: Boolean = false,
     val monthFilter: String = YearMonth.now().toString(),
     val categoryFilter: String = "",
     val tagFilter: String = "",
@@ -436,6 +443,7 @@ class LedgerViewModel(
     fun exportCsv() {
         viewModelScope.launch {
             val filters = _uiState.value
+            if (filters.exporting || filters.exportFile != null) return@launch
             if (filters.dataQualityFilter != null) {
                 // The export endpoint only scopes by month/category/tag; the
                 // data-quality filter is client-side. Refuse rather than
@@ -756,14 +764,25 @@ class LedgerViewModel(
     }
 
     fun exportLaunchHandled() {
-        _uiState.update { it.copy(exportFile = null) }
+        // Activity Result retains the picker, not our downloaded bytes. Keep
+        // them in this owner across recreation until its result is settled.
+        _uiState.update { it.copy(exportDestinationPending = true) }
     }
 
-    fun exportFinished(message: String) {
-        // The caller (LedgerRoute) resolves the post-save copy and passes the
-        // already-resolved text here, so carry it through as a UiText.Raw
-        // (byte-identical output). ADR-0044 wave 2.
-        _uiState.update { it.copy(message = UiText.raw(message), messageTone = MessageTone.Success) }
+    fun exportFinished(outcome: LedgerExportOutcome) {
+        val (message, tone) = when (outcome) {
+            LedgerExportOutcome.Saved -> R.string.ledger_msg_export_succeeded to MessageTone.Success
+            LedgerExportOutcome.Cancelled -> R.string.ledger_msg_export_cancelled to MessageTone.Info
+            LedgerExportOutcome.Failed -> R.string.ledger_msg_export_failed to MessageTone.Danger
+        }
+        _uiState.update {
+            it.copy(
+                exportFile = null,
+                exportDestinationPending = false,
+                message = UiText.res(message),
+                messageTone = tone,
+            )
+        }
     }
 }
 

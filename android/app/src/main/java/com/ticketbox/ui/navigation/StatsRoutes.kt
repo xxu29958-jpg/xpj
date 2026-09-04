@@ -37,7 +37,6 @@ import com.ticketbox.ui.screens.IncomePlanScreen
 import com.ticketbox.ui.screens.ReceivablesScreen
 import com.ticketbox.ui.screens.RepaymentDraftInboxScreen
 import com.ticketbox.ui.screens.RelationsListChrome
-import com.ticketbox.ui.screens.StatsScreen
 import com.ticketbox.upload.prepareScreenshotUpload
 import com.ticketbox.viewmodel.BudgetViewModel
 import com.ticketbox.viewmodel.CreateDebtGoalViewModel
@@ -48,11 +47,8 @@ import com.ticketbox.viewmodel.DebtRepaymentHistoryViewModel
 import com.ticketbox.viewmodel.IncomePlanEditViewModel
 import com.ticketbox.viewmodel.IncomePlanViewModel
 import com.ticketbox.viewmodel.MemberRepaymentProposalViewModel
-import com.ticketbox.viewmodel.MonthlyStatsViewModel
 import com.ticketbox.viewmodel.ReceivablesViewModel
 import com.ticketbox.viewmodel.RepaymentDraftInboxViewModel
-import com.ticketbox.viewmodel.StatsBudgetViewModel
-import com.ticketbox.viewmodel.StatsReportsViewModel
 import com.ticketbox.viewmodel.budgetViewModelFactory
 import com.ticketbox.viewmodel.createDebtGoalViewModelFactory
 import com.ticketbox.viewmodel.debtDetailViewModelFactory
@@ -62,7 +58,6 @@ import com.ticketbox.viewmodel.debtViewModelFactory
 import com.ticketbox.viewmodel.incomePlanEditViewModelFactory
 import com.ticketbox.viewmodel.incomePlanViewModelFactory
 import com.ticketbox.viewmodel.memberRepaymentProposalViewModelFactory
-import com.ticketbox.viewmodel.mergeStatsUiState
 import com.ticketbox.viewmodel.receivablesViewModelFactory
 import com.ticketbox.viewmodel.repaymentDraftInboxViewModelFactory
 import kotlinx.coroutines.CoroutineScope
@@ -422,76 +417,4 @@ internal fun RepaymentDraftRoute(
         viewModel = viewModel,
         onBack = onBack,
     )
-}
-
-@Composable
-internal fun StatsRoute(
-    shellState: MainShellState,
-    screenFactory: MainScreenFactory,
-) {
-    val monthlyStatsViewModel: MonthlyStatsViewModel = viewModel(factory = screenFactory.repositoryViewModelFactory)
-    val budgetViewModel: StatsBudgetViewModel = viewModel(factory = screenFactory.repositoryViewModelFactory)
-    val reportsViewModel: StatsReportsViewModel = viewModel(factory = screenFactory.repositoryViewModelFactory)
-    val monthlyState by monthlyStatsViewModel.uiState.collectAsStateWithLifecycle()
-    val budgetState by budgetViewModel.uiState.collectAsStateWithLifecycle()
-    val reportsState by reportsViewModel.uiState.collectAsStateWithLifecycle()
-
-    LaunchedEffect(shellState.insightsDataRevision, monthlyState.ledgerReady) {
-        if (shellState.insightsDataRevision > 0 && monthlyState.ledgerReady) {
-            // A planning or vocabulary edit can change insight inputs while these
-            // ViewModels stay alive. Reload both tags and aggregate projections so
-            // filters and summaries return to the foreground as one coherent state.
-            reloadAllStats(monthlyStatsViewModel, reportsViewModel)
-        }
-    }
-
-    LaunchedEffect(
-        monthlyState.ledgerReady,
-        monthlyState.activeLedgerId,
-        monthlyState.month,
-        monthlyState.selectedTag,
-    ) {
-        if (monthlyState.ledgerReady) {
-            reportsViewModel.refresh(monthlyState.month, monthlyState.selectedTag)
-        }
-    }
-
-    LaunchedEffect(
-        monthlyState.ledgerReady,
-        monthlyState.activeLedgerId,
-        monthlyState.month,
-        monthlyState.selectedTag,
-        monthlyState.stats,
-        monthlyState.primaryRefreshRevision,
-    ) {
-        if (monthlyState.ledgerReady) {
-            budgetViewModel.refresh(monthlyState.month, monthlyState.stats)
-        }
-    }
-
-    val state = mergeStatsUiState(monthly = monthlyState, budget = budgetState, reports = reportsState)
-
-    StatsScreen(
-        state = state,
-        actions = statsScreenActions(
-            monthly = monthlyStatsViewModel,
-            reports = reportsViewModel,
-            shellState = shellState,
-            month = monthlyState.month,
-        ),
-    )
-}
-
-/**
- * 洞察页全量重拉，由下拉刷新与上游计划/资料库变更共用：先 reloadTags 重拉标签列表，
- * 再按当前月与标签同步 monthly、budget、reports，避免返回页面后出现筛选项和汇总数据不同步。
- */
-internal fun reloadAllStats(
-    monthly: MonthlyStatsViewModel,
-    reports: StatsReportsViewModel,
-) {
-    monthly.reloadTags()
-    monthly.refresh()
-    val state = monthly.uiState.value
-    reports.refresh(state.month, state.selectedTag)
 }

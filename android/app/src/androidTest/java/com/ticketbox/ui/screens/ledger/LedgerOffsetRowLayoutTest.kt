@@ -1,17 +1,30 @@
 package com.ticketbox.ui.screens.ledger
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.ConfirmedStreamItem
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseLineageStatus
 import com.ticketbox.domain.model.ExpenseSourceValues
+import com.ticketbox.domain.model.MONEY_MINOR_MAX
 import com.ticketbox.domain.model.StreamOffset
 import com.ticketbox.domain.model.StreamOffsetKind
 import com.ticketbox.ui.theme.TicketboxTheme
 import org.junit.Rule
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -27,17 +40,28 @@ class LedgerOffsetRowLayoutTest {
     @Test
     fun refundRowKeepsMerchantAndAmountBothVisible() {
         composeRule.setContent {
-            TicketboxTheme(skin = AppSkin.Default) {
-                LedgerOffsetRow(
-                    state = LedgerOffsetItemState(item = refundRow()),
-                    onOpen = {},
-                )
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 1.8f)) {
+                TicketboxTheme(skin = AppSkin.Default) {
+                    Box(Modifier.width(328.dp)) {
+                        LedgerOffsetRow(
+                            state = LedgerOffsetItemState(item = refundRow()),
+                            onOpen = {},
+                        )
+                    }
+                }
             }
         }
 
         composeRule.onNodeWithText("退款").assertIsDisplayed()
         composeRule.onNodeWithText("盒马鲜生").assertIsDisplayed()
-        composeRule.onNodeWithText("+¥98.00", substring = true).assertIsDisplayed()
+        val results = mutableListOf<TextLayoutResult>()
+        composeRule.onNode(hasText("¥90,000,000,000.00", substring = true), useUnmergedTree = true)
+            .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(results) }
+        assertTrue("Offset amount layout must be available", results.isNotEmpty())
+        assertTrue("An offset amount must not lose digits", results.all { result ->
+            !result.hasVisualOverflow && (0 until result.lineCount).none(result::isLineEllipsized)
+        })
     }
 }
 
@@ -77,7 +101,7 @@ private fun refundRow(): ConfirmedStreamItem.OffsetRow = ConfirmedStreamItem.Off
         publicId = "offset-1",
         kind = StreamOffsetKind.Refund,
         amountCents = 9800L,
-        originalAmountMinor = 9800L,
+        originalAmountMinor = MONEY_MINOR_MAX,
         originalCurrencyCode = "CNY",
         homeCurrencyCode = "CNY",
         category = "购物",

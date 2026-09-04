@@ -290,7 +290,10 @@
         flex-direction: column;
     }
 
-    .plan-breakdown,
+    .plan-breakdown {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .recurring-metrics {
         grid-template-columns: minmax(0, 1fr);
     }
@@ -684,4 +687,441 @@ fieldset.budget-excluded .hint {
     margin-block-start: var(--space-1);
     color: var(--text-meta);
     font-size: var(--type-caption-size);
+}
+
+
+/* ── C2 计划五页消费者迁移 (goals / income-plans / recurring / debt-goals /
+ * budget-advise) ────────────────────────────────────────────────────────────
+ * 正文节奏: plan-flow 容器统一顶层块间距 (块级 margin 折叠, 与自带
+ * margin-block-end 的组件取最大值, 不累加)。budgets.html 不挂 plan-flow,
+ * 本规则零外溢。
+ */
+.plan-flow > * + * {
+    margin-block-start: var(--space-6);
+}
+
+/* 过滤条: goals 的「显示已归档」GET 表单与 recurring 的状态 segments 共用。 */
+.plan-filter {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin-block-end: var(--space-5);
+}
+
+.plan-filter-check {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: var(--type-caption-size);
+}
+
+.plan-filter-check input {
+    margin: 0;
+    accent-color: var(--brand-primary);
+}
+
+/* 反馈条内的行动链接 (409 引导等): 继承状态色, 只加重字重。 */
+.plan-feedback-link {
+    color: inherit;
+    font-weight: var(--type-subtitle-weight);
+    text-underline-offset: var(--space-1);
+}
+
+/* detail.css 的 product-inline-form 基座只在三级页挂载; 计划域自留一份
+   同语义基座 (inline 行内动作表单)。 */
+.product-inline-form {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+}
+
+/* 行内 meta 行 (收入行的频率/日期 + 行尾动作)。 */
+.plan-row-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2) var(--space-4);
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
+
+.plan-goal.is-archived,
+.plan-goal.is-receding {
+    opacity: .72;
+}
+
+/* 进度全清 (还债两清 / 关联欠款已两清): 成功色, 与 budgets 超支红同档位。 */
+.plan-progress.is-cleared {
+    accent-color: var(--state-success-fg);
+}
+
+/* 收入页工作区翻转: 在用列表宽左, 添加表单窄右 (≤64rem 收单列 — 与通用
+   .income-workspace 收列同档, 本规则须在翻转之后保持源码序, 否则等权重下
+   翻转会盖掉收列, 把列表列压成 0)。 */
+.income-workspace--list-first {
+    grid-template-columns:
+        minmax(0, 1.2fr)
+        minmax(calc(var(--space-12) * 5), .8fr);
+}
+
+@media (max-width: 64rem) {
+    .income-workspace--list-first {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+/* ── 固定支出 ────────────────────────────────────────────────────────────── */
+/* hero 只有两格真实事实, 不留空第三列。 */
+.recurring-metrics--duo {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.recurring-metric > strong small {
+    margin-inline-end: var(--space-1);
+    color: var(--text-muted);
+    font-size: var(--type-caption-size);
+    font-weight: var(--type-meta-weight);
+}
+
+.recurring-list {
+    display: grid;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.recurring-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
+    align-items: center;
+    gap: var(--space-3) var(--space-6);
+    padding-block: var(--space-4);
+    border-block-end: 1px solid var(--border-card);
+}
+
+.recurring-row:first-child {
+    padding-block-start: 0;
+}
+
+.recurring-row:last-child {
+    padding-block-end: 0;
+    border-block-end: 0;
+}
+
+.recurring-row.is-archived {
+    opacity: .72;
+}
+
+.recurring-row-main {
+    display: grid;
+    min-width: 0;
+    gap: var(--space-2);
+}
+
+.recurring-row-title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.recurring-row-merchant {
+    color: var(--text-default);
+    font-weight: var(--type-subtitle-weight);
+    /* 超长连写商户名 (无空格/连字符) 可断行：flex 项 min-content 不再撑破行网格。 */
+    overflow-wrap: anywhere;
+}
+
+.recurring-row-meta {
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
+
+.recurring-row-amount,
+.recurring-row-next {
+    display: grid;
+    justify-items: end;
+    gap: var(--space-1);
+    text-align: end;
+}
+
+.recurring-row-amount strong {
+    color: var(--text-default);
+    font-family: var(--font-numeric);
+    font-size: var(--type-subtitle-size);
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--type-title-weight);
+    white-space: nowrap;
+}
+
+.recurring-row-amount strong small {
+    color: var(--text-muted);
+    font-size: var(--type-caption-size);
+    font-weight: var(--type-meta-weight);
+}
+
+.recurring-row-next strong {
+    color: var(--text-default);
+    font-size: var(--type-caption-size);
+    font-weight: var(--type-subtitle-weight);
+    white-space: nowrap;
+}
+
+.recurring-row-amount > span,
+.recurring-row-next > span {
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+    white-space: nowrap;
+}
+
+.recurring-row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-2);
+}
+
+/* 行内编辑: details 占整行, summary 沿用 product-button 外观 (隐默认三角)。 */
+.plan-edit {
+    grid-column: 1 / -1;
+}
+
+.plan-edit > summary {
+    justify-self: start;
+    cursor: pointer;
+    list-style: none;
+}
+
+.plan-edit > summary::-webkit-details-marker {
+    display: none;
+}
+
+.plan-edit[open] > summary {
+    margin-block-end: var(--space-4);
+}
+
+/* 发现的建议: 面板级 details, summary 即面板头。 */
+.recurring-candidates-summary {
+    cursor: pointer;
+}
+
+.recurring-candidates-title {
+    color: var(--text-default);
+    font-size: var(--type-title-size);
+    font-weight: var(--type-title-weight);
+}
+
+.recurring-candidates-sub {
+    display: block;
+    margin-block-start: var(--space-1);
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
+
+.recurring-candidates .recurring-list,
+.recurring-candidates .product-state {
+    margin-block-start: var(--space-5);
+}
+
+/* ── 还债目标 ────────────────────────────────────────────────────────────── */
+.plan-debt-goal > * + * {
+    margin-block-start: var(--space-4);
+}
+
+.plan-debt-headline {
+    margin-block: 0;
+    color: var(--text-default);
+    font-size: var(--type-subtitle-size);
+    font-weight: var(--type-subtitle-weight);
+}
+
+.plan-debt-amount {
+    margin-block: 0;
+    color: var(--text-muted);
+    font-size: var(--type-caption-size);
+}
+
+.plan-debt-kpi {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-4);
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
+
+.plan-debt-target {
+    color: var(--text-default);
+    font-weight: var(--type-subtitle-weight);
+}
+
+/* 投影 warn 臂 (suppress-on-stale): 琥珀提示, 非红不催。 */
+.plan-projection.is-warn {
+    color: var(--state-warn-fg);
+    font-weight: var(--type-subtitle-weight);
+}
+
+.plan-debt-review-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+}
+
+/* 卡内 details 渐进披露 (设置还清日期 / 调整关联欠款 / 新建目标)。 */
+.plan-disclosure > summary {
+    cursor: pointer;
+    color: var(--brand-primary-strong);
+    font-weight: var(--type-subtitle-weight);
+    text-underline-offset: var(--space-1);
+}
+
+.plan-disclosure[open] > summary {
+    margin-block-end: var(--space-4);
+}
+
+/* 新建目标 = 面板级 details, summary 即面板标题。 */
+.plan-debt-create > summary {
+    color: var(--text-default);
+    font-size: var(--type-title-size);
+    font-weight: var(--type-title-weight);
+    text-decoration: none;
+}
+
+.plan-debt-create[open] > summary {
+    margin-block-end: var(--space-3);
+}
+
+.plan-debt-create > .hint {
+    margin-block: 0;
+}
+
+.plan-debt-create > .budget-form {
+    margin-block-start: var(--space-4);
+}
+
+/* 关联欠款选择 chips (创建 / 调整关联共用)。 */
+.plan-choice-set {
+    display: grid;
+    gap: var(--space-3);
+    margin-inline: 0;
+    padding: 0;
+    border: 0;
+}
+
+.plan-choice-set legend {
+    padding: 0;
+    color: var(--text-default);
+    font-size: var(--type-subtitle-size);
+    font-weight: var(--type-subtitle-weight);
+}
+
+.plan-choice-set > .hint {
+    margin-block: 0;
+}
+
+.plan-choice {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-2) var(--space-3);
+    cursor: pointer;
+}
+
+.plan-choice input {
+    margin: 0;
+    accent-color: var(--brand-primary);
+}
+
+.plan-choice-name {
+    color: var(--text-default);
+    font-weight: var(--type-subtitle-weight);
+}
+
+.plan-choice-meta {
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
+
+/* 目标卡内关联欠款列表: 作废行沉降, 不消失 (§6.2 不计入进度但仍在场)。 */
+.plan-link-list {
+    display: grid;
+    gap: var(--space-3);
+}
+
+.plan-link-list-title {
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+    font-weight: var(--type-meta-weight);
+}
+
+.plan-link {
+    display: grid;
+    gap: var(--space-2);
+    padding-block-start: var(--space-3);
+    border-block-start: 1px solid var(--border-card);
+}
+
+.plan-link-list-title + .plan-link {
+    padding-block-start: 0;
+    border-block-start: 0;
+}
+
+.plan-link-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+}
+
+.plan-link-name {
+    color: var(--text-default);
+    font-weight: var(--type-subtitle-weight);
+}
+
+.plan-link-note,
+.plan-link-meta {
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
+
+.plan-link.is-receding {
+    opacity: .6;
+}
+
+.plan-link.is-receding .plan-link-name {
+    color: var(--text-muted);
+}
+
+/* 窄屏: 固定支出行的四列网格折成「主体通栏 → 金额/日期 → 动作通栏」。 */
+@media (max-width: 40rem) {
+    .recurring-metrics--duo {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .recurring-row {
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: start;
+    }
+
+    .recurring-row-main {
+        grid-column: 1 / -1;
+    }
+
+    .recurring-row-amount {
+        justify-items: start;
+        text-align: start;
+    }
+
+    .recurring-row-actions {
+        grid-column: 1 / -1;
+        justify-content: flex-start;
+    }
 }

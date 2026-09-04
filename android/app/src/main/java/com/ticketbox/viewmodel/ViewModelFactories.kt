@@ -249,9 +249,10 @@ fun tagManagementViewModelFactory(
 @Suppress("UNCHECKED_CAST")
 fun appearanceViewModelFactory(
     settingsStore: TicketboxSettingsStore,
+    images: com.ticketbox.data.repository.BackgroundImageRepository,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return AppearanceViewModel(settingsStore) as T
+        return AppearanceViewModel(settingsStore, images) as T
     }
 }
 

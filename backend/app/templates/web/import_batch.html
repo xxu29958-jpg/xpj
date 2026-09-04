@@ -1,135 +1,141 @@
 {% extends "base.html" %}
-{% block title %}CSV 导入批次 — 小票夹{% endblock %}
+{% set page_title = '导入批次' %}
+{% set product_body_domain = 'transactions' %}
+{% block title %}CSV 导入批次 · 小票夹{% endblock %}
+
+{# C4 旧栈收官: 批次详情迁 product 流水域 (tertiary import-detail 仍挂 detail.css)。
+   统计行消费 transactions.css 既有 import-metrics 词汇 + 本片 --pair 窄屏两列成对
+   变体; 旧「批次状态」卡并入「下一步」操作区, 按态呈现主行动 (导入下一批 /
+   下载错误行 / 查看待确认); apply 表单补现有 csrf_token (无 JS 原生 POST 不再 403)。
+   时间戳走路由 created_label/updated_label (spending_contract_service 口径)。
+   kpi-strip 随本页迁移零消费者, pages/reports.css 整文件退役。 #}
 {% block content %}
-<div class="page-header-row">
-  <div>
-    <h1 class="page-title page-title--compact">CSV 导入批次 <span class="page-title-sub">{{ batch.file_name }}</span></h1>
-    <p class="page-hint">创建时间 {{ batch.created_at }} · 最近更新 {{ batch.updated_at }}</p>
+{% set _batch_status = {
+  'applied': ('已完成', 'product-status--success'),
+  'applied_with_errors': ('已完成', 'product-status--success'),
+  'parsed_with_errors': ('有错误', 'product-status--warning'),
+  'applying': ('导入中', 'product-status--warning')
+} %}
+{% set _status_label, _status_tone = _batch_status.get(batch.status, ('待导入', '')) %}
+{% set _row_label = {'valid': '可导入', 'applied': '已导入', 'insert_failed': '写入失败'} %}
+{% set _row_tone = {'valid': '', 'applied': 'product-status--success', 'insert_failed': 'product-status--danger'} %}
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">流水 / 导入 / 批次</span>
+    <h1 class="page-title page-title--compact">CSV 导入批次</h1>
+    <p class="product-page-summary">{{ batch.file_name }} · 创建 {{ created_label }} · 最近更新 {{ updated_label }}</p>
   </div>
-  <div class="actions">
-    <a href="/web/import{{ q }}" class="dt-btn">返回导入</a>
-    <a href="/web/import/{{ batch.public_id }}/errors.csv{{ q }}" class="dt-btn">下载错误行</a>
+  <div class="import-batch-head-side">
+    <span class="product-status {{ _status_tone }}">{{ _status_label }}</span>
+    <a href="/web/import{{ q }}" class="product-button product-button--quiet">返回导入</a>
   </div>
-</div>
+</header>
 
 {% if flash_message %}
-<div class="dt-alert success">{{ flash_message }}</div>
+<div class="product-feedback product-feedback--success" role="status">{{ flash_message }}</div>
 {% endif %}
 
-<section class="kpi-strip kpi-strip--compact">
-  <div class="kpi-cell primary">
-    <div class="label">总行数</div>
-    <div class="val">{{ batch.total_rows }}</div>
-  </div>
-  <div class="kpi-cell ok">
-    <div class="label">可导入</div>
-    <div class="val">{{ batch.valid_rows }}</div>
-  </div>
-  <div class="kpi-cell warn">
-    <div class="label">错误行</div>
-    <div class="val">{{ batch.error_rows }}</div>
-  </div>
-  <div class="kpi-cell">
-    <div class="label">已导入</div>
-    <div class="val">{{ batch.applied_rows }}</div>
-  </div>
+<section class="import-metrics import-metrics--pair" aria-label="批次概况">
+  <div class="import-metric is-primary"><span>总行数</span><strong>{{ batch.total_rows }}</strong></div>
+  <div class="import-metric is-success"><span>可导入</span><strong>{{ batch.valid_rows }}</strong></div>
+  <div class="import-metric is-warning"><span>错误行</span><strong>{{ batch.error_rows }}</strong></div>
+  <div class="import-metric"><span>已导入</span><strong>{{ batch.applied_rows }}</strong></div>
 </section>
 
-<section class="dt-card">
-  <div class="card-header">
-    <h2>批次状态</h2>
-    {% if batch.status == 'applied' or batch.status == 'applied_with_errors' %}
-    <span class="dt-pill ok">已完成</span>
-    {% elif batch.status == 'parsed_with_errors' %}
-    <span class="dt-pill warn">有错误</span>
-    {% elif batch.status == 'applying' %}
-    <span class="dt-pill warn">导入中</span>
-    {% else %}
-    <span class="dt-pill">待导入</span>
-    {% endif %}
+<section class="product-panel product-panel--padded" aria-label="下一步">
+  <div class="product-panel-header">
+    <h2 class="product-panel-title">下一步</h2>
   </div>
-  <div class="import-batch-actions">
-    {% if can_write and batch.valid_rows > batch.applied_rows %}
-    <form method="post" action="/web/import/{{ batch.public_id }}/apply" class="form-inline">
-      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-      <label>每次导入
-        <input type="number" name="batch_size" value="500" min="1" max="1000">
-      </label>
-      <button type="submit" class="dt-btn primary">导入下一批</button>
-    </form>
-    {% elif not can_write %}
-    <p class="readonly-inline">只读角色只能查看导入批次。</p>
-    {% else %}
-    <a href="/web/pending{{ q }}" class="dt-btn primary">查看待确认</a>
-    {% endif %}
+  {# 主行动三态并列诚实表达: 还有可导入行→导入下一批 (只进待确认, 不入账);
+     可导入行已全部进队列→查看待确认 (与旧版同条件 valid_rows<=applied_rows,
+     不因有错误行藏起这个出口); 错误行→下载 CSV 修正后重新上传。 #}
+  {% if can_write and batch.valid_rows > batch.applied_rows %}
+  <form method="post" action="/web/import/{{ batch.public_id }}/apply" class="product-form-grid import-apply-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <div class="product-field">
+      <label for="import-batch-size">每次导入</label>
+      <input type="number" id="import-batch-size" name="batch_size" value="500" min="1" max="1000">
+    </div>
+    <button type="submit" class="product-button product-button--primary">导入下一批</button>
+  </form>
+  <p class="import-export-note">导入的账单只进「待确认」队列复核，不会直接入账。</p>
+  {% elif not can_write %}
+  <p class="text-meta">只读角色只能查看导入批次。</p>
+  {% else %}
+  <div class="import-batch-done">
+    <a href="/web/pending{{ q }}" class="product-button product-button--primary">查看待确认</a>
+    <p class="text-meta">本批次的可导入行已全部进入「待确认」队列，复核后才入账。</p>
   </div>
+  {% endif %}
+  {% if batch.error_rows > 0 %}
+  <p class="import-export-note"><a href="/web/import/{{ batch.public_id }}/errors.csv{{ q }}">下载错误行 CSV</a>，修正后重新上传即可。</p>
+  {% endif %}
   {% if batch.last_error %}
-  <p class="dt-alert danger">{{ batch.last_error }}</p>
+  <div class="product-feedback product-feedback--danger" role="alert">{{ batch.last_error }}</div>
   {% endif %}
 </section>
 
-<section class="dt-card">
-  <div class="card-header">
-    <h2>行预览</h2>
-    <form method="get" action="/web/import/{{ batch.public_id }}" class="seg">
+<section class="product-panel product-panel--padded import-batch-rows" aria-label="行预览">
+  <div class="product-panel-header">
+    <h2 class="product-panel-title">行预览</h2>
+    <form method="get" action="/web/import/{{ batch.public_id }}" class="import-batch-filter">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-      <label>状态
-        <select name="status">
+      <div class="product-field">
+        <label for="import-batch-filter-status">状态</label>
+        <select id="import-batch-filter-status" name="status">
           <option value="" {% if not status %}selected{% endif %}>全部</option>
           <option value="valid" {% if status == 'valid' %}selected{% endif %}>可导入</option>
           <option value="error" {% if status == 'error' %}selected{% endif %}>错误</option>
           <option value="applied" {% if status == 'applied' %}selected{% endif %}>已导入</option>
           <option value="insert_failed" {% if status == 'insert_failed' %}selected{% endif %}>写入失败</option>
         </select>
-      </label>
-      <button type="submit" class="dt-btn">筛选</button>
+      </div>
+      <button type="submit" class="product-button">筛选</button>
     </form>
   </div>
 
-  <table class="dt-table dt-table--compact">
-    <thead>
-      <tr>
-        <th>行号</th>
-        <th>状态</th>
-        <th class="num">金额</th>
-        <th>商家</th>
-        <th>分类</th>
-        <th>时间</th>
-        <th>备注/错误</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in rows %}
-      <tr>
-        <td>{{ row.line_number }}</td>
-        <td>
-          {% if row.status == 'valid' %}<span class="dt-pill">可导入</span>
-          {% elif row.status == 'applied' %}<span class="dt-pill ok">已导入</span>
-          {% elif row.status == 'insert_failed' %}<span class="dt-pill danger">写入失败</span>
-          {% else %}<span class="dt-pill danger">错误</span>{% endif %}
-        </td>
-        <td class="num">{% if row.amount_cents is not none %}{{ home_currency_symbol }}{{ home_amount_value(row.amount_cents) }}{% else %}—{% endif %}</td>
-        <td>{{ row.merchant or '—' }}</td>
-        <td>{{ row.category }}</td>
-        <td>{{ row.expense_time or '—' }}</td>
-        <td>{% if row.error_message %}<span class="error-text">{{ row.error_message }}</span>{% else %}{{ row.note or '—' }}{% endif %}</td>
-      </tr>
-      {% endfor %}
-      {% if not rows %}
-      <tr><td colspan="7" class="empty-table-cell">没有符合条件的行。</td></tr>
-      {% endif %}
-    </tbody>
-  </table>
+  <div class="product-table-wrap">
+    <table class="product-table">
+      <thead>
+        <tr>
+          <th scope="col">行号</th>
+          <th scope="col">状态</th>
+          <th scope="col" class="amount">金额</th>
+          <th scope="col">商家</th>
+          <th scope="col">分类</th>
+          <th scope="col">时间</th>
+          <th scope="col">备注 / 错误</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td>{{ row.line_number }}</td>
+          <td><span class="product-status {{ _row_tone.get(row.status, 'product-status--danger') }}">{{ _row_label.get(row.status, '错误') }}</span></td>
+          <td class="amount">{% if row.amount_cents is not none %}{{ home_currency_symbol }}{{ home_amount_value(row.amount_cents) }}{% else %}—{% endif %}</td>
+          <td>{{ row.merchant or '—' }}</td>
+          <td>{{ row.category }}</td>
+          <td>{{ row.expense_time or '—' }}</td>
+          <td>{% if row.error_message %}<span class="import-row-error">{{ row.error_message }}</span>{% else %}{{ row.note or '—' }}{% endif %}</td>
+        </tr>
+        {% endfor %}
+        {% if not rows %}
+        <tr><td colspan="7" class="text-meta">没有符合条件的行。</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
 
-  <div class="pagination">
+  <div class="product-pagination">
     {% set prev_page = page - 1 %}
     {% set next_page = page + 1 %}
     {% if page > 1 %}
-    <a class="dt-btn" href="/web/import/{{ batch.public_id }}?ledger_id={{ selected_ledger_id }}&page={{ prev_page }}&page_size={{ page_size }}{% if status %}&status={{ status }}{% endif %}">上一页</a>
+    <a class="product-button product-button--quiet" href="/web/import/{{ batch.public_id }}?ledger_id={{ selected_ledger_id }}&page={{ prev_page }}&page_size={{ page_size }}{% if status %}&status={{ status }}{% endif %}">上一页</a>
     {% endif %}
-    <span>第 {{ page }} / {{ total_pages }} 页 · 共 {{ total }} 行</span>
+    <span class="text-meta">第 {{ page }} / {{ total_pages }} 页 · 共 {{ total }} 行</span>
     {% if page < total_pages %}
-    <a class="dt-btn" href="/web/import/{{ batch.public_id }}?ledger_id={{ selected_ledger_id }}&page={{ next_page }}&page_size={{ page_size }}{% if status %}&status={{ status }}{% endif %}">下一页</a>
+    <a class="product-button product-button--quiet" href="/web/import/{{ batch.public_id }}?ledger_id={{ selected_ledger_id }}&page={{ next_page }}&page_size={{ page_size }}{% if status %}&status={{ status }}{% endif %}">下一页</a>
     {% endif %}
   </div>
 </section>

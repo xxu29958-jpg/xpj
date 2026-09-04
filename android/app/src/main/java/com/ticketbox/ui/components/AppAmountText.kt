@@ -20,7 +20,7 @@ fun AppAmountText(
     modifier: Modifier = Modifier,
     role: AppAmountRole = AppAmountRole.Medium,
     color: Color = MaterialTheme.colorScheme.onSurface,
-    minFontSize: TextUnit = role.defaultMinFontSize,
+    minFontSize: TextUnit = role.autosizeMinFontSize,
 ) {
     val style = MaterialTheme.typography.titleLarge.asAmount(role)
     AppAutosizedSingleLineText(
@@ -41,7 +41,7 @@ fun AppEndAlignedAmountText(
     modifier: Modifier = Modifier,
     role: AppAmountRole = AppAmountRole.Medium,
     color: Color = MaterialTheme.colorScheme.onSurface,
-    minFontSize: TextUnit = role.defaultMinFontSize,
+    minFontSize: TextUnit = role.autosizeMinFontSize,
 ) {
     val style = MaterialTheme.typography.titleLarge.asAmount(role)
     AppAutosizedSingleLineText(
@@ -63,7 +63,7 @@ fun AppEndAlignedAmountStatusText(
     modifier: Modifier = Modifier,
     role: AppAmountRole = AppAmountRole.Compact,
     color: Color = MaterialTheme.colorScheme.onSurfaceVariant,
-    minFontSize: TextUnit = role.defaultMinFontSize,
+    minFontSize: TextUnit = role.autosizeMinFontSize,
 ) {
     val style = MaterialTheme.typography.titleLarge.asAmount(role)
     AppAutosizedSingleLineText(
@@ -109,7 +109,7 @@ private fun AppAutosizedSingleLineText(
     )
 }
 
-private val AppAmountRole.defaultMinFontSize: TextUnit
+internal val AppAmountRole.autosizeMinFontSize: TextUnit
     get() = when (this) {
         AppAmountRole.Hero -> 18.sp
         AppAmountRole.Medium -> 14.sp

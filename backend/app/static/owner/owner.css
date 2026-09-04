@@ -8,16 +8,25 @@
     /* Owner 比 /web 更紧凑：稍小圆角和更轻阴影 */
     --radius-card: 8px;
     --shadow-card: 0 1px 3px rgba(0,0,0,.08);
-    --owner-nav-fg: rgba(255, 255, 255, 0.72);
-    --owner-nav-strong-fg: rgba(255, 255, 255, 1);
-    --owner-nav-muted-fg: rgba(255, 255, 255, 0.45);
-    --owner-nav-soft-fg: rgba(255, 255, 255, 0.52);
-    --owner-nav-soft-bg: rgba(255, 255, 255, 0.06);
-    --owner-nav-chip-bg: rgba(255, 255, 255, 0.10);
-    --owner-nav-line: rgba(255, 255, 255, 0.12);
-    --owner-nav-border: rgba(255, 255, 255, 0.14);
-    --owner-nav-border-active: rgba(255, 255, 255, 0.24);
-    /* Owner-only 一次性密钥框刻意保留终端绿；它不是 success 状态语义色。 */
+    /* 双主题导航配对 (Owner 工作台片): 旧白字 rgba 假定深色底, W1 把
+       --surface-nav 在 paper 翻成浅色 (#faf6ee) 后导航白字浅底不可读
+       (真实浏览器实测 paper 1.06:1 / midnight 10.02:1)。前景改挂主题感知
+       语义 token, hover/active 用中性/sunken 底, 不再假定深色导航。 */
+    --owner-nav-fg: var(--text-default);
+    --owner-nav-strong-fg: var(--text-default);
+    --owner-nav-muted-fg: var(--text-muted);
+    --owner-nav-soft-fg: var(--text-muted);
+    --owner-nav-soft-bg: var(--state-neutral-bg);
+    --owner-nav-chip-bg: var(--surface-sunken);
+    --owner-nav-line: var(--border-card);
+    --owner-nav-border: var(--border-card);
+    --owner-nav-border-active: var(--brand-primary);
+    /* Owner-only 一次性密钥框刻意保留终端绿; paper 浅底配对深青绿,
+       midnight 深夜色底保留原终端绿。 */
+    --owner-secret-fg: var(--brand-primary-strong);
+}
+
+:root[data-owner][data-theme="midnight"] {
     --owner-secret-fg: #a3e635;
 }
 
@@ -243,9 +252,10 @@ form.inline { display: inline; }
     color: var(--brand-primary-strong);
 }
 
-.kv-grid { display: grid; grid-template-columns: 180px 1fr; gap: 6px 12px; }
+.kv-grid { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 6px 12px; }
 .kv-key { font-size: 12px; color: var(--text-muted); align-self: center; }
-.kv-val { font-size: 13px; color: var(--text-default); }
+/* 长值 (URL/版本串) 窄屏断行, 不把 1fr 轨顶出页面 (fx 360 实测溢出 487px)。 */
+.kv-val { font-size: 13px; color: var(--text-default); min-width: 0; overflow-wrap: anywhere; }
 
 /* ── settings secondary nav ────────────────────────────────────────────── */
 .settings-shell { display: flex; gap: 16px; align-items: flex-start; }
@@ -267,15 +277,22 @@ form.inline { display: inline; }
     font-size: 13px;
 }
 .settings-side a:hover { background: var(--state-neutral-bg); }
+/* active 与主导航同一配对 (旧 surface-nav 浅底 + 白字在 paper 下不可读,
+   security 360 实测当前项隐形)。 */
 .settings-side a.active {
-    background: var(--surface-nav);
-    color: var(--text-on-primary);
+    background: var(--surface-sunken);
+    color: var(--text-default);
     font-weight: 600;
+    box-shadow: inset 2px 0 0 var(--brand-primary);
 }
 .settings-main { flex: 1; min-width: 0; }
 .settings-main h2 { margin-top: 0; }
 @media (max-width: 720px) {
-    .settings-shell { flex-direction: column; }    .settings-side { width: 100%; flex: initial; position: static; }
+    /* 列向时必须 stretch: flex-start 会让 settings-main 收缩成内容宽,
+       720px min-width 表格把整页顶宽 (security/api 360 实测 784/954px)。 */
+    .settings-shell { flex-direction: column; align-items: stretch; }
+    .settings-side { width: 100%; flex: initial; position: static; }
+    .kv-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* ── route inspector ───────────────────────────────────────────────────── */
@@ -392,6 +409,8 @@ form.inline { display: inline; }
 }
 .owner-sidebar {
     background: var(--surface-nav);
+    /* paper 下 surface-nav 与 surface-app 同为浅暖色, 需要发丝分界保持轨道轮廓。 */
+    border-inline-end: 1px solid var(--border-card);
     color: var(--owner-nav-strong-fg);
     padding: var(--space-5) var(--space-4) calc(var(--space-5) + var(--space-1));
     display: flex;
@@ -482,8 +501,10 @@ form.inline { display: inline; }
 }
 .owner-sidebar__nav a.is-active {
     background: var(--owner-nav-chip-bg);
+    /* 品牌色内嵌条: 当前定位在双主题下都可扫读 (不依赖色块对比)。 */
+    box-shadow: inset 2px 0 0 var(--brand-primary);
     color: var(--owner-nav-strong-fg);
-    font-weight: 500;
+    font-weight: 600;
 }
 .owner-sidebar__foot {
     font-size: var(--type-meta-size);
@@ -533,4 +554,47 @@ form.inline { display: inline; }
     .owner-sidebar__advanced-note {
         margin-inline-start: auto;
     }
+}
+
+
+/* ───── Owner 工作台片: 首页作用域 chip 与次级原生折叠 ────────────────────
+ * .owner-scope: 各卡片数字口径显式 (你管理的全部账本 / 主账本·名 / 逐账本 /
+ * 当前账号), 跟随 h2 内联, 不改任何数字来源。
+ * .owner-fold: 低频运维块 (Windows 计划任务) 的原生 <details> 次级披露,
+ * 无 JS 可开合; 不复用 .page-help (其负 margin 是页首帮助专用)。 */
+
+.owner-scope {
+    margin-inline-start: var(--space-2);
+    color: var(--text-muted);
+    font-size: var(--type-caption-size);
+    font-weight: normal;
+}
+
+.owner-fold {
+    margin-block-start: var(--space-4);
+    padding-block-start: var(--space-3);
+    border-block-start: 1px solid var(--border-card);
+}
+
+.owner-fold > summary {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: var(--space-8);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-input, 6px);
+    background: var(--surface-sunken);
+    color: var(--text-muted);
+    font-size: var(--type-meta-size);
+    cursor: pointer;
+    user-select: none;
+    width: fit-content;
+}
+
+.owner-fold > summary:hover {
+    color: var(--text-default);
+}
+
+.owner-fold > .hint {
+    margin: var(--space-3) 0;
 }

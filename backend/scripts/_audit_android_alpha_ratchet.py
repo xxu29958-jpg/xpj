@@ -88,7 +88,10 @@ EXEMPT_FILES = (
 # 2026-06-28 lowered 116→115 when stats LifestyleCard dividers migrated to
 # AppAlpha tiers while adding value/regret rankings.
 # 2026-07-06 lowered 115->112 during Android UX semantics cleanup.
-BASELINE = 92
+# Global-background retirement removes 12 of the previous 92 sites;
+# unchanged Ledger surfaces remain included in the residual.
+# Visual-ledger migration retires four remaining inline divider alphas.
+BASELINE = 76
 
 # ``.copy(alpha = <number>)`` — number is a decimal/int float literal (optional
 # trailing ``f``). Identifier args (AppAlpha.heavy / resolvedAlpha) are NOT

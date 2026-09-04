@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -28,21 +29,32 @@ import com.ticketbox.ui.screens.stats.DataQualityEntryCard
 import com.ticketbox.ui.screens.stats.EmptyStatsCard
 import com.ticketbox.ui.screens.stats.LifestyleCard
 import com.ticketbox.ui.screens.stats.ReportsInsightCard
-import com.ticketbox.ui.screens.stats.StatsOverviewCard
-import com.ticketbox.ui.screens.stats.StatsOverviewTrendData
 import com.ticketbox.ui.screens.stats.StatsInsightSurface
 import com.ticketbox.ui.screens.stats.TagScopeInsight
+import com.ticketbox.ui.screens.stats.OverviewModulesState
+import com.ticketbox.ui.screens.stats.OverviewModuleActions
+import com.ticketbox.ui.screens.stats.overviewModuleItems
 import com.ticketbox.viewmodel.StatsUiState
 import com.valentinilk.shimmer.shimmer
+
+internal data class StatsOverviewProductState(
+    val layout: OverviewModulesState,
+    val modules: OverviewModuleActions,
+    val onOpenDataQuality: () -> Unit,
+    val onTrend: () -> Unit,
+)
 
 internal fun LazyListScope.statsProductItems(
     state: StatsUiState,
     selectedTab: StatsTab,
     actions: StatsReportActions,
-    onOpenDataQuality: () -> Unit,
+    overview: StatsOverviewProductState,
 ) {
     when (selectedTab.toPrimaryInsightTab()) {
-        StatsTab.Overview -> statsOverviewItems(state, onOpenDataQuality)
+        StatsTab.Overview -> {
+            overviewModuleItems(state, overview.layout, overview.modules, overview.onTrend)
+            statsOverviewContextItems(state, overview.onOpenDataQuality)
+        }
         StatsTab.Trend -> statsTrendItems(state, actions)
         StatsTab.Category -> statsCompositionItems(state, actions)
         StatsTab.Budget,
@@ -51,42 +63,25 @@ internal fun LazyListScope.statsProductItems(
     }
 }
 
-private fun LazyListScope.statsOverviewItems(
+private fun LazyListScope.statsOverviewContextItems(
     state: StatsUiState,
     onOpenDataQuality: () -> Unit,
 ) {
-    val stats = state.stats ?: return
     item {
-        StatsFlatSection {
-            StatsOverviewCard(
-                stats = stats,
-                statsSource = state.statsSource,
-                recent7DaysAmountCents = overviewRecent7DaysAmount(state),
-                comparison = overviewMonthComparison(state),
-                trendData = StatsOverviewTrendData(
-                    reportTrend = state.reportsOverview?.trend.orEmpty(),
-                ),
+        // 数据健康入口是独立可点对象：surface 给边界，行内不再带底部分隔线。
+        StatsInsightSurface(
+            contentPadding = PaddingValues(horizontal = AppSpacing.cardPaddingSmall),
+        ) {
+            DataQualityEntryCard(
+                summary = state.dataQuality,
+                loadState = state.dataQualityLoadState,
+                onClick = onOpenDataQuality,
+                showDivider = false,
             )
         }
     }
-    item {
-        DataQualityEntryCard(
-            summary = state.dataQuality,
-            loadState = state.dataQualityLoadState,
-            onClick = onOpenDataQuality,
-        )
-    }
-    if (state.selectedTag.isNotBlank()) {
-        item {
-            StatsFlatSection {
-                TagScopeInsight(
-                    stats = stats,
-                    selectedTag = state.selectedTag,
-                    statsSource = state.statsSource,
-                )
-            }
-        }
-    } else {
+    // 标签筛选时作用域已由 hero 卡表达（同一 state.stats），不再重复第二个金额块。
+    if (state.selectedTag.isBlank()) {
         state.lifestyleStats?.takeIf(LifestyleStats::hasReadableInsight)?.let { lifestyle ->
             item {
                 StatsFlatSection {

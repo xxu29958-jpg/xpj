@@ -89,8 +89,7 @@ def _assert_review_keyboard_runtime_contract(js_path: Path) -> None:
     assert "review-hotkeys" not in base_html
     assert not js_path.with_name("review-hotkeys.js").exists(), "旧 J/K 实现必须物理退役"
 
-    misc_css_text = (js_path.parents[1] / "_misc.css").read_text(encoding="utf-8")
-    assert "exp-row-detail[aria-selected" not in misc_css_text
+    assert not (js_path.parents[1] / "_misc.css").exists()
     inbox_css_text = (
         js_path.parents[1] / "product" / "domains" / "inbox.css"
     ).read_text(encoding="utf-8")

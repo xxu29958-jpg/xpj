@@ -1,5 +1,10 @@
 {% extends "base.html" %}
+{% set product_body_domain = 'obligations' %}
 {% block title %}还款捕获 · 小票夹{% endblock %}
+
+{# C4 旧栈收官: 正文拨域 product 往来 —— obligations.css 归并原 pages/repayment_drafts.css
+   活动规则 (原文件随旧栈退役); 建议候选仅展示序置顶 (is_suggested 排序, 每项表单仍带
+   自己的 target/version/key, 无 JS 全选择可达)。 #}
 {% block content %}
 {% set _tone = {
   'ok': 'product-status--success',
@@ -60,7 +65,9 @@
                  class="product-feedback product-feedback--danger"
                  role="alert">{{ form_error }}</div>
             {% endif %}
-            {% for choice in r.targets %}
+            {# 建议项仅展示序置顶 (is_suggested 排序是展示决策); 每项表单仍带自己的
+               target_debt_public_id / expected_row_version / idempotency_key 隐藏字段。 #}
+            {% for choice in r.targets | sort(attribute='is_suggested', reverse=true) %}
             <form method="post"
                   action="/web/repayment-drafts/{{ r.public_id }}/confirm"
                   class="ra-choice{% if choice.is_suggested %} ra-choice--suggested{% endif %}">

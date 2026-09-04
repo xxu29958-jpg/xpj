@@ -302,8 +302,8 @@ def test_product_shell_resets_legacy_sidebar_gap(web_client: TestClient) -> None
 
 
 def test_overview_new_body_mounts_insights_module(web_client: TestClient) -> None:
-    """overview (S2 新页, 正文已是新标记): 断旧栈, 挂 insights 域模块 +
-    页级 pages/overview.css (样式归属裁决: 保留页级文件, 并入留给 S6)。"""
+    """overview (S2 新页, 正文已是新标记): 断旧栈, 挂 insights 域模块。
+    W3: 页级 pages/overview.css 已并入 domains/insights.css 并物理删除。"""
     response = web_client.get("/web/overview?ledger_id=owner")
 
     assert response.status_code == 200
@@ -315,7 +315,9 @@ def test_overview_new_body_mounts_insights_module(web_client: TestClient) -> Non
     assert f"/static/web/product/shell.css?v={STATIC_ASSET_VERSION}" in body
     assert f"/static/web/product/components.css?v={STATIC_ASSET_VERSION}" in body
     assert f"/static/web/product/domains/insights.css?v={STATIC_ASSET_VERSION}" in body
-    assert f"/static/web/pages/overview.css?v={STATIC_ASSET_VERSION}" in body
+    assert "/static/web/pages/overview.css" not in body
+    retired_overview_css = web_client.get("/static/web/pages/overview.css")
+    assert retired_overview_css.status_code == 404
 
     # 新标记页断旧栈: 退役全局栈不得回流 (物理删除是独立后续片)。
     for retired in _RETIRED_GLOBAL_STACK:

@@ -181,5 +181,5 @@ def extract_hidden_token(html: str, *, action: str) -> str:
 
 
 def hero_block(html: str) -> str:
-    match = re.search(r'<section class="rc-hero".*?</section>', html, re.DOTALL)
+    match = re.search(r'<section class="recurring-metrics recurring-metrics--duo".*?</section>', html, re.DOTALL)
     return match.group(0) if match else ""

@@ -1,22 +1,23 @@
 {# v0.10 Owner 左 sidebar (分两组: 运维高频 / 治理低频), 替代旧的扁平横向 nav #}
-<aside class="owner-sidebar">
+{# Owner 工作台片: is-active 同步 aria-current="page", 当前定位读屏可达。 #}
+<aside class="owner-sidebar" aria-label="管理后台导航">
   <a class="owner-sidebar__brand" href="/owner">🎫 小票夹</a>
   <nav class="owner-sidebar__nav">
     <div class="owner-sidebar__group">
       <div class="owner-sidebar__group-label">运维</div>
-      <a href="/owner" {% if request.url.path == '/owner' %}class="is-active"{% endif %}>仪表盘</a>
-      <a href="/owner/devices" {% if '/devices' in request.url.path %}class="is-active"{% endif %}>设备</a>
-      <a href="/owner/ledgers" {% if '/ledgers' in request.url.path %}class="is-active"{% endif %}>账本</a>
-      <a href="/owner/fx" {% if '/fx' in request.url.path %}class="is-active"{% endif %}>汇率</a>
-      <a href="/owner/diagnostics" {% if '/diagnostics' in request.url.path %}class="is-active"{% endif %}>诊断</a>
+      <a href="/owner" {% if request.url.path == '/owner' %}class="is-active" aria-current="page"{% endif %}>仪表盘</a>
+      <a href="/owner/devices" {% if '/devices' in request.url.path %}class="is-active" aria-current="page"{% endif %}>设备</a>
+      <a href="/owner/ledgers" {% if '/ledgers' in request.url.path %}class="is-active" aria-current="page"{% endif %}>账本</a>
+      <a href="/owner/fx" {% if '/fx' in request.url.path %}class="is-active" aria-current="page"{% endif %}>汇率</a>
+      <a href="/owner/diagnostics" {% if '/diagnostics' in request.url.path %}class="is-active" aria-current="page"{% endif %}>诊断</a>
     </div>
     <div class="owner-sidebar__group">
       <div class="owner-sidebar__group-label">治理</div>
-      <a href="/owner/pairing" {% if '/pairing' in request.url.path %}class="is-active"{% endif %}>绑定码</a>
-      <a href="/owner/upload-links" {% if '/upload-links' in request.url.path %}class="is-active"{% endif %}>上传链接</a>
-      <a href="/owner/rule-applications" {% if '/rule-applications' in request.url.path %}class="is-active"{% endif %}>规则审计</a>
-      <a href="/owner/recycle-bin" {% if '/recycle-bin' in request.url.path %}class="is-active"{% endif %}>回收站</a>
-      <a href="/owner/settings" {% if '/settings' in request.url.path %}class="is-active"{% endif %}>设置</a>
+      <a href="/owner/pairing" {% if '/pairing' in request.url.path %}class="is-active" aria-current="page"{% endif %}>绑定码</a>
+      <a href="/owner/upload-links" {% if '/upload-links' in request.url.path %}class="is-active" aria-current="page"{% endif %}>上传链接</a>
+      <a href="/owner/rule-applications" {% if '/rule-applications' in request.url.path %}class="is-active" aria-current="page"{% endif %}>规则审计</a>
+      <a href="/owner/recycle-bin" {% if '/recycle-bin' in request.url.path %}class="is-active" aria-current="page"{% endif %}>回收站</a>
+      <a href="/owner/settings" {% if '/settings' in request.url.path %}class="is-active" aria-current="page"{% endif %}>设置</a>
     </div>
     {% set advanced_active = '/ai-advisor' in request.url.path or '/algorithm-versions' in request.url.path or '/learning-maintenance' in request.url.path or '/tag-cleanup' in request.url.path %}
     <details class="owner-sidebar__group owner-sidebar__advanced"{% if advanced_active %} open{% endif %}>
@@ -25,10 +26,10 @@
         <span class="owner-sidebar__advanced-note">平时不用</span>
         <span class="owner-sidebar__advanced-count" aria-label="4 个入口">4</span>
       </summary>
-      <a href="/owner/ai-advisor" {% if '/ai-advisor' in request.url.path %}class="is-active"{% endif %}>AI 顾问</a>
-      <a href="/owner/algorithm-versions" {% if '/algorithm-versions' in request.url.path %}class="is-active"{% endif %}>算法版本</a>
-      <a href="/owner/learning-maintenance" {% if '/learning-maintenance' in request.url.path %}class="is-active"{% endif %}>学习层维护</a>
-      <a href="/owner/tag-cleanup" {% if '/tag-cleanup' in request.url.path %}class="is-active"{% endif %}>标签清理</a>
+      <a href="/owner/ai-advisor" {% if '/ai-advisor' in request.url.path %}class="is-active" aria-current="page"{% endif %}>AI 顾问</a>
+      <a href="/owner/algorithm-versions" {% if '/algorithm-versions' in request.url.path %}class="is-active" aria-current="page"{% endif %}>算法版本</a>
+      <a href="/owner/learning-maintenance" {% if '/learning-maintenance' in request.url.path %}class="is-active" aria-current="page"{% endif %}>学习层维护</a>
+      <a href="/owner/tag-cleanup" {% if '/tag-cleanup' in request.url.path %}class="is-active" aria-current="page"{% endif %}>标签清理</a>
     </details>
   </nav>
   <div class="owner-sidebar__foot">v{{ backend_version }} · 本机管理</div>

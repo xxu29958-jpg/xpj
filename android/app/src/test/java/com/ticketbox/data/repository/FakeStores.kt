@@ -5,7 +5,6 @@ import com.ticketbox.data.local.PersistedSessionProjection
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.local.ExpenseDao
 import com.ticketbox.data.remote.ApiServiceFactory
-import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.ImmersionMode
 import com.ticketbox.domain.model.NotificationPreferences
@@ -100,18 +99,6 @@ internal class FakeTicketboxSettingsStore(
     override suspend fun saveBackgroundSettings(settings: BackgroundSettings) {
         backgroundWriteFailure?.let { throw it }
         backgroundSettings.value = settings
-    }
-
-    override suspend fun saveBackgroundImagePath(path: String) {
-        saveBackgroundSettings(BackgroundSettings().withCustomImage(path.trim()))
-    }
-
-    override suspend fun clearBackgroundImage() {
-        saveBackgroundSettings(backgroundSettings.value.withoutBackground())
-    }
-
-    override suspend fun setBackgroundCropMode(mode: BackgroundCropMode) {
-        saveBackgroundSettings(backgroundSettings.value.copy(cropMode = mode))
     }
 
     override suspend fun setImmersionMode(mode: ImmersionMode) {

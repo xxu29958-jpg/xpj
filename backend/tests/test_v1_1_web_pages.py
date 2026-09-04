@@ -8,8 +8,8 @@ Coverage:
 - Both pages render 200 against a clean DB (no income plans yet).
 - Income plan create form round-trips and shows up in the table.
 - Archive + restore work and redirect back to the list.
-- Budget advise page renders the discretionary breakdown and the
-  "AI 未启用" hint when BUDGET_ADVISOR_PROVIDER=empty (the default).
+- Budget advise page renders the discretionary breakdown and explains that
+  optional advice is unavailable without exposing provider configuration.
 - Budget advise page accepts run_advise=true and returns 200 even
   with no provider — never 500.
 """
@@ -173,11 +173,10 @@ def test_budget_advise_page_renders_with_default_empty_provider(
     assert resp.status_code == 200
     body = resp.text
     assert "本月可自由支配" in body
-    assert "AI 建议" in body
-    # Default config keeps provider=empty, so the page must surface
-    # "AI 未启用" hint rather than try to call out.
-    assert "AI 未启用" in body or "empty" in body
-    assert "BUDGET_ADVISOR_PROVIDER=empty" in body or "empty" in body
+    assert "智能建议未开启" in body
+    assert "本地计算不受影响" in body
+    assert 'name="run_advise"' not in body
+    assert "BUDGET_ADVISOR_PROVIDER" not in body
 
 
 def test_budget_advise_accepts_query_params(

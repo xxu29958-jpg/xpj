@@ -73,7 +73,6 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.AppThemeMode
-import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.ConnectionDiagnostics
@@ -85,6 +84,7 @@ import com.ticketbox.ui.appearance.BackgroundCatalog
 import com.ticketbox.ui.appearance.BuiltInBackground
 import com.ticketbox.ui.appearance.BuiltInBackgroundCategory
 import com.ticketbox.ui.appearance.background.ImmersiveBackgroundScaffold
+import com.ticketbox.ui.appearance.background.BackgroundPreviewStage
 import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.appearance.background.TicketboxBackgroundLayer
 import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
@@ -99,6 +99,7 @@ import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatAmountInput
 import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppElevation
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
@@ -117,67 +118,28 @@ internal fun ThemeMoodPreview(
     settings: BackgroundSettings,
     skin: AppSkin,
 ) {
-    val scheme = colorSchemeForSkin(skin)
-    val visuals = themeVisualsForSkin(skin)
-    Box(
+    // 真实渲染缩略（同一 BackgroundPreviewStage 管线），不再放假 hero 梯度
+    // 样卡：这里是「当前背景」的一瞥而非编辑构图 claim，小尺寸裁切是诚实的。
+    BackgroundPreviewStage(
+        settings = settings,
+        skin = skin,
+        role = SurfaceRole.Pending,
         modifier = Modifier
             .fillMaxWidth()
             .height(132.dp)
             .clip(RoundedCornerShape(24.dp)),
     ) {
-        TicketboxBackgroundLayer(settings = settings, skin = skin, surfaceRole = SurfaceRole.Pending)
-        Box(
+        Text(
+            text = stringResource(R.string.appearance_mood_preview_caption),
             modifier = Modifier
-                .fillMaxSize()
-                .background(resolveGlobalScrim(settings, skin, SurfaceRole.Pending)),
+                .align(Alignment.BottomStart)
+                .padding(AppSpacing.compactGap)
+                .clip(RoundedCornerShape(AppRadius.pill))
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = AppAlpha.heavy))
+                .padding(horizontal = AppSpacing.compactGap, vertical = AppSpacing.tinyGap),
+            color = MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.labelMedium,
         )
-        Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .fillMaxWidth(0.88f)
-                .height(88.dp)
-                .clip(RoundedCornerShape(22.dp))
-                .background(
-                    Brush.linearGradient(
-                        visuals.heroGradient,
-                    ),
-                )
-                .border(
-                    width = 1.dp,
-                    color = scheme.onPrimary.copy(alpha = 0.22f),
-                    shape = RoundedCornerShape(22.dp),
-                )
-                .padding(AppSpacing.cardPaddingTight),
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text(
-                    text = stringResource(R.string.appearance_mood_preview_caption),
-                    color = scheme.onPrimary.copy(alpha = 0.78f),
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = AppTextHierarchy.body.weight,
-                )
-                Text(
-                    text = stringResource(appSkinNameRes(skin)),
-                    color = scheme.onPrimary,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = AppTextHierarchy.heading.weight,
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(visuals.glassTint.copy(alpha = 0.84f))
-                    .padding(horizontal = AppSpacing.compactGap, vertical = AppSpacing.smallGap),
-            ) {
-                Text(
-                    text = stringResource(immersionModeNameRes(settings.immersionMode)),
-                    color = visuals.primary,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = AppTextHierarchy.heading.weight,
-                )
-            }
-        }
     }
 }
 

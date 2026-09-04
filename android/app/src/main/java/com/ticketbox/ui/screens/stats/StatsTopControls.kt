@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -41,70 +42,80 @@ import com.ticketbox.domain.model.StatsTab
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.AppWindowWidthClass
+import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
 import com.ticketbox.ui.design.LocalStatsTokens
 import com.ticketbox.viewmodel.StatsUiState
 
 private const val StatsTagFilterOptionLimit = 12
 
-internal data class StatsTopPanelActions(
-    val onOpenMonthPicker: () -> Unit,
-    val onTagChange: (String) -> Unit,
-    val onTabChange: (StatsTab) -> Unit,
-)
+/** 筛选 pill 的最大宽度：长标签名 ellipsize，控件固有宽度，不再随窗拉伸。 */
+private val StatsFilterPillMaxWidth = 232.dp
 
+/** Medium+ 页签固有宽度的下限：触控宽度始终高于可访问底线（高度仍由 48dp controlMinHeight 保证）。 */
+private val StatsTabMinWidth = 64.dp
+
+/**
+ * 月份/标签筛选：固有宽度、行首对齐，紧贴它影响的结果列表。
+ * 标签 Loading/Failed/Hidden 状态与选项上限原样保留；48dp 触控高度不变。
+ */
 @Composable
-internal fun StatsTopPanel(
+internal fun StatsFilterControls(
     state: StatsUiState,
-    selectedTab: StatsTab,
-    actions: StatsTopPanelActions,
+    onOpenMonthPicker: () -> Unit,
+    onTagChange: (String) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        StatsHeader()
-        StatsFilterRow(
-            state = state,
-            onOpenMonthPicker = actions.onOpenMonthPicker,
-            onTagChange = actions.onTagChange,
-        )
-        StatsTabRow(
-            selectedTab = selectedTab,
-            onTabChange = actions.onTabChange,
-        )
-    }
-}
-
-@Composable
-private fun StatsHeader() {
+    val tagControl = statsTagFilterControlModel(
+        state = state,
+        optionLimit = StatsTagFilterOptionLimit,
+    )
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-        ) {
-            Text(
-                text = stringResource(R.string.stats_header_title),
-                color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold,
+        StatsSelectablePill(
+            selected = true,
+            onClick = onOpenMonthPicker,
+            label = state.month.takeIf { it.isNotBlank() }?.let { displayMonthLabel(it) }
+                ?: stringResource(R.string.stats_filter_all_months),
+            modifier = Modifier.widthIn(max = StatsFilterPillMaxWidth),
+            trailingIcon = {
+                FilterTrailingIcon(
+                    Icons.Filled.ExpandMore,
+                    stringResource(R.string.stats_filter_pick_month_description),
+                )
+            },
+        )
+        when (tagControl.kind) {
+            StatsTagFilterControlKind.Menu -> StatsTagFilterMenu(
+                tags = tagControl.choices,
+                selectedTag = state.selectedTag,
+                onTagChange = onTagChange,
+                modifier = Modifier.widthIn(max = StatsFilterPillMaxWidth),
             )
-            Text(
-                text = stringResource(R.string.stats_header_subtitle),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+            StatsTagFilterControlKind.Loading -> StatsTagStatusPill(
+                label = stringResource(R.string.stats_filter_tags_loading),
+                modifier = Modifier.widthIn(max = StatsFilterPillMaxWidth),
             )
+            StatsTagFilterControlKind.Failed -> StatsTagStatusPill(
+                label = stringResource(R.string.stats_filter_tags_load_failed),
+                modifier = Modifier.widthIn(max = StatsFilterPillMaxWidth),
+            )
+            StatsTagFilterControlKind.Hidden -> Unit
         }
     }
 }
 
+/**
+ * 概览/趋势/构成页签：Compact 等宽（拇指分区），Medium+ 固有宽度行首对齐，
+ * 不再横跨整个窗口；始终紧贴它切换的结果内容。
+ */
 @Composable
-private fun StatsTabRow(
+internal fun StatsViewTabs(
     selectedTab: StatsTab,
     onTabChange: (StatsTab) -> Unit,
 ) {
+    val fillWindow = LocalAppAdaptiveLayoutPolicy.current.widthClass == AppWindowWidthClass.Compact
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -115,7 +126,11 @@ private fun StatsTabRow(
             StatsTextTab(
                 label = statsTabLabel(tab),
                 selected = selectedTab == tab,
-                modifier = Modifier.weight(1f),
+                modifier = if (fillWindow) {
+                    Modifier.weight(1f)
+                } else {
+                    Modifier.widthIn(min = StatsTabMinWidth)
+                },
                 onClick = { onTabChange(tab) },
             )
         }
@@ -129,69 +144,6 @@ private fun statsTabLabel(tab: StatsTab): String = when (tab) {
     StatsTab.Category -> stringResource(R.string.stats_tab_category)
     StatsTab.Budget -> stringResource(R.string.stats_tab_budget)
     StatsTab.Goals -> stringResource(R.string.stats_tab_goals)
-}
-
-@Composable
-private fun StatsFilterRow(
-    state: StatsUiState,
-    onOpenMonthPicker: () -> Unit,
-    onTagChange: (String) -> Unit,
-) {
-    val tagControl = statsTagFilterControlModel(
-        state = state,
-        optionLimit = StatsTagFilterOptionLimit,
-    )
-    if (tagControl.kind != StatsTagFilterControlKind.Hidden) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-        ) {
-            StatsSelectablePill(
-                selected = true,
-                onClick = onOpenMonthPicker,
-                label = state.month.takeIf { it.isNotBlank() }?.let { displayMonthLabel(it) }
-                    ?: stringResource(R.string.stats_filter_all_months),
-                modifier = Modifier.weight(1f),
-                trailingIcon = {
-                    FilterTrailingIcon(
-                        Icons.Filled.ExpandMore,
-                        stringResource(R.string.stats_filter_pick_month_description),
-                    )
-                },
-            )
-            when (tagControl.kind) {
-                StatsTagFilterControlKind.Menu -> StatsTagFilterMenu(
-                    tags = tagControl.choices,
-                    selectedTag = state.selectedTag,
-                    onTagChange = onTagChange,
-                    modifier = Modifier.weight(1f),
-                )
-                StatsTagFilterControlKind.Loading -> StatsTagStatusPill(
-                    label = stringResource(R.string.stats_filter_tags_loading),
-                    modifier = Modifier.weight(1f),
-                )
-                StatsTagFilterControlKind.Failed -> StatsTagStatusPill(
-                    label = stringResource(R.string.stats_filter_tags_load_failed),
-                    modifier = Modifier.weight(1f),
-                )
-                StatsTagFilterControlKind.Hidden -> Unit
-            }
-        }
-    } else {
-        StatsSelectablePill(
-            selected = true,
-            onClick = onOpenMonthPicker,
-            label = state.month.takeIf { it.isNotBlank() }?.let { displayMonthLabel(it) }
-                ?: stringResource(R.string.stats_filter_all_months),
-            modifier = Modifier.fillMaxWidth(),
-            trailingIcon = {
-                FilterTrailingIcon(
-                    Icons.Filled.ExpandMore,
-                    stringResource(R.string.stats_filter_pick_month_description),
-                )
-            },
-        )
-    }
 }
 
 @Composable
@@ -221,7 +173,6 @@ private fun StatsTagFilterMenu(
             onClick = { expanded = true },
             label = selectedTag.takeIf { it.isNotBlank() }?.let { "#$it" }
                 ?: stringResource(R.string.stats_filter_all_tags),
-            modifier = Modifier.fillMaxWidth(),
             trailingIcon = {
                 FilterTrailingIcon(
                     Icons.Filled.ExpandMore,

@@ -184,6 +184,12 @@
     cursor: pointer;
 }
 
+/* ── 还款捕获复核 (C4: 归并自退役的 pages/repayment_drafts.css, 保留其活动规则) ──
+   审计表 = 单容器 + hairline 行分隔的四列网格 (来源/对应欠款/时间/金额状态),
+   各列顶对齐, 阅读序与候选首行齐平; pending 行候选 = 逐项确认表单 (建议项
+   展示置顶 + 徽标 + 主按钮层级, 建议是 provenance 不是事实, OCC 快照随每项
+   隐藏字段走); dismissed 行 is-receded 沉降 (降透明, 永不红)。 */
+
 .repayment-audit {
     overflow: hidden;
     border: 1px solid var(--border-card);
@@ -196,10 +202,10 @@
     display: grid;
     grid-template-columns:
         minmax(calc(var(--space-12) * 2), 1fr)
-        minmax(calc(var(--space-12) * 2.5), 1.4fr)
+        minmax(calc(var(--space-12) * 2.5), 1.6fr)
         minmax(calc(var(--space-12) * 1.5), .8fr)
         minmax(calc(var(--space-12) * 1.5), auto);
-    align-items: center;
+    align-items: start;
     gap: var(--space-4);
     padding: var(--space-4) var(--space-5);
 }
@@ -209,8 +215,6 @@
     color: var(--text-meta);
     font-size: var(--type-meta-size);
     font-weight: var(--type-meta-weight);
-    letter-spacing: var(--type-meta-tracking);
-    text-transform: uppercase;
 }
 
 .repayment-audit-row {
@@ -225,23 +229,127 @@
     background: var(--surface-sunken);
 }
 
-.rd-merchant,
-.rd-meta,
-.rd-provenance,
+.repayment-audit-row.is-receded {
+    opacity: .55;
+}
+
+.ra-cell {
+    min-width: 0;
+}
+
+/* 来源列：来源标签 + 商户名 (双层节奏)。 */
+.rd-source {
+    color: var(--text-muted);
+    font-size: var(--type-caption-size);
+    font-weight: var(--type-subtitle-weight);
+}
+
+.rd-merchant {
+    margin-top: var(--space-1);
+    color: var(--text-default);
+    font-size: var(--type-subtitle-size);
+    font-weight: var(--type-subtitle-weight);
+}
+
+/* 对应欠款列：provenance (建议，中性安静) / 逐项选择组 / 关联债行。 */
+.rd-provenance {
+    margin-bottom: var(--space-2);
+    color: var(--text-muted);
+    font-size: var(--type-caption-size);
+}
+
 .rd-linked {
+    color: var(--text-default);
+    font-size: var(--type-body-size);
+}
+
+.ra-choices {
+    display: grid;
+    gap: var(--space-2);
+}
+
+.ra-choices .product-feedback {
+    margin-block-end: var(--space-2);
+}
+
+.ra-choice {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-sm);
+    background: var(--surface-card);
+}
+
+.ra-choice--suggested {
+    border-color: var(--control-border);
+    background: var(--brand-primary-bg);
+}
+
+.ra-choice-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--text-default);
+    font-size: var(--type-body-size);
+}
+
+.ra-badge {
+    display: inline-flex;
+    align-items: center;
+    margin-inline-end: var(--space-1);
+    padding: 0 var(--space-2);
+    border-radius: var(--radius-pill);
+    background: var(--brand-primary);
+    color: var(--text-on-primary);
+    font-size: var(--type-meta-size);
+    font-weight: var(--type-meta-weight);
+    letter-spacing: var(--type-meta-tracking);
+}
+
+.ra-dismiss {
+    margin-top: var(--space-2);
+}
+
+.ra-empty-target {
+    color: var(--text-muted);
+    font-size: var(--type-body-size);
+}
+
+.ra-empty-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-top: var(--space-2);
+}
+
+.ra-waiting {
     color: var(--text-meta);
     font-size: var(--type-caption-size);
 }
 
-.rd-side {
+/* 时间列：安静 meta。 */
+.rd-meta {
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+    white-space: nowrap;
+}
+
+/* 金额状态列：tabular 额在上、状态 pill 在下，右对齐。 */
+.ra-side-cell {
     display: grid;
     justify-items: end;
     gap: var(--space-2);
 }
 
 .rd-amount {
+    color: var(--text-default);
     font-family: var(--font-numeric);
+    font-size: var(--type-subtitle-size);
     font-variant-numeric: tabular-nums;
+    font-weight: var(--type-subtitle-weight);
+    letter-spacing: -.01em;
+    white-space: nowrap;
 }
 
 @media (max-width: 40rem) {
@@ -262,14 +370,18 @@
         grid-template-columns: minmax(0, 1fr) auto;
     }
 
-    .repayment-audit-row > :nth-child(2),
-    .repayment-audit-row > :nth-child(3) {
+    .ra-target-cell,
+    .ra-date-cell {
         grid-column: 1 / -1;
     }
 
-    .rd-side {
+    .ra-side-cell {
         grid-column: 2;
         grid-row: 1;
+    }
+
+    .ra-choice {
+        flex-wrap: wrap;
     }
 }
 

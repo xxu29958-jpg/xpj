@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import android.view.View
+import android.view.Window
 import androidx.core.view.WindowInsetsControllerCompat
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CurrencyCode
@@ -179,10 +180,11 @@ fun TicketboxTheme(
     content: @Composable () -> Unit,
 ) {
     val view = LocalView.current
-    val lightSystemBars = skin != AppSkin.Midnight
     if (!view.isInEditMode) {
         SideEffect {
-            view.context.findActivity()?.configureTicketboxSystemBars(view, lightSystemBars)
+            view.context.findActivity()?.let { activity ->
+                configureTicketboxSystemBars(activity.window, view, skin)
+            }
         }
     }
 
@@ -267,7 +269,8 @@ private tailrec fun Context.findActivity(): Activity? {
 }
 
 @Suppress("DEPRECATION")
-private fun Activity.configureTicketboxSystemBars(view: View, lightSystemBars: Boolean) {
+internal fun configureTicketboxSystemBars(window: Window, view: View, skin: AppSkin) {
+    val lightSystemBars = skin != AppSkin.Midnight
     window.statusBarColor = AndroidColor.TRANSPARENT
     window.navigationBarColor = AndroidColor.TRANSPARENT
     WindowInsetsControllerCompat(window, view).apply {

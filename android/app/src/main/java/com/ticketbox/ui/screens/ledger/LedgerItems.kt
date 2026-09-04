@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -39,6 +40,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -53,9 +57,11 @@ import com.ticketbox.ui.components.AppAdaptiveAmountRowDefaults
 import com.ticketbox.ui.components.AppAdaptiveContentActionStateRow
 import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.AppEndAlignedAmountStatusText
+import com.ticketbox.ui.components.autosizeMinFontSize
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppDensity
 import com.ticketbox.ui.design.AppListDensity
@@ -113,6 +119,10 @@ internal data class LedgerExpenseItemActions(
  * /web confirmed day-row rhythm. It follows the page background instead of
  * drawing a separate card strip, so date group headers stay structural rather
  * than becoming another block container.
+ *
+ * visual-ledger 批:头部顶缘改为票带穿孔虚线——日期组之间的撕裂口(首组则是
+ * 票头金额区与明细联的撕口),对应 Web 票带 `.timeline-row + .lday` 的 dashed
+ * 规线;原底部实线 divider 移除,组内行与日期戳直接相联。
  */
 @Composable
 internal fun LedgerDayHeader(state: LedgerDayHeaderUi, onToggle: (() -> Unit)? = null) {
@@ -120,6 +130,24 @@ internal fun LedgerDayHeader(state: LedgerDayHeaderUi, onToggle: (() -> Unit)? =
         ?.let { stringResource(R.string.ledger_day_count_with_preview, state.itemCount, it) }
         ?: stringResource(R.string.ledger_day_count, state.itemCount)
     Column(modifier = Modifier.fillMaxWidth()) {
+        // 票带穿孔:日期组之间的虚线撕裂口(首组即票头金额区与明细联的撕口);
+        // 声明式 dash,行间仍是发丝实线,只有组间穿孔。
+        val perforationColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .drawBehind {
+                    val dash = 4.dp.toPx()
+                    drawLine(
+                        color = perforationColor,
+                        start = Offset(0f, center.y),
+                        end = Offset(size.width, center.y),
+                        strokeWidth = size.height,
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(dash, dash)),
+                    )
+                },
+        )
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -150,7 +178,6 @@ internal fun LedgerDayHeader(state: LedgerDayHeaderUi, onToggle: (() -> Unit)? =
                 LedgerDayHeaderToggleIcon(state)
             }
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.10f))
     }
 }
 
@@ -318,7 +345,7 @@ internal fun LedgerExpenseCard(
                 }
             },
         )
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.subtle))
     }
 }
 
@@ -345,39 +372,43 @@ internal fun LedgerExpenseListRow(
                 onLongClick = actions.onEnterSelection,
             ),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = AppSpacing.miniGap, vertical = rowMetrics.rowPadding),
-            horizontalArrangement = Arrangement.spacedBy(rowMetrics.itemSpacing),
+        AppAdaptiveContentActionStateRow(
+            modifier = Modifier.padding(horizontal = AppSpacing.miniGap, vertical = rowMetrics.rowPadding),
             verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Row(
-                modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(rowMetrics.itemSpacing),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (state.selection.enabled) {
-                    Checkbox(checked = state.selection.selected, onCheckedChange = null)
+            content = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(rowMetrics.itemSpacing),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (state.selection.enabled) {
+                        Checkbox(checked = state.selection.selected, onCheckedChange = null)
+                    }
+                    LedgerCategoryMark(category = expense.category, density = AppListDensity.Compact)
+                    LedgerListTextBlock(
+                        expense = expense,
+                        metaText = metaText,
+                        lineageStatus = state.lineageStatus,
+                        modifier = Modifier.weight(1f),
+                    )
                 }
-                LedgerCategoryMark(category = expense.category, density = AppListDensity.Compact)
-                LedgerListTextBlock(
-                    expense = expense,
-                    metaText = metaText,
-                    lineageStatus = state.lineageStatus,
-                    modifier = Modifier.weight(1f),
+            },
+            action = { amountModifier, stacked ->
+                LedgerAmountOrPending(
+                    amountCents = expense.amountCents,
+                    display = CurrencyDisplay.forRecord(expense.homeCurrencyCode ?: expense.homeCurrency.storageKey),
+                    modifier = if (stacked) {
+                        amountModifier
+                    } else {
+                        amountModifier.widthIn(
+                            min = AppAdaptiveAmountRowDefaults.statusMinWidth,
+                            max = AppAdaptiveAmountRowDefaults.secondaryMetaInlineMaxWidth,
+                        )
+                    },
                 )
-            }
-            LedgerAmountOrPending(
-                amountCents = expense.amountCents,
-                display = CurrencyDisplay.forRecord(expense.homeCurrencyCode ?: expense.homeCurrency.storageKey),
-                modifier = Modifier.widthIn(
-                    min = AppAdaptiveAmountRowDefaults.statusMinWidth,
-                    max = AppAdaptiveAmountRowDefaults.secondaryMetaInlineMaxWidth,
-                ),
-            )
-        }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f))
+            },
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.subtle))
     }
 }
 
@@ -466,10 +497,15 @@ internal fun LedgerExpenseTableRow(
                 )
             },
         )
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.subtle))
     }
 }
 
+/**
+ * 行金额:visual-ledger 批由 Compact 升 Medium——票带上金额是主角(金额先行),
+ * 字号压过商家/meta;autosize 兜底,长金额/大字号自动收敛不溢出。
+ * 日合计仍保持 Compact,组级聚合退居结构层。
+ */
 @Composable
 private fun LedgerAmountOrPending(
     amountCents: Long?,
@@ -481,13 +517,14 @@ private fun LedgerAmountOrPending(
             AppEndAlignedAmountText(
                 modifier = Modifier.fillMaxWidth(),
                 text = formatDisplayAmount(it, display),
-                role = AppAmountRole.Compact,
+                role = AppAmountRole.Medium,
+                minFontSize = AppAmountRole.Compact.autosizeMinFontSize,
                 color = MaterialTheme.colorScheme.onSurface,
             )
         } ?: AppEndAlignedAmountStatusText(
             modifier = Modifier.fillMaxWidth(),
             text = stringResource(R.string.ledger_item_amount_pending),
-            role = AppAmountRole.Compact,
+            role = AppAmountRole.Medium,
         )
     }
 }

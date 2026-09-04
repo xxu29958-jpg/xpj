@@ -55,7 +55,7 @@ from app.services.repayment_draft_command_service import confirm_repayment_draft
 
 router = APIRouter(prefix="/web/repayment-drafts", tags=["web"])
 
-_AUDIT_INTRO = "手机自动捕获的还款通知在这里复核：确认记到哪笔欠款，或忽略。所有提交走服务端幂等事务，重复提交不会记成两笔。"
+_AUDIT_INTRO = "手机自动捕获的还款通知在这里复核：确认记到哪笔欠款，或忽略。重复提交不会记成两笔。"
 _EMPTY_TITLE = "还没有还款捕获"
 _EMPTY_BODY = "手机 App 自动捕获的还款通知会在这里出现；确认记到哪笔欠款也在这一页完成。"
 

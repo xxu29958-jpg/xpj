@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -136,8 +138,16 @@ def test_web_budget_advise_post_accepts_canonical_cny_decimal_text(
     )
 
     assert response.status_code == 200, response.text
-    assert "− ¥12.34 储蓄目标" in response.text
-    assert "− ¥0.10 备用金" in response.text
+    # C2: plan-breakdown 每格 = small 标签 + strong 金额; 断言同一格内 标签→金额
+    # 配对 (交换储蓄/备用金金额会红), 不做两个独立存在性断言。
+    assert re.search(
+        r"<small>\s*储蓄目标\s*</small>\s*<strong>\s*−\s*¥12\.34\s*</strong>",
+        response.text,
+    )
+    assert re.search(
+        r"<small>\s*备用金\s*</small>\s*<strong>\s*−\s*¥0\.10\s*</strong>",
+        response.text,
+    )
     assert (
         'name="savings_target_yuan" min="0" step="0.01" inputmode="decimal" '
         'placeholder="0.00" value="12.34"'
@@ -161,7 +171,10 @@ def test_web_budget_advise_post_accepts_canonical_jpy_integer_text(
     )
 
     assert response.status_code == 200, response.text
-    assert "− ¥1234 储蓄目标" in response.text
+    assert re.search(
+        r"<small>\s*储蓄目标\s*</small>\s*<strong>\s*−\s*¥1234\s*</strong>",
+        response.text,
+    )
     assert (
         'name="savings_target_yuan" min="0" step="1" inputmode="numeric" '
         'placeholder="0" value="1234"'

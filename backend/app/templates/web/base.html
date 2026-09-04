@@ -85,11 +85,8 @@
 {% set is_reports = '/reports' in _path %}
 {% set is_data_quality = '/data-quality' in _path %}
 
-{# 218-D S3 (移植自产品矿): 页级三态。primary=五域首屏(已迁移, 断旧栈);
-   tertiary=详情工作区(挂 detail.css); 其余=secondary。C5c-1 增量 2 落地
-   资料库五个 section (/web/categories|merchants|tags|rules|recycle-bin)
-   为 product 正文, 面包屑聚合到 /web/library; /web/categories/uncategorized
-   等下钻页正文迁移属后续增量。 #}
+{# 页级三态：primary=五域首屏；tertiary=详情工作区(追加 detail.css)；
+   其余=secondary。页级不决定样式新旧，所有正文均使用产品栈。 #}
 {% set _is_expense_detail = '/expenses/' in _path and '/edit' in _path %}
 {% set _is_debt_detail = _path.startswith('/web/debts/') and _path != '/web/debts/new' %}
 {% set _is_import_detail = _path.startswith('/web/import/') %}
@@ -110,19 +107,9 @@
   'secondary'
 ) %}
 
-{# 218-D S3-R1 正文新旧分流 (裁决: 按页面正文标记而非页级一刀切):
-   - 正文仍是旧标记的页 (confirmed/debts/budgets 三个旧 primary 与全部旧
-     二三级页) 保持 main 原装配: 旧全局栈+页级 CSS 全量, 不挂对应 domain CSS——
-     矿域模块与旧页共享类名谱系 (.exp-row/.timeline-row 等), 双挂则旧规则被盖、
-     新 grid 不认嵌套标记, 行格双失 (S3 #256 P1: 收件行整列塌缩)。
-   - 正文已是新标记的页 (overview S2; pending/duplicates S4 收件域) 断旧栈、
-     挂域模块。
-   域模块挂载点=下表逐域显式开关: 随 S4(inbox)/S-TX(transactions)/
-   S5(obligations/plans)/S6(insights) 各域正文迁移逐域开启, 勿留隐式魔法。
-   旧文件的物理删除是独立后续片, 本片不动。
-   S3-R2: 分流同一条件同时驱动 body hook —— 旧标记页补回 desktop-shell-active
-   (旧 _base.css/_misc.css/a11y.css 的作用域规则依赖它), 新标记页改挂
-   data-body-stack="product" (product drawer 族规则的作用域锚)。 #}
+{# 产品域样式装配。overview/pending/duplicates 仍使用路径表声明域；其他模板
+   显式声明 product_body_domain，POST 422 原页重渲染也保留对应域。
+   所有正文使用同一产品栈，旧全局样式和旧 body hook 已退役。 #}
 {% set _product_body_domains = {
   '/web/overview': 'insights',
   '/web/pending': 'inbox',
@@ -134,8 +121,7 @@
   '/web/rules': 'transactions',
   '/web/recycle-bin': 'transactions',
 } %}
-{# 已迁移模板用 product_body_domain 显式声明 product 正文身份, 优先于路径表
-   (422 原页重渲染发生在命令 POST path 上, 路径表判不到); 路径表仅旧兼容, 勿扩充。 #}
+{# 模板声明优先于路径表；不要用命令 POST 的 URL 猜测正文域。 #}
 {% set _product_body_domain = product_body_domain | default('') or _product_body_domains.get(_path) %}
 
 <!DOCTYPE html>
@@ -161,38 +147,7 @@
 
   <link rel="stylesheet" href="/static/shared/tokens.css?v={{ asset_version }}">
 
-  {# 装配分流 (_product_body_domain 的判定与注释见文件顶部):
-     旧标记页全量旧栈, 新标记页断旧栈。 #}
-  {% if not _product_body_domain %}
-  <link rel="stylesheet" href="/static/web/web.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/_base.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/_shell.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/components/buttons.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/components/pills.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/components/toolbar.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/components/bulk-bar.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/components/alert.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/components/cards.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/components/tables.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/components/drawer.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/components/forms-input.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/components/forms-row.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/components/skeleton.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/components/empty-state.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/components/utilities.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/components/a11y.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/components/responsive-layout.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/pages/goals.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/pages/reports.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/pages/bill-splits.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/pages/debt_goals.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/pages/repayment_drafts.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/_misc.css?v={{ asset_version }}">
-  {% endif %}
-
-  {# Product 设计系统基座 (218-D S3, 移植自产品矿): 壳 + 共享组件全页挂载
-     (chrome 层, 与旧栈类名不碰撞; 旧栈先加载, 壳样式在所有页面一致);
-     域模块仅随正文迁移开关挂载; 三级详情页追加 detail.css。 #}
+  {# 唯一产品样式栈：共享壳与组件 + 当前正文域；三级详情页追加 detail.css。 #}
   <link rel="stylesheet" href="/static/web/product/shell.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/web/product/components.css?v={{ asset_version }}">
   {% if _product_body_domain %}
@@ -204,11 +159,12 @@
   {% block page_styles %}{% endblock %}
   <link rel="stylesheet" href="/static/shared/confirm-modal.css?v={{ asset_version }}">
 
-  {# 未迁移页仍依赖全局脚本 (drawer/bulk-bar/receipt-skeletons 等)。 #}
+  {# 保留真实产品交互消费者：收件抽屉、批量、附件、排序和外观。 #}
   <script defer src="/static/shared/csrf.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/pwa-register.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/desktop/core.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/desktop/theme.js?v={{ asset_version }}"></script>
+  <script defer src="/static/web/desktop/background.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/desktop/ledger-switcher.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/desktop/receipt-skeletons.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/desktop/drawer.js?v={{ asset_version }}"></script>
@@ -227,7 +183,7 @@
   <script defer src="/static/web/desktop.js?v={{ asset_version }}"></script>
   <script defer src="/static/shared/confirm-modal.js?v={{ asset_version }}"></script>
 </head>
-<body class="product-shell{% if _has_domain_subnav %} has-domain-subnav{% endif %}{% if not _product_body_domain %} desktop-shell-active{% endif %}"{% if _product_body_domain %} data-body-stack="product"{% endif %} data-domain="{{ _domain }}" data-page="{{ _page_key }}" data-page-level="{{ _page_level }}">
+<body class="product-shell{% if _has_domain_subnav %} has-domain-subnav{% endif %}" data-body-stack="product" data-domain="{{ _domain }}" data-page="{{ _page_key }}" data-page-level="{{ _page_level }}">
 <a class="skip-link" href="#main-content">跳到主内容</a>
 <div class="product-app">
   {% include "_sidebar_nav.html" %}

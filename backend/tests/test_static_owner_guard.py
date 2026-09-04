@@ -38,10 +38,8 @@ def test_public_static_web_still_allowed() -> None:
     session) and must remain reachable to the public — the guard only
     targets the ``/owner/`` subpath."""
     public = _public_client()
-    response = public.get("/static/web/web.css", follow_redirects=False)
-    # 200 if asset exists, 404 if missing — either is fine; we only
-    # need to assert the guard didn't 403 it.
-    assert response.status_code != 403
+    response = public.get("/static/web/product/shell.css", follow_redirects=False)
+    assert response.status_code == 200
 
 
 def test_public_other_static_path_not_affected() -> None:
