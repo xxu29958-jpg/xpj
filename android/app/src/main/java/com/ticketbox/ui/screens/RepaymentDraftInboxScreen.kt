@@ -41,7 +41,7 @@ import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
 import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppAdaptiveEditAmountRow
 import com.ticketbox.ui.components.AppEndAlignedAmountText
-import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.AppPaperCard
 import com.ticketbox.ui.components.AppListStateContent
 import com.ticketbox.ui.components.AppListStateMessage
 import com.ticketbox.ui.components.AppListStateSpec
@@ -191,7 +191,7 @@ private fun RepaymentDraftCard(
     action: DraftRowAction,
     callbacks: RepaymentDraftCardCallbacks,
 ) {
-    AppGlassCard(modifier = Modifier.fillMaxWidth()) {
+    AppPaperCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding)) {
             AppAdaptiveEditAmountRow(
                 // PR#255 R5 P1 record 口径 → R10③ 契约修正：通知解析器按 CNY 分声明
@@ -324,7 +324,7 @@ private fun RepaymentDraftListStateCard(
     loading: Boolean,
     error: UiText?,
 ) {
-    AppGlassCard(modifier = Modifier.fillMaxWidth()) {
+    AppPaperCard(modifier = Modifier.fillMaxWidth()) {
         AppListStateContent(
             modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
             state = AppListStateSpec(

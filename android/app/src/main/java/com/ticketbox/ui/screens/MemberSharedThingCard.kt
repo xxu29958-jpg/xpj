@@ -29,7 +29,7 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
-import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.AppPaperCard
 import com.ticketbox.ui.components.AppProgressBar
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
@@ -68,7 +68,7 @@ internal fun MemberSharedThingCard(debt: Debt) {
         if (debt.isVoided) LocalStateTokens.current.neutral.fg else MaterialTheme.colorScheme.onSurface
     val cardModifier =
         if (debt.isVoided) Modifier.fillMaxWidth().alpha(AppAlpha.opaque) else Modifier.fillMaxWidth()
-    AppGlassCard(modifier = cardModifier) {
+    AppPaperCard(modifier = cardModifier) {
         Column(modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding)) {
             Text(
                 stringResource(eyebrowRes, eyebrowName),

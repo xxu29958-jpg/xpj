@@ -64,7 +64,7 @@ fun AppNavigationRail(
     val haptics = rememberAppHaptics()
     Surface(
         modifier = modifier.fillMaxHeight(),
-        color = visuals.surfaceNav,
+        color = visuals.surfaceNav.copy(alpha = AppAlpha.opaque),
     ) {
         Row {
             NavigationRail(
@@ -116,7 +116,7 @@ fun AppBottomNav(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding(),
-        color = visuals.surfaceNav,
+        color = visuals.surfaceNav.copy(alpha = AppAlpha.opaque),
         tonalElevation = 0.dp,
         shadowElevation = 0.dp,
     ) {
@@ -168,9 +168,10 @@ private fun AppBottomNavItemView(
     item: AppPrimaryNavItem,
     selected: Boolean,
 ) {
+    val visuals = LocalThemeVisuals.current
     // Warm Ledger 激活态：tonal pill 承载选中，而不是一条描边小指示线。
     val content = if (selected) {
-        MaterialTheme.colorScheme.onPrimaryContainer
+        visuals.primary
     } else {
         MaterialTheme.colorScheme.onSurfaceVariant
     }
@@ -186,7 +187,7 @@ private fun AppBottomNavItemView(
                 )
                 .clip(CircleShape)
                 .background(
-                    color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                    color = if (selected) visuals.brandPrimaryBg else Color.Transparent,
                 ),
             contentAlignment = Alignment.Center,
         ) {

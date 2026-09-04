@@ -14,7 +14,7 @@ class ThemeVisualsTest {
             assertTrue(visuals.heroGradient.size >= 2, "$skin hero gradient should have at least two colors")
             assertTrue(visuals.primary.alpha > 0.99f, "$skin primary should be opaque")
             assertTrue(visuals.solidCard.alpha > 0.99f, "$skin solid card should be opaque")
-            assertTrue(visuals.glassTint.alpha > 0.99f, "$skin glass tint should be opaque")
+            assertTrue(visuals.paperCard.alpha > 0.99f, "$skin paper card should be opaque")
             assertTrue(visuals.shadowTint.alpha > 0.99f, "$skin shadow tint should be opaque")
         }
     }

@@ -156,7 +156,7 @@ internal fun skinOptionCardPalette(
     selected: Boolean,
 ): SkinOptionCardPalette = SkinOptionCardPalette(
     container = if (selected) {
-        visuals.glassTint.copy(alpha = 0.86f)
+        visuals.paperCard.copy(alpha = 0.86f)
     } else {
         visuals.solidCard.copy(alpha = 0.94f)
     },
@@ -276,7 +276,7 @@ internal fun SkinPreview(skin: AppSkin, scheme: ColorScheme, visuals: ThemeVisua
                     .fillMaxWidth()
                     .height(24.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(visuals.glassTint.copy(alpha = 0.88f))
+                    .background(visuals.paperCard.copy(alpha = 0.88f))
                     .padding(horizontal = 8.dp, vertical = 6.dp),
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {

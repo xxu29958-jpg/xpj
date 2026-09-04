@@ -55,6 +55,7 @@ import com.ticketbox.ui.design.AppPrimaryNavigationMode
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
+import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.toAppAdaptiveLayoutPolicy
 import com.ticketbox.ui.design.toAppAdaptivePaneDirective
 import com.ticketbox.ui.design.toAppPostureSafeHingeBounds
@@ -257,8 +258,9 @@ private fun MainDomainTopBar(
     domain: PrimaryDomain,
     onOpenWorkspace: () -> Unit,
 ) {
+    val visuals = LocalThemeVisuals.current
     Surface(
-        color = MaterialTheme.colorScheme.surface,
+        color = visuals.surfaceNav.copy(alpha = AppAlpha.opaque),
         tonalElevation = AppSpacing.none,
         shadowElevation = AppSpacing.none,
     ) {
@@ -277,7 +279,7 @@ private fun MainDomainTopBar(
                 Text(
                     text = stringResource(domain.labelRes),
                     modifier = Modifier.weight(1f),
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = visuals.primary,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = AppTextHierarchy.heading.weight,
                 )

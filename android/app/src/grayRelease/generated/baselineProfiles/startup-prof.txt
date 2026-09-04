@@ -15208,7 +15208,7 @@ SPLcom/ticketbox/ui/appearance/background/SurfaceRole;-><clinit>()V
 SPLcom/ticketbox/ui/appearance/background/SurfaceRole;-><init>(Ljava/lang/String;I)V
 SPLcom/ticketbox/ui/appearance/background/SurfaceRole;->values()[Lcom/ticketbox/ui/appearance/background/SurfaceRole;
 Lcom/ticketbox/ui/components/AppCardsKt;
-SPLcom/ticketbox/ui/components/AppCardsKt;->AppGlassCard(Landroidx/compose/ui/Modifier;FLandroidx/compose/foundation/shape/RoundedCornerShape;Lkotlin/jvm/functions/Function2;Landroidx/compose/runtime/Composer;II)V
+SPLcom/ticketbox/ui/components/AppCardsKt;->AppPaperCard(Landroidx/compose/ui/Modifier;Landroidx/compose/foundation/shape/RoundedCornerShape;Lkotlin/jvm/functions/Function2;Landroidx/compose/runtime/Composer;II)V
 SPLcom/ticketbox/ui/components/AppCardsKt;->AppSolidCard(Landroidx/compose/ui/Modifier;Lkotlin/jvm/functions/Function2;Landroidx/compose/runtime/Composer;II)V
 Lcom/ticketbox/ui/design/AppRadius;
 SPLcom/ticketbox/ui/design/AppRadius;-><clinit>()V
