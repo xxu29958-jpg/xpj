@@ -801,6 +801,150 @@
     font-size: var(--type-caption-size);
 }
 
+/* ===== 家庭成员与邀请 ===== */
+
+.family-invite-form {
+    grid-template-columns: minmax(8rem, .7fr) minmax(12rem, 1.4fr) minmax(8rem, .6fr) auto;
+    align-items: end;
+}
+
+.family-form-action,
+.family-invite-handoff,
+.family-invitation-action,
+.family-invitation-state,
+.family-member-actions,
+.family-member-state {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    align-items: center;
+}
+
+.family-invitation-state,
+.family-member-state {
+    min-width: 0;
+}
+
+.family-state-meta {
+    min-width: 0;
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+    overflow-wrap: anywhere;
+}
+
+.family-token-field textarea {
+    font-family: var(--font-numeric);
+    overflow-wrap: anywhere;
+}
+
+.family-member-list,
+.family-invitation-list {
+    display: grid;
+}
+
+.family-member,
+.family-invitation {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(16rem, auto);
+    gap: var(--space-5);
+    align-items: center;
+    padding-block: var(--space-4);
+    border-block-start: 1px solid var(--border-card);
+}
+
+.family-member:first-child,
+.family-invitation:first-child {
+    border-block-start: 0;
+}
+
+.family-member-identity {
+    display: grid;
+    gap: var(--space-1);
+    min-width: 0;
+}
+
+.family-member-identity strong {
+    overflow-wrap: anywhere;
+}
+
+.family-member-identity span,
+.family-invitation p,
+.family-audit-list span {
+    margin: 0;
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
+
+.family-member-actions {
+    justify-content: flex-end;
+}
+
+.family-member-actions .product-inline-form {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+}
+
+.family-member-actions select {
+    min-width: 7rem;
+}
+
+.family-member-more {
+    position: relative;
+}
+
+.family-member-more > summary,
+.family-disclosure > summary {
+    cursor: pointer;
+    color: var(--brand-primary-strong);
+    font-weight: var(--type-subtitle-weight);
+}
+
+.family-member-more-body {
+    display: grid;
+    gap: var(--space-3);
+    margin-block-start: var(--space-3);
+}
+
+.family-transfer-confirm {
+    display: flex;
+    gap: var(--space-2);
+    align-items: flex-start;
+    max-width: 28rem;
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
+
+.family-disclosure {
+    margin-block-start: var(--space-5);
+}
+
+.family-disclosure > summary {
+    list-style-position: inside;
+}
+
+.family-disclosure[open] > summary {
+    margin-block-end: var(--space-4);
+}
+
+.family-invitation {
+    grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.family-audit-list {
+    display: grid;
+    gap: var(--space-3);
+    margin: var(--space-4) 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.family-audit-list li {
+    display: grid;
+    grid-template-columns: minmax(8rem, auto) minmax(7rem, auto) minmax(0, 1fr) auto;
+    gap: var(--space-4);
+}
+
 .bsplit-accept select {
     max-width: calc(var(--space-12) * 4);
 }
@@ -808,6 +952,25 @@
 /* ===== 窄屏 ===== */
 
 @media (max-width: 48rem) {
+    .family-invite-form,
+    .family-member,
+    .family-invitation,
+    .family-audit-list li {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .family-member-actions {
+        justify-content: flex-start;
+    }
+
+    .family-member-actions .product-inline-form {
+        width: 100%;
+    }
+
+    .family-member-actions select {
+        flex: 1;
+    }
+
     .debt-choice-row,
     .debt-choice-row--three {
         grid-template-columns: minmax(0, 1fr);

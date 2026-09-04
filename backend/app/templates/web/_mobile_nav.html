@@ -19,6 +19,7 @@
     <a class="{% if is_bill_split_inbox %}active{% endif %}" href="/web/bill-splits/inbox{{ q }}"{% if is_bill_split_inbox %} aria-current="page"{% endif %}>拆账收件箱</a>
     <a class="{% if is_bill_split_sent %}active{% endif %}" href="/web/bill-splits/sent{{ q }}"{% if is_bill_split_sent %} aria-current="page"{% endif %}>已发拆账</a>
     <a class="{% if is_repayment_drafts %}active{% endif %}" href="/web/repayment-drafts{{ q }}"{% if is_repayment_drafts %} aria-current="page"{% endif %}>还款捕获</a>
+    <a class="{% if is_family %}active{% endif %}" href="/web/family{{ q }}"{% if is_family %} aria-current="page"{% endif %}>家庭</a>
   {% elif _domain == 'plans' %}
     <a class="{% if is_budgets %}active{% endif %}" href="/web/budgets{{ q }}"{% if is_budgets %} aria-current="page"{% endif %}>预算</a>
     <a class="{% if is_goals %}active{% endif %}" href="/web/goals{{ q }}"{% if is_goals %} aria-current="page"{% endif %}>目标</a>

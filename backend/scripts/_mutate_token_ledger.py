@@ -353,6 +353,19 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /web/dashboard/cards/reset": Exempt("upsert_bucket", "budget", _DASHBOARD),
     "POST /web/dashboard/cards/save": Exempt("upsert_bucket", "budget", _DASHBOARD),
     "POST /web/expenses/{expense_id}/split-invite": Exempt("create_row", "bill_split", _BILL_SPLIT),
+    "POST /web/family/invitations": Exempt("create_row", "identity", ("invitations",)),
+    "POST /web/family/invitations/{public_id}/revoke": Exempt(
+        "governance_action", "identity", ("invitations",)
+    ),
+    "POST /web/family/members/{member_id}/disable": Exempt(
+        "governance_action", "identity", ("ledger_members",), "medium"
+    ),
+    "POST /web/family/members/{member_id}/role": Exempt(
+        "governance_action", "identity", ("ledger_members",), "medium"
+    ),
+    "POST /web/family/members/{member_id}/transfer-owner": Exempt(
+        "governance_action", "identity", _OWNER_TRANSFER, "high"
+    ),
     "POST /web/goals/create": Exempt("create_row", "goals", ("goals",)),
     "POST /web/goals/{public_id}/archive": Exempt("terminal_flag_flip", "goals", ("goals",)),
     # 218-C4: debt-goal create stages a brand-new Goal + its frozen DebtGoalLink
@@ -413,19 +426,6 @@ ALLOWLIST: dict[str, Exempt] = {
     # already atomic UPDATE WHERE archived_at — admin_single_writer fits better
     # than terminal_flag_flip (no concurrent writer to guard against on loopback).
     "POST /owner/ledgers/{ledger_id}/archive": Exempt("admin_single_writer", "owner_console", _LEDGER_ARCHIVE, "medium"),
-    "POST /owner/ledgers/{ledger_id}/invitations": Exempt("create_row", "owner_console", ("invitations",)),
-    "POST /owner/ledgers/{ledger_id}/invitations/{public_id}/revoke": Exempt(
-        "governance_action", "owner_console", ("invitations",)
-    ),
-    "POST /owner/ledgers/{ledger_id}/members/{member_id}/disable": Exempt(
-        "governance_action", "owner_console", ("ledger_members",), "medium"
-    ),
-    "POST /owner/ledgers/{ledger_id}/members/{member_id}/role": Exempt(
-        "governance_action", "owner_console", ("ledger_members",), "medium"
-    ),
-    "POST /owner/ledgers/{ledger_id}/members/{member_id}/transfer-owner": Exempt(
-        "governance_action", "owner_console", _OWNER_TRANSFER, "high"
-    ),
     "POST /owner/ledgers/{ledger_id}/unarchive": Exempt("admin_single_writer", "owner_console", _LEDGER_ARCHIVE),
     "POST /owner/pairing": Exempt("create_row", "owner_console", ("pairing_codes",)),
     "POST /owner/settings/public-base-url": Exempt("external_side_effect", "owner_console", ()),

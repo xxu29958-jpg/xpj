@@ -193,6 +193,8 @@ def revoke_invitation(
     if invitation is None:
         raise AppError("invitation_invalid", status_code=404)
     if invitation.revoked_at is None and invitation.used_at is None:
+        if (ensure_utc(invitation.expires_at) or invitation.expires_at) <= now_utc():
+            raise AppError("invitation_invalid", status_code=400)
         invitation.revoked_at = now_utc()
         add_audit_log(
             db,
