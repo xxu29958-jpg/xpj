@@ -264,10 +264,16 @@ private class RecordingReportsActions : ReportsActions {
         targetDate: String?,
     ): Result<Goal> = Result.failure(UnsupportedOperationException())
 
-    override suspend fun dashboardCards(surface: DashboardSurface): Result<DashboardCards> =
+    override fun dashboardAccess(): com.ticketbox.data.repository.LedgerAccessContext? = null
+
+    override suspend fun dashboardCards(
+        binding: com.ticketbox.data.repository.LogicalSessionBinding,
+        surface: DashboardSurface,
+    ): Result<DashboardCards> =
         Result.success(DashboardCards(surface = surface, items = emptyList())).also { dashboardCardCalls++ }
 
     override suspend fun updateDashboardCards(
+        binding: com.ticketbox.data.repository.LogicalSessionBinding,
         updates: List<DashboardCardUpdate>,
         surface: DashboardSurface,
     ): Result<DashboardCards> = Result.failure(UnsupportedOperationException())

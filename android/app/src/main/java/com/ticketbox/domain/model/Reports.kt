@@ -165,16 +165,6 @@ val PrimaryStatsTabs: List<StatsTab> = listOf(
     StatsTab.Category,
 )
 
-val DefaultAndroidDashboardCardKeys: List<String> = listOf(
-    DASHBOARD_CARD_PENDING,
-    DASHBOARD_CARD_MONTHLY_SPEND,
-    DASHBOARD_CARD_REPORTS,
-    DASHBOARD_CARD_BUDGET,
-    DASHBOARD_CARD_GOALS,
-    DASHBOARD_CARD_RECURRING,
-    DASHBOARD_CARD_RECENT_UPLOADS,
-)
-
 data class DashboardCard(
     val key: String,
     val title: String,
@@ -193,48 +183,5 @@ data class DashboardCardUpdate(
     val position: Int,
 )
 
-fun visibleDashboardCardKeys(cards: List<DashboardCard>): List<String> {
-    if (cards.isEmpty()) {
-        return DefaultAndroidDashboardCardKeys
-    }
-    val defaultOrder = DefaultAndroidDashboardCardKeys.withIndex().associate { it.value to it.index }
-    return cards
-        .filter { it.visible }
-        .sortedWith(
-            compareBy<DashboardCard> { it.position }
-                .thenBy { defaultOrder[it.key] ?: Int.MAX_VALUE }
-                .thenBy { it.key },
-        )
-        .map { it.key }
-}
-
-fun statsDashboardKeysForTab(
-    tab: StatsTab,
-    keys: List<String>,
-    tagFilterActive: Boolean = false,
-): List<String> {
-    val allowedKeys = if (tagFilterActive) {
-        when (tab) {
-            StatsTab.Overview -> setOf(DASHBOARD_CARD_MONTHLY_SPEND)
-            StatsTab.Trend -> setOf(DASHBOARD_CARD_REPORTS)
-            StatsTab.Category -> setOf(DASHBOARD_CARD_REPORTS)
-            StatsTab.Budget, StatsTab.Goals -> emptySet()
-        }
-    } else {
-        when (tab) {
-            StatsTab.Overview -> setOf(
-                DASHBOARD_CARD_MONTHLY_SPEND,
-                DASHBOARD_CARD_PENDING,
-                DASHBOARD_CARD_RECENT_UPLOADS,
-            )
-            StatsTab.Trend -> setOf(DASHBOARD_CARD_REPORTS)
-            StatsTab.Category -> setOf(DASHBOARD_CARD_REPORTS)
-            StatsTab.Budget -> setOf(
-                DASHBOARD_CARD_BUDGET,
-                DASHBOARD_CARD_RECURRING,
-            )
-            StatsTab.Goals -> setOf(DASHBOARD_CARD_GOALS)
-        }
-    }
-    return keys.filter { it in allowedKeys }
-}
+fun visibleDashboardCards(cards: List<DashboardCard>): List<DashboardCard> =
+    cards.filter { it.visible }.sortedBy { it.position }

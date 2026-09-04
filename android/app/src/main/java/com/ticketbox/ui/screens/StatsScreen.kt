@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +39,11 @@ import com.ticketbox.ui.design.AppAdaptiveContentWidth
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
 import com.ticketbox.ui.screens.stats.StatsFilterControls
+import com.ticketbox.ui.screens.stats.DashboardLayoutEditor
+import com.ticketbox.ui.screens.stats.DashboardLayoutEditorContent
+import com.ticketbox.ui.screens.stats.DashboardLayoutEntry
+import com.ticketbox.ui.screens.stats.OverviewInteractionActions
+import com.ticketbox.ui.screens.stats.OverviewModulesState
 import com.ticketbox.ui.screens.stats.StatsUnreadableState
 import com.ticketbox.ui.screens.stats.StatsViewTabs
 import com.ticketbox.viewmodel.StatsFilterOptionsLoadState
@@ -48,6 +55,7 @@ data class StatsScreenActions(
     val onRefresh: () -> Unit,
     val onOpenDataQuality: () -> Unit,
     val reports: StatsReportActions,
+    val overview: OverviewInteractionActions,
 )
 
 data class StatsFilterActions(
@@ -73,6 +81,7 @@ private enum class StatsControlsMode { FiltersAndTabs, Tabs }
 fun StatsScreen(
     state: StatsUiState,
     actions: StatsScreenActions,
+    overview: OverviewModulesState,
 ) {
     var showMonthPicker by rememberSaveable { mutableStateOf(false) }
     var selectedStatsTab by rememberSaveable { mutableStateOf(StatsTab.Overview) }
@@ -93,9 +102,24 @@ fun StatsScreen(
     }
 
     val adaptivePolicy = LocalAppAdaptiveLayoutPolicy.current
+    if (overview.layout.draft != null && adaptivePolicy.usesOfficialVerticalHingeBounds) {
+        AppAdaptivePaneScaffold(
+            structure = AppAdaptivePaneStructures.Insights,
+            policy = adaptivePolicy,
+            primaryPane = { DashboardLayoutEditorContent(overview.layout, actions = actions.overview.layout) },
+            supportingPane = appAdaptiveSupportingPaneContent(purpose = AppAdaptivePanePurpose.InsightControls) {
+                AppAdaptiveSupportingPane(role = AppPageRole.Stats) {
+                    Text(stringResource(R.string.dashboard_editor_description), style = MaterialTheme.typography.bodyLarge)
+                }
+            },
+        )
+        return
+    }
+    DashboardLayoutEditor(overview.layout, actions.overview.layout)
     val paneState = StatsAdaptivePaneState(
         screenState = state,
         selectedTab = selectedStatsTab,
+        overview = overview,
     )
     val paneActions = StatsAdaptivePaneActions(
         screenActions = actions,
@@ -145,6 +169,7 @@ fun StatsScreen(
 private data class StatsAdaptivePaneState(
     val screenState: StatsUiState,
     val selectedTab: StatsTab,
+    val overview: OverviewModulesState,
 )
 
 private data class StatsAdaptivePaneActions(
@@ -197,7 +222,12 @@ private fun StatsPrimaryPane(
             state = state,
             selectedTab = paneState.selectedTab,
             actions = actions.reports,
-            onOpenDataQuality = actions.onOpenDataQuality,
+            overview = StatsOverviewProductState(
+                layout = paneState.overview,
+                modules = actions.overview.modules,
+                onOpenDataQuality = actions.onOpenDataQuality,
+                onTrend = { paneActions.onTabChange(StatsTab.Trend) },
+            ),
         )
     }
 }
@@ -226,16 +256,21 @@ private fun StatsControlsBlock(
                 selectedTab = paneState.selectedTab,
                 onTabChange = paneActions.onTabChange,
             )
+            if (paneState.selectedTab == StatsTab.Overview) {
+                DashboardLayoutEntry(paneState.overview.layout, actions.overview.layout)
+            }
             StatsStatusMessages(
                 state = state,
                 selectedTab = paneState.selectedTab,
             )
         }
 
-        StatsControlsMode.Tabs -> StatsViewTabs(
-            selectedTab = paneState.selectedTab,
-            onTabChange = paneActions.onTabChange,
-        )
+        StatsControlsMode.Tabs -> Column {
+            StatsViewTabs(selectedTab = paneState.selectedTab, onTabChange = paneActions.onTabChange)
+            if (paneState.selectedTab == StatsTab.Overview) {
+                DashboardLayoutEntry(paneState.overview.layout, actions.overview.layout)
+            }
+        }
     }
 }
 
