@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from html.parser import HTMLParser
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -126,13 +128,35 @@ def test_web_export_csv_uses_tag_filter(web_client: TestClient, *, identity) -> 
         tags="Shared",
     )
 
-    response = web_client.get(
-        "/web/export.csv?ledger_id=owner&month=2026-05&tag=Shared"
-    )
+    form = _CsvExportForm(web_client.get("/web/import?ledger_id=owner").text)
+    assert {"ledger_id", "month", "category", "tag"} <= form.fields.keys()
+    form.fields.update(month="2026-05", category="餐饮", tag="Shared")
+    response = web_client.get("/web/export.csv", params=form.fields)
     assert response.status_code == 200
     assert "Owner Shared" in response.text
     assert "Owner Other" not in response.text
     assert "Gray Shared" not in response.text
+
+
+class _CsvExportForm(HTMLParser):
+    """Submit the controls the rendered native GET form actually exposes."""
+
+    def __init__(self, html: str) -> None:
+        super().__init__()
+        self.fields: dict[str, str] = {}
+        self.in_export = False
+        self.feed(html)
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        values = dict(attrs)
+        if tag == "form":
+            self.in_export = values.get("action") == "/web/export.csv" and values.get("method") == "get"
+        if self.in_export and tag == "input" and values.get("name") and "disabled" not in values:
+            self.fields[values["name"]] = values.get("value") or ""
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "form":
+            self.in_export = False
 
 
 # UI/UX 批 14: /web/stats 页删除。原 test_web_stats_uses_tag_filter 覆盖的「按标签
