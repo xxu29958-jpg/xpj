@@ -20,23 +20,6 @@
    迁 product 洞察域 (domains/insights.css 的 layout-editor/report-* 族),
    旧定义零引用, 已物理删除。
    trend-chart / rank-list / category-compare / compare-bar 等 legacy 块已删除——
- * 0 个模板引用,reports/stats 页改用 ECharts (reports.js) 和 dt-card 系统。 */
-
-.goal-list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-}
-.goal-row {
-    padding: var(--space-3-5) 0;
-    border-bottom: 1px solid var(--border-card);
-}
-.goal-row:last-child { border-bottom: none; }
-.goal-row-head {
-    display: flex;
-    justify-content: space-between;
-    gap: var(--space-4);
-    align-items: center;
-    margin-bottom: var(--space-2);
-}
-.goal-row.is-archived { opacity: 0.72; }
+ * 0 个模板引用,reports/stats 页改用 ECharts (reports.js) 和 dt-card 系统。
+ * C2 计划片: goal-list / goal-row 随 goals.html 迁 product 计划域
+   (domains/plans.css 的 plan-goal 族), 旧定义零引用, 已物理删除。 */

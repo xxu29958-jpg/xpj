@@ -1,92 +1,128 @@
 {% extends "base.html" %}
-{% block title %}AI 预算建议 · 小票夹{% endblock %}
+{% set page_title = '预算建议' %}
+{% set product_body_domain = 'plans' %}
+{% block title %}预算建议 · 小票夹{% endblock %}
 
+{# C2 预算建议迁入 product 正文栈:
+   - 主叙事 = 「本月可自由支配」本地计算 (income−fixed−spent−savings−reserved,
+     budget_baseline_service Owner), hero 直接给焦点数字与算式分解;
+   - 智能建议是可选副线: 未开启时只说「未开启 + 本地计算正常」, 不向普通用户
+     暴露 provider 内部名 / 环境变量 / ADR 等运维注记 (该说明段随旧栈退役);
+   - 参数 (月份/储蓄目标/备用金) 与建议结果成左右工作区, POST 走同一表单的
+     两个 submit (run_advise=true 才允许外呼, 成本边界仍在服务端);
+   - 建议语义诚实: 只是参考不是预算, 采纳入口 = 月度预算页手动设置。 #}
 {% block content %}
-<div class="page-header">
-  <h1 class="page-title">AI 预算建议</h1>
-  <div class="page-sub">{{ month }} · 本月可自由支配 + 可选的 AI 建议（默认不调用 AI）。</div>
-</div>
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">计划 / 预算建议</span>
+    <h1 class="page-title">预算建议</h1>
+    <p class="product-page-summary">{{ month }} · 本月可自由支配由你的账本实时算出；智能建议可选，默认不调用。</p>
+  </div>
+</header>
 
-<div class="dt-card">
-  <div class="dt-eyebrow">本月可自由支配</div>
-  <div class="kpi-cell kpi-cell--bare kpi-cell--hero">
-    <div class="val"><span class="yuan">{{ home_currency_symbol }}</span>{{ discretionary_yuan }}</div>
+<div class="plan-flow">
+<section class="product-panel product-panel--padded" aria-label="本月可自由支配">
+  <div class="plan-discretionary">
+    <div>
+      <span class="product-eyebrow">本月可自由支配</span>
+      <span class="plan-income-value"><small>{{ home_currency_symbol }}</small>{{ discretionary_yuan }}</span>
+    </div>
+    <p>已到账收入 − 固定支出 − 已花 − 储蓄目标 − 备用金。全部用你的账本由本地服务实时计算，不调用外部 AI。</p>
   </div>
-  <div class="text-meta">
-    {{ home_currency_symbol }}{{ income_yuan }} 已到账收入
-    − {{ home_currency_symbol }}{{ fixed_yuan }} 固定支出
-    − {{ home_currency_symbol }}{{ spent_yuan }} 已花
-    − {{ home_currency_symbol }}{{ savings_yuan }} 储蓄目标
-    − {{ home_currency_symbol }}{{ reserved_yuan }} 备用金
+  <div class="plan-breakdown">
+    <span><small>已到账收入</small><strong>{{ home_currency_symbol }}{{ income_yuan }}</strong></span>
+    <span><small>固定支出</small><strong>− {{ home_currency_symbol }}{{ fixed_yuan }}</strong></span>
+    <span><small>已花</small><strong>− {{ home_currency_symbol }}{{ spent_yuan }}</strong></span>
+    <span><small>储蓄目标</small><strong>− {{ home_currency_symbol }}{{ savings_yuan }}</strong></span>
+    <span><small>备用金</small><strong>− {{ home_currency_symbol }}{{ reserved_yuan }}</strong></span>
   </div>
-</div>
+</section>
 
-<form method="post" action="/web/budget-advise" class="dt-card">
-  <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-  <div class="dt-eyebrow">参数</div>
-  <div class="dt-form-row">
-    <label>月份</label>
-    <input class="dt-input" type="month" name="month" value="{{ month }}">
-  </div>
-  <div class="dt-form-row">
-    <label>储蓄目标（{{ currency_input.currency_code }}）</label>
-    <input class="dt-input" type="number" name="savings_target_yuan" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" value="{{ savings_target_yuan }}">
-  </div>
-  <div class="dt-form-row">
-    <label>备用金（{{ currency_input.currency_code }}）</label>
-    <input class="dt-input" type="number" name="reserved_buffer_yuan" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" value="{{ reserved_buffer_yuan }}">
-  </div>
-  <div class="dt-actions">
-    <button class="dt-btn" type="submit">重新计算</button>
-    {% if provider_enabled %}
-    <button class="dt-btn primary" type="submit" name="run_advise" value="true">
-      调用 AI 建议
-    </button>
+<div class="advice-workspace">
+  <section class="product-panel product-panel--padded" aria-label="计算参数">
+    <div class="product-panel-header">
+      <h2 class="product-panel-title">参数</h2>
+      <p class="product-panel-subtitle">改了参数就重新算一次。</p>
+    </div>
+    <form method="post" action="/web/budget-advise" class="budget-form">
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      {{ csrf_field|safe }}
+      <div class="product-field">
+        <label for="advise-month">月份</label>
+        <input id="advise-month" class="product-input" type="month" name="month" value="{{ month }}">
+      </div>
+      <div class="product-field">
+        <label for="advise-savings">储蓄目标（{{ currency_input.currency_code }}）</label>
+        <input id="advise-savings" class="product-input" type="number" name="savings_target_yuan" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" value="{{ savings_target_yuan }}">
+      </div>
+      <div class="product-field">
+        <label for="advise-reserved">备用金（{{ currency_input.currency_code }}）</label>
+        <input id="advise-reserved" class="product-input" type="number" name="reserved_buffer_yuan" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" value="{{ reserved_buffer_yuan }}">
+      </div>
+      <div class="budget-actions">
+        <button class="product-button" type="submit">重新计算</button>
+        {% if provider_enabled %}
+        <button class="product-button product-button--primary" type="submit" name="run_advise" value="true">获取智能建议</button>
+        {% endif %}
+      </div>
+    </form>
+  </section>
+
+  <section class="product-panel product-panel--padded" aria-label="智能建议">
+    <div class="product-panel-header">
+      <h2 class="product-panel-title">智能建议</h2>
+      <p class="product-panel-subtitle">可选；只看到匿名化的分类聚合。</p>
+    </div>
+    {% if not provider_enabled %}
+    <div class="product-state">
+      <div class="product-state-title">智能建议未开启</div>
+      <div class="product-state-body">本地计算不受影响，上方结果照常可用。开启后，建议也只会看到匿名化的分类聚合，不会看到商户名、姓名或票据图片。</div>
+    </div>
+    {% elif advise_error %}
+    <div class="product-feedback product-feedback--danger" role="alert">{{ advise_error }}</div>
+    {% elif not run_advise %}
+    <div class="product-state">
+      <div class="product-state-title">还没有生成建议</div>
+      <div class="product-state-body">在参数区点「获取智能建议」生成一份参考。建议只看到匿名化的分类聚合，不会看到真实商户名、真实姓名或图片。</div>
+    </div>
+    {% elif advice is none %}
+    <div class="product-state">
+      <div class="product-state-title">这次没有返回建议</div>
+      <div class="product-state-body">可能服务暂时不可用，或数据还不足。本地计算不受影响，上方结果照常可用。</div>
+    </div>
+    {% else %}
+    <div class="advice-summary">
+      <strong>{{ advice.summary }}</strong>
+      {% if advice.confidence is not none %}
+      <span class="hint">置信度 {{ '%.0f' % (advice.confidence * 100) }}%</span>
+      {% endif %}
+    </div>
+    {% if advice.suggestions %}
+    <div class="product-table-wrap">
+      <table class="product-table">
+        <thead>
+          <tr>
+            <th scope="col">分类</th>
+            <th scope="col" class="amount">建议金额</th>
+            <th scope="col">理由</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in advice.suggestions %}
+          <tr>
+            <td>{{ s.category if s.category is not none else '（整体）' }}</td>
+            <td class="amount">{{ home_currency_symbol }}{{ minor_amount_label(s.suggested_amount_cents) }}</td>
+            <td>{{ s.rationale }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
     {% endif %}
-  </div>
-</form>
-
-<div class="dt-card">
-  <div class="dt-eyebrow">AI 建议</div>
-  {% if not provider_enabled %}
-  <div class="text-meta">
-    AI 建议未启用 (BUDGET_ADVISOR_PROVIDER=empty)。当前 provider：<code>{{ provider_name }}</code>。
-    要启用本地或云端 AI，参考 ADR-0036 设置 <code>BUDGET_ADVISOR_BASE_URL</code> / <code>BUDGET_ADVISOR_MODEL</code>。
-  </div>
-  {% elif advise_error %}
-  <div class="callout-info callout-info--danger">{{ advise_error }}</div>
-  {% elif not run_advise %}
-  <div class="text-meta">点击上方"调用 AI 建议"按钮获取建议。AI 只看到匿名化的分类聚合，不会看到真实商户名 / 真实姓名 / 图片。</div>
-  {% elif advice is none %}
-  <div class="text-meta">本次 AI 调用没有返回建议（可能 AI 服务暂时不可用，或数据不足）。本地预算计算仍按上方数据正常工作。</div>
-  {% else %}
-  <div class="dt-h4">{{ advice.summary }}</div>
-  {% if advice.confidence is not none %}
-  <div class="text-meta">置信度：{{ '%.0f' % (advice.confidence * 100) }}%</div>
-  {% endif %}
-  {% if advice.suggestions %}
-  <table class="dt-table">
-    <thead>
-      <tr>
-        <th>分类</th>
-        <th class="amount">建议金额</th>
-        <th>理由</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for s in advice.suggestions %}
-      <tr>
-        <td>{{ s.category if s.category is not none else '（整体）' }}</td>
-        <td class="amount">{{ home_currency_symbol }}{{ minor_amount_label(s.suggested_amount_cents) }}</td>
-        <td>{{ s.rationale }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  <div class="text-meta">⚠ AI 给的是建议，不是预算。要采纳请到"月度预算"页面手动设置。</div>
-  {% endif %}
-  {% endif %}
+    <p class="hint">建议只是参考，不是预算——要采纳请到「月度预算」手动设置。</p>
+    {% endif %}
+  </section>
+</div>
 </div>
 
 {% endblock %}

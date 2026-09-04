@@ -65,21 +65,6 @@
 }
 .kpi-cell.is-danger .val     { color: var(--state-danger-fg); }
 
-/* v0.11 KPI 词汇收敛: 原 components/cards.css 的 .kpi-amount 并入本体系。
-   两档: 默认 .kpi-strip > .kpi-cell = 多指标网格 (label / val 24px / foot,
-   自带卡皮); .kpi-cell--bare + .kpi-cell--hero = 卡内单 hero 金额 (38px,
-   宿主 dt-card 已有皮故去皮)。属性逐字节搬运自 .kpi-amount, 渲染不变。 */
-.kpi-cell--bare {
-    padding: 0;
-    background: transparent;
-    border: none;
-    border-radius: 0;
-}
-.kpi-cell--hero .val {
-    font-weight: 400;
-    font-size: 38px;
-    letter-spacing: -0.02em;
-    line-height: 1.1;
-}
-.kpi-cell--hero .val .yuan { font-size: 18px; margin-right: 4px; }
-.kpi-cell--hero .val .decimals { font-size: 22px; color: var(--text-meta); font-family: var(--font-num); }
+/* C2 计划片: .kpi-cell--bare / --hero 的唯一消费者是旧 budget_advise /
+   income_plans hero, 两页已迁 product 计划域 (plan-income-value /
+   plan-discretionary), 变体零引用, 已物理删除。 */
