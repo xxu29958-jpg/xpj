@@ -866,12 +866,19 @@ def test_owner_recovery_pages_remain_available_during_currency_adoption(
 
 
 def test_owner_ai_advisor_panel_opens(local_client: TestClient) -> None:
+    import re
+
     response = local_client.get("/owner/ai-advisor")
     assert response.status_code == 200
     assert "Provider" in response.text
     assert "/owner/ai-advisor/confirmation" in response.text
     assert '<details class="owner-sidebar__group owner-sidebar__advanced" open>' in response.text
-    assert '<a href="/owner/ai-advisor" class="is-active">AI 顾问</a>' in response.text
+    active_link = re.search(r'<a\b([^>]*)>AI 顾问</a>', response.text)
+    assert active_link is not None
+    attributes = dict(re.findall(r'([\w-]+)="([^"]*)"', active_link.group(1)))
+    assert attributes["href"] == "/owner/ai-advisor"
+    assert "is-active" in attributes["class"].split()
+    assert attributes["aria-current"] == "page"
 
 
 def test_owner_ai_advisor_confirmation_updates_runtime_projection(
