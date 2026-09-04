@@ -1,77 +1,106 @@
 {% extends "base.html" %}
-{% block title %}未分类清单 — 小票夹{% endblock %}
+{% set page_title = '未分类' %}
+{% set product_body_domain = 'transactions' %}
+{% block title %}未分类 · 资料库 · 小票夹{% endblock %}
+
+{# C4 旧栈收官: 未分类核对页迁 product 流水域, 消费 transactions.css 既有
+   uncategorized-* 词汇 (高密度核对表 + 顶部单一批量条, ≤40rem 行卡)。两处
+   真实缺陷随迁移修复: bulk-set 表单补现有 csrf_token (无 JS 原生 POST 不再
+   403); 内联 select-all 脚本在 CSP 下从不执行, 外迁 desktop/uncategorized.js
+   (page_scripts), 无 JS 逐勾仍完全可用。能力不变: 勾选批量改写分类
+   (不自动确认、不动已确认账单), viewer 只读, 规则接管入口保留。 #}
 {% block content %}
-<h1 class="page-title page-title--compact">未分类的待确认账单</h1>
-<p class="meta">
-  {% if can_write %}
-  下列账单的分类为「其他/未分类」。勾选后批量改写分类，不会自动确认，也不会修改已确认账单。
-  如需让规则自动接管，请到<a href="/web/rules{{ q }}">分类规则</a>新增关键词规则。
-  {% else %}
-  下列账单的分类为「其他/未分类」。只读角色只能查看，不能批量改写分类。
-  {% endif %}
-</p>
+<nav class="library-breadcrumb" aria-label="面包屑">
+  <a class="library-breadcrumb-parent" href="/web/categories{{ q }}">分类</a>
+  <span class="library-breadcrumb-sep" aria-hidden="true">/</span>
+  <span class="library-breadcrumb-current" aria-current="page">未分类</span>
+</nav>
+
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <h1 class="page-title page-title--compact">未分类的待确认账单</h1>
+    <p class="product-page-summary">
+      {% if can_write %}
+      下列账单的分类为「其他/未分类」。勾选后批量改写分类，不会自动确认，也不会修改已确认账单。
+      如需让规则自动接管，请到<a href="/web/rules{{ q }}">分类规则</a>新增关键词规则。
+      {% else %}
+      下列账单的分类为「其他/未分类」。只读角色只能查看，不能批量改写分类。
+      {% endif %}
+    </p>
+  </div>
+</header>
 
 {% if flash_message %}
-<div class="dt-alert success">{{ flash_message }}</div>
+<div class="product-feedback product-feedback--success" role="status">{{ flash_message }}</div>
 {% endif %}
 
 {% if uncategorized_items %}
-<section class="dt-card">
-  <form method="post" action="/web/categories/uncategorized/bulk-set" class="dt-form-grid">
+<section class="product-panel uncategorized-workspace" aria-label="未分类账单核对">
+  <form method="post" action="/web/categories/uncategorized/bulk-set" class="uncategorized-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <table class="dt-table">
-      <thead>
-        <tr>
-          <th><input type="checkbox" id="select-all" {% if not can_write %}disabled{% endif %}></th>
-          <th>创建时间</th>
-          <th>商家</th>
-          <th class="num">金额</th>
-          <th>当前分类</th>
-          <th>备注</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for item in uncategorized_items %}
-        <tr>
-          <td><input type="checkbox" name="expense_ids" value="{{ item.id }}" {% if not can_write %}disabled{% endif %}></td>
-          <td>{{ item.created_at }}</td>
-          <td>{{ item.merchant or '—' }}</td>
-          <td class="num">{% if item.amount_yuan %}{{ home_currency_symbol }}{{ item.amount_yuan }}{% else %}—{% endif %}</td>
-          <td>{{ item.category or '未分类' }}</td>
-          <td>{{ item.note or '' }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    <div class="form-inline">
+    <h2 class="uncategorized-header product-panel-title">共 {{ uncategorized_items|length }} 笔待整理</h2>
+    {# 定稿: 批量条在表格上方单一处 (先选分类再看行, 手机不追底栏);
+       唯一 #select-all 也在这里 —— ≤40rem 表头视觉隐藏后全选仍可达
+       (真实反例: w3-import-review-controls); label 与 select 真关联。 #}
+    <div class="uncategorized-bulkbar">
+      <label class="product-check uncategorized-select-all">
+        <input type="checkbox" id="select-all" {% if not can_write %}disabled{% endif %}>
+        <span>全选</span>
+      </label>
       {% if can_write %}
-      <label>批量设置为
-        <select name="category" required>
+      <div class="product-field uncategorized-category-field">
+        <label for="uncategorized-bulk-category">批量设置为</label>
+        <select id="uncategorized-bulk-category" name="category" required>
           <option value="">请选择分类…</option>
           {% for cat in default_categories %}
           <option value="{{ cat }}">{{ cat }}</option>
           {% endfor %}
         </select>
-      </label>
-      <button type="submit" class="dt-btn primary">应用到所选</button>
-      {% else %}<span class="readonly-inline">只读角色无法批量改写分类。</span>{% endif %}
-      <a href="/web/categories{{ q }}" class="dt-btn">返回分类账本</a>
+      </div>
+      <button type="submit" class="product-button product-button--primary">应用到所选</button>
+      {% else %}<span class="text-meta">只读角色无法批量改写分类。</span>{% endif %}
+      <a href="/web/categories{{ q }}" class="product-button product-button--quiet">返回分类账本</a>
     </div>
+    <table class="product-table uncategorized-table">
+      <thead>
+        <tr>
+          <th scope="col">选择</th>
+          <th scope="col">创建时间</th>
+          <th scope="col">商家</th>
+          <th scope="col" class="amount">金额</th>
+          <th scope="col">当前分类</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in uncategorized_items %}
+        <tr>
+          <td>
+            <label class="product-check" aria-label="选择 {{ item.merchant or '这笔账单' }}">
+              <input type="checkbox" name="expense_ids" value="{{ item.id }}" {% if not can_write %}disabled{% endif %}>
+            </label>
+          </td>
+          <td>{{ item.created_at }}</td>
+          <td>
+            {{ item.merchant or '—' }}
+            {% if item.note %}<div class="uncategorized-note" title="{{ item.note }}">{{ item.note }}</div>{% endif %}
+          </td>
+          <td class="amount">{% if item.amount_yuan %}{{ home_currency_symbol }}{{ item.amount_yuan }}{% else %}—{% endif %}</td>
+          <td>{{ item.category or '未分类' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </form>
 </section>
-<script>
-  (function () {
-    var all = document.getElementById('select-all');
-    if (!all) { return; }
-    all.addEventListener('change', function () {
-      var boxes = document.querySelectorAll('input[name="expense_ids"]');
-      for (var i = 0; i < boxes.length; i++) { boxes[i].checked = all.checked; }
-    });
-  })();
-</script>
 {% else %}
-<div class="dt-card">
-  <p>当前账本没有未分类的待确认账单。可以回到<a href="/web/categories{{ q }}">分类账本</a>。</p>
+<div class="product-state">
+  <div class="product-state-title">当前账本没有未分类的待确认账单</div>
+  <div class="product-state-body">可以回到<a href="/web/categories{{ q }}">分类账本</a>查看各分类汇总。</div>
 </div>
 {% endif %}
+{% endblock %}
+
+{% block page_scripts %}
+  <script defer src="/static/web/desktop/uncategorized.js?v={{ asset_version }}"></script>
 {% endblock %}

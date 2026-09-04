@@ -227,16 +227,13 @@ def test_web_reports_static_echarts_vendor_is_self_hosted(client: TestClient) ->
     assert reports_js.status_code == 200
     assert "reports-overview-data" in reports_js.text
     assert "rgba(15,23,42" not in reports_js.text
-    assert reports_css.status_code == 200
-    # W3 洞察片: 导出 dialog 样式随 reports 正文迁 product 洞察域, 旧栈不再携带。
-    assert ".report-export-dialog" not in reports_css.text
-    assert ".reports-export-dialog" not in reports_css.text
+    assert reports_css.status_code == 404
+    # 导出 dialog 由产品洞察域承载，旧样式已物理退役。
     product_insights_css = client.get("/static/web/product/domains/insights.css")
     assert product_insights_css.status_code == 200
     assert ".report-export-dialog::backdrop" in product_insights_css.text
     assert ".reports-export-dialog" not in product_insights_css.text
-    assert reports_feature_css.status_code == 200
-    assert ".reports-export-dialog" not in reports_feature_css.text
+    assert reports_feature_css.status_code == 404
     assert product_components_css.status_code == 200
     assert re.search(r"\.bulk-bar\s*\{[^}]*display:\s*flex", product_components_css.text, re.S)
     assert re.search(
@@ -246,10 +243,7 @@ def test_web_reports_static_echarts_vendor_is_self_hosted(client: TestClient) ->
     )
     # 收件域收口片: 旧页级 pages/pending.css 物理退役, 不再可被引用。
     assert retired_pending_css.status_code == 404
-    assert bulk_bar_css.status_code == 200
-    assert "@media (max-width: 720px)" in bulk_bar_css.text
-    assert ".bulk-bar .bulk-field" in bulk_bar_css.text
-    assert "flex-basis: 100%" in bulk_bar_css.text
+    assert bulk_bar_css.status_code == 404
     assert "cdn.jsdelivr" not in reports_js.text
     assert "unpkg.com" not in reports_js.text
 

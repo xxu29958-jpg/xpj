@@ -33,6 +33,7 @@ from app.services.csv_import_batch_service import (
     get_csv_import_batch,
     list_csv_import_rows,
 )
+from app.services.spending_contract_service import accounting_datetime_label
 from app.services.stats_service import export_confirmed_csv
 
 router = APIRouter(prefix="/web", tags=["web"])
@@ -148,6 +149,8 @@ def web_import_batch_detail(
     ctx.update(
         {
             "batch": batch,
+            "created_label": accounting_datetime_label(batch.created_at),
+            "updated_label": accounting_datetime_label(batch.updated_at),
             "rows": rows_page.items,
             "page": rows_page.page,
             "page_size": rows_page.page_size,
