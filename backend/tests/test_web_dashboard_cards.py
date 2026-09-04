@@ -177,7 +177,8 @@ def test_dashboard_native_forms_save_and_reset_without_javascript(
         order = ["goals", *[key for key in WEB_CARD_KEYS if key != "goals"]]
         payload = _dashboard_form_payload(order, hidden={"reports"})
         payload.pop("ledger_id")
-        payload.update(forms[f"{route}/save"])
+        # Keep the user's multi-value card order; only take scope/token from SSR.
+        payload.update({name: forms[f"{route}/save"][name] for name in ("ledger_id", "csrf_token")})
         headers = {"Origin": "http://127.0.0.1", "Referer": str(page.url)}
         saved = browser.post(f"{route}/save", data=payload, headers=headers, follow_redirects=False)
         assert saved.status_code == 303, saved.text
