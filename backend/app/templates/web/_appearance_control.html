@@ -1,6 +1,7 @@
-{# 外观控件 (W1 Warm Ledger): 单一「外观」popover 聚合 主题/质感/强调色三条
-   本地偏好轴。<details> 原生可开合, 无 JS 也可用; 三轴写入者是 theme.js,
-   值域见 tokens.css 外观轴段。不渲染用户素材入口。
+{# 外观控件 (W1 Warm Ledger): 单一「外观」popover 聚合 主题/质感/强调色/背景四条
+   本地偏好轴。<details> 原生可开合, 无 JS 也可用; 写入者是 theme.js (前三轴) 与
+   desktop/background.js (背景轴), 值域见 tokens.css 外观轴段; 背景轴的存储/渲染
+   owner 是 appearance-bootstrap.js 的 TicketboxBackground (单一 IDB record)。
    两个真实 consumer: base.html topbar (带 id, 桌面/宽屏入口) 与
    _ledger_switcher.html「我」popover (≤40rem, _appearance_nested=true)。
    theme.js 以 [data-appearance-popover] 多实例绑定, aria-pressed 跨实例同步。
@@ -31,6 +32,15 @@
         <button type="button" class="appearance-choice" data-accent-mode="ochre" aria-pressed="false"><span class="appearance-swatch appearance-swatch--ochre" aria-hidden="true"></span>赭石</button>
         <button type="button" class="appearance-choice" data-accent-mode="plum" aria-pressed="false"><span class="appearance-swatch appearance-swatch--plum" aria-hidden="true"></span>梅子</button>
       </div>
+    </div>
+    <div class="appearance-group" role="group" aria-label="背景">
+      <span class="appearance-label">背景</span>
+      <div class="appearance-options">
+        <button type="button" class="appearance-choice" data-background-import>自选图片…</button>
+        <button type="button" class="appearance-choice" data-background-edit disabled>调整构图</button>
+        <button type="button" class="appearance-choice" data-background-clear disabled>恢复默认</button>
+      </div>
+      <p class="appearance-status" data-background-status aria-live="polite" hidden></p>
     </div>
   </div>
 </details>

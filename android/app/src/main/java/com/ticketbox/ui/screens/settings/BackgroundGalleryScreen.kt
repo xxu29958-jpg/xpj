@@ -72,7 +72,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
-import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.ConnectionDiagnostics
@@ -109,8 +108,8 @@ fun BackgroundGalleryScreen(
     currentSettings: BackgroundSettings,
     onBack: () -> Unit,
     onPickCustomImage: () -> Unit,
-    onPreviewThemeDefault: () -> Unit,
-    onPreviewBuiltIn: (BuiltInBackground, String) -> Unit,
+    onRestoreTheme: () -> Unit,
+    onPreviewBuiltIn: (BuiltInBackground) -> Unit,
 ) {
     var selectedCategory by remember { mutableStateOf<BuiltInBackgroundCategory?>(null) }
     val backgrounds = selectedCategory?.let(BackgroundCatalog::byCategory) ?: BackgroundCatalog.entries
@@ -145,12 +144,11 @@ fun BackgroundGalleryScreen(
                 horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             ) {
                 rowBackgrounds.forEach { background ->
-                    val backgroundTitle = stringResource(builtInBackgroundNameRes(background))
                     BuiltInBackgroundCard(
                         modifier = Modifier.weight(1f),
                         background = background,
                         selected = currentSettings.builtInBackgroundId == background.id,
-                        onClick = { onPreviewBuiltIn(background, backgroundTitle) },
+                        onClick = { onPreviewBuiltIn(background) },
                     )
                 }
                 if (rowBackgrounds.size == 1) {
@@ -161,7 +159,7 @@ fun BackgroundGalleryScreen(
         SettingsSection(title = stringResource(R.string.background_gallery_section_custom_title), icon = Icons.Filled.PhotoLibrary) {
             BackgroundGalleryCustomActions(
                 onPickCustomImage = onPickCustomImage,
-                onPreviewThemeDefault = onPreviewThemeDefault,
+                onRestoreTheme = onRestoreTheme,
             )
         }
     }
@@ -170,7 +168,7 @@ fun BackgroundGalleryScreen(
 @Composable
 private fun BackgroundGalleryCustomActions(
     onPickCustomImage: () -> Unit,
-    onPreviewThemeDefault: () -> Unit,
+    onRestoreTheme: () -> Unit,
 ) {
     AppAdaptiveEditActionLayout(actionCount = 2, compact = false, stackTwoActionsOnNarrow = true) { mode ->
         when (mode) {
@@ -182,9 +180,9 @@ private fun BackgroundGalleryCustomActions(
                     modifier = Modifier.fillMaxWidth(),
                     onClick = onPickCustomImage,
                 )
-                BackgroundGalleryThemeDefaultButton(
+                BackgroundGalleryRestoreThemeButton(
                     modifier = Modifier.fillMaxWidth(),
-                    onClick = onPreviewThemeDefault,
+                    onClick = onRestoreTheme,
                 )
             }
             AppAdaptiveEditActionMode.Compact,
@@ -193,7 +191,7 @@ private fun BackgroundGalleryCustomActions(
                 horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap, Alignment.End),
             ) {
                 BackgroundGalleryPickImageButton(onClick = onPickCustomImage)
-                BackgroundGalleryThemeDefaultButton(onClick = onPreviewThemeDefault)
+                BackgroundGalleryRestoreThemeButton(onClick = onRestoreTheme)
             }
         }
     }
@@ -213,12 +211,12 @@ private fun BackgroundGalleryPickImageButton(
 }
 
 @Composable
-private fun BackgroundGalleryThemeDefaultButton(
+private fun BackgroundGalleryRestoreThemeButton(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     BackgroundActionButton(
-        text = stringResource(R.string.background_gallery_theme_default),
+        text = stringResource(R.string.appearance_background_restore_theme),
         modifier = modifier,
         leadingIcon = Icons.Filled.RestartAlt,
         onClick = onClick,

@@ -1,6 +1,5 @@
 package com.ticketbox.data.local
 
-import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.ImmersionMode
 import com.ticketbox.domain.model.NotificationPreferences
@@ -43,18 +42,6 @@ interface TicketboxSettingsStore {
     }
 
     suspend fun saveBackgroundSettings(settings: BackgroundSettings) {
-        unsupportedSettingsWrite()
-    }
-
-    suspend fun saveBackgroundImagePath(path: String) {
-        unsupportedSettingsWrite()
-    }
-
-    suspend fun clearBackgroundImage() {
-        unsupportedSettingsWrite()
-    }
-
-    suspend fun setBackgroundCropMode(mode: BackgroundCropMode) {
         unsupportedSettingsWrite()
     }
 

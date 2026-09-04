@@ -6,25 +6,36 @@ import kotlin.test.assertTrue
 
 class ImmersiveBackgroundTest {
     @Test
-    fun editAndSettingsKeepBackgroundMoreRestrainedThanPendingAndStats() {
-        val pending = resolveBackgroundAlpha(ImmersionMode.Atmosphere, SurfaceRole.Pending)
-        val stats = resolveBackgroundAlpha(ImmersionMode.Atmosphere, SurfaceRole.Stats)
-        val edit = resolveBackgroundAlpha(ImmersionMode.Atmosphere, SurfaceRole.Edit)
-        val settings = resolveBackgroundAlpha(ImmersionMode.Atmosphere, SurfaceRole.Settings)
-
-        assertTrue(pending > edit)
-        assertTrue(stats > settings)
-        assertTrue(edit <= 0.40f)
-        assertTrue(settings <= 0.36f)
+    fun editingAndSettingsProtectReadingMoreThanEverydayViews() {
+        for (dark in listOf(false, true)) {
+            for (mode in ImmersionMode.entries) {
+                assertTrue(
+                    photoContribution(mode, SurfaceRole.Edit, dark) < photoContribution(mode, SurfaceRole.Pending, dark),
+                )
+                assertTrue(
+                    photoContribution(mode, SurfaceRole.Settings, dark) < photoContribution(mode, SurfaceRole.Stats, dark),
+                )
+                for (role in SurfaceRole.entries) {
+                    assertTrue(
+                        resolveCustomImageScrimAlpha(mode, role, dark) >= resolveScrimAlpha(mode, role),
+                        "Uncontrolled photos need at least the reading protection of the built-in artwork",
+                    )
+                }
+            }
+        }
     }
 
     @Test
-    fun focusModeKeepsBackgroundSubtle() {
-        val ledger = resolveBackgroundAlpha(ImmersionMode.Focus, SurfaceRole.Ledger)
-        val edit = resolveBackgroundAlpha(ImmersionMode.Focus, SurfaceRole.Edit)
-
-        assertTrue(ledger <= 0.22f)
-        assertTrue(edit <= 0.18f)
+    fun focusModeReducesPhotoInterferenceWithoutRemovingThePhoto() {
+        for (dark in listOf(false, true)) {
+            for (role in SurfaceRole.entries) {
+                val focus = photoContribution(ImmersionMode.Focus, role, dark)
+                val balanced = photoContribution(ImmersionMode.Balanced, role, dark)
+                val atmosphere = photoContribution(ImmersionMode.Atmosphere, role, dark)
+                assertTrue(focus > 0f, "Focus must not erase the user's background")
+                assertTrue(focus < balanced && balanced < atmosphere, "Modes must reduce photo interference in order")
+            }
+        }
     }
 
     @Test
@@ -37,5 +48,9 @@ class ImmersiveBackgroundTest {
         assertTrue(edit > pending)
         assertTrue(settings > stats)
     }
-}
 
+    // The shared renderer puts the reading scrim over the photo layer. Their combined
+    // contribution, not an obsolete single-layer alpha, determines photo interference.
+    private fun photoContribution(mode: ImmersionMode, role: SurfaceRole, dark: Boolean): Float =
+        resolveBackgroundAlpha(mode, role) * (1f - resolveCustomImageScrimAlpha(mode, role, dark))
+}

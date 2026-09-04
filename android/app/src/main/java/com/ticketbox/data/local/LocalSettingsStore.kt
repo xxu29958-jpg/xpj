@@ -3,7 +3,6 @@ package com.ticketbox.data.local
 import android.content.Context
 import androidx.core.content.edit
 import androidx.datastore.preferences.preferencesDataStore
-import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.ImmersionMode
 import com.ticketbox.domain.model.NotificationPreferences
@@ -226,22 +225,6 @@ internal class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
 
     override suspend fun saveBackgroundSettings(settings: BackgroundSettings) {
         backgroundStore.saveBackgroundSettings(settings)
-    }
-
-    suspend fun clearBackground() {
-        backgroundStore.clearBackground()
-    }
-
-    override suspend fun saveBackgroundImagePath(path: String) {
-        backgroundStore.saveBackgroundImagePath(path)
-    }
-
-    override suspend fun clearBackgroundImage() {
-        clearBackground()
-    }
-
-    override suspend fun setBackgroundCropMode(mode: BackgroundCropMode) {
-        backgroundStore.setBackgroundCropMode(mode)
     }
 
     override suspend fun setImmersionMode(mode: ImmersionMode) {

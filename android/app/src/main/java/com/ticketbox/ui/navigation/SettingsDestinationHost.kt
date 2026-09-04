@@ -1,5 +1,6 @@
 package com.ticketbox.ui.navigation
 
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -11,7 +12,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.integerResource
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -26,7 +26,6 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ImmersionMode
 import com.ticketbox.domain.model.NotificationPreferences
 import com.ticketbox.domain.model.ledgerRoleCanModify
-import com.ticketbox.ui.appearance.background.BackgroundImageStore
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.screens.settings.AboutScreen
 import com.ticketbox.ui.screens.settings.AppearanceBackgroundActions
@@ -36,9 +35,9 @@ import com.ticketbox.ui.screens.settings.AppearancePreferenceState
 import com.ticketbox.ui.screens.settings.AppearanceScreen
 import com.ticketbox.ui.screens.settings.AppearanceScreenActions
 import com.ticketbox.ui.screens.settings.AppearanceScreenState
-import com.ticketbox.ui.screens.settings.BackgroundCropScreen
+import com.ticketbox.ui.screens.settings.BackgroundEditorActions
+import com.ticketbox.ui.screens.settings.BackgroundEditorScreen
 import com.ticketbox.ui.screens.settings.BackgroundGalleryScreen
-import com.ticketbox.ui.screens.settings.BackgroundPreviewScreen
 import com.ticketbox.ui.screens.settings.BackgroundTasksScreen
 import com.ticketbox.ui.screens.settings.DataExportScreen
 import com.ticketbox.ui.screens.settings.FamilyMembersScreen
@@ -99,9 +98,14 @@ internal data class SettingsRouteActions(
     val onSaveNotificationPreferences: (NotificationPreferences) -> Unit,
     val onThemeModeChange: (AppThemeMode) -> Unit,
     val onCurrencyChange: (CurrencyCode) -> Unit,
-    val onApplyBackgroundSettings: (BackgroundSettings) -> Unit,
+    // 全局背景批:导入 / 编辑 draft / 取消 / 应用全部由 AppearanceViewModel 唯一持有,
+    // UI 只转发意图,不碰文件与偏好写入。
+    val onImportBackgroundImage: (Uri) -> Unit,
+    val onEditBackground: (BackgroundSettings) -> Unit,
+    val onUpdateBackgroundDraft: (BackgroundSettings) -> Unit,
+    val onCancelBackgroundEdit: () -> Unit,
+    val onApplyBackgroundDraft: () -> Unit,
     val onClearBackgroundImage: () -> Unit,
-    val onBackgroundImageError: (String) -> Unit,
     val onImmersionModeChange: (ImmersionMode) -> Unit,
     val onParallaxChange: (Boolean) -> Unit,
     val onReduceMotionChange: (Boolean) -> Unit,
@@ -126,14 +130,8 @@ internal fun SettingsDestinationHost(
     repositories: SettingsRouteRepositories,
 ) {
     var route by remember { mutableStateOf<SettingsDestination>(SettingsDestination.Root) }
-    val context = LocalContext.current
-    val backgroundImageStore = remember(context) { BackgroundImageStore(context) }
     val appVersionName = stringResource(R.string.app_version_name)
     val appVersionCode = integerResource(R.integer.app_version_code)
-    // Resolve strings before launcher callbacks and runCatching handlers need them.
-    val backgroundCopyFailedMessage = stringResource(R.string.settings_background_copy_failed)
-    val backgroundCustomTitle = stringResource(R.string.settings_background_custom_title)
-    val backgroundCropFailedMessage = stringResource(R.string.settings_background_crop_failed)
 
     LaunchedEffect(route) {
         navigation.onSecondaryActiveChange(route != SettingsDestination.Root)
@@ -142,15 +140,22 @@ internal fun SettingsDestinationHost(
         onDispose { navigation.onSecondaryActiveChange(false) }
     }
 
+    // 状态驱动导航:editor 出现(导入成功 / 调整构图 / 选内置)→进编辑面;
+    // editor 消失(取消或应用成功)→回外观页。取消的候选图清理由 VM 完成。
+    val backgroundEditorOpen = states.appearance.editor != null
+    LaunchedEffect(backgroundEditorOpen) {
+        if (backgroundEditorOpen && route != SettingsDestination.BackgroundEditor) {
+            route = SettingsDestination.BackgroundEditor
+        } else if (!backgroundEditorOpen && route == SettingsDestination.BackgroundEditor) {
+            route = SettingsDestination.Appearance
+        }
+    }
+
     val backgroundPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        runCatching {
-            backgroundImageStore.copyPickedImageToPrivateStorage(uri)
-        }
-            .onSuccess { path -> route = SettingsDestination.BackgroundCrop(path) }
-            .onFailure { actions.onBackgroundImageError(backgroundCopyFailedMessage) }
+        actions.onImportBackgroundImage(uri)
     }
 
     fun launchImagePicker() {
@@ -159,25 +164,17 @@ internal fun SettingsDestinationHost(
         )
     }
 
-    fun previewThemeDefault() {
-        actions.onApplyBackgroundSettings(states.appearance.backgroundSettings.withoutBackground())
-    }
-
     BackHandler {
-        if (route == SettingsDestination.Root) {
-            navigation.onCloseRoot()
-        } else {
-            route = when (route) {
-                SettingsDestination.BackgroundGallery,
-                is SettingsDestination.BackgroundCrop,
-                is SettingsDestination.BackgroundPreview,
-                -> SettingsDestination.Appearance
-                else -> SettingsDestination.Root
-            }
+        when (route) {
+            SettingsDestination.Root -> navigation.onCloseRoot()
+            // 编辑面返回 = 取消:VM 丢弃 draft 与候选文件,状态收敛后路由自动回外观页。
+            SettingsDestination.BackgroundEditor -> actions.onCancelBackgroundEdit()
+            SettingsDestination.BackgroundGallery -> route = SettingsDestination.Appearance
+            else -> route = SettingsDestination.Root
         }
     }
 
-    when (val currentRoute = route) {
+    when (route) {
         SettingsDestination.Root -> SettingsRootScreen(
             state = states.settings,
             showAdvancedTools = chromeState.showAdvancedTools,
@@ -238,11 +235,8 @@ internal fun SettingsDestinationHost(
                 background = AppearanceBackgroundActions(
                     onOpenGallery = { route = SettingsDestination.BackgroundGallery },
                     onPickCustomImage = ::launchImagePicker,
-                    onPreviewThemeDefault = ::previewThemeDefault,
-                    onClearBackgroundImage = {
-                        backgroundImageStore.deleteCustomBackground(states.appearance.backgroundSettings.customImagePath)
-                        actions.onClearBackgroundImage()
-                    },
+                    onEditBackground = actions.onEditBackground,
+                    onClearBackgroundImage = actions.onClearBackgroundImage,
                 ),
                 immersion = AppearanceImmersionActions(
                     onModeChange = actions.onImmersionModeChange,
@@ -256,47 +250,27 @@ internal fun SettingsDestinationHost(
             currentSettings = states.appearance.backgroundSettings,
             onBack = { route = SettingsDestination.Appearance },
             onPickCustomImage = ::launchImagePicker,
-            onPreviewThemeDefault = ::previewThemeDefault,
-            onPreviewBuiltIn = { background, title ->
-                route = SettingsDestination.BackgroundPreview(
-                    settings = states.appearance.backgroundSettings.withBuiltInBackground(background.id),
-                    title = title,
+            onRestoreTheme = actions.onClearBackgroundImage,
+            onPreviewBuiltIn = { background ->
+                actions.onEditBackground(
+                    states.appearance.backgroundSettings.withBuiltInBackground(background.id),
                 )
             },
         )
 
-        is SettingsDestination.BackgroundCrop -> BackgroundCropScreen(
-            sourcePath = currentRoute.sourcePath,
-            onBack = { route = SettingsDestination.Appearance },
-            onComplete = { cropMode ->
-                runCatching {
-                    backgroundImageStore.cropPickedImageToPrivateStorage(
-                        sourcePath = currentRoute.sourcePath,
-                        cropMode = cropMode,
-                    )
-                }
-                    .onSuccess { croppedPath ->
-                        route = SettingsDestination.BackgroundPreview(
-                            settings = states.appearance.backgroundSettings
-                                .withCustomImage(croppedPath)
-                                .copy(cropMode = cropMode),
-                            title = backgroundCustomTitle,
-                        )
-                    }
-                    .onFailure { actions.onBackgroundImageError(backgroundCropFailedMessage) }
-            },
-        )
-
-        is SettingsDestination.BackgroundPreview -> BackgroundPreviewScreen(
-            initialSettings = currentRoute.settings,
-            currentSkin = chromeState.currentSkin,
-            title = currentRoute.title,
-            onBack = { route = SettingsDestination.Appearance },
-            onApply = { settings ->
-                actions.onApplyBackgroundSettings(settings)
-                route = SettingsDestination.Appearance
-            },
-        )
+        // editor 为空的瞬态(取消/应用成功后的路由切换间隙)不渲染内容,
+        // LaunchedEffect 会把 route 收回 Appearance。
+        SettingsDestination.BackgroundEditor -> states.appearance.editor?.let { editor ->
+            BackgroundEditorScreen(
+                editor = editor,
+                currentSkin = chromeState.currentSkin,
+                actions = BackgroundEditorActions(
+                    onDraftChange = actions.onUpdateBackgroundDraft,
+                    onCancel = actions.onCancelBackgroundEdit,
+                    onApply = actions.onApplyBackgroundDraft,
+                ),
+            )
+        }
 
         SettingsDestination.DataExport -> DataExportScreen(
             state = states.settings,

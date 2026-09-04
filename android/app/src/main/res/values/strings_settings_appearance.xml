@@ -29,9 +29,9 @@
     <string name="appearance_background_current_label">当前背景</string>
     <string name="appearance_background_open_gallery">背景图库</string>
     <string name="appearance_background_pick_image">从相册选择</string>
-    <string name="appearance_background_follow_theme">跟随主题包</string>
-    <string name="appearance_background_clear_image">移除自定义图</string>
-    <string name="appearance_background_local_hint">自定义图只存在本机。想重新使用松雾、港湾等主题氛围时，点「跟随主题包」即可切回。</string>
+    <string name="appearance_background_edit_composition">调整构图</string>
+    <string name="appearance_background_restore_theme">恢复主题背景</string>
+    <string name="appearance_background_local_hint">自定义图只存在本机。想回到松雾、港湾等主题氛围时，点「恢复主题背景」即可切回。</string>
     <string name="appearance_section_immersion_title">沉浸强度</string>
     <string name="appearance_parallax_title">视差动效</string>
     <string name="appearance_parallax_subtitle">背景轻微参与层次变化</string>
@@ -55,7 +55,7 @@
     <string name="appearance_skin_pill_current">当前</string>
     <string name="appearance_skin_pill_recommended">推荐</string>
 
-    <!-- SettingsBackgroundComponents：内置背景卡 / 裁剪安全区 -->
+    <!-- SettingsBackgroundComponents：内置背景卡 -->
     <string name="appearance_builtin_pill_current">当前</string>
     <string name="appearance_builtin_pill_recommended">推荐</string>
     <string name="appearance_builtin_background_meta">%1$s · %2$s · %3$s</string>
@@ -75,15 +75,6 @@
     <string name="appearance_background_description_mono_fog">低对比灰雾，适合表格和长列表。</string>
     <string name="appearance_background_description_midnight">深色玻璃与暖金，适合夜间。</string>
     <string name="appearance_background_description_midnight_gold">深色底上的暖金光晕，保留暗色但不回到旧蓝绿。</string>
-    <string name="appearance_crop_mode_name_top">上方</string>
-    <string name="appearance_crop_mode_name_center">居中</string>
-    <string name="appearance_crop_mode_name_bottom">下方</string>
-    <string name="appearance_crop_mode_description_top">保留画面上半部分，适合天空和票据截图</string>
-    <string name="appearance_crop_mode_description_center">默认构图，适合大多数照片</string>
-    <string name="appearance_crop_mode_description_bottom">保留画面下半部分，适合街景和桌面照片</string>
-    <string name="appearance_crop_safezone_top">顶部标题区</string>
-    <string name="appearance_crop_safezone_reading">主要阅读区</string>
-    <string name="appearance_crop_safezone_bottom">底部导航区</string>
 
     <!-- BackgroundGalleryScreen：背景图库屏 -->
     <string name="background_gallery_page_title">背景图库</string>
@@ -91,39 +82,31 @@
     <string name="background_gallery_filter_recommended">推荐</string>
     <string name="background_gallery_section_custom_title">自定义</string>
     <string name="background_gallery_pick_image">从相册选择</string>
-    <string name="background_gallery_theme_default">主题默认</string>
 
-    <!-- BackgroundCropScreen：调整背景屏 -->
-    <string name="background_crop_page_title">调整背景</string>
-    <string name="background_crop_page_subtitle">避开顶部标题和底部导航区域，保证账单内容清晰可读。</string>
-    <string name="background_crop_preview_content_description">背景裁剪预览</string>
-    <string name="background_crop_section_composition_title">构图位置</string>
-    <string name="background_crop_complete_button">完成，去预览</string>
-    <string name="background_crop_selection_badge">当前保留：%1$s</string>
-
-    <!-- BackgroundPreviewScreen：背景预览屏 -->
-    <string name="background_preview_page_title">背景预览</string>
-    <string name="background_preview_page_subtitle">%1$s · 只有点击应用才会保存</string>
-    <string name="background_preview_role_pending">待确认</string>
-    <string name="background_preview_pending_meituan_merchant">美团外卖</string>
-    <string name="background_preview_pending_meituan_note">餐饮 · 请核对</string>
-    <string name="background_preview_pending_ccb_merchant">建行提醒</string>
-    <string name="background_preview_pending_ccb_amount">等待你确认金额</string>
-    <string name="background_preview_pending_ccb_note">识别建议</string>
-    <string name="background_preview_role_ledger">账本</string>
-    <string name="background_preview_ledger_openai_merchant">OpenAI</string>
-    <string name="background_preview_ledger_openai_note">AI订阅 · 2026年5月</string>
-    <string name="background_preview_ledger_meituan_merchant">美团外卖</string>
-    <string name="background_preview_ledger_meituan_note">餐饮 · 午饭</string>
-    <string name="background_preview_role_stats">统计</string>
-    <string name="background_preview_stats_total">本月支出 %1$s</string>
-    <string name="background_preview_stats_breakdown">餐饮 42%% · AI订阅 %1$s</string>
-    <string name="background_preview_role_edit">编辑确认</string>
-    <string name="background_preview_edit_amount_label">金额</string>
-    <string name="background_preview_edit_amount_note">商家 美团外卖 · 分类 餐饮</string>
-    <string name="background_preview_edit_confirm_button">确认入账</string>
-    <string name="background_preview_cancel_button">取消预览</string>
-    <string name="background_preview_apply_button">应用背景</string>
+    <!-- BackgroundEditorScreen：全局背景编辑面（visual-ledger 全局背景批） -->
+    <string name="background_editor_page_title">调整背景</string>
+    <string name="background_editor_section_preview_role">预览页面</string>
+    <string name="background_editor_section_composition">构图</string>
+    <string name="background_editor_role_pending">待确认</string>
+    <string name="background_editor_role_ledger">账本</string>
+    <string name="background_editor_role_stats">统计</string>
+    <string name="background_editor_role_edit">编辑确认</string>
+    <string name="background_editor_role_settings">设置</string>
+    <string name="background_editor_stage_caption">实时预览 · 可拖动缩放</string>
+    <string name="background_editor_scope_note">应用后对所有页面生效，图片只保存在本机。</string>
+    <string name="background_editor_cancel_button">取消</string>
+    <string name="background_editor_apply_button">应用背景</string>
+    <string name="background_editor_applying">应用中…</string>
+    <string name="background_editor_zoom_out">缩小</string>
+    <string name="background_editor_zoom_in">放大</string>
+    <string name="background_editor_reset">重置构图</string>
+    <string name="background_editor_nudge_left">左移</string>
+    <string name="background_editor_nudge_up">上移</string>
+    <string name="background_editor_nudge_down">下移</string>
+    <string name="background_editor_nudge_right">右移</string>
+    <string name="background_editor_anchor_top">顶部</string>
+    <string name="background_editor_anchor_center">居中</string>
+    <string name="background_editor_anchor_bottom">底部</string>
 
     <!-- BackgroundTasksScreen：后台任务屏 -->
     <string name="background_tasks_page_title">后台任务</string>
@@ -167,17 +150,13 @@
     <string name="currency_section_rate_foreign">%1$s 会作为新记账时的默认原始币种；汇总金额以账本 %2$s 结果为准。</string>
     <string name="currency_section_option_selected_content_description">已选中</string>
 
-    <!-- SettingsDestinationHost：背景图片处理失败 / 自定义背景标题（在非 composable lambda 内，用 context.getString） -->
+    <!-- AppearanceViewModel：图片导入失败 -->
     <string name="settings_background_copy_failed">背景没有保存成功，请换一张图片再试。</string>
-    <string name="settings_background_crop_failed">背景裁剪没有完成，请换一张图片再试。</string>
-    <string name="settings_background_custom_title">自定义背景</string>
 
     <!-- AppearanceViewModel：外观屏操作结果文案（Snackbar/Text，ADR-0044 wave 2 经 UiText 外置） -->
-    <string name="appearance_message_background_updated">背景已更新</string>
     <string name="appearance_message_background_applied">背景已应用</string>
     <string name="appearance_message_background_theme_restored">已恢复跟随主题背景</string>
     <string name="appearance_message_background_save_failed">背景没有保存成功。</string>
-    <string name="appearance_message_crop_mode_changed">构图已切换为%1$s</string>
     <string name="appearance_message_immersion_mode_changed">已切换为%1$s模式</string>
     <string name="appearance_message_parallax_on">视差动效已开启</string>
     <string name="appearance_message_parallax_off">视差动效已关闭</string>

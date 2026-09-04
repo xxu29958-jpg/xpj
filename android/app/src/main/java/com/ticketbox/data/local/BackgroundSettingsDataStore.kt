@@ -4,10 +4,11 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
-import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.BackgroundSource
+import com.ticketbox.domain.model.BackgroundTransform
 import com.ticketbox.domain.model.ImmersionMode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -21,9 +22,13 @@ class BackgroundSettingsDataStore(
             builtInBackgroundId = preferences[BUILT_IN_BACKGROUND_ID],
             customImagePath = preferences[CUSTOM_BACKGROUND_PATH],
             immersionMode = ImmersionMode.fromStorageKey(preferences[IMMERSION_MODE]),
-            cropMode = BackgroundCropMode.fromStorageKey(preferences[BACKGROUND_CROP_MODE]),
             enableParallax = preferences[BACKGROUND_PARALLAX] ?: true,
             reduceMotion = preferences[REDUCE_MOTION] ?: false,
+            transform = BackgroundTransform(
+                scale = preferences[BACKGROUND_SCALE] ?: 1f,
+                offsetX = preferences[BACKGROUND_OFFSET_X] ?: 0f,
+                offsetY = preferences[BACKGROUND_OFFSET_Y] ?: 0f,
+            ),
         )
     }
 
@@ -49,27 +54,11 @@ class BackgroundSettingsDataStore(
                 }
             }
             preferences[IMMERSION_MODE] = settings.immersionMode.storageKey
-            preferences[BACKGROUND_CROP_MODE] = settings.cropMode.storageKey
             preferences[BACKGROUND_PARALLAX] = settings.enableParallax && !settings.reduceMotion
             preferences[REDUCE_MOTION] = settings.reduceMotion
-        }
-    }
-
-    suspend fun saveBackgroundImagePath(path: String) {
-        saveBackgroundSettings(BackgroundSettings().withCustomImage(path.trim()))
-    }
-
-    suspend fun clearBackground() {
-        dataStore.edit { preferences ->
-            preferences[BACKGROUND_SOURCE] = BackgroundSource.ThemeDefault.storageKey
-            preferences.remove(BUILT_IN_BACKGROUND_ID)
-            preferences.remove(CUSTOM_BACKGROUND_PATH)
-        }
-    }
-
-    suspend fun setBackgroundCropMode(mode: BackgroundCropMode) {
-        dataStore.edit { preferences ->
-            preferences[BACKGROUND_CROP_MODE] = mode.storageKey
+            preferences[BACKGROUND_SCALE] = settings.transform.scale
+            preferences[BACKGROUND_OFFSET_X] = settings.transform.offsetX
+            preferences[BACKGROUND_OFFSET_Y] = settings.transform.offsetY
         }
     }
 
@@ -99,8 +88,10 @@ class BackgroundSettingsDataStore(
         val BUILT_IN_BACKGROUND_ID = stringPreferencesKey("built_in_background_id")
         val CUSTOM_BACKGROUND_PATH = stringPreferencesKey("custom_background_path")
         val IMMERSION_MODE = stringPreferencesKey("immersion_mode")
-        val BACKGROUND_CROP_MODE = stringPreferencesKey("background_crop_mode")
         val BACKGROUND_PARALLAX = booleanPreferencesKey("background_parallax")
         val REDUCE_MOTION = booleanPreferencesKey("reduce_motion")
+        val BACKGROUND_SCALE = floatPreferencesKey("background_scale")
+        val BACKGROUND_OFFSET_X = floatPreferencesKey("background_offset_x")
+        val BACKGROUND_OFFSET_Y = floatPreferencesKey("background_offset_y")
     }
 }

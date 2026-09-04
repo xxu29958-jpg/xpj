@@ -197,7 +197,8 @@ private fun MainProductScaffold(
     workspaceControls: MainWorkspaceControls,
 ) {
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        // The surrounding ImmersiveBackgroundScaffold owns the global backdrop.
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         contentWindowInsets = WindowInsets(AppSpacing.none),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {

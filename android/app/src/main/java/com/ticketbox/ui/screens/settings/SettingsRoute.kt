@@ -1,19 +1,13 @@
 package com.ticketbox.ui.screens.settings
 
-import com.ticketbox.domain.model.BackgroundSettings
-
 sealed class SettingsRoute {
     data object Root : SettingsRoute()
     data object Server : SettingsRoute()
     data object Appearance : SettingsRoute()
     data object BackgroundGallery : SettingsRoute()
-    data class BackgroundPreview(
-        val settings: BackgroundSettings,
-        val title: String,
-    ) : SettingsRoute()
-    data class BackgroundCrop(
-        val sourcePath: String,
-    ) : SettingsRoute()
+    // 全局背景批:编辑目标不再走路由参数,draft 由 AppearanceViewModel 唯一持有
+    // (editor: BackgroundEditorState?);路由只表达「编辑器打开」这一导航事实。
+    data object BackgroundEditor : SettingsRoute()
     data object DataExport : SettingsRoute()
     data object NotificationPreferences : SettingsRoute()
     data object SecurityPrivacy : SettingsRoute()

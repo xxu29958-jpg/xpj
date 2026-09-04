@@ -9,6 +9,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.core.content.IntentCompat
 import androidx.core.view.doOnPreDraw
 import androidx.fragment.app.FragmentActivity
+import com.ticketbox.data.local.BackgroundImageStore
+import com.ticketbox.data.repository.LocalBackgroundImageRepository
 import com.ticketbox.security.BiometricAuthManager
 import com.ticketbox.ui.navigation.EXTRA_SHORTCUT_TARGET
 import com.ticketbox.ui.navigation.LaunchIntentRequest
@@ -163,6 +165,7 @@ class MainActivity : FragmentActivity() {
                 ),
                 appearanceViewModelFactory = appearanceViewModelFactory(
                     settingsStore = settingsStore,
+                    images = LocalBackgroundImageRepository(BackgroundImageStore(applicationContext)),
                 ),
             ),
         )
