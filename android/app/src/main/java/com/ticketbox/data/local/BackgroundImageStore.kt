@@ -20,6 +20,13 @@ class BackgroundImageStore(context: Context) {
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeFile(target.absolutePath, bounds)
             require(bounds.outWidth > 0 && bounds.outHeight > 0) { "Selected image cannot be decoded" }
+            // Dimensions alone do not prove that the pixel stream is decodable.
+            // A sampled decode checks it without allocating a full camera-size bitmap.
+            bounds.inJustDecodeBounds = false
+            bounds.inSampleSize = (maxOf(bounds.outWidth, bounds.outHeight) / 1024).coerceAtLeast(1)
+            requireNotNull(BitmapFactory.decodeFile(target.absolutePath, bounds)) {
+                "Selected image cannot be decoded"
+            }.recycle()
             return target.absolutePath
         } catch (error: Exception) {
             target.delete()
