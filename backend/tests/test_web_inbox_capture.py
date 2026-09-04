@@ -379,7 +379,7 @@ def test_retired_dashboard_runtime_owners_are_physically_gone() -> None:
     app_root = Path(__file__).resolve().parents[1] / "app"
 
     assert not (app_root / "static" / "web" / "pages" / "dashboard.css").exists()
-    assert (app_root / "static" / "web" / "components" / "responsive-layout.css").exists()
+    assert not (app_root / "static" / "web" / "components" / "responsive-layout.css").exists()
 
     desktop_boot = (app_root / "static" / "web" / "desktop.js").read_text(encoding="utf-8")
     assert "initDashboard" not in desktop_boot

@@ -36,16 +36,16 @@ def test_native_csv_preview_and_apply_preserve_selected_ledger(web_client, ident
             follow_redirects=False,
         )
         assert applied.status_code == 303, applied.text
-        selected = browser.get("/api/expenses?status=pending", headers=identity.gray_app_headers)
+        selected = browser.get("/api/expenses/pending", headers=identity.gray_app_headers)
         assert selected.status_code == 200
-        assert len(selected.json()["items"]) == 1
-        row = selected.json()["items"][0]
+        assert len(selected.json()) == 1
+        row = selected.json()[0]
         assert row["amount_cents"] == 1850
         assert row["merchant"] == "早餐咖啡"
         assert row["status"] == "pending"
-        default = browser.get("/api/expenses?status=pending", headers=identity.app_headers)
+        default = browser.get("/api/expenses/pending", headers=identity.app_headers)
         assert default.status_code == 200
-        assert default.json()["items"] == []
+        assert default.json() == []
         repeated = browser.post(
             action,
             data={**hidden_post_forms(detail.text)[action], "batch_size": "1"},
