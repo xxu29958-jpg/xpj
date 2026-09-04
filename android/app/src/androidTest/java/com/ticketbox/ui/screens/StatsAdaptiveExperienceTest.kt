@@ -10,12 +10,14 @@ import androidx.compose.ui.test.ForcedSize
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
@@ -76,7 +78,8 @@ class StatsAdaptiveExperienceTest {
             assertTrue("Filters precede the views they control", filter.bottom <= tab.top)
             assertTrue("Views precede their results", tab.bottom <= result.top)
         }
-        composeRule.onNodeWithTag("overview-module-recent_uploads").performScrollTo()
+        composeRule.onNode(hasScrollToIndexAction())
+            .performScrollToNode(hasTestTag("overview-module-recent_uploads"))
         composeRule.onNodeWithText(context.getString(R.string.dashboard_ledger_scope), useUnmergedTree = true)
             .assertIsDisplayed()
     }
