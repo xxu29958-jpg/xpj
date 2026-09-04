@@ -45,6 +45,9 @@
     --brand-accent: #7fae9f;
     --brand-primary-bg: #e2ecdf;
     --brand-focus-ring: rgba(20, 80, 74, 0.42);
+    /* 票夹 coral — 品牌右侧夹的专用色: 只做票据「夹」形 / 当期聚焦标记,
+       不承载状态语义 (状态留在 state/goal 族), 镜像 Android ThemeVisuals.clipCoral */
+    --brand-clip: #c2492f;
 
     /* State */
     --state-success-bg: #e7efdd; --state-success-fg: #236a57; --state-success-border: #c8dbb4;
@@ -170,6 +173,8 @@
     --brand-accent: #33584c;
     --brand-primary-bg: #70bfa52e;
     --brand-focus-ring: rgba(112, 191, 165, 0.55);
+    /* 票夹 coral 夜间版 — 同一右侧夹; 比 danger-fg #e0836f 更红更饱和, 不承载状态语义 */
+    --brand-clip: #ee6a4d;
 
     /* State */
     --state-success-bg: rgba(168, 184, 138, 0.14); --state-success-fg: #77c3a9; --state-success-border: rgba(168, 184, 138, 0.30);

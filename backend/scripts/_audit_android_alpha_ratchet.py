@@ -90,7 +90,8 @@ EXEMPT_FILES = (
 # 2026-07-06 lowered 115->112 during Android UX semantics cleanup.
 # Global-background retirement removes 12 of the previous 92 sites;
 # unchanged Ledger surfaces remain included in the residual.
-BASELINE = 80
+# Visual-ledger migration retires four remaining inline divider alphas.
+BASELINE = 76
 
 # ``.copy(alpha = <number>)`` — number is a decimal/int float literal (optional
 # trailing ``f``). Identifier args (AppAlpha.heavy / resolvedAlpha) are NOT

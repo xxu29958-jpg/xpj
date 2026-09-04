@@ -124,7 +124,11 @@ def test_confirmed_default_list_and_summary_share_current_month(
     assert response.status_code == 200, response.text
     assert "Current Month Cafe" in response.text
     assert "Previous Month Cafe" not in response.text
-    assert f"{current_month} 共 1 笔，合计 ¥12.00。" in response.text
+    assert (
+        f'<span class="sr-only">{current_month} 合计 </span>¥12.00'
+        in response.text
+    )
+    assert f"{current_month} · 共 1 笔 ·" in response.text
 
 
 def test_confirmed_list_and_summary_share_configured_accounting_timezone(
@@ -148,7 +152,7 @@ def test_confirmed_list_and_summary_share_configured_accounting_timezone(
 
     assert response.status_code == 200, response.text
     assert "Timezone Boundary Cafe" not in response.text
-    assert "2026-05 共 0 笔" in response.text
+    assert "2026-05 · 共 0 笔 ·" in response.text
 
 
 def test_confirmed_native_snapshot_updates_without_javascript(
