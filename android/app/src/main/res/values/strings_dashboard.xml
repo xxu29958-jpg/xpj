@@ -1,0 +1,30 @@
+<resources>
+    <string name="dashboard_save">保存布局</string>
+    <string name="dashboard_customize">自定义总览</string>
+    <string name="dashboard_editor_title">让总览更适合你</string>
+    <string name="dashboard_editor_description">选择本账本 Android 总览的摘要，按你关心的顺序排列。隐藏摘要不会关闭任何功能，也不影响 Web 布局。</string>
+    <string name="dashboard_load_failed">总览布局暂时无法读取，已保留当前可读内容。联网后可重试。</string>
+    <string name="dashboard_save_failed">布局未保存，调整还在。联网后可重试。</string>
+    <string name="dashboard_saved">总览已更新</string>
+    <string name="dashboard_reset_save">恢复默认并保存</string>
+    <string name="dashboard_move_up">上移%1$s</string>
+    <string name="dashboard_move_down">下移%1$s</string>
+    <string name="dashboard_visibility">显示%1$s</string>
+    <string name="dashboard_readonly">只读成员可查看总览；布局由可编辑成员调整。</string>
+    <string name="dashboard_all_hidden">摘要已全部隐藏。随时可从“自定义总览”重新显示，趋势和构成仍可查看。</string>
+    <string name="dashboard_ledger_scope">以下摘要来自整个账本，不受上方标签筛选影响</string>
+    <string name="dashboard_pending_count">%1$d 笔待确认</string>
+    <string name="dashboard_pending_empty">收件箱已清空</string>
+    <string name="dashboard_pending_action">打开收件箱</string>
+    <string name="dashboard_budget_action">查看预算</string>
+    <string name="dashboard_goals_action">查看目标</string>
+    <string name="dashboard_recurring_action">查看固定支出</string>
+    <string name="dashboard_recurring_count">%1$d 项进行中</string>
+    <string name="dashboard_recurring_empty">还没有进行中的固定支出</string>
+    <string name="dashboard_goals_count">%1$d 个本月消费目标</string>
+    <string name="dashboard_goals_empty">本月还没有消费目标</string>
+    <string name="dashboard_goals_tag_scope">消费目标不按标签筛选，可在目标详情查看进度</string>
+    <string name="dashboard_summary_loading">正在读取摘要…</string>
+    <string name="dashboard_summary_unavailable">摘要暂不可用，打开详情可继续查看</string>
+    <string name="dashboard_reports_action">查看趋势报表</string>
+</resources>

@@ -27,8 +27,13 @@ import java.util.UUID
 
 interface DashboardCardsActions {
     fun canModifyLedger(): Boolean
-    suspend fun dashboardCards(surface: DashboardSurface = DashboardSurface.Android): Result<DashboardCards>
+    fun dashboardAccess(): LedgerAccessContext?
+    suspend fun dashboardCards(
+        binding: LogicalSessionBinding,
+        surface: DashboardSurface = DashboardSurface.Android,
+    ): Result<DashboardCards>
     suspend fun updateDashboardCards(
+        binding: LogicalSessionBinding,
         updates: List<DashboardCardUpdate>,
         surface: DashboardSurface = DashboardSurface.Android,
     ): Result<DashboardCards>
@@ -458,14 +463,22 @@ class ReportsRepository(
         }
     }
 
-    override suspend fun dashboardCards(surface: DashboardSurface): Result<DashboardCards> =
+    override fun dashboardAccess(): LedgerAccessContext? = ledgerRequestGuard.captureLogicalBinding()?.let {
+        LedgerAccessContext(binding = it, canModify = canModifyLedger())
+    }
+
+    override suspend fun dashboardCards(
+        binding: LogicalSessionBinding,
+        surface: DashboardSurface,
+    ): Result<DashboardCards> =
         errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
+            ledgerRequestGuard.bindExact(binding).call { api ->
                 api.dashboardCards(surface = surface.apiValue).toDomain()
             }
         }
 
     override suspend fun updateDashboardCards(
+        binding: LogicalSessionBinding,
         updates: List<DashboardCardUpdate>,
         surface: DashboardSurface,
     ): Result<DashboardCards> {
@@ -475,7 +488,7 @@ class ReportsRepository(
         val cleanUpdates = updates.validatedDashboardUpdates()
             .getOrElse { return Result.failure(it) }
         return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
+            ledgerRequestGuard.bindExact(binding).call { api ->
                 api.updateDashboardCards(
                     request = cleanUpdates.toRequest(),
                     surface = surface.apiValue,

@@ -124,8 +124,10 @@ class ReportsRepositoryTest {
                     category = "购物",
                 ),
             ).getOrThrow()
-            val cards = repository.dashboardCards(DashboardSurface.Android).getOrThrow()
+            val binding = repository.dashboardAccess()!!.binding
+            val cards = repository.dashboardCards(binding, DashboardSurface.Android).getOrThrow()
             val savedCards = repository.updateDashboardCards(
+                binding = binding,
                 updates = listOf(
                     DashboardCardUpdate(" goals ", visible = true, position = 0),
                     DashboardCardUpdate("reports", visible = false, position = 1),
@@ -223,6 +225,7 @@ class ReportsRepositoryTest {
             ),
         )
         val cardsResult = repository.updateDashboardCards(
+            binding = repository.dashboardAccess()!!.binding,
             updates = listOf(DashboardCardUpdate("goals", visible = true, position = 0)),
         )
 
@@ -239,11 +242,14 @@ class ReportsRepositoryTest {
         val api = ReportsApiHandler()
         val repository = repository(api)
 
-        val result = repository.updateDashboardCards(emptyList(), DashboardSurface.Android)
+        val binding = repository.dashboardAccess()!!.binding
+        val result = repository.updateDashboardCards(binding, emptyList(), DashboardSurface.Android)
 
         assertTrue(result.isSuccess)
         assertTrue(api.updateDashboardCardCalls.single().request.cards.isEmpty())
         assertEquals("android", api.updateDashboardCardCalls.single().surface)
+        assertTrue(repository.updateDashboardCards(binding.copy(ledgerId = "other"), emptyList()).isFailure)
+        assertEquals(1, api.updateDashboardCardCalls.size)
     }
 
     @Test
@@ -277,6 +283,7 @@ class ReportsRepositoryTest {
         val repository = repository(api)
 
         val result = repository.updateDashboardCards(
+            binding = repository.dashboardAccess()!!.binding,
             updates = listOf(
                 DashboardCardUpdate("goals", visible = true, position = 0),
                 DashboardCardUpdate(" goals ", visible = false, position = 1),
