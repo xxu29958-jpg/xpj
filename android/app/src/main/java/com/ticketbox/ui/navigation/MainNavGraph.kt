@@ -206,6 +206,10 @@ private fun MainProductScaffold(
             shellLayout.activeDomain?.let { domain ->
                 MainDomainTopBar(
                     domain = domain,
+                    canModify = runtime.screenFactory.repository.canModifyLedger(),
+                    onQuickAction = { target ->
+                        dispatchShortcutNavigation(target, runtime.shellState)
+                    },
                     onOpenWorkspace = runtime.shellState::openAccount,
                 )
             }
@@ -256,6 +260,8 @@ private fun MainProductScaffold(
 @Composable
 private fun MainDomainTopBar(
     domain: PrimaryDomain,
+    canModify: Boolean,
+    onQuickAction: (ShortcutTarget) -> Unit,
     onOpenWorkspace: () -> Unit,
 ) {
     val visuals = LocalThemeVisuals.current
@@ -282,6 +288,10 @@ private fun MainDomainTopBar(
                     color = visuals.primary,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = AppTextHierarchy.heading.weight,
+                )
+                MainQuickActionsButton(
+                    canModify = canModify,
+                    onAction = onQuickAction,
                 )
                 AppAccountButton(onClick = onOpenWorkspace)
             }

@@ -433,7 +433,7 @@ private fun dispatchLaunchRequest(request: LaunchIntentRequest, shellState: Main
     }
 }
 
-private fun dispatchShortcutNavigation(target: ShortcutTarget, shellState: MainShellState) {
+internal fun dispatchShortcutNavigation(target: ShortcutTarget, shellState: MainShellState) {
     when (target) {
         ShortcutTarget.UploadReceipt -> {
             shellState.launchAction.post(LaunchAction.OpenImagePicker)

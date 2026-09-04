@@ -1,0 +1,63 @@
+<html lang="zh-CN">
+<head><meta charset="utf-8"></head>
+<body tabindex="-1">
+  <a id="search" href="#search" data-shell-shortcut="search">搜索</a>
+  <a id="capture" href="#capture" data-shell-shortcut="capture">收票</a>
+  <input id="editor" value="编辑中">
+  <script>
+    let drawerOpen = false;
+    const clicks = {search: 0, capture: 0};
+    document.getElementById("search").addEventListener("click", (event) => {
+      event.preventDefault();
+      clicks.search += 1;
+    });
+    document.getElementById("capture").addEventListener("click", (event) => {
+      event.preventDefault();
+      clicks.capture += 1;
+    });
+    window.TicketboxWeb = {
+      drawerApi: {isOpen: () => drawerOpen}
+    };
+  </script>
+  <script src="__SHELL_KEYBOARD_URI__"></script>
+  <script>
+    const press = (target, key, options = {}) => {
+      const event = new KeyboardEvent("keydown", {
+        key,
+        bubbles: true,
+        cancelable: true,
+        ...options
+      });
+      target.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+
+    window.TicketboxWeb.initShellKeyboard();
+    document.body.focus();
+    const search = press(document.body, "/");
+    const capture = press(document.body, "u");
+    const modified = press(document.body, "/", {ctrlKey: true});
+    const composing = press(document.body, "u", {isComposing: true});
+    const editor = document.getElementById("editor");
+    editor.focus();
+    const input = press(editor, "/");
+    drawerOpen = true;
+    document.body.focus();
+    const drawer = press(document.body, "u");
+    drawerOpen = false;
+    document.getElementById("capture").remove();
+    const absent = press(document.body, "u");
+
+    window.__webConsumerProbe = {
+      search,
+      capture,
+      modified,
+      composing,
+      input,
+      drawer,
+      absent,
+      clicks
+    };
+  </script>
+</body>
+</html>

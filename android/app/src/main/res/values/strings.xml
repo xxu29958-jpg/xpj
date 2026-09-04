@@ -46,6 +46,7 @@
     <!-- W2-C：全账本往来二级页入口（个人透镜之上保留账本完整视图）；行内副标题带当前账本名。 -->
     <string name="relations_all_debts">全部往来</string>
     <string name="navigation_open_account">打开账户与设置</string>
+    <string name="navigation_quick_actions">快捷操作</string>
 
     <!-- BiometricAuthManager：本地生物识别解锁的系统弹窗 + 错误文案（release REQUIRE_LOCAL_UNLOCK=true 时可见，经 onError→AppViewModel→LoginScreen） -->
     <string name="biometric_prompt_title">解锁小票夹</string>
