@@ -1,483 +1,268 @@
-# 工程规范
+# 工程细则（按责任读取）
 
-> 规则版本 v1.7.0（采用通用模板 v1.3.0，2026-05-22，§13 增"当前阶段不做" + "规则演进"两段；v1.3.0→v1.4.0：§14 经 [[0042]] 引入 outbox-routed 请求幂等键规则，见 2026-06-04 注；v1.4.0→v1.5.0：§14 经 [[0044]] 反转 UI 字符串资源化条——做 string-resourcing（非翻译），见下行 2026-06-06 注，MINOR/收紧已列项落法；v1.5.0→v1.5.1：2026-06-11，PATCH/措辞——§13 运维 Runbook 列举补 CI，runbook 实质更新在 `docs/runbook/`：CI.md 对齐两-workflow 现实 + ci-gap 9+10 钉数、POSTGRES_MIGRATION.md 增表属主排查节、WINDOWS_BACKUP_TASK.md 增备份链健康自查节；v1.5.1→v1.5.2：2026-06-11，PATCH/纠假陈述——§14 速查「detekt 默认门槛」改「Kotlin 阈值（评审基准，机器接线待拍板）」，配套 CODE_QUALITY_STANDARDS.md 真相化：detekt 从未接线、Branch Protection 段换成 gitea 真实合并纪律、PR size 数字改议题纪律；v1.5.2→v1.6.0：2026-06-12，MINOR/新机器门——用户拍板接线 detekt 并指定换掉旧内嵌编译器，§14 速查 Kotlin 阈值由「评审基准」升级为 detekt 机器门（2.0.0-alpha.3〔owner 显式拍板的预发布例外，回收条件 = 2.0 stable 即升正式〕，内嵌 Kotlin 与项目 2.3.21 对齐；CI 跑 type-resolving `:app:detektGrayDebug`+`:app:detektGrayDebugUnitTest`——plain task 会静默跳过 LongParameterList；仅六条 complexity 规则、存量 232+45 条冻结 per-variant baseline、`_audit_ci_gap.py` gradle 钉 9→11），详 CODE_QUALITY_STANDARDS.md「机器守护（2026-06 接线）」段）；v1.6.0→v1.7.0：2026-06-12，MINOR/增加规则——§14 增「Android 周期 Worker 与 §13 的边界」小节（经 [[0046]]：单个窄用途 Android WorkManager periodic worker 是移动端平台调度能力，不落 §13 backend 后台任务框架禁项，非 MAJOR 反转）；后端 + 客户端协作项目契约。
-> §14 在 2026-05-22 增"字段命名"+"当前阶段不引入"两小节：解释 `expense_time`/`tenant_id` 项目命名与模板 §3/§4 的关系，并显式标注当前 v0.x 不引入 `/api/v1` 前缀、`client_request_id` 幂等键、`/health/liveness+readiness` 拆分、UI 字符串资源化（与 §13 "不做完整 i18n" 一致）。
-> §14 在 2026-06-04 更新「不引入 `client_request_id` 幂等键」条（MINOR / 增加规则）：[[0042]] 已为 **outbox-routed mutate 面**引入服务端请求幂等键（`Idempotency-Key` header + `api_idempotency_keys` 表），解除该范围的限制；其余写操作仍不带 client-side dedup key。
-> §14 在 2026-06-06 反转「UI 字符串资源化」条（MINOR / 收紧已列项落法）：[[0044]] 决定做 **string-resourcing**——Android 用户可见中文字面量外置到 `res/values/strings.xml` + `stringResource`，按 screen/module 分 PR。**仍是 resourcing 非翻译**：`strings.xml` 只放中文、不建第二语言，故 §13「完整 i18n / 完整 a11y」仍是「当前阶段不做」（真要翻译另开 ADR=MAJOR）。
-> 任何放宽必须写入 `docs/DECISIONS/`，注明原因、风险、偿还计划和回收条件。
-> 小票夹项目独有补充见 §14。
+> `AGENTS.md` 是唯一默认加载的施工合同；本文件只补充长期工程细则，按当前任务责任读取。
+> 本文件不是版本进度表、ADR 状态账本或规则变更日志。历史变化由 git 记录，当前实现由 exact HEAD、测试和运行证据证明。
+
+旧文档若引用本文件的 `§0`～`§14`，继续按相同责任编号理解；旧文档中引用的具体句子若已与本文件、当前代码或 Owner 裁决冲突，只保留历史意义。
 
 ---
 
 ## 0. 裁决顺序
 
-冲突时按以下优先级判断：
+工程取舍按以下顺序：
 
-1. 数据正确
-2. 安全边界清晰
-3. 目标环境稳定运行
-4. 端到端闭环稳定
-5. 可维护、可测试
-6. 用户体验
-7. 扩展能力
-8. UI 表现
+1. 财务事实与数据身份正确；
+2. 身份、权限、凭证和公网边界清晰；
+3. 安装、升级、备份、恢复与离线意图可证明；
+4. 端到端用户闭环稳定；
+5. 改动可维护、可测试、可回退；
+6. 用户体验与性能；
+7. 未来扩展和视觉精修。
 
-架构可以简单，但边界必须清楚；实现可以先小，但必须可替换、可回滚、可验证。
-
----
-
-## 1. 分层架构
-
-### 后端
-
-固定分层：`routes → services → models / providers`
-
-* `routes`：参数解析、鉴权、调用 service、返回 schema；不写业务、不拼复杂 SQL、不返回原始异常。
-* `services`：业务编排、事务、调用 provider；不依赖 HTTP 层、不写 UI 文案、不硬编码凭证。
-* `models`：ORM 实体；不依赖上层。
-* `schemas`：请求/响应结构；不放业务、不放 IO。
-* `providers`：OCR、分类、推送、外部 LLM 等可替换能力；只做识别或建议，不直接确认业务状态。
-
-### 客户端
-
-固定分层：`Screen → ViewModel → Repository → ApiService / Dao / SecureStorage`
-
-* `Screen`：只做 UI 渲染和输入收集。
-* `ViewModel`：管理 UI State，调用 Repository。
-* `Repository`：协调远端、本地缓存、失败兜底，返回领域模型。
-* `ApiService / Dao / SecureStorage`：纯 IO 层，不向 UI 暴露 DTO / Entity / Token。
-
-### 禁忌
-
-禁止跨级调用、DTO/Entity 进 UI、UI 直连网络、route 直查 DB。
-三类模型必须分开：`XxxDto / XxxEntity / Xxx`，转换集中在 `XxxMapper`。
-任何快捷方案必须写入 `DECISIONS/`，标注偿还计划。
+低优先级目标不得靠削弱高优先级不变量实现。简单方案优先，但“简单”不能依赖隐式 fallback、双重权威或未验证假设。
 
 ---
 
-## 2. 项目结构
+## 1. 分层与责任边界
 
-目标：从目录就能看出架构意图，新人不读文档也能猜对一类文件该放哪。
+分层的目标是隔离变化和副作用，不是机械制造目录与接口。
 
-### 顶层目录
+### Backend
 
-```
-project-root/
-├── README.md            启动方式 + 最小说明
-├── LICENSE
-├── .gitignore
-├── .env.example         配置模板，禁止真实凭证
-├── docs/                所有文档
-├── scripts/             运维、构建、检查脚本，禁止业务代码
-├── backend/             服务端代码
-├── client/              客户端代码（多端时再切子目录）
-└── tests/               跨端集成测试（可选）
-```
+- HTTP route 负责解析、鉴权、调用应用服务和映射响应，不承载跨域业务或复杂 SQL。
+- service/domain 负责业务不变量、事务和状态迁移；不得依赖 UI 文案或请求对象。
+- persistence/provider 负责数据库、文件、OCR、外部模型等 IO；provider 结果只能作为建议或能力结果。
+- DTO/schema、ORM/entity 与领域对象在跨边界时显式转换；不为了形式给每个小对象强造三套模型。
 
-根目录禁止：散文件、个人笔记、tmp、backup、v2、old。
+### Android、Web 与 Desktop
 
-### 后端目录
+- UI 负责展示和收集意图；状态/协调层负责交互状态；repository/client/DAO 负责远端与本地 IO。
+- UI 不直接拼鉴权、事务、SQL 或长期凭证；服务端 DTO、Room Entity 和界面状态不得无边界混用。
+- 跨端要求是事实、权限、错误和能力语义一致，不要求像素级复制或相同组件树。
 
-```
-backend/
-├── app/
-│   ├── routes/
-│   ├── services/
-│   ├── models/
-│   ├── schemas/
-│   ├── providers/
-│   ├── config.py / config/       统一配置入口
-│   └── main.py / entrypoints/    启动入口
-├── tests/
-├── migrations/          数据库迁移
-├── scripts/             后端专用脚本
-└── 依赖清单文件
-```
-
-后端启动与配置入口必须明确命名，例如 `config.py / config/`、`main.py / entrypoints/`；禁止使用含糊目录名让实现者自行猜测。
-
-### 客户端目录
-
-按"层"组织，业务在层内分子目录，不按"页面"切顶层目录：
-
-大型项目允许按 feature / module 分组，但层边界不得打穿；模块化不是跨层调用的理由。
-
-```
-client/
-├── ui/{module_a, module_b, ...}/
-├── viewmodel/{module_a, module_b, ...}/
-├── repository/
-├── data/{api, db, storage}/
-├── domain/
-├── di/
-└── util/
-```
-
-### 文档目录
-
-```
-docs/
-├── PROJECT_BOUNDARY.md
-├── API.md
-├── ACCEPTANCE.md
-├── RUNBOOK.md
-├── ENGINEERING_RULES.md
-├── DECISIONS/
-└── assets/              图片、附件
-```
-
-### 运行时产物
-
-`uploads/  data/  logs/  build/  dist/  本地虚拟环境  依赖缓存目录` 全部进 `.gitignore`，路径走 config，不写死。
-
-### 命名约定
-
-* 目录、文件、字段、API 路径：小写下划线
-* 类、类型：大驼峰
-* 常量、环境变量：大写下划线
-* 关键规范文档：大写下划线 `.md`
-* 普通文档：小写连字符 `.md`
-
-### 禁忌
-
-* 不在根目录散放代码、文档、图片
-* 不留 `v1/ v2/ old/ backup/ tmp/` 残留
-* 不让 git 跟踪运行时产物
-* 不让业务代码进 `scripts/`
-* 不让二进制文件散落在 `docs/` 根部（统一放 `docs/assets/`）
+已有结构能够清楚承担责任时沿用；只有真实耦合、测试困难或重复权威阻碍当前目标时才拆层。
 
 ---
 
-## 3. 数据规范
+## 2. 项目结构与命名
 
-### 标识
+当前顶层责任以真实仓库为准：
 
-外部实体同时维护：
+- `backend/`：FastAPI、领域服务、PostgreSQL、模板与静态资产；
+- `android/`：Kotlin / Compose 客户端；
+- `desktop/`：Windows Desktop Manager；
+- `distribution/`：Windows 安装、升级、修复、卸载与发布适配；
+- `infra/`：受控基础设施配置；
+- `scripts/`：仓库级检查和操作脚本；
+- `docs/`：规则、架构、runbook、路线与决策历史。
 
-* `id`：内部主键，用于本系统路径和关联。
-* `public_id`：UUID，用于跨端同步、导出、追溯、未来合并。
+规则：
 
-普通 UI 不暴露任何 id。
-
-### 金额
-
-* 金额全链路使用最小货币单位整数，如 `amount_cents: int`。
-* 禁止用 `float / double` 保存金额。
-* 多币种使用：`original_currency_code + original_amount_minor + exchange_rate_*`。
-* 统计只汇总基准币种，禁止跨币种直接相加。
-* 单位换算集中封装，禁止 UI 散写 `÷100`。
-
-### 时间
-
-* 存储：UTC。
-* API：ISO 8601。
-* 字段固定：`created_at / updated_at / event_time / confirmed_at / rejected_at`。
-* 统计口径：`COALESCE(event_time, confirmed_at)`。
-* 客户端负责本地时区显示，后端不按客户端时区格式化。
-
-### 幂等
-
-所有写操作必须支持 `client_request_id`。
-重试不得产生重复业务记录。
+- 文件放在拥有该责任的现有模块中；不要创建 `v2/`、`new/`、`old/`、`backup/`、`tmp/` 逃避迁移。
+- 运行时数据、构建产物、凭证、日志和本地工具链不得进入 git。
+- 命名遵循所在语言和模块现状；不要为统一外观做无关全仓改名。
+- 一个事实、配置或协议只保留一个当前权威。切换完成后删除本任务范围内的旧消费者和桥接入口。
+- `scripts/` 不承载领域业务；迁移或一次性修复脚本必须有清楚输入、退出条件和重复执行语义。
 
 ---
 
-## 4. 接口规范
+## 3. 数据、金额、时间与身份
 
-* API 必须有版本策略，如 `/api/v1/...`。
-* 破坏性变更（删字段、改类型、改语义）必须 bump 大版本，并保留旧版本兼容期。
-* 请求/响应字段命名固定，不随 UI 文案变化。
-* 分页统一：`page / page_size / total / items`。
-* 排序、过滤字段必须白名单化。
-* API 不返回服务器本机路径、内部 URL、堆栈信息。
+- 权威金额使用有界整数 minor unit，并携带明确币种/绑定语义；禁止用 `float` 或显示层换算作为账务权威。
+- 事件瞬时、账务归属日期、创建/更新时间分开；输入时区、账本 calendar binding 和 DST 语义必须明确，不能用请求时区重新切历史月份。
+- 内部主键、公共资源身份、账本/租户隔离键和设备意图身份各司其职；唯一约束必须包含正确作用域。
+- 已确认财务事实的修改走明确更正、冲销或版本化状态迁移，不靠静默覆盖抹掉历史。
+- PostgreSQL 保存服务端权威事实；Android Room、Web/desktop 缓存和读模型是可重建投影。
+- 未提交的离线 outbox intent 是待履行用户意图，不是可随意删除的缓存。
+- 新字段、约束和索引必须考虑既有数据、mixed-version consumer、失败恢复和回退边界；不强制每个变更提供不现实的反向迁移，但必须明确可逆、前向兼容或 repair 方案。
 
-统一错误格式：
+具体金额、时间、事实和离线语义从相关代码、测试及当前有效 ADR 按需核对，不在本规则复制易过期字段清单。
 
-```json
-{ "error": "错误代码", "message": "中文说明" }
-```
+---
 
-通用错误码：
+## 4. API、错误与并发契约
 
-`invalid_token / invalid_request / not_found / method_not_allowed / file_too_large / unsupported_file_type / amount_required / state_conflict / rate_limited / server_error`
-
-禁止返回 traceback、英文底层异常、接口各自发明错误结构、吞异常返回成功。
+- 当前产品 API 使用既有 `/api/*`、`/u/*`、`/web/*`、`/owner/*` 契约；不得仅为“规范感”引入 `/api/v1` 或平行入口。
+- API 字段、状态码、错误码或副作用发生变化时，同一任务必须检查所有真实消费者、OpenAPI/契约测试和 mixed-version 影响。
+- 错误响应提供稳定机器码和适合用户面的文案；不得暴露 traceback、本机路径、SQL、token、内部 URL 或底层异常。
+- 幂等、OCC/CAS、授权和业务状态校验是不同责任：
+  - Idempotency-Key 证明同一意图安全重放；
+  - row/version token 证明客户端基于哪个状态写入；
+  - principal/scope 证明谁有权写；
+  - 状态机证明该迁移是否合法。
+- 需要幂等 claim 与业务提交的动作必须处于同一事务或有明确 committed-but-unseen 恢复协议。
+- 不新增“成功但悄悄降级”的响应。能力缺失、版本不兼容或事实不确定时返回明确失败/待处理状态。
 
 ---
 
 ## 5. 鉴权、安全与发布面
 
-* 服务端 Token / Session 是最终鉴权来源。
-* 客户端生物识别只解锁本地状态，不替代服务端鉴权。
-* Token 不写代码、不进日志、不进 README、不进截图、不进 git。
-* 客户端凭证必须进入系统级安全存储（Keystore / Keychain 等）。
-* 上传目录禁止公开挂载，文件只能通过鉴权接口访问。
-* API 不返回本机文件路径。
-
-构建分级：
-
-| 构建            | 用途   | 诊断入口         | 日志输出上限     |
-| ------------- | ---- | ------------ | ---------- |
-| dev/debug     | 本机开发 | 全开           | DEBUG+     |
-| gray/internal | 内测   | 简化，仅连接状态/版本号 | INFO+，禁 Header/Body |
-| release       | 公开发行 | 全关           | WARN+      |
-
-诊断入口必须编译期裁掉，不能只靠运行时隐藏。
-维护接口必须独立 admin 鉴权，只暴露窄能力，禁止任意路径、任意 SQL、通用文件管理。
+- 服务端身份、session/token scope、账本角色和资源归属是最终授权来源；客户端生物识别只保护本机访问。
+- `/owner` 是 loopback 管理面。公网 `/web`、UploadLink 与 API 只开放明确 allowlist，并执行对应 session、Cloudflare Access、CSRF、origin 和后端授权策略。
+- `/api/admin/*`、维护能力和任意数据操作默认不得公网开放；新增维护接口必须窄能力、窄输入、可审计。
+- `uploads/` 不静态公开；附件只通过授权读取路径访问，数据库路径解析必须经过统一 resolver 与 no-traversal/no-cross-ledger 校验。
+- 密钥、token、pairing code、数据库口令、bootstrap secret 不进入源码、日志、截图、命令行参数或公开回执。
+- 安全加固必须对应当前威胁模型或已观察缺口；禁止为假想攻击面增加一串无消费者的框架、代理或 fallback。
+- 权限放宽、秘密迁移、身份重建和数据删除属于高风险动作，必须有 Owner 明确授权与恢复证据。
 
 ---
 
 ## 6. 持久化、同步与恢复
 
-* 后端 schema 变更必须走迁移工具，附可执行回滚。
-* 客户端 schema 变更必须提交 schema 描述文件和显式迁移策略。
-* 新增非空列按三步走：先可空/默认值 → 数据回填 → 收紧约束。
-* 服务端是业务真源，客户端本地库只是缓存。
-* 同步使用 upsert，唯一键必须叠加隔离键，如 `(tenant_id, server_id)`。
-* 隔离由服务端 `tenant_id / scope_id` 实现，禁止靠前端过滤代替隔离。
-* 数据库和文件存储都必须备份。
-* 每个版本至少做一次恢复演练；没演练的备份等于没有备份。
+- PostgreSQL 和附件共同构成服务端持久事实；备份、恢复和保留数据重装必须证明二者同代且身份一致。
+- schema 变化走项目当前迁移机制；迁移必须可重复识别、失败可诊断，并在适用时验证旧数据和现有 installation。
+- 禁止静默回退到 SQLite、临时数据库、新 DataRoot、新 installation_id 或另一套附件目录。
+- 同步必须按 ledger/resource identity 隔离。投影可以重建，用户 intent、冲突状态和已提交未观察结果不能被刷新吞掉。
+- upgrade/repair/rollback/downgrade 的允许面由当前 Windows 生命周期合同裁决；“服务能启动”不等于数据、身份、schema 和消费者都兼容。
+- recovery 只恢复可证明属于同一主体、同一 operation 或明确 clone 语义的数据；不得凭盘符、目录存在或旧标记猜身份。
+- 备份存在不等于可恢复。任务触及持久化或生命周期时，按风险验证实际 restore/repair 路径，而不是新增一份形式化清单。
 
 ---
 
-## 7. 状态、事务、并发与任务
+## 7. 状态、事务、重试与后台工作
 
-* 核心业务状态必须写成有限状态机，不靠散落 if 判断。
-* 状态流转必须校验当前状态，冲突返回 `state_conflict`。
-* 一个业务动作涉及多表时必须使用事务。
-* 并发写入必须有唯一约束、锁或版本号保护。
-* 后台任务必须可重试、可停止、可观测，不得悄悄吞错。
-* 客户端重试使用指数退避 + jitter，且必须有终止条件。
+- 核心状态迁移必须有有限、可枚举的前置条件和终态；不要把状态机散成相互矛盾的布尔值。
+- 一个用户动作涉及多表或多事实时保持原子事务；外部副作用与数据库事务之间要有明确的 outbox、receipt 或补偿边界。
+- 重试必须有稳定身份、终止条件和重复执行语义；指数退避不是幂等性的替代品。
+- 后台任务/Worker 只做调度和窄副作用，领域判断放在可测试责任层；失败不得伪装成功或改写用户事实。
+- 不为少量固定任务引入通用工作流引擎、任务平台或常驻框架。
+- 进程崩溃、超时和 committed-but-unseen 只实现当前合同要求的恢复状态；禁止脑补无限失败矩阵。
 
 ---
 
 ## 8. Provider、配置与自动化
 
-OCR、分类、推送、支付、外部 LLM 等必须 provider 化：
-
-* 有显式接口契约。
-* 至少有 empty / mock 实现。
-* 通过配置切换。
-* 失败不得破坏主业务闭环。
-
-业务代码统一从 config 模块读取配置，禁止散写环境变量取值。
-模型名、服务地址、阈值、开关不写死在业务代码里。
-自动识别、自动填充、AI 建议只能填空字段，不得覆盖用户手动编辑值。
-AI/OCR/LLM 结果默认是"建议"，不是事实。
+- OCR、分类、AI、推送等外部/可替换能力通过现有 provider 或 adapter 边界进入，不直接拥有账务确认权。
+- 自动结果只能填充允许的建议位；用户手动修改或已确认事实不得被后台覆盖。
+- 配置从模块统一入口读取；业务代码不散写环境变量、模型名、服务地址、阈值和凭证。
+- provider 失败要保持主业务事实诚实：能创建 pending 就创建 pending；不能证明结果时明确失败，不伪造默认值。
+- mock/empty 实现只在真实测试或无能力模式需要时保留，不要求每个抽象机械配齐一套空实现。
+- 自动化脚本不得绕开正式权限、迁移、审计或安装生命周期边界。
 
 ---
 
 ## 9. 依赖治理
 
-* 版本集中管理：依赖清单、版本目录或锁文件统一维护。
-* 禁止 alpha、beta、停止维护、来源不清依赖进入主线。
-* 新增依赖前查官方文档、维护状态、许可证。
-* 结论写入 `DECISIONS/`。
-* 升级依赖必须跑：单测、关键构建、lint、依赖审计。
+- 新依赖必须解决当前问题，并核对官方来源、维护状态、许可证、平台兼容和锁定方式。
+- 优先复用现有标准库和已引入能力；不要为一个 helper 或视觉效果增加重依赖。
+- 预发布依赖只在现有稳定版无法满足、风险已验证且有明确回收条件时使用。
+- 升级只验证受影响构建、测试、lint、漏洞/许可证和运行路径；不因单个依赖升级启动无关全栈重构。
+- 常规依赖增删不强制写 ADR；只有长期绑定平台、数据格式、安全边界或难逆转运行时的选择才需要决策记录。
+
+详细登记与版本策略见 `DEPENDENCIES.md`，机器质量门见 `CODE_QUALITY_STANDARDS.md`。
 
 ---
 
-## 10. 用户面与文案
+## 10. 用户面、可访问性与三端产品化
 
-普通用户界面不得出现：服务器域名、Token、接口名、端口、DNS、TLS、Tunnel、日志路径、诊断脚本名。
-
-错误文案像生活 App：
-
-* 正确：`连接不上服务器，请稍后再试`
-* 错误：`DNS resolve failed for xxx.example.com:8000`
-
-技术原因写日志，或放在内测构建连接详情页。
-UI 字符串必须走资源文件，预留 i18n 通道。
+- 普通用户界面不暴露 token、域名配置、端口、DNS/TLS、数据库、脚本名、日志路径或内部错误。
+- 失败、离线、冲突、权限不足和处理中状态必须诚实可见；不能用空白、假成功或无限 loading 遮住。
+- Android、`/web`、`/owner`、Desktop Manager 保持能力和事实语义一致，但按各自平台采用自然导航与布局。
+- 产品化改造不得删掉真实能力或把它藏到不可达路径；旧入口只有在消费者迁完且新入口验收后退役。
+- 响应式修改至少覆盖任务实际涉及的关键宽度、输入极值和无横向溢出；不为局部改动机械重跑全部视觉矩阵。
+- 字符串资源、design token、图表和背景能力沿用当前实现；新增抽象必须有跨端复用或可验证一致性收益。
+- 做到当前产品需要的可访问性，不以“完整 a11y/i18n”名义扩成独立项目。
 
 ---
 
 ## 11. 测试、发布与回滚
 
-本规范必须配套 `scripts/verify.*` 检查脚本；没有可执行检查的规范，只算文档，不算工程约束。
+验证遵循 `AGENTS.md` 的风险比例原则。
 
-发布前必须全部通过：
+- 先跑离改动最近、最能证明退出门的检查；失败或调用图扩大时再逐层扩展。
+- 新测试证明新增行为、修复的回归或明确不变量；不得复制现有测试只为增加数量。
+- 测试夹具、mock 和 harness 必须复现真实协议；不能为了让测试变绿绕开生产边界。
+- 修改后审查 `git diff`、受影响文件和生成物，确认没有无关格式化、能力退化或秘密泄漏。
+- 发布/安装候选按 exact HEAD 绑定：代码、构建产物、hash、运行证据和最终报告必须属于同一候选。
+- 数据、身份、安装或迁移相关变更要覆盖合同要求的失败与恢复路径；普通局部改动不自动升级为全生命周期发布演练。
+- 发现原有失败时记录 baseline；只有本次引入或阻碍退出门的失败进入当前修复面。
+- 任一未执行检查必须明确写出，不得用“应当通过”代替证据。
 
-* 单元测试
-* 关键集成测试
-* API 契约测试
-* lint / 静态检查
-* 依赖审计
-* 数据库迁移和回滚演练
-* 备份恢复演练
-* release 无诊断入口、真实凭证、本机路径、内部 URL
-* API 契约与客户端 DTO 已对齐
-* 验收清单全部勾选
-
-任一项不过，不发。
-
-每次发布必须有回滚方案：代码怎么回滚，数据库怎么兼容，旧客户端是否可用，文件存储是否受影响。
+达到约定 Done Checks 后停止，不追加“顺便加固”。
 
 ---
 
-## 12. 可观测性与运维
+## 12. 可观测性与性能
 
-* `/health/liveness`：进程活着即返回 200，不查依赖。
-* `/health/readiness`：能服务请求才返回 200，检查 DB 和关键 provider。
-* 日志级别 `DEBUG / INFO / WARN / ERROR`：代码按 INFO 写，输出上限由构建决定（见 §5）。
-* 敏感字段必须脱敏。
-* 错误日志必须带 `request_id / trace_id`。
-* 安全和数据修改动作必须记录审计日志。
-* 项目必须有最低性能预算：上传大小、API 超时、分页上限、缓存容量、后台任务并发、日志保留天数。
-* 禁止无上限上传、无上限查询、无上限缓存、无上限后台任务。
+- 日志用于定位事实和阶段，不用于倾倒请求正文、凭证、用户图片或数据库内容。
+- 错误和生命周期事件使用稳定 request/operation/support identity；公开信息与受保护诊断分层。
+- 为真实资源设置上限：上传、查询、缓存、并发、重试、日志保留和后台工作；上限应来自当前部署需求或测量。
+- 性能优化先测量瓶颈，再改调用、查询、缓存或并发；不提前建设 telemetry/SRE 平台。
+- 健康、身份检查、private status 和 readiness 语义不得互相冒充；是否新增探针由真实消费者决定。
+- 诊断入口必须受构建、网络和鉴权边界约束，不能只靠 UI 隐藏。
 
 ---
 
-## 13. 流程、文档与反扩
+## 13. 流程、文档与反扩张
 
-项目至少维护以下文档角色（具体落点见各项目 README）：
+### 任务合同
 
-* **启动 / 最小说明** —— 一般是 `README.md`。
-* **项目边界** —— 做什么 / 不做什么 / 对接什么 / 不对接什么。本项目落在
-  `docs/architecture/PROJECT_STRUCTURE.md` + `docs/architecture/ARCHITECTURE.md`。
-* **接口契约** —— 本项目落在 `docs/architecture/API.md`（OpenAPI snapshot 在
-  `docs/architecture/openapi_contract.json`）。
-* **关键决策记录** —— 本项目落在 `docs/DECISIONS/`；新决定使用
-  `docs/rules/ADR_TEMPLATE.md` 的 schema-v2 契约格式，机器状态以
-  `docs/current/adr-registry.json` 为准，完整门禁见 `docs/rules/ADR_CONTRACT_STANDARD.md`。
-* **验收清单** —— 本项目分散在 release runbook（`docs/runbook/RELEASE_PACKAGING.md`、
-  `docs/runbook/GRAY_ACCEPTANCE_EXECUTION.md`、`docs/runbook/ROLLBACK.md` 末尾验收段）。
-* **运维 Runbook** —— 部署 / 备份 / 恢复 / 故障处理。本项目落在 `docs/runbook/`
-  目录（CI / Cloudflare Tunnel / Windows 服务 / 备份任务 / 实机联调 / 回滚等分文件）。
+中型以上任务使用最小任务合同：
 
-旧版本曾写 `docs/PROJECT_BOUNDARY.md` / `docs/API.md` / `docs/ACCEPTANCE.md` /
-`docs/RUNBOOK.md` 这种平铺文件名——v0.9 已按读者意图重新分组到子目录，没有
-对应文件了。引用时按上面真实路径。
+- Goal
+- Allowed Changes
+- Forbidden Surface
+- Done Checks
+- Evidence
 
-PR Review 必看：分层、目录归位、数据真源、依赖、凭证、迁移、幂等、API 对齐、release 面。
+合同描述结果和边界，不复制整本仓库规则。一个问题能用当前调用链和既有模式解决时，不创建新框架、治理层或长期台账。
 
-不做以下事情：
+### 文档
 
-* 不为"以后可能用得上"提前引入大框架。
-* 不用工作流引擎解决几个 if 能解决的问题。
-* 不把 UI、业务、基础设施搅进一个文件里。
-* 不在 release 留工程师彩蛋、后门、隐藏入口。
-* 不靠前端隐藏代替后端鉴权。
-* 不靠"大家都遵守"代替编译期约束、测试和契约检查。
-* 不在主线引入未经验证的大版本升级。
-* 不让 AI/OCR/LLM 自动结果直接改写用户确认过的数据。
+- README 负责稳定入口和真实启动方式，不承担每日施工进度。
+- architecture 记录当前跨模块契约；runbook 记录可执行操作；roadmap 记录未来；`current/` 报告必须标明基线和日期。
+- 文档只在本次行为或权威发生变化时同步修改；不要为了“全都新”批量润色历史材料。
+- 过期状态应删除、标明基线或移出默认入口，不能继续冒充当前事实。
 
-### 当前阶段不做（要做先写 `DECISIONS/` ADR）
+### ADR
 
-* SLO / on-call / SRE 流程
-* 完整 i18n / 完整 a11y
-* 合规审计（GDPR / SOC2 / 等保）
-* 后台任务框架（Celery / RQ / 工作流引擎）
-* 强制多人 code review
-* SaaS telemetry（Sentry / Datadog / OpenTelemetry）
-* 端到端 incident response 角色矩阵
-
-### 规则演进
-
-* 改规则 = ADR + `git log -- docs/rules/ENGINEERING_RULES.md` + 主规范头部 version bump，不另起 CHANGELOG_RULES。
-* 季度由 owner（在仓库根 README 顶部写明）扫一次：上面"不做"项的判断是否变化、§14 是否还成立。
-* "不做" → "做" 必须 ADR + SemVer **MAJOR**。
+- ADR 记录长期、跨模块、难逆转的决定和原因，不是 bug 单、施工日志、验收报告或每次规则改动的许可证。
+- 常规实现、局部重构、兼容 bug、样式和测试变化不写 ADR。
+- 决定改变时写后继 ADR 并声明关系；历史 ADR 正文不回写成“当时已经实现”。
+- `docs/current/ADR_STATUS.md`、registry 和依赖图是生成视图，只对标注的 review base 有效；过期视图只用于检索，不用于证明当前符合性。
+- 规则修改通过 reviewable PR 和 git 历史治理，不要求递归再写一份 ADR。
 
 ---
 
 ## 14. 小票夹项目特定补充
 
-以下是通用模板未覆盖、本项目独有的约束。
+本节只列稳定边界，不复制会随版本变化的实现清单。
 
-### 身份模型（identity_schema=v0.3，冻结）
+### 身份与事实
 
-`Account / Ledger / LedgerMember / Device / AuthToken / UploadLink / PairingCode / Invitation / LedgerAuditLog`（详见 `docs/architecture/ACCOUNT_SYSTEM.md`）。
+- `identity_schema=v0.3` 在代码正式升级前保持兼容；Account/Ledger/Device/Token/UploadLink/Pairing 的具体能力以当前代码和契约测试为准。
+- Owner/member/viewer 的写权限和资源可见性由后端裁决；Owner 转让、邀请、撤销和恢复不得靠客户端猜测。
+- 小票夹不把邮箱、手机号、密码或商业云账号作为当前本地安装身份的默认前提。
 
-* `tenant_id` 字段在 v0.3 起语义等同 `ledger_id`。
-* 角色：`owner / member / viewer`；viewer 写入必须后端 403，前端隐藏只做体验。
-* 邀请 `Invitation.role` 只接受 `member / viewer`；owner 通过显式 owner-transfer。
+### 公网与上传
 
-### OCR / receipt parse provider
+- iPhone UploadLink 是只能创建受限 pending 的窄凭证，不能读取账本、确认事实、导出、统计或读取图片。
+- `/owner` 仅 loopback；公网 `/web` 与 API 受明确 allowlist、session/Access、CSRF/origin 和角色边界保护。
+- 附件不公开挂载；数据库路径还原统一经过项目 resolver。一次性迁移若必须绕开 resolver，只能在明确迁移模块和尚无作用域身份的阶段发生，并有专门测试。
 
-* Provider 命名：`empty`（默认空）、`mock`（测试）、`rapidocr`（本地图片）、`local_llm`（OpenAI 兼容视觉模型）。
-* 自动 OCR 由 `OCR_AUTO_RUN` 控制，默认关；provider 失败不破坏 pending 创建。
-* 提取入口在 `backend/app/services/receipt_parse_service.py`；金额、商家、时间、分类候选拆到 `receipt_parse_amount.py / _merchant.py / _time.py / _category.py`，禁止散到 route 或 Android UI。
+### Windows 原生运行时
 
-### 暴露面与边界
+- 正式拓扑是 Windows 原生安装、SCM 服务、PostgreSQL、Program Files 程序面与 ProgramData 数据面；不依赖 Docker/WSL/Linux。
+- installer、service、Desktop Manager 和用户凭证属于不同权限主体；提权安装器不得替普通用户保存长期 bearer。
+- install/upgrade/repair/uninstall/retained-data reinstall 必须保持 installation identity、DataRoot、服务身份和数据库/附件关系，不按目录存在猜当前权威。
+- `*.ps1` 的 PowerShell 5.1 编码与语法兼容继续由仓库检查器裁决；不要把 Windows adapter 约束传播到非 PowerShell 文件。
 
-* 公网（Cloudflare Tunnel）仅暴露明确 allowlist：Android/API 的受控 `/api/*` 子集、`/u/{upload_key}`、以及 ADR-0028 允许的 `/web/*` 浏览器 session-gated 子树和 `/static/web/*`、`/static/shared/*` 静态资产。
-* `/owner` 强制 loopback（127.0.0.1 + Host 头双检，见 `backend/app/network_boundary.py`）。`/web` 只有 loopback 请求可免 cookie；公网请求必须先过 Cloudflare Access（生产建议 `CLOUDFLARE_ACCESS_REQUIRED=true` 并由后端校验 `Cf-Access-Jwt-Assertion`），再经 `web_session_gate` 校验 `__Host-session`，无 cookie 返回 `303 /web/auth/login`。
-* Web cookie 只接受 `AuthToken.scope="app"` 且 `Device.platform="web"` 的 token；Android app token 放入 cookie 必须被拒绝且不得被误 revoke。
-* Web cookie 服务端 TTL 由 `auth_tokens.expires_at` 固定为 8 小时，不做滑动刷新；到期后服务端撤销 token 并要求重新 pairing。
-* `/web` 与 `/owner` 的非安全方法必须同时通过同源来源头和 CSRF token 校验；SameSite cookie 只是附加防线。
-* `/api/admin/*` 默认 loopback；`ALLOW_PUBLIC_ADMIN_API=true` 才放开（不建议）。
-* `uploads/` 永不 mount 为静态资源；图片只通过 `GET /api/expenses/{id}/image` 鉴权读取。
+### 多端与产品化
 
-### iPhone UploadLink
+- Android、Web、Owner 和 Desktop 的能力迁移必须检查真实消费者、权限、离线/冲突和错误状态；视觉换壳不能削弱功能。
+- design token 和共享资产应在已有边界复用；不同平台可以采用不同布局，不为表面一致制造跨端耦合。
+- 当前阶段、门号、候选状态和剩余施工量属于任务合同/PR/验收证据，不写进长期工程规则。
 
-* 唯一入口：`POST /u/<upload_key>?tz=Asia/Shanghai`。
-* UploadLink 凭证 scope 受限：只能创建 pending，不能读账本/确认/导出/统计/读图片。
+### 责任路由
 
-### Upload path 解析单一入口
-
-* 任何 DB 里的 `image_path / thumbnail_path` 还原到 `Path`，必须走 `app.services.file_service.resolve_upload_path_for_tenant`。
-* 禁止手写 `BACKEND_ROOT / relative_path` 或 `settings.upload_dir / relative_path`：外部绝对 upload_dir 配置下会指向错误位置且绕过 path-traversal 防护。
-* 例外：`backend/app/database/_uploads.py` 的 v0.2→v0.3 一次性迁移在 tenant 尚未分配时无法走 tenant-scoped resolver，允许直接拼接，但仅限该模块。
-
-### 字段命名（与模板 §3 的项目特定映射）
-
-模板 §3 列的字段名是通用约定，本项目使用以下具体命名：
-
-* 业务时间：`expense_time`（对应模板 `event_time`）。
-* 统计口径：`COALESCE(expense_time, confirmed_at)`。
-* `tenant_id` 字段历史命名保留，语义等同 `ledger_id`（见身份模型小节）。
-
-### 当前阶段不引入（v1.0 启动前不动）
-
-以下是与模板 §3/§4/§12 形式不一致但 v0.x 暂不引入的项；要引入必须先开 ADR：
-
-* `/api/v1/...` 显式版本前缀（vs 模板 §4）：当前所有 API 是无版本 `/api/*`，破坏性变更直接 bump 后端 `BACKEND_VERSION` + 同步 Android DTO + OpenAPI snapshot；v1.0 启动时再 ADR 决策是否引入。
-* `client_request_id` 幂等键（vs 模板 §3）：**ADR-0042 已为 outbox-routed mutate 面引入服务端请求幂等键**（`Idempotency-Key` header + `api_idempotency_keys` 表，intent-time UUID v4），解除本条对该范围的限制；其余写操作（在线-only create 等）仍不带 client-side dedup key，上传/创建幂等由服务端业务键（image hash / `draft_idempotency_key` / idempotent confirm）保证。
-* `/health/liveness` + `/health/readiness` 拆分（vs 模板 §12）：当前匿名公网仍只有单一 `GET /api/health`，仅返回 `{"status":"ok"}`；私有状态走需 session token 的 `GET /api/status/private`。v1.0 起单机 + Windows 任务计划部署模式下没有编排器去消费 readiness 探针。
-* UI 字符串走资源文件（vs 模板 §10）：**本条已由 [[0044]] 从「不引入」反转为「做 string-resourcing」**（2026-06-06，规则 MINOR）。Android **用户可见**中文字面量（`Text`/placeholder/label/`contentDescription`/Toast/Snackbar）外置到 `res/values/strings.xml` + `stringResource(R.string.xxx)`，命名 `模块_位置_用途`（不缩写），按 screen/module 分 PR 推进。**红线**：纯重构零功能/UI 变化 / `strings.xml` 只放中文不建第二语言 / 不动 `app_name` / 日志调试中文不动只动用户可见的。**注意:这是 resourcing 不是 i18n**——不翻译、不建 `values-xx/`，故 §13「完整 i18n / 完整 a11y」**仍是「当前阶段不做」**（真要翻译/多 locale 另开 ADR = MAJOR）。历史背景：此前 `strings.xml` 仅 `app_name`、30+ 文件直接 `Text("中文")`。
-
-### Auth check ≠ health
-
-* 客户端绑定后用 `GET /api/auth/check` 验证 token；不要用 `/api/health` 判断。
-
-### Windows PowerShell 5.1 + UTF-8 BOM
-
-* `backend/scripts/*.ps1` 和 `scripts/*.ps1` 必须 UTF-8 with BOM；`.env` 不带 BOM。
-* PS 脚本读文件必须显式 `Get-Content -Encoding UTF8`（PS 5.1 无 BOM UTF-8 默认按 ANSI 解析，中文乱码）。
-* PS 脚本不能用 `&&` / `||` 链接（5.1 语法错），用 `; if ($?) { ... }`。
-* `scripts/check_text_encoding.ps1` 在 CI / verify 都跑，违反就 fail。
-* 不依赖 PowerShell 7、WSL、Docker 或 Linux shell。
-
-### 三端视觉同步
-
-Android / `/web` / `/owner` 共享一套 design tokens（`backend/app/static/shared/tokens.css` + Android `ui/design/`）。改一处颜色/间距/copy 时其它两端同步改，不接受端内分叉。
-
-### 外部产品参考边界
-
-Monarch、支付宝账单等外部产品只允许作为**体验模式**参考；不得照搬 UI 布局、素材、商标、专有文案（详见 `docs/roadmap/MONARCH_INSPIRED_UI.md`）。
-
-### Android 周期 Worker 与 §13 的边界（ADR-0046）
-
-§13「后台任务框架（Celery / RQ / 工作流引擎）」的禁项对象是 **backend / 平台级任务框架**；Android 端在既有 WorkManager 能力下的**单个窄用途周期 worker**（如固定支出提醒检测源，[[0046]]）不落入该禁项，按常规 PR + 规则 MINOR 处理。新增此类 worker 仍须守 [[0046]] 边界契约：Worker 只做调度、业务判断拆纯 Kotlin 可测层、本地显式去重、失败安全降级（不写任何服务端业务状态）、不引入 exact alarm / foreground service / boot receiver / 常驻进程。若未来要把「任何新增周期 worker」也解释为 §13 禁项，须重新裁定为 ADR + MAJOR。
-
-### 代码质量数字门槛
-
-详见 [CODE_QUALITY_STANDARDS.md](CODE_QUALITY_STANDARDS.md)：ruff 规则集、line-length、McCabe 复杂度、Kotlin 阈值（detekt 2.0.0-alpha.3 机器门，2026-06-12 接线：六条 complexity 规则、type-resolving 双变体 task、per-variant baseline 冻结存量、CI + ci-gap 钉）、PR 议题纪律、Conventional Commits、main 合并纪律。
-
-### 依赖与错误码查询
-
-* 依赖管理细则与升级流程：[DEPENDENCIES.md](DEPENDENCIES.md)
-* 错误码 → UI 文案映射：[ERROR_MESSAGE_MAPPING.md](ERROR_MESSAGE_MAPPING.md)
-* 官方文档与依赖来源：[REFERENCES.md](REFERENCES.md)
+- 金额、时间、修订、更正：查当前领域服务、迁移、测试及相关 ADR。
+- 离线、幂等、OCC、冲突：查 outbox/idempotency 实现、消费者与相关 ADR。
+- Windows 生命周期：查 `distribution/`、`desktop/`、Windows runbook、专项测试和相关 ADR。
+- UI/产品化：查真实 360/768/1440 或 Android 实机路径、能力表与当前任务合同。
+- ADR/治理工具本身：再读取 `ADR_CONTRACT_STANDARD.md`；普通开发任务无需加载。
 
 ---
 
-## 附：变更管理
+## 完成原则
 
-遵循语义化版本：`MAJOR.MINOR.PATCH`。
-
-* `MAJOR`：改变工程边界。
-* `MINOR`：增加规则。
-* `PATCH`：修正措辞或格式。
-
-每次变更必须写明日期、摘要、影响范围。
-规则放宽必须进入 `docs/DECISIONS/`，并写明回收条件。
+边界要硬，过程要瘦；验证充分，不追求仪式性覆盖；没有证据，不建设防御。
