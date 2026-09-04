@@ -74,7 +74,10 @@ class StatsAdaptiveExperienceTest {
         var hinge = Rect.Zero
         composeRule.setContent {
             DeviceConfigurationOverride(DeviceConfigurationOverride.ForcedSize(DpSize(1440.dp, 900.dp))) {
-                hinge = with(LocalDensity.current) { Rect(700.dp.toPx(), 0f, 740.dp.toPx(), 900.dp.toPx()) }
+                // FoldingFeature bounds use physical pixels, including under ForcedSize's test density.
+                hinge = with(LocalDensity.current) {
+                    Rect(700.dp.roundToPx().toFloat(), 0f, 740.dp.roundToPx().toFloat(), 900.dp.roundToPx().toFloat())
+                }
                 val directive = PaneScaffoldDirective.Default.copy(maxHorizontalPartitions = 2, excludedBounds = listOf(hinge))
                 TicketboxTheme(skin = AppSkin.Default) {
                     CompositionLocalProvider(
@@ -92,8 +95,8 @@ class StatsAdaptiveExperienceTest {
             .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         val supporting = composeRule.onNodeWithTag(AppAdaptivePaneStructures.Insights.supportingTestTag)
             .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
-        assertTrue("Results must not be under the hinge", primary.right <= hinge.left)
-        assertTrue("Filters must not be under the hinge", supporting.left >= hinge.right)
+        assertTrue("Results must not be under the hinge: primary=$primary, hinge=$hinge", primary.right <= hinge.left)
+        assertTrue("Filters must not be under the hinge: supporting=$supporting, hinge=$hinge", supporting.left >= hinge.right)
         composeRule.onNode(hasText(monthLabel) and hasClickAction()).assertIsDisplayed().performClick()
         composeRule.onNodeWithText(context.getString(R.string.components_month_picker_title)).assertIsDisplayed()
     }

@@ -45,19 +45,23 @@ internal data class StatsOverviewTrendData(
     val lastUploadAt: String? = null,
 )
 
+/** 概览头部事实：同一 state.stats 的月总量、来源、近 7 天、月对比与标签作用域。 */
+internal data class StatsOverviewHeaderModel(
+    val stats: MonthlyStats,
+    val statsSource: StatsSource,
+    val recent7DaysAmountCents: Long?,
+    val comparison: MonthComparison?,
+    val tagScope: TagScopeInsightModel? = null,
+)
+
 @Composable
 internal fun StatsOverviewCard(
-    stats: MonthlyStats,
-    recent7DaysAmountCents: Long?,
-    comparison: MonthComparison?,
+    header: StatsOverviewHeaderModel,
     trendData: StatsOverviewTrendData = StatsOverviewTrendData(),
-    statsSource: StatsSource = StatsSource.Backend,
-    tagScope: TagScopeInsightModel? = null,
 ) {
     val evidenceOnly = false
     val currencyDisplay = LocalCurrencyDisplay.current
     val compactWindow = LocalAppAdaptiveLayoutPolicy.current.widthClass == AppWindowWidthClass.Compact
-    val hasCurrentConfirmedSpend = stats.count > 0 && stats.totalAmountCents > 0L
     val hasTrendData = trendData.reportTrend.any { it.amountCents > 0L }
 
     if (evidenceOnly && !hasTrendData) {
@@ -70,19 +74,15 @@ internal fun StatsOverviewCard(
     ) {
         if (evidenceOnly) {
             OverviewRhythmHeader(
-                stats = stats,
-                recent7DaysAmountCents = recent7DaysAmountCents,
-                statsSource = statsSource,
+                stats = header.stats,
+                recent7DaysAmountCents = header.recent7DaysAmountCents,
+                statsSource = header.statsSource,
                 currencyDisplay = currencyDisplay,
             )
         } else {
             OverviewAmountHeader(
-                stats = stats,
-                statsSource = statsSource,
-                hasCurrentConfirmedSpend = hasCurrentConfirmedSpend,
-                comparison = comparison,
+                header = header,
                 currencyDisplay = currencyDisplay,
-                tagScope = tagScope,
             )
         }
         if (!evidenceOnly) {
@@ -92,12 +92,12 @@ internal fun StatsOverviewCard(
             ) {
                 CompactMetric(
                     label = stringResource(R.string.stats_overview_count_label),
-                    value = stringResource(R.string.stats_overview_count_value, stats.count),
+                    value = stringResource(R.string.stats_overview_count_value, header.stats.count),
                     modifier = Modifier.weight(1f, fill = compactWindow),
                 )
                 CompactMetric(
                     label = stringResource(R.string.stats_overview_recent7_label),
-                    value = recent7DaysAmountCents?.let { formatDisplayAmount(it, currencyDisplay) }
+                    value = header.recent7DaysAmountCents?.let { formatDisplayAmount(it, currencyDisplay) }
                         ?: stringResource(R.string.stats_overview_recent7_unavailable),
                     modifier = Modifier.weight(1f, fill = compactWindow),
                 )
@@ -117,32 +117,29 @@ internal fun StatsOverviewCard(
 
 @Composable
 private fun OverviewAmountHeader(
-    stats: MonthlyStats,
-    statsSource: StatsSource,
-    hasCurrentConfirmedSpend: Boolean,
-    comparison: MonthComparison?,
+    header: StatsOverviewHeaderModel,
     currencyDisplay: CurrencyDisplay,
-    tagScope: TagScopeInsightModel?,
 ) {
+    val hasCurrentConfirmedSpend = header.stats.count > 0 && header.stats.totalAmountCents > 0L
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-        if (tagScope != null) {
-            TagScopeContextRow(model = tagScope, statsSource = statsSource)
+        header.tagScope?.let { scope ->
+            TagScopeContextRow(model = scope, statsSource = header.statsSource)
         }
         OverviewTitleRow(
             title = stringResource(R.string.stats_overview_month_spend_label),
-            showLocalBadge = statsSource == StatsSource.LocalFallback,
+            showLocalBadge = header.statsSource == StatsSource.LocalFallback,
         )
         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
             AppAmountText(
                 modifier = Modifier.fillMaxWidth(),
-                text = formatDisplayAmount(stats.totalAmountCents, currencyDisplay),
+                text = formatDisplayAmount(header.stats.totalAmountCents, currencyDisplay),
                 color = MaterialTheme.colorScheme.onSurface,
                 role = AppAmountRole.Hero,
                 minFontSize = 22.sp,
             )
             when {
-                hasCurrentConfirmedSpend -> comparison?.let { MonthDeltaPill(it, currencyDisplay) }
-                comparison?.previousAmountCents != null && comparison.previousAmountCents > 0L -> Text(
+                hasCurrentConfirmedSpend -> header.comparison?.let { MonthDeltaPill(it, currencyDisplay) }
+                header.comparison?.let { it.previousAmountCents > 0L } == true -> Text(
                     text = stringResource(R.string.stats_overview_empty_month_comparison_hint),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
@@ -151,10 +148,10 @@ private fun OverviewAmountHeader(
                 )
             }
         }
-        if (tagScope != null) {
+        header.tagScope?.let { scope ->
             Text(
-                text = if (tagScope.hasSpend) {
-                    stringResource(R.string.stats_tag_scope_confirmed_caption, tagScope.count)
+                text = if (scope.hasSpend) {
+                    stringResource(R.string.stats_tag_scope_confirmed_caption, scope.count)
                 } else {
                     stringResource(R.string.stats_tag_scope_empty_caption)
                 },

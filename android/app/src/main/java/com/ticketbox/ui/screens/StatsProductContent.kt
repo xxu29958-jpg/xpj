@@ -30,6 +30,7 @@ import com.ticketbox.ui.screens.stats.EmptyStatsCard
 import com.ticketbox.ui.screens.stats.LifestyleCard
 import com.ticketbox.ui.screens.stats.ReportsInsightCard
 import com.ticketbox.ui.screens.stats.StatsOverviewCard
+import com.ticketbox.ui.screens.stats.StatsOverviewHeaderModel
 import com.ticketbox.ui.screens.stats.StatsOverviewTrendData
 import com.ticketbox.ui.screens.stats.StatsInsightSurface
 import com.ticketbox.ui.screens.stats.TagScopeInsight
@@ -61,14 +62,16 @@ private fun LazyListScope.statsOverviewItems(
     item {
         StatsInsightSurface {
             StatsOverviewCard(
-                stats = stats,
-                statsSource = state.statsSource,
-                recent7DaysAmountCents = overviewRecent7DaysAmount(state),
-                comparison = overviewMonthComparison(state),
+                header = StatsOverviewHeaderModel(
+                    stats = stats,
+                    statsSource = state.statsSource,
+                    recent7DaysAmountCents = overviewRecent7DaysAmount(state),
+                    comparison = overviewMonthComparison(state),
+                    tagScope = tagScopeInsightModel(stats = stats, selectedTag = state.selectedTag),
+                ),
                 trendData = StatsOverviewTrendData(
                     reportTrend = state.reportsOverview?.trend.orEmpty(),
                 ),
-                tagScope = tagScopeInsightModel(stats = stats, selectedTag = state.selectedTag),
             )
         }
     }

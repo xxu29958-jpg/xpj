@@ -181,46 +181,16 @@ private fun StatsPrimaryPane(
         ),
     ) {
         item {
-            when (controlsMode) {
-                StatsControlsMode.FiltersAndTabs -> Column(
-                    verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
-                ) {
-                    StatsFilterControls(
-                        state = state,
-                        onOpenMonthPicker = paneActions.onOpenMonthPicker,
-                        onTagChange = actions.filters.onTagChange,
-                    )
-                    StatsViewTabs(
-                        selectedTab = paneState.selectedTab,
-                        onTabChange = paneActions.onTabChange,
-                    )
-                    StatsStatusMessages(
-                        state = state,
-                        selectedTab = paneState.selectedTab,
-                    )
-                }
-
-                StatsControlsMode.Tabs -> StatsViewTabs(
-                    selectedTab = paneState.selectedTab,
-                    onTabChange = paneActions.onTabChange,
-                )
-            }
+            StatsControlsBlock(
+                paneState = paneState,
+                paneActions = paneActions,
+                controlsMode = controlsMode,
+            )
         }
 
-        val stats = state.stats
-        if (stats == null) {
+        if (state.stats == null) {
             item {
-                when {
-                    state.loading -> StatsProductLoadingState()
-                    state.statsLoadError != null -> AppErrorState(
-                        title = stringResource(R.string.stats_error_card_title),
-                        body = state.statsLoadError.asString().ifBlank {
-                            stringResource(R.string.stats_error_card_body)
-                        },
-                        onRetry = actions.onRefresh,
-                    )
-                    else -> EmptyStatsCard(onRefresh = actions.onRefresh)
-                }
+                StatsUnreadableState(state = state, onRefresh = actions.onRefresh)
             }
             return@AppScrollableContent
         }
@@ -231,6 +201,62 @@ private fun StatsPrimaryPane(
             actions = actions.reports,
             onOpenDataQuality = actions.onOpenDataQuality,
         )
+    }
+}
+
+/**
+ * 控制块渲染出口：平窗为筛选+页签+状态消息，铰链模式只留页签（筛选与状态在右页）。
+ */
+@Composable
+private fun StatsControlsBlock(
+    paneState: StatsAdaptivePaneState,
+    paneActions: StatsAdaptivePaneActions,
+    controlsMode: StatsControlsMode,
+) {
+    val state = paneState.screenState
+    val actions = paneActions.screenActions
+    when (controlsMode) {
+        StatsControlsMode.FiltersAndTabs -> Column(
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
+        ) {
+            StatsFilterControls(
+                state = state,
+                onOpenMonthPicker = paneActions.onOpenMonthPicker,
+                onTagChange = actions.filters.onTagChange,
+            )
+            StatsViewTabs(
+                selectedTab = paneState.selectedTab,
+                onTabChange = paneActions.onTabChange,
+            )
+            StatsStatusMessages(
+                state = state,
+                selectedTab = paneState.selectedTab,
+            )
+        }
+
+        StatsControlsMode.Tabs -> StatsViewTabs(
+            selectedTab = paneState.selectedTab,
+            onTabChange = paneActions.onTabChange,
+        )
+    }
+}
+
+/** stats 不可读三态（loading / error / empty），与迁移前逐条一致。 */
+@Composable
+private fun StatsUnreadableState(
+    state: StatsUiState,
+    onRefresh: () -> Unit,
+) {
+    when {
+        state.loading -> StatsProductLoadingState()
+        state.statsLoadError != null -> AppErrorState(
+            title = stringResource(R.string.stats_error_card_title),
+            body = state.statsLoadError.asString().ifBlank {
+                stringResource(R.string.stats_error_card_body)
+            },
+            onRetry = onRefresh,
+        )
+        else -> EmptyStatsCard(onRefresh = onRefresh)
     }
 }
 
