@@ -18,13 +18,11 @@ import com.ticketbox.domain.model.ReportRankingMetric
 import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.domain.model.StatsTab
 import com.ticketbox.domain.model.moneyPercent
-import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppAdaptivePanePurpose
 import com.ticketbox.ui.components.AppAdaptivePaneScaffold
 import com.ticketbox.ui.components.AppAdaptivePaneStructures
 import com.ticketbox.ui.components.AppAdaptiveSupportingPane
 import com.ticketbox.ui.components.AppDataAuthorityStrip
-import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.AppScrollableContentChrome
@@ -38,8 +36,8 @@ import com.ticketbox.ui.components.appAdaptiveSupportingPaneContent
 import com.ticketbox.ui.design.AppAdaptiveContentWidth
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
-import com.ticketbox.ui.screens.stats.EmptyStatsCard
 import com.ticketbox.ui.screens.stats.StatsFilterControls
+import com.ticketbox.ui.screens.stats.StatsUnreadableState
 import com.ticketbox.ui.screens.stats.StatsViewTabs
 import com.ticketbox.viewmodel.StatsFilterOptionsLoadState
 import com.ticketbox.viewmodel.StatsSource
@@ -238,25 +236,6 @@ private fun StatsControlsBlock(
             selectedTab = paneState.selectedTab,
             onTabChange = paneActions.onTabChange,
         )
-    }
-}
-
-/** stats 不可读三态（loading / error / empty），与迁移前逐条一致。 */
-@Composable
-private fun StatsUnreadableState(
-    state: StatsUiState,
-    onRefresh: () -> Unit,
-) {
-    when {
-        state.loading -> StatsProductLoadingState()
-        state.statsLoadError != null -> AppErrorState(
-            title = stringResource(R.string.stats_error_card_title),
-            body = state.statsLoadError.asString().ifBlank {
-                stringResource(R.string.stats_error_card_body)
-            },
-            onRetry = onRefresh,
-        )
-        else -> EmptyStatsCard(onRefresh = onRefresh)
     }
 }
 
