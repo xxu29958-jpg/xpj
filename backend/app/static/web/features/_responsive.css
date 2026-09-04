@@ -7,7 +7,7 @@
         align-items: flex-start;
         gap: var(--space-3);
     }
-    .goal-row-head { align-items: flex-start; flex-direction: column; }
+    /* C2 计划片: .goal-row-head 随 goals.html 迁移零引用, 旧媒体规则已删除。 */
     /* W3 洞察片: reports-chart-canvas / dashboard-card-* 随洞察域迁移零引用,
        旧媒体规则已物理删除 (新规则见 product/domains/insights.css)。 */
 }

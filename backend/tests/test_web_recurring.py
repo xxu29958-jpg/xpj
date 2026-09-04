@@ -75,7 +75,7 @@ def test_web_recurring_create_duplicate_active_guides_to_edit(web_client: TestCl
     assert again.status_code == 200
     assert "已经在你的固定支出里" in again.text
     assert "去编辑现有记录" in again.text
-    assert 'class="rc-edit" open' in again.text
+    assert 'class="plan-edit" open' in again.text
 
 
 def test_web_recurring_create_duplicate_archived_guides_to_restore(
@@ -174,7 +174,7 @@ def test_web_recurring_edit_rename_conflict_guides_to_existing(web_client: TestC
     assert "去编辑现有记录" in edited.text
     # 链接落点 = 展开碰撞项的编辑表单, 不只是锚定一个关闭的 details。
     form = re.search(
-        r'<details class="rc-edit" open>.*?action="/web/recurring/([^"]+)/edit"',
+        r'<details class="plan-edit" open>.*?action="/web/recurring/([^"]+)/edit"',
         edited.text,
         re.DOTALL,
     )
@@ -195,7 +195,7 @@ def test_web_recurring_candidate_confirm_conflict_consumes_details(
     assert "已经在你的固定支出里" in conflict.text
     assert "去编辑现有记录" in conflict.text
     form = re.search(
-        r'<details class="rc-edit" open>.*?action="/web/recurring/([^"]+)/edit"',
+        r'<details class="plan-edit" open>.*?action="/web/recurring/([^"]+)/edit"',
         conflict.text,
         re.DOTALL,
     )
@@ -300,7 +300,7 @@ def test_web_recurring_viewer_read_only(web_client: TestClient) -> None:
     assert 'action="/web/recurring/create"' not in page.text
     assert 'action="/web/recurring/confirm-candidate"' not in page.text
     assert "复核采用" not in page.text
-    assert 'class="rc-edit"' not in page.text
+    assert 'class="plan-edit"' not in page.text
     assert 'name="expected_row_version"' not in page.text
 
     denied = web_client.post(

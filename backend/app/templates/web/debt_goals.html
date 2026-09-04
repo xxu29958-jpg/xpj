@@ -1,230 +1,254 @@
 {% extends "base.html" %}
+{% set page_title = '还债目标' %}
+{% set product_body_domain = 'plans' %}
 {% block title %}还债目标 · 小票夹{% endblock %}
+
+{# C2 还债目标迁入 product 正文栈 (pages/debt_goals.css 随之整文件退役):
+   - 新上旧下: 目标卡列表 / 空态是主体; 创建收进 details 渐进披露
+     (422 回填 create_values 非空时自动展开), 不再让巨大的禁用创建表单
+     占首屏主体;
+   - tone 字符串是旧 pill 后缀协议 (''/ok/amber/muted/danger), 模板内映射到
+     product-status 变体; 成员/at_risk 语义不变 — 成员永不 danger;
+   - 进度 = 原生 <progress> (aria-label 文案逐字保留); 关联欠款行作废沉降
+     为 is-receding, 投影 warn 为 plan-projection is-warn。 #}
+{% set tone_class = {'ok': 'product-status--success', 'amber': 'product-status--warning', 'danger': 'product-status--danger', 'muted': '', '': ''} %}
+{% macro status_pill(tone, label) %}
+<span class="product-status{% if tone_class.get(tone, '') %} {{ tone_class.get(tone, '') }}{% endif %}">{{ label }}</span>
+{% endmacro %}
 {% block content %}
-<h1 class="page-title page-title--compact">还债目标</h1>
-<p class="page-hint">{{ intro }}</p>
-
-{% if message %}<div class="callout-info callout-info--success" role="status">{{ message }}</div>{% endif %}
-{% if error %}<div class="callout-info callout-info--danger" role="alert">{{ error }}</div>{% endif %}
-{% if not can_write %}
-<div class="readonly-callout">只读角色可以查看还债目标；创建、调整或归档请联系拥有者或成员。</div>
-{% endif %}
-
-{% if can_write %}
-<div class="dt-card dt-card--static dg-card dg-create">
-  <div class="dg-head">
-    <div class="dg-name">新建还债目标</div>
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">计划 / 还债目标</span>
+    <h1 class="page-title">还债目标</h1>
+    <p class="product-page-summary">{{ intro }}</p>
   </div>
-  <p class="page-hint">选择想跟踪的未结清欠款，全部还清即达成目标。</p>
-  <form method="post" action="/web/debt-goals/create">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <input type="hidden" name="idempotency_key" value="{{ create_values['idempotency_key'] }}">
-    <div class="dt-form-grid">
-      <label class="dt-form-row">
-        <span>目标名称</span>
-        <input class="dt-input" type="text" name="name" value="{{ create_values['name'] }}"
-               maxlength="80" placeholder="例如：清理这几笔往来" required>
-      </label>
-    </div>
-    <div class="dg-links">
-      <div class="dg-links-title">关联欠款</div>
-      <p class="page-hint">只显示当前可关联的未结清欠款。</p>
-      {% if create_candidates %}
-      {% for choice in create_candidates %}
-      <label class="dg-choice">
-        <input type="checkbox" name="debt_public_ids" value="{{ choice.public_id }}"
-               {% if choice.public_id in create_values['selected_debt_ids'] %}checked{% endif %}>
-        <span class="dg-choice-name">{{ choice.name }}</span>
-        <span class="dg-link-meta">{{ choice.meta }}</span>
-      </label>
-      {% endfor %}
-      {% else %}
-      <div class="dg-all-voided">没有可关联的欠款；先在往来里记一笔未结清的欠款，再回来创建目标。</div>
-      {% endif %}
-    </div>
-    <div class="dt-actions">
-      <button class="dt-btn primary" type="submit"
-              {% if not create_candidates %}disabled{% endif %}>创建目标</button>
-    </div>
-  </form>
-</div>
+</header>
+
+<div class="plan-flow">
+{% if message %}<div class="product-feedback product-feedback--success" role="status">{{ message }}</div>{% endif %}
+{% if error %}<div class="product-feedback product-feedback--danger" role="alert">{{ error }}</div>{% endif %}
+{% if not can_write %}
+<div class="product-feedback" role="status">只读角色可以查看还债目标；创建、调整或归档请联系拥有者或成员。</div>
 {% endif %}
 
 {% if not goals_active %}
-<div class="dt-card dt-card--empty">
-  <div class="empty-headline">{{ empty_title }}</div>
-  <div class="empty-body">{{ empty_body }}</div>
-</div>
+<section class="product-panel product-panel--padded" aria-label="还债目标空态">
+  <div class="product-state">
+    <div class="product-state-title">{{ empty_title }}</div>
+    <div class="product-state-body">{{ empty_body }}</div>
+    {% if can_write and not create_candidates %}
+    <a class="product-state-action" href="/web/debts?ledger_id={{ selected_ledger_id }}">去往来记一笔欠款</a>
+    {% endif %}
+  </div>
+</section>
 {% else %}
-<div class="dg-list">
-  {% for goal in goals_active %}
-  <div class="dt-card dt-card--static dg-card">
-    <div class="dg-head">
-      <div class="dg-name">{{ goal.name }}</div>
-      <span class="dt-pill {{ goal.eval_tone }}">{{ goal.eval_label }}</span>
-    </div>
+{% for goal in goals_active %}
+<section class="product-panel product-panel--padded plan-debt-goal" aria-label="还债目标：{{ goal.name }}">
+  <div class="product-panel-header">
+    <h2 class="product-panel-title">{{ goal.name }}</h2>
+    {{ status_pill(goal.eval_tone, goal.eval_label) }}
+  </div>
 
-    {% if goal.all_voided %}
-    <div class="dg-all-voided">{{ all_voided_text }}</div>
-    {% else %}
-    <div class="dg-headline">{{ goal.headline }}</div>
-    <div class="dg-progress" role="img" aria-label="已两清 {{ goal.cleared_count }} 笔，共 {{ goal.total_count }} 笔">
-      <div class="dg-progress-fill" style="width: {{ goal.fraction_percent }}%"></div>
-    </div>
-    {% if goal.amount_line %}
-    <div class="dg-amount">{{ goal.amount_line }}</div>
+  {% if goal.all_voided %}
+  <div class="product-state">
+    <div class="product-state-body">{{ all_voided_text }}</div>
+  </div>
+  {% else %}
+  <p class="plan-debt-headline">{{ goal.headline }}</p>
+  <progress class="plan-progress{% if goal.cleared_count == goal.total_count %} is-cleared{% endif %}" value="{{ goal.fraction_percent }}" max="100" aria-label="已两清 {{ goal.cleared_count }} 笔，共 {{ goal.total_count }} 笔"></progress>
+  {% if goal.amount_line %}
+  <p class="plan-debt-amount">{{ goal.amount_line }}</p>
+  {% endif %}
+  {% if goal.kpi %}
+  <div class="plan-debt-kpi">
+    {% if goal.kpi.three_state_label %}
+    {{ status_pill(goal.kpi.three_state_tone, goal.kpi.three_state_label) }}
     {% endif %}
-    {% if goal.kpi %}
-    <div class="dg-kpi">
-      {% if goal.kpi.three_state_label %}
-      <span class="dt-pill {{ goal.kpi.three_state_tone }}">{{ goal.kpi.three_state_label }}</span>
-      {% endif %}
-      {% if goal.kpi.target_label %}
-      <div class="dg-target">{{ goal.kpi.target_label }}</div>
-      {% endif %}
-      <div class="dg-projection{% if goal.kpi.payoff.tone == 'warn' %} dg-projection--warn{% endif %}">{{ goal.kpi.payoff.text }}</div>
-    </div>
+    {% if goal.kpi.target_label %}
+    <span class="plan-debt-target">{{ goal.kpi.target_label }}</span>
     {% endif %}
-    {% endif %}
+    <span class="plan-projection{% if goal.kpi.payoff.tone == 'warn' %} is-warn{% endif %}">{{ goal.kpi.payoff.text }}</span>
+  </div>
+  {% endif %}
+  {% endif %}
 
-    {% if goal.needs_review %}
-    <div class="dg-review">
-      <div class="dg-review-note">{{ needs_review_note }}</div>
-      <div class="dg-review-hint">{{ goal.review_body }}</div>
-      {% if can_write %}
-      <div class="dt-actions">
-        {% if goal.can_acknowledge_review %}
-        <form method="post" action="/web/debt-goals/{{ goal.public_id }}/review/acknowledge">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-          <input type="hidden" name="expected_row_version" value="{{ goal.row_version }}">
-          <input type="hidden" name="idempotency_key" value="{{ goal.idempotency_keys['acknowledge'] }}">
-          <button class="dt-btn" type="submit">保留存档</button>
-        </form>
-        {% endif %}
-        {% if goal.can_remove_voided %}
-        <form method="post" action="/web/debt-goals/{{ goal.public_id }}/review/remove-voided">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-          <input type="hidden" name="expected_row_version" value="{{ goal.row_version }}">
-          <input type="hidden" name="idempotency_key" value="{{ goal.idempotency_keys['remove_voided'] }}">
-          <button class="dt-btn primary" type="submit">移除不再有效的欠款</button>
-        </form>
-        {% endif %}
-      </div>
-      {% endif %}
-    </div>
-    {% endif %}
-
-    {% if can_write and goal.can_set_target_date %}
-    <details class="dg-disclosure">
-      <summary>{% if goal.target_date_value %}修改还清日期{% else %}设置还清日期{% endif %}</summary>
-      <form method="post" action="/web/debt-goals/{{ goal.public_id }}/target-date">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-        <input type="hidden" name="expected_row_version" value="{{ goal.row_version }}">
-        <input type="hidden" name="idempotency_key" value="{{ goal.idempotency_keys['target_date'] }}">
-        <div class="dt-form-grid">
-          <label class="dt-form-row">
-            <span>还清日期</span>
-            <input class="dt-input" type="date" name="target_date" value="{{ goal.target_date_value }}">
-          </label>
-        </div>
-        <div class="dt-actions">
-          <button class="dt-btn" type="submit">保存日期</button>
-        </div>
-        <p class="page-hint">留空保存即可清除日期；估算不足时不会编造计划状态。</p>
-      </form>
-    </details>
-    {% endif %}
-
-    <div class="dg-links">
-      <div class="dg-links-title">{{ goal.links_title }}</div>
-      {% for link in goal.links %}
-      <div class="dg-link{% if link.recede %} dg-sunk{% endif %}">
-        <div class="dg-link-top">
-          <span class="dg-link-name">{{ link.name }}</span>
-          <span class="dt-pill {{ link.status_tone }}">{{ link.status_label }}</span>
-        </div>
-        {% if link.show_bar %}
-        {# 成员条用进度档语 (镜像 debts.html，communal 面不读裸百分比)；外部条读百分比。 #}
-        <div class="dg-link-bar" role="img" aria-label="{% if link.is_member %}{{ link.note }}{% else %}已对上 {{ link.fraction_percent }}%{% endif %}">
-          <div class="dg-link-fill{% if link.is_cleared %} is-cleared{% endif %}" style="width: {{ link.fraction_percent }}%"></div>
-        </div>
-        {% endif %}
-        {% if link.is_member %}
-        <div class="dg-link-note">{{ link.note }}</div>
-        {% else %}
-        <div class="dg-link-meta">{{ link.meta }}</div>
-        {% endif %}
-      </div>
-      {% endfor %}
-    </div>
-
-    {% if can_write %}
-    <details class="dg-disclosure">
-      <summary>调整关联欠款</summary>
-      <form method="post" action="/web/debt-goals/{{ goal.public_id }}/links">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-        <input type="hidden" name="expected_row_version" value="{{ goal.row_version }}">
-        <input type="hidden" name="idempotency_key" value="{{ goal.idempotency_keys['links'] }}">
-        <div class="dg-links">
-          <div class="dg-links-title">这个目标要继续跟踪哪些欠款</div>
-          {% for choice in goal.link_choices %}
-          <label class="dg-choice">
-            <input type="checkbox" name="debt_public_ids" value="{{ choice.public_id }}"
-                   {% if choice.selected %}checked{% endif %}>
-            <span class="dg-choice-name">{{ choice.name }}</span>
-            <span class="dg-link-meta">{{ choice.meta }} · {{ choice.status_label }}</span>
-          </label>
-          {% endfor %}
-        </div>
-        <div class="dt-actions">
-          <button class="dt-btn primary" type="submit">保存关联</button>
-        </div>
-      </form>
-    </details>
-    <form method="post" action="/web/debt-goals/{{ goal.public_id }}/archive"
-          data-confirm="归档「{{ goal.name }}」？关联欠款不会被删除，之后仍可恢复这个目标。">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  {% if goal.needs_review %}
+  <div class="product-feedback product-feedback--warning" role="status">
+    <span><strong>{{ needs_review_note }}</strong><br>{{ goal.review_body }}</span>
+  </div>
+  {% if can_write %}
+  <div class="plan-debt-review-actions">
+    {% if goal.can_acknowledge_review %}
+    <form method="post" action="/web/debt-goals/{{ goal.public_id }}/review/acknowledge" class="product-inline-form">
+      {{ csrf_field|safe }}
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <input type="hidden" name="expected_row_version" value="{{ goal.row_version }}">
-      <input type="hidden" name="idempotency_key" value="{{ goal.idempotency_keys['archive'] }}">
-      <div class="dt-actions">
-        <button class="dt-btn" type="submit">归档目标</button>
-      </div>
+      <input type="hidden" name="idempotency_key" value="{{ goal.idempotency_keys['acknowledge'] }}">
+      <button class="product-button" type="submit">保留存档</button>
+    </form>
+    {% endif %}
+    {% if goal.can_remove_voided %}
+    <form method="post" action="/web/debt-goals/{{ goal.public_id }}/review/remove-voided" class="product-inline-form">
+      {{ csrf_field|safe }}
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <input type="hidden" name="expected_row_version" value="{{ goal.row_version }}">
+      <input type="hidden" name="idempotency_key" value="{{ goal.idempotency_keys['remove_voided'] }}">
+      <button class="product-button product-button--primary" type="submit">移除不再有效的欠款</button>
     </form>
     {% endif %}
   </div>
-  {% endfor %}
-</div>
+  {% endif %}
+  {% endif %}
+
+  {% if can_write and goal.can_set_target_date %}
+  <details class="plan-disclosure">
+    <summary>{% if goal.target_date_value %}修改还清日期{% else %}设置还清日期{% endif %}</summary>
+    <form method="post" action="/web/debt-goals/{{ goal.public_id }}/target-date" class="budget-form">
+      {{ csrf_field|safe }}
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <input type="hidden" name="expected_row_version" value="{{ goal.row_version }}">
+      <input type="hidden" name="idempotency_key" value="{{ goal.idempotency_keys['target_date'] }}">
+      <div class="product-field">
+        <label for="dg-target-date-{{ goal.public_id }}">还清日期</label>
+        <input id="dg-target-date-{{ goal.public_id }}" class="product-input" type="date" name="target_date" value="{{ goal.target_date_value }}">
+      </div>
+      <div class="budget-actions">
+        <button class="product-button" type="submit">保存日期</button>
+      </div>
+      <p class="hint">留空保存即可清除日期；估算不足时不会编造计划状态。</p>
+    </form>
+  </details>
+  {% endif %}
+
+  <div class="plan-link-list">
+    <div class="plan-link-list-title">{{ goal.links_title }}</div>
+    {% for link in goal.links %}
+    <div class="plan-link{% if link.recede %} is-receding{% endif %}">
+      <div class="plan-link-top">
+        <span class="plan-link-name">{{ link.name }}</span>
+        {{ status_pill(link.status_tone, link.status_label) }}
+      </div>
+      {% if link.show_bar %}
+      {# 成员条用进度档语 (镜像 debts.html，communal 面不读裸百分比)；外部条读百分比。 #}
+      <progress class="plan-progress{% if link.is_cleared %} is-cleared{% endif %}" value="{{ link.fraction_percent }}" max="100" aria-label="{% if link.is_member %}{{ link.note }}{% else %}已对上 {{ link.fraction_percent }}%{% endif %}"></progress>
+      {% endif %}
+      {% if link.is_member %}
+      <div class="plan-link-note">{{ link.note }}</div>
+      {% else %}
+      <div class="plan-link-meta">{{ link.meta }}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if can_write %}
+  <details class="plan-disclosure">
+    <summary>调整关联欠款</summary>
+    <form method="post" action="/web/debt-goals/{{ goal.public_id }}/links" class="budget-form">
+      {{ csrf_field|safe }}
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <input type="hidden" name="expected_row_version" value="{{ goal.row_version }}">
+      <input type="hidden" name="idempotency_key" value="{{ goal.idempotency_keys['links'] }}">
+      <fieldset class="plan-choice-set">
+        <legend>这个目标要继续跟踪哪些欠款</legend>
+        {% for choice in goal.link_choices %}
+        <label class="plan-choice">
+          <input type="checkbox" name="debt_public_ids" value="{{ choice.public_id }}"
+                 {% if choice.selected %}checked{% endif %}>
+          <span class="plan-choice-name">{{ choice.name }}</span>
+          <span class="plan-choice-meta">{{ choice.meta }} · {{ choice.status_label }}</span>
+        </label>
+        {% endfor %}
+      </fieldset>
+      <div class="budget-actions">
+        <button class="product-button product-button--primary" type="submit">保存关联</button>
+      </div>
+    </form>
+  </details>
+  <form method="post" action="/web/debt-goals/{{ goal.public_id }}/archive"
+        data-confirm="归档「{{ goal.name }}」？关联欠款不会被删除，之后仍可恢复这个目标。">
+    {{ csrf_field|safe }}
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <input type="hidden" name="expected_row_version" value="{{ goal.row_version }}">
+    <input type="hidden" name="idempotency_key" value="{{ goal.idempotency_keys['archive'] }}">
+    <div class="budget-actions">
+      <button class="product-button" type="submit">归档目标</button>
+    </div>
+  </form>
+  {% endif %}
+</section>
+{% endfor %}
+{% endif %}
+
+{% if can_write %}
+<details class="product-panel product-panel--padded plan-disclosure plan-debt-create"{% if create_values['name'] or create_values['selected_debt_ids'] %} open{% endif %}>
+  <summary>新建还债目标</summary>
+  <p class="hint">选择想跟踪的未结清欠款，全部还清即达成目标。</p>
+  <form method="post" action="/web/debt-goals/create" class="budget-form">
+    {{ csrf_field|safe }}
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <input type="hidden" name="idempotency_key" value="{{ create_values['idempotency_key'] }}">
+    <div class="product-field">
+      <label for="dg-create-name">目标名称</label>
+      <input id="dg-create-name" class="product-input" type="text" name="name" value="{{ create_values['name'] }}"
+             maxlength="80" placeholder="例如：清理这几笔往来" required>
+    </div>
+    <fieldset class="plan-choice-set">
+      <legend>关联欠款</legend>
+      <p class="hint">只显示当前可关联的未结清欠款。</p>
+      {% if create_candidates %}
+      {% for choice in create_candidates %}
+      <label class="plan-choice">
+        <input type="checkbox" name="debt_public_ids" value="{{ choice.public_id }}"
+               {% if choice.public_id in create_values['selected_debt_ids'] %}checked{% endif %}>
+        <span class="plan-choice-name">{{ choice.name }}</span>
+        <span class="plan-choice-meta">{{ choice.meta }}</span>
+      </label>
+      {% endfor %}
+      {% else %}
+      <div class="product-state">
+        <div class="product-state-body">没有可关联的欠款；先在往来里记一笔未结清的欠款，再回来创建目标。</div>
+        <a class="product-state-action" href="/web/debts?ledger_id={{ selected_ledger_id }}">去往来记一笔欠款</a>
+      </div>
+      {% endif %}
+    </fieldset>
+    <div class="budget-actions">
+      <button class="product-button product-button--primary" type="submit"
+              {% if not create_candidates %}disabled{% endif %}>创建目标</button>
+    </div>
+  </form>
+</details>
 {% endif %}
 
 {% if goals_archived %}
-<div class="dg-list dg-archived">
-  <div class="dg-links-title">已归档计划（{{ goals_archived | length }} 条；恢复不会改动关联欠款）</div>
-  {% for goal in goals_archived %}
-  <div class="dt-card dt-card--static dg-card dg-sunk">
-    <div class="dg-head">
-      <div class="dg-name">{{ goal.name }}</div>
-      <span class="dt-pill">{{ goal.eval_label }}</span>
-    </div>
-    <div class="dg-link-meta">{{ goal.links | length }} 笔关联欠款</div>
-    {% if can_write %}
-    <form method="post" action="/web/debt-goals/{{ goal.public_id }}/restore">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-      <input type="hidden" name="expected_row_version" value="{{ goal.row_version }}">
-      <input type="hidden" name="idempotency_key" value="{{ goal.idempotency_keys['restore'] }}">
-      <div class="dt-actions">
-        <button class="dt-btn" type="submit">恢复目标</button>
-      </div>
-    </form>
-    {% endif %}
+<section class="product-panel product-panel--padded" aria-label="已归档计划">
+  <div class="product-panel-header">
+    <h2 class="product-panel-title">已归档计划</h2>
+    <p class="product-panel-subtitle">{{ goals_archived | length }} 条 · 恢复不会改动关联欠款。</p>
   </div>
-  {% endfor %}
-</div>
+  <div class="plan-goal-list">
+    {% for goal in goals_archived %}
+    <div class="plan-goal is-receding">
+      <div class="plan-goal-header">
+        <div>
+          <strong>{{ goal.name }}</strong>
+          {{ status_pill('', goal.eval_label) }}
+        </div>
+        <span class="hint">{{ goal.links | length }} 笔关联欠款</span>
+      </div>
+      {% if can_write %}
+      <form method="post" action="/web/debt-goals/{{ goal.public_id }}/restore" class="product-inline-form">
+        {{ csrf_field|safe }}
+        <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+        <input type="hidden" name="expected_row_version" value="{{ goal.row_version }}">
+        <input type="hidden" name="idempotency_key" value="{{ goal.idempotency_keys['restore'] }}">
+        <button class="product-button product-button--small" type="submit">恢复目标</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</section>
 {% endif %}
+</div>
 {% endblock %}

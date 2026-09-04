@@ -346,22 +346,8 @@
 }
 .page-header--with-action > div { flex: 1; min-width: 0; }
 
-/* goal-row 内部细粒度结构（取代旧的纯 div 嵌套 inline style） */
-.goal-row-head__title {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-    align-items: center;
-}
-.goal-row-head__amt {
-    font-variant-numeric: tabular-nums;
-    color: var(--text-default);
-    white-space: nowrap;
-}
-.goal-archive-form {
-    display: inline-block;
-    margin-top: var(--space-3);
-}
+/* C2 计划片: goal-row / goal-archive-form 随 goals.html 迁 product 计划域
+   (domains/plans.css 的 plan-goal 族), 旧定义零引用, 已物理删除。 */
 .page-eyebrow {
     font-family: var(--font-num);
     font-size: 10.5px;

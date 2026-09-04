@@ -52,18 +52,9 @@
 .dt-table--compact thead th { padding: var(--space-2) var(--space-3-5); }
 .dt-table--compact tbody td { padding: var(--space-3) var(--space-3-5); font-size: var(--type-caption-size); }
 
-/* ───── dt-tag (替代 .category-badge) ───── */
-.dt-tag {
-    display: inline-flex;
-    align-items: center;
-    padding: 2px var(--space-3);
-    border-radius: var(--radius-xs);
-    background: var(--brand-primary-bg);
-    color: var(--brand-primary-strong);
-    font-size: 12px;
-    font-weight: 500;
-    line-height: 1.4;
-}
+/* ───── dt-tag (替代 .category-badge): C2 计划片后唯一消费者旧 goals.html
+   已迁 product 计划域, 零模板/JS 引用, 规则已物理删除 (product 镜像见
+   product/components.css 的 .product-status 同族)。 ───── */
 .ocr-hint .dot { background: var(--brand-primary); width: 4px; height: 4px; border-radius: 50%; }
 
 .chip-row { display: flex; gap: 6px; flex-wrap: wrap; }

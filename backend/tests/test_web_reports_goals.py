@@ -310,7 +310,11 @@ def test_web_goals_create_archive_and_viewer_guard(web_client: TestClient, *, id
     assert "¥640.00 / ¥800.00" in page.text
     assert "80%" in page.text
     assert "保存目标" in page.text
-    assert "/static/web/pages/goals.css?v=" in page.text
+    # C2 计划片: goals 正文迁 product 计划域 — 挂 plans 域模块; 旧 pages/goals.css
+    # 物理退役 (不再挂载, 静态路由 404)。
+    assert "/static/web/product/domains/plans.css?v=" in page.text
+    assert "/static/web/pages/goals.css" not in page.text
+    assert web_client.get("/static/web/pages/goals.css").status_code == 404
     assert "/static/web/pages/budgets.css" not in page.text
 
     match = re.search(r"/web/goals/([^/]+)/archive", page.text)
