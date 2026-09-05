@@ -100,4 +100,4 @@ def test_empty_source_still_uses_alembic_owned_first_creation() -> None:
         tables = set(inspect(connection).get_table_names())
         revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
     assert {"alembic_version", "dataset_authority", "expenses"}.issubset(tables)
-    assert revision == "20260901_0001"
+    assert revision == "20260905_0001"

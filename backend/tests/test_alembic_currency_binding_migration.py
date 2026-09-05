@@ -38,7 +38,7 @@ pytestmark = [pytest.mark.real_db, pytest.mark.currency_binding_unbound]
 
 PREVIOUS_REVISION = "20260729_0001"
 TARGET_REVISION = "20260802_0001"
-HEAD_REVISION = "20260901_0001"
+HEAD_REVISION = "20260905_0001"
 EVIDENCE_TABLES = (
     "bill_split_invitations",
     "budget_categories",

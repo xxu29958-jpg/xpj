@@ -72,6 +72,7 @@ data class DebtListUiState(
 data class DebtDraftUi(
     val direction: String = DebtDirections.I_OWE,
     val counterpartyLabel: String = "",
+    val note: String = "",
     val amountYuanInput: String = "",
     // 8e-6e 还款类型（可选；默认 unspecified = 不分类）。仅外部债，create 透传到后端 debt_kind。
     val kind: String = DebtKinds.UNSPECIFIED,
@@ -97,8 +98,11 @@ data class DebtDraftUi(
      */
     val userTouched: Boolean = false,
 ) {
+    val noteCharacterCount: Int get() = note.codePointCount(0, note.length)
+    val noteTooLong: Boolean get() = noteCharacterCount > 500
+
     val isValid: Boolean
-        get() = counterpartyLabel.trim().isNotEmpty() && parsedAmountCents() != null
+        get() = counterpartyLabel.trim().isNotEmpty() && parsedAmountCents() != null && !noteTooLong
 
     // 元→分走共享 BigDecimal 解析器（§3 禁 Double 存金额），按 [homeCurrency] 扩位
     // （JPY 等零小数 home 不 ×100）；本金须 > 0（符号保持，分空间判等价）。
@@ -204,6 +208,7 @@ class DebtListViewModel(
                     .copy(counterpartyLabel = value, validationError = null)
                     .withInheritedModelFrom(state.debts)
                 DebtDraftField.Amount -> state.addDraft.copy(amountYuanInput = value, validationError = null)
+                DebtDraftField.Note -> state.addDraft.copy(note = value, validationError = null)
                 DebtDraftField.Kind -> state.addDraft.copy(kind = value, validationError = null)
                 DebtDraftField.InstallmentCount -> state.addDraft.copy(installmentCountInput = value, validationError = null)
                 DebtDraftField.InstallmentPeriod -> state.addDraft.copy(installmentPeriodInput = value, validationError = null)
@@ -287,6 +292,12 @@ class DebtListViewModel(
         val draft = state.addDraft.withInheritedModelFrom(state.debts)
         val amount = draft.parsedAmountCents()
         val label = draft.counterpartyLabel.trim()
+        if (draft.noteTooLong) {
+            _state.update {
+                it.copy(addDraft = it.addDraft.copy(validationError = UiText.res(R.string.debt_context_too_long)))
+            }
+            return
+        }
         if (label.isEmpty() || amount == null) {
             _state.update {
                 it.copy(
@@ -303,6 +314,7 @@ class DebtListViewModel(
                 DebtDraft(
                     direction = draft.direction,
                     counterpartyLabel = label,
+                    note = draft.note,
                     principalAmountCents = amount,
                     debtKind = draft.kind,
                     installmentCount = draft.parsedInstallmentCount(),

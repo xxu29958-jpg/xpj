@@ -9,6 +9,7 @@ def stub_debt(**overrides: object) -> SimpleNamespace:
     base: dict[str, object] = {
         "public_id": "dbt_1",
         "counterparty_label": "招商信用卡",
+        "note": None,
         "counterparty_type": "external",
         "direction": "i_owe",
         "status": "open",
