@@ -1,6 +1,5 @@
 package com.ticketbox.viewmodel
 
-import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.local.PersistedLedgerIdentity
 
 import com.ticketbox.R
@@ -21,7 +20,6 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -44,7 +42,7 @@ class MerchantAliasViewModelTest {
             block()
         } finally {
             advanceUntilIdle()
-            activeViewModels.forEach { it.viewModelScope.cancel() }
+            cancelMerchantAliasTestViewModels(activeViewModels)
             advanceUntilIdle()
             activeViewModels.clear()
             Dispatchers.resetMain()

@@ -18,20 +18,27 @@ import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.data.repository.testServerSessionBinding
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.job
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MerchantAliasViewModelToneTest {
@@ -44,11 +51,45 @@ class MerchantAliasViewModelToneTest {
             block()
         } finally {
             advanceUntilIdle()
-            activeViewModels.forEach { it.viewModelScope.cancel() }
+            cancelMerchantAliasTestViewModels(activeViewModels)
             advanceUntilIdle()
             activeViewModels.clear()
             Dispatchers.resetMain()
         }
+    }
+
+    @Test
+    fun teardownWaitsForRealIoBeforeResettingMain() = merchantAlias {
+        val aliasStarted = CompletableDeferred<Unit>()
+        val releaseAlias = CompletableDeferred<Unit>()
+        val base = fakeApi()
+        val service = object : ApiService by base {
+            override suspend fun merchantAliases(): MerchantAliasListDto {
+                // Keep an already-entered real repository IO call alive through
+                // cancellation; virtual scheduler idleness cannot finish it.
+                withContext(NonCancellable) {
+                    aliasStarted.complete(Unit)
+                    releaseAlias.await()
+                }
+                return base.merchantAliases()
+            }
+        }
+        val vm = harness(service).vm
+        val viewModelJob = vm.viewModelScope.coroutineContext.job
+        aliasStarted.await()
+        val cleanup = async { cancelMerchantAliasTestViewModels(activeViewModels) }
+        try {
+            runCurrent()
+            assertTrue(viewModelJob.isCancelled)
+            assertFalse(cleanup.isCompleted, "Cleanup must await the real IO child before Main is reset")
+        } finally {
+            // Also finish every child on the test-first RED path, so the
+            // counterexample cannot contaminate the next test itself.
+            releaseAlias.complete(Unit)
+            cleanup.await()
+            viewModelJob.join()
+        }
+        assertTrue(viewModelJob.isCompleted)
     }
 
     @Test
