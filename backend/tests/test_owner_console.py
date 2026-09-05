@@ -952,7 +952,7 @@ def test_owner_algorithm_versions_inventory_and_withdraw(
 
 
 def test_owner_settings_subpages_open(local_client: TestClient) -> None:
-    for slug in ("public-base-url", "security", "api", "about"):
+    for slug in ("recognition", "public-base-url", "security", "api", "about"):
         resp = local_client.get(f"/owner/settings/{slug}")
         assert resp.status_code == 200, f"/owner/settings/{slug} failed"
 
@@ -1478,9 +1478,99 @@ def test_owner_settings_service_editable_keys_are_explicit() -> None:
     """_EDITABLE_KEYS is the reviewed Owner Console runtime-edit surface."""
     from app.services.runtime_settings_service import _EDITABLE_KEYS
 
-    assert frozenset({"BUDGET_ADVISOR_OWNER_CONFIRMED", "PUBLIC_BASE_URL"}) == _EDITABLE_KEYS, (
+    assert frozenset({"BUDGET_ADVISOR_OWNER_CONFIRMED", "PUBLIC_BASE_URL", "RECOGNITION_PIPELINE"}) == _EDITABLE_KEYS, (
         f"_EDITABLE_KEYS should contain only reviewed keys, got: {_EDITABLE_KEYS}"
     )
+
+
+def test_owner_recognition_settings_update_the_runtime_pipeline(
+    local_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    from app import config as app_config
+    from app.services import runtime_settings_service as rss
+
+    projection = (tmp_path / "runtime-settings.json").resolve()
+    monkeypatch.setattr(rss, "_SETTINGS_PATH", projection)
+    monkeypatch.setattr(rss, "_SERVICE_OWNED", False)
+    monkeypatch.setattr(app_config, "RUNTIME_SETTINGS_PATH", projection)
+    monkeypatch.setattr(app_config, "_RUNTIME_SETTINGS_SERVICE_OWNED", False)
+    app_config.reset_settings_cache()
+    try:
+        response = local_client.post(
+            "/owner/settings/recognition",
+            data={
+                "ocr_provider": "local_llm",
+                "ocr_auto_run": "on",
+                "ocr_fallback_provider": "empty",
+                "ocr_min_confidence": "0.72",
+                "ocr_default_timezone": "Asia/Shanghai",
+                "local_llm_base_url": "http://127.0.0.1:1234/v1",
+                "local_llm_model": "qwen2.5-vl",
+                "local_llm_timeout_seconds": "45",
+                "local_llm_max_concurrent": "1",
+                "local_llm_queue_timeout_seconds": "3",
+                "debt_bill_provider": "local_llm",
+            },
+        )
+
+        assert response.status_code == 200
+        assert "已保存" in response.text
+        payload = json.loads(projection.read_text(encoding="utf-8"))
+        assert payload["recognition"]["ocr_provider"] == "local_llm"
+        assert payload["recognition"]["ocr_auto_run"] is True
+        assert payload["recognition"]["debt_bill_provider"] == "local_llm"
+        settings = app_config.get_settings()
+        assert settings.ocr_provider == "local_llm"
+        assert settings.ocr_auto_run is True
+        assert settings.local_llm_model == "qwen2.5-vl"
+        assert settings.debt_bill_provider == "local_llm"
+    finally:
+        app_config.reset_settings_cache()
+
+
+def test_owner_recognition_settings_reject_remote_model_and_preserve_draft(
+    local_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    from app import config as app_config
+    from app.services import runtime_settings_service as rss
+
+    projection = (tmp_path / "runtime-settings.json").resolve()
+    monkeypatch.setattr(rss, "_SETTINGS_PATH", projection)
+    monkeypatch.setattr(rss, "_SERVICE_OWNED", False)
+    monkeypatch.setattr(app_config, "RUNTIME_SETTINGS_PATH", projection)
+    monkeypatch.setattr(app_config, "_RUNTIME_SETTINGS_SERVICE_OWNED", False)
+    app_config.reset_settings_cache()
+    try:
+        response = local_client.post(
+            "/owner/settings/recognition",
+            data={
+                "ocr_provider": "local_llm",
+                "ocr_auto_run": "on",
+                "ocr_fallback_provider": "empty",
+                "ocr_min_confidence": "0.72",
+                "ocr_default_timezone": "Asia/Shanghai",
+                "local_llm_base_url": "https://models.example/v1",
+                "local_llm_model": "keep-this-draft",
+                "local_llm_timeout_seconds": "45",
+                "local_llm_max_concurrent": "1",
+                "local_llm_queue_timeout_seconds": "3",
+                "debt_bill_provider": "empty",
+            },
+        )
+
+        assert response.status_code == 200
+        assert "本机" in response.text
+        assert "https://models.example/v1" in response.text
+        assert "keep-this-draft" in response.text
+        assert "手动核对" in response.text
+        assert "自动使用本机视觉模型" not in response.text
+        assert not projection.exists()
+    finally:
+        app_config.reset_settings_cache()
 
 
 def test_owner_settings_trailing_slash_stripped(

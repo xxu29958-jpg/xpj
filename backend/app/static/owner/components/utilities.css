@@ -207,3 +207,37 @@
 .label-fixed    { min-width: 120px; color: var(--text-default); }
 .input-grow     { flex: 1; min-width: 280px; margin-left: 0; }
 .help-text--meta { font-size: var(--type-meta-size); margin: 0 0 var(--space-3); }
+
+/* settings: reusable two-column field group; collapses without horizontal scroll. */
+.settings-form-grid {
+    display: grid;
+    grid-template-columns: minmax(150px, 210px) minmax(0, 1fr);
+    gap: var(--space-4) var(--space-5);
+    align-items: center;
+    max-width: 760px;
+}
+.settings-form-grid > label:not(.label-check-row),
+.settings-form-grid > span {
+    color: var(--text-muted);
+    font-size: var(--type-caption-size);
+    font-weight: 500;
+}
+.settings-form-grid .inline-input,
+.settings-form-grid .inline-select {
+    box-sizing: border-box;
+    margin-left: 0;
+    width: 100%;
+}
+.settings-form-grid .help-text { margin: 0; }
+.settings-form-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+}
+
+@media (max-width: 640px) {
+    .settings-form-grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-2); }
+    .settings-form-grid > span:empty { display: none; }
+    .settings-form-grid .help-text { margin-bottom: var(--space-3); }
+}

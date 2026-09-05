@@ -230,6 +230,7 @@ def _ocr_csv_missing() -> list[str]:
     ocr_and_csv = (
         _read("app/models/ocr_facts.py")
         + _read("app/config.py")
+        + _read("app/recognition_config.py")
         + _read("app/services/csv_import_batch_service/_apply.py")
     )
     return _require_tokens(

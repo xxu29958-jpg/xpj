@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 from app.fx_constants import DEFAULT_HOME_CURRENCY_CODE, DEFAULT_SUPPORTED_CURRENCY_CODES
+from app.recognition_config import resolve_recognition_config
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
@@ -47,10 +48,7 @@ def runtime_settings_service_owned() -> bool:
     return _RUNTIME_SETTINGS_SERVICE_OWNED
 
 
-# Hosts considered loopback for outbound calls from the backend (e.g. local
-# vision LLM). Anything else makes the URL effectively "off" — see
-# _resolve_local_llm_base_url. Owner can extend via env if they really need to
-# tunnel a vision model from another host, but that's explicit, not implicit.
+# Hosts considered loopback for local-development public URLs.
 _LOOPBACK_OUTBOUND_HOSTS: frozenset[str] = frozenset({"127.0.0.1", "::1", "localhost"})
 OWNER_RECOVERY_CHANNELS: frozenset[str] = frozenset(
     {"development", "managed_host", "operator"},
@@ -184,29 +182,6 @@ class Settings:
         return self.max_upload_size_mb * 1024 * 1024
 
 
-def _resolve_local_llm_base_url(raw: str | None) -> str:
-    """Reduce ``LOCAL_LLM_BASE_URL`` to a loopback HTTP(S) origin or empty.
-
-    Returning empty disables the local LLM OCR provider — the OCR layer surfaces
-    a clear error when something tries to use it. Non-loopback hosts here would
-    let the owner accidentally ship uploaded receipts (base64) to a remote
-    server via env misconfiguration, so we fail-closed.
-    """
-
-    if not raw:
-        return ""
-    value = raw.strip().rstrip("/")
-    if not value:
-        return ""
-    parsed = urlparse(value)
-    if parsed.scheme not in {"http", "https"}:
-        return ""
-    host = (parsed.hostname or "").lower()
-    if host not in _LOOPBACK_OUTBOUND_HOSTS:
-        return ""
-    return value
-
-
 def _resolve_public_base_url(raw: str | None) -> str:
     """Validate the public base URL the Cloudflare Tunnel (or other reverse
     proxy) hands out for /u/<upload_key>. ``http://`` is only accepted when
@@ -314,6 +289,7 @@ def get_settings() -> Settings:
     )
     if runtime_settings_service_owned() and runtime_settings is None:
         raise InstalledRuntimeSettingsError("installed runtime settings projection is missing")
+    recognition = resolve_recognition_config(runtime_settings.recognition if runtime_settings is not None else None)
     upload_dir = Path(os.getenv("UPLOAD_DIR", "uploads"))
     if not upload_dir.is_absolute():
         upload_dir = DATA_ROOT / upload_dir
@@ -342,24 +318,24 @@ def get_settings() -> Settings:
             1,
             int(os.getenv("BACKGROUND_TASK_MAX_ACTIVE", "8")),
         ),
-        ocr_provider=os.getenv("OCR_PROVIDER", "empty").strip().lower(),
-        ocr_auto_run=_bool_env("OCR_AUTO_RUN", False),
-        ocr_fallback_provider=os.getenv("OCR_FALLBACK_PROVIDER", "empty").strip().lower(),
-        ocr_min_confidence=float(os.getenv("OCR_MIN_CONFIDENCE", "0.65")),
-        ocr_default_timezone=os.getenv("OCR_DEFAULT_TIMEZONE", "Asia/Shanghai").strip() or "Asia/Shanghai",
-        local_llm_base_url=_resolve_local_llm_base_url(os.getenv("LOCAL_LLM_BASE_URL", "http://127.0.0.1:1234/v1")),
-        local_llm_model=os.getenv("LOCAL_LLM_MODEL", "").strip(),
-        local_llm_timeout_seconds=int(os.getenv("LOCAL_LLM_TIMEOUT_SECONDS", "60")),
+        ocr_provider=recognition.ocr_provider,
+        ocr_auto_run=recognition.ocr_auto_run,
+        ocr_fallback_provider=recognition.ocr_fallback_provider,
+        ocr_min_confidence=recognition.ocr_min_confidence,
+        ocr_default_timezone=recognition.ocr_default_timezone,
+        local_llm_base_url=recognition.local_llm_base_url,
+        local_llm_model=recognition.local_llm_model,
+        local_llm_timeout_seconds=recognition.local_llm_timeout_seconds,
         # Default 2 deliberately allows a little OCR throughput overlap. A
         # single-GPU / single-stream local vision model (e.g. one quantized
         # model in LM Studio) should set LOCAL_LLM_MAX_CONCURRENT=1 to avoid
         # VRAM contention; the queue + LOCAL_LLM_QUEUE_TIMEOUT_SECONDS still
         # bound how long callers wait for a slot.
-        local_llm_max_concurrent=max(1, int(os.getenv("LOCAL_LLM_MAX_CONCURRENT", "2"))),
-        local_llm_queue_timeout_seconds=max(0.0, float(os.getenv("LOCAL_LLM_QUEUE_TIMEOUT_SECONDS", "5"))),
+        local_llm_max_concurrent=recognition.local_llm_max_concurrent,
+        local_llm_queue_timeout_seconds=recognition.local_llm_queue_timeout_seconds,
         # ADR-0049 §D: 债务账单解析 provider，默认 'empty'（未配视觉模型即回落手填）。
         # 选 'local_llm' 复用上面的 LOCAL_LLM_* 配置（同一台自托管视觉模型）。
-        debt_bill_provider=os.getenv("DEBT_BILL_PROVIDER", "empty").strip().lower(),
+        debt_bill_provider=recognition.debt_bill_provider,
         # ADR-0036: v1.1 AI budget advisor provider. Default 'empty' = no AI
         # call, local rules only. 'openai_compat' covers ollama / vLLM /
         # llama.cpp / LM Studio locally + OpenAI / DeepSeek / SiliconFlow /
