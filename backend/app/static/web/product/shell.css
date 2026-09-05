@@ -399,7 +399,7 @@ a {
 }
 
 /* W1 Warm Ledger: 顶栏动作是安静文本动作 — 无描边无底色, hover 才浮现
-   色面; consumer: 搜索/收票入口。 */
+   色面; consumer: 搜索/手动记账/收票入口。 */
 .topbar-action {
     display: inline-flex;
     min-height: var(--space-9);
@@ -975,7 +975,7 @@ details[open] > .chrome-trigger {
         gap: var(--space-2);
     }
 
-    /* W1 IA-B: ≤40rem topbar = 品牌 mark / 当前域 + 收票 / 我。
+    /* W1 IA-B: ≤40rem topbar = 品牌 mark / 当前域 + 记账 / 收票 / 我。
        搜索与外观让位进「我」popover (ledger-mobile-links), 品牌名与
        顶栏账本名隐藏 (域名保留, 位置感不丢)。 */
     .topbar-brand-name,

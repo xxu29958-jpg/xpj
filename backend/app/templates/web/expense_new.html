@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% set page_title = '手动记一笔' %}
+{% set product_body_domain = 'transactions' %}
+{% set page_surface = 'tertiary' %}
+{% block title %}手动记一笔 · 流水 · 小票夹{% endblock %}
+
+{% block content %}
+<a class="product-state-action" href="/web/confirmed?ledger_id={{ selected_ledger_id }}">← 返回流水</a>
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">流水 / 手动记一笔</span>
+    <h1 class="page-title">手动记一笔</h1>
+    <p class="product-page-summary">没有小票也可以直接入账。在当前浏览器身份下，重复提交同一张表单只会得到同一笔流水。</p>
+  </div>
+</header>
+
+<section class="product-panel product-panel--padded">
+  {% if form_error %}<div class="product-feedback product-feedback--danger" role="alert">{{ form_error }}</div>{% endif %}
+  <form class="manual-expense-form" method="post" action="/web/expenses/new" aria-label="手动记账表单">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="ledger_id" value="{{ form_ledger_id }}">
+    <input type="hidden" name="expected_device_public_id" value="{{ form_device_public_id }}">
+    <input type="hidden" name="client_ref" value="{{ client_ref }}">
+
+    <div class="product-form-grid">
+      <div class="product-field manual-expense-amount-field">
+        <label for="manual-expense-amount">金额</label>
+        <input id="manual-expense-amount" class="product-input" name="amount_major" type="text" inputmode="decimal" placeholder="{{ currency_input.amount_placeholder }}" value="{{ values.amount_major or '' }}" required autofocus>
+      </div>
+      <div class="product-field">
+        <label for="manual-expense-currency">币种</label>
+        <select id="manual-expense-currency" class="product-input" name="currency_code">
+          {% for code in currency_options %}
+          <option value="{{ code }}"{% if values.currency_code == code %} selected{% endif %}>{{ code }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="product-field">
+        <label for="manual-expense-merchant">商家（可选）</label>
+        <input id="manual-expense-merchant" class="product-input" name="merchant" type="text" maxlength="255" placeholder="比如：社区超市" value="{{ values.merchant or '' }}">
+      </div>
+      <div class="product-field">
+        <label for="manual-expense-category">分类</label>
+        <input id="manual-expense-category" class="product-input" name="category" type="text" maxlength="64" list="manual-expense-categories" value="{{ values.category or '其他' }}">
+        <datalist id="manual-expense-categories">
+          {% for category in category_options %}<option value="{{ category }}">{% endfor %}
+        </datalist>
+      </div>
+      <div class="product-field">
+        <label for="manual-expense-spent-at">发生时间</label>
+        <input id="manual-expense-spent-at" class="product-input" name="spent_at" type="datetime-local" value="{{ spent_at }}" required>
+      </div>
+      <div class="product-field product-field--wide">
+        <label for="manual-expense-note">备注（可选）</label>
+        <textarea id="manual-expense-note" class="product-input" name="note" rows="3" placeholder="补充这笔支出的用途">{{ values.note or '' }}</textarea>
+      </div>
+    </div>
+
+    <div class="product-page-actions">
+      <button class="product-button product-button--primary" type="submit">记下这笔支出</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

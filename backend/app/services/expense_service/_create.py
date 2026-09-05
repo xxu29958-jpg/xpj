@@ -10,6 +10,7 @@ from app.fx_constants import DEFAULT_HOME_CURRENCY_CODE
 from app.ledger_scope import ledger_scoped_select
 from app.models import Expense
 from app.schemas import ExpenseManualCreateRequest, NotificationDraftCreateRequest
+from app.services import permission_service
 from app.services.category_preference_service import ensure_category_preference_for_name
 from app.services.classify_service import classify_expense
 from app.services.currency_binding_service import (
@@ -37,6 +38,7 @@ from app.services.expense_service._helpers import (
 )
 from app.services.file_service import SavedUpload
 from app.services.idempotency import fingerprint_request
+from app.services.session_credential_lock import lock_and_revalidate_mutation_actor
 from app.services.tag_service import normalize_tags, sync_expense_tags
 from app.services.time_service import ensure_utc, now_utc
 from app.tenants import AuthContext
@@ -191,6 +193,10 @@ def _insert_manual_expense(
 
 
 def create_manual_expense(db: Session, payload: ExpenseManualCreateRequest, auth: AuthContext) -> Expense:
+    lock_and_revalidate_mutation_actor(
+        db, auth, actor_account_id=auth.account_id, ledger_id=auth.ledger_id,
+    )
+    permission_service.require_write_expense(auth)
     validate_currency_payload_money_command(
         payload,
         amount_was_explicit=payload.amount_cents is not None,

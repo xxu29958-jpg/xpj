@@ -2,6 +2,7 @@
  * module only clicks their real, permission-gated DOM consumers.
  *
  *   /   search
+ *   N   manual expense
  *   U   upload a receipt
  */
 (function (window, document) {
@@ -23,9 +24,12 @@
       if (isTypingTarget(event.target)) return;
       if (app.drawerApi && app.drawerApi.isOpen()) return;
 
+      const key = event.key.toLowerCase();
       const shortcut = event.key === "/"
         ? "search"
-        : event.key.toLowerCase() === "u" ? "capture" : "";
+        : key === "n"
+          ? "manual-expense"
+          : key === "u" ? "capture" : "";
       if (!shortcut) return;
 
       const link = document.querySelector('[data-shell-shortcut="' + shortcut + '"]');

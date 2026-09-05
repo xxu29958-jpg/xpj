@@ -215,13 +215,20 @@
       {% if show_month_picker %}
         {% include "_month_picker.html" %}
       {% endif %}
-      {# W1 IA-B: 全局安静入口 — 搜索全角色可达; 收票是 can_write-gated 的
-         真实 GET 导航 (#capture 锚到收件上传组), upload command owner 不变。
-         ≤40rem 两枚让位进「我」popover (见 _ledger_switcher.html)。 #}
+      {# W1 IA-B: 全局安静入口 — 搜索全角色可达；手动记账只在真实设备会话
+         + writer 身份下出现；收票是 can_write-gated 的真实 GET 导航
+         (#capture 锚到收件上传组), upload command owner 不变。
+         ≤40rem 搜索让位进「我」popover (见 _ledger_switcher.html)。 #}
       <a class="topbar-action topbar-search" href="/web/search{{ q }}"
          data-shell-shortcut="search" aria-keyshortcuts="/" title="搜索（/）">
         <span>搜索</span><kbd class="topbar-shortcut-hint" aria-hidden="true">/</kbd>
       </a>
+      {% if can_write and request.state.web_session_auth %}
+      <a class="topbar-action topbar-manual-expense" href="/web/expenses/new"
+         data-shell-shortcut="manual-expense" aria-keyshortcuts="N" title="手动记账（N）">
+        <span>记账</span><kbd class="topbar-shortcut-hint" aria-hidden="true">N</kbd>
+      </a>
+      {% endif %}
       {% if can_write %}
       <a class="topbar-action topbar-capture" href="/web/pending{{ q }}#capture"
          data-shell-shortcut="capture" aria-keyshortcuts="U" title="收票（U）">

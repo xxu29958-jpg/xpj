@@ -44,6 +44,7 @@
   </div>
   {% if can_write %}
   <div class="cluster">
+    {% if request.state.web_session_auth %}<a class="product-button product-button--primary" href="/web/expenses/new">手动记一笔</a>{% endif %}
     <a class="product-state-action" href="/web/pending{{ q }}">前往待我处理</a>
     <a class="product-state-action" href="/web/import{{ q }}">导入历史记录</a>
   </div>
