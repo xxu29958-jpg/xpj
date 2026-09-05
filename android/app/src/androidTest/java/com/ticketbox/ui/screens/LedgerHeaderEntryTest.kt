@@ -119,6 +119,8 @@ class LedgerHeaderEntryTest {
         composeRule.onNodeWithText("可以直接记一笔，或上传小票核对后入账。").assertIsDisplayed()
         assertRecordCtaCount(1)
         composeRule.onAllNodesWithText("更新账本").assertCountEquals(0)
+        composeRule.onNodeWithText("记一笔").performClick()
+        composeRule.onNodeWithText("手动记一笔").assertIsDisplayed()
     }
 
     @Test
