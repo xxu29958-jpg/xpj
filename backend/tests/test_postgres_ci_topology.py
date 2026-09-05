@@ -92,9 +92,10 @@ def _assert_postgres_job_contract(
         "postgres": "${{ fromJSON(needs.scope.outputs.postgres_matrix).include }}",
     }
     if sharded:
+        shard_count = 2 if ordinary else 3
         matrix["shard"] = [
-            {"index": 0, "count": 2, "label": "1/2"},
-            {"index": 1, "count": 2, "label": "2/2"},
+            {"index": index, "count": shard_count, "label": f"{index + 1}/{shard_count}"}
+            for index in range(shard_count)
         ]
     assert job["strategy"] == {
         "fail-fast": False,
@@ -403,7 +404,7 @@ def test_github_postgres_jobs_bind_scope_resources_commands_auth_and_sha() -> No
     _assert_bounded_timeout(jobs["backend_frozen"])
     _assert_windows_release_lanes(jobs, windows_jobs)
 
-    assert jobs["backend_postgres_ordinary"]["strategy"] == jobs["backend_postgres_real_db"]["strategy"]
+    assert jobs["backend_postgres_ordinary"]["strategy"] != jobs["backend_postgres_real_db"]["strategy"]
     assert jobs["backend_postgres_real_db"]["strategy"] != jobs["backend_postgres_recovery"]["strategy"]
 
     _assert_lane(
