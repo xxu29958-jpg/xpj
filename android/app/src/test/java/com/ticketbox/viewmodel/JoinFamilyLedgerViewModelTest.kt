@@ -389,66 +389,64 @@ class JoinFamilyLedgerViewModelTest {
             Dispatchers.resetMain()
         }
     }
-
-    private fun viewModel(
-        api: StubApi,
-        store: LedgerFakeSettingsStore,
-        tokenStore: LedgerFakeTokenStore,
-    ): JoinFamilyLedgerViewModel = JoinFamilyLedgerViewModel(
-        testLedgerRepository(
-            apiClient = LedgerStubApiFactory(api),
-            settingsStore = store,
-            tokenStore = tokenStore,
-            expenseDao = LedgerFakeDao(),
-        ),
-    )
-
-    private fun invitationApi(
-        preview: InvitationPreviewResponseDto = preview(),
-    ) = StubApi(
-        LedgerStubApiState(
-            previewResult = preview,
-            acceptResult = acceptedResponse(),
-        ),
-    )
-
-    private fun acceptedResponse() = InvitationAcceptResponseDto(
-        sessionToken = "tk_joined",
-        serverId = TEST_SERVER_ID,
-        dataGeneration = TEST_DATA_GENERATION,
-        accountPublicId = TEST_ACCOUNT_PUBLIC_ID,
-        devicePublicId = TEST_DEVICE_PUBLIC_ID,
-        accountName = "新成员",
-        ledgerId = "L_family",
-        ledgerName = "家庭账本",
-        deviceName = "测试 Android 设备",
-        role = "member",
-    )
-
-    private fun ownerSession() = existingOwnerSessionFixture(
-        ledgerId = "L_personal",
-        ledgerName = "个人账本",
-        accountName = "原成员",
-        deviceName = "原手机",
-        token = "old-token",
-    )
-
-    private fun preview(
-        serverId: String = TEST_SERVER_ID,
-        generation: String = TEST_DATA_GENERATION,
-        ledgerName: String = "家庭账本",
-    ) = InvitationPreviewResponseDto(
-        serverId = serverId,
-        dataGeneration = generation,
-        ledgerId = "L_family",
-        ledgerName = ledgerName,
-        role = "member",
-        expiresAt = "2026-07-01T00:00:00Z",
-    )
-
-    private companion object {
-        const val INVITE_URL = "https://join.example.com/web/auth/join#invite=inv_VM"
-        const val FOREIGN_SERVER_ID = "00000000-0000-0000-0000-000000000010"
-        const val FOREIGN_GENERATION = "00000000-0000-0000-0000-000000000011"
-    }
 }
+
+private fun viewModel(
+    api: StubApi,
+    store: LedgerFakeSettingsStore,
+    tokenStore: LedgerFakeTokenStore,
+): JoinFamilyLedgerViewModel = JoinFamilyLedgerViewModel(
+    testLedgerRepository(
+        apiClient = LedgerStubApiFactory(api),
+        settingsStore = store,
+        tokenStore = tokenStore,
+        expenseDao = LedgerFakeDao(),
+    ),
+)
+
+private fun invitationApi(
+    preview: InvitationPreviewResponseDto = preview(),
+) = StubApi(
+    LedgerStubApiState(
+        previewResult = preview,
+        acceptResult = acceptedResponse(),
+    ),
+)
+
+private fun acceptedResponse() = InvitationAcceptResponseDto(
+    sessionToken = "tk_joined",
+    serverId = TEST_SERVER_ID,
+    dataGeneration = TEST_DATA_GENERATION,
+    accountPublicId = TEST_ACCOUNT_PUBLIC_ID,
+    devicePublicId = TEST_DEVICE_PUBLIC_ID,
+    accountName = "新成员",
+    ledgerId = "L_family",
+    ledgerName = "家庭账本",
+    deviceName = "测试 Android 设备",
+    role = "member",
+)
+
+private fun ownerSession() = existingOwnerSessionFixture(
+    ledgerId = "L_personal",
+    ledgerName = "个人账本",
+    accountName = "原成员",
+    deviceName = "原手机",
+    token = "old-token",
+)
+
+private fun preview(
+    serverId: String = TEST_SERVER_ID,
+    generation: String = TEST_DATA_GENERATION,
+    ledgerName: String = "家庭账本",
+) = InvitationPreviewResponseDto(
+    serverId = serverId,
+    dataGeneration = generation,
+    ledgerId = "L_family",
+    ledgerName = ledgerName,
+    role = "member",
+    expiresAt = "2026-07-01T00:00:00Z",
+)
+
+private const val INVITE_URL = "https://join.example.com/web/auth/join#invite=inv_VM"
+private const val FOREIGN_SERVER_ID = "00000000-0000-0000-0000-000000000010"
+private const val FOREIGN_GENERATION = "00000000-0000-0000-0000-000000000011"
