@@ -23,6 +23,7 @@
 
 **Files:**
 - Backend: `app/models/debt.py`, `app/schemas/_debts.py`, `app/services/debt_service/_create.py`, `app/services/debt_service/_query.py`, migration after `20260901_0001`.
+- Packaging declaration only: `distribution/windows/payload/release-manifest.json` must name the same new schema head. The existing build guard compares it with the frozen generation program; no installer or lifecycle implementation changes.
 - Web: `app/routes/web_debt_create.py`, `app/routes/web_debts.py`, `app/templates/web/debt_new.html`, `app/templates/web/debt_detail.html`.
 - Android: `DebtDto.kt`, `Debt.kt`, `DebtMappers.kt`, `DebtListViewModel.kt`, `DebtListDraftActions.kt`, `DebtListScreen.kt`, `DebtDetailScreen.kt`, `strings_stats_budget.xml` and matching existing tests. Detail context reuses the existing external-debt summary, so the detail chrome need not change.
 - Tests: `backend/tests/test_web_debt_actions.py`, existing debt API and Android mapper/ViewModel tests; generated OpenAPI from the actual changed schema.
