@@ -196,6 +196,23 @@ def _restart_anonymous_accept(
     _set_pairing_attempt_cookie(response, _new_pairing_attempt_cookie())
 
 
+def _require_invitation_account_binding(
+    principal: SessionPrincipal | None,
+    expected_account_public_id: str,
+) -> None:
+    # An anonymous preview has no Account yet; the first enrollment may also
+    # establish the identity used by another open anonymous invitation form.
+    if not expected_account_public_id or (
+        expected_account_public_id != "unbound"
+        and (principal is None or principal.account_public_id != expected_account_public_id)
+    ):
+        raise AppError(
+            "session_binding_changed",
+            "登录身份与邀请预览不一致，请重新核对当前身份后确认。",
+            status_code=409,
+        )
+
+
 @router.get("", response_class=HTMLResponse, include_in_schema=False)
 def web_invitation_join(request: Request) -> HTMLResponse:
     return _render_join(request)
@@ -270,36 +287,20 @@ def web_invitation_accept(
         _restart_anonymous_accept(response, clear_invalid_session=True)
         return response
 
-    # An anonymous preview has no Account yet; the first enrollment may also
-    # establish the identity used by another open anonymous invitation form.
-    if not expected_account_public_id or (
-        expected_account_public_id != "unbound"
-        and (principal is None or principal.account_public_id != expected_account_public_id)
-    ):
-        return _accept_failure_response(
-            request,
-            db,
-            invite_token=token,
-            account_name=account_name,
-            principal=principal,
-            error="登录身份与邀请预览不一致，请重新核对当前身份后确认。",
-            status_code=409,
-        )
-
-    attempt = _read_pairing_attempt(request) if principal is None else None
-    if principal is None and attempt is None:
-        response = _accept_failure_response(
-            request,
-            db,
-            invite_token=token,
-            account_name=account_name,
-            error="本次安全确认已失效，请重新提交。",
-            status_code=422,
-        )
-        _restart_anonymous_accept(response)
-        return response
-
     try:
+        _require_invitation_account_binding(principal, expected_account_public_id)
+        attempt = _read_pairing_attempt(request) if principal is None else None
+        if principal is None and attempt is None:
+            response = _accept_failure_response(
+                request,
+                db,
+                invite_token=token,
+                account_name=account_name,
+                error="本次安全确认已失效，请重新提交。",
+                status_code=422,
+            )
+            _restart_anonymous_accept(response)
+            return response
         result = accept_invitation(
             db,
             invite_token=token,
