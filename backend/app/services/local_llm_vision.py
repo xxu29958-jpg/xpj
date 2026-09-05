@@ -118,9 +118,13 @@ def resolve_local_llm_model(base_url: str) -> str:
     return str(model_id)
 
 
-def post_chat_completion(payload: LocalVisionChatRequest) -> LocalVisionChatResponse:
-    settings = get_settings()
-    endpoint = f"{settings.local_llm_base_url}/chat/completions"
+def post_chat_completion(
+    payload: LocalVisionChatRequest,
+    *,
+    base_url: str,
+    timeout_seconds: int,
+) -> LocalVisionChatResponse:
+    endpoint = f"{base_url}/chat/completions"
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     req = request.Request(
         endpoint,
@@ -129,7 +133,7 @@ def post_chat_completion(payload: LocalVisionChatRequest) -> LocalVisionChatResp
         headers={"Content-Type": "application/json"},
     )
     try:
-        with request.urlopen(req, timeout=settings.local_llm_timeout_seconds) as response:
+        with request.urlopen(req, timeout=timeout_seconds) as response:
             return cast(LocalVisionChatResponse, json.loads(response.read().decode("utf-8")))
     except error.HTTPError as exc:
         detail_bytes = exc.read(4096)
@@ -183,9 +187,7 @@ def parse_json_object(content: str) -> LocalVisionModelJson:
     return cast(LocalVisionModelJson, payload)
 
 
-def call_local_llm_vision(
-    image_bytes: bytes, media_type: str | None, prompt_text: str
-) -> LocalVisionModelJson:
+def call_local_llm_vision(image_bytes: bytes, media_type: str | None, prompt_text: str) -> LocalVisionModelJson:
     """Run one image through the local vision model and return its JSON object.
 
     Encodes ``image_bytes`` inline as a data URL, resolves the model (pinned or
@@ -220,6 +222,10 @@ def call_local_llm_vision(
         settings.local_llm_max_concurrent,
         settings.local_llm_queue_timeout_seconds,
     ):
-        response = post_chat_completion(payload)
+        response = post_chat_completion(
+            payload,
+            base_url=settings.local_llm_base_url,
+            timeout_seconds=settings.local_llm_timeout_seconds,
+        )
     content = extract_message_content(response)
     return parse_json_object(content)

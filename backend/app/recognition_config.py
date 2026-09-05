@@ -31,7 +31,19 @@ def resolve_local_llm_base_url(raw: str | None) -> str:
     if not value:
         return ""
     parsed = urlparse(value)
-    if parsed.scheme not in {"http", "https"} or (parsed.hostname or "").lower() not in _LOOPBACK_HOSTS:
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+        or (parsed.hostname or "").lower() not in _LOOPBACK_HOSTS
+    ):
+        return ""
+    try:
+        _ = parsed.port
+    except ValueError:
         return ""
     return value
 

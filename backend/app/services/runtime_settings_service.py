@@ -114,30 +114,31 @@ def get_view() -> RuntimeSettingsView:
 def get_recognition_view(
     form: RecognitionSettingsForm | None = None,
 ) -> RecognitionSettingsView:
+    cfg = get_settings()
+    effective = RecognitionSettingsForm(
+        ocr_provider=cfg.ocr_provider,
+        ocr_auto_run=cfg.ocr_auto_run,
+        ocr_fallback_provider=cfg.ocr_fallback_provider,
+        ocr_min_confidence=f"{cfg.ocr_min_confidence:g}",
+        ocr_default_timezone=cfg.ocr_default_timezone,
+        local_llm_base_url=cfg.local_llm_base_url,
+        local_llm_model=cfg.local_llm_model,
+        local_llm_timeout_seconds=str(cfg.local_llm_timeout_seconds),
+        local_llm_max_concurrent=str(cfg.local_llm_max_concurrent),
+        local_llm_queue_timeout_seconds=f"{cfg.local_llm_queue_timeout_seconds:g}",
+        debt_bill_provider=cfg.debt_bill_provider,
+    )
     if form is None:
-        cfg = get_settings()
-        form = RecognitionSettingsForm(
-            ocr_provider=cfg.ocr_provider,
-            ocr_auto_run=cfg.ocr_auto_run,
-            ocr_fallback_provider=cfg.ocr_fallback_provider,
-            ocr_min_confidence=f"{cfg.ocr_min_confidence:g}",
-            ocr_default_timezone=cfg.ocr_default_timezone,
-            local_llm_base_url=cfg.local_llm_base_url,
-            local_llm_model=cfg.local_llm_model,
-            local_llm_timeout_seconds=str(cfg.local_llm_timeout_seconds),
-            local_llm_max_concurrent=str(cfg.local_llm_max_concurrent),
-            local_llm_queue_timeout_seconds=f"{cfg.local_llm_queue_timeout_seconds:g}",
-            debt_bill_provider=cfg.debt_bill_provider,
-        )
-    if form.ocr_provider == "empty":
+        form = effective
+    if effective.ocr_provider == "empty":
         receipt_status = "手动核对"
-    elif not form.ocr_auto_run:
+    elif not effective.ocr_auto_run:
         receipt_status = "已配置，自动识别关闭"
-    elif form.ocr_provider == "rapidocr":
+    elif effective.ocr_provider == "rapidocr":
         receipt_status = "自动使用本机 RapidOCR"
     else:
         receipt_status = "自动使用本机视觉模型"
-    debt_bill_status = "本机视觉模型" if form.debt_bill_provider == "local_llm" else "手动录入"
+    debt_bill_status = "本机视觉模型" if effective.debt_bill_provider == "local_llm" else "手动录入"
     return RecognitionSettingsView(
         form=form,
         rapidocr_available=importlib.util.find_spec("rapidocr") is not None,

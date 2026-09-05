@@ -1566,6 +1566,8 @@ def test_owner_recognition_settings_reject_remote_model_and_preserve_draft(
         assert "本机" in response.text
         assert "https://models.example/v1" in response.text
         assert "keep-this-draft" in response.text
+        assert "手动核对" in response.text
+        assert "自动使用本机视觉模型" not in response.text
         assert not projection.exists()
     finally:
         app_config.reset_settings_cache()
