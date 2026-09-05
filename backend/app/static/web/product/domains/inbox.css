@@ -14,7 +14,6 @@
     align-items: center;
     gap: var(--space-8);
     padding: var(--space-8);
-    background: transparent;
 }
 
 .inbox-empty-content {
@@ -38,7 +37,7 @@
     .inbox-empty {
         grid-template-columns: minmax(0, 1fr);
         gap: var(--space-4);
-        padding: var(--space-4) 0;
+        padding: var(--space-4);
     }
 
     .inbox-empty .product-state-figure {

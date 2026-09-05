@@ -455,8 +455,7 @@ button[disabled] {
     font-weight: var(--type-title-weight);
 }
 
-/* W1: 空态插画槽 — 真实锁定夹夹资产原样入容器, 只做尺度/投影,
-   不抠图不改色; aria-hidden 装饰, 事实由 title/body 文本承担。 */
+/* 空态插画只作装饰; 不参与可访问名称, 事实由标题与说明承担。 */
 .product-state-figure {
     margin: 0;
 }
