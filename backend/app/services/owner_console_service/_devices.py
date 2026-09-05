@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from sqlalchemy.orm import Session
 
 from app.services.admin_service import (
@@ -11,6 +13,7 @@ from app.services.admin_service import (
     rename_device,
     revoke_device,
 )
+from app.services.identity_service import live_web_device_public_ids
 from app.services.owner_console_service._ledger_console import _require_owner_id
 
 __all__ = [
@@ -22,8 +25,29 @@ __all__ = [
 ]
 
 
-def get_devices(db: Session) -> list[DeviceSummary]:
-    return list_devices(db, account_id=_require_owner_id(db))
+@dataclass(frozen=True)
+class ConsoleDeviceInventory:
+    devices: list[DeviceSummary]
+    ended_browser_sessions: list[DeviceSummary]
+
+    @property
+    def active_device_count(self) -> int:
+        return sum(device.revoked_at is None for device in self.devices)
+
+
+def get_devices(db: Session) -> ConsoleDeviceInventory:
+    account_id = _require_owner_id(db)
+    live_browsers = live_web_device_public_ids(db, account_id=account_id)
+    devices: list[DeviceSummary] = []
+    history: list[DeviceSummary] = []
+    for device in list_devices(db, account_id=account_id):
+        target = (
+            history
+            if device.platform == "web" and device.public_id not in live_browsers
+            else devices
+        )
+        target.append(device)
+    return ConsoleDeviceInventory(devices=devices, ended_browser_sessions=history)
 
 
 def do_revoke_device(db: Session, public_id: str, current_device_public_id: str) -> DeviceSummary:
