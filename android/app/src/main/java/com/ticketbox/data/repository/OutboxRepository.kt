@@ -114,6 +114,9 @@ class OutboxRepository private constructor(
      */
     private val onClearAll = lifecycleHooks.onClearAll
 
+    // Composition boundary: the compatibility flow is a real status dependency,
+    // alongside persistence, binding and scheduling. Keep these inputs explicit.
+    @Suppress("LongParameterList")
     constructor(
         dao: PendingMutationDao,
         clock: Clock = Clock.systemUTC(),
