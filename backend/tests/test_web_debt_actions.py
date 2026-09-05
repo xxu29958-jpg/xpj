@@ -305,6 +305,7 @@ def test_web_external_debt_create_is_complete_and_idempotent(
         "debt_kind": "installment",
         "installment_count": "12",
         "installment_period_months": "1",
+        "note": "出差垫款 <行程说明>",
         "idempotency_key": key,
     }
     first = web_client.post("/web/debts", data=form)
@@ -314,6 +315,8 @@ def test_web_external_debt_create_is_complete_and_idempotent(
     assert replay.status_code == 200
     assert "Web 完整建账" in first.text
     assert "分期还款" in first.text
+    assert "出差垫款 &lt;行程说明&gt;" in first.text
+    assert "出差垫款 &lt;行程说明&gt;" in replay.text
     with SessionLocal() as db:
         rows = db.scalars(
             select(Debt).where(
@@ -324,6 +327,12 @@ def test_web_external_debt_create_is_complete_and_idempotent(
         assert len(rows) == 1
         assert rows[0].principal_amount_cents == 32_145
         assert rows[0].installment_count == 12
+        public_id = rows[0].public_id
+    current = _detail(web_client, identity=identity, public_id=public_id)
+    assert current["note"] == form["note"]
+    changed = web_client.post("/web/debts", data={**form, "note": "不同的往来缘由"})
+    assert changed.status_code == 422
+    assert _detail(web_client, identity=identity, public_id=public_id)["note"] == form["note"]
 
 
 def test_web_external_debt_create_validation_preserves_fields(
@@ -340,12 +349,14 @@ def test_web_external_debt_create_validation_preserves_fields(
             "currency_code": "JPY",
             "event_time": "2026-07-18T09:30",
             "debt_kind": "one_off",
+            "note": "一起出差垫的交通费",
             "idempotency_key": str(uuid4()),
         },
     )
 
     assert response.status_code == 422
     assert "日元借款" in response.text
+    assert "一起出差垫的交通费" in response.text
     assert 'value="12.50"' in response.text
     assert "金额" in response.text
     with SessionLocal() as db:
