@@ -27,13 +27,22 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.network_boundary import pairing_rate_limit_key
+from app.network_boundary import (
+    is_loopback_request,
+    pairing_rate_limit_key,
+    require_owner_console_local,
+)
 from app.routes.web_common import _read_ui_theme, _safe_same_site_redirect_path, templates
 from app.services.identity_service import (
     ENROLLMENT_PROOF_COOKIE_SECONDS,
+    authenticate_web_session_principal,
     authenticate_web_session_token,
+    connect_installation_web_identity,
+    installation_web_identity_present,
     pair_device,
+    preview_installation_web_identity,
 )
+from app.services.ledger_service import list_ledgers_for_account, switch_ledger
 from app.services.session_lifecycle_service import WEB_SESSION_TTL_SECONDS, revoke_web_session_token
 from app.version import BACKEND_VERSION, STATIC_ASSET_VERSION
 
@@ -118,6 +127,171 @@ def _read_pairing_attempt(request: Request) -> tuple[str, str] | None:
 def read_session_token(request: Request) -> str | None:
     raw = request.cookies.get(SESSION_COOKIE_NAME, "").strip()
     return raw or None
+
+
+@router.get("/local", response_class=HTMLResponse, include_in_schema=False)
+def local_web_identity_form(
+    request: Request,
+    next: str | None = None,  # noqa: A002 - matches `?next=` convention
+    error: str | None = None,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    """Show the installed Account and live ledger roles before enrollment."""
+
+    require_owner_console_local(request)
+    preview = preview_installation_web_identity(db)
+    response = templates.TemplateResponse(
+        request=request,
+        name="auth/local.html",
+        context={
+            "identity": preview,
+            "page_title": "确认本机身份",
+            "story_aria_label": "关于本机连接",
+            "story_title_line_one": "这台电脑已经认识你，",
+            "story_title_line_two": "浏览器仍需一次确认",
+            "steps": ("核对本机账户", "选择要进入的账本", "建立独立浏览器会话"),
+            "card_aria_label": "确认本机身份",
+            "card_title": "确认本机身份",
+            "hint_prefix": "将以",
+            "hint_suffix": "连接这个浏览器。权限取自所选账本当前的成员角色。",
+            "form_action": "/web/auth/local",
+            "submit_label": "确认并进入",
+            "footnote": "不会把本机位置当作身份，也不会因此提升你在账本中的角色。",
+            "next_url": _safe_next_url(next),
+            "error_message": _ERROR_MESSAGES.get(error or "", ""),
+            "backend_version": BACKEND_VERSION,
+            "asset_version": STATIC_ASSET_VERSION,
+            "ui_theme": _read_ui_theme(request),
+        },
+    )
+    if _read_pairing_attempt(request) is None:
+        _set_pairing_attempt_cookie(response, _new_pairing_attempt_cookie())
+    return response
+
+
+@router.post("/local", response_class=HTMLResponse, include_in_schema=False)
+def local_web_identity_submit(
+    request: Request,
+    ledger_id: str = Form(default=""),
+    next: str = Form(default=""),  # noqa: A002 - matches `?next=` convention
+    db: Session = Depends(get_db),
+) -> Response:
+    require_owner_console_local(request)
+    attempt = _read_pairing_attempt(request)
+    if attempt is None:
+        redirect = _redirect_local(next=next, error="pairing_attempt_expired")
+        _clear_pairing_attempt_cookie(redirect)
+        return redirect
+    try:
+        result = connect_installation_web_identity(
+            db,
+            ledger_id=(ledger_id or "").strip(),
+            pairing_attempt_id=attempt[0],
+            pairing_attempt_secret=attempt[1],
+        )
+    except AppError as exc:
+        redirect = _redirect_local(next=next, error=exc.error)
+        if exc.error in {"pairing_attempt_expired", "pairing_attempt_closed"}:
+            _clear_pairing_attempt_cookie(redirect)
+        return redirect
+    redirect = RedirectResponse(url=_safe_next_url(next) or "/web", status_code=303)
+    set_session_cookie(redirect, result.session_token)
+    _clear_pairing_attempt_cookie(redirect)
+    return redirect
+
+
+@router.get("/ledgers", response_class=HTMLResponse, include_in_schema=False)
+def web_ledger_picker(
+    request: Request,
+    next: str | None = None,  # noqa: A002 - matches `?next=` convention
+    error: str | None = None,
+    db: Session = Depends(get_db),
+) -> Response:
+    """List the live ledger memberships of the authenticated Web Account."""
+
+    token = read_session_token(request)
+    if token is None:
+        return _redirect_session_entry(request, db, next=next or "", error="invalid_token")
+    try:
+        principal = authenticate_web_session_principal(
+            db,
+            token,
+            ttl_seconds=SESSION_COOKIE_MAX_AGE_SECONDS,
+        )
+    except AppError:
+        redirect = _redirect_session_entry(request, db, next=next or "", error="invalid_token")
+        clear_session_cookie(redirect)
+        return redirect
+
+    ledgers = list_ledgers_for_account(db, account_id=principal.account_id)
+    error_message = _ERROR_MESSAGES.get(error or "", "")
+    if not ledgers:
+        error_message = _ERROR_MESSAGES["account_no_live_ledgers"]
+    identity = {
+        "account_name": principal.account_name,
+        "ledgers": ledgers,
+        "selected_ledger_id": ledgers[0].ledger_id if ledgers else "",
+    }
+    return templates.TemplateResponse(
+        request=request,
+        name="auth/local.html",
+        context={
+            "identity": identity,
+            "page_title": "选择账本",
+            "story_aria_label": "关于账本选择",
+            "story_title_line_one": "浏览器身份仍然有效，",
+            "story_title_line_two": "请选择当前可访问的账本",
+            "steps": ("保留当前账户", "核对实时成员角色", "继续原来的操作"),
+            "card_aria_label": "选择账本",
+            "card_title": "选择账本",
+            "hint_prefix": "当前账户是",
+            "hint_suffix": "。这里只列出仍然有效的账本成员关系。",
+            "form_action": "/web/auth/ledgers",
+            "submit_label": "进入所选账本",
+            "footnote": "切换账本不会创建新账户、设备或浏览器令牌。",
+            "next_url": _safe_next_url(next),
+            "error_message": error_message,
+            "backend_version": BACKEND_VERSION,
+            "asset_version": STATIC_ASSET_VERSION,
+            "ui_theme": _read_ui_theme(request),
+        },
+        status_code=200 if ledgers else 409,
+    )
+
+
+@router.post("/ledgers", response_class=HTMLResponse, include_in_schema=False)
+def web_ledger_switch(
+    request: Request,
+    ledger_id: str = Form(default=""),
+    next: str = Form(default=""),  # noqa: A002 - matches `?next=` convention
+    db: Session = Depends(get_db),
+) -> Response:
+    """Move the existing Web session to another live membership."""
+
+    token = read_session_token(request)
+    if token is None:
+        return _redirect_session_entry(request, db, next=next, error="invalid_token")
+    try:
+        principal = authenticate_web_session_principal(
+            db,
+            token,
+            ttl_seconds=SESSION_COOKIE_MAX_AGE_SECONDS,
+        )
+        switch_ledger(
+            db,
+            principal=principal,
+            current_token_value=token,
+            account_id=principal.account_id,
+            device_id=principal.device_id,
+            target_ledger_id=(ledger_id or "").strip(),
+        )
+    except AppError as exc:
+        if exc.error == "invalid_token":
+            redirect = _redirect_session_entry(request, db, next=next, error="invalid_token")
+            clear_session_cookie(redirect)
+            return redirect
+        return _redirect_ledgers(next=next, error="ledger_target_unavailable")
+    return RedirectResponse(url=_safe_next_url(next) or "/web", status_code=303)
 
 
 @router.get("/login", response_class=HTMLResponse, include_in_schema=False)
@@ -238,6 +412,11 @@ _ERROR_MESSAGES = {
     "pairing_attempt_expired": "连接页面已过期，请刷新后重新输入连接码。",
     "pairing_attempt_closed": "这次连接已经结束，请重新获取连接码。",
     "rate_limited": "请求过于频繁，请稍后再试。",
+    "installation_identity_recovery_required": "当前安装的本机身份需要修复，暂时无法连接浏览器。",
+    "local_identity_target_changed": "这次确认已用于另一身份或账本，请刷新后重试。",
+    "local_identity_target_unavailable": "所选账本已不可用，请重新选择。",
+    "ledger_target_unavailable": "所选账本已不可用，请重新选择。",
+    "account_no_live_ledgers": "当前账户没有可访问的账本，请联系账本拥有者恢复成员关系。",
 }
 _GENERIC_ERROR_MESSAGE = "暂时无法连接，请重新获取连接码后再试。"
 
@@ -253,6 +432,44 @@ def _redirect_login(*, next: str, error: str) -> RedirectResponse:  # noqa: A002
     if params:
         target = f"{target}?{urlencode(params)}"
     return RedirectResponse(url=target, status_code=303)
+
+
+def _redirect_local(*, next: str, error: str) -> RedirectResponse:  # noqa: A002
+    target = "/web/auth/local"
+    params: dict[str, str] = {}
+    safe_next = _safe_next_url(next)
+    if safe_next:
+        params["next"] = safe_next
+    if error:
+        params["error"] = error
+    if params:
+        target = f"{target}?{urlencode(params)}"
+    return RedirectResponse(url=target, status_code=303)
+
+
+def _redirect_ledgers(*, next: str, error: str) -> RedirectResponse:  # noqa: A002
+    target = "/web/auth/ledgers"
+    params: dict[str, str] = {}
+    safe_next = _safe_next_url(next)
+    if safe_next:
+        params["next"] = safe_next
+    if error:
+        params["error"] = error
+    if params:
+        target = f"{target}?{urlencode(params)}"
+    return RedirectResponse(url=target, status_code=303)
+
+
+def _redirect_session_entry(
+    request: Request,
+    db: Session,
+    *,
+    next: str,  # noqa: A002 - matches `?next=` convention
+    error: str,
+) -> RedirectResponse:
+    if is_loopback_request(request) and installation_web_identity_present(db):
+        return _redirect_local(next=next, error=error)
+    return _redirect_login(next=next, error=error)
 
 
 def _safe_next_url(raw: str | None) -> str:

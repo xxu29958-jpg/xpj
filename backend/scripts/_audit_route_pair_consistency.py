@@ -91,6 +91,7 @@ WEB_ONLY_ROUTES: dict[str, str] = {
     "POST /web/duplicates/{expense_id}/reject-original": (
         "web-only atomic keep-current/reject-original decision; API exposes separate primitives"
     ),
+    "POST /web/auth/local": "installed loopback browser enrollment ceremony — no public API surface",
     "POST /web/auth/logout": "browser session teardown — web session is web-only",
 }
 

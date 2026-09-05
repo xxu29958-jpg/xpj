@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="{{ ui_theme or 'paper' }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>{{ page_title }} — 小票夹</title>
+  <link rel="icon" type="image/png" href="/static/web/product/brand/favicon-48.png">
+  <script src="/static/web/appearance-bootstrap.js?v={{ asset_version }}"></script>
+  <link rel="stylesheet" href="/static/shared/tokens.css?v={{ asset_version }}">
+  <link rel="stylesheet" href="/static/web/pages/auth-login.css?v={{ asset_version }}">
+  <script defer src="/static/shared/csrf.js?v={{ asset_version }}"></script>
+</head>
+<body>
+  <main class="auth-layout">
+    <section class="auth-story" aria-label="{{ story_aria_label }}">
+      <div class="auth-brand">
+        {% include "_brand_mark.html" %}
+        <span class="auth-brand-name">小票夹</span>
+      </div>
+      <h1 class="auth-title">{{ story_title_line_one }}<br>{{ story_title_line_two }}</h1>
+      <ol class="auth-steps">
+        {% for step in steps %}
+        <li><span class="auth-step-num">{{ loop.index }}</span>{{ step }}</li>
+        {% endfor %}
+      </ol>
+    </section>
+
+    <section class="auth-card" aria-label="{{ card_aria_label }}">
+      <h2 class="auth-card-title">{{ card_title }}</h2>
+      <p class="auth-hint">{{ hint_prefix }} <strong>{{ identity.account_name }}</strong>{{ hint_suffix }}</p>
+
+      {% if error_message %}
+      <div class="auth-error" role="alert">{{ error_message }}</div>
+      {% endif %}
+
+      <form method="post" action="{{ form_action }}">
+        {{ csrf_field|safe }}
+        <input type="hidden" name="next" value="{{ next_url }}">
+        <fieldset class="auth-ledger-list">
+          <legend>选择账本</legend>
+          {% for ledger in identity.ledgers %}
+          {% set role_zh = {'owner': '拥有者', 'member': '成员', 'viewer': '只读'}.get(ledger.role, ledger.role|upper) %}
+          <label class="auth-ledger-option">
+            <input type="radio" name="ledger_id" value="{{ ledger.ledger_id }}"{% if ledger.ledger_id == identity.selected_ledger_id %} checked{% endif %}>
+            <span class="auth-ledger-copy">
+              <strong>{{ ledger.name }}</strong>
+              <span>{{ role_zh }}</span>
+            </span>
+          </label>
+          {% endfor %}
+        </fieldset>
+        <button class="auth-submit" type="submit"{% if not identity.ledgers %} disabled{% endif %}>{{ submit_label }}</button>
+      </form>
+
+      <p class="auth-foot">{{ footnote }}</p>
+    </section>
+  </main>
+</body>
+</html>

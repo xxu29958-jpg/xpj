@@ -55,6 +55,13 @@ from app.services.identity_service._legacy_compat import (
     is_legacy_app_token,
     is_legacy_upload_token,
 )
+from app.services.identity_service._local_web import (
+    LocalWebIdentityPreview,
+    LocalWebLedger,
+    connect_installation_web_identity,
+    installation_web_identity_present,
+    preview_installation_web_identity,
+)
 from app.services.identity_service._models import (
     DEFAULT_ACCOUNT_NAME,
     DEFAULT_BOOTSTRAP_DEVICE_NAME,
@@ -105,6 +112,8 @@ __all__ = [
     # DTOs
     "BootstrapResult",
     "InstallationOwnerBootstrapResult",
+    "LocalWebIdentityPreview",
+    "LocalWebLedger",
     "PairingCodeResult",
     "PairingResult",
     "ReplacementCredentialCollisionError",
@@ -112,6 +121,7 @@ __all__ = [
     # public API
     "active_auth_token_count",
     "authenticated_session_credential_state",
+    "connect_installation_web_identity",
     "authenticate_desktop_session_token",
     "authenticate_session_principal",
     "authenticate_session_token",
@@ -130,10 +140,12 @@ __all__ = [
     "ensure_identity_seed",
     "is_legacy_app_token",
     "is_legacy_upload_token",
+    "installation_web_identity_present",
     "ledger_ids",
     "lock_and_revalidate_credential_mint_context",
     "lock_bootstrap_owner_transaction",
     "pair_device",
+    "preview_installation_web_identity",
     "upload_link_default_timezone",
     # re-exported from session_lifecycle_service
     "hash_pairing_code",

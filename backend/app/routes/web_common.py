@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from pathlib import Path
+from urllib.parse import urlencode
 
 from fastapi import Request
 from fastapi.templating import Jinja2Templates
@@ -139,6 +140,7 @@ def _base_ctx(
         "backend_version": BACKEND_VERSION,
         "asset_version": STATIC_ASSET_VERSION,
         "request": request,
+        "ledger_switch_next_url": _ledger_switch_next_url(request),
         "ledger_options": options,
         "selected_ledger_id": selected_ledger_id,
         "selected_ledger_name": selected.name,
@@ -161,6 +163,18 @@ def _base_ctx(
         "home_amount_label": lambda amount: _minor_amount_label(amount, home),
         "currency_input": _currency_input_view(home),
     }
+
+
+def _ledger_switch_next_url(request: Request) -> str:
+    """Keep the current page filters while dropping its old ledger binding."""
+
+    pairs = [
+        (key, value)
+        for key, value in request.query_params.multi_items()
+        if key != "ledger_id"
+    ]
+    query = urlencode(pairs)
+    return f"{request.url.path}?{query}" if query else request.url.path
 
 
 def _budget_top_rows(budget, *, currency_code: str) -> list[dict]:

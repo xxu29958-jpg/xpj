@@ -163,6 +163,53 @@ body {
     line-height: var(--type-caption-line);
 }
 
+.auth-ledger-list {
+    display: grid;
+    gap: var(--space-2);
+    margin: 0 0 var(--space-5);
+    padding: 0;
+    border: 0;
+}
+
+.auth-ledger-list legend {
+    margin-block-end: var(--space-2);
+    color: var(--text-default);
+    font-size: var(--type-caption-size);
+    font-weight: var(--type-subtitle-weight);
+}
+
+.auth-ledger-option {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-height: var(--space-12);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border-input);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+}
+
+.auth-ledger-option:has(input:checked) {
+    border-color: var(--control-border-active);
+    background: var(--brand-primary-bg);
+}
+
+.auth-ledger-option input {
+    width: var(--space-4);
+    height: var(--space-4);
+    accent-color: var(--brand-primary);
+}
+
+.auth-ledger-copy {
+    display: grid;
+    gap: var(--space-1);
+}
+
+.auth-ledger-copy span {
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
+
 .auth-submit {
     width: 100%;
     min-height: var(--space-10);

@@ -737,6 +737,19 @@ details[open] > .chrome-trigger {
     text-decoration: none;
 }
 
+.ledger-switch-form {
+    margin: 0;
+}
+
+.ledger-switch-form .row {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+}
+
 .ledger-popover .row:hover,
 .ledger-popover .row.on {
     background: var(--surface-sunken);
