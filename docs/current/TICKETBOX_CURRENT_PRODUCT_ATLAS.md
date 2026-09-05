@@ -308,6 +308,12 @@ This is create-time context, not a new editable financial fact, chat system or a
 
 Test-first subject `6f1b4fe2a12de103c75e665983f2727f6cf8f308`, CI `33962984089`, reproduced missing context in the real native successful-create detail (ordinary 1/2) and validation-failure form (ordinary 2/2). The pure request boundary also rejected `note` as an extra field before implementation. Production changes now cover the nullable migration, existing command/query, both clients and failure retention; final candidate qualification remains pending.
 
+### Budget first step — consumer convenience, qualification pending
+
+A first-time Web budget writer starts with one total and one native Save action in a single compact task region. Existing rollover, reserves, exclusions and category-budget capabilities remain in the same form under optional settings; configured budgets and rejected drafts expose those settings immediately. The existing Budget command, current month/ledger binding, authorization and fresh execution-versus-draft distinction are unchanged. No wizard, new financial default or second draft owner is introduced.
+
+Progressive enhancement closes only first-use options after installing the native validation-reveal handler. A browser-rejected input inside closed options reopens that section and receives native focus; without scripts all original inputs remain visible. Read-only production-template previews at 360/768/1440 demonstrate the first-screen action and keyboard/error visibility in both appearances. Actual native save, rejection retention and permission assertions await this candidate's cloud PostgreSQL qualification; no local heavy lane was run. Durable refresh/session draft recovery and whole-product consumer visual completion remain separate required work.
+
 ### Recycle recovery
 
 The complete Web recycle journey becomes the only product owner for list/restore. Owner Console links to that journey for operator convenience; its narrower duplicate query/restore implementation is physically retired.
@@ -370,6 +376,8 @@ Review carry-forward — `HOLD`: an unbound Android invitation can be previewed 
 ## 6. Visual art and convenience — explicit delivery wave
 
 Visual art is a first-class product outcome, not an implied subtask of functionality or an RC-day polish pass. Each active slice preserves usable visual and interaction states. Once the current Web/Android consumer migration is closed, complete a dedicated whole-product art, visual and convenience wave before continuing the remaining product expansion.
+
+The Owner's September 5 photo is a reference, not a selected design or a requirement to preserve its palette or paper treatment. The main agent owns the final design direction: modern consumer software, not a dated desktop-management or government-service aesthetic. Existing themes, panels and assets have no visual authority; typography, spacing, hierarchy, controls and feedback must work together across real daily tasks.
 
 - Establish coherent art direction and brand assets: icons, illustrations, empty states, backgrounds and textures. The rejected mascot has no preservation requirement; the explicitly rejected green-hat direction must not return.
 - Complete the production visual system across typography, color, spacing, information hierarchy, semantic components, focus/motion and light/dark appearances. Global custom background preferences must work coherently across applicable surfaces, not just decorate one page.
