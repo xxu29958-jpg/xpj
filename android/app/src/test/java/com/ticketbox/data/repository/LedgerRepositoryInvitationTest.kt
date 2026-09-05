@@ -47,8 +47,8 @@ class LedgerRepositoryInvitationTest {
 
         val summary = repo.acceptInvitation(
             inviteToken = "  inv_PLAINTOKEN  ",
-            accountName = "不得覆盖原成员",
-            deviceName = "不得覆盖原手机",
+            accountName = "",
+            deviceName = "",
         ).getOrThrow()
 
         assertEquals("L_family", summary.ledgerId)
@@ -56,6 +56,8 @@ class LedgerRepositoryInvitationTest {
         // The plain token is trimmed before being sent to the server.
         assertEquals("inv_PLAINTOKEN", api.acceptRequests.single().inviteToken)
         assertEquals("android", api.acceptRequests.single().platform)
+        assertNull(api.acceptRequests.single().accountName)
+        assertNull(api.acceptRequests.single().deviceName)
         assertNull(api.acceptRequests.single().enrollmentAttemptId)
         assertEquals("old-token", apiFactory.tokenSnapshots.first())
         val after = requireNotNull(tokenStore.sessionStore.currentSession())
@@ -168,6 +170,8 @@ class LedgerRepositoryInvitationTest {
         val api = StubApi(
             LedgerStubApiState(
                 previewResult = InvitationPreviewResponseDto(
+                    serverId = TEST_SERVER_ID,
+                    dataGeneration = TEST_DATA_GENERATION,
                     ledgerId = "L_family",
                     ledgerName = ledgerName,
                     role = "viewer",
@@ -203,6 +207,8 @@ class LedgerRepositoryInvitationTest {
         assertEquals(ledgerName, preview.ledgerName)
         assertEquals("viewer", preview.role)
         assertEquals("2026-05-20T00:00:00Z", preview.expiresAt)
+        assertEquals(TEST_SERVER_ID, preview.serverId)
+        assertEquals(TEST_DATA_GENERATION, preview.dataGeneration)
         assertEquals("inv_PREVIEW", api.previewRequests.single().inviteToken)
         // Invitation preview is a public endpoint; it must not attach the existing token.
         assertNull(apiFactory.tokenProviders.single().invoke())

@@ -167,7 +167,7 @@ This replaces the old advice to edit the runtime projection or `backend/.env` fr
 | Reports, trends and projections | `STRONG_SLICE` | Insight read models → Web and Android | Continue information hierarchy and empty/error work |
 | Receipt and debt-bill recognition | `STRONG_SLICE`, merged in #353 | OCR/debt parse services → upload/review/debt consumers | Preserve Owner selection, enablement and shared-pipeline status; full product RC qualification remains |
 | Currency adoption when existing evidence requires it | `STRONG_SLICE`, merged in #354 at `684c0dd8` | Installation binding/adoption service → Desktop product bridge; Android compatibility guard | Candidate and exact merge-main cloud qualification passed; keep old maintenance API retired |
-| Manual FX recovery for one pending foreign-currency expense | `PARTIAL` in this candidate | Expense snapshot owner → same pending PATCH, Web edit and Android PatchExpense | Qualify same-page review, replay and offline intent; the previous atlas incorrectly called the single-bill command existing |
+| Manual FX recovery for one pending foreign-currency expense | `STRONG_SLICE`, merged in #355 at `06edbbde` | Expense snapshot owner → shared pending edit command, Web edit and Android PatchExpense | Candidate and exact merge-main CI/CodeQL/Connected passed; merged branch retired. Preserve explicit canonical review and offline intent |
 | First use, connection and household entry | `PARTIAL` / under current verification | Installation/account/ledger owners → Desktop, Web and Android | Simplify the role-specific first-use journey, explain data ownership, preserve entered setup and provide one actionable recovery step |
 | Recycle bin | `DUPLICATE` | Web recycle owner plus narrower Owner Console implementation | Promote the complete Web journey; retire the duplicate Owner writer/surface |
 | Public admin API exposure | `DORMANT` / `RETIRE` | Backend route group, no product consumer | Keep local maintenance boundary or remove exposure toggle; do not invent a UI consumer |
@@ -293,7 +293,7 @@ Current-slice evidence (revisit on the listed paths or a direct failing journey;
 
 The complete Web recycle journey becomes the only product owner for list/restore. Owner Console links to that journey for operator convenience; its narrower duplicate query/restore implementation is physically retired.
 
-### First use and binding — next independent slice, not yet implemented
+### First use and binding — current independent slice
 
 The verified `684c0dd8` baseline has working Account/Device/Member/Invitation/Session owners, Android durable enrollment and Desktop credential storage. The user journey is incomplete: Web login asks family members to obtain an Owner pairing code, but Owner pairing authorizes an additional device for the Owner's existing identity. The actual family invitation page sends new members to Android. A browser-only new member therefore lacks a direct invitation/enrollment consumer.
 
@@ -311,7 +311,20 @@ flowchart LR
     Entry -->|Viewer| Read[Read recent transactions]
 ```
 
-Selected next task: complete family invitation handoff on Web and Android using existing enrollment/session owners. The entry itself carries intent; users do not choose a technical pairing/invitation category. Share the server location and invitation together, default device identity, ask a new person only for a display name, remove redundant authenticated-name fields, show destination/role before acceptance and keep failure recovery in the same task. Invitation secrets must not become analytics, referrer or diagnostic data. Exact link/QR transport and replay handling still require implementation-level design; this diagram is a target, not a shipped guarantee.
+Current task: complete family invitation handoff on Web and Android using existing enrollment/session owners. The entry itself carries intent; users do not choose a technical pairing/invitation category. Ask a new person only for a display name, default device identity, remove redundant authenticated-name fields, show destination/role before acceptance and keep failure recovery in the same task.
+
+The shared create-invitation result supplies an optional `https://configured-origin/web/auth/join#invite=...` URL. Its origin comes from the configured public endpoint, never the request Host. Without that configuration, the existing one-time token remains available for explicit paste. This is configured access, not proof of network reachability. No new token store is introduced.
+
+Web removes the fragment before submitting a native preview form; each acceptance form retains its own target, not a shared target cookie. Existing Web identity is checked independently of the old selected ledger, without dropping Web platform/expiry requirements. A new browser uses the existing recoverable enrollment proof and the same eight-hour policy as browser pairing. Android accepts the link through paste or explicit text sharing, previews anonymously, and compares server identity and data generation. For the same server it accepts only through its current authenticated binding. A different server opens the browser continuation and cannot replace the app's identity or Outbox. Arbitrary-domain verified Android App Links are not claimed.
+
+These consumer paths are under construction, not shipped guarantees. The small gate map below retires with this slice except for its actual semantic regressions; revisit only when the listed owners/consumers change or a direct user counterexample appears.
+
+| Claim and falsifier | Owner / real consumers and changed paths | Matching proof / cost |
+|---|---|---|
+| One invitation creates or joins the intended identity once; old membership availability cannot veto a valid identity join | Invitation/enrollment/session services; API and native Web join routes | Real public-session PostgreSQL forms: preview, new/existing identity, response loss and two-tab targets; seconds locally |
+| Shared links identify the configured destination without publishing bearer data in HTTP URLs/history | Shared invitation create result; Web family/share/fragment intake and Android share/paste | Configured-origin response tests plus actual Edge fragment/native/no-JS interaction; bounded browser run |
+| Same-server acceptance preserves the binding and pending intent; foreign server never receives the stored credential or replaces local identity | Android join repository, session coordinator, navigation and screens | Focused JVM transport/session/Outbox assertions; exact cloud Connected for real integration |
+| Public schemas match changed consumers and current candidate qualifies | Invitation DTO/OpenAPI; Web/Android/backend lanes | Generated schema and exact SHA cloud results; no new audit registry or fixed test-count claim |
 
 Desktop first-use explanation, expired-code recovery links and Web manual entry remain recorded companion gaps. They do not authorize reopening installer, account recovery, upgrades or other Windows HOLD work.
 

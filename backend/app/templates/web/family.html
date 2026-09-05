@@ -33,19 +33,23 @@
   <div class="product-panel-header">
     <div>
       <h2 class="product-panel-title" id="family-invite-token-title">邀请已生成</h2>
-      <p class="product-panel-subtitle">这段邀请明文仅显示一次。现在复制并私下发给家人，不要把设备绑定码发给对方。</p>
+      <p class="product-panel-subtitle">这份邀请仅显示一次。现在复制并私下发给家人，不要把设备绑定码发给对方。</p>
     </div>
     <span class="product-status product-status--success">待分享</span>
   </div>
   <label class="product-field family-token-field">
-    <span>邀请明文</span>
-    <textarea class="product-input" rows="2" readonly data-family-invite-token>{{ invitation_token }}</textarea>
+    <span>{{ '邀请链接' if invitation_url else '邀请码' }}</span>
+    <textarea class="product-input" rows="2" readonly data-family-invite-value>{{ invitation_url or invitation_token }}</textarea>
   </label>
   <div class="family-invite-handoff">
-    <button class="product-button product-button--primary" type="button" data-family-copy-button>复制邀请明文</button>
-    <span class="hint" data-family-copy-status aria-live="polite">也可以长按或全选上面的明文手动复制。</span>
+    <button class="product-button product-button--primary" type="button" data-family-copy-button>复制邀请{{ '链接' if invitation_url else '码' }}</button>
+    <span class="hint" data-family-copy-status aria-live="polite">也可以长按或全选上面的邀请手动复制。</span>
   </div>
-  <p class="hint">对方尚未绑定时：在 Android 绑定页点“我有家庭邀请”；已经绑定时：打开“设置 → 加入家庭账本”。粘贴这段明文即可，不要使用你的设备绑定码。</p>
+  {% if invitation_url %}
+  <p class="hint">让家人在浏览器打开链接，核对账本和权限后确认加入。</p>
+  {% else %}
+  <p class="hint">尚未配置可分享地址。让家人在浏览器打开加入页并粘贴这段邀请码。</p>
+  {% endif %}
 </section>
 {% endif %}
 

@@ -30,6 +30,7 @@ from app.tenants import AuthContext
 
 PairingConsumeResult = Literal["consumed", "used", "expired"]
 PAIRING_CODE_DIGITS = 8
+WEB_SESSION_TTL_SECONDS = 8 * 60 * 60
 PAIRING_CODE_HASH_ITERATIONS = 120_000
 PAIRING_CODE_HASH_SALT = b"ticketbox-pairing-code-v2"
 ENROLLMENT_ATTEMPT_SECRET_CONTEXT = b"ticketbox/device-enrollment/v1/attempt-secret\0"
@@ -261,6 +262,16 @@ def app_token_soft_refresh_after(expires_at: datetime | None) -> datetime | None
 
     refresh_days = max(get_settings().app_token_refresh_window_days, 0)
     return expires_at - timedelta(days=refresh_days) if refresh_days > 0 else None
+
+
+def session_expiry_window(*, platform: str, issued_at: datetime) -> AppTokenExpiryWindow:
+    """Pairing and invitation enrollment issue the same platform session."""
+    if platform == "web":
+        return AppTokenExpiryWindow(
+            expires_at=issued_at + timedelta(seconds=WEB_SESSION_TTL_SECONDS),
+            soft_refresh_after=None,
+        )
+    return app_token_expiry_window(issued_at)
 
 
 def upload_link_expires_at(issued_at: datetime) -> datetime:

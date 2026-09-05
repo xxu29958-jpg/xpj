@@ -13,6 +13,7 @@ from datetime import timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.errors import AppError
 from app.models import Account, Invitation
 from app.services import permission_service
@@ -23,6 +24,7 @@ from app.services.identity_service import (
 from app.services.identity_service._bootstrap_exposure_guard import (
     assert_bootstrap_sensitive_mutation_allowed,
 )
+from app.services.installation_health_service import configured_mobile_endpoint_url
 from app.services.invitation_acceptance import (
     AcceptInvitationResult,
     accept_invitation,
@@ -60,6 +62,7 @@ class InvitationSummary:
 class CreateInvitationResult:
     invite_token: str  # plain, returned once
     summary: InvitationSummary
+    invite_url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -146,9 +149,11 @@ def create_invitation(
     )
     db.commit()
     db.refresh(invitation)
+    public_origin = configured_mobile_endpoint_url(get_settings().public_base_url)
     return CreateInvitationResult(
         invite_token=token,
         summary=invitation_summary(invitation, used_by_name=None),
+        invite_url=f"{public_origin}/web/auth/join#invite={token}" if public_origin else None,
     )
 
 

@@ -132,6 +132,7 @@ def create_invitation_endpoint(
     )
     return InvitationCreateResponse(
         invite_token=result.invite_token,
+        invite_url=result.invite_url,
         invitation=_to_invitation_response(result.summary),
     )
 
@@ -178,7 +179,10 @@ def preview_invitation_endpoint(
     db: Session = Depends(get_db),
 ) -> InvitationPreviewResponse:
     result = preview_invitation(db, invite_token=payload.invite_token)
+    server = read_server_data_identity(db)
     return InvitationPreviewResponse(
+        server_id=server.server_id,
+        data_generation=server.data_generation,
         ledger_id=result.ledger_id,
         ledger_name=result.ledger_name,
         role=result.role,

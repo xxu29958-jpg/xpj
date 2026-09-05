@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="{{ ui_theme or 'paper' }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>加入家庭账本 — 小票夹</title>
+  <link rel="icon" type="image/png" href="/static/web/product/brand/favicon-48.png">
+  <script src="/static/web/appearance-bootstrap.js?v={{ asset_version }}"></script>
+  <link rel="stylesheet" href="/static/shared/tokens.css?v={{ asset_version }}">
+  <link rel="stylesheet" href="/static/web/pages/auth-login.css?v={{ asset_version }}">
+  <link rel="stylesheet" href="/static/web/pages/auth-join.css?v={{ asset_version }}">
+  <script defer src="/static/shared/csrf.js?v={{ asset_version }}"></script>
+  <script defer src="/static/web/auth-join.js?v={{ asset_version }}"></script>
+</head>
+<body class="auth-join-page">
+  <main class="auth-layout">
+    <section class="auth-story" aria-label="关于家庭账本">
+      <div class="auth-brand">
+        {% include "_brand_mark.html" %}
+        <span class="auth-brand-name">小票夹</span>
+      </div>
+      <h1 class="auth-title">接受邀请，<br>一起看清家里的账</h1>
+      <ol class="auth-steps">
+        <li><span class="auth-step-num">1</span>先核对账本和权限</li>
+        <li><span class="auth-step-num">2</span>确认以你的身份加入</li>
+      </ol>
+    </section>
+
+    <section class="auth-card" aria-labelledby="join-card-title">
+      {% if error %}
+      <div class="auth-error" role="alert">{{ error }}</div>
+      {% endif %}
+
+      {% if preview %}
+      <h2 class="auth-card-title" id="join-card-title">加入「{{ preview.ledger_name }}」</h2>
+      <p class="auth-hint">你的权限：{{ permission_label }}。</p>
+      <dl class="join-preview">
+        <div><dt>邀请到期</dt><dd>{{ expires_label }}</dd></div>
+      </dl>
+      <form method="post" action="/web/auth/join/accept" autocomplete="off">
+        {{ csrf_field|safe }}
+        <input type="hidden" name="invite_token" value="{{ invite_token }}">
+        {% if current_account_name %}
+        <div class="join-identity">
+          <span>你将以当前身份加入</span>
+          <strong>{{ current_account_name }}</strong>
+        </div>
+        {% else %}
+        <label class="auth-field" for="account_name">
+          <span class="auth-field-label">你的称呼</span>
+          <input id="account_name" name="account_name" type="text" value="{{ account_name }}" maxlength="120" autocomplete="name" required>
+          <span class="auth-field-hint">家人会在成员列表和共同账目中看到这个称呼。</span>
+        </label>
+        {% endif %}
+        <button class="auth-submit" type="submit">确认加入</button>
+      </form>
+      {% else %}
+      <h2 class="auth-card-title" id="join-card-title">加入家庭账本</h2>
+      <p class="auth-hint">打开家人发来的邀请链接，或在这里粘贴完整链接或邀请码。</p>
+      <form method="post" action="/web/auth/join/preview" autocomplete="off" data-invitation-preview-form>
+        {{ csrf_field|safe }}
+        <label class="auth-field" for="invite_token">
+          <span class="auth-field-label">家庭邀请</span>
+          <input id="invite_token" name="invite_token" type="text" value="{{ invite_token }}" maxlength="2048" autocomplete="off" data-invitation-input required autofocus>
+          <span class="auth-field-hint">邀请链接不会上传到其它服务；我们只用它核对这次加入。</span>
+        </label>
+        <button class="auth-submit" type="submit">核对邀请</button>
+      </form>
+      {% endif %}
+
+      <p class="auth-foot">邀请只能使用一次。加入后仍需按你的权限操作；只读成员不能新增或修改账目。</p>
+    </section>
+  </main>
+</body>
+</html>

@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.models import Account, AuthToken, Device, Ledger, LedgerMember, UploadLink
 from app.services.identity_service._credential_state import _session_credential_state
-from app.services.identity_service._models import WebSessionAuthResult
 from app.services.session_credential_lock import lock_bootstrap_owner_transaction
 from app.services.session_lifecycle_service import hash_secret
 from app.services.time_service import ensure_utc, now_utc
@@ -305,42 +304,6 @@ def authenticate_desktop_session_token(db: Session, token_value: str) -> AuthCon
                 db.commit()
             raise AppError("invalid_token", status_code=401) from exc
         raise
-
-
-def authenticate_web_session_token(
-    db: Session,
-    token_value: str,
-    *,
-    ttl_seconds: int,
-) -> WebSessionAuthResult:
-    """Authenticate a browser cookie session with a fixed server-side TTL."""
-    token_hash = hash_secret(token_value)
-    token = db.scalar(
-        select(AuthToken)
-        .join(Device, Device.id == AuthToken.device_id)
-        .where(AuthToken.token_hash == token_hash)
-        .where(AuthToken.revoked_at.is_(None))
-        .where(AuthToken.scope == "app")
-        .where(Device.platform == "web")
-        .limit(1)
-    )
-    if token is None:
-        raise AppError("invalid_token", status_code=401)
-
-    account, device, ledger, role = _context_parts_from_token(db, token)
-    now = now_utc()
-    expires_at = ensure_utc(token.expires_at)
-    if expires_at is None:
-        issued_at = ensure_utc(token.created_at) or token.created_at
-        expires_at = issued_at + timedelta(seconds=ttl_seconds)
-    if expires_at <= now:
-        token.revoked_at = now
-        db.commit()
-        raise AppError("invalid_token", status_code=401)
-    return WebSessionAuthResult(
-        auth=_auth_context_from_parts(token, account, device, ledger, role),
-        refreshed=False,
-    )
 
 
 def find_active_upload_link(db: Session, *, upload_key: str) -> UploadLink | None:

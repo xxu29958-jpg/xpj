@@ -12,10 +12,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -25,6 +23,7 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppStatusBanner
+import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.displayDateTime
 import com.ticketbox.ui.components.ledgerRoleLabelText
 import com.ticketbox.ui.design.AppAlpha
@@ -33,44 +32,20 @@ import com.ticketbox.ui.screens.ServerUrlEntryConfig
 import com.ticketbox.viewmodel.JoinFamilyLedgerUiState
 import com.ticketbox.viewmodel.JoinFamilyLedgerViewModel
 
-private const val INVITE_TOKEN_MAX = 128
-private const val NAME_MAX = 120
-
-/**
- * v0.4-beta1: accept a family-ledger invitation on this device.
- *
- * The plain invite token is generated server-side (Owner Console) and shown
- * **once** to the inviter. The accepting device pastes it here together with
- * a fresh display name and device name; the server creates a brand-new
- * Account + Device + LedgerMember row and issues a session token that
- * replaces the current binding. The active ledger is switched to the joined
- * one as part of acceptance.
- *
- * Trust model: this screen never persists the plain token. We hold it only
- * for the duration of the request; on success the only persisted material
- * is the freshly minted session token returned by the server.
- *
- * Dual-host: the settings tree mounts it on a bound device with
- * [serverUrlEntry] = null (historic behaviour); the cold-start invitation
- * entry mounts it unbound with a non-null [serverUrlEntry] so the screen then
- * collects (or silently defaults) the server URL and routes preview through
- * it, while the current-binding line is hidden because there is no binding.
- *
- * ViewModel-driven as of 2026-05; pre-refactor injected ``LedgerRepository``
- * into the screen body directly, which broke the Android layer rule.
- */
+/** Preview and explicitly accept one family invitation without persisting its plaintext token.
+ * Bound devices reuse the current member/device identity; unbound devices create an enrollment
+ * from a display name and the app-provided device label. A foreign server is browser-only so the
+ * existing session and outbox remain untouched. */
 @Composable
 fun JoinFamilyLedgerScreen(
     viewModel: JoinFamilyLedgerViewModel,
     onBack: () -> Unit,
     onAccepted: () -> Unit,
     serverUrlEntry: ServerUrlEntryConfig? = null,
+    onInvitationConsumed: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    var inviteToken by remember { mutableStateOf("") }
-    var accountName by remember { mutableStateOf("") }
-    var deviceName by remember { mutableStateOf("") }
-    var serverUrl by remember(serverUrlEntry) { mutableStateOf(serverUrlEntry?.defaultUrl.orEmpty()) }
+    val uriHandler = LocalUriHandler.current
 
     val currentAccountName = viewModel.currentAccountName.asString()
     val currentLedgerName = viewModel.currentLedgerName.asString()
@@ -81,11 +56,42 @@ fun JoinFamilyLedgerScreen(
     SettingsPageFrame(
         title = stringResource(R.string.join_family_ledger_page_title),
         subtitle = stringResource(R.string.join_family_ledger_page_subtitle),
-        onBack = onBack,
+        onBack = {
+            viewModel.discardInvitation()
+            onBack()
+        },
         status = {
             AppStatusBanner(message = statusMessage, tone = statusTone)
         },
     ) {
+        JoinInvitationForm(
+            state = state,
+            serverUrlEntry = serverUrlEntry,
+            currentAccountName = currentAccountName,
+            fields = JoinInvitationFormFields(
+                serverUrl = state.serverUrl,
+                inviteToken = state.invitationInput,
+                accountName = state.accountName,
+            ),
+            actions = JoinInvitationFormActions(
+                onServerUrlChange = viewModel::onServerUrlChanged,
+                onInviteTokenChange = viewModel::onInvitationInputChanged,
+                onAccountNameChange = viewModel::onAccountNameChanged,
+                onPreview = viewModel::previewCurrentInput,
+                onAccept = {
+                    viewModel.acceptCurrentInvitation(
+                        onAccepted = onAccepted,
+                        onConsumed = onInvitationConsumed,
+                    )
+                },
+                onContinueInBrowser = {
+                    if (viewModel.continueInBrowser(uriHandler::openUri)) {
+                        viewModel.discardInvitation()
+                        onInvitationConsumed()
+                    }
+                },
+            ),
+        )
         if (serverUrlEntry == null) {
             CurrentBindingSection(
                 ledgerName = currentLedgerName,
@@ -93,49 +99,6 @@ fun JoinFamilyLedgerScreen(
                 role = currentRole,
             )
         }
-        JoinInvitationForm(
-            state = state,
-            serverUrlEntry = serverUrlEntry,
-            fields = JoinInvitationFormFields(
-                serverUrl = serverUrl,
-                inviteToken = inviteToken,
-                accountName = accountName,
-                deviceName = deviceName,
-            ),
-            actions = JoinInvitationFormActions(
-                onServerUrlChange = { value ->
-                    serverUrl = value
-                    viewModel.onServerUrlChanged()
-                },
-                onInviteTokenChange = { value ->
-                    inviteToken = value.take(INVITE_TOKEN_MAX)
-                    viewModel.onTokenChanged()
-                },
-                onAccountNameChange = { value ->
-                    accountName = value.take(NAME_MAX)
-                    viewModel.onIdentityChanged()
-                },
-                onDeviceNameChange = { value ->
-                    deviceName = value.take(NAME_MAX)
-                    viewModel.onIdentityChanged()
-                },
-                onPreview = {
-                    viewModel.previewInvitation(
-                        inviteToken = inviteToken,
-                        serverUrlOverride = if (serverUrlEntry != null) serverUrl else null,
-                    )
-                },
-                onAccept = {
-                    viewModel.acceptInvitation(
-                        inviteToken = inviteToken,
-                        accountName = accountName,
-                        deviceName = deviceName,
-                        onAccepted = onAccepted,
-                        onConsumed = { inviteToken = "" },
-                    )
-                },
-            ),
-        )
     }
 }
 
@@ -143,16 +106,15 @@ private data class JoinInvitationFormFields(
     val serverUrl: String,
     val inviteToken: String,
     val accountName: String,
-    val deviceName: String,
 )
 
 private data class JoinInvitationFormActions(
     val onServerUrlChange: (String) -> Unit,
     val onInviteTokenChange: (String) -> Unit,
     val onAccountNameChange: (String) -> Unit,
-    val onDeviceNameChange: (String) -> Unit,
     val onPreview: () -> Unit,
     val onAccept: () -> Unit,
+    val onContinueInBrowser: () -> Unit,
 )
 
 @Composable
@@ -177,6 +139,7 @@ private fun CurrentBindingSection(
 private fun JoinInvitationForm(
     state: JoinFamilyLedgerUiState,
     serverUrlEntry: ServerUrlEntryConfig?,
+    currentAccountName: String,
     fields: JoinInvitationFormFields,
     actions: JoinInvitationFormActions,
 ) {
@@ -192,11 +155,25 @@ private fun JoinInvitationForm(
                 actions = actions,
             )
             state.preview?.let { InvitationPreviewPanel(preview = it) }
+            state.sourceHost?.let { host ->
+                Text(
+                    text = stringResource(R.string.join_family_ledger_source_host, host),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
             if (state.preview == null) {
                 Text(
                     text = stringResource(R.string.join_family_ledger_preview_required),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
+                )
+            } else if (state.canContinueInBrowser) {
+                AppStatusBanner(
+                    message = com.ticketbox.domain.model.UiText.res(
+                        R.string.join_family_ledger_foreign_server_message,
+                    ),
+                    tone = MessageTone.Info,
                 )
             } else {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
@@ -204,16 +181,35 @@ private fun JoinInvitationForm(
                     text = stringResource(R.string.join_family_ledger_identity_title),
                     style = MaterialTheme.typography.titleSmall,
                 )
-                JoinIdentityFields(state = state, fields = fields, actions = actions)
+                if (state.accountNameRequired) {
+                    JoinIdentityFields(state = state, fields = fields, actions = actions)
+                } else {
+                    Text(
+                        text = stringResource(
+                            R.string.join_family_ledger_use_current_identity,
+                            currentAccountName,
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
-            JoinInvitationActions(
-                state = state,
-                previewEnabled = fields.inviteToken.isNotBlank() &&
-                    (serverUrlEntry == null || fields.serverUrl.isNotBlank()),
-                identityReady = joinIdentityInputsReady(fields.accountName, fields.deviceName),
-                onPreview = actions.onPreview,
-                onAccept = actions.onAccept,
-            )
+            if (state.canContinueInBrowser) {
+                QuietOutlinedButton(
+                    text = stringResource(R.string.join_family_ledger_continue_in_browser),
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = actions.onContinueInBrowser,
+                )
+            } else {
+                JoinInvitationActions(
+                    state = state,
+                    previewEnabled = (state.sourceHost != null || fields.inviteToken.isNotBlank()) &&
+                        (serverUrlEntry == null || fields.serverUrl.isNotBlank()),
+                    identityReady = joinIdentityInputsReady(fields.accountName, state.accountNameRequired) &&
+                        state.target != com.ticketbox.domain.model.InvitationSessionTarget.ForeignServer,
+                    onPreview = actions.onPreview,
+                    onAccept = actions.onAccept,
+                )
+            }
         }
     }
 }
@@ -226,7 +222,7 @@ private fun JoinInvitationAccessFields(
     fields: JoinInvitationFormFields,
     actions: JoinInvitationFormActions,
 ) {
-    if (serverUrlEntry?.showInput == true) {
+    if (serverUrlEntry?.showInput == true && state.sourceHost == null) {
         SettingsDialogTextInput(
             state = SettingsTextInputState(
                 label = stringResource(R.string.bind_server_field_url_label),
@@ -237,17 +233,19 @@ private fun JoinInvitationAccessFields(
             onValueChange = actions.onServerUrlChange,
         )
     }
-    SettingsDialogTextInput(
-        state = SettingsTextInputState(
-            label = stringResource(R.string.join_family_ledger_field_invite_token),
-            value = fields.inviteToken,
-            enabled = !state.previewing && !state.submitting,
-            singleLine = false,
-            minLines = 1,
-            maxLines = 2,
-        ),
-        onValueChange = actions.onInviteTokenChange,
-    )
+    if (state.sourceHost == null || (state.error != null && state.preview == null)) {
+        SettingsDialogTextInput(
+            state = SettingsTextInputState(
+                label = stringResource(R.string.join_family_ledger_field_invite_token),
+                value = fields.inviteToken,
+                enabled = !state.previewing && !state.submitting,
+                singleLine = false,
+                minLines = 1,
+                maxLines = 2,
+            ),
+            onValueChange = actions.onInviteTokenChange,
+        )
+    }
 }
 
 @Composable
@@ -263,14 +261,6 @@ private fun JoinIdentityFields(
             enabled = !state.previewing && !state.submitting,
         ),
         onValueChange = actions.onAccountNameChange,
-    )
-    SettingsDialogTextInput(
-        state = SettingsTextInputState(
-            label = stringResource(R.string.join_family_ledger_field_device_name),
-            value = fields.deviceName,
-            enabled = !state.previewing && !state.submitting,
-        ),
-        onValueChange = actions.onDeviceNameChange,
     )
 }
 

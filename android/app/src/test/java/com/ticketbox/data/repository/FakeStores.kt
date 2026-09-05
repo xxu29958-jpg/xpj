@@ -586,6 +586,7 @@ internal fun testLedgerRepository(
     settingsStore: TicketboxSettingsStore,
     tokenStore: TestSessionFixture,
     expenseDao: ExpenseDao,
+    deviceNameProvider: () -> String = { "测试 Android 设备" },
 ): LedgerRepository {
     return LedgerRepository(
         settingsStore = settingsStore,
@@ -597,5 +598,6 @@ internal fun testLedgerRepository(
             sessionStore = tokenStore.sessionStore,
             expenseDao = expenseDao,
         ),
+        deviceNameProvider = deviceNameProvider,
     )
 }

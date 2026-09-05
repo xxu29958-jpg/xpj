@@ -5,6 +5,7 @@ import com.ticketbox.data.remote.dto.InvitationSummaryDto
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import com.ticketbox.domain.model.shareText
 import kotlinx.coroutines.test.runTest
 
 /**
@@ -34,8 +35,12 @@ class LedgerRepositoryCreateInvitationTest {
             expenseDao = LedgerFakeDao(),
         )
 
-    private fun createdResponse(role: String) = InvitationCreateResponseDto(
+    private fun createdResponse(
+        role: String,
+        inviteUrl: String? = "https://family.example.com/web/auth/join#invite=inv_PLAINTEXT_ONCE",
+    ) = InvitationCreateResponseDto(
         inviteToken = "inv_PLAINTEXT_ONCE",
+        inviteUrl = inviteUrl,
         invitation = InvitationSummaryDto(
             publicId = "I_1",
             ledgerId = "L_family",
@@ -52,6 +57,10 @@ class LedgerRepositoryCreateInvitationTest {
             .createFamilyInvitation(role = "member")
             .getOrThrow()
         assertEquals("inv_PLAINTEXT_ONCE", created.inviteToken)
+        assertEquals(
+            "https://family.example.com/web/auth/join#invite=inv_PLAINTEXT_ONCE",
+            created.inviteUrl,
+        )
         assertEquals("member", created.role)
         assertEquals("2026-06-20T00:00:00+00:00", created.expiresAt)
         assertEquals(listOf("L_family"), api.createInvitationTargets)
@@ -70,6 +79,18 @@ class LedgerRepositoryCreateInvitationTest {
             .getOrThrow()
         assertEquals("viewer", created.role)
         assertEquals("viewer", api.createInvitationRequests.single().role)
+    }
+
+    @Test
+    fun rawTokenIsShareFallbackOnlyWhenServerReturnsNoPublicUrl() = runTest {
+        val api = StubApi(
+            LedgerStubApiState(createInvitationResult = createdResponse(role = "member", inviteUrl = null)),
+        )
+
+        val created = repoWith(api, boundStore()).createFamilyInvitation(role = "member").getOrThrow()
+
+        assertEquals(null, created.inviteUrl)
+        assertEquals("inv_PLAINTEXT_ONCE", created.shareText)
     }
 
     @Test

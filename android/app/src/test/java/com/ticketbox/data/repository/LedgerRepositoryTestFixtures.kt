@@ -109,6 +109,7 @@ internal data class LedgerStubApiState(
     var disableResult: LedgerMemberDto? = null,
     var transferResult: OwnerTransferResponseDto? = null,
     var previewResult: InvitationPreviewResponseDto? = null,
+    var previewHandler: (suspend (InvitationPreviewRequestDto) -> InvitationPreviewResponseDto)? = null,
     var previewError: Throwable? = null,
     var acceptResult: InvitationAcceptResponseDto? = null,
     var acceptHandler: (suspend (InvitationAcceptRequestDto) -> InvitationAcceptResponseDto)? = null,
@@ -258,6 +259,7 @@ internal class StubApi(
         request: InvitationPreviewRequestDto,
     ): InvitationPreviewResponseDto {
         previewRequests += request
+        state.previewHandler?.let { return it(request) }
         state.previewError?.let { throw it }
         return state.previewResult ?: error("Unexpected preview call")
     }

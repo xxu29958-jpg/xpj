@@ -16,7 +16,6 @@ DEFAULT_BOOTSTRAP_DEVICE_NAME = "Windows 后端"
 PAIRING_CODE_TTL_MINUTES = 15
 PAIRING_MAX_FAILED_ATTEMPTS = 20
 PAIRING_ATTEMPT_WINDOW = timedelta(minutes=10)
-WEB_SESSION_TTL_SECONDS = 8 * 60 * 60
 
 
 class ReplacementCredentialCollisionError(ValueError):

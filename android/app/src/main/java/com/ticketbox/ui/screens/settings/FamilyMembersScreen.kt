@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.settings
 
+import android.content.Intent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -37,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.AnnotatedString
@@ -52,6 +54,7 @@ import com.ticketbox.domain.model.LEDGER_ROLE_VIEWER
 import com.ticketbox.domain.model.LedgerAuditEntry
 import com.ticketbox.domain.model.ledgerAuditActionLabel
 import com.ticketbox.domain.model.ledgerAuditResultLabel
+import com.ticketbox.domain.model.shareText
 import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
 import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppAdaptiveTrailingActionRow
@@ -211,7 +214,7 @@ fun FamilyMembersScreen(
     }
 }
 
-/** Owner-only invitation creation; the plaintext token is visible only once. */
+/** Owner-only invitation creation; the one-time share value stays in memory until this result is dismissed. */
 @Composable
 private fun InviteFamilySection(
     creating: Boolean,
@@ -220,6 +223,7 @@ private fun InviteFamilySection(
     onDismissResult: () -> Unit,
 ) {
     val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
     SettingsSection(
         title = stringResource(R.string.family_members_section_invite),
         icon = Icons.Filled.Group,
@@ -234,7 +238,18 @@ private fun InviteFamilySection(
             createdInvite?.let { invite ->
                 CreatedInviteResult(
                     invite = invite,
-                    onCopy = { clipboard.setText(AnnotatedString(invite.inviteToken)) },
+                    onCopy = { clipboard.setText(AnnotatedString(invite.shareText)) },
+                    onShare = {
+                        val send = Intent(Intent.ACTION_SEND)
+                            .setType("text/plain")
+                            .putExtra(Intent.EXTRA_TEXT, invite.shareText)
+                        context.startActivity(
+                            Intent.createChooser(
+                                send,
+                                context.getString(R.string.family_members_invite_share_chooser),
+                            ),
+                        )
+                    },
                     onDismissResult = onDismissResult,
                 )
             }
@@ -324,6 +339,7 @@ private fun InviteRoleActionRow(
 private fun CreatedInviteResult(
     invite: FamilyInvitationCreated,
     onCopy: () -> Unit,
+    onShare: () -> Unit,
     onDismissResult: () -> Unit,
 ) {
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
@@ -336,9 +352,15 @@ private fun CreatedInviteResult(
         color = MaterialTheme.colorScheme.onSurface,
     )
     Text(
-        text = invite.inviteToken,
-        style = MaterialTheme.typography.titleMedium,
-        color = MaterialTheme.colorScheme.onSurface,
+        text = stringResource(
+            if (!invite.inviteUrl.isNullOrBlank()) {
+                R.string.family_members_invite_link_ready
+            } else {
+                R.string.family_members_invite_token_fallback
+            },
+        ),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     invite.expiresAt?.let { expiresAt ->
         Text(
@@ -352,7 +374,7 @@ private fun CreatedInviteResult(
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    AppAdaptiveEditActionLayout(actionCount = 2, compact = false, stackTwoActionsOnNarrow = true) { mode ->
+    AppAdaptiveEditActionLayout(actionCount = 3, compact = false, stackTwoActionsOnNarrow = true) { mode ->
         when (mode) {
             AppAdaptiveEditActionMode.Stacked -> Column(
                 modifier = Modifier.fillMaxWidth(),
@@ -362,6 +384,11 @@ private fun CreatedInviteResult(
                     text = stringResource(R.string.family_members_invite_copy),
                     modifier = Modifier.fillMaxWidth(),
                     onClick = onCopy,
+                )
+                QuietOutlinedButton(
+                    text = stringResource(R.string.family_members_invite_share),
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = onShare,
                 )
                 QuietOutlinedButton(
                     text = stringResource(R.string.family_members_invite_dismiss),
@@ -376,6 +403,7 @@ private fun CreatedInviteResult(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 QuietOutlinedButton(text = stringResource(R.string.family_members_invite_copy), onClick = onCopy)
+                QuietOutlinedButton(text = stringResource(R.string.family_members_invite_share), onClick = onShare)
                 QuietOutlinedButton(
                     text = stringResource(R.string.family_members_invite_dismiss),
                     onClick = onDismissResult,

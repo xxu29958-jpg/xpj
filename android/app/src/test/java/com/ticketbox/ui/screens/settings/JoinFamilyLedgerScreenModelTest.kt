@@ -29,30 +29,38 @@ class JoinFamilyLedgerScreenModelTest {
     }
 
     @Test
-    fun acceptActionRequiresPreviewAndIdentityInputs() {
+    fun acceptActionRequiresOnlyTheIdentityFieldsNeededForThisDevice() {
         val state = JoinFamilyLedgerUiState(
             preview = InvitationPreview(
                 ledgerId = "L_family",
                 ledgerName = "Family",
                 role = "member",
                 expiresAt = null,
+                serverId = "srv_current",
+                dataGeneration = "gen_current",
             ),
         )
 
         val missingIdentity = joinInvitationActionModel(
             state = state,
             previewInputsReady = true,
-            identityInputsReady = joinIdentityInputsReady(accountName = "", deviceName = "Pixel"),
+            identityInputsReady = joinIdentityInputsReady(accountName = "", accountNameRequired = true),
         )
-        val ready = joinInvitationActionModel(
+        val unboundReady = joinInvitationActionModel(
             state = state,
             previewInputsReady = false,
-            identityInputsReady = joinIdentityInputsReady(accountName = "New Member", deviceName = "Pixel"),
+            identityInputsReady = joinIdentityInputsReady(accountName = "New Member", accountNameRequired = true),
+        )
+        val boundReady = joinInvitationActionModel(
+            state = state,
+            previewInputsReady = false,
+            identityInputsReady = joinIdentityInputsReady(accountName = "", accountNameRequired = false),
         )
 
         assertEquals(JoinInvitationPrimaryAction.Accept, missingIdentity.action)
         assertEquals(R.string.join_family_ledger_accept_button, missingIdentity.labelRes)
         assertFalse(missingIdentity.enabled)
-        assertTrue(ready.enabled)
+        assertTrue(unboundReady.enabled)
+        assertTrue(boundReady.enabled)
     }
 }

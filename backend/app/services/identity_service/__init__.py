@@ -26,7 +26,6 @@ from app.services.identity_service._auth import (
     authenticate_session_principal,
     authenticate_session_token,
     authenticate_upload_link,
-    authenticate_web_session_token,
     find_active_upload_link,
     lock_and_revalidate_upload_link_commit_context,
     upload_link_default_timezone,
@@ -62,7 +61,6 @@ from app.services.identity_service._models import (
     PAIRING_ATTEMPT_WINDOW,
     PAIRING_CODE_TTL_MINUTES,
     PAIRING_MAX_FAILED_ATTEMPTS,
-    WEB_SESSION_TTL_SECONDS,
     BootstrapResult,
     InstallationOwnerBootstrapResult,
     PairingCodeResult,
@@ -78,6 +76,10 @@ from app.services.identity_service._seed import (
     ensure_identity_for_existing_ledger_ids,
     ensure_identity_seed,
     ledger_ids,
+)
+from app.services.identity_service._web_auth import (
+    authenticate_web_session_principal,
+    authenticate_web_session_token,
 )
 from app.services.session_credential_lock import (
     lock_and_revalidate_credential_mint_context,
@@ -100,7 +102,6 @@ __all__ = [
     "PAIRING_CODE_TTL_MINUTES",
     "PAIRING_MAX_FAILED_ATTEMPTS",
     "UPLOAD_LINK_INVALID_MESSAGE",
-    "WEB_SESSION_TTL_SECONDS",
     # DTOs
     "BootstrapResult",
     "InstallationOwnerBootstrapResult",
@@ -116,6 +117,7 @@ __all__ = [
     "authenticate_session_token",
     "authenticate_upload_link",
     "authenticate_web_session_token",
+    "authenticate_web_session_principal",
     "find_active_upload_link",
     "lock_and_revalidate_upload_link_commit_context",
     "bootstrap_owner",

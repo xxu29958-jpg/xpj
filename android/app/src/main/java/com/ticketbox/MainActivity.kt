@@ -47,7 +47,7 @@ class MainActivity : FragmentActivity() {
             TicketboxApp(
                 dependencies = appDependencies,
                 launchRequest = launchRequest.value,
-                onLaunchRequestHandled = { launchRequest.value = null },
+                onLaunchRequestHandled = ::clearHandledLaunchIntent,
             )
         }
         window.decorView.doOnPreDraw {
@@ -75,7 +75,22 @@ class MainActivity : FragmentActivity() {
             mimeType = intent.type,
             streamUris = collectStreamUris(intent),
             shortcutTarget = intent.getStringExtra(EXTRA_SHORTCUT_TARGET),
+            sharedText = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
+                ?: firstClipText(intent),
         )
+    }
+
+    private fun firstClipText(intent: Intent): String? {
+        val clip = intent.clipData ?: return null
+        return (0 until clip.itemCount)
+            .firstNotNullOfOrNull { index -> clip.getItemAt(index)?.text?.toString() }
+    }
+
+    /** Remove a consumed one-time invitation from both Compose state and Activity intent. */
+    private fun clearHandledLaunchIntent(handled: LaunchIntentRequest) {
+        if (launchRequest.value != handled) return
+        launchRequest.value = null
+        setIntent(Intent(Intent.ACTION_MAIN).setClass(this, MainActivity::class.java))
     }
 
     /** EXTRA_STREAM（单 Uri + Uri 列表）与 clipData 三处汇总成 uri 字符串。 */
