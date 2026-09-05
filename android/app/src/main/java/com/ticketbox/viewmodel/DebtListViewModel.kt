@@ -23,6 +23,7 @@ import com.ticketbox.ui.components.parseAmountCents
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -139,7 +140,11 @@ class DebtListViewModel(
 
     init {
         viewModelScope.launch {
-            creation.observeActiveLedgerAccess().collect { access ->
+            combine(
+                creation.observeActiveLedgerAccess(),
+                creation.observePendingCreations(),
+            ) { access, snapshot -> access to snapshot }.collect { (access, snapshot) ->
+                if (access != creation.currentAccess()) return@collect
                 val bindingChanged = access?.binding != activeAccess?.binding
                 activeAccess = access
                 if (bindingChanged) {
@@ -150,13 +155,8 @@ class DebtListViewModel(
                 } else {
                     _state.update { it.copy(canModify = access?.canModify == true) }
                 }
-            }
-        }
-        viewModelScope.launch {
-            creation.observePendingCreations().collect { snapshot ->
-                if (snapshot.binding != activeAccess?.binding ||
-                    snapshot.binding != creation.currentAccess()?.binding
-                ) return@collect
+                // Keep the latest queue snapshot until its matching access arrives, in either order.
+                if (snapshot.binding != access?.binding) return@collect
                 val newlyCompleted = snapshot.completedIntentIds - completedIntentIds
                 completedIntentIds = completedIntentIds + snapshot.completedIntentIds
                 _state.update {
