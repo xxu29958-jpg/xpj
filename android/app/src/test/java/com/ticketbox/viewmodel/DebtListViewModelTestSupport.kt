@@ -29,6 +29,9 @@ internal class FakeDebtActions(
     /** When set, listDebts() stalls until completed — used to interleave a slow load. */
     var listGate: CompletableDeferred<Unit>? = null
 
+    /** Hold the command boundary while the real ViewModel receives another UI event. */
+    var createGate: CompletableDeferred<Unit>? = null
+
     /** 列表信封的安装级 currency capability（PR#255 R6）；null = 旧服务端不下发。 */
     var listCapability: String? = null
 
@@ -48,7 +51,9 @@ internal class FakeDebtActions(
 
     override suspend fun createDebt(draft: DebtDraft): Result<Debt> {
         createDrafts += draft
-        return createResult
+        val captured = createResult
+        createGate?.await()
+        return captured
     }
 
     override suspend fun parseDebtBillImage(
