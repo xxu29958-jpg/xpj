@@ -106,8 +106,11 @@ def test_web_budgets_renders_unconfigured_state_and_nav(web_client: TestClient) 
     response = web_client.get("/web/budgets?ledger_id=owner&month=2026-05")
 
     assert response.status_code == 200
-    assert "还没有本月预算" in response.text
-    assert "开始跟踪本月预算执行" in response.text
+    start = re.search(r'<section[^>]+aria-label="开始设置预算"[^>]*>(.*?)</section>', response.text, re.S)
+    assert start is not None
+    assert 'action="/web/budgets/save"' in start.group(1)
+    assert "本月已确认支出" in start.group(1)
+    assert response.text.count('action="/web/budgets/save"') == 1
     assert "本月预算剩余" not in response.text
     assert "/web/budgets?ledger_id=owner" in response.text
     assert 'name="total_amount_yuan"' in response.text
@@ -116,6 +119,18 @@ def test_web_budgets_renders_unconfigured_state_and_nav(web_client: TestClient) 
     assert 'aria-label="分类预算金额"' in response.text
     assert response.text.count("data-budget-add-row") == 2
     assert "保存预算" in response.text
+    options = re.search(r'<details[^>]+id="budget-options"([^>]*)>', response.text)
+    assert options is not None
+    # No-script form stays open; collapse is allowed only after the native
+    # invalid-event reveal handler has been attached by budgets.js.
+    assert "open" in options.group(1).split()
+    assert 'data-start-expanded="false"' in options.group(1)
+    assert '<summary hidden>' in response.text[options.end():]
+    assert response.text.index('name="total_amount_yuan"') < options.start()
+    options_end = response.text.index("</details>", options.end())
+    assert response.text.index("保存预算</button>") > options_end
+    for name in ("rollover_amount_yuan", "non_monthly_amount_yuan", "excluded_category", "category_budget_category"):
+        assert f'name="{name}"' in response.text[options.end():options_end]
 
 
 def test_web_budgets_save_and_display_budget_dashboard(web_client: TestClient, *, identity) -> None:
@@ -159,6 +174,28 @@ def test_web_budgets_save_and_display_budget_dashboard(web_client: TestClient, *
     assert "服务端预算" not in page.text
     assert page.text.count("data-budget-add-row") == 2
     assert page.text.count('name="category_budget_remove"') == 2
+    assert re.search(r'<details[^>]+id="budget-options"[^>]*data-start-expanded="true"', page.text)
+
+
+def test_first_budget_total_only_save_and_optional_error_remain_operable(web_client: TestClient) -> None:
+    form = {
+        "ledger_id": "owner",
+        "month": "2026-05",
+        "total_amount_yuan": "3000.00",
+    }
+    rejected = web_client.post(
+        "/web/budgets/save",
+        data={**form, "non_monthly_amount_yuan": "-1.00"},
+    )
+    assert rejected.status_code == 422
+    assert _owner_budget_total() is None
+    assert re.search(r'<details[^>]+id="budget-options"[^>]*data-start-expanded="true"', rejected.text)
+    assert 'name="total_amount_yuan" value="3000.00"' in rejected.text
+    assert 'name="non_monthly_amount_yuan" value="-1.00"' in rejected.text
+
+    saved = web_client.post("/web/budgets/save", data=form, follow_redirects=False)
+    assert saved.status_code == 303, saved.text
+    assert _owner_budget_total() == 300000
 
 
 def test_web_budgets_viewer_read_only_and_post_denied(web_client: TestClient) -> None:
@@ -191,7 +228,8 @@ def test_web_budgets_selected_ledger_isolated(web_client: TestClient, *, identit
 
     assert response.status_code == 200
     assert "灰度用户1" in response.text
-    assert "还没有本月预算" in response.text
+    assert "从一个总额开始" in response.text
+    assert "本月预算剩余" not in response.text
     assert "¥1000.00" not in response.text
 
     gray_expense = web_client.post(
