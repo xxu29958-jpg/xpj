@@ -80,6 +80,7 @@ class OpenApiContractGateTest {
         // 轴6 备份超龄:status/private 的窄投影(HealthResponse 全字段可空,
         // required 为空,反向检查零压力;正向防备份三字段被后端改名漂移)。
         Pairing(StatusPrivateDto::class, "HealthResponse"),
+        Pairing(RuntimeCompatibilityDto::class, "RuntimeCompatibilitySnapshotResponse"),
         // 轴7 发邀请:create 请求是 extra=forbid(多字段=422),正向检查即 forbid 防线;
         // 响应含一次性明文 invite_token,字段漂移=邀请链路静默断。
         Pairing(InvitationCreateRequestDto::class, "InvitationCreateRequest"),
@@ -203,6 +204,15 @@ class OpenApiContractGateTest {
         // check surfaced this real omission; revisit if bill-split grows multi-currency UI.
         "BillSplitSentResponse" to setOf("home_currency_code", "original_currency_code"),
         "BillSplitInboxResponse" to setOf("home_currency_code", "original_currency_code"),
+        "RuntimeCompatibilitySnapshotResponse" to setOf(
+            "contract",
+            "observed_at",
+            "api_version",
+            "api_version_header",
+            "read_compatibility",
+            "legacy_write_compatibility",
+            "capabilities",
+        ),
     )
 
     @Test

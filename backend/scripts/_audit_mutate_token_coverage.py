@@ -47,7 +47,6 @@ if str(_SCRIPTS_DIR) not in sys.path:
 
 from _mutate_token_ledger import (  # noqa: E402 — needs the sys.path bootstrap above
     ALLOWLIST,
-    SPECIALIZED_OCC_ROUTES,
     review_overdue,
     risk_histogram,
     validate_ledger,
@@ -188,11 +187,6 @@ def _bucket_routes(
     for method, path, operation in _iter_routes(spec):
         key = f"{method} {path}"
         carries_token = _operation_carries_token(spec, operation)
-        if key in SPECIALIZED_OCC_ROUTES:
-            # This route carries a domain-level OCC token and is gated by its
-            # dedicated audit. It is neither a row-version carrier nor an
-            # exemption, so keep the two concurrency dimensions orthogonal.
-            continue
         if key in ALLOWLIST:
             unused_allowlist.discard(key)
             if carries_token:

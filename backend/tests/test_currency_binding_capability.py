@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import pytest
 
-from app.config import get_settings
 from app.currency_binding_contract import CURRENCY_EVIDENCE_TABLES
 from app.database import SessionLocal
 from app.database._currency_writer import (
@@ -10,14 +9,12 @@ from app.database._currency_writer import (
     set_currency_writer_proof,
 )
 from app.errors import AppError
-from app.main import app
 from app.models import Budget
 from app.models.currency_binding import (
     InstallationCurrencyAuditLog,
     InstallationCurrencyBinding,
 )
-from app.network_boundary import require_maintenance_local
-from app.routes import currency_adoption, currency_system
+from app.routes import currency_system
 from app.schemas._currency import RuntimeCompatibilitySnapshotResponse
 from app.services import currency_binding_service
 from app.services.currency_binding_service import (
@@ -43,7 +40,6 @@ def test_missing_binding_singleton_is_corruption(monkeypatch) -> None:
 
 def test_runtime_compatibility_is_the_only_client_currency_capability(client) -> None:
     assert currency_system.router.prefix == "/api/system"
-    assert currency_adoption.router.prefix == "/api/maintenance/currency-binding"
     assert "capabilities" in RuntimeCompatibilitySnapshotResponse.model_fields
     assert "expenses" in CURRENCY_EVIDENCE_TABLES
     assert callable(lock_currency_evidence_tables)
@@ -52,70 +48,8 @@ def test_runtime_compatibility_is_the_only_client_currency_capability(client) ->
     paths = client.app.openapi()["paths"]
     assert "/api/system/currency-capability" not in paths
     assert "/api/system/runtime-compatibility" in paths
-
-
-def test_currency_adoption_enforces_local_and_admin_boundaries(
-    client, identity, monkeypatch
-) -> None:
-    monkeypatch.setenv("ALLOW_PUBLIC_ADMIN_API", "true")
-    get_settings.cache_clear()
-    try:
-        response = client.get(
-            "/api/maintenance/currency-binding/adoption",
-            headers=identity.admin_headers,
-        )
-        assert response.status_code == 403
-        assert response.json()["error"] == "maintenance_local_only"
-    finally:
-        get_settings.cache_clear()
-
-    # coverage: auth-401
-    app.dependency_overrides[require_maintenance_local] = lambda: None
-    try:
-        response = client.post(
-            "/api/maintenance/currency-binding/adoption",
-            headers={"Idempotency-Key": "b588366e-c55c-4ecc-a928-8de4a4569767"},
-            json={
-                "currency_contract_version": 1,
-                "home_currency_code": "CNY",
-                "expected_state": "ADOPTION_REQUIRED",
-                "expected_binding_revision": 0,
-                "expected_evidence_sha256": "0" * 64,
-                "reason": "authentication boundary regression",
-            },
-        )
-    finally:
-        app.dependency_overrides.pop(require_maintenance_local, None)
-
-    assert response.status_code == 401
-    assert response.json()["error"] == "invalid_token"
-
-
-def test_local_admin_can_preview_adoption_state(client, identity) -> None:
-    app.dependency_overrides[require_maintenance_local] = lambda: None
-    try:
-        response = client.get(
-            "/api/maintenance/currency-binding/adoption",
-            headers=identity.admin_headers,
-        )
-    finally:
-        app.dependency_overrides.pop(require_maintenance_local, None)
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["state"] == "EMPTY"
-    assert payload["binding_revision"] == 0
-    assert len(payload["evidence_sha256"]) == 64
-    assert payload["evidence_health"] == "adoptable"
-    assert set(payload["allowed_home_currency_codes"]) == {
-        "CNY",
-        "EUR",
-        "GBP",
-        "HKD",
-        "JPY",
-        "KRW",
-        "USD",
-    }
+    assert "/api/maintenance/currency-binding/adoption" not in paths
+    assert client.get("/api/maintenance/currency-binding/adoption").status_code == 404
 
 
 @pytest.mark.real_db

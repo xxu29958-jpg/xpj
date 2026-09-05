@@ -8,6 +8,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 
 /**
@@ -207,6 +208,47 @@ class OutboxDrainWorkerTest {
             summary(DrainSummaryFixture(attempted = 1, retryable = 1))
         }
         assertEquals(DrainOutcome.RETRY, retryOutcome)
+    }
+
+    @Test
+    fun `owner action required preserves queued intent without dispatch`() = runTest {
+        var dispatched = false
+
+        val outcome = OutboxDrainWorker.runCompatibleDrain(
+            compatibility = { "owner_action_required" },
+        ) {
+            dispatched = true
+            summary(DrainSummaryFixture(attempted = 1, done = 1))
+        }
+
+        assertEquals(DrainOutcome.RETRY, outcome)
+        assertFalse(dispatched)
+    }
+
+    @Test
+    fun `compatible runtime proceeds to the existing drain owner`() = runTest {
+        val outcome = OutboxDrainWorker.runCompatibleDrain(
+            compatibility = { "compatible" },
+        ) {
+            summary(DrainSummaryFixture(attempted = 1, done = 1))
+        }
+
+        assertEquals(DrainOutcome.SUCCESS, outcome)
+    }
+
+    @Test
+    fun `compatibility read failure retries without touching rows`() = runTest {
+        var dispatched = false
+
+        val outcome = OutboxDrainWorker.runCompatibleDrain(
+            compatibility = { throw RuntimeException("network unavailable") },
+        ) {
+            dispatched = true
+            summary(DrainSummaryFixture(attempted = 1, done = 1))
+        }
+
+        assertEquals(DrainOutcome.RETRY, outcome)
+        assertFalse(dispatched)
     }
 }
 

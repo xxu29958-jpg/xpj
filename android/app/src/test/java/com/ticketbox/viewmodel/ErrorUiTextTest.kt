@@ -29,6 +29,11 @@ class ErrorUiTextTest {
             RepositoryException("raw backend copy", "recurring_merchant_too_long")
                 .toUiText(R.string.error_generic),
         )
+        assertEquals(
+            UiText.res(R.string.error_currency_adoption_required),
+            RepositoryException("raw backend copy", "currency_adoption_required")
+                .toUiText(R.string.error_generic),
+        )
     }
 
     @Test

@@ -120,6 +120,11 @@ class AppContainer(context: Context) {
                 ?: throw IllegalStateException("Outbox row has no verified owner binding."),
         )
 
+    internal suspend fun outboxWriteCompatibility(): String =
+        outboxRequestGuard.guardedCall { api ->
+            api.runtimeCompatibility().writeCompatibility
+        }
+
     private suspend fun publishExpenseFactBundle(ledgerId: String, bundle: ExpenseFactBundleDto) {
         val projection = bundle.toCacheProjection(ledgerId)
         database.expenseDao().applyExpenseFactBundle(

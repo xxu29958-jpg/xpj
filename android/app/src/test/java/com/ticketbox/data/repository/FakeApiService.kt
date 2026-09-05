@@ -49,6 +49,7 @@ import com.ticketbox.data.remote.dto.RecurringItemListResponseDto
 import com.ticketbox.data.remote.dto.RecurringItemUpdateRequestDto
 import com.ticketbox.data.remote.dto.RefreshSessionResponseDto
 import com.ticketbox.data.remote.dto.ReportsOverviewDto
+import com.ticketbox.data.remote.dto.RuntimeCompatibilityDto
 import com.ticketbox.data.remote.dto.RuleApplicationBatchDto
 import com.ticketbox.data.remote.dto.RuleApplicationListDto
 import com.ticketbox.data.remote.dto.RuleApplicationRollbackDto
@@ -201,6 +202,9 @@ internal class FakeApiService(
         onCheckAuth?.invoke()
         return checkAuthResult ?: unsupported()
     }
+
+    override suspend fun runtimeCompatibility(): RuntimeCompatibilityDto =
+        RuntimeCompatibilityDto(writeCompatibility = "compatible")
 
     override suspend fun privateStatus(): com.ticketbox.data.remote.dto.StatusPrivateDto = unsupported()
 
