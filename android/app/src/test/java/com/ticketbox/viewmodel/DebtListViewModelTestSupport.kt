@@ -1,9 +1,15 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.DebtActions
+import com.ticketbox.data.repository.DebtCreationActions
+import com.ticketbox.data.repository.DebtCreationQueueSnapshot
+import com.ticketbox.data.repository.DebtCreationReceipt
+import com.ticketbox.data.repository.LedgerAccessContext
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.DebtDraft
 import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.domain.model.Debt
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DebtBillSuggestion
 import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
@@ -11,6 +17,7 @@ import com.ticketbox.domain.model.DebtLinkStatuses
 import com.ticketbox.domain.model.DebtListLens
 import com.ticketbox.domain.model.DebtSourceTypes
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.MutableStateFlow
 
 // Shared fixtures for the DebtListViewModel test classes (split to stay inside the
 // detekt class-size budget; mirrors GlobalSearchViewModelTestSupport).
@@ -18,9 +25,16 @@ import kotlinx.coroutines.CompletableDeferred
 internal class FakeDebtActions(
     private val canModify: Boolean = true,
     var listResult: Result<List<Debt>> = Result.success(emptyList()),
-    var createResult: Result<Debt> = Result.success(sampleDebt()),
+    var createResult: Result<Unit> = Result.success(Unit),
     var parseBillResult: Result<DebtBillSuggestion> = Result.success(blankBillSuggestion()),
-) : DebtActions {
+) : DebtActions, DebtCreationActions {
+    val access = MutableStateFlow<LedgerAccessContext?>(
+        LedgerAccessContext(LogicalSessionBinding("https://example.test", "owner", "test-owner", "session-1", "binding-1"), canModify),
+    )
+    val pendingCreations = MutableStateFlow(DebtCreationQueueSnapshot(access.value?.binding))
+    override fun currentAccess(): LedgerAccessContext? = access.value
+    override fun observeActiveLedgerAccess() = access
+    override fun observePendingCreations() = pendingCreations
     val createDrafts = mutableListOf<DebtDraft>()
     val parseBillCalls = mutableListOf<String>()
     var listCalls = 0
@@ -49,11 +63,16 @@ internal class FakeDebtActions(
 
     override suspend fun getDebt(publicId: String): Result<Debt> = Result.success(sampleDebt(publicId))
 
-    override suspend fun createDebt(draft: DebtDraft): Result<Debt> {
+    override suspend fun createDebt(
+        expectedBinding: LogicalSessionBinding,
+        draft: DebtDraft,
+        homeCurrency: CurrencyCode,
+    ): Result<DebtCreationReceipt> {
         createDrafts += draft
         val captured = createResult
+        val receiptId = createDrafts.size.toLong()
         createGate?.await()
-        return captured
+        return captured.map { DebtCreationReceipt(receiptId, expectedBinding) }
     }
 
     override suspend fun parseDebtBillImage(

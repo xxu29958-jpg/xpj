@@ -4,7 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.DebtActions
+import com.ticketbox.data.repository.DebtCreationActions
 import com.ticketbox.data.repository.DebtDraft
+import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.PendingDebtCreation
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtBillSuggestion
@@ -39,14 +42,11 @@ data class DebtListUiState(
     val isSubmitting: Boolean = false,
     val isParsingBill: Boolean = false,
     val flashMessage: UiText? = null,
-    /**
-     * 一次性信号：[submitDraft] 真正成功后置 true；底部抽屉屏只在它为 true 时关闭(关时调
-     * [resetDraft] 一并清掉本信号 + 草稿,镜像 LedgerViewModel.manualCreateDone 的 ack 约定)。
-     * failure 不置位 → 抽屉保留、表单错误可见(修「乐观关闭」:旧逻辑按本地 `addDraft.isValid`
-     * 关闭、无视 createDebt() 结果,且 onClose 的 resetDraft() 抹掉 onFailure 刚写的
-     * validationError → 欠款静默没建)。
-     */
-    val addSucceeded: Boolean = false,
+    /** Room has acknowledged the original intent, not a confirmed Debt. Failure keeps the sheet open. */
+    val addAccepted: Boolean = false,
+    val pendingCreations: List<PendingDebtCreation> = emptyList(),
+    /** Refreshes other canonical consumers, including the separate receivables list. */
+    val creationSettlementRevision: Int = 0,
     val pendingBillParsePrefill: Boolean = false,
     /**
      * 裁决后的账本币种（null = 未确认）：非空账本取 record 级 `homeCurrencyCode`（服务端写时
@@ -118,11 +118,15 @@ data class DebtDraftUi(
 
 class DebtListViewModel(
     private val repository: DebtActions,
+    private val creation: DebtCreationActions,
     private val lens: DebtListLens = DebtListLens.Ledger,
 ) : ViewModel() {
 
+    private var activeAccess = creation.currentAccess()
+    private var draftGeneration = 0L
+    private var completedIntentIds = emptySet<Long>()
     private val _state = MutableStateFlow(
-        DebtListUiState(canModify = repository.canModifyLedger(), lens = lens),
+        DebtListUiState(canModify = activeAccess?.canModify == true, lens = lens),
     )
     val state: StateFlow<DebtListUiState> = _state.asStateFlow()
 
@@ -134,6 +138,37 @@ class DebtListViewModel(
     private var loadGeneration = 0L
 
     init {
+        viewModelScope.launch {
+            creation.observeActiveLedgerAccess().collect { access ->
+                val bindingChanged = access?.binding != activeAccess?.binding
+                activeAccess = access
+                if (bindingChanged) {
+                    draftGeneration += 1
+                    completedIntentIds = emptySet()
+                    _state.value = DebtListUiState(canModify = access?.canModify == true, lens = lens)
+                    refresh()
+                } else {
+                    _state.update { it.copy(canModify = access?.canModify == true) }
+                }
+            }
+        }
+        viewModelScope.launch {
+            creation.observePendingCreations().collect { snapshot ->
+                if (snapshot.binding != activeAccess?.binding ||
+                    snapshot.binding != creation.currentAccess()?.binding
+                ) return@collect
+                val newlyCompleted = snapshot.completedIntentIds - completedIntentIds
+                completedIntentIds = completedIntentIds + snapshot.completedIntentIds
+                _state.update {
+                    it.copy(
+                        pendingCreations = snapshot.intents,
+                        creationSettlementRevision = it.creationSettlementRevision +
+                            if (newlyCompleted.isNotEmpty()) 1 else 0,
+                    )
+                }
+                if (newlyCompleted.isNotEmpty()) refresh()
+            }
+        }
         refresh()
     }
 
@@ -145,11 +180,19 @@ class DebtListViewModel(
      * 打开新建抽屉必先 [resetDraft] 同一语义。
      */
     fun reload() {
+        // Re-entering the same ledger cannot discard a publication awaiting Room acknowledgement.
+        if (_state.value.isSubmitting) {
+            refresh()
+            return
+        }
+        draftGeneration += 1
         _state.update {
             it.copy(
                 debts = emptyList(),
                 error = null,
-                canModify = repository.canModifyLedger(),
+                canModify = creation.currentAccess()?.canModify == true,
+                addAccepted = false,
+                flashMessage = null,
                 // 新账本币种未知，创建重新禁用到本次拉取成功（PR#255 P1-3）。
                 homeCurrencyResolved = false,
                 ledgerHomeCurrency = null,
@@ -162,11 +205,12 @@ class DebtListViewModel(
 
     fun refresh() {
         val gen = ++loadGeneration
+        val binding = creation.currentAccess()?.binding
         _state.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
             val result = repository.listDebts(lens)
             // Drop a load superseded by a newer refresh (which set isLoading and owns clearing it).
-            if (gen != loadGeneration) return@launch
+            if (gen != loadGeneration || binding != creation.currentAccess()?.binding) return@launch
             result.fold(
                 onSuccess = { page ->
                     val debts = page.debts
@@ -182,10 +226,12 @@ class DebtListViewModel(
                     _state.update {
                         it.copy(
                             isLoading = false,
-                            canModify = repository.canModifyLedger(),
+                            canModify = creation.currentAccess()?.canModify == true,
                             debts = debts,
                             error = null,
-                            addDraft = ledgerCurrency?.let(it.addDraft::rebindHomeCurrency) ?: it.addDraft,
+                            addDraft = if (it.isSubmitting) it.addDraft else {
+                                ledgerCurrency?.let(it.addDraft::rebindHomeCurrency) ?: it.addDraft
+                            },
                             homeCurrencyResolved = ledgerCurrency != null,
                             ledgerHomeCurrency = ledgerCurrency,
                         )
@@ -219,11 +265,13 @@ class DebtListViewModel(
     }
 
     fun resetDraft() {
+        if (_state.value.isSubmitting) return
+        draftGeneration += 1
         _state.update {
             it.copy(
                 addDraft = DebtDraftUi(homeCurrency = it.ledgerHomeCurrency ?: FxContract.HomeCurrency),
                 isSubmitting = false,
-                addSucceeded = false,
+                addAccepted = false,
                 pendingBillParsePrefill = false,
             )
         }
@@ -286,51 +334,41 @@ class DebtListViewModel(
 
     fun submitDraft() {
         val state = _state.value
-        if (state.isSubmitting) return
-        // 币种未确认（初始/切换加载未成功，或空账本没有 record 级权威币种）禁止提交：
-        // 兜底 CNY 口径送到 JPY/KRW 账本会放大 100×（PR#255 P1-3 / R4 P1；sheet 按钮
-        // 同步禁用，此处为兜底防线）。
-        if (!state.homeCurrencyResolved) return
+        val access = creation.currentAccess() ?: return
+        if (state.isSubmitting || state.isParsingBill || !access.canModify || !state.homeCurrencyResolved) return
+        if (access.binding != activeAccess?.binding) return
+        val currency = state.ledgerHomeCurrency ?: return
         val draft = state.addDraft.withInheritedModelFrom(state.debts)
         val amount = draft.parsedAmountCents()
-        val label = draft.counterpartyLabel.trim()
-        if (draft.noteTooLong) {
+        val validation = when {
+            draft.noteTooLong -> R.string.debt_context_too_long
+            draft.counterpartyLabel.isBlank() || amount == null -> R.string.debt_create_validation_error
+            else -> null
+        }
+        if (validation != null) {
             _state.update {
-                it.copy(addDraft = it.addDraft.copy(validationError = UiText.res(R.string.debt_context_too_long)))
+                it.copy(addDraft = it.addDraft.copy(validationError = UiText.res(validation)))
             }
             return
         }
-        if (label.isEmpty() || amount == null) {
-            _state.update {
-                it.copy(
-                    addDraft = it.addDraft.copy(
-                        validationError = UiText.res(R.string.debt_create_validation_error),
-                    ),
-                )
-            }
-            return
-        }
-        _state.update { it.copy(isSubmitting = true) }
+        val request = draft.toCreationDraft(requireNotNull(amount))
+        publishDraft(request, access.binding, currency)
+    }
+
+    private fun publishDraft(request: DebtDraft, binding: LogicalSessionBinding, currency: CurrencyCode) {
+        val gen = draftGeneration
+        _state.update { it.copy(isSubmitting = true, addAccepted = false, flashMessage = null) }
         viewModelScope.launch {
-            val result = repository.createDebt(
-                DebtDraft(
-                    direction = draft.direction,
-                    counterpartyLabel = label,
-                    note = draft.note,
-                    principalAmountCents = amount,
-                    debtKind = draft.kind,
-                    installmentCount = draft.parsedInstallmentCount(),
-                    installmentPeriodMonths = draft.parsedInstallmentPeriod(),
-                ),
-            )
+            val result = creation.createDebt(binding, request, currency)
+            if (gen != draftGeneration || binding != creation.currentAccess()?.binding) return@launch
             result.fold(
                 onSuccess = {
                     _state.update {
                         it.copy(
                             isSubmitting = false,
                             addDraft = DebtDraftUi(homeCurrency = it.ledgerHomeCurrency ?: FxContract.HomeCurrency),
-                            flashMessage = UiText.res(R.string.debt_create_added),
-                            addSucceeded = true,
+                            flashMessage = UiText.res(R.string.debt_create_local_saved),
+                            addAccepted = true,
                         )
                     }
                     refresh()
@@ -358,6 +396,16 @@ private data class DebtModelTemplate(
     val debtKind: String,
     val installmentCountInput: String = "",
     val installmentPeriodInput: String = "",
+)
+
+private fun DebtDraftUi.toCreationDraft(amount: Long): DebtDraft = DebtDraft(
+    direction = direction,
+    counterpartyLabel = counterpartyLabel.trim(),
+    note = note,
+    principalAmountCents = amount,
+    debtKind = kind,
+    installmentCount = parsedInstallmentCount(),
+    installmentPeriodMonths = parsedInstallmentPeriod(),
 )
 
 private fun DebtDraftUi.prefillFrom(suggestion: DebtBillSuggestion): DebtDraftUi {

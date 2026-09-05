@@ -1,7 +1,6 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.DebtActions
-import com.ticketbox.data.repository.DebtDraft
 import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.data.repository.RepaymentDraftActions
 import com.ticketbox.domain.model.Debt
@@ -423,7 +422,6 @@ private class FakeRepayableDebtActions(
         return captured.map { DebtListPage(debts = it, ledgerHomeCurrencyCode = null) }
     }
     override suspend fun getDebt(publicId: String): Result<Debt> = Result.success(debt(publicId))
-    override suspend fun createDebt(draft: DebtDraft): Result<Debt> = Result.success(debt("created"))
     override suspend fun parseDebtBillImage(
         fileName: String,
         contentType: String?,

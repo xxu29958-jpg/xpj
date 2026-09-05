@@ -43,7 +43,7 @@ class DebtListViewModelTest {
     @Test
     fun initLoadsDebtsAndReflectsRole() = runTest(dispatcher) {
         val repo = FakeDebtActions(canModify = false, listResult = Result.success(listOf(sampleDebt())))
-        val viewModel = DebtListViewModel(repo)
+        val viewModel = DebtListViewModel(repo, repo)
         advanceUntilIdle()
 
         assertEquals(1, viewModel.state.value.debts.size)
@@ -54,7 +54,7 @@ class DebtListViewModelTest {
     @Test
     fun refreshFailureSetsError() = runTest(dispatcher) {
         val repo = FakeDebtActions(listResult = Result.failure(RuntimeException("offline")))
-        val viewModel = DebtListViewModel(repo)
+        val viewModel = DebtListViewModel(repo, repo)
         advanceUntilIdle()
 
         assertTrue(viewModel.state.value.debts.isEmpty())
@@ -65,9 +65,9 @@ class DebtListViewModelTest {
     fun submitDraftCreatesThenResetsFlashesAndRefetches() = runTest(dispatcher) {
         val repo = FakeDebtActions(
             listResult = Result.success(listOf(sampleDebt())),
-            createResult = Result.success(sampleDebt("created")),
+            createResult = Result.success(Unit),
         )
-        val viewModel = DebtListViewModel(repo)
+        val viewModel = DebtListViewModel(repo, repo)
         advanceUntilIdle()
         val listCallsAfterInit = repo.listCalls
 
@@ -93,9 +93,9 @@ class DebtListViewModelTest {
         // 8e-6e: the create form's kind picker flows into the DebtDraft (default unspecified → picked).
         val repo = FakeDebtActions(
             listResult = Result.success(listOf(sampleDebt())),
-            createResult = Result.success(sampleDebt("created")),
+            createResult = Result.success(Unit),
         )
-        val viewModel = DebtListViewModel(repo)
+        val viewModel = DebtListViewModel(repo, repo)
         advanceUntilIdle()
 
         viewModel.updateDraftCounterparty("小王")
@@ -113,9 +113,9 @@ class DebtListViewModelTest {
         // on kind — covered in DebtMappersTest); here we只验证 VM 把 parsedInstallmentCount 接进了草稿。
         val repo = FakeDebtActions(
             listResult = Result.success(listOf(sampleDebt())),
-            createResult = Result.success(sampleDebt("created")),
+            createResult = Result.success(Unit),
         )
-        val viewModel = DebtListViewModel(repo)
+        val viewModel = DebtListViewModel(repo, repo)
         advanceUntilIdle()
 
         viewModel.updateDraftCounterparty("花呗")
@@ -137,9 +137,9 @@ class DebtListViewModelTest {
         // No kind picked → the draft carries the default (unspecified) so an untouched form still creates.
         val repo = FakeDebtActions(
             listResult = Result.success(listOf(sampleDebt())),
-            createResult = Result.success(sampleDebt("created")),
+            createResult = Result.success(Unit),
         )
-        val viewModel = DebtListViewModel(repo)
+        val viewModel = DebtListViewModel(repo, repo)
         advanceUntilIdle()
 
         viewModel.updateDraftCounterparty("小王")
@@ -159,7 +159,7 @@ class DebtListViewModelTest {
             installmentPeriodMonths = 1,
         )
         val repo = FakeDebtActions(listResult = Result.success(listOf(existing)))
-        val viewModel = DebtListViewModel(repo)
+        val viewModel = DebtListViewModel(repo, repo)
         advanceUntilIdle()
 
         viewModel.updateDraftCounterparty(" 花 呗 ")
@@ -180,7 +180,7 @@ class DebtListViewModelTest {
             sampleDebt("two").copy(counterpartyLabel = "信用卡", debtKind = DebtKinds.INSTALLMENT, installmentCount = 12),
         )
         val repo = FakeDebtActions(listResult = Result.success(debts))
-        val viewModel = DebtListViewModel(repo)
+        val viewModel = DebtListViewModel(repo, repo)
         advanceUntilIdle()
 
         viewModel.updateDraftCounterparty("信用卡")
@@ -206,7 +206,7 @@ class DebtListViewModelTest {
                 ),
             ),
         )
-        val viewModel = DebtListViewModel(repo)
+        val viewModel = DebtListViewModel(repo, repo)
         advanceUntilIdle()
 
         assertTrue(viewModel.markBillParsePreparing())
@@ -248,7 +248,7 @@ class DebtListViewModelTest {
                 ),
             ),
         )
-        val viewModel = DebtListViewModel(repo)
+        val viewModel = DebtListViewModel(repo, repo)
         advanceUntilIdle()
 
         assertTrue(viewModel.markBillParsePreparing())
@@ -267,7 +267,7 @@ class DebtListViewModelTest {
     @Test
     fun submitDraftWithBlankCounterpartyShowsValidationWithoutCreate() = runTest(dispatcher) {
         val repo = FakeDebtActions(listResult = Result.success(listOf(sampleDebt())))
-        val viewModel = DebtListViewModel(repo)
+        val viewModel = DebtListViewModel(repo, repo)
         advanceUntilIdle()
 
         viewModel.updateDraftAmount("100")
@@ -281,7 +281,7 @@ class DebtListViewModelTest {
     @Test
     fun submitDraftWithNonPositiveAmountShowsValidationWithoutCreate() = runTest(dispatcher) {
         val repo = FakeDebtActions(listResult = Result.success(listOf(sampleDebt())))
-        val viewModel = DebtListViewModel(repo)
+        val viewModel = DebtListViewModel(repo, repo)
         advanceUntilIdle()
 
         // Valid counterparty but a non-positive amount → the amount arm of the submit guard.
@@ -300,7 +300,7 @@ class DebtListViewModelTest {
             listResult = Result.success(listOf(sampleDebt())),
             createResult = Result.failure(RuntimeException("boom")),
         )
-        val viewModel = DebtListViewModel(repo)
+        val viewModel = DebtListViewModel(repo, repo)
         advanceUntilIdle()
 
         viewModel.updateDraftCounterparty("小王")
@@ -318,15 +318,15 @@ class DebtListViewModelTest {
     }
 
     @Test
-    fun submitDraftSuccessSetsAddSucceededThenResetClears() = runTest(dispatcher) {
+    fun localAcceptanceSetsAddAcceptedThenResetClears() = runTest(dispatcher) {
         // The one-shot success signal is what drives the sheet to close — set ONLY on a real
         // create success, then cleared by resetDraft when the screen closes (mirrors the
         // LedgerViewModel.manualCreateDone ack convention).
         val repo = FakeDebtActions(
             listResult = Result.success(listOf(sampleDebt())),
-            createResult = Result.success(sampleDebt("created")),
+            createResult = Result.success(Unit),
         )
-        val viewModel = DebtListViewModel(repo)
+        val viewModel = DebtListViewModel(repo, repo)
         advanceUntilIdle()
 
         viewModel.updateDraftCounterparty("小王")
@@ -334,9 +334,9 @@ class DebtListViewModelTest {
         viewModel.submitDraft()
         advanceUntilIdle()
 
-        assertTrue(viewModel.state.value.addSucceeded)
+        assertTrue(viewModel.state.value.addAccepted)
         viewModel.resetDraft()
-        assertEquals(false, viewModel.state.value.addSucceeded)
+        assertEquals(false, viewModel.state.value.addAccepted)
     }
 
     @Test
@@ -347,7 +347,7 @@ class DebtListViewModelTest {
             listResult = Result.success(listOf(sampleDebt())),
             createResult = Result.failure(RuntimeException("boom")),
         )
-        val viewModel = DebtListViewModel(repo)
+        val viewModel = DebtListViewModel(repo, repo)
         advanceUntilIdle()
 
         viewModel.updateDraftCounterparty("小王")
@@ -355,13 +355,13 @@ class DebtListViewModelTest {
         viewModel.submitDraft()
         advanceUntilIdle()
 
-        assertEquals(false, viewModel.state.value.addSucceeded)
+        assertEquals(false, viewModel.state.value.addAccepted)
     }
 
     @Test
     fun resetDraftClearsInput() = runTest(dispatcher) {
         val repo = FakeDebtActions()
-        val viewModel = DebtListViewModel(repo)
+        val viewModel = DebtListViewModel(repo, repo)
         advanceUntilIdle()
 
         viewModel.updateDraftCounterparty("小王")
@@ -376,9 +376,9 @@ class DebtListViewModelTest {
     fun dismissFlashClearsMessage() = runTest(dispatcher) {
         val repo = FakeDebtActions(
             listResult = Result.success(listOf(sampleDebt())),
-            createResult = Result.success(sampleDebt("created")),
+            createResult = Result.success(Unit),
         )
-        val viewModel = DebtListViewModel(repo)
+        val viewModel = DebtListViewModel(repo, repo)
         advanceUntilIdle()
         viewModel.updateDraftCounterparty("小王")
         viewModel.updateDraftAmount("100")
@@ -394,7 +394,7 @@ class DebtListViewModelTest {
     @Test
     fun reloadClearsPriorLedgerDebtsThenRefetches() = runTest(dispatcher) {
         val repo = FakeDebtActions(listResult = Result.success(listOf(sampleDebt("a"))))
-        val viewModel = DebtListViewModel(repo)
+        val viewModel = DebtListViewModel(repo, repo)
         advanceUntilIdle()
         assertEquals("a", viewModel.state.value.debts.single().publicId)
 
@@ -413,9 +413,9 @@ class DebtListViewModelTest {
         // （R4 P1 起空账本创建被币种 gate 阻断，故场景从既有 1 条记录的账本起步。）
         val repo = FakeDebtActions(
             listResult = Result.success(listOf(sampleDebt("old"))),
-            createResult = Result.success(sampleDebt("new")),
+            createResult = Result.success(Unit),
         )
-        val viewModel = DebtListViewModel(repo)
+        val viewModel = DebtListViewModel(repo, repo)
         advanceUntilIdle() // init refresh → debts = [old]
 
         // A slow refresh stalls inside listDebts() (it captured the pre-create snapshot)...
@@ -443,7 +443,7 @@ class DebtListViewModelTest {
     fun staleRefreshDoesNotClobberReloadedLedger() = runTest(dispatcher) {
         // Ledger switch: a slow prior refresh must not show the old ledger's debts under the new one.
         val repo = FakeDebtActions(listResult = Result.success(listOf(sampleDebt("ledgerA"))))
-        val viewModel = DebtListViewModel(repo)
+        val viewModel = DebtListViewModel(repo, repo)
         advanceUntilIdle()
 
         // A slow refresh stalls (it captured ledger A's debts)...

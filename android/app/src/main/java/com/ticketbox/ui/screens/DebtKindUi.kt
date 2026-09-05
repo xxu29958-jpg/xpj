@@ -32,6 +32,7 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtKinds
 import com.ticketbox.ui.components.AppFilterChip
+import com.ticketbox.ui.components.AppFilterChipOptions
 import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.AppSectionGroup
 import com.ticketbox.ui.components.AppSheetScaffold
@@ -184,7 +185,7 @@ private fun DebtKindOptionRow(
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun DebtKindCreateField(selected: String, onSelect: (String) -> Unit) {
+internal fun DebtKindCreateField(selected: String, enabled: Boolean, onSelect: (String) -> Unit) {
     Text(
         stringResource(R.string.debt_create_label_kind),
         style = MaterialTheme.typography.labelMedium,
@@ -197,6 +198,7 @@ internal fun DebtKindCreateField(selected: String, onSelect: (String) -> Unit) {
                 selected = selected == kind,
                 onClick = { onSelect(kind) },
                 label = stringResource(debtKindLabelRes(kind)),
+                options = AppFilterChipOptions(enabled = enabled),
             )
         }
     }

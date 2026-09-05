@@ -1,5 +1,8 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.R
+import com.ticketbox.data.repository.DebtCreationQueueSnapshot
+import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -33,7 +36,7 @@ class DebtCreateContinuityViewModelTest {
     fun repeatedSaveWhileSubmittingEmitsOnlyOneCreate() = runTest(dispatcher) {
         val gate = CompletableDeferred<Unit>()
         val repository = readyRepository(gate)
-        val viewModel = DebtListViewModel(repository)
+        val viewModel = DebtListViewModel(repository, repository)
         advanceUntilIdle()
         fillDraft(viewModel)
 
@@ -55,7 +58,7 @@ class DebtCreateContinuityViewModelTest {
     fun editsWhileSubmittingCannotReplaceTheVisibleSubmittedSnapshot() = runTest(dispatcher) {
         val gate = CompletableDeferred<Unit>()
         val repository = readyRepository(gate)
-        val viewModel = DebtListViewModel(repository)
+        val viewModel = DebtListViewModel(repository, repository)
         advanceUntilIdle()
         fillDraft(viewModel)
 
@@ -78,6 +81,65 @@ class DebtCreateContinuityViewModelTest {
         FakeDebtActions(listResult = Result.success(listOf(sampleDebt()))).apply {
             createGate = gate
         }
+
+    @Test
+    fun oldBindingAcceptanceCannotClearTheNewLedgerFormOrAnnounceItsSuccess() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        val repository = readyRepository(gate)
+        val viewModel = DebtListViewModel(repository, repository)
+        advanceUntilIdle()
+        fillDraft(viewModel)
+        viewModel.submitDraft()
+        runCurrent()
+
+        val oldAccess = requireNotNull(repository.access.value)
+        repository.access.value = oldAccess.copy(binding = oldAccess.binding.copy(ledgerId = "next", bindingRevision = "binding-2"))
+        runCurrent()
+        viewModel.updateDraftCounterparty("新账本的记录")
+        viewModel.updateDraftAmount("55.00")
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals("新账本的记录", viewModel.state.value.addDraft.counterpartyLabel)
+        assertEquals("55.00", viewModel.state.value.addDraft.amountYuanInput)
+        assertEquals(false, viewModel.state.value.addAccepted)
+        assertEquals(null, viewModel.state.value.flashMessage)
+    }
+
+    @Test
+    fun completedIntentRefreshesCanonicalListEvenWhenPendingEmissionWasTooFastToObserve() = runTest(dispatcher) {
+        val repository = FakeDebtActions().apply { listCapability = "CNY" }
+        val viewModel = DebtListViewModel(repository, repository)
+        advanceUntilIdle()
+        val readsBefore = repository.listCalls
+        repository.listResult = Result.success(listOf(sampleDebt("server-debt")))
+
+        repository.pendingCreations.value = DebtCreationQueueSnapshot(
+            binding = repository.access.value?.binding,
+            completedIntentIds = setOf(7L),
+        )
+        advanceUntilIdle()
+
+        assertTrue(repository.listCalls > readsBefore)
+        assertEquals("server-debt", viewModel.state.value.debts.single().publicId)
+        assertEquals(1, viewModel.state.value.creationSettlementRevision)
+        assertEquals(false, viewModel.state.value.addAccepted)
+    }
+
+    @Test
+    fun localAcceptanceNeverInventsACanonicalDebt() = runTest(dispatcher) {
+        val repository = FakeDebtActions().apply { listCapability = "CNY" }
+        val viewModel = DebtListViewModel(repository, repository)
+        advanceUntilIdle()
+        fillDraft(viewModel)
+        viewModel.submitDraft()
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.addAccepted)
+        assertTrue(viewModel.state.value.debts.isEmpty())
+        assertEquals(UiText.res(R.string.debt_create_local_saved), viewModel.state.value.flashMessage)
+        assertEquals(0, viewModel.state.value.creationSettlementRevision)
+    }
 
     private fun fillDraft(viewModel: DebtListViewModel) {
         viewModel.updateDraftCounterparty("小王")

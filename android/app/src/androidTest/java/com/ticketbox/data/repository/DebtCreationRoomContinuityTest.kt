@@ -13,7 +13,10 @@ import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiClient
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
+import com.ticketbox.data.remote.dto.DebtCreateRequestDto
+import com.ticketbox.data.remote.dto.DebtDto
 import com.ticketbox.domain.model.DebtDirections
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.security.LocalSessionIdentity
 import com.ticketbox.security.LocalSessionRecord
 import com.ticketbox.security.LocalSessionStore
@@ -21,6 +24,11 @@ import com.ticketbox.security.SessionCredentialAdapter
 import com.ticketbox.security.StoredSessionToken
 import java.io.IOException
 import java.lang.reflect.Proxy
+import java.time.Clock
+import java.time.Duration
+import java.time.Instant
+import java.time.ZoneOffset
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -35,7 +43,8 @@ class DebtCreationRoomContinuityTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
     private val databaseName = "debt-create-continuity.db"
     private var database: AppDatabase? = null
-    private var networkCreates = 0
+    private val network = RoomDebtCreateApiProbe()
+    private var clock: Clock = Clock.fixed(Instant.parse("2026-09-06T00:00:00Z"), ZoneOffset.UTC)
 
     @After
     fun closeFixture() {
@@ -49,12 +58,14 @@ class DebtCreationRoomContinuityTest {
         val firstDatabase = reopenDatabase()
         val graph = repositoryGraph(firstDatabase, session)
 
-        val result = graph.debtRepository.createDebt(draft())
+        val result = graph.debtCreationRepository.createDebt(
+            requireNotNull(graph.debtCreationRepository.currentAccess()).binding, draft(), CurrencyCode.CNY,
+        )
 
         val stored = storedRows(firstDatabase)
         assertEquals("Save must publish one durable intent", 1, stored.size)
         assertTrue("Local acceptance does not depend on network availability", result.isSuccess)
-        assertEquals("The durable queue, not Save, sends the request", 0, networkCreates)
+        assertEquals("The durable queue, not Save, sends the request", 0, network.calls.size)
         val original = stored.single()
         assertEquals("create_debt", original.getValue("type"))
         assertEquals(session.identity.ledgerId, original.getValue("ledgerId"))
@@ -68,7 +79,23 @@ class DebtCreationRoomContinuityTest {
         assertEquals(original.getValue("idempotencyKey"), resumed.idempotencyKey)
         assertEquals(original.getValue("payload"), resumed.payloadJson)
         assertEquals(original.getValue("ownerKey"), resumed.ownerKey)
-        assertEquals(0, networkCreates)
+        assertEquals(0, network.calls.size)
+
+        val interrupted = engine(restartedOutbox).drainOnce()
+        assertEquals(1, interrupted.retryable)
+        clock = Clock.offset(clock, Duration.ofMinutes(2))
+        val retryDatabase = reopenDatabase()
+        network.loseResponse = false
+        val retried = engine(outbox(retryDatabase, session)).drainOnce()
+        assertEquals(1, retried.done)
+        assertEquals(2, network.calls.size)
+        assertEquals(network.calls.first(), network.calls.last())
+        assertEquals(original["idempotencyKey"], network.calls.last().second)
+        assertEquals(1, network.facts.size)
+        val completed = repositoryGraph(retryDatabase, session).debtCreationRepository
+            .observePendingCreations().first { it.completedIntentIds.isNotEmpty() }
+        assertEquals(setOf(result.getOrThrow().intentId), completed.completedIntentIds)
+        assertTrue(completed.intents.isEmpty())
     }
 
     @Test
@@ -76,11 +103,13 @@ class DebtCreationRoomContinuityTest {
         val currentDatabase = reopenDatabase()
         val graph = repositoryGraph(currentDatabase, sessionRecord("viewer"))
 
-        val result = graph.debtRepository.createDebt(draft())
+        val result = graph.debtCreationRepository.createDebt(
+            requireNotNull(graph.debtCreationRepository.currentAccess()).binding, draft(), CurrencyCode.CNY,
+        )
 
         assertTrue(result.isFailure)
         assertTrue(storedRows(currentDatabase).isEmpty())
-        assertEquals(0, networkCreates)
+        assertEquals(0, network.calls.size)
     }
 
     private fun reopenDatabase(): AppDatabase {
@@ -92,11 +121,18 @@ class DebtCreationRoomContinuityTest {
 
     private fun outbox(database: AppDatabase, session: LocalSessionRecord) = OutboxRepository(
         dao = database.pendingMutationDao(),
+        clock = clock,
         bindingProvider = { session.toOutboxBinding() },
     )
 
+    private fun engine(outbox: OutboxRepository) = OutboxDrainEngine(
+        outbox = outbox,
+        dispatchers = listOf(CreateDebtDispatcher({ network.service }, OutboxAdapterGraph().debtCreateAdapter)),
+        now = clock::millis,
+    )
+
     private fun repositoryGraph(database: AppDatabase, session: LocalSessionRecord): RepositoryGraph {
-        val sessions = fixtureProxy<LocalSessionStore> { method ->
+        val sessions = fixtureProxy<LocalSessionStore> { method, _ ->
             when (method) {
                 "currentSession" -> session
                 "observeSession" -> flowOf(session)
@@ -104,20 +140,15 @@ class DebtCreationRoomContinuityTest {
                 else -> error("Unexpected session call: $method")
             }
         }
-        val service = fixtureProxy<ApiService> { method ->
-            check(method == "createDebt") { "Unexpected network call: $method" }
-            networkCreates += 1
-            throw IOException("Synthetic interrupted create")
-        }
         val factory = object : ApiServiceFactory {
-            override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = service
+            override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = network.service
         }
         val credentials = SessionCredentialAdapter(sessions)
         return RepositoryGraph(
             RepositoryGraphDependencies(
                 database = database,
                 apiClient = ApiClient(),
-                settingsStore = fixtureProxy<TicketboxSettingsStore> { error("Unexpected settings call: $it") },
+                settingsStore = fixtureProxy<TicketboxSettingsStore> { method, _ -> error("Unexpected settings call: $method") },
                 sessionStore = sessions,
                 credentials = credentials,
                 apiServiceProvider = ApiServiceProvider(factory, sessions, credentials),
@@ -162,7 +193,32 @@ class DebtCreationRoomContinuityTest {
     )
 }
 
-private inline fun <reified T> fixtureProxy(crossinline answer: (String) -> Any?): T =
-    Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, method, _ ->
-        answer(method.name)
+private class RoomDebtCreateApiProbe {
+    val calls = mutableListOf<Pair<DebtCreateRequestDto, String>>()
+    val facts = mutableMapOf<String, DebtDto>()
+    var loseResponse = true
+    val service = object : ApiService by fixtureProxy<ApiService>({ method, _ -> error("Unexpected network call: $method") }) {
+        override suspend fun createDebt(request: DebtCreateRequestDto, idempotencyKey: String?): DebtDto {
+            val key = requireNotNull(idempotencyKey)
+            calls += request to key
+            val fact = facts.getOrPut(key) {
+                DebtDto(
+                    publicId = "synthetic-debt-${facts.size + 1}", ledgerId = "debt-ledger",
+                    direction = request.direction, counterpartyType = request.counterpartyType,
+                    counterpartyLabel = request.counterpartyLabel, principalAmountCents = request.principalAmountCents,
+                    remainingAmountCents = request.principalAmountCents, paidAmountCents = 0,
+                    status = "open", sourceType = request.sourceType, homeCurrencyCode = "CNY",
+                    createdAt = "2026-09-06T00:00:00Z", updatedAt = "2026-09-06T00:00:00Z", rowVersion = 1,
+                    note = request.note,
+                )
+            }
+            if (loseResponse) throw IOException("Synthetic lost response after acceptance")
+            return fact
+        }
+    }
+}
+
+private inline fun <reified T> fixtureProxy(crossinline answer: (String, Array<out Any?>) -> Any?): T =
+    Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, method, arguments ->
+        answer(method.name, arguments.orEmpty())
     } as T

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="debt_create_no_synced_records">暂无已同步往来</string>
+    <string name="debt_create_local_saved">已保存在本机，同步后会更新账本。</string>
+    <string name="debt_create_pending_title">待同步的往来</string>
+    <string name="debt_create_pending_body">这些记录仍在本机，尚未计入账本。</string>
+    <string name="debt_create_pending_waiting">等待同步</string>
+    <string name="debt_create_pending_sending">正在同步</string>
+    <string name="debt_create_pending_attention">需要处理</string>
+    <string name="debt_create_pending_unsupported">请更新应用后再处理</string>
+    <string name="debt_create_pending_manage">查看同步状态</string>
+    <string name="debt_create_pending_unreadable">一笔保留中的往来</string>
+    <string name="sync_status_mutation_create_debt">新建往来</string>
+    <string name="debt_create_sync_rejected">这笔往来尚未完成同步。请核对当前权限和填写内容；原记录仍保留在本机。</string>
+    <string name="debt_create_sync_uncertain">尚未确认账本是否收到这笔往来。重试会继续同一笔，请勿重新记一笔。</string>
+</resources>

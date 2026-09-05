@@ -421,6 +421,7 @@ internal val syncStatusMutationLabelResources = mapOf(
     PendingMutationType.PatchExpense to R.string.sync_status_mutation_patch_expense,
     PendingMutationType.CorrectExpense to R.string.sync_status_mutation_correct_expense,
     PendingMutationType.CreateExpense to R.string.sync_status_mutation_create_expense,
+    PendingMutationType.CreateDebt to R.string.sync_status_mutation_create_debt,
     PendingMutationType.ConfirmExpense to R.string.sync_status_mutation_confirm_expense,
     PendingMutationType.RejectExpense to R.string.sync_status_mutation_reject_expense,
     PendingMutationType.MarkNotDuplicate to R.string.sync_status_mutation_mark_not_duplicate,
@@ -459,4 +460,11 @@ private fun friendlyLastError(raw: String?, fallback: String): String {
 
 internal val syncStatusExactErrorMessageResources = mapOf(
     "rule_category_deleted" to R.string.sync_status_error_rule_category_deleted,
+    "debt_create_payload_unsupported" to R.string.debt_create_pending_unsupported,
+    "debt_create_intent_invalid" to R.string.debt_create_sync_rejected,
+    "debt_create_binding_changed" to R.string.debt_create_sync_rejected,
+    "debt_create_rejected" to R.string.debt_create_sync_rejected,
+    "debt_create_response_unverified" to R.string.debt_create_sync_uncertain,
+    "debt_create_response_pending" to R.string.debt_create_sync_uncertain,
+    "debt_create_connection_interrupted" to R.string.debt_create_sync_uncertain,
 )

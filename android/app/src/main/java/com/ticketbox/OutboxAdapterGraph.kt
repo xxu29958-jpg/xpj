@@ -12,6 +12,7 @@ import com.ticketbox.data.remote.dto.addExpenseCorrectionWireAdapters
 import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseOffsetCreateRequestDto
 import com.ticketbox.data.repository.ExpenseOffsetVoidOutboxPayload
+import com.ticketbox.data.repository.DebtCreateOutboxPayload
 import com.ticketbox.data.remote.dto.ExpenseRecognizeTextRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
@@ -140,6 +141,10 @@ internal class OutboxAdapterGraph {
 
     val recurringUpdateAdapter: JsonAdapter<RecurringItemUpdateRequestDto> = lazyJsonAdapter {
         moshi.adapter(RecurringItemUpdateRequestDto::class.java)
+    }
+
+    val debtCreateAdapter: JsonAdapter<DebtCreateOutboxPayload> = lazyJsonAdapter {
+        moshi.adapter(DebtCreateOutboxPayload::class.java)
     }
 }
 

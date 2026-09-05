@@ -209,10 +209,12 @@ internal fun DebtGoalRoute(
     }
 }
 
+internal data class DebtRouteActions(val onBack: () -> Unit, val onOpenSyncStatus: () -> Unit)
+
 @Composable
 internal fun DebtRoute(
     screenFactory: MainScreenFactory,
-    onBack: () -> Unit,
+    actions: DebtRouteActions,
     chromeOverride: RelationsListChrome? = null,
     lens: DebtListLens = DebtListLens.Ledger,
     listRefreshRevision: Int = 0,
@@ -221,7 +223,7 @@ internal fun DebtRoute(
     // ViewModelStore 内「我欠」(payables) 与全账本页 (ledger) 是两份实例）。
     val debtListViewModel: DebtListViewModel = viewModel(
         key = "$DebtListViewModelKey:${lens.name}",
-        factory = debtViewModelFactory(screenFactory.debtRepository, lens),
+        factory = debtViewModelFactory(screenFactory.debtRepository, screenFactory.debtCreationRepository, lens),
     )
     val detailViewModel: DebtDetailViewModel = viewModel(
         key = DebtDetailViewModelKey,
@@ -265,7 +267,8 @@ internal fun DebtRoute(
         DebtListScreen(
             viewModel = debtListViewModel,
             actions = DebtListScreenActions(
-                onBack = onBack,
+                onBack = actions.onBack,
+                onOpenSyncStatus = actions.onOpenSyncStatus,
                 onOpenDebt = { detailDebtId = it.publicId },
                 onParseBillImage = openDebtBillPicker,
             ),

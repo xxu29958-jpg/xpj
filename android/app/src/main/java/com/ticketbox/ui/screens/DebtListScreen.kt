@@ -20,11 +20,13 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -71,6 +73,7 @@ data class DebtListScreenActions(
     val onBack: () -> Unit,
     val onOpenDebt: (Debt) -> Unit,
     val onParseBillImage: () -> Unit,
+    val onOpenSyncStatus: () -> Unit,
 )
 
 private data class DebtListScreenCallbacks(
@@ -79,6 +82,7 @@ private data class DebtListScreenCallbacks(
     val onParseBillImage: () -> Unit,
     val onRefresh: () -> Unit,
     val onAddDebt: () -> Unit,
+    val onOpenSyncStatus: () -> Unit,
 )
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -89,7 +93,11 @@ fun DebtListScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showAddSheet by rememberSaveable { mutableStateOf(false) }
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val saving by rememberUpdatedState(state.isSubmitting)
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { it != SheetValue.Hidden || !saving },
+    )
 
     LaunchedEffect(state.flashMessage) {
         if (state.flashMessage == null) return@LaunchedEffect
@@ -97,12 +105,9 @@ fun DebtListScreen(
         viewModel.dismissFlash()
     }
 
-    // 成功才关抽屉：只在 createDebt() 真正成功(addSucceeded)时收起，失败保留抽屉让 validationError 可见
-    // （修「乐观关闭」——旧逻辑在 onSubmit 里按本地 addDraft.isValid 关闭、无视网络结果，且 onClose 的
-    // resetDraft() 会抹掉失败错误 → 欠款静默没建）。resetDraft() 一并清掉一次性信号 + 草稿；effect 体
-    // 全程非挂起，关闭被打断也不会把 addSucceeded 卡在 true。
-    LaunchedEffect(state.addSucceeded) {
-        if (!state.addSucceeded) return@LaunchedEffect
+    // Close only after Room acknowledges the intent. A failed local save keeps the form and error visible.
+    LaunchedEffect(state.addAccepted) {
+        if (!state.addAccepted) return@LaunchedEffect
         showAddSheet = false
         viewModel.resetDraft()
     }
@@ -116,6 +121,7 @@ fun DebtListScreen(
         onBack = actions.onBack,
         onOpenDebt = actions.onOpenDebt,
         onParseBillImage = actions.onParseBillImage,
+        onOpenSyncStatus = actions.onOpenSyncStatus,
         onRefresh = viewModel::refresh,
         onAddDebt = {
             viewModel.resetDraft()
@@ -188,7 +194,12 @@ private fun DebtListContent(
             item(key = "obligations-domain-navigation") { navigation() }
         }
         state.flashMessage?.let { msg ->
-            item { AppStatusBanner(message = msg, tone = MessageTone.Success) }
+            item { AppStatusBanner(message = msg, tone = MessageTone.Info) }
+        }
+        if (state.pendingCreations.isNotEmpty()) {
+            item(key = "debt-pending-creations") {
+                DebtPendingCreations(state.pendingCreations, callbacks.onOpenSyncStatus)
+            }
         }
         readableListInlineError(hasRows = state.debts.isNotEmpty(), error = state.error)?.let { err ->
             item { AppStatusBanner(message = err, tone = MessageTone.Danger) }
@@ -227,7 +238,7 @@ private fun DebtListEmbeddedContent(
             item(key = "obligations-top-chrome") { top() }
         }
         state.flashMessage?.let { msg ->
-            item { AppStatusBanner(message = msg, tone = MessageTone.Success) }
+            item { AppStatusBanner(message = msg, tone = MessageTone.Info) }
         }
         readableListInlineError(hasRows = state.debts.isNotEmpty(), error = state.error)?.let { err ->
             item { AppStatusBanner(message = err, tone = MessageTone.Danger) }
@@ -308,7 +319,11 @@ private fun LazyListScope.debtListSection(
             state.error?.let { DebtListLoadFailedSection(error = it) }
         }
         ReadableListBodyState.Empty -> item(key = "debt-list-empty") {
-            DebtListNoRowsStateSection(loading = false, lens = state.lens, canModify = state.canModify)
+            if (state.pendingCreations.isEmpty()) {
+                DebtListNoRowsStateSection(loading = false, lens = state.lens, canModify = state.canModify)
+            } else {
+                Text(stringResource(R.string.debt_create_no_synced_records), style = MaterialTheme.typography.bodyMedium)
+            }
         }
         ReadableListBodyState.Content -> debtRowsSection(
             debts = state.debts,

@@ -6,9 +6,13 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.R
 import com.ticketbox.domain.model.DebtListLens
 import com.ticketbox.ui.screens.RelationsListChrome
+import com.ticketbox.ui.screens.settings.SyncStatusScreen
+import com.ticketbox.viewmodel.OutboxStatusViewModel
+import com.ticketbox.viewmodel.outboxStatusViewModelFactory
 
 internal class MainProductRouteDependencies(
     val runtime: MainNavigationRuntime,
@@ -212,7 +216,10 @@ internal fun NavGraphBuilder.addObligationRoutes(
         composable(ProductSecondaryPage.AllDebts.route) {
             DebtRoute(
                 screenFactory = screenFactory,
-                onBack = onBack,
+                actions = DebtRouteActions(
+                    onBack = onBack,
+                    onOpenSyncStatus = { shellState.openSecondaryPage(ProductSecondaryPage.ObligationSync) },
+                ),
                 lens = DebtListLens.Ledger,
                 chromeOverride = RelationsListChrome(
                     title = stringResource(R.string.relations_all_debts),
@@ -221,6 +228,12 @@ internal fun NavGraphBuilder.addObligationRoutes(
                     onBack = onBack,
                 ),
             )
+        }
+        composable(ProductSecondaryPage.ObligationSync.route) {
+            val vm: OutboxStatusViewModel = viewModel(
+                factory = outboxStatusViewModelFactory(screenFactory.outboxRepository, screenFactory.repository),
+            )
+            SyncStatusScreen(viewModel = vm, onBack = onBack)
         }
         composable(
             route = REPAYMENT_DRAFT_ROUTE,

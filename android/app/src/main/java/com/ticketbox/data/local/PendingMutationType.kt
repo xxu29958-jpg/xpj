@@ -29,6 +29,7 @@ package com.ticketbox.data.local
  *   CreateRecurringItem              POST   /api/recurring/items
  *   UpdateRecurringItem              PATCH  /api/recurring/items/{publicId}
  *   CreateExpense                    POST   /api/expenses/manual
+ *   CreateDebt                       POST   /api/debts
  *
  * Most creates / terminal lifecycle / batch routes are NOT in the
  * outbox — they go through the normal online-only ApiService path.
@@ -39,11 +40,14 @@ package com.ticketbox.data.local
  * ``expectedRowVersion = 0`` (the create has no prior version) and no
  * ``Idempotency-Key`` header. See ``ALLOWLIST`` in
  * ``backend/scripts/_audit_mutate_token_coverage.py``.
+ * [CreateDebt] also has no prior version; its original Idempotency-Key and complete
+ * command are persisted before dispatch, and remain unchanged across unknown-response retries.
  */
 enum class PendingMutationType(val wireValue: String) {
     PatchExpense("patch_expense"),
     CorrectExpense("correct_expense"),
     CreateExpense("create_expense"),
+    CreateDebt("create_debt"),
     CreateExpenseOffset("create_expense_offset"),
     VoidExpenseOffset("void_expense_offset"),
     ConfirmExpense("confirm_expense"),

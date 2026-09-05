@@ -1,6 +1,7 @@
 package com.ticketbox.data.remote.dto
 
 import com.squareup.moshi.Json
+import com.squareup.moshi.JsonClass
 
 /**
  * ADR-0049 §2 (slice 8) — Android contract for the Debt entity surface.
@@ -137,6 +138,7 @@ data class DebtBillParseResponseDto(
  * this body `additionalProperties=false`, so the DTO field set must stay a subset of the
  * schema (the contract gate's forward check is the forbid protection).
  */
+@JsonClass(generateAdapter = true)
 data class DebtCreateRequestDto(
     val direction: String,
     @param:Json(name = "counterparty_type")

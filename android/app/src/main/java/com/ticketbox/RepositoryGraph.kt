@@ -8,6 +8,7 @@ import com.ticketbox.data.repository.BudgetRepository
 import com.ticketbox.data.repository.CategoryPreferenceRepository
 import com.ticketbox.data.repository.CategoryRuleOfflineMutationWiring
 import com.ticketbox.data.repository.DebtRepository
+import com.ticketbox.data.repository.DebtCreationRepository
 import com.ticketbox.data.repository.ExpenseOfflineMutationWiring
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.IncomePlanRepository
@@ -114,9 +115,14 @@ internal class RepositoryGraph(
         incomePlanUpdateAdapter = outboxAdapters.incomePlanUpdateAdapter,
     )
 
-    // ADR-0049 §2 (slice 8): Debt entity repository. Direct-only online (no outbox surface).
     val debtRepository = DebtRepository(
         apiProvider = apiServiceProvider,
+    )
+
+    val debtCreationRepository = DebtCreationRepository(
+        apiProvider = apiServiceProvider,
+        outbox = outbox,
+        payloadAdapter = outboxAdapters.debtCreateAdapter,
     )
 
     // ADR-0049 §杠杆③ (slice 3a): NLS 还款捕获复核箱仓库。direct-only online；NLS service 路由还款草稿到它。

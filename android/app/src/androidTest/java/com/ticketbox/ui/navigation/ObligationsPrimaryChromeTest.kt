@@ -48,10 +48,12 @@ class ObligationsPrimaryChromeTest {
         isParsingBill = false,
         flashMessage = null,
         error = error,
+        pendingCreations = emptyList(),
         actions = RelationsComposerActions(
             onRetry = onRetry,
             onAddDebt = onAddDebt,
             onParseBillImage = {},
+            onOpenSyncStatus = {},
         ),
     )
 
