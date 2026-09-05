@@ -113,7 +113,8 @@ def _create_payload(
         direction=(direction or "").strip(),
         counterparty_type="external",
         counterparty_label=(counterparty_label or "").strip(),
-        note=note,
+        # Native form encoding expands textarea newlines to CRLF.
+        note=note.replace("\r\n", "\n").replace("\r", "\n"),
         principal_amount_cents=amount_minor if code == home_currency else None,
         original_currency=code if code != home_currency else None,
         original_amount=Decimal(amount_text) if code != home_currency else None,

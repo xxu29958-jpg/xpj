@@ -294,6 +294,7 @@ def test_web_external_debt_create_is_complete_and_idempotent(
     assert "服务端按发生日冻结汇率" in page.text
 
     key = str(uuid4())
+    expected_note = "出差垫款 <行程说明>\n".ljust(500, "事")
     form = {
         "csrf_token": "test-client-bypasses-middleware-check",
         "ledger_id": "owner",
@@ -305,11 +306,11 @@ def test_web_external_debt_create_is_complete_and_idempotent(
         "debt_kind": "installment",
         "installment_count": "12",
         "installment_period_months": "1",
-        "note": "出差垫款 <行程说明>",
+        "note": expected_note.replace("\n", "\r\n"),
         "idempotency_key": key,
     }
     first = web_client.post("/web/debts", data=form)
-    replay = web_client.post("/web/debts", data=form)
+    replay = web_client.post("/web/debts", data={**form, "note": expected_note})
 
     assert first.status_code == 200
     assert replay.status_code == 200
@@ -329,10 +330,10 @@ def test_web_external_debt_create_is_complete_and_idempotent(
         assert rows[0].installment_count == 12
         public_id = rows[0].public_id
     current = _detail(web_client, identity=identity, public_id=public_id)
-    assert current["note"] == form["note"]
+    assert current["note"] == expected_note
     changed = web_client.post("/web/debts", data={**form, "note": "不同的往来缘由"})
     assert changed.status_code == 422
-    assert _detail(web_client, identity=identity, public_id=public_id)["note"] == form["note"]
+    assert _detail(web_client, identity=identity, public_id=public_id)["note"] == expected_note
 
 
 def test_web_external_debt_create_validation_preserves_fields(
