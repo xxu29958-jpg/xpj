@@ -49,6 +49,7 @@ from app.services.identity_service import (
     authenticate_web_session_principal,
     authenticate_web_session_token,
     installation_web_identity_present,
+    resolve_installation_web_account_id,
 )
 
 DESKTOP_BRIDGE_HEADER = "X-Ticketbox-Desktop-Bridge"
@@ -208,6 +209,7 @@ async def _browser_cookie_session_gate(
     call_next: Callable[[Request], Awaitable[Response]],
     *,
     login_url: str,
+    required_account_id: int | None = None,
 ) -> Response:
     token = read_session_token(request)
     if not token:
@@ -220,6 +222,10 @@ async def _browser_cookie_session_gate(
                 token,
                 ttl_seconds=SESSION_COOKIE_MAX_AGE_SECONDS,
             )
+            if required_account_id is not None and principal.account_id != required_account_id:
+                redirect = RedirectResponse(url=login_url, status_code=303)
+                clear_session_cookie(redirect)
+                return redirect
             try:
                 result = authenticate_web_session_token(
                     db,
@@ -276,6 +282,13 @@ async def web_session_gate(
         try:
             with SessionLocal() as db:
                 has_installation_identity = installation_web_identity_present(db)
+                installation_account_id = (
+                    resolve_installation_web_account_id(db)
+                    if has_installation_identity
+                    else None
+                )
+        except AppError as exc:
+            return _app_error_response(request, exc)
         except SQLAlchemyError:
             return error_response(
                 "server_error",
@@ -288,6 +301,7 @@ async def web_session_gate(
                 request,
                 call_next,
                 login_url=_local_identity_redirect_url(request),
+                required_account_id=installation_account_id,
             )
         if runtime_settings_service_owned():
             return error_response(

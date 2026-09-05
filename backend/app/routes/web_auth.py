@@ -191,7 +191,11 @@ def local_web_identity_submit(
         )
     except AppError as exc:
         redirect = _redirect_local(next=next, error=exc.error)
-        if exc.error in {"pairing_attempt_expired", "pairing_attempt_closed"}:
+        if exc.error in {
+            "local_identity_target_changed",
+            "pairing_attempt_expired",
+            "pairing_attempt_closed",
+        }:
             _clear_pairing_attempt_cookie(redirect)
         return redirect
     redirect = RedirectResponse(url=_safe_next_url(next) or "/web", status_code=303)
@@ -364,7 +368,7 @@ def web_logout(
     db: Session = Depends(get_db),
 ) -> Response:
     token = read_session_token(request)
-    redirect = RedirectResponse(url="/web/auth/login", status_code=303)
+    redirect = _redirect_session_entry(request, db, next="", error="")
     if token:
         # Revoke the backing AuthToken (only if it actually maps to a
         # platform="web" scope="app" row) so the cookie value, if ever

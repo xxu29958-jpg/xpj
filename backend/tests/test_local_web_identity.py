@@ -21,7 +21,7 @@ from app.models import (
     LedgerMember,
     PairingCode,
 )
-from app.routes.web_auth import SESSION_COOKIE_NAME
+from app.routes.web_auth import PAIRING_ATTEMPT_COOKIE_NAME, SESSION_COOKIE_NAME
 from app.services.identity_service import (
     authenticate_web_session_token,
     hash_secret,
@@ -250,6 +250,9 @@ def test_local_confirmation_proof_cannot_change_ledger_target(
     assert changed.status_code == 303, changed.text
     assert "error=local_identity_target_changed" in changed.headers["location"]
     assert changed.cookies.get(SESSION_COOKIE_NAME) is None
+    set_cookie = changed.headers.get("set-cookie", "")
+    assert PAIRING_ATTEMPT_COOKIE_NAME in set_cookie
+    assert "Max-Age=0" in set_cookie
 
 
 def test_connected_local_cookie_enters_as_its_real_member_principal(

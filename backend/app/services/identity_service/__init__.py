@@ -61,6 +61,7 @@ from app.services.identity_service._local_web import (
     connect_installation_web_identity,
     installation_web_identity_present,
     preview_installation_web_identity,
+    resolve_installation_web_account_id,
 )
 from app.services.identity_service._models import (
     DEFAULT_ACCOUNT_NAME,
@@ -146,6 +147,7 @@ __all__ = [
     "lock_bootstrap_owner_transaction",
     "pair_device",
     "preview_installation_web_identity",
+    "resolve_installation_web_account_id",
     "upload_link_default_timezone",
     # re-exported from session_lifecycle_service
     "hash_pairing_code",

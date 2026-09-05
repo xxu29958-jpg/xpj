@@ -82,9 +82,9 @@ def _unique_installation_claim(
     return claims[0]
 
 
-def preview_installation_web_identity(db: Session) -> LocalWebIdentityPreview:
-    """Resolve the one installation Account and its current live memberships."""
-
+def _installation_identity(
+    db: Session,
+) -> tuple[InstallationOwnerClaim, Account]:
     claim = _unique_installation_claim(db)
     account = db.get(Account, claim.account_id)
     source_device = db.get(Device, claim.device_id)
@@ -100,6 +100,20 @@ def preview_installation_web_identity(db: Session) -> LocalWebIdentityPreview:
             "当前安装的本机身份不可用，请先完成身份修复。",
             status_code=409,
         )
+    return claim, account
+
+
+def resolve_installation_web_account_id(db: Session) -> int:
+    """Resolve the live Account that an installed loopback browser must use."""
+
+    _, account = _installation_identity(db)
+    return account.id
+
+
+def preview_installation_web_identity(db: Session) -> LocalWebIdentityPreview:
+    """Resolve the one installation Account and its current live memberships."""
+
+    claim, account = _installation_identity(db)
 
     rows = list(
         db.execute(
@@ -280,4 +294,5 @@ __all__ = [
     "connect_installation_web_identity",
     "installation_web_identity_present",
     "preview_installation_web_identity",
+    "resolve_installation_web_account_id",
 ]
