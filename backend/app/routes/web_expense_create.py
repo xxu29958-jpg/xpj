@@ -103,6 +103,26 @@ def _session_writer_auth(request: Request, selected_id: str) -> AuthContext:
     return auth
 
 
+def _require_manual_form_binding(
+    auth: AuthContext,
+    *,
+    ledger_id: str,
+    expected_device_public_id: str,
+) -> None:
+    if expected_device_public_id != auth.device_public_id:
+        raise AppError(
+            "session_binding_changed",
+            "浏览器身份已更新，这笔支出尚未保存。输入已保留，请先核对已有流水，再打开新表单记账。",
+            status_code=409,
+        )
+    if ledger_id != auth.ledger_id:
+        raise AppError(
+            "ledger_target_changed",
+            "账本已切换，这笔支出尚未保存。输入已保留，请切回原账本后重试。",
+            status_code=409,
+        )
+
+
 def _manual_expense_payload(
     *,
     amount_major: str,
@@ -219,18 +239,11 @@ def web_manual_expense_create(
         "note": note,
     }
     try:
-        if expected_device_public_id != auth.device_public_id:
-            raise AppError(
-                "session_binding_changed",
-                "浏览器身份已更新，这笔支出尚未保存。输入已保留，请先核对已有流水，再打开新表单记账。",
-                status_code=409,
-            )
-        if ledger_id != auth.ledger_id:
-            raise AppError(
-                "ledger_target_changed",
-                "账本已切换，这笔支出尚未保存。输入已保留，请切回原账本后重试。",
-                status_code=409,
-            )
+        _require_manual_form_binding(
+            auth,
+            ledger_id=ledger_id,
+            expected_device_public_id=expected_device_public_id,
+        )
         _require_selected_ledger_write(options, selected_id)
         payload = _manual_expense_payload(
             amount_major=amount_major,

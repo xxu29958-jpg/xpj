@@ -266,9 +266,8 @@ ALLOWLIST: dict[str, Exempt] = {
         "terminal_flag_flip", "debts", _MEMBER_REPAYMENT_PROPOSAL
     ),
     # Web form twins of the API entries above (same shared command service;
-    # their Idempotency-Key or device client_ref travels in the hidden form).
+    # the Idempotency-Key travels as a hidden per-render form field).
     "POST /web/debts": Exempt("create_row", "debts", _DEBTS),
-    "POST /web/expenses/new": Exempt("create_row", "expenses", ("expenses",)),
     "POST /web/debts/{public_id}/repayment-proposals": Exempt(
         "create_row", "debts", _MEMBER_REPAYMENT_PROPOSAL
     ),

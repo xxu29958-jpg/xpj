@@ -132,11 +132,11 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_carriers": 104,
-    "mutate_token_exempted": 130,
+    "mutate_token_exempted": 129,
     "mutate_token_reason_admin_single_writer": 10,
     "mutate_token_reason_append_only_fact": 4,
     "mutate_token_reason_batch_db_write": 17,
-    "mutate_token_reason_create_row": 39,
+    "mutate_token_reason_create_row": 38,
     "mutate_token_reason_enqueue_task": 0,
     "mutate_token_reason_external_side_effect": 3,
     "mutate_token_reason_governance_action": 8,
@@ -172,12 +172,11 @@ BASELINE_RATCHET_DOWN: frozenset[str] = frozenset(
         "mutate_token_exempted",
     }
 )
-# Exact-base one-time topology hops. A3 added API/Web recurring-create twins;
-# the second row exposes create_manual_expense to native Web with device client_ref.
-_MUTATE_TOKEN_EXEMPTION_GRANDFATHERS = (
-    ("0a0d2be96e5786ffcaa65588f960dea291098abd", 128, 130),
-    ("90ed5b50e18bf18d687e0da6eb28aaab015e7c40", 129, 130),
-)
+_A3_MUTATE_TOKEN_EXEMPTION_GRANDFATHER = (
+    "0a0d2be96e5786ffcaa65588f960dea291098abd",
+    128,
+    130,
+)  # A3 adds the API/Web twins of one manual fixed-expense create capability. Both insert a new recurring_items row and require one durable Idempotency-Key; neither has a predecessor row_version to carry. The exact base binding makes this single topology hop non-replayable.
 _PORTABLE_INSTALLER_TEST_RETIREMENT_GRANDFATHER = (
     "051464999fc1f71d9072bb5c9cfc012b521181cd",
     387,
@@ -309,16 +308,17 @@ def _compute_ratchet_findings(
     walking STRICT_EQUALITY_BASELINE keys against the base baseline dict."""
     bootstrapped: list[str] = []
     movement_violations: list[str] = []
+    a3_base_commit, a3_base_count, a3_current_count = _A3_MUTATE_TOKEN_EXEMPTION_GRANDFATHER
     for key in sorted(STRICT_EQUALITY_BASELINE):
         current_val = STRICT_EQUALITY_BASELINE[key]
         if key not in base_baseline:
             bootstrapped.append(key)
             continue  # bootstrap: skip ratchet, strict equality already covered
         base_val = base_baseline[key]
-        allowlist_growth_exempt = (
+        a3_exempt = (
             key == "mutate_token_exempted"
-            and (base_commit, base_val, current_val)
-            in _MUTATE_TOKEN_EXEMPTION_GRANDFATHERS
+            and base_commit == a3_base_commit
+            and (base_val, current_val) == (a3_base_count, a3_current_count)
         )
         test_retirement = key == "installer_pytest_count" and any(
             base_commit == candidate_commit
@@ -338,7 +338,7 @@ def _compute_ratchet_findings(
                 f"accumulate, not vanish. Strict equality alone misses this when "
                 f"actuals dropped in lockstep — this layer catches it."
             )
-        elif key in BASELINE_RATCHET_DOWN and current_val > base_val and not allowlist_growth_exempt:
+        elif key in BASELINE_RATCHET_DOWN and current_val > base_val and not a3_exempt:
             movement_violations.append(
                 f"  - {key} (DOWN-only): base={base_val}, current={current_val} "
                 f"(rose by {current_val - base_val}). Exemptions should drain as "
