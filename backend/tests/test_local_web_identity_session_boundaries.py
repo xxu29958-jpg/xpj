@@ -100,3 +100,59 @@ def test_installed_loopback_logout_returns_to_local_confirmation(
 
     assert response.status_code == 303
     assert response.headers["location"] == "/web/auth/local"
+
+
+def test_expired_local_session_post_recovers_to_referring_get_page(
+    installed_web: _InstalledWeb,
+) -> None:
+    session_token = _connect_local_session(installed_web)
+    page = installed_web.browser.get(
+        "/web/tags",
+        headers={"Cookie": f"{SESSION_COOKIE_NAME}={session_token}"},
+    )
+    assert page.status_code == 200, page.text
+    csrf = re.search(r'name="csrf_token" value="([^"]+)"', page.text)
+    csrf_seed = page.cookies.get(CSRF_COOKIE_NAME)
+    assert csrf is not None
+    assert csrf_seed is not None
+
+    with SessionLocal() as db:
+        token = db.scalar(
+            select(AuthToken).where(AuthToken.token_hash == hash_secret(session_token))
+        )
+        assert token is not None
+        token.expires_at = now_utc() - timedelta(seconds=1)
+        db.commit()
+
+    response = installed_web.browser.post(
+        "/web/tags/missing/rename",
+        data={"csrf_token": csrf.group(1), "name": "不会提交"},
+        headers={
+            "Cookie": (
+                f"{SESSION_COOKIE_NAME}={session_token}; "
+                f"{CSRF_COOKIE_NAME}={csrf_seed}"
+            ),
+            "Origin": "http://127.0.0.1:8000",
+            "Referer": "http://127.0.0.1:8000/web/tags",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/web/auth/local?next=%2Fweb%2Ftags"
+
+    cross_origin = installed_web.browser.post(
+        "/web/tags/missing/rename",
+        data={"csrf_token": csrf.group(1), "name": "不会提交"},
+        headers={
+            "Cookie": (
+                f"{SESSION_COOKIE_NAME}={session_token}; "
+                f"{CSRF_COOKIE_NAME}={csrf_seed}"
+            ),
+            "Origin": "http://127.0.0.1:8000",
+            "Referer": "https://outside.example/web/tags",
+        },
+        follow_redirects=False,
+    )
+    assert cross_origin.status_code == 303
+    assert cross_origin.headers["location"] == "/web/auth/local?next=%2Fweb"

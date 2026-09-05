@@ -316,7 +316,7 @@ def test_live_web_identity_keeps_token_when_selected_membership_is_removed(
         db.commit()
 
     response = installed_web.browser.get(
-        "/web/pending",
+        f"/web/pending?ledger_id={installed_web.shared_ledger_id}",
         headers={"Cookie": f"{SESSION_COOKIE_NAME}={session_token}"},
         follow_redirects=False,
     )

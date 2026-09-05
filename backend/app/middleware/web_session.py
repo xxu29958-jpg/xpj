@@ -28,7 +28,7 @@ URL editing).
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.requests import Request
@@ -38,6 +38,7 @@ from app.config import runtime_settings_service_owned
 from app.database import SessionLocal
 from app.errors import AppError, error_response
 from app.network_boundary import is_loopback_request
+from app.routes._web_session_common import _safe_same_site_redirect_path
 from app.routes.web_auth import (
     SESSION_COOKIE_MAX_AGE_SECONDS,
     SESSION_COOKIE_NAME,
@@ -105,34 +106,52 @@ def _ledger_binding_error(request: Request, ledger_id: str) -> Response | None:
     )
 
 
+def _normalized_recovery_target(raw: str | None) -> str:
+    target = _safe_same_site_redirect_path(
+        raw,
+        allowed_roots=("/web",),
+        fallback="/web",
+    )
+    parsed = urlsplit(target)
+    if unquote(parsed.path).startswith("/web/auth/"):
+        return "/web"
+    query = urlencode(
+        [
+            (key, value)
+            for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+            if key != "ledger_id"
+        ]
+    )
+    return urlunsplit(("", "", parsed.path, query, ""))
+
+
+def _session_recovery_target(request: Request) -> str:
+    if request.method.upper() in {"GET", "HEAD"}:
+        return _normalized_recovery_target(
+            urlunsplit(("", "", request.url.path, request.url.query, ""))
+        )
+
+    referer = urlsplit(request.headers.get("referer", ""))
+    if (
+        referer.scheme.lower() != request.url.scheme.lower()
+        or referer.netloc.lower() != request.url.netloc.lower()
+    ):
+        return "/web"
+    return _normalized_recovery_target(
+        urlunsplit(("", "", referer.path, referer.query, ""))
+    )
+
+
 def _login_redirect_url(request: Request) -> str:
-    path = request.url.path
-    # Preserve where the user was trying to go so login can bounce them back.
-    # _safe_next_url on the login route will still re-validate this string.
-    query = request.url.query
-    target_after_login = f"{path}?{query}" if query else path
-    # Reject obvious junk that would never make sense as a destination.
-    if not target_after_login.startswith("/web") or target_after_login.startswith("/web/auth/"):
-        target_after_login = "/web"
-    return f"/web/auth/login?{urlencode({'next': target_after_login})}"
+    return f"/web/auth/login?{urlencode({'next': _session_recovery_target(request)})}"
 
 
 def _local_identity_redirect_url(request: Request) -> str:
-    path = request.url.path
-    query = request.url.query
-    target = f"{path}?{query}" if query else path
-    if not target.startswith("/web") or target.startswith("/web/auth/"):
-        target = "/web"
-    return f"/web/auth/local?{urlencode({'next': target})}"
+    return f"/web/auth/local?{urlencode({'next': _session_recovery_target(request)})}"
 
 
 def _ledger_picker_redirect_url(request: Request) -> str:
-    path = request.url.path
-    query = request.url.query
-    target = f"{path}?{query}" if query else path
-    if not target.startswith("/web") or target.startswith("/web/auth/"):
-        target = "/web"
-    return f"/web/auth/ledgers?{urlencode({'next': target})}"
+    return f"/web/auth/ledgers?{urlencode({'next': _session_recovery_target(request)})}"
 
 
 def _is_session_required(request: Request) -> bool:
