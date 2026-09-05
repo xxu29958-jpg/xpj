@@ -25,26 +25,16 @@ import kotlinx.coroutines.flow.MutableStateFlow
 internal class FakeDebtActions(
     private val canModify: Boolean = true,
     var listResult: Result<List<Debt>> = Result.success(emptyList()),
-    var createResult: Result<Unit> = Result.success(Unit),
+    createResult: Result<Unit> = Result.success(Unit),
     var parseBillResult: Result<DebtBillSuggestion> = Result.success(blankBillSuggestion()),
-) : DebtActions, DebtCreationActions {
-    val access = MutableStateFlow<LedgerAccessContext?>(
-        LedgerAccessContext(LogicalSessionBinding("https://example.test", "owner", "test-owner", "session-1", "binding-1"), canModify),
-    )
-    val pendingCreations = MutableStateFlow(DebtCreationQueueSnapshot(access.value?.binding))
-    override fun currentAccess(): LedgerAccessContext? = access.value
-    override fun observeActiveLedgerAccess() = access
-    override fun observePendingCreations() = pendingCreations
-    val createDrafts = mutableListOf<DebtDraft>()
+) : DebtActions {
+    val creation = FakeDebtCreationActions(canModify, createResult)
     val parseBillCalls = mutableListOf<String>()
     var listCalls = 0
     val listLenses = mutableListOf<DebtListLens>()
 
     /** When set, listDebts() stalls until completed — used to interleave a slow load. */
     var listGate: CompletableDeferred<Unit>? = null
-
-    /** Hold the command boundary while the real ViewModel receives another UI event. */
-    var createGate: CompletableDeferred<Unit>? = null
 
     /** 列表信封的安装级 currency capability（PR#255 R6）；null = 旧服务端不下发。 */
     var listCapability: String? = null
@@ -62,18 +52,6 @@ internal class FakeDebtActions(
     }
 
     override suspend fun getDebt(publicId: String): Result<Debt> = Result.success(sampleDebt(publicId))
-
-    override suspend fun createDebt(
-        expectedBinding: LogicalSessionBinding,
-        draft: DebtDraft,
-        homeCurrency: CurrencyCode,
-    ): Result<DebtCreationReceipt> {
-        createDrafts += draft
-        val captured = createResult
-        val receiptId = createDrafts.size.toLong()
-        createGate?.await()
-        return captured.map { DebtCreationReceipt(receiptId, expectedBinding) }
-    }
 
     override suspend fun parseDebtBillImage(
         fileName: String,
@@ -115,6 +93,35 @@ internal class FakeDebtActions(
         expectedRowVersion: Long,
         debtKind: String,
     ): Result<Debt> = Result.success(sampleDebt(publicId))
+}
+
+/** The creation boundary owns its binding, pending projection and controlled local acknowledgement. */
+internal class FakeDebtCreationActions(
+    canModify: Boolean,
+    var createResult: Result<Unit>,
+) : DebtCreationActions {
+    val access = MutableStateFlow<LedgerAccessContext?>(
+        LedgerAccessContext(LogicalSessionBinding("https://example.test", "owner", "test-owner", "session-1", "binding-1"), canModify),
+    )
+    val pendingCreations = MutableStateFlow(DebtCreationQueueSnapshot(access.value?.binding))
+    val createDrafts = mutableListOf<DebtDraft>()
+    var createGate: CompletableDeferred<Unit>? = null
+
+    override fun currentAccess(): LedgerAccessContext? = access.value
+    override fun observeActiveLedgerAccess() = access
+    override fun observePendingCreations() = pendingCreations
+
+    override suspend fun createDebt(
+        expectedBinding: LogicalSessionBinding,
+        draft: DebtDraft,
+        homeCurrency: CurrencyCode,
+    ): Result<DebtCreationReceipt> {
+        createDrafts += draft
+        val captured = createResult
+        val receiptId = createDrafts.size.toLong()
+        createGate?.await()
+        return captured.map { DebtCreationReceipt(receiptId, expectedBinding) }
+    }
 }
 
 internal fun blankBillSuggestion(): DebtBillSuggestion = DebtBillSuggestion(

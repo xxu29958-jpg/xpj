@@ -41,7 +41,7 @@ class DebtCreateContinuityViewModelTest {
     fun repeatedSaveWhileSubmittingEmitsOnlyOneCreate() = runTest(dispatcher) {
         val gate = CompletableDeferred<Unit>()
         val repository = readyRepository(gate)
-        val viewModel = DebtListViewModel(repository, repository)
+        val viewModel = DebtListViewModel(repository, repository.creation)
         advanceUntilIdle()
         fillDraft(viewModel)
 
@@ -50,7 +50,7 @@ class DebtCreateContinuityViewModelTest {
         assertTrue(viewModel.state.value.isSubmitting)
         viewModel.submitDraft()
         runCurrent()
-        val commandsDuringSubmission = repository.createDrafts.toList()
+        val commandsDuringSubmission = repository.creation.createDrafts.toList()
         gate.complete(Unit)
         advanceUntilIdle()
 
@@ -63,7 +63,7 @@ class DebtCreateContinuityViewModelTest {
     fun editsWhileSubmittingCannotReplaceTheVisibleSubmittedSnapshot() = runTest(dispatcher) {
         val gate = CompletableDeferred<Unit>()
         val repository = readyRepository(gate)
-        val viewModel = DebtListViewModel(repository, repository)
+        val viewModel = DebtListViewModel(repository, repository.creation)
         advanceUntilIdle()
         fillDraft(viewModel)
 
@@ -79,26 +79,28 @@ class DebtCreateContinuityViewModelTest {
         assertEquals("123.45", visibleSnapshot.amountYuanInput)
         assertEquals("小王", visibleSnapshot.counterpartyLabel)
         assertEquals("出差垫付车费", visibleSnapshot.note)
-        assertEquals(12_345L, repository.createDrafts.single().principalAmountCents)
+        assertEquals(12_345L, repository.creation.createDrafts.single().principalAmountCents)
     }
 
     private fun readyRepository(gate: CompletableDeferred<Unit>): FakeDebtActions =
         FakeDebtActions(listResult = Result.success(listOf(sampleDebt()))).apply {
-            createGate = gate
+            creation.createGate = gate
         }
 
     @Test
     fun oldBindingAcceptanceCannotClearTheNewLedgerFormOrAnnounceItsSuccess() = runTest(dispatcher) {
         val gate = CompletableDeferred<Unit>()
         val repository = readyRepository(gate)
-        val viewModel = DebtListViewModel(repository, repository)
+        val viewModel = DebtListViewModel(repository, repository.creation)
         advanceUntilIdle()
         fillDraft(viewModel)
         viewModel.submitDraft()
         runCurrent()
 
-        val oldAccess = requireNotNull(repository.access.value)
-        repository.access.value = oldAccess.copy(binding = oldAccess.binding.copy(ledgerId = "next", bindingRevision = "binding-2"))
+        val oldAccess = requireNotNull(repository.creation.access.value)
+        repository.creation.access.value = oldAccess.copy(
+            binding = oldAccess.binding.copy(ledgerId = "next", bindingRevision = "binding-2"),
+        )
         runCurrent()
         viewModel.updateDraftCounterparty("新账本的记录")
         viewModel.updateDraftAmount("55.00")
@@ -114,13 +116,13 @@ class DebtCreateContinuityViewModelTest {
     @Test
     fun completedIntentRefreshesCanonicalListEvenWhenPendingEmissionWasTooFastToObserve() = runTest(dispatcher) {
         val repository = FakeDebtActions().apply { listCapability = "CNY" }
-        val viewModel = DebtListViewModel(repository, repository)
+        val viewModel = DebtListViewModel(repository, repository.creation)
         advanceUntilIdle()
         val readsBefore = repository.listCalls
         repository.listResult = Result.success(listOf(sampleDebt("server-debt")))
 
-        repository.pendingCreations.value = DebtCreationQueueSnapshot(
-            binding = repository.access.value?.binding,
+        repository.creation.pendingCreations.value = DebtCreationQueueSnapshot(
+            binding = repository.creation.access.value?.binding,
             completedIntentIds = setOf(7L),
         )
         advanceUntilIdle()
@@ -134,7 +136,7 @@ class DebtCreateContinuityViewModelTest {
     @Test
     fun localAcceptanceNeverInventsACanonicalDebt() = runTest(dispatcher) {
         val repository = FakeDebtActions().apply { listCapability = "CNY" }
-        val viewModel = DebtListViewModel(repository, repository)
+        val viewModel = DebtListViewModel(repository, repository.creation)
         advanceUntilIdle()
         fillDraft(viewModel)
         viewModel.submitDraft()
@@ -149,9 +151,9 @@ class DebtCreateContinuityViewModelTest {
     @Test
     fun newLedgerPendingRowsSurviveQueueEmissionBeforeTheAccessObserverRuns() = runTest(dispatcher) {
         val repository = FakeDebtActions().apply { listCapability = "CNY" }
-        val viewModel = DebtListViewModel(repository, repository)
+        val viewModel = DebtListViewModel(repository, repository.creation)
         advanceUntilIdle()
-        val next = requireNotNull(repository.access.value).let {
+        val next = requireNotNull(repository.creation.access.value).let {
             it.copy(binding = it.binding.copy(ledgerId = "next", bindingRevision = "binding-2"))
         }
         val pending = PendingDebtCreation(
@@ -160,8 +162,8 @@ class DebtCreateContinuityViewModelTest {
         )
 
         // Both sources are current by collection time, but Room's queued callback runs first.
-        repository.pendingCreations.value = DebtCreationQueueSnapshot(next.binding, listOf(pending))
-        repository.access.value = next
+        repository.creation.pendingCreations.value = DebtCreationQueueSnapshot(next.binding, listOf(pending))
+        repository.creation.access.value = next
         advanceUntilIdle()
 
         assertEquals(listOf(pending), viewModel.state.value.pendingCreations)

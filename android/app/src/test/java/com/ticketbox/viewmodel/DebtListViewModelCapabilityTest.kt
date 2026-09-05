@@ -52,7 +52,7 @@ class DebtListViewModelCapabilityTest {
             createResult = Result.success(Unit),
         )
         repo.listCapability = "JPY"
-        val viewModel = DebtListViewModel(repo, repo)
+        val viewModel = DebtListViewModel(repo, repo.creation)
         advanceUntilIdle()
 
         assertTrue(viewModel.state.value.debts.isEmpty())
@@ -64,7 +64,7 @@ class DebtListViewModelCapabilityTest {
         viewModel.updateDraftAmount("1200")
         viewModel.submitDraft()
         advanceUntilIdle()
-        assertEquals(1_200L, repo.createDrafts.single().principalAmountCents)
+        assertEquals(1_200L, repo.creation.createDrafts.single().principalAmountCents)
     }
 
     @Test
@@ -75,7 +75,7 @@ class DebtListViewModelCapabilityTest {
             createResult = Result.success(Unit),
         )
         repo.listCapability = "JPY"
-        val viewModel = DebtListViewModel(repo, repo)
+        val viewModel = DebtListViewModel(repo, repo.creation)
         advanceUntilIdle()
 
         assertEquals(true, viewModel.state.value.homeCurrencyResolved)
@@ -84,7 +84,7 @@ class DebtListViewModelCapabilityTest {
         viewModel.updateDraftAmount("1200")
         viewModel.submitDraft()
         advanceUntilIdle()
-        assertEquals(1_200L, repo.createDrafts.single().principalAmountCents)
+        assertEquals(1_200L, repo.creation.createDrafts.single().principalAmountCents)
     }
 
     @Test
@@ -95,7 +95,7 @@ class DebtListViewModelCapabilityTest {
             listResult = Result.success(listOf(sampleDebt("cny-debt").copy(homeCurrencyCode = "CNY"))),
             createResult = Result.success(Unit),
         )
-        val viewModel = DebtListViewModel(repo, repo)
+        val viewModel = DebtListViewModel(repo, repo.creation)
         advanceUntilIdle()
         assertEquals(true, viewModel.state.value.homeCurrencyResolved)
 
@@ -110,7 +110,7 @@ class DebtListViewModelCapabilityTest {
         assertEquals("小王", viewModel.state.value.addDraft.counterpartyLabel)
         viewModel.submitDraft()
         advanceUntilIdle()
-        assertEquals(1, repo.createDrafts.size)
+        assertEquals(1, repo.creation.createDrafts.size)
     }
 
     @Test
@@ -123,7 +123,7 @@ class DebtListViewModelCapabilityTest {
             createResult = Result.success(Unit),
         )
         repo.listCapability = "CNY"
-        val viewModel = DebtListViewModel(repo, repo)
+        val viewModel = DebtListViewModel(repo, repo.creation)
         advanceUntilIdle()
 
         assertEquals(false, viewModel.state.value.homeCurrencyResolved)
@@ -134,7 +134,7 @@ class DebtListViewModelCapabilityTest {
         viewModel.updateDraftAmount("1200")
         viewModel.submitDraft()
         advanceUntilIdle()
-        assertTrue(repo.createDrafts.isEmpty())
+        assertTrue(repo.creation.createDrafts.isEmpty())
 
         repo.listCapability = "JPY"
         viewModel.refresh()
@@ -143,7 +143,7 @@ class DebtListViewModelCapabilityTest {
         assertEquals(CurrencyCode.JPY, viewModel.state.value.addDraft.homeCurrency)
         viewModel.submitDraft()
         advanceUntilIdle()
-        assertEquals(1_200L, repo.createDrafts.single().principalAmountCents)
+        assertEquals(1_200L, repo.creation.createDrafts.single().principalAmountCents)
     }
 
     @Test
@@ -152,7 +152,7 @@ class DebtListViewModelCapabilityTest {
         // 禁止 fromStorageKey 式静默落 CNY（ADR-0061 C03），创建保持阻断。
         val repo = FakeDebtActions(listResult = Result.success(emptyList()))
         repo.listCapability = "XXX"
-        val viewModel = DebtListViewModel(repo, repo)
+        val viewModel = DebtListViewModel(repo, repo.creation)
         advanceUntilIdle()
 
         assertEquals(false, viewModel.state.value.homeCurrencyResolved)
@@ -162,7 +162,7 @@ class DebtListViewModelCapabilityTest {
         viewModel.updateDraftAmount("1200")
         viewModel.submitDraft()
         advanceUntilIdle()
-        assertTrue(repo.createDrafts.isEmpty())
+        assertTrue(repo.creation.createDrafts.isEmpty())
     }
 
     @Test
@@ -179,7 +179,7 @@ class DebtListViewModelCapabilityTest {
             ),
         )
         repo.listCapability = "JPY"
-        val viewModel = DebtListViewModel(repo, repo)
+        val viewModel = DebtListViewModel(repo, repo.creation)
         advanceUntilIdle()
 
         assertEquals(false, viewModel.state.value.homeCurrencyResolved)
@@ -188,7 +188,7 @@ class DebtListViewModelCapabilityTest {
         viewModel.updateDraftAmount("1200")
         viewModel.submitDraft()
         advanceUntilIdle()
-        assertTrue(repo.createDrafts.isEmpty())
+        assertTrue(repo.creation.createDrafts.isEmpty())
     }
 
     @Test
@@ -204,7 +204,7 @@ class DebtListViewModelCapabilityTest {
             ),
         )
         repo.listCapability = "JPY"
-        val viewModel = DebtListViewModel(repo, repo)
+        val viewModel = DebtListViewModel(repo, repo.creation)
         advanceUntilIdle()
 
         assertEquals(false, viewModel.state.value.homeCurrencyResolved)
@@ -213,7 +213,7 @@ class DebtListViewModelCapabilityTest {
         viewModel.updateDraftAmount("1200")
         viewModel.submitDraft()
         advanceUntilIdle()
-        assertTrue(repo.createDrafts.isEmpty())
+        assertTrue(repo.creation.createDrafts.isEmpty())
     }
 
     @Test
@@ -226,7 +226,7 @@ class DebtListViewModelCapabilityTest {
             listResult = Result.success(listOf(sampleDebt("cny-debt").copy(homeCurrencyCode = "CNY"))),
         )
         repo.listCapability = "VND"
-        val viewModel = DebtListViewModel(repo, repo)
+        val viewModel = DebtListViewModel(repo, repo.creation)
         advanceUntilIdle()
 
         assertEquals(false, viewModel.state.value.homeCurrencyResolved)
@@ -235,7 +235,7 @@ class DebtListViewModelCapabilityTest {
         viewModel.updateDraftAmount("1200")
         viewModel.submitDraft()
         advanceUntilIdle()
-        assertTrue(repo.createDrafts.isEmpty())
+        assertTrue(repo.creation.createDrafts.isEmpty())
     }
 
     @Test
@@ -247,7 +247,7 @@ class DebtListViewModelCapabilityTest {
             createResult = Result.success(Unit),
         )
         repo.listCapability = ""
-        val viewModel = DebtListViewModel(repo, repo)
+        val viewModel = DebtListViewModel(repo, repo.creation)
         advanceUntilIdle()
 
         assertEquals(true, viewModel.state.value.homeCurrencyResolved)
@@ -256,6 +256,6 @@ class DebtListViewModelCapabilityTest {
         viewModel.updateDraftAmount("1200")
         viewModel.submitDraft()
         advanceUntilIdle()
-        assertEquals(1_200L, repo.createDrafts.single().principalAmountCents)
+        assertEquals(1_200L, repo.creation.createDrafts.single().principalAmountCents)
     }
 }

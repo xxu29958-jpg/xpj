@@ -24,7 +24,7 @@ class DebtListLensTest {
     @Test
     fun personalTaskKeepsItsServerLensOnReloadAndRefresh() = runTest(dispatcher) {
         val repository = FakeDebtActions()
-        val viewModel = DebtListViewModel(repository, repository, DebtListLens.Payables)
+        val viewModel = DebtListViewModel(repository, repository.creation, DebtListLens.Payables)
         advanceUntilIdle()
         viewModel.reload()
         advanceUntilIdle()
@@ -38,7 +38,7 @@ class DebtListLensTest {
     @Test
     fun existingConsumersKeepTheWholeLedgerByDefault() = runTest(dispatcher) {
         val repository = FakeDebtActions()
-        DebtListViewModel(repository, repository)
+        DebtListViewModel(repository, repository.creation)
         advanceUntilIdle()
 
         assertEquals(listOf(DebtListLens.Ledger), repository.listLenses)

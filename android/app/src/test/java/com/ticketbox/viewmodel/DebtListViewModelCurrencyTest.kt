@@ -54,7 +54,7 @@ class DebtListViewModelCurrencyTest {
             createResult = Result.success(Unit),
         )
         repo.listGate = gate
-        val viewModel = DebtListViewModel(repo, repo)
+        val viewModel = DebtListViewModel(repo, repo.creation)
         runCurrent()
         // 加载未回：草稿仍是兜底币种，币种未确认。
         assertEquals(CurrencyCode.CNY, viewModel.state.value.addDraft.homeCurrency)
@@ -70,7 +70,7 @@ class DebtListViewModelCurrencyTest {
         viewModel.updateDraftAmount("1200")
         viewModel.submitDraft()
         advanceUntilIdle()
-        assertEquals(1_200L, repo.createDrafts.single().principalAmountCents)
+        assertEquals(1_200L, repo.creation.createDrafts.single().principalAmountCents)
     }
 
     @Test
@@ -82,7 +82,7 @@ class DebtListViewModelCurrencyTest {
             listResult = Result.success(listOf(sampleDebt("jpy-debt").copy(homeCurrencyCode = "JPY"))),
         )
         repo.listGate = gate
-        val viewModel = DebtListViewModel(repo, repo)
+        val viewModel = DebtListViewModel(repo, repo.creation)
         runCurrent()
 
         // 加载未回时用户已按兜底口径输入（"12.01" 在 CNY 是 1201 分，在 JPY
@@ -100,7 +100,7 @@ class DebtListViewModelCurrencyTest {
         // 提前重校验后：金额在新币种下不合法，提交仍被拦，createDebt 不可达。
         viewModel.submitDraft()
         advanceUntilIdle()
-        assertTrue(repo.createDrafts.isEmpty())
+        assertTrue(repo.creation.createDrafts.isEmpty())
     }
 
     @Test
@@ -112,7 +112,7 @@ class DebtListViewModelCurrencyTest {
             createResult = Result.success(Unit),
         )
         repo.listGate = gate
-        val viewModel = DebtListViewModel(repo, repo)
+        val viewModel = DebtListViewModel(repo, repo.creation)
         runCurrent()
 
         viewModel.updateDraftCounterparty("小王")
@@ -126,7 +126,7 @@ class DebtListViewModelCurrencyTest {
         viewModel.submitDraft()
         advanceUntilIdle()
         // JPY 整数解析：1200 minor，不是 CNY 口径的 120000。
-        assertEquals(1_200L, repo.createDrafts.single().principalAmountCents)
+        assertEquals(1_200L, repo.creation.createDrafts.single().principalAmountCents)
     }
 
     @Test
@@ -139,27 +139,27 @@ class DebtListViewModelCurrencyTest {
             createResult = Result.success(Unit),
         )
         repo.listGate = gate
-        val viewModel = DebtListViewModel(repo, repo)
+        val viewModel = DebtListViewModel(repo, repo.creation)
         runCurrent()
 
         viewModel.updateDraftCounterparty("小王")
         viewModel.updateDraftAmount("1200")
         viewModel.submitDraft()
         advanceUntilIdle()
-        assertTrue(repo.createDrafts.isEmpty())
+        assertTrue(repo.creation.createDrafts.isEmpty())
 
         gate.complete(Unit)
         advanceUntilIdle()
         viewModel.submitDraft()
         advanceUntilIdle()
-        assertEquals(1_200L, repo.createDrafts.single().principalAmountCents)
+        assertEquals(1_200L, repo.creation.createDrafts.single().principalAmountCents)
     }
 
     @Test
     fun refreshFailureKeepsCreationDisabled() = runTest(dispatcher) {
         // P1-3：加载失败时币种仍未知，创建保持禁用（不回落 CNY 口径提交），重试成功才放开。
         val repo = FakeDebtActions(listResult = Result.failure(RuntimeException("offline")))
-        val viewModel = DebtListViewModel(repo, repo)
+        val viewModel = DebtListViewModel(repo, repo.creation)
         advanceUntilIdle()
         assertEquals(false, viewModel.state.value.homeCurrencyResolved)
 
@@ -167,7 +167,7 @@ class DebtListViewModelCurrencyTest {
         viewModel.updateDraftAmount("1200")
         viewModel.submitDraft()
         advanceUntilIdle()
-        assertTrue(repo.createDrafts.isEmpty())
+        assertTrue(repo.creation.createDrafts.isEmpty())
 
         repo.listResult = Result.success(listOf(sampleDebt("jpy-debt").copy(homeCurrencyCode = "JPY")))
         viewModel.refresh()
@@ -175,7 +175,7 @@ class DebtListViewModelCurrencyTest {
         assertEquals(true, viewModel.state.value.homeCurrencyResolved)
         viewModel.submitDraft()
         advanceUntilIdle()
-        assertEquals(1_200L, repo.createDrafts.single().principalAmountCents)
+        assertEquals(1_200L, repo.creation.createDrafts.single().principalAmountCents)
     }
 
     @Test
@@ -187,7 +187,7 @@ class DebtListViewModelCurrencyTest {
         // 带来 record 级权威币种。（新服务端空账本由信封 capability 放行，见
         // emptyLedgerResolvesCurrencyFromEnvelopeCapability。）
         val repo = FakeDebtActions(listResult = Result.success(emptyList()))
-        val viewModel = DebtListViewModel(repo, repo)
+        val viewModel = DebtListViewModel(repo, repo.creation)
         advanceUntilIdle()
 
         assertTrue(viewModel.state.value.debts.isEmpty())
@@ -198,7 +198,7 @@ class DebtListViewModelCurrencyTest {
         viewModel.updateDraftAmount("1200")
         viewModel.submitDraft()
         advanceUntilIdle()
-        assertTrue(repo.createDrafts.isEmpty())
+        assertTrue(repo.creation.createDrafts.isEmpty())
 
         // 首条记录落地带来 record 级权威币种后放开：草稿重绑 JPY，按零小数口径提交。
         repo.listResult = Result.success(listOf(sampleDebt("jpy-debt").copy(homeCurrencyCode = "JPY")))
@@ -208,7 +208,7 @@ class DebtListViewModelCurrencyTest {
         assertEquals(CurrencyCode.JPY, viewModel.state.value.addDraft.homeCurrency)
         viewModel.submitDraft()
         advanceUntilIdle()
-        assertEquals(1_200L, repo.createDrafts.single().principalAmountCents)
+        assertEquals(1_200L, repo.creation.createDrafts.single().principalAmountCents)
     }
 
     @Test
@@ -219,7 +219,7 @@ class DebtListViewModelCurrencyTest {
         val repo = FakeDebtActions(
             listResult = Result.success(listOf(sampleDebt("jpy-debt").copy(homeCurrencyCode = "JPY"))),
         )
-        val viewModel = DebtListViewModel(repo, repo)
+        val viewModel = DebtListViewModel(repo, repo.creation)
         advanceUntilIdle()
 
         assertEquals("JPY", viewModel.state.value.debts.single().homeCurrencyCode)
@@ -236,7 +236,7 @@ class DebtListViewModelCurrencyTest {
             listResult = Result.success(listOf(sampleDebt("jpy-debt").copy(homeCurrencyCode = "JPY"))),
             createResult = Result.success(Unit),
         )
-        val viewModel = DebtListViewModel(repo, repo)
+        val viewModel = DebtListViewModel(repo, repo.creation)
         advanceUntilIdle()
         assertEquals(true, viewModel.state.value.homeCurrencyResolved)
 
@@ -258,7 +258,7 @@ class DebtListViewModelCurrencyTest {
         assertEquals(false, viewModel.state.value.homeCurrencyResolved)
         viewModel.submitDraft()
         advanceUntilIdle()
-        assertTrue(repo.createDrafts.isEmpty())
+        assertTrue(repo.creation.createDrafts.isEmpty())
 
         // 新账本响应落地：创建重新放开，全新草稿重绑到新账本权威币种。
         gate.complete(Unit)
@@ -273,7 +273,7 @@ class DebtListViewModelCurrencyTest {
         // 未确认时预填必按兜底口径格式化、重绑后静默变义，故空账本期间入口拒绝开启；
         // 首条记录带来 record 级权威币种后放行。
         val repo = FakeDebtActions(listResult = Result.success(emptyList()))
-        val viewModel = DebtListViewModel(repo, repo)
+        val viewModel = DebtListViewModel(repo, repo.creation)
         advanceUntilIdle()
 
         assertEquals(false, viewModel.state.value.homeCurrencyResolved)
