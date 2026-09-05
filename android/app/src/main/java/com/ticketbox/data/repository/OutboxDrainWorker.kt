@@ -7,6 +7,7 @@ import androidx.work.WorkerParameters
 import com.ticketbox.TicketboxApplication
 import com.ticketbox.security.LocalSessionRecord
 import com.ticketbox.security.isBusinessReady
+import com.ticketbox.data.remote.dto.RuntimeWriteCompatibility
 import kotlinx.coroutines.CancellationException
 
 /**
@@ -143,7 +144,7 @@ class OutboxDrainWorker(
 
         internal suspend fun runCompatibleDrain(
             logWarning: (String, Throwable) -> Unit = { _, _ -> },
-            compatibility: suspend () -> String,
+            compatibility: suspend () -> RuntimeWriteCompatibility,
             drain: suspend () -> DrainSummary,
         ): DrainOutcome {
             val conclusion = try {
@@ -154,7 +155,7 @@ class OutboxDrainWorker(
                 logWarning("runtime compatibility unavailable, will retry", e)
                 return DrainOutcome.RETRY
             }
-            if (conclusion != "compatible") return DrainOutcome.RETRY
+            if (!conclusion.canWrite) return DrainOutcome.RETRY
             return runDrain(logWarning, drain)
         }
 

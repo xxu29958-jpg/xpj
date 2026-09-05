@@ -25,6 +25,10 @@ axes:
   any prior session — and they don't depend on the owner-default ledger
   either. Public host is fine.
 
+- ``desktop-installation-owner`` — Desktop bridge entry restricted to the
+  installation claim account; authorization is exercised by the currency
+  adoption product tests.
+
 This file is the **single source of truth** for that classification. The
 tests below assert:
 
@@ -61,6 +65,7 @@ Classification = Literal[
     "media",
     "auth",
     "owner-live-provider",
+    "desktop-installation-owner",
 ]
 
 
@@ -76,6 +81,8 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("GET", "/web"): "local-only-rendering",
     ("GET", "/web/"): "local-only-rendering",
     ("GET", "/web/library"): "local-only-rendering",
+    ("GET", "/web/currency-adoption"): "desktop-installation-owner",
+    ("POST", "/web/currency-adoption"): "desktop-installation-owner",
     # Account flows
     ("GET", "/web/confirmed"): "local-only-rendering",
     ("POST", "/web/confirmed/batch-update"): "writer-only",

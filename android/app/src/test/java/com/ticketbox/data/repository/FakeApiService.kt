@@ -204,7 +204,15 @@ internal class FakeApiService(
     }
 
     override suspend fun runtimeCompatibility(): RuntimeCompatibilityDto =
-        RuntimeCompatibilityDto(writeCompatibility = "compatible")
+        RuntimeCompatibilityDto(
+            apiVersion = "2026-08-02",
+            writeCompatibility = "compatible",
+            capabilities = com.ticketbox.data.remote.dto.RuntimeProductCapabilitiesDto(
+                currency = com.ticketbox.data.remote.dto.RuntimeCurrencyCapabilityDto(
+                    requestBinding = "1:1:CNY",
+                ),
+            ),
+        )
 
     override suspend fun privateStatus(): com.ticketbox.data.remote.dto.StatusPrivateDto = unsupported()
 

@@ -1,6 +1,7 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.data.repository.OutboxDrainWorker.DrainOutcome
+import com.ticketbox.data.remote.dto.RuntimeWriteCompatibility
 import com.ticketbox.security.LocalSessionIdentity
 import com.ticketbox.security.LocalSessionRecord
 import com.ticketbox.security.StoredSessionToken
@@ -215,7 +216,7 @@ class OutboxDrainWorkerTest {
         var dispatched = false
 
         val outcome = OutboxDrainWorker.runCompatibleDrain(
-            compatibility = { "owner_action_required" },
+            compatibility = { RuntimeWriteCompatibility.blocked("owner_action_required") },
         ) {
             dispatched = true
             summary(DrainSummaryFixture(attempted = 1, done = 1))
@@ -228,7 +229,7 @@ class OutboxDrainWorkerTest {
     @Test
     fun `compatible runtime proceeds to the existing drain owner`() = runTest {
         val outcome = OutboxDrainWorker.runCompatibleDrain(
-            compatibility = { "compatible" },
+            compatibility = { RuntimeWriteCompatibility.compatible("2026-08-02", "1:1:JPY") },
         ) {
             summary(DrainSummaryFixture(attempted = 1, done = 1))
         }

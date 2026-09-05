@@ -3,6 +3,9 @@ package com.ticketbox.data.remote
 import com.squareup.moshi.Moshi
 import com.ticketbox.data.remote.dto.addExpenseCorrectionWireAdapters
 import com.ticketbox.data.remote.dto.addRecurringWireAdapters
+import com.ticketbox.data.remote.dto.RuntimeCompatibilityDto
+import com.ticketbox.data.remote.dto.ErrorDto
+import com.ticketbox.data.remote.dto.toWriteCompatibility
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.BuildConfig
 import com.ticketbox.security.RequestAuthSnapshot
@@ -24,6 +27,15 @@ private val RETRYABLE_GET_STATUS_CODES = setOf(502, 503, 504)
 private const val GET_IO_RETRY_COUNT = 2
 private const val GET_IO_RETRY_DELAY_MS = 350L
 internal const val LEDGER_ID_HEADER = "X-Ticketbox-Ledger-ID"
+internal const val TICKETBOX_API_VERSION_HEADER = "Ticketbox-Api-Version"
+internal const val TICKETBOX_CURRENCY_BINDING_HEADER = "Ticketbox-Currency-Binding"
+internal const val CURRENT_TICKETBOX_API_VERSION = "2026-08-02"
+private val MUTATING_HTTP_METHODS = setOf("POST", "PUT", "PATCH", "DELETE")
+private val runtimeMoshi = Moshi.Builder()
+    .add(KotlinJsonAdapterFactory())
+    .build()
+private val runtimeCompatibilityAdapter = runtimeMoshi.adapter(RuntimeCompatibilityDto::class.java)
+private val runtimeErrorAdapter = runtimeMoshi.adapter(ErrorDto::class.java)
 
 internal fun buildApiHttpClient(
     routeProvider: BackendNetworkRouteProvider?,
@@ -41,6 +53,7 @@ internal fun buildApiHttpClient(
                 credentials,
             ),
         )
+        .addInterceptor(RuntimeNegotiationInterceptor())
         .addInterceptor(NonVpnGetFallbackInterceptor(routeProvider))
         .addInterceptor(GetIoRetryInterceptor(GET_IO_RETRY_COUNT, GET_IO_RETRY_DELAY_MS))
         .addInterceptor(retryableGetStatusInterceptor())
@@ -117,6 +130,59 @@ private fun appendBearerToken(requestBuilder: Request.Builder, token: String?) {
 private fun appendLedgerId(requestBuilder: Request.Builder, ledgerId: String?) {
     ledgerId?.trim()?.takeIf { it.isNotEmpty() }?.let { selectedLedger ->
         requestBuilder.header(LEDGER_ID_HEADER, selectedLedger)
+    }
+}
+
+internal class RuntimeNegotiationInterceptor : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val request = chain.request()
+        if (
+            request.method !in MUTATING_HTTP_METHODS ||
+            request.header("Authorization") == null ||
+            request.url.encodedPath.startsWith("/api/auth/") ||
+            request.header(TICKETBOX_API_VERSION_HEADER) != null
+        ) {
+            return chain.proceed(request)
+        }
+        val compatibilityResponse = chain.proceed(compatibilityRequest(request))
+        if (!compatibilityResponse.isSuccessful) {
+            compatibilityResponse.close()
+            throw IOException("Runtime compatibility is temporarily unavailable.")
+        }
+        val compatibility = compatibilityResponse.use { response ->
+            response.body.string().let(runtimeCompatibilityAdapter::fromJson)?.toWriteCompatibility()
+        }
+        if (compatibility?.canWrite != true) {
+            return chain.proceed(request)
+        }
+        val response = chain.proceed(
+            request.newBuilder()
+                .header(TICKETBOX_API_VERSION_HEADER, CURRENT_TICKETBOX_API_VERSION)
+                .header(TICKETBOX_CURRENCY_BINDING_HEADER, checkNotNull(compatibility.requestBinding))
+                .build(),
+        )
+        if (response.code == 409 && runCatching {
+                runtimeErrorAdapter.fromJson(response.peekBody(64 * 1024).string())?.error
+            }.getOrNull() == "currency_binding_revision_conflict"
+        ) {
+            response.close()
+            // Another first money write may activate the binding after our read.
+            // The server rejected this command without applying it; keep its intent retryable.
+            throw IOException("Currency binding changed; retry with the current binding.")
+        }
+        return response
+    }
+
+    private fun compatibilityRequest(request: Request): Request {
+        val url = request.url.newBuilder()
+            .encodedPath("/api/system/runtime-compatibility")
+            .query(null)
+            .build()
+        val builder = Request.Builder().url(url).get()
+        listOf("Authorization", LEDGER_ID_HEADER, "User-Agent").forEach { name ->
+            request.header(name)?.let { value -> builder.header(name, value) }
+        }
+        return builder.build()
     }
 }
 

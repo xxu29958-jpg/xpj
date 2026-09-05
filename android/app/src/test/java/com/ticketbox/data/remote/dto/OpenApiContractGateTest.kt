@@ -81,6 +81,8 @@ class OpenApiContractGateTest {
         // required 为空,反向检查零压力;正向防备份三字段被后端改名漂移)。
         Pairing(StatusPrivateDto::class, "HealthResponse"),
         Pairing(RuntimeCompatibilityDto::class, "RuntimeCompatibilitySnapshotResponse"),
+        Pairing(RuntimeProductCapabilitiesDto::class, "RuntimeProductCapabilitiesResponse"),
+        Pairing(RuntimeCurrencyCapabilityDto::class, "RuntimeCurrencyCapabilityResponse"),
         // 轴7 发邀请:create 请求是 extra=forbid(多字段=422),正向检查即 forbid 防线;
         // 响应含一次性明文 invite_token,字段漂移=邀请链路静默断。
         Pairing(InvitationCreateRequestDto::class, "InvitationCreateRequest"),
@@ -207,11 +209,20 @@ class OpenApiContractGateTest {
         "RuntimeCompatibilitySnapshotResponse" to setOf(
             "contract",
             "observed_at",
-            "api_version",
             "api_version_header",
             "read_compatibility",
             "legacy_write_compatibility",
-            "capabilities",
+        ),
+        "RuntimeCurrencyCapabilityResponse" to setOf(
+            "home_currency_code",
+            "minor_unit_exponent",
+            "rounding_mode",
+            "contract_version",
+            "binding_revision",
+            "request_binding_header",
+            "initialization_offer",
+            "read_compatibility",
+            "write_compatibility",
         ),
     )
 

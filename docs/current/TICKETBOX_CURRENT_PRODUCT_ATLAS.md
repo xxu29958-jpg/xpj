@@ -257,15 +257,15 @@ sequenceDiagram
     D-->>O: Money features restored
     A->>C: Read runtime compatibility before drain
     alt compatible
-        C-->>A: compatible
-        A->>C: Replay existing durable intents
+        C-->>A: compatible + API version + currency binding
+        A->>C: Replay existing durable intents with negotiated headers
     else adoption still required or read unavailable
         C-->>A: owner action required / unavailable
-        A-->>A: Preserve rows and retry later
+        A-->>A: Preserve rows; show Owner action when required; retry later
     end
 ```
 
-The installation claim account is the authority; the browser form is only its Desktop consumer. A naked browser, a different account and the retired maintenance API cannot adopt. Evidence conflicts keep every amount unchanged and route the Owner to the existing Desktop diagnostics shortcut. Android does not invent an adoption flow: it reads the shared compatibility conclusion before draining and preserves durable intent until the Owner completes the Desktop task.
+The installation claim account is the authority; the browser form is only its Desktop consumer. A naked browser, a different account and the retired maintenance API cannot adopt. Evidence conflicts keep every amount unchanged and route the Owner to the existing Desktop diagnostics shortcut. Android reads the shared compatibility conclusion before draining and shows the installation Owner's next step in Sync Status. Immediate and queued writes negotiate the current API version and currency binding. A failed negotiation read or a binding activation race remains retryable, preserving the queued intent.
 
 ### Missing FX rate recovery
 
