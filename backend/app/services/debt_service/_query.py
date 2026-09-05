@@ -181,6 +181,7 @@ def debt_response(debt: Debt, *, remaining: int, paid: int, is_forgiven: bool = 
         counterparty_type=debt.counterparty_type,
         counterparty_account_id=debt.counterparty_account_id,
         counterparty_label=debt.counterparty_label,
+        note=debt.note,
         principal_amount_cents=_materialize_total(
             debt.principal_amount_cents, label="debt_response.principal", for_write=False
         ),

@@ -176,6 +176,7 @@ def create_debt(
         counterparty_type=counterparty_type,
         counterparty_account_id=counterparty_account_id,
         counterparty_label=counterparty_label,
+        note=(payload.note or "").strip() or None,
         # 8e-6e: repayment-rhythm classification (default 'unspecified'; the Literal on
         # DebtCreateRequest already constrains the value, the DB CHECK is the backstop).
         debt_kind=payload.debt_kind,

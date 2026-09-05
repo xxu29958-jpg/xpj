@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
@@ -20,10 +19,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,13 +40,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
-import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.MessageTone
-import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.components.AppAmountInput
-import com.ticketbox.ui.components.AppAmountInputActions
-import com.ticketbox.ui.components.AppAmountInputState
-import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSectionGroup
@@ -62,13 +52,7 @@ import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.AppScrollableContentChrome
 import com.ticketbox.ui.components.AppScrollableContentLayout
 import com.ticketbox.ui.components.AppScrollableRefreshState
-import com.ticketbox.ui.components.AppSheetAction
-import com.ticketbox.ui.components.AppSheetActionRow
-import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.components.AppStatusBanner
-import com.ticketbox.ui.components.AppTextInput
-import com.ticketbox.ui.components.AppTextInputActions
-import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.PrimaryCtaButton
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppIconSize
@@ -78,12 +62,6 @@ import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.DebtListUiState
 import com.ticketbox.viewmodel.DebtListViewModel
-import com.ticketbox.viewmodel.updateDraftAmount
-import com.ticketbox.viewmodel.updateDraftCounterparty
-import com.ticketbox.viewmodel.updateDraftDirection
-import com.ticketbox.viewmodel.updateDraftInstallmentCount
-import com.ticketbox.viewmodel.updateDraftInstallmentPeriod
-import com.ticketbox.viewmodel.updateDraftKind
 import kotlinx.coroutines.delay
 
 /** 操作成功提示的展示时长，到点自动收起，与既有 undo 卡片的定时关闭同一惯例。 */
@@ -433,120 +411,6 @@ private fun ExternalDebtRow(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-internal fun DebtAddSheet(
-    state: DebtListUiState,
-    viewModel: DebtListViewModel,
-    sheetState: SheetState,
-    onClose: () -> Unit,
-) {
-    ModalBottomSheet(onDismissRequest = onClose, sheetState = sheetState) {
-        DebtDraftForm(
-            state = state,
-            viewModel = viewModel,
-            onSubmit = { viewModel.submitDraft() },
-            onCancel = onClose,
-        )
-    }
-}
-
-@Composable
-private fun DebtDraftForm(
-    state: DebtListUiState,
-    viewModel: DebtListViewModel,
-    onSubmit: () -> Unit,
-    onCancel: () -> Unit,
-) {
-    val draft = state.addDraft
-    AppSheetScaffold(title = stringResource(R.string.debt_create_sheet_title)) {
-        DebtDirectionField(selected = draft.direction, onSelect = viewModel::updateDraftDirection)
-        AppTextInput(
-            state = AppTextInputState(
-                label = stringResource(R.string.debt_create_label_counterparty),
-                value = draft.counterpartyLabel,
-            ),
-            actions = AppTextInputActions(onValueChange = viewModel::updateDraftCounterparty),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        AppAmountInput(
-            state = AppAmountInputState(
-                label = stringResource(R.string.debt_create_label_amount),
-                // 显示与解析同源于草稿币种（VM 由账本欠款回填/重绑），不读恒 Base 的
-                // 路由级 display（PR#255 P1-3）。
-                currency = draft.homeCurrency,
-                value = draft.amountYuanInput,
-                placeholder = stringResource(R.string.components_amount_input_placeholder),
-                isError = draft.validationError != null,
-            ),
-            actions = AppAmountInputActions(onValueChange = viewModel::updateDraftAmount),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        DebtKindCreateField(selected = draft.kind, onSelect = viewModel::updateDraftKind)
-        DebtInstallmentCountField(kind = draft.kind, countInput = draft.installmentCountInput, onValueChange = viewModel::updateDraftInstallmentCount)
-        DebtInstallmentPeriodField(kind = draft.kind, periodInput = draft.installmentPeriodInput, onValueChange = viewModel::updateDraftInstallmentPeriod)
-        draft.validationError?.let { err ->
-            AppStatusBanner(message = err, tone = MessageTone.Danger)
-        }
-        // 空账本 fail closed（PR#255 R4 P1）：列表加载完成但币种仍无 record 级权威依据
-        // （空账本）时，说明创建为何禁用 —— 兜底 CNY 口径提交会放大零小数账本 100×。
-        // R1 用户可见重试：加载失败同样走到这里，refresh 重试保留草稿、不碰提交门。
-        if (!state.homeCurrencyResolved && !state.isLoading) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                AppStatusBanner(
-                    message = UiText.res(R.string.debt_create_currency_unconfirmed),
-                    tone = MessageTone.Info,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(onClick = viewModel::refresh, enabled = !state.isSubmitting) {
-                    Text(stringResource(R.string.common_retry))
-                }
-            }
-        }
-        AppSheetActionRow(
-            primary = AppSheetAction(
-                text = if (state.isSubmitting) {
-                    stringResource(R.string.debt_create_submitting)
-                } else {
-                    stringResource(R.string.debt_create_save)
-                },
-                onClick = onSubmit,
-                // 账本币种未确认（初始/切换加载未成功）禁用创建：兜底 CNY 口径提交到
-                // JPY/KRW 账本会放大 100×（PR#255 P1-3，VM submitDraft 另有同条件防线）。
-                enabled = !state.isSubmitting && state.homeCurrencyResolved,
-            ),
-            secondary = AppSheetAction(
-                text = stringResource(R.string.common_cancel),
-                onClick = onCancel,
-                enabled = !state.isSubmitting,
-            ),
-        )
-    }
-}
-
-@Composable
-private fun DebtDirectionField(selected: String, onSelect: (String) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
-        Text(
-            stringResource(R.string.debt_create_label_direction),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-        ) {
-            listOf(DebtDirections.I_OWE, DebtDirections.OWED_TO_ME).forEach { direction ->
-                AppFilterChip(
-                    selected = selected == direction,
-                    onClick = { onSelect(direction) },
-                    label = stringResource(debtDirectionLabelRes(direction)),
-                )
-            }
         }
     }
 }

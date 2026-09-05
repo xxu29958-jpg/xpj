@@ -2175,6 +2175,11 @@
             "default": "",
             "title": "Ledger Id",
             "type": "string"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
           }
         },
         "title": "Body_web_create_debt_web_debts_post",
@@ -6345,6 +6350,18 @@
             ],
             "title": "Installment Period Months"
           },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
           "original_amount": {
             "anyOf": [
               {
@@ -6866,6 +6883,17 @@
               }
             ],
             "title": "Ledger Id"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
           },
           "original_amount_minor": {
             "anyOf": [
@@ -14313,6 +14341,17 @@
               }
             ],
             "title": "Ledger Id"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
           },
           "original_amount_minor": {
             "anyOf": [

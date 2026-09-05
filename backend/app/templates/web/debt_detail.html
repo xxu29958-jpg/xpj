@@ -72,6 +72,13 @@
   </div>
 </header>
 
+{% if debt.note %}
+<section class="product-panel product-panel--padded" aria-labelledby="debt-context-title">
+  <h2 id="debt-context-title" class="product-section-title">往来说明</h2>
+  <p class="debt-context-text">{{ debt.note }}</p>
+</section>
+{% endif %}
+
 {% if flash_message %}
 <div id="debt-action-feedback" class="product-feedback{% if flash_type == 'error' %} product-feedback--error{% endif %}" role="{% if flash_type == 'error' %}alert{% else %}status{% endif %}">{{ flash_message }}</div>
 {% endif %}

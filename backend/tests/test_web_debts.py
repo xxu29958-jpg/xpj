@@ -240,6 +240,7 @@ def _stub_debt(**overrides) -> SimpleNamespace:
     base = {
         "public_id": "dbt_1",
         "counterparty_label": "招商信用卡",
+        "note": None,
         "counterparty_type": "external",
         "direction": "i_owe",
         "status": "open",

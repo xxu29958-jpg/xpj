@@ -153,6 +153,7 @@ class Debt(Base):
         Integer, ForeignKey("accounts.id", name="fk_debts_counterparty_account"), nullable=True
     )
     counterparty_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # --- money: frozen home principal + original-currency provenance ---------
     principal_amount_cents: Mapped[int] = mapped_column(BigInteger, nullable=False)
