@@ -132,10 +132,11 @@ fun debtGoalViewModelFactory(
 @Suppress("UNCHECKED_CAST")
 fun debtViewModelFactory(
     repository: DebtActions,
+    creation: com.ticketbox.data.repository.DebtCreationActions,
     lens: DebtListLens = DebtListLens.Ledger,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return DebtListViewModel(repository, lens) as T
+        return DebtListViewModel(repository, creation, lens) as T
     }
 }
 

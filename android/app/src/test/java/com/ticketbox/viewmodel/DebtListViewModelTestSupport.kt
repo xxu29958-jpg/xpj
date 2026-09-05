@@ -1,9 +1,15 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.DebtActions
+import com.ticketbox.data.repository.DebtCreationActions
+import com.ticketbox.data.repository.DebtCreationQueueSnapshot
+import com.ticketbox.data.repository.DebtCreationReceipt
+import com.ticketbox.data.repository.LedgerAccessContext
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.DebtDraft
 import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.domain.model.Debt
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DebtBillSuggestion
 import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
@@ -11,6 +17,7 @@ import com.ticketbox.domain.model.DebtLinkStatuses
 import com.ticketbox.domain.model.DebtListLens
 import com.ticketbox.domain.model.DebtSourceTypes
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.MutableStateFlow
 
 // Shared fixtures for the DebtListViewModel test classes (split to stay inside the
 // detekt class-size budget; mirrors GlobalSearchViewModelTestSupport).
@@ -18,10 +25,10 @@ import kotlinx.coroutines.CompletableDeferred
 internal class FakeDebtActions(
     private val canModify: Boolean = true,
     var listResult: Result<List<Debt>> = Result.success(emptyList()),
-    var createResult: Result<Debt> = Result.success(sampleDebt()),
+    createResult: Result<Unit> = Result.success(Unit),
     var parseBillResult: Result<DebtBillSuggestion> = Result.success(blankBillSuggestion()),
 ) : DebtActions {
-    val createDrafts = mutableListOf<DebtDraft>()
+    val creation = FakeDebtCreationActions(canModify, createResult)
     val parseBillCalls = mutableListOf<String>()
     var listCalls = 0
     val listLenses = mutableListOf<DebtListLens>()
@@ -45,11 +52,6 @@ internal class FakeDebtActions(
     }
 
     override suspend fun getDebt(publicId: String): Result<Debt> = Result.success(sampleDebt(publicId))
-
-    override suspend fun createDebt(draft: DebtDraft): Result<Debt> {
-        createDrafts += draft
-        return createResult
-    }
 
     override suspend fun parseDebtBillImage(
         fileName: String,
@@ -91,6 +93,35 @@ internal class FakeDebtActions(
         expectedRowVersion: Long,
         debtKind: String,
     ): Result<Debt> = Result.success(sampleDebt(publicId))
+}
+
+/** The creation boundary owns its binding, pending projection and controlled local acknowledgement. */
+internal class FakeDebtCreationActions(
+    canModify: Boolean,
+    var createResult: Result<Unit>,
+) : DebtCreationActions {
+    val access = MutableStateFlow<LedgerAccessContext?>(
+        LedgerAccessContext(LogicalSessionBinding("https://example.test", "owner", "test-owner", "session-1", "binding-1"), canModify),
+    )
+    val pendingCreations = MutableStateFlow(DebtCreationQueueSnapshot(access.value?.binding))
+    val createDrafts = mutableListOf<DebtDraft>()
+    var createGate: CompletableDeferred<Unit>? = null
+
+    override fun currentAccess(): LedgerAccessContext? = access.value
+    override fun observeActiveLedgerAccess() = access
+    override fun observePendingCreations() = pendingCreations
+
+    override suspend fun createDebt(
+        expectedBinding: LogicalSessionBinding,
+        draft: DebtDraft,
+        homeCurrency: CurrencyCode,
+    ): Result<DebtCreationReceipt> {
+        createDrafts += draft
+        val captured = createResult
+        val receiptId = createDrafts.size.toLong()
+        createGate?.await()
+        return captured.map { DebtCreationReceipt(receiptId, expectedBinding) }
+    }
 }
 
 internal fun blankBillSuggestion(): DebtBillSuggestion = DebtBillSuggestion(

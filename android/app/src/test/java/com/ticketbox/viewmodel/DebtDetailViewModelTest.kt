@@ -1,7 +1,6 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.DebtActions
-import com.ticketbox.data.repository.DebtDraft
 import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Debt
@@ -787,7 +786,6 @@ private class FakeDebtDetailActions(
         return captured
     }
 
-    override suspend fun createDebt(draft: DebtDraft): Result<Debt> = Result.success(sampleDebt())
 
     override suspend fun parseDebtBillImage(
         fileName: String,

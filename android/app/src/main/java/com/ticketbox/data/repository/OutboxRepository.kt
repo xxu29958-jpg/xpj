@@ -806,10 +806,14 @@ class OutboxRepository private constructor(
 
     /**
      * Product-surface view of durable, unresolved intents for selected mutation
-     * kinds. It follows the active binding and never exposes terminal DONE rows.
+     * kinds. Completed rows are opt-in so a consumer can observe settlement even
+     * when a fast Pending-to-Done transition was conflated by its UI collector.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
-    fun observeActiveByTypes(types: Set<PendingMutationType>): Flow<List<OutboxRow>> {
+    fun observeActiveByTypes(
+        types: Set<PendingMutationType>,
+        includeCompleted: Boolean = false,
+    ): Flow<List<OutboxRow>> {
         val wireTypes = types
             .filterNot { it == PendingMutationType.Unknown }
             .map(PendingMutationType::wireValue)
@@ -819,7 +823,11 @@ class OutboxRepository private constructor(
                 ownerKey = binding.ownerStorageKey,
                 ledgerId = binding.ledgerId,
                 types = wireTypes,
-                activeStatuses = ACTIVE_STATUS_VALUES,
+                activeStatuses = if (includeCompleted) {
+                    ACTIVE_STATUS_VALUES + PendingMutationStatus.Done.wireValue
+                } else {
+                    ACTIVE_STATUS_VALUES
+                },
             )
         }.map { rows -> rows.map { it.toDomain() } }
     }

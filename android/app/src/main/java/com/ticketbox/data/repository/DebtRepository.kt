@@ -12,7 +12,6 @@ import com.ticketbox.data.remote.dto.RepaymentCreateRequestDto
 import com.ticketbox.data.remote.dto.RepaymentVoidCreateRequestDto
 import com.ticketbox.domain.model.DebtBillSuggestion
 import com.ticketbox.domain.model.Debt
-import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.DebtListLens
 import com.ticketbox.domain.model.MemberRepaymentProposal
 import com.ticketbox.domain.model.ledgerRoleCanModify
@@ -22,16 +21,13 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.UUID
 
 /**
- * ADR-0049 §2 (slice 8) Debt entity repository: list the active ledger's debts and create
- * external/manual ones. Direct-only online (no outbox) — a debt create is not part of the
- * offline outbox surface. Failure semantics follow the rest of the repository layer: every
- * suspend method returns `Result<T>`; viewer role short-circuits the write before the network.
+ * Canonical Debt queries and existing online fact/proposal operations.
+ * New external/manual creation belongs to [DebtCreationActions] and the durable Outbox.
  */
 interface DebtActions {
     fun canModifyLedger(): Boolean
     suspend fun listDebts(lens: DebtListLens = DebtListLens.Ledger): Result<DebtListPage>
     suspend fun getDebt(publicId: String): Result<Debt>
-    suspend fun createDebt(draft: DebtDraft): Result<Debt>
     suspend fun parseDebtBillImage(fileName: String, contentType: String?, bytes: ByteArray): Result<DebtBillSuggestion>
     // ADR-0049 §3 (slice 8c) direct fact writes on an external/manual Debt. [expectedRowVersion]
     // is the §2.1 OCC carrier (the local Debt's row_version); the response is the fold-after Debt
@@ -193,23 +189,6 @@ class DebtRepository(
                 api.debtReceivables().items.map { it.toDomain() }
             }
         }
-
-    override suspend fun createDebt(draft: DebtDraft): Result<Debt> {
-        if (!canModifyLedger()) {
-            return Result.failure(RepositoryException(DEBT_VIEWER_READONLY))
-        }
-        val cleanDraft = draft.validated()
-            .getOrElse { return Result.failure(it) }
-        return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
-                api.createDebt(
-                    request = cleanDraft.toCreateRequest(),
-                    // ADR-0042: single-use key — direct-only path, no offline replay.
-                    idempotencyKey = UUID.randomUUID().toString(),
-                ).toDomain()
-            }
-        }
-    }
 
     override suspend fun parseDebtBillImage(
         fileName: String,
@@ -447,21 +426,3 @@ class DebtRepository(
 
 /** Shared viewer short-circuit copy (kept in sync with [DebtListViewModel] expectations). */
 private const val DEBT_VIEWER_READONLY = "当前角色为只读，无法修改账本。"
-
-private const val DEBT_COUNTERPARTY_LABEL_MAX = 255
-
-private fun DebtDraft.validated(): Result<DebtDraft> = runCatching {
-    val cleanLabel = counterpartyLabel.trim()
-    require(cleanLabel.isNotBlank()) { "请填写欠款对象。" }
-    require(cleanLabel.length <= DEBT_COUNTERPARTY_LABEL_MAX) { "欠款对象名称太长。" }
-    require(direction == DebtDirections.I_OWE || direction == DebtDirections.OWED_TO_ME) {
-        "请选择欠款方向。"
-    }
-    require(principalAmountCents > 0L) { "金额必须大于 0。" }
-    copy(counterpartyLabel = cleanLabel)
-}.mapDebtError()
-
-private fun <T> Result<T>.mapDebtError(): Result<T> = fold(
-    onSuccess = { Result.success(it) },
-    onFailure = { Result.failure(RepositoryException(it.message ?: "请求参数不正确。")) },
-)

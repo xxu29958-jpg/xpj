@@ -22,6 +22,7 @@ import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
 import com.ticketbox.ui.components.AppFilterChip
+import com.ticketbox.ui.components.AppFilterChipOptions
 import com.ticketbox.ui.components.AppSheetAction
 import com.ticketbox.ui.components.AppSheetActionRow
 import com.ticketbox.ui.components.AppSheetScaffold
@@ -49,7 +50,7 @@ internal fun DebtAddSheet(
     sheetState: SheetState,
     onClose: () -> Unit,
 ) {
-    ModalBottomSheet(onDismissRequest = onClose, sheetState = sheetState) {
+    ModalBottomSheet(onDismissRequest = { if (!state.isSubmitting) onClose() }, sheetState = sheetState) {
         DebtDraftForm(
             state = state,
             viewModel = viewModel,
@@ -68,11 +69,12 @@ private fun DebtDraftForm(
 ) {
     val draft = state.addDraft
     AppSheetScaffold(title = stringResource(R.string.debt_create_sheet_title)) {
-        DebtDirectionField(selected = draft.direction, onSelect = viewModel::updateDraftDirection)
+        DebtDirectionField(selected = draft.direction, enabled = !state.isSubmitting, onSelect = viewModel::updateDraftDirection)
         AppTextInput(
             state = AppTextInputState(
                 label = stringResource(R.string.debt_create_label_counterparty),
                 value = draft.counterpartyLabel,
+                enabled = !state.isSubmitting,
             ),
             actions = AppTextInputActions(onValueChange = viewModel::updateDraftCounterparty),
             modifier = Modifier.fillMaxWidth(),
@@ -86,32 +88,22 @@ private fun DebtDraftForm(
                 value = draft.amountYuanInput,
                 placeholder = stringResource(R.string.components_amount_input_placeholder),
                 isError = draft.validationError != null,
+                enabled = !state.isSubmitting,
             ),
             actions = AppAmountInputActions(onValueChange = viewModel::updateDraftAmount),
             modifier = Modifier.fillMaxWidth(),
         )
-        DebtKindCreateField(selected = draft.kind, onSelect = viewModel::updateDraftKind)
+        DebtKindCreateField(selected = draft.kind, enabled = !state.isSubmitting, onSelect = viewModel::updateDraftKind)
         DebtContextField(draft = draft, enabled = !state.isSubmitting, onValueChange = viewModel::updateDraftNote)
-        DebtInstallmentCountField(kind = draft.kind, countInput = draft.installmentCountInput, onValueChange = viewModel::updateDraftInstallmentCount)
-        DebtInstallmentPeriodField(kind = draft.kind, periodInput = draft.installmentPeriodInput, onValueChange = viewModel::updateDraftInstallmentPeriod)
+        DebtInstallmentCountField(kind = draft.kind, countInput = draft.installmentCountInput, enabled = !state.isSubmitting, onValueChange = viewModel::updateDraftInstallmentCount)
+        DebtInstallmentPeriodField(kind = draft.kind, periodInput = draft.installmentPeriodInput, enabled = !state.isSubmitting, onValueChange = viewModel::updateDraftInstallmentPeriod)
         draft.validationError?.let { err ->
             AppStatusBanner(message = err, tone = MessageTone.Danger)
         }
         // 空账本 fail closed（PR#255 R4 P1）：列表加载完成但币种仍无 record 级权威依据
         // （空账本）时，说明创建为何禁用 —— 兜底 CNY 口径提交会放大零小数账本 100×。
         // R1 用户可见重试：加载失败同样走到这里，refresh 重试保留草稿、不碰提交门。
-        if (!state.homeCurrencyResolved && !state.isLoading) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                AppStatusBanner(
-                    message = UiText.res(R.string.debt_create_currency_unconfirmed),
-                    tone = MessageTone.Info,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(onClick = viewModel::refresh, enabled = !state.isSubmitting) {
-                    Text(stringResource(R.string.common_retry))
-                }
-            }
-        }
+        DebtCreateCurrencyStatus(state = state, onRetry = viewModel::refresh)
         AppSheetActionRow(
             primary = AppSheetAction(
                 text = if (state.isSubmitting) {
@@ -122,7 +114,7 @@ private fun DebtDraftForm(
                 onClick = onSubmit,
                 // 账本币种未确认（初始/切换加载未成功）禁用创建：兜底 CNY 口径提交到
                 // JPY/KRW 账本会放大 100×（PR#255 P1-3，VM submitDraft 另有同条件防线）。
-                enabled = !state.isSubmitting && state.homeCurrencyResolved,
+                enabled = state.canModify && !state.isSubmitting && state.homeCurrencyResolved,
             ),
             secondary = AppSheetAction(
                 text = stringResource(R.string.common_cancel),
@@ -130,6 +122,22 @@ private fun DebtDraftForm(
                 enabled = !state.isSubmitting,
             ),
         )
+    }
+}
+
+/** Unknown currency blocks Save; its retry refreshes only the read capability and preserves the draft. */
+@Composable
+private fun DebtCreateCurrencyStatus(state: DebtListUiState, onRetry: () -> Unit) {
+    if (state.homeCurrencyResolved || state.isLoading) return
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        AppStatusBanner(
+            message = UiText.res(R.string.debt_create_currency_unconfirmed),
+            tone = MessageTone.Info,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = onRetry, enabled = !state.isSubmitting) {
+            Text(stringResource(R.string.common_retry))
+        }
     }
 }
 
@@ -152,7 +160,7 @@ private fun DebtContextField(draft: DebtDraftUi, enabled: Boolean, onValueChange
 }
 
 @Composable
-private fun DebtDirectionField(selected: String, onSelect: (String) -> Unit) {
+private fun DebtDirectionField(selected: String, enabled: Boolean, onSelect: (String) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
         Text(
             stringResource(R.string.debt_create_label_direction),
@@ -168,6 +176,7 @@ private fun DebtDirectionField(selected: String, onSelect: (String) -> Unit) {
                     selected = selected == direction,
                     onClick = { onSelect(direction) },
                     label = stringResource(debtDirectionLabelRes(direction)),
+                    options = AppFilterChipOptions(enabled = enabled),
                 )
             }
         }

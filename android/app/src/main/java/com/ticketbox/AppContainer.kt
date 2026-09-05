@@ -16,6 +16,7 @@ import com.ticketbox.data.repository.CorrectExpenseDispatcher
 import com.ticketbox.data.repository.CreateExpenseDispatcher
 import com.ticketbox.data.repository.CreateExpenseOffsetDispatcher
 import com.ticketbox.data.repository.CreateRecurringItemDispatcher
+import com.ticketbox.data.repository.CreateDebtDispatcher
 import com.ticketbox.data.repository.DeleteCategoryRuleDispatcher
 import com.ticketbox.data.repository.DeleteMerchantAliasDispatcher
 import com.ticketbox.data.repository.MarkNotDuplicateDispatcher
@@ -286,6 +287,10 @@ class AppContainer(context: Context) {
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.recurringCreateAdapter,
             ),
+            CreateDebtDispatcher(
+                apiProvider = ::outboxApi,
+                payloadAdapter = outboxAdapters.debtCreateAdapter,
+            ),
             UpdateRecurringItemDispatcher(
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.recurringUpdateAdapter,
@@ -340,6 +345,7 @@ class AppContainer(context: Context) {
 
     val incomePlanRepository = repositories.incomePlanRepository
     val debtRepository = repositories.debtRepository
+    val debtCreationRepository = repositories.debtCreationRepository
     val repaymentDraftRepository = repositories.repaymentDraftRepository
     val reportsRepository = repositories.reportsRepository
     val ruleRepository = repositories.ruleRepository

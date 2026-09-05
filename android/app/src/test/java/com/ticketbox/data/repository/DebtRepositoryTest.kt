@@ -6,7 +6,6 @@ import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtBillParseResponseDto
-import com.ticketbox.data.remote.dto.DebtCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtDto
 import com.ticketbox.data.remote.dto.DebtForgiveCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtKindSetRequestDto
@@ -82,79 +81,6 @@ class DebtRepositoryTest {
 
         assertEquals(1, page.debts.size)
         assertNull(page.ledgerHomeCurrencyCode)
-    }
-
-    @Test
-    fun createDebtSendsExternalManualPayloadWithIdempotencyKey() = runTest {
-        val handler = DebtApiHandler()
-
-        val created = repository(handler).createDebt(
-            DebtDraft(
-                direction = DebtDirections.I_OWE,
-                counterpartyLabel = "  房东  ",
-                principalAmountCents = 50_000,
-            ),
-        ).getOrThrow()
-
-        val call = handler.createCalls.single()
-        assertEquals(DebtDirections.I_OWE, call.request.direction)
-        assertEquals(DebtCounterpartyTypes.EXTERNAL, call.request.counterpartyType)
-        assertEquals(DebtSourceTypes.MANUAL, call.request.sourceType)
-        // The repository trims the label before the request leaves the client.
-        assertEquals("房东", call.request.counterpartyLabel)
-        assertEquals(50_000L, call.request.principalAmountCents)
-        // 8e-6e: an untouched create carries the default kind (unspecified).
-        assertEquals(DebtKinds.UNSPECIFIED, call.request.debtKind)
-        // ADR-0042: a fresh single-use intent key per direct call.
-        assertTrue(!call.idempotencyKey.isNullOrBlank())
-        assertEquals("created", created.publicId)
-    }
-
-    @Test
-    fun createDebtMintsAFreshIdempotencyKeyPerCall() = runTest {
-        val handler = DebtApiHandler()
-        val repository = repository(handler)
-        val draft = DebtDraft(DebtDirections.I_OWE, "房东", 50_000)
-
-        repository.createDebt(draft).getOrThrow()
-        repository.createDebt(draft).getOrThrow()
-
-        // ADR-0042: each direct create is a distinct single-use intent — keys must NOT be reused.
-        val keys = handler.createCalls.mapNotNull { it.idempotencyKey }
-        assertEquals(2, keys.size)
-        assertEquals(2, keys.toSet().size)
-    }
-
-    @Test
-    fun viewerCreateShortCircuitsWithoutApiCall() = runTest {
-        val handler = DebtApiHandler()
-
-        val result = repository(handler, role = "viewer")
-            .createDebt(DebtDraft(DebtDirections.I_OWE, "房东", 50_000))
-
-        assertTrue(result.isFailure)
-        assertEquals("当前角色为只读，无法修改账本。", result.exceptionOrNull()?.message)
-        assertTrue(handler.createCalls.isEmpty())
-    }
-
-    @Test
-    fun createRejectsBlankCounterpartyBeforeApiCall() = runTest {
-        val handler = DebtApiHandler()
-
-        val result = repository(handler).createDebt(DebtDraft(DebtDirections.I_OWE, "   ", 50_000))
-
-        assertTrue(result.isFailure)
-        assertTrue(handler.createCalls.isEmpty())
-    }
-
-    @Test
-    fun createRejectsNonPositiveAmountBeforeApiCall() = runTest {
-        val handler = DebtApiHandler()
-
-        val result = repository(handler).createDebt(DebtDraft(DebtDirections.I_OWE, "房东", 0))
-
-        assertTrue(result.isFailure)
-        assertTrue(handler.createCalls.isEmpty())
     }
 
     @Test
@@ -736,7 +662,6 @@ private class DebtApiFactory(private val handler: DebtApiHandler) : ApiServiceFa
     override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = handler.service()
 }
 
-private data class CreateDebtCall(val request: DebtCreateRequestDto, val idempotencyKey: String?)
 private data class RepaymentCall(val publicId: String, val request: RepaymentCreateRequestDto, val idempotencyKey: String?)
 private data class AdjustmentCall(val publicId: String, val request: DebtAdjustmentCreateRequestDto, val idempotencyKey: String?)
 private data class VoidCall(val publicId: String, val request: DebtVoidCreateRequestDto, val idempotencyKey: String?)
@@ -770,7 +695,6 @@ private fun proposalDto(publicId: String = "p1", proposed: Long = 20_000L): Memb
 
 private class DebtApiHandler : InvocationHandler {
     val listLenses = mutableListOf<String?>()
-    val createCalls = mutableListOf<CreateDebtCall>()
     val parseBillCalls = mutableListOf<MultipartBody.Part>()
     val repaymentCalls = mutableListOf<RepaymentCall>()
     val adjustmentCalls = mutableListOf<AdjustmentCall>()
@@ -828,13 +752,6 @@ private class DebtApiHandler : InvocationHandler {
                 receivablesResult ?: DebtListResponseDto(items = listOf(debtDto()))
             }
             "debt" -> debtResult ?: debtDto(publicId = values[0] as String)
-            "createDebt" -> {
-                createCalls += CreateDebtCall(
-                    request = values[0] as DebtCreateRequestDto,
-                    idempotencyKey = values[1] as String?,
-                )
-                debtDto(publicId = "created")
-            }
             "parseDebtBill" -> {
                 parseBillCalls += values[0] as MultipartBody.Part
                 parseBillResult ?: DebtBillParseResponseDto()

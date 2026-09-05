@@ -2,6 +2,7 @@ package com.ticketbox.ui.navigation
 
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.AppDatabase
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiService
@@ -11,6 +12,8 @@ import com.ticketbox.data.repository.ApiServiceProvider
 import com.ticketbox.data.repository.BudgetRepository
 import com.ticketbox.data.repository.CategoryPreferenceRepository
 import com.ticketbox.data.repository.DebtRepository
+import com.ticketbox.data.repository.DebtCreationRepository
+import com.ticketbox.data.repository.toOutboxBinding
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.IncomePlanActions
 import com.ticketbox.data.repository.LedgerRepository
@@ -97,6 +100,10 @@ internal class DataQualityConnectedHarness : AutoCloseable {
             credentials = credentials,
             apiProvider = apiProvider,
         )
+        val outbox = OutboxRepository(
+            dao = database.pendingMutationDao(),
+            bindingProvider = { sessionRecord.toOutboxBinding() },
+        )
         val repositories = MainFeatureRepositories(
             repository = ExpenseRepository(database.expenseDao(), binding),
             ledgerRepository = LedgerRepository(
@@ -110,11 +117,9 @@ internal class DataQualityConnectedHarness : AutoCloseable {
             reportsRepository = interfaceProxy<ReportsActions>(),
             incomePlanRepository = interfaceProxy<IncomePlanActions>(),
             debtRepository = DebtRepository(apiProvider),
+            debtCreationRepository = DebtCreationRepository(apiProvider, outbox, OutboxAdapterGraph().debtCreateAdapter),
             repaymentDraftRepository = RepaymentDraftRepository(apiProvider),
-            outboxRepository = OutboxRepository(
-                dao = database.pendingMutationDao(),
-                bindingProvider = { com.ticketbox.data.repository.OutboxBinding.DEFAULT },
-            ),
+            outboxRepository = outbox,
             tagRepository = TagRepository(apiProvider),
             categoryPreferenceRepository = CategoryPreferenceRepository(apiProvider),
         )

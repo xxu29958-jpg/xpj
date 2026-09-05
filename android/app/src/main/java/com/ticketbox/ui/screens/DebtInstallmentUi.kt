@@ -66,13 +66,14 @@ internal fun installmentProgressPair(paidCount: Long?, count: Long): Pair<Long, 
  * 只多一行调用）。期数原文回 [onValueChange]，范围/解析由 DebtDraftUi.parsedInstallmentCount 收口。
  */
 @Composable
-internal fun DebtInstallmentCountField(kind: String, countInput: String, onValueChange: (String) -> Unit) {
+internal fun DebtInstallmentCountField(kind: String, countInput: String, enabled: Boolean, onValueChange: (String) -> Unit) {
     if (kind != DebtKinds.INSTALLMENT) return
     Spacer(Modifier.size(AppSpacing.compactGap))
     AppTextInput(
         state = AppTextInputState(
             label = stringResource(R.string.debt_create_label_installment_count),
             value = countInput,
+            enabled = enabled,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         ),
         actions = AppTextInputActions(onValueChange = onValueChange),
@@ -88,13 +89,14 @@ internal fun DebtInstallmentCountField(kind: String, countInput: String, onValue
  * 季度分期填 3、半年填 6。范围/解析由 DebtDraftUi.parsedInstallmentPeriod 收口（1..120），周期只在期数也填时随车。
  */
 @Composable
-internal fun DebtInstallmentPeriodField(kind: String, periodInput: String, onValueChange: (String) -> Unit) {
+internal fun DebtInstallmentPeriodField(kind: String, periodInput: String, enabled: Boolean, onValueChange: (String) -> Unit) {
     if (kind != DebtKinds.INSTALLMENT) return
     Spacer(Modifier.size(AppSpacing.compactGap))
     AppTextInput(
         state = AppTextInputState(
             label = stringResource(R.string.debt_create_label_installment_period),
             value = periodInput,
+            enabled = enabled,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         ),
         actions = AppTextInputActions(onValueChange = onValueChange),

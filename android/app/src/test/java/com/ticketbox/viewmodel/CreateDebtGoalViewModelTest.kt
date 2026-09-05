@@ -1,7 +1,6 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.DebtActions
-import com.ticketbox.data.repository.DebtDraft
 import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.CsvExport
@@ -257,8 +256,6 @@ private class FakeCreateDebtActions(
     override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens): Result<DebtListPage> =
         listResult.map { DebtListPage(debts = it, ledgerHomeCurrencyCode = null) }
     override suspend fun getDebt(publicId: String): Result<Debt> =
-        Result.failure(UnsupportedOperationException())
-    override suspend fun createDebt(draft: DebtDraft): Result<Debt> =
         Result.failure(UnsupportedOperationException())
     override suspend fun parseDebtBillImage(
         fileName: String,
