@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import html
+import json
 import re
 from collections.abc import Iterator
 from decimal import Decimal
@@ -11,9 +13,10 @@ from sqlalchemy import func, select
 
 from app.database import SessionLocal
 from app.middleware.csrf import CSRF_COOKIE_NAME
-from app.models import AuthToken, Device, Expense, ExpenseRevision, LedgerMember
+from app.models import Account, AuthToken, Device, Expense, ExpenseRevision, LedgerMember
 from app.routes.web_auth import SESSION_COOKIE_NAME
 from app.routes.web_expense_create import _manual_expense_payload
+from app.services.dataset_authority_service import read_dataset_authority
 from app.services.identity_service import hash_secret
 from tests._local_web_identity_support import (
     _connect_local_session,
@@ -75,6 +78,30 @@ def _hidden_fields(html: str) -> dict[str, str]:
     return dict(re.findall(r'<input type="hidden" name="([^"]+)" value="([^"]*)"', html))
 
 
+def _draft_attribute(body: str, name: str) -> dict:
+    attribute = re.search(rf'{re.escape(name)}="([^"]+)"', body)
+    assert attribute is not None, f"missing native draft consumer attribute: {name}"
+    return json.loads(html.unescape(attribute.group(1)))
+
+
+def _expected_draft_scope(installed_web: _InstalledWeb, session_token: str) -> dict[str, str]:
+    with SessionLocal() as db:
+        authority = read_dataset_authority(db)
+        token = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(session_token)))
+        assert token is not None
+        device = db.get(Device, token.device_id)
+        assert device is not None
+        account = db.get(Account, device.account_id)
+        assert account is not None
+        return {
+            "datasetId": authority.dataset_id,
+            "clientGeneration": authority.client_generation,
+            "accountId": account.public_id,
+            "ledgerId": installed_web.shared_ledger_id,
+            "deviceId": device.public_id,
+        }
+
+
 def test_member_can_open_native_manual_expense_form(
     installed_web: _InstalledWeb,
 ) -> None:
@@ -104,6 +131,9 @@ def test_member_can_open_native_manual_expense_form(
     assert 'href="/web/expenses/new"' in response.text
     assert 'data-shell-shortcut="manual-expense"' in response.text
     assert 'aria-keyshortcuts="N"' in response.text
+    assert _draft_attribute(response.text, "data-manual-draft-scope") == _expected_draft_scope(
+        installed_web, session_token,
+    )
 
 
 def test_manual_expense_replay_uses_web_device_and_creates_one_confirmed_fact(
@@ -163,6 +193,26 @@ def test_manual_expense_replay_uses_web_device_and_creates_one_confirmed_fact(
         client_ref=client_ref.group(1),
         location=first.headers["location"],
     )
+    # The acknowledgement must come from the saved Expense and authenticated
+    # Device, never from a supplied query marker or a merely successful submit.
+    landed = installed_web.browser.get(
+        first.headers["location"] + "&manual_saved_ref=" + "b" * 32,
+        headers={"Cookie": session_cookie},
+    )
+    assert landed.status_code == 200, landed.text
+    assert _draft_attribute(landed.text, "data-manual-draft-ack") == {
+        "scope": _expected_draft_scope(installed_web, session_token),
+        "clientRef": client_ref.group(1),
+    }
+
+    installed_web.browser.cookies.clear()
+    replacement = _connect_local_session(installed_web)
+    other_device = installed_web.browser.get(
+        first.headers["location"] + "&manual_saved_ref=" + client_ref.group(1),
+        headers={"Cookie": f"{SESSION_COOKIE_NAME}={replacement}"},
+    )
+    assert other_device.status_code == 200, other_device.text
+    assert "data-manual-draft-ack=" not in other_device.text
 
 
 def test_form_money_maps_to_the_existing_manual_expense_payload() -> None:
@@ -265,6 +315,10 @@ def test_missing_fx_keeps_same_created_expense_in_pending_recovery(
     assert recovery.status_code == 200, recovery.text
     assert 'name="manual_exchange_rate"' in recovery.text
     assert "仅用于本笔账单" in recovery.text
+    assert _draft_attribute(recovery.text, "data-manual-draft-ack") == {
+        "scope": _expected_draft_scope(installed_web, session_token),
+        "clientRef": client_ref.group(1),
+    }
 
 
 def test_viewer_neither_sees_nor_opens_manual_expense_entry(
@@ -344,6 +398,8 @@ def test_invalid_amount_preserves_draft_and_same_create_intent(
     )
 
     assert refused.status_code == 422, refused.text
+    assert 'data-manual-draft-result="rejected"' in refused.text
+    assert "data-manual-draft-ack=" not in refused.text
     assert "草稿商家" in refused.text
     assert "这段不能丢" in refused.text
     assert re.search(
@@ -428,6 +484,8 @@ def test_open_manual_form_cannot_write_after_its_binding_changes(
         follow_redirects=False,
     )
     assert response.status_code == (403 if change == "permission" else 409), response.text
+    assert 'data-manual-draft-result="blocked"' in response.text
+    assert "data-manual-draft-ack=" not in response.text
     assert "旧表单的商家" in response.text
     assert f'name="client_ref" value="{client_ref.group(1)}"' in response.text
     assert 'name="ledger_id" value="shared_household"' in response.text
