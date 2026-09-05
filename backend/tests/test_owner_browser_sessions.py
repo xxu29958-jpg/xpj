@@ -17,8 +17,8 @@ from app.services.identity_service import hash_secret
 from app.services.owner_console_service import get_index_vm
 from app.services.time_service import now_utc
 from tests._local_web_identity_support import (
-    _InstalledWeb,
     _connect_local_session,
+    _InstalledWeb,
     installed_web_setup,
 )
 
@@ -67,6 +67,7 @@ def test_reconnect_keeps_ended_browser_out_of_connected_inventory(
         baseline_count = get_index_vm(db).active_device_count
 
     # Another browser stays connected when the first one ends its session.
+    installed_web.browser.cookies.clear()
     other = _connect_local_session(installed_web)
     if end_session == "logout":
         _logout(installed_web, first)
@@ -83,6 +84,7 @@ def test_reconnect_keeps_ended_browser_out_of_connected_inventory(
         assert first_device is not None
         assert first_device.revoked_at is None
 
+    installed_web.browser.cookies.clear()
     replacement = _connect_local_session(installed_web)
     page = installed_web.browser.get("/owner/devices")
     assert page.status_code == 200
