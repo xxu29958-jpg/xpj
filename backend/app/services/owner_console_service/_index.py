@@ -19,7 +19,6 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.models import Account
 from app.money_contract import projection_sum_to_int, round_minor_ratio_half_up
-from app.services.admin_service import list_devices
 from app.services.budget_service import get_monthly_budget
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.data_quality_service import DataQualitySummary, data_quality_summary
@@ -31,9 +30,9 @@ from app.services.owner_console_service._common import (
     _expense_status_count,
     logger,
 )
+from app.services.owner_console_service._devices import get_devices
 from app.services.owner_console_service._ledger_console import (
     _managed_console_ledger_ids,
-    _require_owner_id,
     list_console_ledger_choices,
 )
 from app.services.owner_console_service._recurring_ops import (
@@ -98,8 +97,7 @@ def get_index_vm(db: Session) -> ConsoleIndexVM:
     pending_count = _expense_status_count(db, tenant_ids=managed_ledger_ids, status="pending")
     confirmed_count = _expense_status_count(db, tenant_ids=managed_ledger_ids, status="confirmed")
 
-    visible_devices = list_devices(db, account_id=_require_owner_id(db))
-    active_devices = sum(1 for device in visible_devices if device.revoked_at is None)
+    active_devices = get_devices(db).active_device_count
     active_links = _active_upload_link_count(db, ledger_ids=managed_ledger_ids)
 
     # The owner console index renders four independent "cards". A single

@@ -2,9 +2,10 @@
 
 Same /web router serves three audiences:
 
-- **Loopback Host** (127.0.0.1 / localhost / etc): Owner Console operator
-  on the local machine. Behaves exactly as before — no cookie required,
-  ``_require_local`` (LoopbackOnly) was the only gate.
+- **Installed loopback browser**: requires a Web cookie for the installation
+  Account after explicit local identity confirmation. Missing or invalid
+  installation identity enters recovery. Development datasets without a claim
+  retain their local compatibility path; ``/owner`` stays separately local-only.
 
 - **Desktop product bridge** (loopback + explicit bridge marker): a paired
   ``platform=desktop`` app bearer becomes the application principal for the
