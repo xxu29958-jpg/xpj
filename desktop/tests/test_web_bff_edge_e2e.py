@@ -164,13 +164,16 @@ _EDGE_PROBE = """
 
 _THEME_PROBE = """
 (() => {
-  const theme = document.documentElement.getAttribute("data-theme");
+  const root = document.documentElement;
+  const systemButton = document.querySelector('[data-theme-mode="system"]');
+  if (!root || !systemButton || document.readyState === "loading") return undefined;
+  const theme = root.getAttribute("data-theme");
   if (theme === "paper" || !theme) return undefined;
   return JSON.stringify({
     theme,
     storedTheme: localStorage.getItem("ui-theme-mode"),
     cookie: document.cookie,
-    systemPressed: document.querySelector('[data-theme-mode="system"]').getAttribute("aria-pressed")
+    systemPressed: systemButton.getAttribute("aria-pressed")
   });
 })()
 """

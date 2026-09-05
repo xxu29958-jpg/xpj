@@ -275,6 +275,16 @@ def _evaluate_page_once(
                 "Runtime.evaluate",
                 {"expression": expression, "returnByValue": True},
             )
+            # CDP reports script exceptions alongside result, not as transport
+            # errors: https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-evaluate
+            # Keep locations, but not exception text/URLs that could expose a session.
+            if "exceptionDetails" in evaluated:
+                details = evaluated["exceptionDetails"]
+                assert isinstance(details, dict)
+                raise AssertionError(
+                    "layout probe raised a JavaScript exception "
+                    f"(zero-based line={details.get('lineNumber')}, column={details.get('columnNumber')})",
+                )
             remote = evaluated.get("result", {})
             if isinstance(remote, dict) and remote.get("type") != "undefined":
                 return remote.get("value")
