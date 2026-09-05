@@ -82,6 +82,7 @@ from app.routes import (
     web_debts,
     web_duplicates,
     web_expense_correction,
+    web_expense_create,
     web_expense_edit,
     web_expense_items,
     web_expense_lifecycle,
@@ -394,6 +395,7 @@ app.include_router(web_app.router)
 app.include_router(web_confirmed_batch.router)
 app.include_router(web_bill_split.router)
 app.include_router(web_dashboard.router)
+app.include_router(web_expense_create.router)
 app.include_router(web_expense_edit.router)
 app.include_router(web_expense_correction.router)
 app.include_router(web_expense_offsets.router)

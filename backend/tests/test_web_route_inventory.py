@@ -152,6 +152,8 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/duplicates/{expense_id}/reject-current"): "writer-only",
     ("POST", "/web/duplicates/{expense_id}/reject-original"): "writer-only",
     # Expense edit / confirmed fact correction
+    ("GET", "/web/expenses/new"): "local-only-rendering",
+    ("POST", "/web/expenses/new"): "writer-only",
     ("GET", "/web/expenses/{expense_id}/edit"): "local-only-rendering",
     ("GET", "/web/expenses/{expense_id}/correct"): "local-only-rendering",
     ("POST", "/web/expenses/{expense_id}/save"): "writer-only",
