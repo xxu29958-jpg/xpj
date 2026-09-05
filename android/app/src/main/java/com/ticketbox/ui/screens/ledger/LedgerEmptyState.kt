@@ -18,10 +18,10 @@ import com.ticketbox.ui.components.AppListStateContent
 import com.ticketbox.ui.components.AppListStateSpec
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppOutlinedButtonOptions
+import com.ticketbox.ui.components.ReceiptEmptyIllustration
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
-import com.ticketbox.ui.mascot.MascotEmptyIllustration
 import com.ticketbox.ui.screens.LedgerRecordCtaSlot
 import com.ticketbox.viewmodel.LedgerUiState
 
@@ -107,9 +107,9 @@ internal fun EmptyLedgerState(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // 只有「账本真的空了」才是吉祥物时刻；筛选无结果是操作态，不插画。
+        // An unfiltered empty task may show receipt art; a filter miss stays operational.
         if (recordCtaSlot == LedgerRecordCtaSlot.EmptyState) {
-            MascotEmptyIllustration(
+            ReceiptEmptyIllustration(
                 modifier = Modifier.padding(bottom = AppSpacing.miniGap),
             )
         }

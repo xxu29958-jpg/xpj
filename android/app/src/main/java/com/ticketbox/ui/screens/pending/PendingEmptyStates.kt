@@ -30,6 +30,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppPrimaryButton
+import com.ticketbox.ui.components.ReceiptEmptyIllustration
 import com.ticketbox.ui.design.AppAdaptiveBreakpoints
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
@@ -37,7 +38,6 @@ import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.AppWindowWidthClass
 import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
 import com.ticketbox.ui.design.LocalThemeVisuals
-import com.ticketbox.ui.mascot.MascotEmptyIllustration
 
 @Composable
 internal fun UploadProgressCard() {
@@ -94,10 +94,8 @@ internal fun EmptyPendingState(
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
             ) {
                 if (!state.loading) {
-                    // 插画视觉内容（票据+投影）一直画到画布底边，这里为标题补一档
-                    // 真实语义间距，避免装饰性 Canvas 的视觉边缘贴上文字。
-                    MascotEmptyIllustration(
-                        modifier = Modifier.padding(bottom = AppSpacing.contentGap),
+                    ReceiptEmptyIllustration(
+                        modifier = Modifier.padding(bottom = AppSpacing.miniGap),
                     )
                 }
                 PendingStateTitle(

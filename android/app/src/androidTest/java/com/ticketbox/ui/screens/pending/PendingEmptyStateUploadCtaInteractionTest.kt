@@ -1,10 +1,14 @@
 package com.ticketbox.ui.screens.pending
 
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.theme.TicketboxTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -33,6 +37,7 @@ class PendingEmptyStateUploadCtaInteractionTest {
             }
         }
 
+        saveConsumerArtPreview("inbox-paper-writer", composeRule.onRoot().captureToImage().asAndroidBitmap())
         composeRule.onNodeWithText("还没有待处理的小票").assertIsDisplayed()
         composeRule.onNodeWithText("上传小票").assertIsDisplayed().performClick()
 
@@ -57,6 +62,7 @@ class PendingEmptyStateUploadCtaInteractionTest {
             }
         }
 
+        saveConsumerArtPreview("inbox-midnight-viewer", composeRule.onRoot().captureToImage().asAndroidBitmap())
         composeRule.onNodeWithText("还没有待处理的小票").assertIsDisplayed()
         composeRule.onNodeWithText("上传小票").assertDoesNotExist()
         composeRule.onNodeWithText("刷新").performClick()

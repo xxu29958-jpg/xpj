@@ -388,7 +388,7 @@ def test_web_batch_reject_fragment_returns_removed_ids(web_client: TestClient, *
     assert sorted(map(int, query["undo_rv"])) == sorted(item["expected_row_version"] for item in body["undo_items"])
     authoritative = web_client.get(body["redirect_url"])
     assert authoritative.status_code == 200
-    assert "收件队列已经清空" in authoritative.text
+    assert "还没有待处理的小票" in authoritative.text
     assert "撤销 2 条" in authoritative.text
     pending = web_client.get("/web/pending?ledger_id=owner")
     assert f"/web/expenses/{first}/edit" not in pending.text

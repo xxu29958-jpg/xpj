@@ -19,6 +19,7 @@ import re
 from collections.abc import Iterator
 
 import pytest
+from _web_bulk_test_support import seed_pending_with_amount as _seed_pending_with_amount
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -370,9 +371,13 @@ def test_primary_mutations_keep_real_csrf_and_occ_contracts(
     web_client: TestClient,
     identity,
 ) -> None:
+    pending_id = _seed_pending_with_amount(web_client, "9.00", "X", identity=identity)
     pending = web_client.get("/web/pending?ledger_id=owner")
     assert pending.status_code == 200
     assert 'action="/web/review/bulk"' in pending.text
+    assert f'data-expense-id="{pending_id}"' in pending.text
+    assert 'name="expense_snapshot"' in pending.text
+    assert 'data-row-version="' in pending.text
     assert re.search(
         r'name="csrf_token" value="[^"]+"',
         pending.text,
