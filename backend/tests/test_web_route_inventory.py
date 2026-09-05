@@ -73,6 +73,9 @@ Classification = Literal[
 _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     # Cookie session flow — public-host safe by design (login runs before
     # any session exists; logout / whoami carry the cookie themselves).
+    ("GET", "/web/auth/join"): "auth",
+    ("POST", "/web/auth/join/accept"): "auth",
+    ("POST", "/web/auth/join/preview"): "auth",
     ("GET", "/web/auth/login"): "auth",
     ("POST", "/web/auth/login"): "auth",
     ("POST", "/web/auth/logout"): "auth",

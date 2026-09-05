@@ -33,8 +33,8 @@ from app.services.invitation_common import (
 )
 from app.services.session_credential_lock import lock_and_revalidate_session_principal
 from app.services.session_lifecycle_service import (
-    app_token_expiry_window,
     app_token_soft_refresh_after,
+    session_expiry_window,
 )
 from app.services.session_refresh_service import set_session_family_ledger_default
 from app.services.time_service import ensure_utc, now_utc, to_iso
@@ -236,7 +236,9 @@ def _accept_for_existing_session(
         ledger=ledger,
         role=membership.role,
         expires_at=token_expires_at,
-        soft_refresh_after=app_token_soft_refresh_after(token_expires_at),
+        soft_refresh_after=(
+            None if device.platform == "web" else app_token_soft_refresh_after(token_expires_at)
+        ),
     )
 
 
@@ -298,14 +300,17 @@ def _create_invited_session(
     invitation: Invitation,
     ledger: Ledger,
     proof: EnrollmentProof,
-    account_name: str,
+    account_name: str | None,
     device_name: str,
     platform: str,
     issued_at: datetime,
 ) -> AcceptInvitationResult:
     if load_enrollment_attempt(db, public_id=proof.public_id) is not None:
         raise AppError("invitation_invalid", status_code=400)
-    account = Account(display_name=((account_name or "").strip() or "家庭成员")[:120])
+    cleaned_account_name = (account_name or "").strip()
+    if not cleaned_account_name:
+        raise AppError("invitation_account_name_required", status_code=422)
+    account = Account(display_name=cleaned_account_name[:120])
     db.add(account)
     db.flush()
     _claim_invitation(
@@ -322,7 +327,7 @@ def _create_invited_session(
     cleaned_device_name = (device_name or "").strip() or "未命名设备"
     cleaned_platform = (platform or "unknown").strip() or "unknown"
     device = _create_device(db, account.id, cleaned_device_name, cleaned_platform)
-    expiry = app_token_expiry_window(issued_at)
+    expiry = session_expiry_window(platform=cleaned_platform, issued_at=issued_at)
     _create_auth_token(
         db,
         account_id=account.id,
@@ -370,7 +375,7 @@ def _accept_for_new_session(
     *,
     invitation: Invitation,
     ledger: Ledger,
-    account_name: str,
+    account_name: str | None,
     device_name: str,
     platform: str,
     enrollment_attempt_id: str | None,
@@ -401,7 +406,7 @@ def accept_invitation(
     db: Session,
     *,
     invite_token: str,
-    account_name: str,
+    account_name: str | None,
     device_name: str,
     platform: str,
     session_token: str | None = None,

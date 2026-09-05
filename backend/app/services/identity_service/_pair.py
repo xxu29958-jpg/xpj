@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
@@ -34,7 +34,6 @@ from app.services.identity_service._enrollment import (
     recover_enrollment_identity,
 )
 from app.services.identity_service._models import (
-    WEB_SESSION_TTL_SECONDS,
     PairingResult,
 )
 from app.services.identity_service._pairing_throttle import (
@@ -44,11 +43,11 @@ from app.services.identity_service._pairing_throttle import (
 )
 from app.services.session_credential_lock import lock_bootstrap_owner_transaction
 from app.services.session_lifecycle_service import (
-    app_token_expiry_window,
     app_token_soft_refresh_after,
     consume_pairing_code,
     derive_desktop_activation_token,
     hash_pairing_code,
+    session_expiry_window,
 )
 from app.services.time_service import ensure_utc, now_utc
 
@@ -180,17 +179,6 @@ def _close_sibling_recovery_pairing_codes(
     )
 
 
-def _session_window(
-    *,
-    platform: str,
-    issued_at: datetime,
-) -> tuple[datetime | None, datetime | None]:
-    if platform == "web":
-        return issued_at + timedelta(seconds=WEB_SESSION_TTL_SECONDS), None
-    expiry = app_token_expiry_window(issued_at)
-    return expiry.expires_at, expiry.soft_refresh_after
-
-
 def _create_desktop_pairing_completion(
     db: Session,
     *,
@@ -252,10 +240,11 @@ def _issue_pairing_session(
     role: str,
     issued_at: datetime,
 ) -> PairingCompletion:
-    token_expires_at, soft_refresh_after = _session_window(
+    expiry = session_expiry_window(
         platform=device.platform,
         issued_at=issued_at,
     )
+    token_expires_at, soft_refresh_after = expiry.expires_at, expiry.soft_refresh_after
     _create_auth_token(
         db,
         account_id=account.id,

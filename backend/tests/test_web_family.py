@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from app.config import get_settings
 from app.database import SessionLocal
 from app.main import app
 from app.models import Invitation, Ledger, LedgerAuditLog, LedgerMember
@@ -124,8 +125,9 @@ def test_owner_creates_one_time_invitation_and_can_revoke_it(
     assert created_html.count(invite_token) == 1
     assert 'data-family-copy-button' in created_html
     assert 'src="/static/web/family.js' in created_html
-    assert "我有家庭邀请" in created_html
-    assert "设置 → 加入家庭账本" in created_html
+    assert "在浏览器打开" in created_html
+    assert "我有家庭邀请" not in created_html
+    assert "设置 → 加入家庭账本" not in created_html
     listed = web_client.get("/web/family?ledger_id=owner")
     assert listed.status_code == 200
     assert invite_token not in listed.text
@@ -144,6 +146,28 @@ def test_owner_creates_one_time_invitation_and_can_revoke_it(
     after = web_client.get(revoked.headers["location"])
     assert "已撤销" in after.text
     assert "撤销邀请" in after.text
+
+
+def test_owner_shares_the_configured_browser_join_link_once(
+    web_client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://family.example.com")
+    get_settings.cache_clear()
+    try:
+        invite_token, created_html = _create_invitation(web_client)
+
+        assert (
+            f"https://family.example.com/web/auth/join#invite={invite_token}"
+            in created_html
+        )
+        assert created_html.count(invite_token) == 1
+        assert "复制邀请" in created_html
+        assert "在浏览器打开链接" in created_html
+        assert "我有家庭邀请" not in created_html
+        assert "设置 → 加入家庭账本" not in created_html
+    finally:
+        get_settings.cache_clear()
 
 
 def test_public_owner_session_creates_an_invitation(

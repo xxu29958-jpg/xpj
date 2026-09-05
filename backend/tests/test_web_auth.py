@@ -63,7 +63,7 @@ def test_login_form_renders(client: TestClient) -> None:
     assert "连接码" in resp.text
     assert "设备名称（可选）" in resp.text
     assert ">连接</button>" in resp.text
-    assert "连接码只用于本次设备授权" in resp.text
+    assert "连接码只授权这台设备" in resp.text
     assert "APP_TOKEN" not in resp.text
     assert 'type="password"' not in resp.text
     assert 'action="/web/auth/login"' in resp.text
@@ -82,6 +82,18 @@ def test_login_form_renders(client: TestClient) -> None:
     assert "HttpOnly" in cookie_header
     assert "Path=/web/auth" in cookie_header
     assert "samesite=strict" in cookie_header.lower()
+
+
+def test_login_routes_family_invites_to_the_native_join_flow(
+    client: TestClient,
+) -> None:
+    response = client.get("/web/auth/login")
+
+    assert response.status_code == 200
+    assert "连接当前已有身份的一台设备" in response.text
+    assert 'href="/web/auth/join"' in response.text
+    assert "收到家庭邀请" in response.text
+    assert "每位家庭成员需要单独的码" not in response.text
 
 
 def test_login_form_ssr_theme_respects_cookie_under_strict_csp(client: TestClient) -> None:

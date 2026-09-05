@@ -29,6 +29,7 @@ import com.ticketbox.domain.model.DevicePairingCode
 import com.ticketbox.domain.model.FamilyInvitationCreated
 import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.InvitationPreview
+import com.ticketbox.domain.model.InvitationSessionTarget
 import com.ticketbox.domain.model.LedgerAuditEntry
 import com.ticketbox.domain.model.LedgerSummary
 import com.ticketbox.domain.model.OwnerTransferResult
@@ -67,6 +68,7 @@ class LedgerRepository(
         sessionStore = sessionStore,
         expenseDao = expenseDao,
     ),
+    private val deviceNameProvider: () -> String = ::defaultAndroidDeviceName,
 ) {
     private val moshi: Moshi by lazy {
         Moshi.Builder()
@@ -127,6 +129,16 @@ class LedgerRepository(
     fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
 
     fun activeLedgerId(): String? = apiProvider.currentLedgerId()
+
+    fun hasBoundSession(): Boolean = sessionCoordinator.currentSnapshot().sessionToken != null
+
+    fun invitationSessionTarget(preview: InvitationPreview): InvitationSessionTarget {
+        val session = sessionCoordinator.currentSnapshot()
+        if (session.sessionToken == null) return InvitationSessionTarget.Unbound
+        val sameServer = session.serverId == preview.serverId &&
+            session.dataGeneration == preview.dataGeneration
+        return if (sameServer) InvitationSessionTarget.CurrentServer else InvitationSessionTarget.ForeignServer
+    }
 
     suspend fun createLedger(name: String): Result<LedgerSummary> = wrap {
         val cleanName = name.trim()
@@ -408,18 +420,12 @@ class LedgerRepository(
      */
     suspend fun acceptInvitation(
         inviteToken: String,
-        accountName: String,
-        deviceName: String,
+        accountName: String = "",
+        deviceName: String = "",
         serverUrlOverride: String? = null,
     ): Result<LedgerSummary> = wrap {
         val cleanToken = inviteToken.trim()
         require(cleanToken.isNotEmpty()) { "请粘贴邀请明文。" }
-        val cleanAccount = accountName.trim()
-        require(cleanAccount.isNotEmpty()) { "请填写你的显示名。" }
-        require(cleanAccount.length <= 120) { "显示名最多 120 个字。" }
-        val cleanDevice = deviceName.trim()
-        require(cleanDevice.isNotEmpty()) { "请填写设备名。" }
-        require(cleanDevice.length <= 120) { "设备名最多 120 个字。" }
         val session = sessionCoordinator.currentSnapshot()
         val joiningUnbound = session.sessionToken == null
         require(joiningUnbound || serverUrlOverride == null) {
@@ -427,6 +433,12 @@ class LedgerRepository(
         }
         val serverUrl = resolvedInvitationServerUrl(serverUrlOverride, session)
         val joinedIdentity = if (joiningUnbound) {
+            val cleanAccount = accountName.trim()
+            require(cleanAccount.isNotEmpty()) { "请填写你的显示名。" }
+            require(cleanAccount.length <= 120) { "显示名最多 120 个字。" }
+            val cleanDevice = deviceName.trim().ifEmpty(deviceNameProvider)
+            require(cleanDevice.isNotEmpty()) { "请填写设备名。" }
+            require(cleanDevice.length <= 120) { "设备名最多 120 个字。" }
             enrollment.acceptInvitation(
                 serverUrl = serverUrl,
                 inviteToken = cleanToken,
@@ -438,8 +450,8 @@ class LedgerRepository(
                 api.acceptInvitation(
                     InvitationAcceptRequestDto(
                         inviteToken = cleanToken,
-                        accountName = cleanAccount,
-                        deviceName = cleanDevice,
+                        accountName = null,
+                        deviceName = null,
                     ),
                 )
             }
@@ -608,6 +620,8 @@ private fun RecycleBinItemDto.toRecycleBinItem(): RecycleBinItem = RecycleBinIte
 )
 
 private fun InvitationPreviewResponseDto.toInvitationPreview(): InvitationPreview = InvitationPreview(
+    serverId = serverId.requireSessionProtocolId("服务器身份"),
+    dataGeneration = dataGeneration.requireSessionProtocolId("数据代际"),
     ledgerId = ledgerId,
     ledgerName = ledgerName,
     role = role,
@@ -639,6 +653,7 @@ private fun InvitationAcceptResponseDto.toLedgerSessionIdentity(boundAt: String)
 private fun InvitationCreateResponseDto.toFamilyInvitationCreated(): FamilyInvitationCreated =
     FamilyInvitationCreated(
         inviteToken = inviteToken,
+        inviteUrl = inviteUrl,
         role = invitation.role,
         expiresAt = invitation.expiresAt,
     )

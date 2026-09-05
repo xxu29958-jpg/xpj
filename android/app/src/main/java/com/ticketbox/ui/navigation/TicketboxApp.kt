@@ -54,10 +54,10 @@ import com.ticketbox.viewmodel.joinFamilyLedgerViewModelFactory
 @Composable
 internal fun TicketboxApp(
     dependencies: TicketboxAppDependencies,
-    // 系统分享 / 启动器 shortcut 带进来的待处理请求；仅在 MainShell（已绑定+已解锁）
-    // 内被消费。未绑定/未解锁时挂起等待，待门通过后由对应 LaunchedEffect 处理。
+    // 系统分享 / 启动器 shortcut 带进来的待处理请求。邀请可在未绑定门内处理；
+    // 图片与 shortcut 等到已绑定+解锁的 MainShell，再由对应 LaunchedEffect 消费。
     launchRequest: LaunchIntentRequest? = null,
-    onLaunchRequestHandled: () -> Unit = {},
+    onLaunchRequestHandled: (LaunchIntentRequest) -> Unit = { _ -> },
 ) {
     val appViewModel: AppViewModel = viewModel(
         factory = dependencies.viewModelFactories.appViewModelFactory,
@@ -117,17 +117,13 @@ private fun TicketboxContent(
     launchConsumer: LaunchRequestConsumer,
 ) {
     if (!appState.isBound) {
-        ImmersiveBackgroundScaffold(
-            backgroundSettings = appState.backgroundSettings,
+        UnboundAuthFlow(
+            appState = appState,
+            appViewModel = appViewModel,
+            ledgerRepository = dependencies.repositories.ledgerRepository,
+            launchConsumer = launchConsumer,
             currentSkin = resolvedSkin,
-            surfaceRole = SurfaceRole.Auth,
-        ) {
-            UnboundAuthFlow(
-                appState = appState,
-                appViewModel = appViewModel,
-                ledgerRepository = dependencies.repositories.ledgerRepository,
-            )
-        }
+        )
         return
     }
 
@@ -143,33 +139,37 @@ private fun TicketboxContent(
     }
 
     if (BuildConfig.REQUIRE_LOCAL_UNLOCK && !appState.unlocked && !appState.localUnlockDisabled) {
-        ImmersiveBackgroundScaffold(
+        LocalUnlockGate(
+            authMessage = appState.authMessage,
+            biometricAuthManager = dependencies.biometricAuthManager,
+            appViewModel = appViewModel,
             backgroundSettings = appState.backgroundSettings,
             currentSkin = resolvedSkin,
-            surfaceRole = SurfaceRole.Auth,
-        ) {
-            LocalUnlockGate(
-                authMessage = appState.authMessage,
-                biometricAuthManager = dependencies.biometricAuthManager,
-                appViewModel = appViewModel,
-            )
-        }
+        )
+        return
+    }
+
+    val invitationRequest = launchConsumer.request as? LaunchIntentRequest.JoinInvitation
+    if (invitationRequest != null) {
+        InvitationLaunchHost(
+            request = invitationRequest,
+            ledgerRepository = dependencies.repositories.ledgerRepository,
+            actions = InvitationLaunchActions(
+                onAccepted = appViewModel::refreshBindingState,
+                onHandled = { launchConsumer.onHandled(invitationRequest) },
+            ),
+            backgroundSettings = appState.backgroundSettings,
+            currentSkin = resolvedSkin,
+        )
         return
     }
 
     MainShell(
         dependencies = dependencies,
-        chrome = MainShellChrome(
-            currentSkin = resolvedSkin,
-            themeMode = appState.themeMode,
-            currentCurrency = appState.currency,
-            backgroundSettings = appState.backgroundSettings,
-        ),
-        startup = MainShellStartup(
-            message = appState.authMessage,
-            localUnlockDisabled = appState.localUnlockDisabled,
-            onMessageShown = { appViewModel.setAuthMessage(null) },
-        ),
+        chrome = MainShellChrome(resolvedSkin, appState.themeMode, appState.currency, appState.backgroundSettings),
+        startup = MainShellStartup(appState.authMessage, appState.localUnlockDisabled) {
+            appViewModel.setAuthMessage(null)
+        },
         actions = MainShellActions(
             onThemeModeChange = appViewModel::selectThemeMode,
             onCurrencyChange = appViewModel::selectCurrency,
@@ -181,7 +181,7 @@ private fun TicketboxContent(
 
 private data class LaunchRequestConsumer(
     val request: LaunchIntentRequest?,
-    val onHandled: () -> Unit,
+    val onHandled: (LaunchIntentRequest) -> Unit,
 )
 
 /**
@@ -198,16 +198,24 @@ private fun LocalUnlockGate(
     authMessage: UiText?,
     biometricAuthManager: BiometricAuthManager,
     appViewModel: AppViewModel,
+    backgroundSettings: BackgroundSettings,
+    currentSkin: AppSkin,
 ) {
-    LaunchedEffect(Unit) {
-        if (biometricAuthManager.unlockAvailability() == LocalUnlockAvailability.None) {
-            appViewModel.disableLocalUnlock()
+    ImmersiveBackgroundScaffold(
+        backgroundSettings = backgroundSettings,
+        currentSkin = currentSkin,
+        surfaceRole = SurfaceRole.Auth,
+    ) {
+        LaunchedEffect(Unit) {
+            if (biometricAuthManager.unlockAvailability() == LocalUnlockAvailability.None) {
+                appViewModel.disableLocalUnlock()
+            }
         }
+        LoginScreen(
+            message = authMessage,
+            onUnlock = { attemptBiometricUnlock(biometricAuthManager, appViewModel) },
+        )
     }
-    LoginScreen(
-        message = authMessage,
-        onUnlock = { attemptBiometricUnlock(biometricAuthManager, appViewModel) },
-    )
 }
 
 /**
@@ -223,38 +231,62 @@ private fun UnboundAuthFlow(
     appState: AppUiState,
     appViewModel: AppViewModel,
     ledgerRepository: LedgerRepository,
+    launchConsumer: LaunchRequestConsumer,
+    currentSkin: AppSkin,
 ) {
-    var showJoinFlow by rememberSaveable { mutableStateOf(false) }
-    val serverUrlEntry = ServerUrlEntryConfig(
-        defaultUrl = BuildConfig.DEFAULT_SERVER_URL,
-        showInput = BuildConfig.SHOW_ADVANCED_TOOLS || BuildConfig.DEFAULT_SERVER_URL.isBlank(),
-    )
-    if (showJoinFlow) {
+    ImmersiveBackgroundScaffold(
+        backgroundSettings = appState.backgroundSettings,
+        currentSkin = currentSkin,
+        surfaceRole = SurfaceRole.Auth,
+    ) {
+        var showJoinFlow by rememberSaveable { mutableStateOf(false) }
+        val serverUrlEntry = ServerUrlEntryConfig(
+            defaultUrl = BuildConfig.DEFAULT_SERVER_URL,
+            showInput = BuildConfig.SHOW_ADVANCED_TOOLS || BuildConfig.DEFAULT_SERVER_URL.isBlank(),
+        )
         val joinViewModel: JoinFamilyLedgerViewModel = viewModel(
             key = "join-family-ledger-unbound",
             factory = joinFamilyLedgerViewModelFactory(ledgerRepository),
         )
-        // The VM is activity-retained; wipe a previous attempt's state on
-        // every (re-)entry so a stale success/error can't greet a new join.
-        LaunchedEffect(joinViewModel) { joinViewModel.reset() }
-        JoinFamilyLedgerScreen(
-            viewModel = joinViewModel,
-            onBack = { showJoinFlow = false },
-            onAccepted = appViewModel::refreshBindingState,
-            serverUrlEntry = serverUrlEntry,
-        )
-    } else {
-        BindServerScreen(
-            loading = appState.binding,
-            message = appState.authMessage,
-            hasPendingEnrollment = appState.hasPendingEnrollment,
-            serverUrlEntry = serverUrlEntry,
-            actions = BindServerActions(
-                onBind = appViewModel::bind,
-                onJoinWithInvitation = { showJoinFlow = true },
-                onAbandonPendingEnrollment = appViewModel::abandonPendingEnrollment,
-            ),
-        )
+        val invitationRequest = launchConsumer.request as? LaunchIntentRequest.JoinInvitation
+        LaunchedEffect(invitationRequest) {
+            if (invitationRequest != null) {
+                showJoinFlow = true
+                joinViewModel.consumeSharedInvitation(
+                    sharedText = invitationRequest.sharedText,
+                    defaultServerUrl = serverUrlEntry.defaultUrl,
+                )
+            }
+        }
+        if (showJoinFlow) {
+            JoinFamilyLedgerScreen(
+                viewModel = joinViewModel,
+                onBack = {
+                    showJoinFlow = false
+                    if (invitationRequest != null) launchConsumer.onHandled(invitationRequest)
+                },
+                onAccepted = appViewModel::refreshBindingState,
+                serverUrlEntry = serverUrlEntry,
+                onInvitationConsumed = {
+                    if (invitationRequest != null) launchConsumer.onHandled(invitationRequest)
+                },
+            )
+        } else {
+            BindServerScreen(
+                loading = appState.binding,
+                message = appState.authMessage,
+                hasPendingEnrollment = appState.hasPendingEnrollment,
+                serverUrlEntry = serverUrlEntry,
+                actions = BindServerActions(
+                    onBind = appViewModel::bind,
+                    onJoinWithInvitation = {
+                        joinViewModel.reset(serverUrlEntry.defaultUrl)
+                        showJoinFlow = true
+                    },
+                    onAbandonPendingEnrollment = appViewModel::abandonPendingEnrollment,
+                ),
+            )
+        }
     }
 }
 
@@ -387,12 +419,12 @@ private fun ShellBodyWithBanner(
 private fun LaunchRequestEffect(
     launchRequest: LaunchIntentRequest?,
     shellState: MainShellState,
-    onLaunchRequestHandled: () -> Unit,
+    onLaunchRequestHandled: (LaunchIntentRequest) -> Unit,
 ) {
     LaunchedEffect(launchRequest) {
         val request = launchRequest ?: return@LaunchedEffect
         dispatchLaunchRequest(request, shellState)
-        onLaunchRequestHandled()
+        onLaunchRequestHandled(request)
     }
 }
 
@@ -430,6 +462,7 @@ private fun dispatchLaunchRequest(request: LaunchIntentRequest, shellState: Main
             shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox)
         }
         is LaunchIntentRequest.Navigate -> dispatchShortcutNavigation(request.target, shellState)
+        is LaunchIntentRequest.JoinInvitation -> Unit
     }
 }
 

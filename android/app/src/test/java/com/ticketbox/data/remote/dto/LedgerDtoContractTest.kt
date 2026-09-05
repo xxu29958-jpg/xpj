@@ -51,6 +51,8 @@ class LedgerDtoContractTest {
             moshi.adapter(InvitationPreviewResponseDto::class.java).fromJson(
                 """
                 {
+                  "server_id": "srv_primary",
+                  "data_generation": "gen_primary",
                   "ledger_id": "L_family",
                   "ledger_name": "家庭账本",
                   "role": "viewer",
@@ -61,6 +63,8 @@ class LedgerDtoContractTest {
         )
 
         assertEquals("L_family", dto.ledgerId)
+        assertEquals("srv_primary", dto.serverId)
+        assertEquals("gen_primary", dto.dataGeneration)
         assertEquals("家庭账本", dto.ledgerName)
         assertEquals("viewer", dto.role)
         assertEquals("2026-05-20T00:00:00Z", dto.expiresAt)

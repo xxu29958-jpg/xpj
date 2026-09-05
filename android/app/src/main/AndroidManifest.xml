@@ -39,6 +39,13 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="image/*" />
             </intent-filter>
+            <!-- Family invitations arrive as explicit text shares. They are parsed in-app;
+                 the HTTPS link itself remains a browser URL, not an App Link. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
             <!-- 启动器静态快捷方式的目标：用自定义 action（而非 targetPackage）派发，
                  internal flavor 的 .internal 后缀下也能解析（见 shortcuts.xml 注释）。 -->
             <intent-filter>

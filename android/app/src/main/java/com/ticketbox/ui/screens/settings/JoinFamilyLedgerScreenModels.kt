@@ -37,5 +37,5 @@ internal fun joinInvitationActionModel(
     )
 }
 
-internal fun joinIdentityInputsReady(accountName: String, deviceName: String): Boolean =
-    accountName.isNotBlank() && deviceName.isNotBlank()
+internal fun joinIdentityInputsReady(accountName: String, accountNameRequired: Boolean): Boolean =
+    !accountNameRequired || accountName.isNotBlank()

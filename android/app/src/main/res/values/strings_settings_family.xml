@@ -69,6 +69,10 @@
     <string name="family_members_invite_expires_at">有效期至：%1$s</string>
     <string name="family_members_invite_once_hint">邀请明文只显示这一次，复制后发给家人。</string>
     <string name="family_members_invite_copy">复制</string>
+    <string name="family_members_invite_share">分享</string>
+    <string name="family_members_invite_share_chooser">分享家庭邀请</string>
+    <string name="family_members_invite_link_ready">安全邀请链接已就绪；可复制或直接分享。</string>
+    <string name="family_members_invite_token_fallback">当前服务未配置公网入口，将复制或分享一次性邀请码。</string>
     <string name="family_members_invite_dismiss">收起</string>
     <string name="family_members_message_invite_failed">邀请没有生成，请稍后再试。</string>
 
@@ -84,7 +88,6 @@
     <string name="join_family_ledger_identity_title">显示身份</string>
     <string name="join_family_ledger_field_invite_token">邀请码</string>
     <string name="join_family_ledger_field_account_name">显示名</string>
-    <string name="join_family_ledger_field_device_name">设备名</string>
     <string name="join_family_ledger_preview_loading">预览中…</string>
     <string name="join_family_ledger_preview_button">预览邀请</string>
     <string name="join_family_ledger_accept_loading">处理中…</string>
@@ -102,6 +105,11 @@
     <string name="join_family_ledger_message_accepted_member">已加入「%1$s」，当前角色：成员。</string>
     <string name="join_family_ledger_message_accepted_viewer">已加入「%1$s」，当前角色：只读。</string>
     <string name="join_family_ledger_message_accepted_unknown">已加入「%1$s」，当前角色：%2$s。</string>
+    <string name="join_family_ledger_invalid_shared_text">这段分享内容不是有效的家庭邀请。请让邀请人重新分享链接。</string>
+    <string name="join_family_ledger_source_host">邀请来自：%1$s</string>
+    <string name="join_family_ledger_use_current_identity">将以“%1$s”的当前成员身份加入，不会新建设备或覆盖待同步内容。</string>
+    <string name="join_family_ledger_foreign_server_message">这份邀请来自另一台账本服务器。为保护当前账号和待同步内容，请在浏览器中继续。</string>
+    <string name="join_family_ledger_continue_in_browser">在浏览器中继续</string>
 
     <!-- LedgerSwitcherScreen：设置→账本 屏 -->
     <string name="ledger_switcher_page_title">账本</string>

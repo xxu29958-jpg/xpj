@@ -31,11 +31,10 @@ from app.network_boundary import pairing_rate_limit_key
 from app.routes.web_common import _read_ui_theme, _safe_same_site_redirect_path, templates
 from app.services.identity_service import (
     ENROLLMENT_PROOF_COOKIE_SECONDS,
-    WEB_SESSION_TTL_SECONDS,
     authenticate_web_session_token,
     pair_device,
 )
-from app.services.session_lifecycle_service import revoke_web_session_token
+from app.services.session_lifecycle_service import WEB_SESSION_TTL_SECONDS, revoke_web_session_token
 from app.version import BACKEND_VERSION, STATIC_ASSET_VERSION
 
 router = APIRouter(prefix="/web/auth", tags=["web"])

@@ -166,10 +166,16 @@ data class InvitationSummaryDto(
 data class InvitationCreateResponseDto(
     @param:Json(name = "invite_token")
     val inviteToken: String,
+    @param:Json(name = "invite_url")
+    val inviteUrl: String?,
     val invitation: InvitationSummaryDto,
 )
 
 data class InvitationPreviewResponseDto(
+    @param:Json(name = "server_id")
+    val serverId: String,
+    @param:Json(name = "data_generation")
+    val dataGeneration: String,
     @param:Json(name = "ledger_id")
     val ledgerId: String,
     @param:Json(name = "ledger_name")
@@ -190,9 +196,9 @@ data class InvitationAcceptRequestDto(
     @param:Json(name = "invite_token")
     val inviteToken: String,
     @param:Json(name = "account_name")
-    val accountName: String,
+    val accountName: String?,
     @param:Json(name = "device_name")
-    val deviceName: String,
+    val deviceName: String?,
     val platform: String = "android",
     @param:Json(name = "enrollment_attempt_id")
     val enrollmentAttemptId: String? = null,

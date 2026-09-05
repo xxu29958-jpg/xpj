@@ -60,7 +60,7 @@ class LedgerRepositoryInvitationOverrideTest {
         val summary = repo.acceptInvitation(
             inviteToken = "inv_JOIN",
             accountName = "新成员",
-            deviceName = "Pixel 9",
+            deviceName = "",
             serverUrlOverride = "https://join.example.com/",
         ).getOrThrow()
 
@@ -73,6 +73,8 @@ class LedgerRepositoryInvitationOverrideTest {
         assertNull(apiFactory.tokenProviders.first().invoke())
         assertNotNull(api.acceptRequests.single().enrollmentAttemptId)
         assertNotNull(api.acceptRequests.single().enrollmentAttemptSecret)
+        assertEquals("新成员", api.acceptRequests.single().accountName)
+        assertEquals("测试 Android 设备", api.acceptRequests.single().deviceName)
         // Binding persisted in the sole session authority; ordinary settings stay non-authoritative.
         val session = requireNotNull(tokenStore.sessionStore.currentSession())
         assertEquals("https://join.example.com", session.serverUrl)
@@ -208,6 +210,8 @@ class LedgerRepositoryInvitationOverrideTest {
         val api = StubApi(
             LedgerStubApiState(
                 previewResult = InvitationPreviewResponseDto(
+                    serverId = TEST_SERVER_ID,
+                    dataGeneration = TEST_DATA_GENERATION,
                     ledgerId = "L_family",
                     ledgerName = "家庭账本",
                     role = "member",

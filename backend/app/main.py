@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 import app.routes.web_expense_offsets as web_expense_offsets
 import app.routes.web_family as web_family
+import app.routes.web_invitation_join as web_invitation_join
 import app.routes.web_library as web_library
 from app.auth import get_current_app_context
 from app.config import DATA_ROOT, get_settings
@@ -387,6 +388,7 @@ app.include_router(owner_ledgers.router)
 # web_auth must come before web_app so its /web/auth/* routes win over any
 # generic /web matcher (FastAPI registers first-mounted-first-matched).
 app.include_router(web_auth.router)
+app.include_router(web_invitation_join.router)
 app.include_router(web_currency_adoption.router)
 app.include_router(web_app.router)
 app.include_router(web_confirmed_batch.router)

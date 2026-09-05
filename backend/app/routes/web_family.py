@@ -105,6 +105,7 @@ def _render_family(
     ledger_id: str | None,
     error: str = "",
     invitation_token: str = "",
+    invitation_url: str = "",
     submitted_role: str = "member",
     submitted_note: str = "",
     submitted_ttl_days: int = 7,
@@ -159,6 +160,7 @@ def _render_family(
         can_manage_family=can_manage,
         error=error,
         invitation_token=invitation_token,
+        invitation_url=invitation_url,
         submitted_role=submitted_role,
         submitted_note=submitted_note,
         submitted_ttl_days=submitted_ttl_days,
@@ -224,6 +226,7 @@ def web_family_invite(
         db,
         ledger_id=selected_id,
         invitation_token=created.invite_token,
+        invitation_url=created.invite_url or "",
     )
 
 

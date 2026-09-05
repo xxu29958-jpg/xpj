@@ -205,6 +205,7 @@ class InvitationSummaryResponse(BaseModel):
 
 class InvitationCreateResponse(BaseModel):
     invite_token: str
+    invite_url: str | None = None
     invitation: InvitationSummaryResponse
 
 
@@ -216,8 +217,8 @@ class InvitationAcceptRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     invite_token: str = Field(min_length=1, max_length=128)
-    account_name: str = Field(min_length=1, max_length=120)
-    device_name: str = Field(min_length=1, max_length=120)
+    account_name: str | None = Field(default=None, min_length=1, max_length=120)
+    device_name: str = Field(default="未命名设备", min_length=1, max_length=120)
     platform: str = Field(min_length=1, max_length=32)
     enrollment_attempt_id: UUID | None = None
     enrollment_attempt_secret: str | None = Field(
@@ -235,6 +236,8 @@ class InvitationPreviewRequest(BaseModel):
 
 
 class InvitationPreviewResponse(BaseModel):
+    server_id: str
+    data_generation: str
     ledger_id: str
     ledger_name: str
     role: str

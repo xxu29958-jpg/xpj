@@ -10903,12 +10903,20 @@
         "additionalProperties": false,
         "properties": {
           "account_name": {
-            "maxLength": 120,
-            "minLength": 1,
-            "title": "Account Name",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Name"
           },
           "device_name": {
+            "default": "未命名设备",
             "maxLength": 120,
             "minLength": 1,
             "title": "Device Name",
@@ -10955,8 +10963,6 @@
         },
         "required": [
           "invite_token",
-          "account_name",
-          "device_name",
           "platform"
         ],
         "title": "InvitationAcceptRequest",
@@ -11096,6 +11102,17 @@
           "invite_token": {
             "title": "Invite Token",
             "type": "string"
+          },
+          "invite_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invite Url"
           }
         },
         "required": [
@@ -11139,6 +11156,10 @@
       },
       "InvitationPreviewResponse": {
         "properties": {
+          "data_generation": {
+            "title": "Data Generation",
+            "type": "string"
+          },
           "expires_at": {
             "anyOf": [
               {
@@ -11161,9 +11182,15 @@
           "role": {
             "title": "Role",
             "type": "string"
+          },
+          "server_id": {
+            "title": "Server Id",
+            "type": "string"
           }
         },
         "required": [
+          "server_id",
+          "data_generation",
           "ledger_id",
           "ledger_name",
           "role"

@@ -97,6 +97,7 @@ ERROR_MESSAGES = {
     "permission_denied": "当前角色为只读，无法修改账本。",
     "invitation_invalid": "邀请码无效、已过期或已被使用。",
     "invitation_already_joined": "你已经是这个账本的成员，无需再次接受邀请。",
+    "invitation_account_name_required": "请填写你的称呼，让家人认得你。",
     "invitation_role_invalid": "邀请角色只能是成员或只读。",
     "invitation_note_too_long": "备注最多 80 个字。",
     "member_not_found": "成员不存在或已停用。",

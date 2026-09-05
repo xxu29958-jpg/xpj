@@ -10,6 +10,10 @@ package com.ticketbox.domain.model
  */
 data class FamilyInvitationCreated(
     val inviteToken: String,
+    val inviteUrl: String?,
     val role: String,
     val expiresAt: String?,
 )
+
+val FamilyInvitationCreated.shareText: String
+    get() = inviteUrl?.takeIf { it.isNotBlank() } ?: inviteToken

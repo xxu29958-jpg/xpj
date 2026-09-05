@@ -29,8 +29,8 @@
     </section>
 
     <section class="auth-card" aria-label="连接这台设备">
-      <h2 class="auth-card-title">连接小票夹</h2>
-      <p class="auth-hint">输入家人给你的 8 位连接码，把这台设备接入家庭账本。</p>
+      <h2 class="auth-card-title">连接已有身份</h2>
+      <p class="auth-hint">输入小票夹为你生成的 8 位连接码，连接当前已有身份的一台设备。</p>
 
       {% if error_message %}
       <div class="auth-error" role="alert">{{ error_message }}</div>
@@ -53,7 +53,7 @@
             autofocus
             required
           >
-          <span class="auth-field-hint">向账本所有者索取；一次性使用，每位家庭成员需要单独的码。</span>
+          <span class="auth-field-hint">连接码只授权这台设备；不要把家庭邀请码填在这里。</span>
         </label>
 
         <label class="auth-field" for="device_name">
@@ -70,7 +70,7 @@
         <button class="auth-submit" type="submit">连接</button>
       </form>
 
-      <p class="auth-foot">连接码只用于本次设备授权，不创建账号，也不要求密码。</p>
+      <p class="auth-foot">收到家庭邀请？<a href="/web/auth/join">核对并加入家庭账本</a>，无需先获取连接码。</p>
     </section>
   </main>
 </body>

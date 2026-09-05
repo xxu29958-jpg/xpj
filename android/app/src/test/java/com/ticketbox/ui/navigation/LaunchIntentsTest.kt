@@ -3,6 +3,7 @@ package com.ticketbox.ui.navigation
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -124,5 +125,55 @@ class LaunchIntentsTest {
         assertEquals("manual_entry", ShortcutTarget.ManualEntry.id)
         assertEquals("review_pending", ShortcutTarget.ReviewPending.id)
         assertTrue(ShortcutTarget.entries.size == 3)
+    }
+}
+
+class FamilyInvitationLaunchIntentsTest {
+
+    @Test
+    fun plainTextInvitationShareRoutesToJoinWithoutExposingTokenInNavigationState() {
+        val shared = "https://family.example.com/web/auth/join#invite=inv_abc-123_DEF"
+
+        val request = resolveLaunchIntent(
+            action = LaunchIntentActions.ACTION_SEND,
+            mimeType = "text/plain",
+            streamUris = emptyList(),
+            shortcutTarget = null,
+            sharedText = shared,
+        )
+
+        assertEquals(LaunchIntentRequest.JoinInvitation(shared), request)
+        val parsed = assertNotNull(parseFamilyInvitationLink(shared))
+        assertEquals("inv_abc-123_DEF", parsed.inviteToken)
+        assertEquals("https://family.example.com", parsed.serverUrl)
+        assertEquals("family.example.com", parsed.hostLabel)
+    }
+
+    @Test
+    fun textShareWithInvalidContentStillRoutesToJoinForExplicitFeedback() {
+        assertEquals(
+            LaunchIntentRequest.JoinInvitation("这不是邀请"),
+            resolveLaunchIntent(
+                action = LaunchIntentActions.ACTION_SEND,
+                mimeType = "text/plain",
+                streamUris = emptyList(),
+                shortcutTarget = null,
+                sharedText = "这不是邀请",
+            ),
+        )
+    }
+
+    @Test
+    fun invitationLinkParserRejectsUntrustedOrAmbiguousLocations() {
+        val invalidLinks = listOf(
+            "http://family.example.com/web/auth/join#invite=inv_token",
+            "https://user@family.example.com/web/auth/join#invite=inv_token",
+            "https://family.example.com/other#invite=inv_token",
+            "https://family.example.com/web/auth/join?invite=inv_token",
+            "https://family.example.com/web/auth/join#invite=inv_one&invite=inv_two",
+            "https://family.example.com/web/auth/join#invite=${"x".repeat(129)}",
+        )
+
+        invalidLinks.forEach { link -> assertNull(parseFamilyInvitationLink(link), link) }
     }
 }
