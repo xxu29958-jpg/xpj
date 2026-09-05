@@ -21,6 +21,7 @@ import com.ticketbox.data.repository.DebtDraft
 import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.PendingDebtCreation
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CurrencyCode
@@ -102,6 +103,8 @@ private class SheetCreationGate : DebtCreationActions {
     override fun currentAccess() = access
     override fun observeActiveLedgerAccess() = flowOf(access)
     override fun observePendingCreations() = pending
+    override fun describePendingCreation(row: OutboxRow): PendingDebtCreation? =
+        pending.value.intents.singleOrNull { it.intentId == row.id }
     override suspend fun createDebt(
         expectedBinding: LogicalSessionBinding,
         draft: DebtDraft,

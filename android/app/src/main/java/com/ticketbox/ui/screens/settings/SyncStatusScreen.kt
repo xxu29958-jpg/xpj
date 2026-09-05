@@ -10,10 +10,8 @@ import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.SyncProblem
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -23,11 +21,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.repository.OutboxRow
+import com.ticketbox.data.repository.PendingDebtCreation
 import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
 import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppAdaptiveTrailingActionRow
@@ -36,6 +36,7 @@ import com.ticketbox.ui.components.AppOutlinedButtonOptions
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.screens.DebtCreationIntentSummary
 import com.ticketbox.viewmodel.OutboxStatusUiState
 import com.ticketbox.viewmodel.OutboxStatusViewModel
 
@@ -80,32 +81,18 @@ internal fun SyncStatusScreenContent(
     onBack: () -> Unit,
 ) {
     // Dropping an offline edit is irreversible, so both paths require confirmation.
-    var confirmingDropMine by remember { mutableStateOf<OutboxRow?>(null) }
-    var confirmingDropFailed by remember { mutableStateOf<OutboxRow?>(null) }
+    var confirmingDrop by remember { mutableStateOf<SyncStatusDropSelection?>(null) }
     var confirmingClearQuarantined by remember { mutableStateOf(false) }
 
-    confirmingDropMine?.let { row ->
-        DropConfirmDialog(
-            row = row,
-            failed = false,
+    confirmingDrop?.let { selection ->
+        SyncStatusDropDialog(
+            selection = selection,
             busy = state.busyRowId != null,
             onConfirm = {
-                confirmingDropMine = null
-                actions.onDropMine(row)
+                confirmingDrop = null
+                if (selection.failed) actions.onDropFailed(selection.row) else actions.onDropMine(selection.row)
             },
-            onDismiss = { confirmingDropMine = null },
-        )
-    }
-    confirmingDropFailed?.let { row ->
-        DropConfirmDialog(
-            row = row,
-            failed = true,
-            busy = state.busyRowId != null,
-            onConfirm = {
-                confirmingDropFailed = null
-                actions.onDropFailed(row)
-            },
-            onDismiss = { confirmingDropFailed = null },
+            onDismiss = { confirmingDrop = null },
         )
     }
     if (confirmingClearQuarantined) {
@@ -129,8 +116,10 @@ internal fun SyncStatusScreenContent(
         SyncStatusPageBody(
             state = state,
             actions = actions.copy(
-                onDropMine = { confirmingDropMine = it },
-                onDropFailed = { confirmingDropFailed = it },
+                onDropMine = { confirmingDrop = SyncStatusDropSelection(it, failed = false, debtCreation = null) },
+                onDropFailed = { row ->
+                    confirmingDrop = SyncStatusDropSelection(row, failed = true, debtCreation = state.failedDebtCreations[row.id])
+                },
                 onClearQuarantined = { confirmingClearQuarantined = true },
             ),
         )
@@ -193,6 +182,7 @@ private fun SyncStatusPageBody(
             status.failed.forEach { row ->
                 FailedCard(
                     row = row,
+                    debtCreation = state.failedDebtCreations[row.id],
                     busy = state.busyRowId == row.id,
                     onRetry = { actions.onRetry(row) },
                     onDrop = { actions.onDropFailed(row) },
@@ -200,52 +190,6 @@ private fun SyncStatusPageBody(
             }
         }
     }
-}
-
-/** Confirm wording reflects whether the app is dropping a conflict or removing an expired row. */
-@Composable
-private fun DropConfirmDialog(
-    row: OutboxRow,
-    failed: Boolean,
-    busy: Boolean,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val expired = failed && isExpiredFailure(row.lastError)
-    val label = mutationLabel(row.type)
-    val title: String
-    val text: String
-    val confirmWord: String
-    when {
-        !failed -> {
-            title = stringResource(R.string.sync_status_conflict_drop_dialog_title)
-            text = stringResource(R.string.sync_status_conflict_drop_dialog_text, label)
-            confirmWord = stringResource(R.string.sync_status_drop_dialog_confirm)
-        }
-        expired -> {
-            title = stringResource(R.string.sync_status_failed_drop_dialog_title_expired)
-            text = stringResource(R.string.sync_status_failed_drop_dialog_text_expired, label)
-            confirmWord = stringResource(R.string.sync_status_drop_dialog_confirm_remove)
-        }
-        else -> {
-            title = stringResource(R.string.sync_status_failed_drop_dialog_title)
-            text = stringResource(R.string.sync_status_failed_drop_dialog_text, label)
-            confirmWord = stringResource(R.string.sync_status_drop_dialog_confirm)
-        }
-    }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = { Text(text) },
-        confirmButton = {
-            TextButton(enabled = !busy, onClick = onConfirm) {
-                Text(confirmWord, color = MaterialTheme.colorScheme.error)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
-        },
-    )
 }
 
 @Composable
@@ -298,6 +242,7 @@ private fun ConflictCard(
 @Composable
 private fun FailedCard(
     row: OutboxRow,
+    debtCreation: PendingDebtCreation?,
     busy: Boolean,
     onRetry: () -> Unit,
     onDrop: () -> Unit,
@@ -305,6 +250,7 @@ private fun FailedCard(
     // Expired rows cannot be retried because the server-side idempotency key may be gone.
     val expired = isExpiredFailure(row.lastError)
     SettingsOpenPanel(
+        modifier = Modifier.semantics(mergeDescendants = true) {},
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
     ) {
         Column(
@@ -312,10 +258,12 @@ private fun FailedCard(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ) {
             Text(
-                text = stringResource(R.string.sync_status_failed_offline_prefix, mutationLabel(row.type)),
+                text = if (row.type == PendingMutationType.CreateDebt) mutationLabel(row.type)
+                else stringResource(R.string.sync_status_failed_offline_prefix, mutationLabel(row.type)),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
             )
+            debtCreation?.let { DebtCreationIntentSummary(it) }
             Text(
                 text = friendlyLastError(row.lastError, fallback = stringResource(R.string.sync_status_failed_fallback)),
                 style = MaterialTheme.typography.bodySmall,

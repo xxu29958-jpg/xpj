@@ -4,11 +4,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.ConflictResolution
+import com.ticketbox.data.repository.DebtCreationActions
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.FailedResolution
 import com.ticketbox.data.repository.OutboxRepository
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.OutboxStatus
+import com.ticketbox.data.repository.PendingDebtCreation
 import com.ticketbox.data.repository.parseExpenseTargetRef
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
@@ -38,6 +40,7 @@ import kotlinx.coroutines.launch
 class OutboxStatusViewModel(
     private val outbox: OutboxRepository,
     private val expenseRepository: ExpenseRepository,
+    private val debtCreation: DebtCreationActions,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(OutboxStatusUiState())
     val uiState: StateFlow<OutboxStatusUiState> = _uiState.asStateFlow()
@@ -45,7 +48,10 @@ class OutboxStatusViewModel(
     init {
         viewModelScope.launch {
             outbox.observeStatus().collect { status ->
-                _uiState.update { it.copy(status = status) }
+                val descriptions = status.failed.mapNotNull { row ->
+                    debtCreation.describePendingCreation(row)?.let { row.id to it }
+                }.toMap()
+                _uiState.update { it.copy(status = status, failedDebtCreations = descriptions) }
             }
         }
     }
@@ -137,6 +143,7 @@ class OutboxStatusViewModel(
 
 data class OutboxStatusUiState(
     val status: OutboxStatus = OutboxStatus(queueDepth = 0, conflicts = emptyList(), failed = emptyList()),
+    val failedDebtCreations: Map<Long, PendingDebtCreation> = emptyMap(),
     val busyRowId: Long? = null,
     val isClearingQuarantine: Boolean = false,
     val message: UiText? = null,

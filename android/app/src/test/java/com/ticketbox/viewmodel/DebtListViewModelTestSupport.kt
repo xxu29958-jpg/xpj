@@ -8,6 +8,8 @@ import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.DebtDraft
 import com.ticketbox.data.repository.DebtListPage
+import com.ticketbox.data.repository.OutboxRow
+import com.ticketbox.data.repository.PendingDebtCreation
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DebtBillSuggestion
@@ -110,6 +112,8 @@ internal class FakeDebtCreationActions(
     override fun currentAccess(): LedgerAccessContext? = access.value
     override fun observeActiveLedgerAccess() = access
     override fun observePendingCreations() = pendingCreations
+    override fun describePendingCreation(row: OutboxRow): PendingDebtCreation? =
+        pendingCreations.value.intents.singleOrNull { it.intentId == row.id }
 
     override suspend fun createDebt(
         expectedBinding: LogicalSessionBinding,

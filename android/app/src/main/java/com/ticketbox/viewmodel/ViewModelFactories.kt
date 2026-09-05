@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.repository.BudgetActions
 import com.ticketbox.data.repository.DebtActions
+import com.ticketbox.data.repository.DebtCreationActions
 import com.ticketbox.data.repository.DebtProposalActions
 import com.ticketbox.data.repository.DebtRepaymentQueries
 import com.ticketbox.data.repository.ExpenseRepositoryBackgroundTaskActions
@@ -350,8 +351,9 @@ fun backgroundTasksViewModelFactory(
 fun outboxStatusViewModelFactory(
     outbox: OutboxRepository,
     expenseRepository: ExpenseRepository,
+    debtCreation: DebtCreationActions,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return OutboxStatusViewModel(outbox, expenseRepository) as T
+        return OutboxStatusViewModel(outbox, expenseRepository, debtCreation) as T
     }
 }

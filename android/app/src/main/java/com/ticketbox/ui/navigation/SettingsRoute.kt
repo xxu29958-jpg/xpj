@@ -74,6 +74,7 @@ internal fun SettingsRoute(
             ledgerRepository = screenFactory.ledgerRepository,
             expenseRepository = screenFactory.repository,
             outboxRepository = screenFactory.outboxRepository,
+            debtCreationRepository = screenFactory.debtCreationRepository,
             activeLedgerId = screenFactory.ledgerRepository.activeLedgerId(),
         ),
     )
