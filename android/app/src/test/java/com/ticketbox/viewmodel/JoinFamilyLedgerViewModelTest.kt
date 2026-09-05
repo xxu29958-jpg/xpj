@@ -15,6 +15,11 @@ import com.ticketbox.data.repository.TEST_SERVER_ID
 import com.ticketbox.data.repository.existingOwnerSessionFixture
 import com.ticketbox.data.repository.testLedgerRepository
 import com.ticketbox.domain.model.InvitationSessionTarget
+import com.ticketbox.domain.model.FamilyInvitationCreated
+import com.ticketbox.domain.model.shareText
+import com.ticketbox.ui.navigation.LaunchIntentActions
+import com.ticketbox.ui.navigation.LaunchIntentRequest
+import com.ticketbox.ui.navigation.resolveLaunchIntent
 import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -34,6 +39,98 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class JoinFamilyLedgerViewModelTest {
+
+    @Test
+    fun rawShareFallbackResolvesLaunchAndBoundSessionPreviewsCurrentServer() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val api = invitationApi()
+            val factory = LedgerStubApiFactory(api)
+            val repository = testLedgerRepository(
+                apiClient = factory,
+                settingsStore = LedgerFakeSettingsStore(),
+                tokenStore = ownerSession(),
+                expenseDao = LedgerFakeDao(),
+            )
+            val created = FamilyInvitationCreated(
+                inviteToken = "inv_RAW_FALLBACK",
+                inviteUrl = null,
+                role = "member",
+                expiresAt = null,
+            )
+            val request = resolveLaunchIntent(
+                action = LaunchIntentActions.ACTION_SEND,
+                mimeType = "text/plain",
+                streamUris = emptyList(),
+                shortcutTarget = null,
+                sharedText = created.shareText,
+            ) as LaunchIntentRequest.JoinInvitation
+            val viewModel = JoinFamilyLedgerViewModel(repository)
+
+            viewModel.consumeSharedInvitation(request.sharedText)
+            val previewed = viewModel.uiState.first { it.preview != null || it.error != null }
+
+            assertNull(previewed.error)
+            assertEquals("inv_RAW_FALLBACK", previewed.invitationInput)
+            assertEquals(InvitationSessionTarget.CurrentServer, previewed.target)
+            assertEquals(listOf("https://api.example.com"), factory.baseUrls)
+            assertNull(factory.tokenProviders.single().invoke(), "preview must stay anonymous")
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun rawShareOnUnboundSessionUsesProvidedDefaultServer() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val api = invitationApi()
+            val factory = LedgerStubApiFactory(api)
+            val viewModel = JoinFamilyLedgerViewModel(
+                testLedgerRepository(
+                    apiClient = factory,
+                    settingsStore = LedgerFakeSettingsStore(),
+                    tokenStore = LedgerFakeTokenStore(),
+                    expenseDao = LedgerFakeDao(),
+                ),
+            )
+
+            viewModel.consumeSharedInvitation(
+                sharedText = "inv_RAW_DEFAULT",
+                defaultServerUrl = "https://default.example.com",
+            )
+            val previewed = viewModel.uiState.first { it.preview != null || it.error != null }
+
+            assertNull(previewed.error)
+            assertEquals("inv_RAW_DEFAULT", previewed.invitationInput)
+            assertEquals("https://default.example.com", previewed.serverUrl)
+            assertEquals(InvitationSessionTarget.Unbound, previewed.target)
+            assertEquals(listOf("https://default.example.com"), factory.baseUrls)
+            assertNull(factory.tokenProviders.single().invoke(), "preview must stay anonymous")
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun rawShareOnUnboundSessionWithoutAddressKeepsInputForServerEntry() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val api = invitationApi()
+            val viewModel = viewModel(api, LedgerFakeSettingsStore(), LedgerFakeTokenStore())
+
+            viewModel.consumeSharedInvitation("inv_RAW_NEEDS_SERVER")
+            advanceUntilIdle()
+
+            assertNull(viewModel.uiState.value.error)
+            assertNull(viewModel.uiState.value.preview)
+            assertEquals("inv_RAW_NEEDS_SERVER", viewModel.uiState.value.invitationInput)
+            assertEquals("", viewModel.uiState.value.serverUrl)
+            assertTrue(api.previewRequests.isEmpty())
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
 
     @Test
     fun sharedLinkAutoPreviewsAndUnboundAcceptNeedsOnlyDisplayName() = runTest {

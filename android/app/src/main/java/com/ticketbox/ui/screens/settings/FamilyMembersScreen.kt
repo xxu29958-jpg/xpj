@@ -374,6 +374,19 @@ private fun CreatedInviteResult(
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
+    CreatedInviteActions(
+        onCopy = onCopy,
+        onShare = onShare,
+        onDismissResult = onDismissResult,
+    )
+}
+
+@Composable
+private fun CreatedInviteActions(
+    onCopy: () -> Unit,
+    onShare: () -> Unit,
+    onDismissResult: () -> Unit,
+) {
     AppAdaptiveEditActionLayout(actionCount = 3, compact = false, stackTwoActionsOnNarrow = true) { mode ->
         when (mode) {
             AppAdaptiveEditActionMode.Stacked -> Column(

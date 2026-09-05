@@ -13,6 +13,7 @@ import com.ticketbox.domain.model.LedgerSummary
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.navigation.FamilyInvitationLink
 import com.ticketbox.ui.navigation.parseFamilyInvitationLink
+import com.ticketbox.ui.navigation.parseFamilyInvitationToken
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -66,11 +67,12 @@ class JoinFamilyLedgerViewModel(
 
     fun reset(defaultServerUrl: String = "") {
         invalidatePreviewRequest()
-        clearSensitiveInput()
+        acceptedInviteToken = null
+        pendingSharedText = null
+        previewedServerUrlOverride = null
+        browserContinuationUrl = null
         _uiState.value = JoinFamilyLedgerUiState(serverUrl = defaultServerUrl)
     }
-
-    fun discardInvitation() = reset(_uiState.value.serverUrl)
 
     /** Manual paste. A complete Ticketbox link is consumed immediately and previewed. */
     fun onInvitationInputChanged(value: String) {
@@ -79,8 +81,7 @@ class JoinFamilyLedgerViewModel(
             consumeInvitationLink(link)
             return
         }
-        invalidatePreviewRequest()
-        clearPreviewOwnership()
+        invalidatePreviewRequest(clearOwnership = true)
         acceptedInviteToken = null
         _uiState.update {
             it.copy(
@@ -96,8 +97,7 @@ class JoinFamilyLedgerViewModel(
     }
 
     fun onServerUrlChanged(value: String) {
-        invalidatePreviewRequest()
-        clearPreviewOwnership()
+        invalidatePreviewRequest(clearOwnership = true)
         _uiState.update {
             it.copy(
                 serverUrl = value,
@@ -115,18 +115,40 @@ class JoinFamilyLedgerViewModel(
     }
 
     /** Invalid shared text still lands here, producing an explicit failure instead of silently opening home. */
-    fun consumeSharedInvitation(sharedText: String) {
+    fun consumeSharedInvitation(sharedText: String, defaultServerUrl: String = "") {
         if (_uiState.value.submitting) {
             pendingSharedText = sharedText
             return
         }
         val link = parseFamilyInvitationLink(sharedText)
-        if (link == null) {
+        if (link != null) {
+            consumeInvitationLink(link)
+            return
+        }
+        val inviteToken = parseFamilyInvitationToken(sharedText)
+        if (inviteToken == null) {
             reset(_uiState.value.serverUrl)
             _uiState.update { it.copy(error = UiText.res(R.string.join_family_ledger_invalid_shared_text)) }
             return
         }
-        consumeInvitationLink(link)
+        invalidatePreviewRequest(clearOwnership = true)
+        val serverUrl = _uiState.value.serverUrl.ifBlank { defaultServerUrl.trim() }
+        val hasBoundSession = repository.hasBoundSession()
+        acceptedInviteToken = inviteToken
+        previewedServerUrlOverride = if (hasBoundSession) null else serverUrl.takeIf(String::isNotBlank)
+        _uiState.update {
+            it.copy(
+                invitationInput = inviteToken,
+                serverUrl = serverUrl,
+                sourceHost = null,
+                preview = null,
+                target = null,
+                previewing = false,
+                error = null,
+                success = null,
+            )
+        }
+        if (hasBoundSession || previewedServerUrlOverride != null) previewAcceptedToken()
     }
 
     fun previewCurrentInput() {
@@ -148,7 +170,42 @@ class JoinFamilyLedgerViewModel(
     }
 
     fun acceptCurrentInvitation(onAccepted: () -> Unit, onConsumed: () -> Unit = {}) {
-        acceptInvitationInternal(onAccepted, onConsumed)
+        val acceptedPreview = _uiState.value.preview ?: return
+        val acceptedTarget = _uiState.value.target ?: return
+        if (!_uiState.value.canAccept || _uiState.value.submitting) return
+        val inviteToken = acceptedInviteToken ?: return
+        viewModelScope.launch {
+            _uiState.update { it.copy(submitting = true, error = null, success = null) }
+            repository.acceptInvitation(
+                inviteToken = inviteToken,
+                accountName = _uiState.value.accountName,
+                deviceName = "",
+                serverUrlOverride = if (acceptedTarget == InvitationSessionTarget.Unbound) {
+                    previewedServerUrlOverride
+                } else {
+                    null
+                },
+            ).onSuccess { ledger ->
+                val nextSharedText = pendingSharedText
+                acceptedInviteToken = null
+                pendingSharedText = null
+                previewedServerUrlOverride = null
+                browserContinuationUrl = null
+                _uiState.value = JoinFamilyLedgerUiState(success = acceptedMessage(ledger))
+                onConsumed()
+                onAccepted()
+                nextSharedText?.let(::consumeSharedInvitation)
+            }.onFailure { err ->
+                _uiState.update {
+                    it.copy(
+                        submitting = false,
+                        preview = acceptedPreview,
+                        target = acceptedTarget,
+                        error = err.toUiText(R.string.join_family_ledger_message_accept_failed),
+                    )
+                }
+            }
+        }
     }
 
     fun continueInBrowser(open: (String) -> Unit): Boolean {
@@ -217,61 +274,14 @@ class JoinFamilyLedgerViewModel(
         }
     }
 
-    private fun acceptInvitationInternal(
-        onAccepted: () -> Unit,
-        onConsumed: () -> Unit,
-    ) {
-        val acceptedPreview = _uiState.value.preview ?: return
-        val acceptedTarget = _uiState.value.target ?: return
-        if (!_uiState.value.canAccept || _uiState.value.submitting) return
-        val inviteToken = acceptedInviteToken ?: return
-        viewModelScope.launch {
-            _uiState.update { it.copy(submitting = true, error = null, success = null) }
-            repository.acceptInvitation(
-                inviteToken = inviteToken,
-                accountName = _uiState.value.accountName,
-                deviceName = "",
-                serverUrlOverride = if (acceptedTarget == InvitationSessionTarget.Unbound) {
-                    previewedServerUrlOverride
-                } else {
-                    null
-                },
-            ).onSuccess { ledger ->
-                val nextSharedText = pendingSharedText
-                pendingSharedText = null
-                clearSensitiveInput()
-                _uiState.value = JoinFamilyLedgerUiState(success = acceptedMessage(ledger))
-                onConsumed()
-                onAccepted()
-                nextSharedText?.let(::consumeSharedInvitation)
-            }.onFailure { err ->
-                _uiState.update {
-                    it.copy(
-                        submitting = false,
-                        preview = acceptedPreview,
-                        target = acceptedTarget,
-                        error = err.toUiText(R.string.join_family_ledger_message_accept_failed),
-                    )
-                }
-            }
-        }
-    }
-
-    private fun clearPreviewOwnership() {
-        previewedServerUrlOverride = null
-        browserContinuationUrl = null
-    }
-
-    private fun clearSensitiveInput() {
-        acceptedInviteToken = null
-        pendingSharedText = null
-        clearPreviewOwnership()
-    }
-
-    private fun invalidatePreviewRequest() {
+    private fun invalidatePreviewRequest(clearOwnership: Boolean = false) {
         previewAttempt += 1
         previewJob?.cancel()
         previewJob = null
+        if (clearOwnership) {
+            previewedServerUrlOverride = null
+            browserContinuationUrl = null
+        }
     }
 
     private companion object {

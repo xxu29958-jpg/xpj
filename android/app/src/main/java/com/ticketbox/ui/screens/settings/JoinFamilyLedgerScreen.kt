@@ -57,7 +57,7 @@ fun JoinFamilyLedgerScreen(
         title = stringResource(R.string.join_family_ledger_page_title),
         subtitle = stringResource(R.string.join_family_ledger_page_subtitle),
         onBack = {
-            viewModel.discardInvitation()
+            viewModel.reset(state.serverUrl)
             onBack()
         },
         status = {
@@ -86,7 +86,7 @@ fun JoinFamilyLedgerScreen(
                 },
                 onContinueInBrowser = {
                     if (viewModel.continueInBrowser(uriHandler::openUri)) {
-                        viewModel.discardInvitation()
+                        viewModel.reset(state.serverUrl)
                         onInvitationConsumed()
                     }
                 },
@@ -154,45 +154,12 @@ private fun JoinInvitationForm(
                 fields = fields,
                 actions = actions,
             )
-            state.preview?.let { InvitationPreviewPanel(preview = it) }
-            state.sourceHost?.let { host ->
-                Text(
-                    text = stringResource(R.string.join_family_ledger_source_host, host),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            if (state.preview == null) {
-                Text(
-                    text = stringResource(R.string.join_family_ledger_preview_required),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            } else if (state.canContinueInBrowser) {
-                AppStatusBanner(
-                    message = com.ticketbox.domain.model.UiText.res(
-                        R.string.join_family_ledger_foreign_server_message,
-                    ),
-                    tone = MessageTone.Info,
-                )
-            } else {
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
-                Text(
-                    text = stringResource(R.string.join_family_ledger_identity_title),
-                    style = MaterialTheme.typography.titleSmall,
-                )
-                if (state.accountNameRequired) {
-                    JoinIdentityFields(state = state, fields = fields, actions = actions)
-                } else {
-                    Text(
-                        text = stringResource(
-                            R.string.join_family_ledger_use_current_identity,
-                            currentAccountName,
-                        ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
+            JoinInvitationPreviewAndIdentity(
+                state = state,
+                currentAccountName = currentAccountName,
+                fields = fields,
+                actions = actions,
+            )
             if (state.canContinueInBrowser) {
                 QuietOutlinedButton(
                     text = stringResource(R.string.join_family_ledger_continue_in_browser),
@@ -208,6 +175,54 @@ private fun JoinInvitationForm(
                         state.target != com.ticketbox.domain.model.InvitationSessionTarget.ForeignServer,
                     onPreview = actions.onPreview,
                     onAccept = actions.onAccept,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun JoinInvitationPreviewAndIdentity(
+    state: JoinFamilyLedgerUiState,
+    currentAccountName: String,
+    fields: JoinInvitationFormFields,
+    actions: JoinInvitationFormActions,
+) {
+    state.preview?.let { InvitationPreviewPanel(preview = it) }
+    state.sourceHost?.let { host ->
+        Text(
+            text = stringResource(R.string.join_family_ledger_source_host, host),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+    when {
+        state.preview == null -> Text(
+            text = stringResource(R.string.join_family_ledger_preview_required),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
+        state.canContinueInBrowser -> AppStatusBanner(
+            message = com.ticketbox.domain.model.UiText.res(
+                R.string.join_family_ledger_foreign_server_message,
+            ),
+            tone = MessageTone.Info,
+        )
+        else -> {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
+            Text(
+                text = stringResource(R.string.join_family_ledger_identity_title),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            if (state.accountNameRequired) {
+                JoinIdentityFields(state = state, fields = fields, actions = actions)
+            } else {
+                Text(
+                    text = stringResource(
+                        R.string.join_family_ledger_use_current_identity,
+                        currentAccountName,
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }

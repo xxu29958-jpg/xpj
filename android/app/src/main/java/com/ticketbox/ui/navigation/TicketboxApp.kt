@@ -117,18 +117,13 @@ private fun TicketboxContent(
     launchConsumer: LaunchRequestConsumer,
 ) {
     if (!appState.isBound) {
-        ImmersiveBackgroundScaffold(
-            backgroundSettings = appState.backgroundSettings,
+        UnboundAuthFlow(
+            appState = appState,
+            appViewModel = appViewModel,
+            ledgerRepository = dependencies.repositories.ledgerRepository,
+            launchConsumer = launchConsumer,
             currentSkin = resolvedSkin,
-            surfaceRole = SurfaceRole.Auth,
-        ) {
-            UnboundAuthFlow(
-                appState = appState,
-                appViewModel = appViewModel,
-                ledgerRepository = dependencies.repositories.ledgerRepository,
-                launchConsumer = launchConsumer,
-            )
-        }
+        )
         return
     }
 
@@ -144,50 +139,37 @@ private fun TicketboxContent(
     }
 
     if (BuildConfig.REQUIRE_LOCAL_UNLOCK && !appState.unlocked && !appState.localUnlockDisabled) {
-        ImmersiveBackgroundScaffold(
+        LocalUnlockGate(
+            authMessage = appState.authMessage,
+            biometricAuthManager = dependencies.biometricAuthManager,
+            appViewModel = appViewModel,
             backgroundSettings = appState.backgroundSettings,
             currentSkin = resolvedSkin,
-            surfaceRole = SurfaceRole.Auth,
-        ) {
-            LocalUnlockGate(
-                authMessage = appState.authMessage,
-                biometricAuthManager = dependencies.biometricAuthManager,
-                appViewModel = appViewModel,
-            )
-        }
+        )
         return
     }
 
     val invitationRequest = launchConsumer.request as? LaunchIntentRequest.JoinInvitation
     if (invitationRequest != null) {
-        ImmersiveBackgroundScaffold(
-            backgroundSettings = appState.backgroundSettings,
-            currentSkin = resolvedSkin,
-            surfaceRole = SurfaceRole.Settings,
-        ) {
-            InvitationLaunchHost(
-                request = invitationRequest,
-                ledgerRepository = dependencies.repositories.ledgerRepository,
+        InvitationLaunchHost(
+            request = invitationRequest,
+            ledgerRepository = dependencies.repositories.ledgerRepository,
+            actions = InvitationLaunchActions(
                 onAccepted = appViewModel::refreshBindingState,
                 onHandled = { launchConsumer.onHandled(invitationRequest) },
-            )
-        }
+            ),
+            backgroundSettings = appState.backgroundSettings,
+            currentSkin = resolvedSkin,
+        )
         return
     }
 
     MainShell(
         dependencies = dependencies,
-        chrome = MainShellChrome(
-            currentSkin = resolvedSkin,
-            themeMode = appState.themeMode,
-            currentCurrency = appState.currency,
-            backgroundSettings = appState.backgroundSettings,
-        ),
-        startup = MainShellStartup(
-            message = appState.authMessage,
-            localUnlockDisabled = appState.localUnlockDisabled,
-            onMessageShown = { appViewModel.setAuthMessage(null) },
-        ),
+        chrome = MainShellChrome(resolvedSkin, appState.themeMode, appState.currency, appState.backgroundSettings),
+        startup = MainShellStartup(appState.authMessage, appState.localUnlockDisabled) {
+            appViewModel.setAuthMessage(null)
+        },
         actions = MainShellActions(
             onThemeModeChange = appViewModel::selectThemeMode,
             onCurrencyChange = appViewModel::selectCurrency,
@@ -216,16 +198,24 @@ private fun LocalUnlockGate(
     authMessage: UiText?,
     biometricAuthManager: BiometricAuthManager,
     appViewModel: AppViewModel,
+    backgroundSettings: BackgroundSettings,
+    currentSkin: AppSkin,
 ) {
-    LaunchedEffect(Unit) {
-        if (biometricAuthManager.unlockAvailability() == LocalUnlockAvailability.None) {
-            appViewModel.disableLocalUnlock()
+    ImmersiveBackgroundScaffold(
+        backgroundSettings = backgroundSettings,
+        currentSkin = currentSkin,
+        surfaceRole = SurfaceRole.Auth,
+    ) {
+        LaunchedEffect(Unit) {
+            if (biometricAuthManager.unlockAvailability() == LocalUnlockAvailability.None) {
+                appViewModel.disableLocalUnlock()
+            }
         }
+        LoginScreen(
+            message = authMessage,
+            onUnlock = { attemptBiometricUnlock(biometricAuthManager, appViewModel) },
+        )
     }
-    LoginScreen(
-        message = authMessage,
-        onUnlock = { attemptBiometricUnlock(biometricAuthManager, appViewModel) },
-    )
 }
 
 /**
@@ -242,72 +232,62 @@ private fun UnboundAuthFlow(
     appViewModel: AppViewModel,
     ledgerRepository: LedgerRepository,
     launchConsumer: LaunchRequestConsumer,
+    currentSkin: AppSkin,
 ) {
-    var showJoinFlow by rememberSaveable { mutableStateOf(false) }
-    val serverUrlEntry = ServerUrlEntryConfig(
-        defaultUrl = BuildConfig.DEFAULT_SERVER_URL,
-        showInput = BuildConfig.SHOW_ADVANCED_TOOLS || BuildConfig.DEFAULT_SERVER_URL.isBlank(),
-    )
-    val joinViewModel: JoinFamilyLedgerViewModel = viewModel(
-        key = "join-family-ledger-unbound",
-        factory = joinFamilyLedgerViewModelFactory(ledgerRepository),
-    )
-    val invitationRequest = launchConsumer.request as? LaunchIntentRequest.JoinInvitation
-    LaunchedEffect(invitationRequest) {
-        if (invitationRequest != null) {
-            showJoinFlow = true
-            joinViewModel.consumeSharedInvitation(invitationRequest.sharedText)
+    ImmersiveBackgroundScaffold(
+        backgroundSettings = appState.backgroundSettings,
+        currentSkin = currentSkin,
+        surfaceRole = SurfaceRole.Auth,
+    ) {
+        var showJoinFlow by rememberSaveable { mutableStateOf(false) }
+        val serverUrlEntry = ServerUrlEntryConfig(
+            defaultUrl = BuildConfig.DEFAULT_SERVER_URL,
+            showInput = BuildConfig.SHOW_ADVANCED_TOOLS || BuildConfig.DEFAULT_SERVER_URL.isBlank(),
+        )
+        val joinViewModel: JoinFamilyLedgerViewModel = viewModel(
+            key = "join-family-ledger-unbound",
+            factory = joinFamilyLedgerViewModelFactory(ledgerRepository),
+        )
+        val invitationRequest = launchConsumer.request as? LaunchIntentRequest.JoinInvitation
+        LaunchedEffect(invitationRequest) {
+            if (invitationRequest != null) {
+                showJoinFlow = true
+                joinViewModel.consumeSharedInvitation(
+                    sharedText = invitationRequest.sharedText,
+                    defaultServerUrl = serverUrlEntry.defaultUrl,
+                )
+            }
+        }
+        if (showJoinFlow) {
+            JoinFamilyLedgerScreen(
+                viewModel = joinViewModel,
+                onBack = {
+                    showJoinFlow = false
+                    if (invitationRequest != null) launchConsumer.onHandled(invitationRequest)
+                },
+                onAccepted = appViewModel::refreshBindingState,
+                serverUrlEntry = serverUrlEntry,
+                onInvitationConsumed = {
+                    if (invitationRequest != null) launchConsumer.onHandled(invitationRequest)
+                },
+            )
+        } else {
+            BindServerScreen(
+                loading = appState.binding,
+                message = appState.authMessage,
+                hasPendingEnrollment = appState.hasPendingEnrollment,
+                serverUrlEntry = serverUrlEntry,
+                actions = BindServerActions(
+                    onBind = appViewModel::bind,
+                    onJoinWithInvitation = {
+                        joinViewModel.reset(serverUrlEntry.defaultUrl)
+                        showJoinFlow = true
+                    },
+                    onAbandonPendingEnrollment = appViewModel::abandonPendingEnrollment,
+                ),
+            )
         }
     }
-    if (showJoinFlow) {
-        JoinFamilyLedgerScreen(
-            viewModel = joinViewModel,
-            onBack = {
-                showJoinFlow = false
-                if (invitationRequest != null) launchConsumer.onHandled(invitationRequest)
-            },
-            onAccepted = appViewModel::refreshBindingState,
-            serverUrlEntry = serverUrlEntry,
-            onInvitationConsumed = {
-                if (invitationRequest != null) launchConsumer.onHandled(invitationRequest)
-            },
-        )
-    } else {
-        BindServerScreen(
-            loading = appState.binding,
-            message = appState.authMessage,
-            hasPendingEnrollment = appState.hasPendingEnrollment,
-            serverUrlEntry = serverUrlEntry,
-            actions = BindServerActions(
-                onBind = appViewModel::bind,
-                onJoinWithInvitation = {
-                    joinViewModel.reset(serverUrlEntry.defaultUrl)
-                    showJoinFlow = true
-                },
-                onAbandonPendingEnrollment = appViewModel::abandonPendingEnrollment,
-            ),
-        )
-    }
-}
-
-@Composable
-private fun InvitationLaunchHost(
-    request: LaunchIntentRequest.JoinInvitation,
-    ledgerRepository: LedgerRepository,
-    onAccepted: () -> Unit,
-    onHandled: () -> Unit,
-) {
-    val joinViewModel: JoinFamilyLedgerViewModel = viewModel(
-        key = "join-family-ledger-launch",
-        factory = joinFamilyLedgerViewModelFactory(ledgerRepository),
-    )
-    LaunchedEffect(request) { joinViewModel.consumeSharedInvitation(request.sharedText) }
-    JoinFamilyLedgerScreen(
-        viewModel = joinViewModel,
-        onBack = onHandled,
-        onAccepted = onAccepted,
-        onInvitationConsumed = onHandled,
-    )
 }
 
 @Composable

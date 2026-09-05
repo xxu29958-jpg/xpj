@@ -128,8 +128,7 @@ internal fun parseFamilyInvitationLink(raw: String): FamilyInvitationLink? {
     val host = uri.host?.takeIf { it.isNotBlank() } ?: return null
     val rawFragment = uri.rawFragment ?: return null
     if (!rawFragment.startsWith("invite=") || rawFragment.indexOf('&') >= 0) return null
-    val token = rawFragment.removePrefix("invite=")
-    if (token.isBlank() || token.length > INVITATION_TOKEN_MAX || token.any(Char::isWhitespace)) return null
+    val token = parseFamilyInvitationToken(rawFragment.removePrefix("invite=")) ?: return null
     val authority = uri.rawAuthority ?: return null
     return FamilyInvitationLink(
         inviteToken = token,
@@ -139,6 +138,17 @@ internal fun parseFamilyInvitationLink(raw: String): FamilyInvitationLink? {
     )
 }
 
+/** Recognizes the one-shot plaintext shape emitted when no public invitation URL is configured. */
+internal fun parseFamilyInvitationToken(raw: String): String? {
+    val candidate = raw.trim()
+    if (!candidate.startsWith(INVITATION_TOKEN_PREFIX) || candidate.length > INVITATION_TOKEN_MAX) return null
+    return candidate.takeIf { token ->
+        token.length > INVITATION_TOKEN_PREFIX.length &&
+            token.drop(INVITATION_TOKEN_PREFIX.length).all { it.isLetterOrDigit() || it == '_' || it == '-' }
+    }
+}
+
+private const val INVITATION_TOKEN_PREFIX = "inv_"
 private const val INVITATION_TOKEN_MAX = 128
 
 /** 去 null、去空白、去重并保序——多图分享里重复 uri 不重复上传。 */
