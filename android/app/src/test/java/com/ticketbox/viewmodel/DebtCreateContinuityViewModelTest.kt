@@ -2,6 +2,11 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.R
 import com.ticketbox.data.repository.DebtCreationQueueSnapshot
+import com.ticketbox.data.repository.DebtCreationPendingState
+import com.ticketbox.data.repository.DebtDraft
+import com.ticketbox.data.repository.PendingDebtCreation
+import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -139,6 +144,28 @@ class DebtCreateContinuityViewModelTest {
         assertTrue(viewModel.state.value.debts.isEmpty())
         assertEquals(UiText.res(R.string.debt_create_local_saved), viewModel.state.value.flashMessage)
         assertEquals(0, viewModel.state.value.creationSettlementRevision)
+    }
+
+    @Test
+    fun newLedgerPendingRowsSurviveQueueEmissionBeforeTheAccessObserverRuns() = runTest(dispatcher) {
+        val repository = FakeDebtActions().apply { listCapability = "CNY" }
+        val viewModel = DebtListViewModel(repository, repository)
+        advanceUntilIdle()
+        val next = requireNotNull(repository.access.value).let {
+            it.copy(binding = it.binding.copy(ledgerId = "next", bindingRevision = "binding-2"))
+        }
+        val pending = PendingDebtCreation(
+            9L, DebtCreationPendingState.Waiting,
+            DebtDraft(DebtDirections.OWED_TO_ME, "新账本的本机记录", 5500L), CurrencyCode.CNY,
+        )
+
+        // Both sources are current by collection time, but Room's queued callback runs first.
+        repository.pendingCreations.value = DebtCreationQueueSnapshot(next.binding, listOf(pending))
+        repository.access.value = next
+        advanceUntilIdle()
+
+        assertEquals(listOf(pending), viewModel.state.value.pendingCreations)
+        assertTrue(viewModel.state.value.debts.isEmpty())
     }
 
     private fun fillDraft(viewModel: DebtListViewModel) {

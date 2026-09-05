@@ -28,14 +28,7 @@ class CreateDebtDispatcher(
         } catch (error: CancellationException) {
             throw error
         } catch (error: HttpException) {
-            val code = errors.parseHttpError(error).errorCode
-            when {
-                error.code() == 409 && code == "idempotency_key_in_progress" ->
-                    DispatchResult.RetryableFailure("debt_create_response_pending")
-                error.code() == 408 || error.code() == 429 || error.code() in 500..599 ->
-                    DispatchResult.RetryableFailure("debt_create_connection_interrupted")
-                else -> DispatchResult.Failure("debt_create_rejected")
-            }
+            classifyHttpError(error)
         } catch (_: IOException) {
             DispatchResult.RetryableFailure("debt_create_connection_interrupted")
         } catch (_: RepositoryException) {
@@ -43,6 +36,17 @@ class CreateDebtDispatcher(
         } catch (_: Exception) {
             // The request may already have committed. Retain the same intent for explicit recovery.
             DispatchResult.Failure("debt_create_response_unverified")
+        }
+    }
+
+    private fun classifyHttpError(error: HttpException): DispatchResult {
+        val code = errors.parseHttpError(error).errorCode
+        return when {
+            error.code() == 409 && code == "idempotency_key_in_progress" ->
+                DispatchResult.RetryableFailure("debt_create_response_pending")
+            error.code() == 408 || error.code() == 429 || error.code() in 500..599 ->
+                DispatchResult.RetryableFailure("debt_create_connection_interrupted")
+            else -> DispatchResult.Failure("debt_create_rejected")
         }
     }
 }

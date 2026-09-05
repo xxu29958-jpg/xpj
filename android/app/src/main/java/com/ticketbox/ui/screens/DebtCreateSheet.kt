@@ -103,18 +103,7 @@ private fun DebtDraftForm(
         // 空账本 fail closed（PR#255 R4 P1）：列表加载完成但币种仍无 record 级权威依据
         // （空账本）时，说明创建为何禁用 —— 兜底 CNY 口径提交会放大零小数账本 100×。
         // R1 用户可见重试：加载失败同样走到这里，refresh 重试保留草稿、不碰提交门。
-        if (!state.homeCurrencyResolved && !state.isLoading) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                AppStatusBanner(
-                    message = UiText.res(R.string.debt_create_currency_unconfirmed),
-                    tone = MessageTone.Info,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(onClick = viewModel::refresh, enabled = !state.isSubmitting) {
-                    Text(stringResource(R.string.common_retry))
-                }
-            }
-        }
+        DebtCreateCurrencyStatus(state = state, onRetry = viewModel::refresh)
         AppSheetActionRow(
             primary = AppSheetAction(
                 text = if (state.isSubmitting) {
@@ -133,6 +122,22 @@ private fun DebtDraftForm(
                 enabled = !state.isSubmitting,
             ),
         )
+    }
+}
+
+/** Unknown currency blocks Save; its retry refreshes only the read capability and preserves the draft. */
+@Composable
+private fun DebtCreateCurrencyStatus(state: DebtListUiState, onRetry: () -> Unit) {
+    if (state.homeCurrencyResolved || state.isLoading) return
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        AppStatusBanner(
+            message = UiText.res(R.string.debt_create_currency_unconfirmed),
+            tone = MessageTone.Info,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = onRetry, enabled = !state.isSubmitting) {
+            Text(stringResource(R.string.common_retry))
+        }
     }
 }
 
