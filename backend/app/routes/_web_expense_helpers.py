@@ -15,12 +15,10 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.routes._web_expense_manual_fx_presenter import project_manual_fx_edit_views
 from app.routes._web_expense_return_context import (
-    edit_context_params,
-    flow_href,
+    ExpenseReturnContext,
+    edit_navigation_view,
     resolve_return_to,
     return_context_params,
-    return_href,
-    return_label,
 )
 from app.routes._web_expense_split_presenter import web_split_members, web_split_rows
 from app.routes.web_common import (
@@ -33,6 +31,7 @@ from app.routes.web_common import (
 )
 from app.services.category_service import list_ledger_category_options
 from app.services.expense_service import get_expense
+from app.services.manual_expense_draft_presenter import manual_draft_ack
 from app.services.receipt_item_service import list_expense_items
 
 
@@ -239,6 +238,7 @@ def web_edit_context(
     if form_values and not conflict and form_values.get("expected_row_version"):
         expense_view["row_version"] = form_values["expected_row_version"]
     ctx["expense"] = expense_view
+    ctx["manual_draft_ack"] = manual_draft_ack(db, getattr(request.state, "web_session_auth", None), expense)
     ctx["conflict_current"] = current_expense_view if conflict else None
     ctx["confirm_idempotency_key"] = (form_values or {}).get("idempotency_key") or str(uuid4())
     ctx["error"] = None
@@ -246,30 +246,15 @@ def web_edit_context(
     ctx["items_error"] = None
     ctx["splits_error"] = None
     ctx["field_errors"] = field_errors or {}
-    ctx["edit_return_fields"] = edit_context_params(
-        return_to,
+    origin = ExpenseReturnContext(
+        return_to=return_to,
         return_month=return_month,
         return_filter=return_filter,
         return_page=return_page,
         return_tag=return_tag,
         return_query=return_query,
     )
-    ctx["edit_current_href"] = flow_href(
-        f"/web/expenses/{expense_id}/edit",
-        ledger_id=selected_id,
-        **ctx["edit_return_fields"],
-    )
-    ctx["edit_return_href"] = return_href(
-        return_to,
-        ledger_id=selected_id,
-        default_path="/web/pending",
-        return_month=return_month,
-        return_filter=return_filter,
-        return_page=return_page,
-        return_tag=return_tag,
-        return_query=return_query,
-    )
-    ctx["edit_return_label"] = return_label(return_to)
+    ctx.update(edit_navigation_view(origin, expense_id=expense_id, ledger_id=selected_id))
     record_currency = expense.home_currency_code or ctx["home_currency_code"]
     ctx["currency_input"] = _currency_input_view(record_currency)
     ctx["expense_currency_input"] = _currency_input_view(

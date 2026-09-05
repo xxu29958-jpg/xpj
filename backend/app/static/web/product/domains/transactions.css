@@ -1989,9 +1989,38 @@
     border-block-start: 1px solid var(--border-card);
 }
 
-.manual-expense-form {
+.manual-entry {
+    max-inline-size: 40rem;
+    margin-inline: auto;
+}
+
+.manual-entry > .product-page-header {
+    margin-block-start: var(--space-5);
+}
+
+.manual-expense-form,
+.manual-expense-fields {
     display: grid;
-    gap: var(--space-7);
+    gap: var(--space-6);
+}
+
+.manual-expense-fields {
+    min-inline-size: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    color-scheme: light;
+}
+
+:root[data-theme="midnight"] .manual-expense-fields {
+    color-scheme: dark;
+}
+
+.manual-expense-money {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 6.5rem;
+    gap: var(--space-4);
+    align-items: end;
 }
 
 .manual-expense-form .product-field--wide {
@@ -2000,12 +2029,76 @@
 
 .manual-expense-form .manual-expense-amount-field .product-input {
     font-family: var(--font-numeric);
-    font-size: var(--type-title-size);
+    font-size: clamp(1.75rem, 4vw, 2.25rem);
     font-variant-numeric: tabular-nums;
+    line-height: 1.25;
+    min-block-size: 3.5rem;
 }
 
 .manual-expense-form > .product-page-actions {
-    justify-content: flex-end;
-    padding-block-start: var(--space-5);
+    margin: 0;
+}
+
+.manual-expense-form > .product-page-actions > button {
+    inline-size: 100%;
+}
+
+.manual-expense-options,
+.manual-draft-shelf {
     border-block-start: 1px solid var(--border-card);
+}
+
+.manual-expense-options > summary,
+.manual-draft-shelf > summary {
+    padding-block: var(--space-4);
+    cursor: pointer;
+    font-size: var(--type-body-size);
+    font-weight: 500;
+    min-block-size: 2.75rem;
+}
+
+.manual-expense-options > summary span,
+.manual-draft-shelf li > span,
+.manual-draft-status {
+    color: var(--text-muted);
+    font-size: var(--type-caption-size);
+    line-height: 1.6;
+}
+
+.manual-expense-options > summary span {
+    margin-inline-start: var(--space-2);
+}
+
+.manual-draft-status {
+    margin: 0;
+}
+
+.manual-draft-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-4);
+    margin-block-start: var(--space-4);
+}
+
+.manual-draft-shelf {
+    margin-block-start: var(--space-6);
+}
+
+.manual-draft-shelf ul {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 var(--space-4);
+}
+
+.manual-draft-shelf li {
+    display: grid;
+    padding-block: var(--space-3);
+    overflow-wrap: anywhere;
+}
+
+.manual-draft-shelf a {
+    color: var(--text-default);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.2em;
+    padding-block: var(--space-2);
 }
