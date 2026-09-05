@@ -202,6 +202,7 @@ class DebtListViewModel(
 
     fun updateDraftField(field: DebtDraftField, value: String) {
         _state.update { state ->
+            if (state.isSubmitting) return@update state
             val updated = when (field) {
                 DebtDraftField.Direction -> state.addDraft.copy(direction = value, validationError = null)
                 DebtDraftField.Counterparty -> state.addDraft
@@ -285,6 +286,7 @@ class DebtListViewModel(
 
     fun submitDraft() {
         val state = _state.value
+        if (state.isSubmitting) return
         // 币种未确认（初始/切换加载未成功，或空账本没有 record 级权威币种）禁止提交：
         // 兜底 CNY 口径送到 JPY/KRW 账本会放大 100×（PR#255 P1-3 / R4 P1；sheet 按钮
         // 同步禁用，此处为兜底防线）。
