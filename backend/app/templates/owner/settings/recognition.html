@@ -1,0 +1,93 @@
+{% extends "settings/_layout.html" %}
+{% block title %}识别与录入 — 设置 — 小票夹{% endblock %}
+{% block settings_body %}
+<div class="card">
+  <h2>识别与录入</h2>
+  <p class="help-text">决定小票上传后如何提取金额、商户和时间，以及债务账单是否使用同一台本机视觉模型。</p>
+  <dl class="kv-list">
+    <dt>小票识别</dt><dd><span class="badge badge-ok">{{ recognition_view.receipt_status }}</span></dd>
+    <dt>债务账单</dt><dd>{{ recognition_view.debt_bill_status }}</dd>
+    <dt>生效方式</dt><dd>保存后立即生效，不重启；已上传的草稿不会被后台改写</dd>
+  </dl>
+</div>
+
+<form method="post" action="/owner/settings/recognition">
+  <div class="card">
+    <h2>小票识别</h2>
+    <div class="settings-form-grid">
+      <label for="ocr_provider">主要识别方式</label>
+      <select id="ocr_provider" name="ocr_provider" class="inline-select">
+        <option value="empty" {% if recognition_view.form.ocr_provider == 'empty' %}selected{% endif %}>关闭，手动核对</option>
+        <option value="local_llm" {% if recognition_view.form.ocr_provider == 'local_llm' %}selected{% endif %}>本机视觉模型</option>
+        <option value="rapidocr" {% if recognition_view.form.ocr_provider == 'rapidocr' %}selected{% endif %} {% if not recognition_view.rapidocr_available %}disabled{% endif %}>RapidOCR{% if not recognition_view.rapidocr_available %}（未安装）{% endif %}</option>
+      </select>
+
+      <span>自动识别</span>
+      <label class="label-check-row" for="ocr_auto_run">
+        <input type="checkbox" id="ocr_auto_run" name="ocr_auto_run" {% if recognition_view.form.ocr_auto_run %}checked{% endif %}>
+        新小票上传后自动运行；关闭时仍可在待确认页手动识别
+      </label>
+
+      <label for="ocr_fallback_provider">备用识别方式</label>
+      <select id="ocr_fallback_provider" name="ocr_fallback_provider" class="inline-select">
+        <option value="empty" {% if recognition_view.form.ocr_fallback_provider == 'empty' %}selected{% endif %}>不启用</option>
+        <option value="local_llm" {% if recognition_view.form.ocr_fallback_provider == 'local_llm' %}selected{% endif %}>本机视觉模型</option>
+        <option value="rapidocr" {% if recognition_view.form.ocr_fallback_provider == 'rapidocr' %}selected{% endif %} {% if not recognition_view.rapidocr_available %}disabled{% endif %}>RapidOCR{% if not recognition_view.rapidocr_available %}（未安装）{% endif %}</option>
+      </select>
+      <span></span><p class="help-text fs-meta">主要结果缺字段或低于阈值时才尝试备用方式；不会覆盖用户已经改过的草稿字段。</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>债务账单</h2>
+    <div class="settings-form-grid">
+      <label for="debt_bill_provider">图片录入方式</label>
+      <select id="debt_bill_provider" name="debt_bill_provider" class="inline-select">
+        <option value="empty" {% if recognition_view.form.debt_bill_provider == 'empty' %}selected{% endif %}>手动录入</option>
+        <option value="local_llm" {% if recognition_view.form.debt_bill_provider == 'local_llm' %}selected{% endif %}>复用本机视觉模型</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>本机视觉模型</h2>
+    <p class="help-text">只接受本机环回地址，票据图片不会被这个设置发送到公网服务。</p>
+    <div class="settings-form-grid">
+      <label for="local_llm_base_url">接口地址</label>
+      <input id="local_llm_base_url" name="local_llm_base_url" type="url"
+             value="{{ recognition_view.form.local_llm_base_url }}"
+             placeholder="http://127.0.0.1:1234/v1" class="inline-input inline-input--mono">
+      <label for="local_llm_model">模型名称</label>
+      <input id="local_llm_model" name="local_llm_model" type="text"
+             value="{{ recognition_view.form.local_llm_model }}"
+             placeholder="留空时从本机服务自动发现" class="inline-input inline-input--mono">
+    </div>
+  </div>
+
+  <details class="card">
+    <summary><strong>识别细节</strong> <span class="text-meta">多数情况保持默认即可</span></summary>
+    <div class="settings-form-grid mt-5">
+      <label for="ocr_min_confidence">启用备用识别的阈值</label>
+      <input id="ocr_min_confidence" name="ocr_min_confidence" type="number" min="0" max="1" step="0.01"
+             value="{{ recognition_view.form.ocr_min_confidence }}" class="inline-input">
+      <label for="ocr_default_timezone">默认时区</label>
+      <input id="ocr_default_timezone" name="ocr_default_timezone" type="text"
+             value="{{ recognition_view.form.ocr_default_timezone }}" class="inline-input inline-input--mono">
+      <label for="local_llm_timeout_seconds">单次识别超时（秒）</label>
+      <input id="local_llm_timeout_seconds" name="local_llm_timeout_seconds" type="number" min="5" max="300"
+             value="{{ recognition_view.form.local_llm_timeout_seconds }}" class="inline-input">
+      <label for="local_llm_max_concurrent">同时识别任务</label>
+      <input id="local_llm_max_concurrent" name="local_llm_max_concurrent" type="number" min="1" max="8"
+             value="{{ recognition_view.form.local_llm_max_concurrent }}" class="inline-input">
+      <label for="local_llm_queue_timeout_seconds">排队等待（秒）</label>
+      <input id="local_llm_queue_timeout_seconds" name="local_llm_queue_timeout_seconds" type="number" min="0" max="60" step="0.5"
+             value="{{ recognition_view.form.local_llm_queue_timeout_seconds }}" class="inline-input">
+    </div>
+  </details>
+
+  <div class="settings-form-actions mt-5">
+    <button type="submit" class="btn btn-primary">保存识别设置</button>
+    <a class="btn" href="/owner/diagnostics">查看系统状态</a>
+  </div>
+</form>
+{% endblock %}

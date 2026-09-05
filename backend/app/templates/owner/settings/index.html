@@ -4,10 +4,12 @@
 <div class="card">
   <h2>概览</h2>
   <p class="help-text">
-    Owner Console 只允许在线修改非常少量、面向操作者的运行时项；其他配置仍然必须在
-    <code>{{ settings_view.settings_path }}</code> 中手工调整。
+    这里管理无需重启即可安全生效的产品设置。数据库凭据、服务权限和安装目录仍由
+    Desktop Manager / 安装生命周期持有，不会伪装成普通开关。
   </p>
   <dl class="kv-list">
+    <dt>图片识别与录入</dt>
+    <dd><a href="/owner/settings/recognition" class="text-link">选择识别方式、自动运行和本机模型</a></dd>
     <dt>公网域名</dt>
     <dd>
       {% if settings_view.public_base_url_configured %}
@@ -43,10 +45,10 @@
         <span class="badge badge-ok">已关闭</span>
       {% endif %}
     </dd>
-    <dt>.env 文件</dt>
+    <dt>运行时设置</dt>
     <dd>
       {% if settings_view.settings_exists %}
-        <code>{{ settings_view.settings_path }}</code>
+        <span class="badge badge-ok">受保护投影已建立</span>
       {% else %}
         <span class="badge badge-off">不存在（保存后会自动创建）</span>
       {% endif %}

@@ -183,6 +183,59 @@ def test_settings_snapshot_prefers_closed_runtime_projection(
         config.reset_settings_cache()
 
 
+def test_runtime_settings_v1_is_readable_and_recognition_group_is_absent(tmp_path: Path) -> None:
+    from app.services import runtime_settings_store as store
+
+    target = (tmp_path / "runtime-settings.json").resolve()
+    secure_file.write_protected_file_replace(
+        target,
+        '{"budget_advisor_owner_confirmed":false,"public_base_url":"","schema":"ticketbox-runtime-settings-v1"}\n',
+        service_owned=False,
+    )
+
+    projection = store.read_runtime_settings(target, service_owned=False)
+
+    assert projection is not None
+    assert projection.public_base_url == ""
+    assert projection.budget_advisor_owner_confirmed is False
+    assert projection.recognition is None
+
+
+def test_recognition_settings_are_published_as_one_closed_group(
+    tmp_path: Path,
+) -> None:
+    from app.services import runtime_settings_store as store
+
+    target = (tmp_path / "runtime-settings.json").resolve()
+    recognition = store.RecognitionSettingsProjection(
+        ocr_provider="local_llm",
+        ocr_auto_run=True,
+        ocr_fallback_provider="empty",
+        ocr_min_confidence=0.72,
+        ocr_default_timezone="Asia/Shanghai",
+        local_llm_base_url="http://127.0.0.1:1234/v1",
+        local_llm_model="qwen2.5-vl",
+        local_llm_timeout_seconds=45,
+        local_llm_max_concurrent=1,
+        local_llm_queue_timeout_seconds=3.0,
+        debt_bill_provider="local_llm",
+    )
+
+    store.write_runtime_settings(
+        target,
+        store.RuntimeSettingsProjection("", False, recognition),
+        service_owned=False,
+    )
+
+    payload = json.loads(target.read_text(encoding="utf-8"))
+    assert payload["schema"] == "ticketbox-runtime-settings-v2"
+    assert payload["recognition"]["ocr_provider"] == "local_llm"
+    assert payload["recognition"]["debt_bill_provider"] == "local_llm"
+    assert store.read_runtime_settings(target, service_owned=False) == store.RuntimeSettingsProjection(
+        "", False, recognition
+    )
+
+
 def test_installed_settings_snapshot_rejects_missing_runtime_projection(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

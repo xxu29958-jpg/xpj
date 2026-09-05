@@ -1224,15 +1224,70 @@
         "title": "Body_owner_rename_device_owner_devices__public_id__rename_post",
         "type": "object"
       },
-      "Body_owner_settings_set_public_base_url_owner_settings_public_base_url_post": {
+      "Body_owner_settings_post_owner_settings__settings_group__post": {
         "properties": {
+          "debt_bill_provider": {
+            "default": "empty",
+            "title": "Debt Bill Provider",
+            "type": "string"
+          },
+          "local_llm_base_url": {
+            "default": "",
+            "title": "Local Llm Base Url",
+            "type": "string"
+          },
+          "local_llm_max_concurrent": {
+            "default": "2",
+            "title": "Local Llm Max Concurrent",
+            "type": "string"
+          },
+          "local_llm_model": {
+            "default": "",
+            "title": "Local Llm Model",
+            "type": "string"
+          },
+          "local_llm_queue_timeout_seconds": {
+            "default": "5",
+            "title": "Local Llm Queue Timeout Seconds",
+            "type": "string"
+          },
+          "local_llm_timeout_seconds": {
+            "default": "60",
+            "title": "Local Llm Timeout Seconds",
+            "type": "string"
+          },
+          "ocr_auto_run": {
+            "default": false,
+            "title": "Ocr Auto Run",
+            "type": "boolean"
+          },
+          "ocr_default_timezone": {
+            "default": "Asia/Shanghai",
+            "title": "Ocr Default Timezone",
+            "type": "string"
+          },
+          "ocr_fallback_provider": {
+            "default": "empty",
+            "title": "Ocr Fallback Provider",
+            "type": "string"
+          },
+          "ocr_min_confidence": {
+            "default": "0.65",
+            "title": "Ocr Min Confidence",
+            "type": "string"
+          },
+          "ocr_provider": {
+            "default": "empty",
+            "title": "Ocr Provider",
+            "type": "string"
+          },
           "public_base_url": {
             "default": "",
             "title": "Public Base Url",
             "type": "string"
           }
         },
-        "title": "Body_owner_settings_set_public_base_url_owner_settings_public_base_url_post",
+        "title": "Body_owner_settings_post_owner_settings__settings_group__post",
         "type": "object"
       },
       "Body_owner_tag_cleanup_delete_owner_tag_cleanup_delete_post": {
@@ -35146,14 +35201,69 @@
         "tags": [
           "owner-console"
         ]
-      },
+      }
+    },
+    "/owner/settings/recognition": {
+      "get": {
+        "operationId": "owner_settings_recognition_get_owner_settings_recognition_get",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Owner Settings Recognition Get",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
+    "/owner/settings/security": {
+      "get": {
+        "operationId": "owner_settings_security_owner_settings_security_get",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Owner Settings Security",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
+    "/owner/settings/{settings_group}": {
       "post": {
-        "operationId": "owner_settings_set_public_base_url_owner_settings_public_base_url_post",
+        "operationId": "owner_settings_post_owner_settings__settings_group__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "settings_group",
+            "required": true,
+            "schema": {
+              "title": "Settings Group",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/x-www-form-urlencoded": {
               "schema": {
-                "$ref": "#/components/schemas/Body_owner_settings_set_public_base_url_owner_settings_public_base_url_post"
+                "$ref": "#/components/schemas/Body_owner_settings_post_owner_settings__settings_group__post"
               }
             }
           }
@@ -35180,28 +35290,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Owner Settings Set Public Base Url",
-        "tags": [
-          "owner-console"
-        ]
-      }
-    },
-    "/owner/settings/security": {
-      "get": {
-        "operationId": "owner_settings_security_owner_settings_security_get",
-        "responses": {
-          "200": {
-            "content": {
-              "text/html": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Owner Settings Security",
+        "summary": "Owner Settings Post",
         "tags": [
           "owner-console"
         ]

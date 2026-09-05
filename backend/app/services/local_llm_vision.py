@@ -83,7 +83,7 @@ def local_llm_slot(max_concurrent: int, queue_timeout_seconds: float):
 def require_local_llm_base_url(base_url: str) -> None:
     """Refuse to call the local LLM when config rejected the URL.
 
-    Empty value here means ``_resolve_local_llm_base_url`` (in app.config)
+    Empty value here means ``resolve_local_llm_base_url`` (in app.recognition_config)
     treated the configured URL as non-loopback and dropped it. We surface that
     as a clear, actionable error rather than silently sending uploaded images
     (receipts / debt bills — both sensitive) to whatever the env variable

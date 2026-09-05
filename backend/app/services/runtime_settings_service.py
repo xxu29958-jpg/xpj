@@ -13,12 +13,21 @@ Security:
 
 from __future__ import annotations
 
+import importlib.util
 from dataclasses import dataclass
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from app.config import BACKEND_ROOT, DATA_ROOT, get_settings, runtime_settings_service_owned
+from app.config import (
+    BACKEND_ROOT,
+    DATA_ROOT,
+    get_settings,
+    runtime_settings_service_owned,
+)
 from app.errors import AppError
+from app.recognition_config import resolve_local_llm_base_url
 from app.services.runtime_settings_store import (
+    RecognitionSettingsProjection,
     RuntimeSettingsMutation,
     RuntimeSettingsProjection,
     patch_runtime_settings,
@@ -28,7 +37,9 @@ from app.version import BACKEND_VERSION
 _SETTINGS_PATH = DATA_ROOT / "runtime-settings" / "runtime-settings.json"
 _SERVICE_OWNED = runtime_settings_service_owned()
 
-_EDITABLE_KEYS: frozenset[str] = frozenset({"BUDGET_ADVISOR_OWNER_CONFIRMED", "PUBLIC_BASE_URL"})
+_EDITABLE_KEYS: frozenset[str] = frozenset(
+    {"BUDGET_ADVISOR_OWNER_CONFIRMED", "PUBLIC_BASE_URL", "RECOGNITION_PIPELINE"}
+)
 
 
 @dataclass(frozen=True)
@@ -37,6 +48,29 @@ class RuntimeSettingsView:
     public_base_url_configured: bool
     settings_path: str
     settings_exists: bool
+
+
+@dataclass(frozen=True)
+class RecognitionSettingsForm:
+    ocr_provider: str
+    ocr_auto_run: bool
+    ocr_fallback_provider: str
+    ocr_min_confidence: str
+    ocr_default_timezone: str
+    local_llm_base_url: str
+    local_llm_model: str
+    local_llm_timeout_seconds: str
+    local_llm_max_concurrent: str
+    local_llm_queue_timeout_seconds: str
+    debt_bill_provider: str
+
+
+@dataclass(frozen=True)
+class RecognitionSettingsView:
+    form: RecognitionSettingsForm
+    rapidocr_available: bool
+    receipt_status: str
+    debt_bill_status: str
 
 
 @dataclass(frozen=True)
@@ -74,6 +108,41 @@ def get_view() -> RuntimeSettingsView:
         public_base_url_configured=bool(cfg.public_base_url),
         settings_path=str(_SETTINGS_PATH),
         settings_exists=_SETTINGS_PATH.is_file(),
+    )
+
+
+def get_recognition_view(
+    form: RecognitionSettingsForm | None = None,
+) -> RecognitionSettingsView:
+    if form is None:
+        cfg = get_settings()
+        form = RecognitionSettingsForm(
+            ocr_provider=cfg.ocr_provider,
+            ocr_auto_run=cfg.ocr_auto_run,
+            ocr_fallback_provider=cfg.ocr_fallback_provider,
+            ocr_min_confidence=f"{cfg.ocr_min_confidence:g}",
+            ocr_default_timezone=cfg.ocr_default_timezone,
+            local_llm_base_url=cfg.local_llm_base_url,
+            local_llm_model=cfg.local_llm_model,
+            local_llm_timeout_seconds=str(cfg.local_llm_timeout_seconds),
+            local_llm_max_concurrent=str(cfg.local_llm_max_concurrent),
+            local_llm_queue_timeout_seconds=f"{cfg.local_llm_queue_timeout_seconds:g}",
+            debt_bill_provider=cfg.debt_bill_provider,
+        )
+    if form.ocr_provider == "empty":
+        receipt_status = "手动核对"
+    elif not form.ocr_auto_run:
+        receipt_status = "已配置，自动识别关闭"
+    elif form.ocr_provider == "rapidocr":
+        receipt_status = "自动使用本机 RapidOCR"
+    else:
+        receipt_status = "自动使用本机视觉模型"
+    debt_bill_status = "本机视觉模型" if form.debt_bill_provider == "local_llm" else "手动录入"
+    return RecognitionSettingsView(
+        form=form,
+        rapidocr_available=importlib.util.find_spec("rapidocr") is not None,
+        receipt_status=receipt_status,
+        debt_bill_status=debt_bill_status,
     )
 
 
@@ -187,6 +256,117 @@ def _write_runtime_value(key: str, value: str) -> RuntimeSettingsProjection:
     )
     get_settings.cache_clear()  # type: ignore[attr-defined]
     return projection
+
+
+def _invalid(message: str) -> AppError:
+    return AppError("invalid_request", message, status_code=422)
+
+
+def _bounded_int(raw: str, *, label: str, minimum: int, maximum: int) -> int:
+    try:
+        value = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise _invalid(f"{label}必须是整数。") from exc
+    if not minimum <= value <= maximum:
+        raise _invalid(f"{label}必须在 {minimum}–{maximum} 之间。")
+    return value
+
+
+def _bounded_float(raw: str, *, label: str, minimum: float, maximum: float) -> float:
+    try:
+        value = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise _invalid(f"{label}必须是数字。") from exc
+    if not minimum <= value <= maximum:
+        raise _invalid(f"{label}必须在 {minimum:g}–{maximum:g} 之间。")
+    return value
+
+
+def _validated_recognition(form: RecognitionSettingsForm) -> RecognitionSettingsProjection:
+    provider = form.ocr_provider.strip().lower()
+    fallback = form.ocr_fallback_provider.strip().lower()
+    debt_provider = form.debt_bill_provider.strip().lower()
+    if provider not in {"empty", "rapidocr", "local_llm"}:
+        raise _invalid("请选择可用的票据识别方式。")
+    if fallback not in {"empty", "rapidocr", "local_llm"}:
+        raise _invalid("请选择可用的备用识别方式。")
+    if debt_provider not in {"empty", "local_llm"}:
+        raise _invalid("请选择可用的债务账单录入方式。")
+    rapidocr_available = importlib.util.find_spec("rapidocr") is not None
+    if "rapidocr" in {provider, fallback} and not rapidocr_available:
+        raise _invalid("这台主机没有安装 RapidOCR，请改用本机视觉模型或手动核对。")
+    if fallback != "empty" and fallback == provider:
+        raise _invalid("备用识别方式不能与主要方式相同。")
+    if provider == "empty" and form.ocr_auto_run:
+        raise _invalid("请先选择票据识别方式，再开启自动识别。")
+
+    timezone_name = form.ocr_default_timezone.strip() or "Asia/Shanghai"
+    try:
+        ZoneInfo(timezone_name)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        raise _invalid("默认时区无效，请填写 IANA 时区，例如 Asia/Shanghai。") from exc
+
+    raw_base_url = form.local_llm_base_url.strip()
+    base_url = resolve_local_llm_base_url(raw_base_url)
+    if raw_base_url and not base_url:
+        raise _invalid("本机模型地址只允许 127.0.0.1、localhost 或 ::1 的 HTTP(S) 地址。")
+    if (provider == "local_llm" or fallback == "local_llm" or debt_provider == "local_llm") and not base_url:
+        raise _invalid("使用本机视觉模型前，请先填写本机模型地址。")
+
+    model = form.local_llm_model.strip()
+    if len(model.encode("utf-8")) > 256:
+        raise _invalid("模型名称过长。")
+    return RecognitionSettingsProjection(
+        ocr_provider=provider,
+        ocr_auto_run=form.ocr_auto_run,
+        ocr_fallback_provider=fallback,
+        ocr_min_confidence=_bounded_float(
+            form.ocr_min_confidence,
+            label="备用识别阈值",
+            minimum=0,
+            maximum=1,
+        ),
+        ocr_default_timezone=timezone_name,
+        local_llm_base_url=base_url,
+        local_llm_model=model,
+        local_llm_timeout_seconds=_bounded_int(
+            form.local_llm_timeout_seconds,
+            label="识别超时",
+            minimum=5,
+            maximum=300,
+        ),
+        local_llm_max_concurrent=_bounded_int(
+            form.local_llm_max_concurrent,
+            label="并发任务数",
+            minimum=1,
+            maximum=8,
+        ),
+        local_llm_queue_timeout_seconds=_bounded_float(
+            form.local_llm_queue_timeout_seconds,
+            label="排队等待",
+            minimum=0,
+            maximum=60,
+        ),
+        debt_bill_provider=debt_provider,
+    )
+
+
+def update_recognition_settings(form: RecognitionSettingsForm) -> RecognitionSettingsView:
+    if "RECOGNITION_PIPELINE" not in _EDITABLE_KEYS:
+        raise AppError("invalid_request", "该配置项不允许在 Owner Console 中修改。", status_code=403)
+    recognition = _validated_recognition(form)
+    settings = get_settings()
+    patch_runtime_settings(
+        _SETTINGS_PATH,
+        defaults=RuntimeSettingsProjection(
+            public_base_url=settings.public_base_url,
+            budget_advisor_owner_confirmed=settings.budget_advisor_owner_confirmed,
+        ),
+        mutation=RuntimeSettingsMutation(field="recognition", value=recognition),
+        service_owned=_SERVICE_OWNED,
+    )
+    get_settings.cache_clear()  # type: ignore[attr-defined]
+    return get_recognition_view()
 
 
 def update_public_base_url(raw: str) -> RuntimeSettingsView:

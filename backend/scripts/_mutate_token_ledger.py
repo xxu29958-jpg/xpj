@@ -428,7 +428,7 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /owner/ledgers/{ledger_id}/archive": Exempt("admin_single_writer", "owner_console", _LEDGER_ARCHIVE, "medium"),
     "POST /owner/ledgers/{ledger_id}/unarchive": Exempt("admin_single_writer", "owner_console", _LEDGER_ARCHIVE),
     "POST /owner/pairing": Exempt("create_row", "owner_console", ("pairing_codes",)),
-    "POST /owner/settings/public-base-url": Exempt("external_side_effect", "owner_console", ()),
+    "POST /owner/settings/{settings_group}": Exempt("external_side_effect", "owner_console", ()),
     "POST /owner/upload-links": Exempt("create_row", "owner_console", _UPLOAD_LINKS),
     "POST /owner/upload-links/{public_id}/delete": Exempt("terminal_flag_flip", "owner_console", _UPLOAD_LINKS),
     "POST /owner/upload-links/{public_id}/limits": Exempt("admin_single_writer", "owner_console", _UPLOAD_LINKS),
