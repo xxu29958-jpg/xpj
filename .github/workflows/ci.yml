@@ -155,6 +155,8 @@ jobs:
           tests/test_postgres_ci_topology.py
           tests/test_android_process_qualification.py
           tests/test_android_test_qualification.py
+          tests/test_repository_weight.py
+          tests/test_release_audit_gate_helpers.py::test_release_audit_rejects_missing_repository_weight_lane
           --noconftest -p no:cacheprovider
 
       - name: Audit (release lanes)
@@ -167,7 +169,17 @@ jobs:
           XPJ_AUDIT_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           XPJ_AUDIT_DEFAULT_REF: refs/remotes/origin/${{ github.event.repository.default_branch }}
           XPJ_AUDIT_BASE_REF: ${{ needs.scope.outputs.audit_base_sha }}
+          XPJ_CODEBASE_WEIGHT_JSON: ${{ runner.temp }}/codebase-weight.json
         run: python scripts\release_audit.py
+
+      - name: Upload repository codebase weight
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: repository-codebase-weight
+          path: ${{ runner.temp }}/codebase-weight.json
+          if-no-files-found: error
+          retention-days: 30
 
       - name: API contract
         run: python scripts\check_api_contract.py

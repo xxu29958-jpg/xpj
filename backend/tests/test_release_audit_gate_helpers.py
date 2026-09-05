@@ -96,6 +96,17 @@ def test_release_audit_rejects_missing_pr_delta_lane(tmp_path: Path) -> None:
         raise AssertionError("missing required release audit lane was accepted")
 
 
+def test_release_audit_rejects_missing_repository_weight_lane(tmp_path: Path) -> None:
+    mod = importlib.reload(importlib.import_module("release_audit"))
+    (tmp_path / "_audit_pr_delta_metrics.py").write_text("raise SystemExit(0)\n", encoding="utf-8")
+    try:
+        mod._discover_lanes(tmp_path)
+    except RuntimeError as exc:
+        assert "_audit_repository_weight.py" in str(exc)
+    else:
+        raise AssertionError("missing repository weight gate was accepted")
+
+
 def test_adr_contract_gate_is_present_in_a_clean_git_clone() -> None:
     repo_root = Path(__file__).resolve().parents[2]
     result = subprocess.run(

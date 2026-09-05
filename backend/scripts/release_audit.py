@@ -20,10 +20,14 @@ What each lane catches (from the v1.0 maturity-audit lessons):
   cycles. Catches the kind of cycle that hid
   ``expense_service ↔ receipt_item_service`` until v1.0.
 
-- ``_audit_codebase.py``       — 7-dimension codebase audit
+- ``_audit_codebase.py``       — Backend Python 7-dimension audit
   (file LOC, surface area, **long functions**, nesting, layer
   violations, ...). The long-functions section catches the kind of
   120-line route handler that ``web_review_bulk`` had.
+
+- ``_audit_repository_weight.py`` — immutable whole-repository LOC,
+  module/language/role breakdown and measured debt delta. LOC is a trend;
+  size, native/recorded complexity and suppression debt cannot grow.
 
 - ``_audit_ci_gap.py``         — required gradle tasks / pytest
   lanes are actually invoked by CI. Catches the kind of gap that hid
@@ -48,6 +52,7 @@ from pathlib import Path
 _REQUIRED_LANES = frozenset(
     {
         ("pr-delta-metrics", "_audit_pr_delta_metrics.py"),
+        ("repository-weight", "_audit_repository_weight.py"),
     }
 )
 
