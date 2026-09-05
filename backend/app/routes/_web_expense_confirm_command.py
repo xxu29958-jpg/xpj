@@ -56,10 +56,10 @@ def _manual_fx_submission_needs_preview(
     form_values: dict[str, str] | None,
 ) -> bool:
     raw_rate = (form_values or {}).get("manual_exchange_rate", "").strip()
-    if not raw_rate:
-        return False
     expense = get_expense(db, expense_id, selected_ledger_id)
-    if (
+    if not raw_rate and expense.exchange_rate_source != FX_SOURCE_MANUAL:
+        return False
+    if raw_rate and (
         expense.fx_status != FX_STATUS_READY
         or expense.exchange_rate_source != FX_SOURCE_MANUAL
         or update_payload.manual_exchange_rate != expense.exchange_rate_to_cny

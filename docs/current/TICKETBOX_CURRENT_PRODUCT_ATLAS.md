@@ -2,7 +2,7 @@
 
 > Derived implementation map, not a product authority. The authoritative subject is the Git commit that contains this file. Reverify after changes to registered routes, domain services, runtime settings, Room/Outbox, Desktop Manager, packaging, or consumer navigation.
 
-This atlas turns the three 2026-08-26 contracts into a current construction map. It records what exists, what is only partially usable, what is genuinely missing, and what must retire. `COMPLETE` is intentionally absent until exact Internal Beta RC qualification.
+This atlas derives a current construction map from the Goal, latest user rulings and three 2026-08-26 contracts. It records what exists, what is only partially usable, what is genuinely missing, and what must retire. `COMPLETE` is intentionally absent until exact Internal Beta RC qualification.
 
 ## 1. Product and container architecture
 
@@ -174,6 +174,7 @@ This replaces the old advice to edit the runtime projection or `backend/.env` fr
 | AI advisor | `PARTIAL` | Advisor service + consent UI → Web/Owner | Provider secrets remain lifecycle-owned; surface readiness and missing setup honestly |
 | FX sync and maintenance schedulers | `PARTIAL` backstage | Scheduler/service → status and selected manual actions | Add control only where an operator must make a product decision; otherwise expose health |
 | Runtime diagnostics | `EXISTING` but developer-heavy | Backend/Owner/Desktop | Replace raw paths/route inventory with task-oriented health, then retire developer surfaces |
+| Consumer visual art and brand completion | `PARTIAL` / visual acceptance outstanding | Shared tokens/assets and real Web/Android surfaces | A distinct delivery wave: art direction, brand/icon/illustration assets, background/texture, typography, motion and cross-screen finish; existing Paper/Midnight implementation is not design authority |
 | Android offline mutation publication | `STRONG_SLICE` | Room Outbox → registered dispatchers → backend owners | Preserve full mutation-type/label/dispatcher coverage |
 | Windows Fresh G2 | `CLOSED` | Windows lifecycle | Do not reopen without an executable product counterexample |
 | Restore, upgrade/downgrade and complete lifecycle operations | `HOLD` | Windows lifecycle | Remain outside current product construction |
@@ -314,13 +315,25 @@ Selected next task: complete family invitation handoff on Web and Android using 
 
 Desktop first-use explanation, expired-code recovery links and Web manual entry remain recorded companion gaps. They do not authorize reopening installer, account recovery, upgrades or other Windows HOLD work.
 
-## 6. Construction order
+## 6. Visual art and convenience — explicit delivery wave
+
+Visual art is a first-class product outcome, not an implied subtask of functionality or an RC-day polish pass. Each active slice preserves usable visual and interaction states. Once the current Web/Android consumer migration is closed, complete a dedicated whole-product art, visual and convenience wave before continuing the remaining product expansion.
+
+- Establish coherent art direction and brand assets: icons, illustrations, empty states, backgrounds and textures. The rejected mascot has no preservation requirement; the explicitly rejected green-hat direction must not return.
+- Complete the production visual system across typography, color, spacing, information hierarchy, semantic components, focus/motion and light/dark appearances. Global custom background preferences must work coherently across applicable surfaces, not just decorate one page.
+- Make frequent tasks easier through appropriate defaults, keyboard/touch actions, shortcuts, batch handling, fewer repeated inputs and recoverable drafts. Web and Android share product meaning, not forced identical layouts.
+- Migrate the existing valuable behavior into the chosen production system and physically remove replaced CSS, components, assets and duplicate entrances. No second runtime, detached demo or permanent old/new surface pair.
+
+Exit evidence is actual Web pages at 360/768/1440 and real Android journeys, including appearance preferences, forms and loading/empty/error/conflict states. Inspect their visual quality and perform the actions. A build, token inventory, screenshot count or successful API test does not establish consumer-grade visual completion. The wave is still pending; the current manual-FX browser probe qualifies only that editor's layout, not this whole-product claim.
+
+## 7. Construction order
 
 1. **Recognition control:** close configured → enabled → observable for receipt and debt-bill recognition in the existing runtime-settings owner.
 2. **Currency adoption ceremony:** unblock an installation that otherwise cannot perform any money write.
 3. **Pending FX recovery:** complete a single-bill edit/preview/confirm journey across Web and Android.
 4. **First use and binding:** verify and simplify the role-specific connection, identity, ledger and first-entry journey, without reopening Windows lifecycle.
-5. **Backstage consolidation:** retire duplicate recycle/admin/developer surfaces and replace raw implementation detail with task health.
-6. Return to the five domains, select the highest user-value `PARTIAL` or `MISSING` chain, and repeat until exact RC.
+5. **Consumer migration closure, then visual-art and convenience wave:** verify that already-productized Web/Android capabilities survived the migration, complete the explicit wave above, and retire replaced production visual structures.
+6. **Backstage consolidation:** retire duplicate recycle/admin/developer surfaces and replace raw implementation detail with task health.
+7. Return to the five domains, select the highest user-value `PARTIAL` or `MISSING` chain, and repeat until exact RC.
 
 Each slice stops after its frozen user postcondition is true, targeted regression passes, and exact-head cloud evidence has a disposition. Neighboring gaps remain in this goal map, with the owning journey and a reactivation step, rather than disappearing through repeated HOLD decisions. Fewer repeated inputs, fewer unnecessary page transitions, clear keyboard/touch actions and recoverable drafts are product outcomes, not optional finishing polish.

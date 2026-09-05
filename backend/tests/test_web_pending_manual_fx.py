@@ -61,6 +61,10 @@ def test_web_writer_recovers_one_pending_bill_then_reviews_canonical_home_amount
         assert "仅用于本笔账单" in response.text
         assert "1 USD" in response.text
         assert "CNY" in response.text
+        assert 'value="123.45"' in response.text
+        assert "待汇率" in response.text
+        assert "缺金额" not in response.text
+        assert "金额 · 待补" not in response.text
         assert "确认入账" not in response.text
 
     saved = web_client.post(
@@ -287,11 +291,13 @@ def test_web_changed_manual_rate_must_be_saved_and_reviewed_before_confirm(
         ("expense_time", "2026-05-05T10:00"),
     ),
 )
+@pytest.mark.parametrize("rate", ["7", ""])
 def test_web_changed_manual_fx_inputs_require_a_new_preview(
     web_client: TestClient,
     identity,
     changed_field: str,
     changed_value: str,
+    rate: str,
 ) -> None:
     expense = _pending_foreign_expense(web_client, identity=identity)
     first = web_client.post(
@@ -304,7 +310,7 @@ def test_web_changed_manual_fx_inputs_require_a_new_preview(
         f"/api/expenses/{expense['id']}", headers=identity.app_headers
     ).json()
     changed = {
-        **_edit_form(previewed, rate="7", key=str(uuid4())),
+        **_edit_form(previewed, rate=rate, key=str(uuid4())),
         "save_before_confirm": "1",
         changed_field: changed_value,
     }
@@ -316,6 +322,8 @@ def test_web_changed_manual_fx_inputs_require_a_new_preview(
     )
     assert refused.status_code == 422, refused.text
     assert "请先保存草稿" in refused.text
+    assert re.search(rf'name="{changed_field}"[^>]*value="{changed_value}"', refused.text)
+    assert re.search(rf'name="manual_exchange_rate"[^>]*value="{rate}"', refused.text)
     current = web_client.get(
         f"/api/expenses/{expense['id']}", headers=identity.app_headers
     ).json()

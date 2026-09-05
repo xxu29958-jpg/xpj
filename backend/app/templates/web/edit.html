@@ -27,6 +27,7 @@
       {% elif e.status == 'confirmed' %}已确认
       {% elif e.status == 'rejected' %}已忽略
       {% elif e.needs_amount %}缺金额
+      {% elif e.fx_pending %}待汇率
       {% elif e.needs_merchant %}缺商家
       {% else %}待确认{% endif %}
     </span>

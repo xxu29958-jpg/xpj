@@ -12,13 +12,15 @@ def _project_manual_fx(
         and expense_view["is_foreign_currency"]
     )
     source_is_manual = expense_view["exchange_rate_source"] == "manual"
+    if pending_foreign:
+        expense_view["needs_amount"] = expense_view["original_amount_minor"] is None
     has_submitted_rate = bool(
         form_values and form_values.get("manual_exchange_rate", "").strip()
     )
     expense_view["manual_fx_editable"] = pending_foreign and (
         expense_view["fx_pending"] or source_is_manual or has_submitted_rate
     )
-    if has_submitted_rate:
+    if form_values is not None and "manual_exchange_rate" in form_values:
         expense_view["manual_exchange_rate_value"] = form_values[
             "manual_exchange_rate"
         ]
