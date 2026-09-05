@@ -53,6 +53,6 @@ function Get-WeightScriptFunctions($Item) {
     }
 }
 
-$Items = @([Console]::In.ReadToEnd() | ConvertFrom-Json)
+$Items = ConvertFrom-Json -InputObject ([Console]::In.ReadToEnd())
 $Functions = @(foreach ($Item in $Items) { Get-WeightScriptFunctions $Item })
 @{ version = $PSVersionTable.PSVersion.ToString(); functions = $Functions } | ConvertTo-Json -Depth 6 -Compress

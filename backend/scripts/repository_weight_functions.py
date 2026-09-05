@@ -66,6 +66,21 @@ def _lizard_functions(record: dict, text: str, language: str, offset: int = 0) -
     } for function in info.function_list]
 
 
+def _inno_routine(record: dict, text: str, segment: list) -> dict | None:
+    names = [value for _, kind, value in segment if kind in Name.Function]
+    keywords = [value.lower() for _, kind, value in segment if kind in Keyword]
+    if not names or "begin" not in keywords or {"external", "forward"}.intersection(keywords):
+        return None
+    line = text.count("\n", 0, segment[0][0]) + 1
+    end_line = text.count("\n", 0, segment[-1][0]) + 1
+    return {
+        "path": record["path"], "module": record["module"], "role": record["role"], "language": "Inno Setup",
+        "name": names[0], "line": line, "end_line": end_line, "length": end_line - line + 1,
+        "parameters": None, "metric": "inno_decision_tokens",
+        "complexity": sum(value in {"if", "for", "while", "repeat", "case", "except", "and", "or"} for value in keywords),
+    }
+
+
 def _inno_functions(record: dict, text: str) -> list[dict]:
     tokens = [(offset, kind, value) for offset, kind, value in get_lexer_by_name("delphi").get_tokens_unprocessed(text)
               if value.strip() and kind not in Comment and kind not in Literal.String]
@@ -74,19 +89,8 @@ def _inno_functions(record: dict, text: str) -> list[dict]:
     functions: list[dict] = []
     for index, start in enumerate(starts):
         stop = starts[index + 1] if index + 1 < len(starts) else len(tokens)
-        segment = tokens[start:stop]
-        names = [value for _, kind, value in segment if kind in Name.Function]
-        keywords = [value.lower() for _, kind, value in segment if kind in Keyword]
-        if not names or "begin" not in keywords or "external" in keywords or "forward" in keywords:
-            continue
-        line = text.count("\n", 0, segment[0][0]) + 1
-        end_line = text.count("\n", 0, segment[-1][0]) + 1
-        functions.append({
-            "path": record["path"], "module": record["module"], "role": record["role"], "language": "Inno Setup",
-            "name": names[0], "line": line, "end_line": end_line, "length": end_line - line + 1,
-            "parameters": None, "metric": "inno_decision_tokens",
-            "complexity": sum(value in {"if", "for", "while", "repeat", "case", "except", "and", "or"} for value in keywords),
-        })
+        if routine := _inno_routine(record, text, tokens[start:stop]):
+            functions.append(routine)
     return functions
 
 

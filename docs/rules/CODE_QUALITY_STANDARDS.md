@@ -46,6 +46,24 @@ full analysis 下运行，plain 会**静默跳过它**（实验实证：plain �
 JUnit XML 结果、零 skipped 与双 lane baseline ratchet）、Room schema 漂移门、
 R8 release 编译、apksigner 指纹钉。
 
+## 全仓工程地图（CI）
+
+`Backend contracts` 的 release audit 必须包含 `_audit_repository_weight.py`。同一次 Git base/head 测量写入 CI Summary 和 `repository-codebase-weight` JSON artifact，不另维护一份数字 baseline。开发时按需查看当前 exact SHA 的报告，从模块/语言进入目录、文件、函数热点；文件内容改变但 LOC 不变也会列入变更清单。历史数字不能替当前版本背书。
+
+- Production、Test、Tooling 分开；migrations 单列且纳入 Production；可选 Public edge Worker 运行源码也属于 Production，其部署配置属于 Tooling。
+- LOC 是物理源码行数，并提供 code/comment-only/blank 组成。每个文件只有一个模块、角色和主语言；HTML 内嵌 JS 的函数分析不重复增加 LOC。常用活动配置计入工具规模；文档、图片/字体/二进制、lockfile、generated/vendor/build output、Room schema JSON 和 analyzer baseline XML 不计 LOC。baseline XML 仍作为债务元数据读取。
+- 总 LOC 只看趋势；硬门比较大文件 `>500/>800/>1000` 数量、实际 Ruff C901 数量/超额、Android 已登记 Detekt 债务与既有规则、源代码新 suppression，以及各语言/模块/角色的函数复杂度超额和长函数数量。门禁本身也受约束，不得增债后抬高 baseline。
+- 函数导航：Lizard 的 Python/Kotlin/Java/JS/TS（含 HTML JS）CCN **估计值**；PowerShell 原生 AST 的决策计数；Inno 的例程词法分支计数。后两者不冒充统一 CFG 圈复杂度；分别显示热点。新增导航指标的债务阈值为复杂度 `>15`、物理函数跨度 `>80`，不放宽已有 Ruff/Detekt 更严格的门。
+- CSS/XML/声明式配置不编造函数圈复杂度；模板渲染、动态字符串/嵌入代码、Inno 预处理与嵌套例程的语义不在这些估计的证明范围。分析器版本、覆盖边界与具体文件/行号随报告提供。数字不能自动证明架构健康、旧 writer 已退役或产品已完成。
+
+日常使用云端报告。需要定向复算时，在已有开发依赖、Git 和 PowerShell 的环境使用明确提交：
+
+```powershell
+python backend/scripts/_audit_repository_weight.py --base BASE_SHA --head HEAD_SHA --json weight.json
+```
+
+脚本只读提交中的源码，不执行被测代码，也不计本机 dirty/untracked 文件。无法完成分析时退出 2；债务回归退出 1；测量范围内没有回归退出 0。报告的健康判定不取代原生编译、测试、审查或最终 RC 验收。
+
 ## Pull Request
 
 - **一 PR 一议题**，不混合无关改动；跨面改动按 surface 拆 PR（后端 / Android / /web 的既有先例）。

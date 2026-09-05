@@ -289,3 +289,40 @@ def test_inno_routine_decisions_ignore_literals_and_external_declarations(repo, 
     assert (functions[0]["line"], functions[0]["metric"], functions[0]["complexity"]) == (
         2, "inno_decision_tokens", 16,
     )
+
+
+def test_powershell_batch_keeps_separate_script_parameter_blocks(repo, tmp_path) -> None:
+    head = commit_files(repo, {
+        "scripts/one.ps1": "param([string]$Value)\nfunction First { return 1 }\n",
+        "scripts/two.ps1": "param([string]$Value)\nfunction Second { return 2 }\n",
+    }, "two independent scripts")
+    result, report = run_weight(repo, head, head, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert {row["name"] for row in report["current"]["functions"]} == {"<script>", "First", "Second"}
+
+
+def test_real_node_fixture_and_deployed_edge_source_are_counted(repo, tmp_path) -> None:
+    base = commit_files(repo, {"backend/app/app.py": "VALUE = 1\n"}, "base")
+    head = commit_files(repo, {
+        "backend/tests/fixtures/check.cjs": "module.exports = () => true;\n",
+        "infra/cloudflare/public-surface-rate-limit/src/index.ts": "export default {};\n",
+        "infra/cloudflare/public-surface-rate-limit/wrangler.jsonc": '{"main":"src/index.ts"}\n',
+        "backend/alembic.ini": "[alembic]\n",
+        "android/gradle.properties": "org.gradle.jvmargs=-Xmx2g\n",
+        "android/app/compose_stability_config.conf": "kotlin.collections.*\n",
+    }, "actual executable inputs")
+    result, report = run_weight(repo, base, head, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert report["delta"]["test_loc"] == 1
+    assert report["delta"]["production_loc"] == 1
+    assert report["current"]["modules"]["Public edge"]["production"] == 1
+    assert report["delta"]["tooling_loc"] == 4
+
+
+def test_release_audit_rejects_missing_repository_weight_lane(tmp_path, monkeypatch) -> None:
+    monkeypatch.syspath_prepend(str(ENTRY.parent))
+    import release_audit
+
+    (tmp_path / "_audit_pr_delta_metrics.py").write_text("raise SystemExit(0)\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="_audit_repository_weight.py"):
+        release_audit._discover_lanes(tmp_path)

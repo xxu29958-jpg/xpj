@@ -156,7 +156,6 @@ jobs:
           tests/test_android_process_qualification.py
           tests/test_android_test_qualification.py
           tests/test_repository_weight.py
-          tests/test_release_audit_gate_helpers.py::test_release_audit_rejects_missing_repository_weight_lane
           --noconftest -p no:cacheprovider
 
       - name: Audit (release lanes)

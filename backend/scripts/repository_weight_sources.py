@@ -16,6 +16,7 @@ LANGUAGES = {
     ".py": ("Python", "python"), ".spec": ("Python", "python"),
     ".kt": ("Kotlin", "kotlin"), ".kts": ("Kotlin", "kotlin"),
     ".java": ("Java", "java"), ".js": ("JavaScript", "javascript"),
+    ".cjs": ("JavaScript", "javascript"), ".mjs": ("JavaScript", "javascript"),
     ".ts": ("TypeScript", "typescript"), ".css": ("CSS", "css"),
     ".html": ("HTML/Jinja", "html+jinja"), ".j2": ("HTML/Jinja", "html+jinja"),
     ".xml": ("XML", "xml"), ".sql": ("SQL", "sql"),
@@ -24,6 +25,8 @@ LANGUAGES = {
     ".bat": ("Batch", "batch"), ".cmd": ("Batch", "batch"),
     ".yml": ("YAML", "yaml"), ".yaml": ("YAML", "yaml"),
     ".toml": ("TOML", "toml"), ".mako": ("Mako", "mako"),
+    ".ini": ("INI", "ini"), ".conf": ("Configuration", "ini"),
+    ".properties": ("Java properties", "properties"), ".jsonc": ("JSONC", "json"),
 }
 DETEKT_BASELINES = {
     "android/app/detekt-baseline-grayDebug.xml": "production",
@@ -37,6 +40,22 @@ WINDOWS_RUNTIME_SCRIPTS = frozenset({
     "restart_backend.ps1", "scheduled_public_boundary_check.ps1", "show_server_status.ps1",
     "start_backend.ps1", "start_backend_gui.ps1", "stop_backend.ps1", "uninstall_windows_tasks.ps1",
 })
+# Most-specific prefixes first; tests keep their module but have a separate role.
+SOURCE_OWNERS = (
+    ("backend/packaging/", "Windows lifecycle", "production"),
+    ("distribution/windows/", "Windows lifecycle", "production"),
+    ("backend/migrations/", "Migrations", "production"),
+    ("backend/app/static/", "Web", "production"),
+    ("backend/app/templates/", "Web", "production"),
+    ("backend/app/", "Backend", "production"),
+    ("backend/", "Backend", "tooling"),
+    ("android/app/src/", "Android", "production"),
+    ("android/", "Android", "tooling"),
+    ("desktop/backend_manager/", "Desktop", "production"),
+    ("desktop/", "Desktop", "tooling"),
+    ("infra/cloudflare/public-surface-rate-limit/src/", "Public edge", "production"),
+    ("infra/cloudflare/public-surface-rate-limit/", "Public edge", "tooling"),
+)
 COMMENT_DIRECTIVE = re.compile(
     r"\bnoqa\b(?:\s*:\s*[A-Z0-9, ]+)?|"
     r"\btype:\s*ignore(?:\[[^\]\n]+\])?|"
@@ -84,28 +103,14 @@ def exclusion(path: str) -> str | None:
 
 
 def source_owner(path: str) -> tuple[str, str]:
-    parts = PurePosixPath(path).parts
-    is_test = bool(set(parts) & {"tests", "test", "androidTest", "testFixtures"})
-    if path.startswith(("backend/packaging/", "distribution/windows/")):
-        return "Windows lifecycle", "test" if is_test else "production"
-    if path.startswith("backend/migrations/"):
-        return "Migrations", "production"
-    if path.startswith(("backend/app/static/", "backend/app/templates/")):
-        return "Web", "production"
-    if path.startswith("backend/app/"):
-        return "Backend", "production"
-    if path.startswith("backend/"):
-        return "Backend", "test" if is_test else "tooling"
-    if path.startswith("android/"):
-        if is_test or parts[1] in {"macrobenchmark", "baselineprofile"}:
-            return "Android", "test"
-        return "Android", "production" if path.startswith("android/app/src/") else "tooling"
-    if path.startswith("desktop/"):
-        role = "production" if path.startswith("desktop/backend_manager/") else "tooling"
-        return "Desktop", "test" if is_test else role
     if path.startswith("scripts/") and PurePosixPath(path).name in WINDOWS_RUNTIME_SCRIPTS:
         return "Windows lifecycle", "production"
-    return "Engineering", "tooling"
+    module, role = next(((module, role) for prefix, module, role in SOURCE_OWNERS if path.startswith(prefix)),
+                        ("Engineering", "tooling"))
+    is_test = bool(set(PurePosixPath(path).parts) & {"tests", "test", "androidTest", "testFixtures"})
+    if is_test or path.startswith(("android/macrobenchmark/", "android/baselineprofile/")):
+        role = "test"
+    return module, role
 
 
 def read_snapshot(repo: Path, sha: str) -> tuple[dict[str, str], dict[str, int]]:
