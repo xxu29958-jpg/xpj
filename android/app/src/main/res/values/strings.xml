@@ -104,6 +104,7 @@
     <string name="error_amount_required">请先填写金额。</string>
     <string name="error_amount_invalid">金额格式不正确。</string>
     <string name="error_currency_not_supported">暂不支持这个币种。</string>
+    <string name="error_currency_adoption_required">这台小票夹正在等待安装拥有者在电脑端确认本位币。你的草稿和待同步操作会保留，确认后请重试。</string>
     <string name="error_exchange_rate_required">请先填写这一天的汇率。</string>
     <string name="error_exchange_rate_pending">汇率还没同步完成，稍后再确认。</string>
     <string name="error_exchange_rate_invalid">汇率格式不正确。</string>

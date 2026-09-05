@@ -25,6 +25,7 @@ import com.ticketbox.data.repository.OutboxMutationDispatcher
 import com.ticketbox.data.repository.OutboxRepository
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.OutboxScheduler
+import com.ticketbox.data.repository.OutboxWriteBlock
 import com.ticketbox.data.repository.PatchExpenseDispatcher
 import com.ticketbox.data.repository.RecognizeTextDispatcher
 import com.ticketbox.data.repository.RejectExpenseDispatcher
@@ -42,12 +43,15 @@ import com.ticketbox.data.repository.reconcileLocalSession
 import com.ticketbox.data.repository.toEntity
 import com.ticketbox.data.repository.toCacheProjection
 import com.ticketbox.data.remote.dto.ExpenseFactBundleDto
+import com.ticketbox.data.remote.dto.RuntimeWriteCompatibility
+import com.ticketbox.data.remote.dto.toWriteCompatibility
 import com.ticketbox.data.repository.toOutboxBinding
 import com.ticketbox.security.SecureSessionStore
 import com.ticketbox.security.SessionCredentialAdapter
 import com.ticketbox.security.isBusinessReady
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 
 class AppContainer(context: Context) {
@@ -74,6 +78,7 @@ class AppContainer(context: Context) {
     private val apiServiceProvider = ApiServiceProvider(apiClient, sessionStore, credentials)
     private val outboxRequestGuard = LedgerRequestGuard(apiServiceProvider)
     private val outboxAdapters = OutboxAdapterGraph()
+    private val outboxWriteBlock = MutableStateFlow<OutboxWriteBlock?>(null)
 
     val outboxScheduler = OutboxScheduler()
 
@@ -106,11 +111,13 @@ class AppContainer(context: Context) {
         // Re-arm right here so the periodic tick survives the
         // session boundary.
         onClearAll = {
+            outboxWriteBlock.value = null
             outboxScheduler.cancel(appContext)
             if (sessionStore.currentSession().isBusinessReady()) {
                 outboxScheduler.ensurePeriodic(appContext)
             }
         },
+        writeBlock = outboxWriteBlock,
     )
 
     private fun outboxApi(row: OutboxRow) = outboxRequestGuard
@@ -119,6 +126,17 @@ class AppContainer(context: Context) {
             row.bindingOrNull()
                 ?: throw IllegalStateException("Outbox row has no verified owner binding."),
         )
+
+    internal suspend fun outboxWriteCompatibility(): RuntimeWriteCompatibility =
+        outboxRequestGuard.guardedCall { api ->
+            api.runtimeCompatibility().toWriteCompatibility().also { compatibility ->
+                outboxWriteBlock.value = if (compatibility.conclusion == "owner_action_required") {
+                    OutboxWriteBlock.CURRENCY_ADOPTION_REQUIRED
+                } else {
+                    null
+                }
+            }
+        }
 
     private suspend fun publishExpenseFactBundle(ledgerId: String, bundle: ExpenseFactBundleDto) {
         val projection = bundle.toCacheProjection(ledgerId)

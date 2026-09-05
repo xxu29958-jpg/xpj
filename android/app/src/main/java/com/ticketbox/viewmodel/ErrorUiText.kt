@@ -46,6 +46,7 @@ private val errorCodeStringResByCode = mapOf(
     "amount_required" to R.string.error_amount_required,
     "amount_invalid" to R.string.error_amount_invalid,
     "currency_not_supported" to R.string.error_currency_not_supported,
+    "currency_adoption_required" to R.string.error_currency_adoption_required,
     "exchange_rate_required" to R.string.error_exchange_rate_required,
     "exchange_rate_pending" to R.string.error_exchange_rate_pending,
     "exchange_rate_invalid" to R.string.error_exchange_rate_invalid,

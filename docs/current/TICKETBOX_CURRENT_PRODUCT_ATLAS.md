@@ -166,7 +166,7 @@ This replaces the old advice to edit the runtime projection or `backend/.env` fr
 | Budgets, goals, recurring and income plans | `STRONG_SLICE` | Planning services → Web and Android | Continue consumer-level completion and visual migration |
 | Reports, trends and projections | `STRONG_SLICE` | Insight read models → Web and Android | Continue information hierarchy and empty/error work |
 | Receipt and debt-bill recognition | `PARTIAL` on baseline; strengthened by this slice | OCR/debt parse services → upload/review/debt consumers | Owner must be able to select, enable and observe the shared local pipeline |
-| Currency adoption when existing evidence requires it | `MISSING` consumer ceremony | Currency adoption service/API → no supported product entry | Add one Owner-led preview/confirm/recovery journey; do not duplicate the owner |
+| Currency adoption when existing evidence requires it | `STRONG_SLICE` in this candidate | Installation binding/adoption service → Desktop product bridge; Android compatibility guard | Qualify the exact candidate; keep old maintenance API retired |
 | Manual FX recovery for a pending foreign-currency expense | `SURFACE_ONLY` | Pending-expense command exists → no Web/Android editor field | Wire both real consumers to the existing command and truthful postcondition |
 | Recycle bin | `DUPLICATE` | Web recycle owner plus narrower Owner Console implementation | Promote the complete Web journey; retire the duplicate Owner writer/surface |
 | Public admin API exposure | `DORMANT` / `RETIRE` | Backend route group, no product consumer | Keep local maintenance boundary or remove exposure toggle; do not invent a UI consumer |
@@ -238,12 +238,34 @@ sequenceDiagram
 
 ### Currency adoption
 
-1. Any consumer receiving `currency_adoption_required` stops money writes without relabelling amounts.
-2. It links the Owner to one local adoption screen.
-3. The screen reads the service-owned preview: proposed home currency, evidence summary, revision and evidence hash.
-4. Owner confirms once; the command carries OCC expectations and an idempotency key.
-5. Success returns a receipt, consumers refresh the runtime compatibility envelope, and normal writes resume.
-6. Conflict refreshes the preview; it never guesses a currency or creates a second binding owner.
+```mermaid
+sequenceDiagram
+    actor O as Installation Owner
+    participant D as Desktop product bridge
+    participant C as Currency adoption service
+    participant B as Installation binding + audit
+    participant A as Android Outbox worker
+    O->>D: Open any money page
+    D->>C: Read adoption preview as paired Desktop owner
+    C-->>D: Evidence conclusion + binding revision
+    D-->>O: Explain one-time choice and consequences
+    O->>D: Confirm original home currency
+    D->>C: Form command + evidence token + OCC + idempotency
+    C->>B: Lock, revalidate owner/evidence, activate once
+    B-->>C: Durable receipt + audit actor
+    C-->>D: Active binding
+    D-->>O: Money features restored
+    A->>C: Read runtime compatibility before drain
+    alt compatible
+        C-->>A: compatible + API version + currency binding
+        A->>C: Replay existing durable intents with negotiated headers
+    else adoption still required or read unavailable
+        C-->>A: owner action required / unavailable
+        A-->>A: Preserve rows; show Owner action when required; retry later
+    end
+```
+
+The installation claim account is the authority; the browser form is only its Desktop consumer. A naked browser, a different account and the retired maintenance API cannot adopt. Evidence conflicts keep every amount unchanged and route the Owner to the existing Desktop diagnostics shortcut. Android reads the shared compatibility conclusion before draining and shows the installation Owner's next step in Sync Status. Immediate and queued writes negotiate the current API version and currency binding. A failed negotiation read or a binding activation race remains retryable, preserving the queued intent.
 
 ### Missing FX rate recovery
 

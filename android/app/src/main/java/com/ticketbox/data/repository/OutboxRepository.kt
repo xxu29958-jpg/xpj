@@ -73,6 +73,7 @@ class OutboxRepository private constructor(
     private val clock: Clock,
     bindingSource: OutboxBindingSource,
     lifecycleHooks: OutboxLifecycleHooks,
+    private val writeBlock: Flow<OutboxWriteBlock?>,
 ) {
     private val bindingProvider = bindingSource.current
     /**
@@ -113,6 +114,9 @@ class OutboxRepository private constructor(
      */
     private val onClearAll = lifecycleHooks.onClearAll
 
+    // Composition boundary: the compatibility flow is a real status dependency,
+    // alongside persistence, binding and scheduling. Keep these inputs explicit.
+    @Suppress("LongParameterList")
     constructor(
         dao: PendingMutationDao,
         clock: Clock = Clock.systemUTC(),
@@ -120,11 +124,13 @@ class OutboxRepository private constructor(
         bindingChanges: Flow<OutboxBinding>? = null,
         onEnqueued: () -> Unit = {},
         onClearAll: () -> Unit = {},
+        writeBlock: Flow<OutboxWriteBlock?> = flowOf(null),
     ) : this(
         dao = dao,
         clock = clock,
         bindingSource = OutboxBindingSource(bindingProvider, bindingChanges),
         lifecycleHooks = OutboxLifecycleHooks(onEnqueued, onClearAll),
+        writeBlock = writeBlock,
     )
 
     /**
@@ -846,7 +852,7 @@ class OutboxRepository private constructor(
                     failed = failed.map { it.toDomain() },
                     quarantinedCount = quarantinedCount,
                 )
-            }
+            }.combine(writeBlock) { status, block -> status.copy(writeBlock = block) }
         }
 
     suspend fun activeForTarget(targetId: String): List<OutboxRow> =
@@ -1086,9 +1092,14 @@ data class OutboxStatus(
     val conflicts: List<OutboxRow>,
     val failed: List<OutboxRow>,
     val quarantinedCount: Int = 0,
+    val writeBlock: OutboxWriteBlock? = null,
 ) {
     val needsUserAction: Boolean
         get() = conflicts.isNotEmpty() || failed.isNotEmpty() || quarantinedCount > 0
+}
+
+enum class OutboxWriteBlock {
+    CURRENCY_ADOPTION_REQUIRED,
 }
 
 private fun PendingMutationEntity.toDomain(): OutboxRow = OutboxRow(

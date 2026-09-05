@@ -34,7 +34,6 @@ from app.routes import (
     bootstrap,
     budget_advisor,
     budgets,
-    currency_adoption,
     currency_system,
     dashboard,
     debt_bills,
@@ -72,6 +71,7 @@ from app.routes import (
     web_budgets,
     web_categories,
     web_confirmed_batch,
+    web_currency_adoption,
     web_dashboard,
     web_data_quality,
     web_debt_actions,
@@ -380,7 +380,6 @@ app.include_router(reports.router)
 app.include_router(imports.router)
 app.include_router(insights.router)
 app.include_router(maintenance.router)
-app.include_router(currency_adoption.router)
 app.include_router(merchants.router)
 app.include_router(admin_routes.router)
 app.include_router(owner_console.router)
@@ -388,6 +387,7 @@ app.include_router(owner_ledgers.router)
 # web_auth must come before web_app so its /web/auth/* routes win over any
 # generic /web matcher (FastAPI registers first-mounted-first-matched).
 app.include_router(web_auth.router)
+app.include_router(web_currency_adoption.router)
 app.include_router(web_app.router)
 app.include_router(web_confirmed_batch.router)
 app.include_router(web_bill_split.router)

@@ -93,6 +93,7 @@ private val backendErrorUserMessages = mapOf(
     "amount_required" to "请先填写金额。",
     "amount_invalid" to "金额格式不正确。",
     "currency_not_supported" to "暂不支持这个币种。",
+    "currency_adoption_required" to "这台小票夹正在等待安装拥有者在电脑端确认本位币。你的草稿和待同步操作会保留，确认后请重试。",
     "exchange_rate_required" to "请先填写这一天的汇率。",
     "exchange_rate_pending" to "汇率还没同步完成，稍后再确认。",
     "exchange_rate_invalid" to "汇率格式不正确。",

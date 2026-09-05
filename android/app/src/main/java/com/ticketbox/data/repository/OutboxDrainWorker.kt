@@ -7,6 +7,7 @@ import androidx.work.WorkerParameters
 import com.ticketbox.TicketboxApplication
 import com.ticketbox.security.LocalSessionRecord
 import com.ticketbox.security.isBusinessReady
+import com.ticketbox.data.remote.dto.RuntimeWriteCompatibility
 import kotlinx.coroutines.CancellationException
 
 /**
@@ -68,8 +69,9 @@ class OutboxDrainWorker(
             Log.w(TAG, "Verified session not ready; skipping outbox drain")
             return Result.success()
         }
-        val outcome = runDrain(
+        val outcome = runCompatibleDrain(
             logWarning = { message, error -> Log.w(TAG, message, error) },
+            compatibility = container::outboxWriteCompatibility,
         ) { container.outboxDrainEngine.drainOnce() }
         return when (outcome) {
             DrainOutcome.SUCCESS -> Result.success()
@@ -138,6 +140,23 @@ class OutboxDrainWorker(
                 return DrainOutcome.RETRY
             }
             return classify(summary)
+        }
+
+        internal suspend fun runCompatibleDrain(
+            logWarning: (String, Throwable) -> Unit = { _, _ -> },
+            compatibility: suspend () -> RuntimeWriteCompatibility,
+            drain: suspend () -> DrainSummary,
+        ): DrainOutcome {
+            val conclusion = try {
+                compatibility()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logWarning("runtime compatibility unavailable, will retry", e)
+                return DrainOutcome.RETRY
+            }
+            if (!conclusion.canWrite) return DrainOutcome.RETRY
+            return runDrain(logWarning, drain)
         }
 
         internal fun canDrain(session: LocalSessionRecord?): Boolean =

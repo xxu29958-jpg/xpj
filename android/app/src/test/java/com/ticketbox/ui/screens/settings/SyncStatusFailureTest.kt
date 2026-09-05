@@ -5,6 +5,7 @@ import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.OutboxStatus
+import com.ticketbox.data.repository.OutboxWriteBlock
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertEquals
@@ -69,6 +70,23 @@ class SyncStatusFailureTest {
 
         assertEquals(0, overview.queuedCount)
         assertTrue(overview.isSettled)
+    }
+
+    @Test
+    fun `owner adoption block replaces misleading network recovery caption`() {
+        val overview = syncStatusOverview(
+            OutboxStatus(
+                queueDepth = 1,
+                conflicts = emptyList(),
+                failed = emptyList(),
+                writeBlock = OutboxWriteBlock.CURRENCY_ADOPTION_REQUIRED,
+            ),
+        )
+
+        assertEquals(
+            R.string.error_currency_adoption_required,
+            overviewCaptionResource(overview),
+        )
     }
 
     @Test

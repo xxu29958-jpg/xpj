@@ -1,0 +1,308 @@
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    min-height: 100dvh;
+    background: var(--surface-app);
+    background-image: var(--surface-app-image, none);
+    color: var(--text-default);
+    font-family: "Ticketbox Sans", "Microsoft YaHei UI", "PingFang SC", sans-serif;
+    font-size: var(--type-body-size);
+    line-height: var(--type-body-line);
+}
+
+.adoption-layout {
+    display: grid;
+    width: min(100% - 2rem, 45rem);
+    min-height: 100dvh;
+    align-content: center;
+    gap: var(--space-6);
+    margin-inline: auto;
+    padding-block: var(--space-10);
+}
+
+.adoption-brand {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    font-size: var(--type-title-size);
+    font-weight: var(--type-title-weight);
+    letter-spacing: -0.02em;
+}
+
+.adoption-brand .brand-mark-img {
+    display: block;
+    width: var(--space-10);
+    height: auto;
+}
+
+.adoption-card {
+    padding: var(--space-8);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-card);
+    background: var(--surface-card);
+    box-shadow: var(--shadow-card);
+}
+
+.adoption-status {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--space-7);
+    margin-block-end: var(--space-4);
+    padding-inline: var(--space-3);
+    border-radius: var(--radius-pill);
+    background: var(--brand-primary-bg);
+    color: var(--brand-primary-strong);
+    font-size: var(--type-caption-size);
+    font-weight: var(--type-subtitle-weight);
+}
+
+.adoption-status--success {
+    background: var(--state-success-bg);
+    color: var(--state-success-fg);
+}
+
+.adoption-status--quiet {
+    background: var(--surface-sunken);
+    color: var(--text-muted);
+}
+
+h1 {
+    max-width: 15ch;
+    margin: 0 0 var(--space-3);
+    font-size: var(--type-display-size);
+    font-weight: var(--type-display-weight);
+    letter-spacing: -0.035em;
+    line-height: var(--type-display-line);
+}
+
+.adoption-lede {
+    max-width: 42rem;
+    margin: 0 0 var(--space-7);
+    color: var(--text-muted);
+    font-size: var(--type-subtitle-size);
+    line-height: 1.75;
+}
+
+.adoption-alert {
+    display: grid;
+    gap: var(--space-2);
+    margin-block-end: var(--space-6);
+    padding: var(--space-4);
+    border: 1px solid var(--state-danger-border);
+    border-radius: var(--radius-sm);
+    background: var(--state-danger-bg);
+    color: var(--state-danger-fg);
+}
+
+.adoption-currencies {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3);
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.adoption-currencies legend {
+    width: 100%;
+    margin-block-end: var(--space-4);
+    font-size: var(--type-title-size);
+    font-weight: var(--type-title-weight);
+}
+
+.adoption-currency {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr);
+    align-items: center;
+    gap: var(--space-3);
+    min-height: 4rem;
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border-input);
+    border-radius: var(--radius-sm);
+    background: var(--surface-card);
+    cursor: pointer;
+}
+
+.adoption-currency:hover {
+    border-color: var(--control-border-hover);
+}
+
+.adoption-currency:has(input:checked) {
+    border-color: var(--control-border-active);
+    background: var(--brand-primary-bg);
+    box-shadow: 0 0 0 var(--space-1) var(--brand-focus-ring);
+}
+
+.adoption-currency input {
+    width: 1.125rem;
+    height: 1.125rem;
+    margin: 0;
+    accent-color: var(--brand-primary);
+}
+
+.adoption-currency-symbol {
+    min-width: var(--space-8);
+    color: var(--brand-primary-strong);
+    font-size: var(--type-title-size);
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+}
+
+.adoption-currency-name {
+    display: grid;
+    gap: var(--space-1);
+}
+
+.adoption-currency-name small {
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+    letter-spacing: 0.08em;
+}
+
+.adoption-config-note {
+    margin: var(--space-4) 0 0;
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
+
+.adoption-consequences {
+    margin-block: var(--space-7);
+    padding-block: var(--space-5);
+    border-block: 1px solid var(--border-card);
+}
+
+.adoption-consequences h2 {
+    margin: 0 0 var(--space-3);
+    font-size: var(--type-body-size);
+    font-weight: var(--type-title-weight);
+}
+
+.adoption-consequences ul {
+    display: grid;
+    gap: var(--space-2);
+    margin: 0;
+    padding-inline-start: 1.25rem;
+    color: var(--text-muted);
+}
+
+.adoption-primary,
+.adoption-secondary {
+    display: inline-flex;
+    min-height: 2.75rem;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-2) var(--space-5);
+    border-radius: var(--radius-sm);
+    font: inherit;
+    font-weight: var(--type-subtitle-weight);
+    text-decoration: none;
+}
+
+.adoption-primary {
+    width: 100%;
+    border: 1px solid var(--brand-primary);
+    background: var(--brand-primary);
+    color: var(--text-on-primary);
+    cursor: pointer;
+}
+
+.adoption-primary:hover {
+    background: var(--brand-primary-strong);
+}
+
+.adoption-secondary {
+    border: 1px solid var(--border-input);
+    background: var(--surface-card);
+    color: var(--text-default);
+}
+
+.adoption-primary:focus-visible,
+.adoption-secondary:focus-visible,
+.adoption-currency:focus-within {
+    outline: var(--space-1) solid var(--brand-focus-ring);
+    outline-offset: var(--space-1);
+}
+
+.adoption-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+}
+
+.adoption-summary {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-4);
+    margin-block-end: var(--space-7);
+    padding: var(--space-4);
+    border-radius: var(--radius-sm);
+    background: var(--surface-sunken);
+    color: var(--text-muted);
+}
+
+.adoption-summary strong {
+    color: var(--text-default);
+    font-size: var(--type-title-size);
+}
+
+.adoption-foot {
+    margin: 0;
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+    text-align: center;
+}
+
+html[data-user-bg] body {
+    background: transparent;
+    background-image: none;
+}
+
+html[data-user-bg] body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background-color: var(--surface-app);
+    background-image: var(--surface-user-veil), var(--surface-user-image);
+    background-repeat: no-repeat;
+    background-size: auto, var(--surface-user-image-size, cover);
+    background-position: 0 0, var(--surface-user-image-position, center);
+}
+
+@media (max-width: 40rem) {
+    .adoption-layout {
+        width: min(100% - 1.25rem, 45rem);
+        align-content: start;
+        gap: var(--space-5);
+        padding-block: var(--space-6) var(--space-10);
+    }
+
+    .adoption-card {
+        padding: var(--space-6) var(--space-5);
+    }
+
+    h1 {
+        font-size: var(--type-hero-size);
+        line-height: var(--type-hero-line);
+    }
+
+    .adoption-currencies {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .adoption-actions,
+    .adoption-secondary {
+        width: 100%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        transition-duration: 0s !important;
+        animation-duration: 0s !important;
+    }
+}

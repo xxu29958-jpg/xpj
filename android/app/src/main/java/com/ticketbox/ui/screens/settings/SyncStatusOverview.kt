@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.data.repository.OutboxStatus
+import com.ticketbox.data.repository.OutboxWriteBlock
 import com.ticketbox.ui.design.AppSpacing
 
 internal data class SyncStatusOverview(
@@ -16,6 +17,7 @@ internal data class SyncStatusOverview(
     val conflictCount: Int,
     val failedCount: Int,
     val quarantinedCount: Int,
+    val writeBlock: OutboxWriteBlock?,
 ) {
     val needsActionCount: Int = conflictCount + failedCount + quarantinedCount
     val isSettled: Boolean = queuedCount == 0 && needsActionCount == 0
@@ -27,6 +29,7 @@ internal fun syncStatusOverview(status: OutboxStatus): SyncStatusOverview =
         conflictCount = status.conflicts.size,
         failedCount = status.failed.size,
         quarantinedCount = status.quarantinedCount.coerceAtLeast(0),
+        writeBlock = status.writeBlock,
     )
 
 @Composable
@@ -82,6 +85,13 @@ private fun overviewCaption(overview: SyncStatusOverview): String = when {
         R.string.sync_status_overview_caption_needs_action,
         overview.needsActionCount,
     )
-    overview.queuedCount > 0 -> stringResource(R.string.sync_status_overview_caption_queued)
+    overview.queuedCount > 0 -> stringResource(overviewCaptionResource(overview))
     else -> stringResource(R.string.sync_status_overview_caption_settled)
 }
+
+internal fun overviewCaptionResource(overview: SyncStatusOverview): Int =
+    if (overview.writeBlock == OutboxWriteBlock.CURRENCY_ADOPTION_REQUIRED) {
+        R.string.error_currency_adoption_required
+    } else {
+        R.string.sync_status_overview_caption_queued
+    }

@@ -11,6 +11,7 @@ import com.ticketbox.data.remote.api.CategoryRuleApi
 import com.ticketbox.data.remote.api.MerchantApi
 import com.ticketbox.data.remote.api.TagApi
 import com.ticketbox.data.remote.api.ServerSettingsApi
+import com.ticketbox.data.remote.api.RuntimeCompatibilityApi
 import com.ticketbox.data.remote.api.ReportsApi
 import com.ticketbox.data.remote.api.GoalsApi
 import com.ticketbox.data.remote.api.DebtApi
@@ -60,7 +61,8 @@ interface ApiService :
     InvitationApi,
     LedgerDeviceApi,
     RecycleBinApi,
-    BackgroundTaskApi {
+    BackgroundTaskApi,
+    RuntimeCompatibilityApi {
     @GET("api/expenses/confirmed")
     suspend fun confirmedExpenses(
         @QueryMap query: Map<String, String>,

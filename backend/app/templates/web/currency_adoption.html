@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="{{ ui_theme or 'paper' }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>确认本位币 — 小票夹</title>
+  <link rel="icon" type="image/png" href="/static/web/product/brand/favicon-48.png">
+  <script src="/static/web/appearance-bootstrap.js?v={{ asset_version }}"></script>
+  <link rel="stylesheet" href="/static/shared/tokens.css?v={{ asset_version }}">
+  <link rel="stylesheet" href="/static/web/pages/currency-adoption.css?v={{ asset_version }}">
+  <script defer src="/static/shared/csrf.js?v={{ asset_version }}"></script>
+</head>
+<body>
+  <main class="adoption-layout">
+    <header class="adoption-brand">
+      {% include "_brand_mark.html" %}
+      <span>小票夹</span>
+    </header>
+
+    <section class="adoption-card" aria-labelledby="adoption-title">
+      {% if preview.state == 'ACTIVE' %}
+      <div class="adoption-status adoption-status--success">设置已完成</div>
+      <h1 id="adoption-title">本位币已确认</h1>
+      <p class="adoption-lede">
+        这台小票夹现在按
+        <strong>{{ active_name or preview.home_currency_code }}</strong>
+        记录和汇总金额，金额功能已经恢复。
+      </p>
+      <div class="adoption-summary">
+        <span>当前本位币</span>
+        <strong>{{ preview.home_currency_code }}</strong>
+      </div>
+      <a class="adoption-primary" href="/web">回到小票夹</a>
+
+      {% elif preview.state == 'ADOPTION_REQUIRED' %}
+      <div class="adoption-status">一次性确认</div>
+      <h1 id="adoption-title">确认这台小票夹的本位币</h1>
+      <p class="adoption-lede">
+        小票夹发现这台安装里已有金额记录，需要由安装拥有者确认它们原本使用的币种，才能继续安全记账。
+      </p>
+
+      {% if error_message %}
+      <div class="adoption-alert" role="alert" tabindex="-1">{{ error_message }}</div>
+      {% endif %}
+
+      {% if preview.evidence_health == 'conflict' or not currency_options %}
+      <div class="adoption-alert" role="alert">
+        <strong>记录之间存在币种矛盾</strong>
+        <span>小票夹没有改写任何金额。请先在系统体检中处理冲突，再回来重新检查。</span>
+      </div>
+      <div class="adoption-actions">
+        <a class="adoption-secondary" href="/web/currency-adoption">重新检查</a>
+        <a class="adoption-secondary" href="/owner/diagnostics">打开系统体检</a>
+      </div>
+      {% else %}
+      <form method="post" action="/web/currency-adoption">
+        {{ csrf_field|safe }}
+        <input type="hidden" name="currency_contract_version" value="{{ preview.currency_contract_version }}">
+        <input type="hidden" name="expected_state" value="{{ preview.state }}">
+        <input type="hidden" name="expected_binding_revision" value="{{ preview.binding_revision }}">
+        <input type="hidden" name="evidence_token" value="{{ evidence_token }}">
+        <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
+
+        <fieldset class="adoption-currencies">
+          <legend>这些记录原本使用哪种本位币？</legend>
+          {% for currency in currency_options %}
+          <label class="adoption-currency">
+            <input type="radio" name="home_currency_code" value="{{ currency.code }}" {% if selected_code == currency.code %}checked{% endif %} required>
+            <span class="adoption-currency-symbol" aria-hidden="true">{{ currency.symbol }}</span>
+            <span class="adoption-currency-name">
+              <strong>{{ currency.name }}</strong>
+              <small>{{ currency.code }}</small>
+            </span>
+          </label>
+          {% endfor %}
+        </fieldset>
+
+        {% if preview.configured_home_currency_code %}
+        <p class="adoption-config-note">
+          当前安装设置为 {{ configured_name }}（{{ preview.configured_home_currency_code }}）。这是配置提示，不替你判断历史记录。
+        </p>
+        {% endif %}
+
+        <div class="adoption-consequences" aria-label="确认后的结果">
+          <h2>确认后会发生什么</h2>
+          <ul>
+            <li>不会换算或改写已有金额</li>
+            <li>记账、预算、计划等金额功能会恢复</li>
+            <li>确认后不能在这里更改；选错需要通过数据修复处理</li>
+          </ul>
+        </div>
+
+        <button class="adoption-primary" type="submit">确认选择并恢复金额功能</button>
+      </form>
+      {% endif %}
+
+      {% else %}
+      <div class="adoption-status adoption-status--quiet">无需处理</div>
+      <h1 id="adoption-title">本位币会在首次记账时确定</h1>
+      <p class="adoption-lede">这台小票夹还没有需要人工确认的历史金额。你可以直接回到产品继续使用。</p>
+      <a class="adoption-primary" href="/web">回到小票夹</a>
+      {% endif %}
+    </section>
+
+    <p class="adoption-foot">此确认只在这台已配对的 Desktop 上提供。</p>
+  </main>
+</body>
+</html>

@@ -4,7 +4,7 @@ from html import escape as _html_escape
 
 from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 
@@ -377,6 +377,13 @@ def html_error_response(request: Request, status_code: int) -> HTMLResponse:
 
 
 async def app_error_handler(request: Request, exc: AppError) -> Response:
+    if (
+        exc.error == "currency_adoption_required"
+        and request.method in {"GET", "HEAD"}
+        and request.url.path != "/web/currency-adoption"
+        and getattr(request.state, "web_session_platform", "") == "desktop"
+    ):
+        return RedirectResponse(url="/web/currency-adoption", status_code=303)
     if exc.status_code >= 400 and _wants_html_error_page(request):
         return html_error_response(request, exc.status_code)
     return error_response(
