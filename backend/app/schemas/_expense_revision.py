@@ -15,10 +15,10 @@ from pydantic import (
 )
 
 from app.schemas._expense import (
+    ExpenseFieldChanges,
     ExpenseItemRequest,
     ExpenseResponse,
     ExpenseSplitRequest,
-    ExpenseUpdateRequest,
 )
 from app.services.time_service import to_iso
 from app.tag_text import validate_tags_fit_storage
@@ -62,7 +62,7 @@ class ConfirmedExpenseBatchUpdateResponse(BaseModel):
     skipped_not_confirmed: int
 
 
-class ExpenseCorrectionRequest(ExpenseUpdateRequest):
+class ExpenseCorrectionRequest(ExpenseFieldChanges):
     """One explicit correction intent against a confirmed fact snapshot."""
 
     reason: str = Field(min_length=1, max_length=500)

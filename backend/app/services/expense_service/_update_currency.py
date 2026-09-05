@@ -25,6 +25,7 @@ from app.services.exchange_rate_service import (
 _ORIGINAL_AMOUNT_FIELDS = {"original_amount", "original_amount_minor"}
 _ORIGINAL_CURRENCY_FIELDS = {"original_currency", "original_currency_code"}
 _CURRENCY_RELEVANT_FIELDS = _ORIGINAL_AMOUNT_FIELDS | _ORIGINAL_CURRENCY_FIELDS | {
+    "manual_exchange_rate",
     "amount_cents",
     "spent_at",
     "expense_time",
@@ -120,6 +121,18 @@ def _apply_update_currency(
     updates: dict,
 ) -> None:
     if not (_CURRENCY_RELEVANT_FIELDS & updates.keys()):
+        return
+    if payload.manual_exchange_rate is not None:
+        if expense.status != "pending":
+            raise AppError("currency_snapshot_immutable", status_code=422)
+        apply_currency_payload(
+            db,
+            tenant_id=tenant_id,
+            expense=expense,
+            payload=payload,
+            amount_was_explicit="amount_cents" in updates,
+            manual_exchange_rate=payload.manual_exchange_rate,
+        )
         return
     if _has_frozen_snapshot(expense):
         current_currency = _current_currency(expense)

@@ -355,6 +355,7 @@ class ExpenseEditViewModel(
         if (blockReadOnlyWrite()) return
         viewModelScope.launch {
             val baseline = _uiState.value.expense
+            val savesManualRate = draft.manualExchangeRate != null
             _uiState.update { it.copy(saving = true, message = null, messageTone = MessageTone.Neutral) }
             // ADR-0038 PR-2g.3 round-8 P2: this is the only call
             // site that doesn't chain on ``saved.updatedAt``. The
@@ -397,23 +398,14 @@ class ExpenseEditViewModel(
             }
             repository.saveExpenseAllowingOffline(expenseId, draft, baseline)
                 .onSuccess { outcome ->
-                    val (message, tone) = when (outcome) {
-                        is SaveOutcome.Synced -> UiText.res(R.string.expense_edit_save_success) to MessageTone.Success
-                        // codex round-8 P2: queued state is honestly
-                        // surfaced to the user — they typed an edit
-                        // while offline, the worker will sync when
-                        // network returns. PR-2g.5 banner adds the
-                        // "你有 N 笔待同步" pill globally; this
-                        // message is the per-save signal.
-                        is SaveOutcome.Queued -> UiText.res(R.string.expense_edit_save_offline_queued) to MessageTone.Info
-                    }
+                    val feedback = expenseEditSaveFeedback(outcome, savesManualRate)
                     _uiState.update {
                         it.copy(
                             expense = outcome.expense,
                             saving = false,
-                            message = message,
-                            messageTone = tone,
-                            done = true,
+                            message = feedback.message,
+                            messageTone = feedback.tone,
+                            done = feedback.done,
                             doneAdviceInputsChanged = draft.changesAdvisorPayloadAgainst(baseline),
                         )
                     }
@@ -746,6 +738,38 @@ class ExpenseEditViewModel(
         }
         return true
     }
+}
+
+private data class ExpenseEditSaveFeedback(
+    val message: UiText,
+    val tone: MessageTone,
+    val done: Boolean,
+)
+
+private fun expenseEditSaveFeedback(
+    outcome: SaveOutcome,
+    savesManualRate: Boolean,
+): ExpenseEditSaveFeedback = when (outcome) {
+    is SaveOutcome.Synced -> ExpenseEditSaveFeedback(
+        message = UiText.res(
+            if (savesManualRate) R.string.expense_edit_manual_rate_saved else R.string.expense_edit_save_success,
+        ),
+        tone = MessageTone.Success,
+        done = !savesManualRate,
+    )
+    // Queued state is only a local intent. Manual FX stays open until the
+    // canonical server projection arrives; ordinary edits keep prior behavior.
+    is SaveOutcome.Queued -> ExpenseEditSaveFeedback(
+        message = UiText.res(
+            if (savesManualRate) {
+                R.string.expense_edit_manual_rate_offline_queued
+            } else {
+                R.string.expense_edit_save_offline_queued
+            },
+        ),
+        tone = MessageTone.Info,
+        done = !savesManualRate,
+    )
 }
 
 /**

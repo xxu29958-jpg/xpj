@@ -372,12 +372,13 @@ def apply_currency_payload(
     expense: Expense,
     payload: CurrencyPayload,
     amount_was_explicit: bool,
+    manual_exchange_rate: Decimal | None = None,
 ) -> None:
     validate_currency_payload_money_command(
         payload,
         amount_was_explicit=amount_was_explicit,
     )
-    has_original_fields = _currency_payload_has_original_fields(payload)
+    has_original_fields = _currency_payload_has_original_fields(payload) or manual_exchange_rate is not None
     if not has_original_fields and not amount_was_explicit:
         # R10②：纯元数据维护不读 env、不过门（不碰币种快照，漂移/配错 env 不拖死它）。
         return
@@ -403,7 +404,13 @@ def apply_currency_payload(
         or expense.exchange_rate_date
         or _payload_rate_date(payload, expense.expense_time)
     )
-    if code == home:
+    if manual_exchange_rate is not None:
+        if code == home:
+            raise AppError("exchange_rate_base_currency", status_code=422)
+        rate = format_decimal_rate(manual_exchange_rate)
+        source, fx_status = FX_SOURCE_MANUAL, FX_STATUS_READY
+        effective_rate_date = _payload_rate_date(payload, expense.expense_time)
+    elif code == home:
         rate, source, fx_status, effective_rate_date = Decimal("1"), FX_SOURCE_BASE, FX_STATUS_READY, rate_date
     else:
         rate, source, fx_status, effective_rate_date = resolve_payload_rate(

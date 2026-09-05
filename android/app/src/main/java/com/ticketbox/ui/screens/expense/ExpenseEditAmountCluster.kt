@@ -3,18 +3,23 @@ package com.ticketbox.ui.screens.expense
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
-import com.ticketbox.domain.model.FxContract
 import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
+import com.ticketbox.ui.components.AppTextInput
+import com.ticketbox.ui.components.AppTextInputActions
+import com.ticketbox.ui.components.AppTextInputDecorations
+import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.sanitizeMinorAmountInput
 import com.ticketbox.ui.design.AppSpacing
 
@@ -24,6 +29,11 @@ internal data class ExpenseEditAmountClusterState(
     val amountText: String,
     val currencyExpanded: Boolean,
     val enabled: Boolean,
+    val homeCurrencyCode: String,
+    val exchangeMeta: String? = null,
+    val manualExchangeRateVisible: Boolean = false,
+    val manualExchangeRateText: String = "",
+    val manualExchangeRateIsError: Boolean = false,
 )
 
 @Immutable
@@ -31,6 +41,8 @@ internal data class ExpenseEditAmountClusterActions(
     val onCurrencyChange: (CurrencyCode) -> Unit,
     val onAmountChange: (String) -> Unit,
     val onAmountFocusChanged: (Boolean) -> Unit,
+    val onManualExchangeRateChange: (String) -> Unit,
+    val onManualExchangeRateFocusChanged: (Boolean) -> Unit,
     val onToggleCurrency: () -> Unit,
 )
 
@@ -63,10 +75,10 @@ internal fun ExpenseEditAmountCluster(
                 onFocusChanged = { actions.onAmountFocusChanged(it.isFocused) },
                 onCurrencyClick = actions.onToggleCurrency.takeIf { state.enabled },
             ),
-            supportingText = if (state.currency != FxContract.HomeCurrency) {
+            supportingText = if (state.currency.storageKey != state.homeCurrencyCode) {
                 {
                     Text(
-                        text = stringResource(R.string.expense_edit_fx_hint),
+                        text = state.exchangeMeta ?: stringResource(R.string.expense_edit_fx_hint),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -82,5 +94,57 @@ internal fun ExpenseEditAmountCluster(
                 onCurrencySelect = actions.onCurrencyChange,
             )
         }
+        if (state.manualExchangeRateVisible) {
+            ExpenseEditManualExchangeRateInput(state = state, actions = actions)
+        }
     }
+}
+
+@Composable
+private fun ExpenseEditManualExchangeRateInput(
+    state: ExpenseEditAmountClusterState,
+    actions: ExpenseEditAmountClusterActions,
+) {
+    AppTextInput(
+        state = AppTextInputState(
+            label = stringResource(R.string.expense_edit_manual_rate_label),
+            value = state.manualExchangeRateText,
+            placeholder = stringResource(R.string.expense_edit_manual_rate_placeholder),
+            trailingLabel = "${state.currency.storageKey} → ${state.homeCurrencyCode}",
+            enabled = state.enabled,
+            isError = state.manualExchangeRateIsError,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        ),
+        actions = AppTextInputActions(
+            onValueChange = { raw ->
+                actions.onManualExchangeRateChange(sanitizeManualExchangeRateInput(raw))
+            },
+            onFocusChanged = { actions.onManualExchangeRateFocusChanged(it.isFocused) },
+        ),
+        modifier = Modifier.fillMaxWidth(),
+        decorations = AppTextInputDecorations(
+            supportingText = { ExpenseEditManualExchangeRateSupportingText(state) },
+        ),
+    )
+}
+
+@Composable
+private fun ExpenseEditManualExchangeRateSupportingText(state: ExpenseEditAmountClusterState) {
+    Text(
+        text = if (state.manualExchangeRateIsError) {
+            stringResource(R.string.expense_edit_manual_rate_invalid)
+        } else {
+            stringResource(
+                R.string.expense_edit_manual_rate_direction,
+                state.currency.storageKey,
+                state.homeCurrencyCode,
+            )
+        },
+        color = if (state.manualExchangeRateIsError) {
+            MaterialTheme.colorScheme.error
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        style = MaterialTheme.typography.bodySmall,
+    )
 }

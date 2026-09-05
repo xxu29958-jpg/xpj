@@ -38,6 +38,7 @@ import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.nowUtcIso
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.formatMinorAmountInput
+import com.ticketbox.ui.components.formatExpenseExchangeMeta
 import com.ticketbox.ui.components.parseMinorAmount
 import com.ticketbox.ui.components.sanitizeMinorAmountInput
 import com.ticketbox.ui.design.AppAdaptiveContentWidth
@@ -75,6 +76,9 @@ import com.ticketbox.ui.screens.expense.ExpenseEditTimeRowActions
 import com.ticketbox.ui.screens.expense.ExpenseEditTimeRowState
 import com.ticketbox.ui.screens.expense.ExpenseDetailActionButtonRow
 import com.ticketbox.ui.screens.expense.initialExpenseAmountInputMinor
+import com.ticketbox.ui.screens.expense.canonicalManualExchangeRateOrNull
+import com.ticketbox.ui.screens.expense.manualExchangeRateEditorVisible
+import com.ticketbox.ui.screens.expense.manualExchangeRateNeedsServerReview
 import com.ticketbox.ui.screens.expense.ItemsEditorSheetActions
 import com.ticketbox.ui.screens.expense.ItemsEditorSheet
 import com.ticketbox.ui.screens.expense.ItemsEditorSheetState
@@ -225,6 +229,14 @@ fun ExpenseEditScreen(
     var amountText by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
         mutableStateOf(initialAmountText)
     }
+    val savedManualExchangeRate = currentExpense.fxRate
+        ?.takeIf { currentExpense.fxSource == FxContract.SourceManual }
+    var manualExchangeRateText by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
+        mutableStateOf(savedManualExchangeRate.orEmpty())
+    }
+    var manualExchangeRateIsError by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
+        mutableStateOf(false)
+    }
     var merchant by rememberSaveable(currentExpense.id, currentExpense.updatedAt) { mutableStateOf(currentExpense.merchant.orEmpty()) }
     var category by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
         mutableStateOf(editInitialCategory(currentExpense))
@@ -266,7 +278,32 @@ fun ExpenseEditScreen(
     val amountInvalidMessage = stringResource(R.string.expense_edit_amount_invalid)
     val amountRequiredMessage = stringResource(R.string.expense_edit_amount_required)
     val currencyUnsupportedMessage = stringResource(R.string.expense_edit_currency_unsupported)
+    val manualExchangeRateInvalidMessage = stringResource(R.string.expense_edit_manual_rate_invalid)
     val isPendingExpense = currentExpense.status == "pending"
+    val homeCurrencyCode = currentExpense.homeCurrencyCode
+        ?.takeIf { it.isNotBlank() }
+        ?: currentExpense.homeCurrency.storageKey
+    val foreignCurrency = currency.storageKey != homeCurrencyCode
+    val fxIdentityChanged = currency != currentExpense.originalCurrencyCode ||
+        parseMinorAmount(amountText, currency) != currentExpense.originalAmountMinor ||
+        expenseTime != currentExpense.expenseTime.orEmpty()
+    val manualExchangeRateVisible = manualExchangeRateEditorVisible(
+        pendingExpense = isPendingExpense,
+        foreignCurrency = foreignCurrency,
+        fxPending = currentExpense.fxStatus == FxContract.StatusPending,
+        fxSource = currentExpense.fxSource,
+    )
+    val manualExchangeRateNeedsReview = manualExchangeRateVisible && manualExchangeRateNeedsServerReview(
+        fxPending = currentExpense.fxStatus == FxContract.StatusPending,
+        savedManualRate = savedManualExchangeRate,
+        draftManualRate = manualExchangeRateText,
+        fxIdentityChanged = fxIdentityChanged,
+    )
+    val exchangeMeta = if (foreignCurrency && !manualExchangeRateNeedsReview && !fxIdentityChanged) {
+        formatExpenseExchangeMeta(currentExpense)
+    } else {
+        null
+    }
     val headerTitle = stringResource(
         if (isPendingExpense) {
             R.string.expense_edit_header_title
@@ -329,12 +366,28 @@ fun ExpenseEditScreen(
             message = amountInvalidMessage
             return null
         }
+        val trimmedManualRate = manualExchangeRateText.trim()
+        val canonicalManualRate = when {
+            manualExchangeRateVisible && trimmedManualRate.isBlank() && savedManualExchangeRate != null -> {
+                manualExchangeRateIsError = true
+                message = manualExchangeRateInvalidMessage
+                return null
+            }
+            !manualExchangeRateVisible || trimmedManualRate.isBlank() -> null
+            else -> canonicalManualExchangeRateOrNull(manualExchangeRateText) ?: run {
+                manualExchangeRateIsError = true
+                message = manualExchangeRateInvalidMessage
+                return null
+            }
+        }
+        manualExchangeRateIsError = false
         val valueScore = if (valueScoreText.isBlank()) null else (parseScore(valueScoreText, valueScoreLabel) ?: return null)
         val regretScore = if (regretScoreText.isBlank()) null else (parseScore(regretScoreText, regretScoreLabel) ?: return null)
         return ExpenseDraft(
             amountCents = null,
             originalCurrencyCode = currency,
             originalAmountMinor = originalMinor,
+            manualExchangeRate = canonicalManualRate?.takeIf { manualExchangeRateNeedsReview },
             // Blank merchant/tags submit as "" (NOT null): Moshi omits null
             // keys and the backend PATCH is exclude_unset, so null silently
             // means "unchanged" — clearing a field then never took effect.
@@ -407,14 +460,28 @@ fun ExpenseEditScreen(
                 amountText = amountText,
                 currencyExpanded = currencyExpanded,
                 enabled = !readOnly,
+                homeCurrencyCode = homeCurrencyCode,
+                exchangeMeta = exchangeMeta,
+                manualExchangeRateVisible = manualExchangeRateVisible,
+                manualExchangeRateText = manualExchangeRateText,
+                manualExchangeRateIsError = manualExchangeRateIsError,
             ),
             actions = ExpenseEditAmountClusterActions(
                 onCurrencyChange = { code ->
+                    if (currency != code) {
+                        manualExchangeRateText = ""
+                        manualExchangeRateIsError = false
+                    }
                     currency = code
                     amountText = sanitizeMinorAmountInput(amountText, code)
                 },
                 onAmountChange = { amountText = it },
                 onAmountFocusChanged = { amountFocused = it },
+                onManualExchangeRateChange = {
+                    manualExchangeRateText = it
+                    manualExchangeRateIsError = false
+                },
+                onManualExchangeRateFocusChanged = { amountFocused = it },
                 onToggleCurrency = { currencyExpanded = !currencyExpanded },
             ),
         )
@@ -539,7 +606,7 @@ fun ExpenseEditScreen(
                     state = ExpenseEditActionBarState(
                         saving = state.saving,
                         allowSave = !readOnly,
-                        allowConfirm = actionAvailability.allowConfirm && !readOnly,
+                        allowConfirm = actionAvailability.allowConfirm && !readOnly && !manualExchangeRateNeedsReview,
                         allowReject = actionAvailability.allowReject && !readOnly,
                         validationMessage = message,
                         statusMessage = state.message?.asString(),

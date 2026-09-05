@@ -46,6 +46,12 @@
     <string name="expense_edit_currency_change_button">切换</string>
     <string name="expense_edit_currency_collapse_button">收起</string>
     <string name="expense_edit_fx_hint">汇率同步后入账。</string>
+    <string name="expense_edit_manual_rate_label">这笔账单的汇率</string>
+    <string name="expense_edit_manual_rate_placeholder">例如 7.20</string>
+    <string name="expense_edit_manual_rate_direction">1 %1$s = 输入值 %2$s · 仅用于这笔账单</string>
+    <string name="expense_edit_manual_rate_invalid">汇率应为大于 0 的普通数字，例如 7.20。</string>
+    <string name="expense_edit_manual_rate_saved">汇率已保存，请核对本笔折算金额后再确认入账。</string>
+    <string name="expense_edit_manual_rate_offline_queued">汇率已保存到本机，联网同步后可核对折算；账单仍待确认。</string>
     <string name="expense_edit_merchant_field_label">商家</string>
     <string name="expense_edit_category_field_label">分类</string>
     <string name="expense_edit_note_field_label">备注</string>

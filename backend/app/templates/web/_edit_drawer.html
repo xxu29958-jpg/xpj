@@ -167,7 +167,7 @@
         {% endif %}
         <div class="spacer"></div>
         <button class="product-button" type="submit">保存草稿</button>
-        {% if e.status == 'pending' %}
+        {% if e.status == 'pending' and not e.fx_pending %}
         <button class="product-button product-button--primary"
                 type="submit"
                 formaction="/web/expenses/{{ e.id }}/confirm">确认入账</button>

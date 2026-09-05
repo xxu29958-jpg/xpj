@@ -266,6 +266,40 @@ class ExpenseMappersTest {
     }
 
     @Test
+    fun pendingManualRateSharesOnePatchWithChangedFxIdentity() {
+        val baseline = expenseDto(
+            publicId = "691da31d-e8d7-49b0-bece-ec6f61c044b2",
+            fixture = ExpenseDtoFixture(
+                currency = ExpenseDtoCurrencyFixture(
+                    originalCurrencyCode = "USD",
+                    originalAmountMinor = 1000,
+                ),
+                fx = ExpenseDtoFxFixture(fxStatus = "pending"),
+            ),
+        ).toDomain()
+
+        val request = ExpenseDraft(
+            amountCents = null,
+            originalCurrencyCode = CurrencyCode.JPY,
+            originalAmountMinor = 1200,
+            manualExchangeRate = "0.048",
+            merchant = "东京交通",
+            category = "交通",
+            note = null,
+            expenseTime = "2026-05-05T04:00:00Z",
+            tags = null,
+            valueScore = null,
+            regretScore = null,
+        ).toRequest(baseline = baseline)
+
+        assertEquals("JPY", request.originalCurrency)
+        assertEquals("1200", request.originalAmount)
+        assertEquals("2026-05-05T04:00:00Z", request.spentAt)
+        assertEquals("0.048", request.manualExchangeRate)
+        assertEquals(1L, request.expectedRowVersion)
+    }
+
+    @Test
     fun categoryOnlyDraftDoesNotSubmitSyntheticCurrencyFields() {
         val request = ExpenseDraft(
             amountCents = null,

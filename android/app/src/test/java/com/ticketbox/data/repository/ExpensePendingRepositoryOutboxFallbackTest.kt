@@ -7,6 +7,8 @@ import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
+import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.FxContract
 import kotlinx.coroutines.test.runTest
 import java.io.IOException
 import kotlin.test.Test
@@ -148,6 +150,84 @@ internal class ExpensePendingRepositoryOutboxFallbackTest : ExpensePendingReposi
         // server's recorded success instead of false-409ing on the stale token.
         assertNotNull(row.idempotencyKey, "PatchExpense row must carry an idempotency key")
         assertEquals(api.lastIdempotencyKey, row.idempotencyKey)
+    }
+
+    @Test
+    fun `manual exchange rate survives queued PatchExpense without fabricating ready snapshot`() = runTest {
+        val baseline = baselineExpense().copy(
+            amountCents = null,
+            homeAmountCents = null,
+            originalCurrency = CurrencyCode.USD,
+            originalCurrencyCode = CurrencyCode.USD,
+            originalCurrencyCodeRaw = "USD",
+            originalAmountMinor = 1200L,
+            fxRate = null,
+            exchangeRateToCny = null,
+            fxStatus = FxContract.StatusPending,
+        )
+        val manualRateDraft = draft.copy(
+            amountCents = null,
+            originalCurrencyCode = CurrencyCode.USD,
+            originalAmountMinor = 1200L,
+            manualExchangeRate = "7.20",
+        )
+        val dao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(dao = dao)
+        val adapter = moshi().adapter(ExpenseUpdateRequest::class.java)
+        val api = ApiServiceStub(updateExpenseResult = ApiResult.Throw(IOException("net out")))
+        val repo = buildRepository(api, outbox, adapter)
+
+        val outcome = repo.saveExpenseAllowingOffline(baseline.id, manualRateDraft, baseline)
+            .getOrThrow() as SaveOutcome.Queued
+
+        val row = dao.rows.values.single()
+        assertTrue("\"manual_exchange_rate\":\"7.20\"" in row.payload)
+        assertEquals(FxContract.StatusPending, outcome.expense.fxStatus)
+        assertNull(outcome.expense.homeAmountCents)
+        assertNull(outcome.expense.exchangeRateToCny)
+    }
+
+    @Test
+    fun `queued manual re-rate clears stale ready snapshot until canonical response`() = runTest {
+        val baseline = baselineExpense().copy(
+            amountCents = 8640L,
+            homeAmountCents = 8640L,
+            originalCurrency = CurrencyCode.USD,
+            originalCurrencyCode = CurrencyCode.USD,
+            originalCurrencyCodeRaw = "USD",
+            originalAmountMinor = 1200L,
+            fxRate = "7.20",
+            fxRateDate = "2026-09-05",
+            fxSource = "manual",
+            exchangeRateToCny = "7.20",
+            exchangeRateDate = "2026-09-05",
+            exchangeRateSource = "manual",
+            fxStatus = FxContract.StatusReady,
+        )
+        val manualRateDraft = draft.copy(
+            amountCents = null,
+            originalCurrencyCode = CurrencyCode.USD,
+            originalAmountMinor = 1200L,
+            manualExchangeRate = "7.25",
+        )
+        val dao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(dao = dao)
+        val adapter = moshi().adapter(ExpenseUpdateRequest::class.java)
+        val api = ApiServiceStub(updateExpenseResult = ApiResult.Throw(IOException("net out")))
+        val repo = buildRepository(api, outbox, adapter)
+
+        val outcome = repo.saveExpenseAllowingOffline(baseline.id, manualRateDraft, baseline)
+            .getOrThrow() as SaveOutcome.Queued
+
+        assertEquals(FxContract.StatusPending, outcome.expense.fxStatus)
+        assertNull(outcome.expense.amountCents)
+        assertNull(outcome.expense.homeAmountCents)
+        assertNull(outcome.expense.fxRate)
+        assertNull(outcome.expense.fxRateDate)
+        assertNull(outcome.expense.fxSource)
+        assertNull(outcome.expense.exchangeRateToCny)
+        assertNull(outcome.expense.exchangeRateDate)
+        assertNull(outcome.expense.exchangeRateSource)
     }
 
     @Test
