@@ -170,13 +170,15 @@ def test_shell_shortcuts_preserve_typing_and_permission_boundaries_in_real_edge(
 
     assert probe == {
         "search": True,
+        "manualExpense": True,
         "capture": True,
         "modified": False,
         "composing": False,
         "input": False,
         "drawer": False,
         "absent": False,
-        "clicks": {"search": 1, "capture": 1},
+        "absentManualExpense": False,
+        "clicks": {"search": 1, "manualExpense": 1, "capture": 1},
     }
 
 

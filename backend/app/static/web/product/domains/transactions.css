@@ -1980,3 +1980,24 @@
     padding-block-start: var(--space-2);
     border-block-start: 1px solid var(--border-card);
 }
+
+.manual-expense-form {
+    display: grid;
+    gap: var(--space-7);
+}
+
+.manual-expense-form .product-field--wide {
+    grid-column: 1 / -1;
+}
+
+.manual-expense-form .manual-expense-amount-field .product-input {
+    font-family: var(--font-numeric);
+    font-size: var(--type-title-size);
+    font-variant-numeric: tabular-nums;
+}
+
+.manual-expense-form > .product-page-actions {
+    justify-content: flex-end;
+    padding-block-start: var(--space-5);
+    border-block-start: 1px solid var(--border-card);
+}

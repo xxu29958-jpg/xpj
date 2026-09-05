@@ -30,6 +30,11 @@
       {{ selected_month }} · 共 {{ month_total_count }} 笔 · 打开任意一行可查看详情与变更记录。
     </p>
   </div>
+  {% if can_write and request.state.web_session_auth %}
+  <div class="product-page-actions">
+    <a class="product-button product-button--primary" href="/web/expenses/new">手动记一笔</a>
+  </div>
+  {% endif %}
 </header>
 
 {% if tag %}
@@ -145,6 +150,9 @@
     {% else %}
     <div class="product-state-title">这个月还没有已确认账单</div>
     <div class="product-state-body">新确认入账的账单会按日期出现在这里。</div>
+    {% if can_write and request.state.web_session_auth %}
+    <a class="product-button product-button--primary product-state-action" href="/web/expenses/new">手动记一笔</a>
+    {% endif %}
     <a class="product-state-action" href="/web/pending?ledger_id={{ selected_ledger_id }}">查看待处理队列</a>
     {% endif %}
   </div>
