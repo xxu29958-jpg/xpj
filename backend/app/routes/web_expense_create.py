@@ -50,10 +50,11 @@ def _manual_expense_context(
     *,
     options,
     selected_id: str,
+    form_ledger_id: str,
+    form_device_public_id: str,
     values: dict[str, str] | None = None,
     client_ref: str | None = None,
     error: str | None = None,
-    form_ledger_id: str | None = None,
 ) -> dict:
     context = _base_ctx(
         request,
@@ -77,7 +78,8 @@ def _manual_expense_context(
                 *sorted(supported_currency_codes() - {home}),
             ],
             "form_error": error,
-            "form_ledger_id": selected_id if form_ledger_id is None else form_ledger_id,
+            "form_ledger_id": form_ledger_id,
+            "form_device_public_id": form_device_public_id,
             "spent_at": current_values.get("spent_at")
             or now_utc()
             .astimezone(accounting_zone())
@@ -169,7 +171,7 @@ def web_manual_expense_new(
         request=request,
     )
     _require_selected_ledger_write(options, selected_id)
-    _session_writer_auth(request, selected_id)
+    auth = _session_writer_auth(request, selected_id)
     return templates.TemplateResponse(
         request=request,
         name="expense_new.html",
@@ -178,6 +180,8 @@ def web_manual_expense_new(
             db,
             options=options,
             selected_id=selected_id,
+            form_ledger_id=selected_id,
+            form_device_public_id=auth.device_public_id,
         ),
     )
 
@@ -186,6 +190,7 @@ def web_manual_expense_new(
 def web_manual_expense_create(
     request: Request,
     ledger_id: str = Form(default=""),
+    expected_device_public_id: str = Form(default=""),
     client_ref: str = Form(default=""),
     amount_major: str = Form(default=""),
     currency_code: str = Form(default=""),
@@ -214,6 +219,12 @@ def web_manual_expense_create(
         "note": note,
     }
     try:
+        if expected_device_public_id != auth.device_public_id:
+            raise AppError(
+                "session_binding_changed",
+                "浏览器身份已更新，这笔支出尚未保存。输入已保留，请先核对已有流水，再打开新表单记账。",
+                status_code=409,
+            )
         if ledger_id != auth.ledger_id:
             raise AppError(
                 "ledger_target_changed",
@@ -252,6 +263,7 @@ def web_manual_expense_create(
                 client_ref=client_ref,
                 error=message,
                 form_ledger_id=ledger_id,
+                form_device_public_id=expected_device_public_id,
             ),
             status_code=status_code,
         )

@@ -71,6 +71,10 @@ def _assert_confirmed_manual_fact(
         assert revision.actor_device_public_id == device.public_id
 
 
+def _hidden_fields(html: str) -> dict[str, str]:
+    return dict(re.findall(r'<input type="hidden" name="([^"]+)" value="([^"]*)"', html))
+
+
 def test_member_can_open_native_manual_expense_form(
     installed_web: _InstalledWeb,
 ) -> None:
@@ -121,6 +125,7 @@ def test_manual_expense_replay_uses_web_device_and_creates_one_confirmed_fact(
     assert client_ref is not None
     assert csrf_seed is not None
     form = {
+        **_hidden_fields(page.text),
         "csrf_token": csrf.group(1),
         "ledger_id": installed_web.shared_ledger_id,
         "client_ref": client_ref.group(1),
@@ -210,6 +215,7 @@ def test_missing_fx_keeps_same_created_expense_in_pending_recovery(
     created = installed_web.browser.post(
         "/web/expenses/new",
         data={
+            **_hidden_fields(page.text),
             "csrf_token": csrf.group(1),
             "ledger_id": installed_web.shared_ledger_id,
             "client_ref": client_ref.group(1),
@@ -319,6 +325,7 @@ def test_invalid_amount_preserves_draft_and_same_create_intent(
     refused = installed_web.browser.post(
         "/web/expenses/new",
         data={
+            **_hidden_fields(page.text),
             "csrf_token": csrf.group(1),
             "ledger_id": installed_web.shared_ledger_id,
             "client_ref": client_ref.group(1),
@@ -407,6 +414,7 @@ def test_open_manual_form_cannot_write_after_its_binding_changes(
     response = installed_web.browser.post(
         "/web/expenses/new",
         data={
+            **_hidden_fields(page.text),
             "csrf_token": csrf.group(1),
             "ledger_id": installed_web.shared_ledger_id,
             "client_ref": client_ref.group(1),

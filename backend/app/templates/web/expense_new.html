@@ -19,6 +19,7 @@
   <form class="manual-expense-form" method="post" action="/web/expenses/new" aria-label="手动记账表单">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="ledger_id" value="{{ form_ledger_id }}">
+    <input type="hidden" name="expected_device_public_id" value="{{ form_device_public_id }}">
     <input type="hidden" name="client_ref" value="{{ client_ref }}">
 
     <div class="product-form-grid">
