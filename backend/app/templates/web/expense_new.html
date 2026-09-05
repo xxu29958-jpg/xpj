@@ -10,7 +10,7 @@
   <div class="product-page-heading">
     <span class="product-eyebrow">流水 / 手动记一笔</span>
     <h1 class="page-title">手动记一笔</h1>
-    <p class="product-page-summary">没有小票也可以直接入账。重复提交同一张表单只会得到同一笔流水。</p>
+    <p class="product-page-summary">没有小票也可以直接入账。在当前浏览器身份下，重复提交同一张表单只会得到同一笔流水。</p>
   </div>
 </header>
 
@@ -18,13 +18,13 @@
   {% if form_error %}<div class="product-feedback product-feedback--danger" role="alert">{{ form_error }}</div>{% endif %}
   <form class="manual-expense-form" method="post" action="/web/expenses/new" aria-label="手动记账表单">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <input type="hidden" name="ledger_id" value="{{ form_ledger_id }}">
     <input type="hidden" name="client_ref" value="{{ client_ref }}">
 
     <div class="product-form-grid">
       <div class="product-field manual-expense-amount-field">
         <label for="manual-expense-amount">金额</label>
-        <input id="manual-expense-amount" class="product-input" name="amount_major" type="number" step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" value="{{ values.amount_major or '' }}" required autofocus>
+        <input id="manual-expense-amount" class="product-input" name="amount_major" type="text" inputmode="decimal" placeholder="{{ currency_input.amount_placeholder }}" value="{{ values.amount_major or '' }}" required autofocus>
       </div>
       <div class="product-field">
         <label for="manual-expense-currency">币种</label>

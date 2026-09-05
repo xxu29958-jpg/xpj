@@ -356,7 +356,7 @@ def test_invalid_amount_preserves_draft_and_same_create_intent(
         ) == 0
 
 
-@pytest.mark.parametrize("change", ["ledger", "permission"])
+@pytest.mark.parametrize("change", ["ledger", "permission", "device"])
 def test_open_manual_form_cannot_write_after_its_binding_changes(
     installed_web: _InstalledWeb, monkeypatch: pytest.MonkeyPatch, change: str,
 ) -> None:
@@ -381,6 +381,13 @@ def test_open_manual_form_cannot_write_after_its_binding_changes(
             follow_redirects=False,
         )
         assert switched.status_code == 303
+    elif change == "device":
+        installed_web.browser.cookies.clear()
+        replacement = _connect_local_session(installed_web)
+        headers["Cookie"] = (
+            f"{SESSION_COOKIE_NAME}={replacement}; "
+            f"{CSRF_COOKIE_NAME}={page.cookies.get(CSRF_COOKIE_NAME)}"
+        )
     else:
         parse = web_expense_create._manual_expense_payload
 
@@ -412,7 +419,7 @@ def test_open_manual_form_cannot_write_after_its_binding_changes(
         headers=headers,
         follow_redirects=False,
     )
-    assert response.status_code == (409 if change == "ledger" else 403), response.text
+    assert response.status_code == (403 if change == "permission" else 409), response.text
     assert "旧表单的商家" in response.text
     assert f'name="client_ref" value="{client_ref.group(1)}"' in response.text
     assert 'name="ledger_id" value="shared_household"' in response.text

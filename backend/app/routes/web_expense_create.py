@@ -53,6 +53,7 @@ def _manual_expense_context(
     values: dict[str, str] | None = None,
     client_ref: str | None = None,
     error: str | None = None,
+    form_ledger_id: str | None = None,
 ) -> dict:
     context = _base_ctx(
         request,
@@ -76,6 +77,7 @@ def _manual_expense_context(
                 *sorted(supported_currency_codes() - {home}),
             ],
             "form_error": error,
+            "form_ledger_id": selected_id if form_ledger_id is None else form_ledger_id,
             "spent_at": current_values.get("spent_at")
             or now_utc()
             .astimezone(accounting_zone())
@@ -152,7 +154,7 @@ def _manual_expense_payload(
     )
 
 
-@router.get("/new", response_class=HTMLResponse)
+@router.get("/new", response_class=HTMLResponse, include_in_schema=False)
 def web_manual_expense_new(
     request: Request,
     ledger_id: str | None = None,
@@ -180,7 +182,7 @@ def web_manual_expense_new(
     )
 
 
-@router.post("/new")
+@router.post("/new", include_in_schema=False)
 def web_manual_expense_create(
     request: Request,
     ledger_id: str = Form(default=""),
@@ -202,7 +204,6 @@ def web_manual_expense_create(
         options,
         request=request,
     )
-    _require_selected_ledger_write(options, selected_id)
     auth = _session_writer_auth(request, selected_id)
     values = {
         "amount_major": amount_major,
@@ -213,6 +214,13 @@ def web_manual_expense_create(
         "note": note,
     }
     try:
+        if ledger_id != auth.ledger_id:
+            raise AppError(
+                "ledger_target_changed",
+                "账本已切换，这笔支出尚未保存。输入已保留，请切回原账本后重试。",
+                status_code=409,
+            )
+        _require_selected_ledger_write(options, selected_id)
         payload = _manual_expense_payload(
             amount_major=amount_major,
             currency_code=currency_code,
@@ -225,6 +233,7 @@ def web_manual_expense_create(
         )
         created = create_manual_expense(db, payload, auth)
     except (AppError, ValidationError, InvalidOperation) as exc:
+        db.rollback()
         if isinstance(exc, AppError):
             message = exc.message
             status_code = web_form_error_status(exc)
@@ -237,11 +246,12 @@ def web_manual_expense_create(
             context=_manual_expense_context(
                 request,
                 db,
-                options=options,
+                options=_list_ledger_options(db),
                 selected_id=selected_id,
                 values=values,
                 client_ref=client_ref,
                 error=message,
+                form_ledger_id=ledger_id,
             ),
             status_code=status_code,
         )
