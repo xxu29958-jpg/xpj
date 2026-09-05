@@ -89,3 +89,15 @@ def test_manual_draft_store_rejects_non_intent_keys(ref: str) -> None:
         capture_output=True, text=True, encoding="utf-8", timeout=10,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_locked_page_bfcache_return_does_not_replace_the_requested_intent() -> None:
+    node = shutil.which("node")
+    assert node is not None
+    root = Path(__file__).parents[1]
+    result = subprocess.run(
+        [node, str(root / "tests/fixtures/manual_draft_bfcache_contract.cjs"),
+         str(root / "app/static/web/manual-drafts.js"), str(root / "app/static/web/manual-entry.js")],
+        capture_output=True, text=True, encoding="utf-8", timeout=10,
+    )
+    assert result.returncode == 0, result.stderr

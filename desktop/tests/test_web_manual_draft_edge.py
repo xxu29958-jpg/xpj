@@ -79,7 +79,8 @@ def test_real_edge_manual_intent_survives_reload_and_unknown_response(tmp_path: 
         def do_GET(self) -> None:
             url = urlsplit(self.path)
             if url.path == "/":
-                self.reply(b'<script src="/manual-drafts.js"></script><script src="/probe.js"></script>')
+                self.reply(b'<!doctype html><html><head><meta charset="utf-8"></head><body>'
+                           b'<script src="/manual-drafts.js"></script><script src="/probe.js"></script></body></html>')
             elif url.path == "/form":
                 self.reply(_form(parse_qs(url.query)))
             elif url.path in {"/manual-drafts.js", "/manual-entry.js", "/manual-draft-ack.js"}:

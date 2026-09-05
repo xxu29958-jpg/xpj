@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 
-from fastapi import Request
 from sqlalchemy.orm import Session
 
 from app.models import Expense
@@ -23,8 +22,7 @@ def manual_draft_scope(db: Session, auth: AuthContext) -> dict[str, str]:
     }
 
 
-def manual_draft_ack(db: Session, request: Request, expense: Expense) -> dict | None:
-    auth = getattr(request.state, "web_session_auth", None)
+def manual_draft_ack(db: Session, auth: AuthContext | None, expense: Expense) -> dict | None:
     if auth is None or auth.ledger_id != expense.tenant_id or expense.source != "手动记账":
         return None
     prefix = f"{auth.device_id}:"

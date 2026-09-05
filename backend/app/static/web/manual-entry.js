@@ -230,7 +230,10 @@
     release = null;
   });
   window.addEventListener("pageshow", function (event) {
-    if (event.persisted) activate(currentRef, retained);
+    if (event.persisted) {
+      const requested = fragmentRef();
+      activate(requested || currentRef, !!requested || retained);
+    }
   });
   window.addEventListener("hashchange", function () {
     const ref = fragmentRef();

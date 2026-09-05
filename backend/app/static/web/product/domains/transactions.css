@@ -2009,6 +2009,11 @@
     margin: 0;
     padding: 0;
     border: 0;
+    color-scheme: light;
+}
+
+:root[data-theme="midnight"] .manual-expense-fields {
+    color-scheme: dark;
 }
 
 .manual-expense-money {

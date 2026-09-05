@@ -19,7 +19,6 @@ from app.routes._web_expense_form import (
     parse_expense_time_local,
     web_form_error_status,
 )
-from app.routes._web_manual_draft import manual_draft_scope
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -38,6 +37,7 @@ from app.services.currency_common import (
     supported_currency_codes,
 )
 from app.services.expense_service import create_manual_expense
+from app.services.manual_expense_draft_presenter import manual_draft_scope
 from app.services.spending_contract_service import accounting_zone
 from app.services.time_service import now_utc
 from app.tenants import AuthContext
@@ -210,6 +210,15 @@ def web_manual_expense_new(
     )
 
 
+def _manual_expense_failure(exc: AppError | ValidationError | InvalidOperation) -> tuple[str, int, str]:
+    """Only a definite validation refusal reopens an immutable submitted draft."""
+    if not isinstance(exc, AppError):
+        return "请检查金额、币种和发生时间。", 422, "rejected"
+    status = web_form_error_status(exc)
+    result = "rejected" if status == 422 and exc.error != "idempotency_key_reused" else "blocked"
+    return exc.message, status, result
+
+
 @router.post("/new", include_in_schema=False)
 def web_manual_expense_create(
     request: Request,
@@ -262,12 +271,7 @@ def web_manual_expense_create(
         created = create_manual_expense(db, payload, auth)
     except (AppError, ValidationError, InvalidOperation) as exc:
         db.rollback()
-        if isinstance(exc, AppError):
-            message = exc.message
-            status_code = web_form_error_status(exc)
-        else:
-            message = "请检查金额、币种和发生时间。"
-            status_code = 422
+        message, status_code, draft_result = _manual_expense_failure(exc)
         return templates.TemplateResponse(
             request=request,
             name="expense_new.html",
@@ -281,11 +285,7 @@ def web_manual_expense_create(
                 error=message,
                 form_ledger_id=ledger_id,
                 form_device_public_id=expected_device_public_id,
-                draft_result=(
-                    "rejected" if status_code == 422 and not (
-                        isinstance(exc, AppError) and exc.code == "idempotency_key_reused"
-                    ) else "blocked"
-                ),
+                draft_result=draft_result,
             ),
             status_code=status_code,
         )
