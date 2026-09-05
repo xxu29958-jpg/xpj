@@ -34,10 +34,10 @@ def resolve_local_llm_base_url(raw: str | None) -> str:
     if (
         parsed.scheme not in {"http", "https"}
         or not parsed.netloc
-        or parsed.username
-        or parsed.password
-        or parsed.query
-        or parsed.fragment
+        or parsed.username is not None
+        or parsed.password is not None
+        or "?" in value
+        or "#" in value
         or (parsed.hostname or "").lower() not in _LOOPBACK_HOSTS
     ):
         return ""

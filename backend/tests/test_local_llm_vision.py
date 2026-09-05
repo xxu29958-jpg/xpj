@@ -90,9 +90,12 @@ def test_local_llm_slot_applies_backpressure() -> None:
     "value",
     (
         "http://user@127.0.0.1:1234/v1",
+        "http://@127.0.0.1:1234/v1",
         "http://127.0.0.1:bad/v1",
         "http://127.0.0.1:1234/v1?mode=local",
+        "http://127.0.0.1:1234/v1?",
         "http://127.0.0.1:1234/v1#ignored",
+        "http://127.0.0.1:1234/v1#",
     ),
 )
 def test_local_llm_base_url_rejects_ambiguous_endpoint_components(value: str) -> None:
