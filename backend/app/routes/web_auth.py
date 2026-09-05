@@ -1,14 +1,13 @@
-"""/web/auth/* — public-host browser login + logout.
+"""/web/auth/* — local identity confirmation, public pairing and browser logout.
 
 Reuses the existing pairing-code flow (``pair_device(platform='web')``) so
 there's no new account / password system. The session token returned by
 ``pair_device`` is stashed in an ``__Host-session`` HttpOnly Secure cookie
 and never exposed in HTML or JS.
 
-Mounted regardless of host, but the loopback Owner Console flow doesn't
-need it (LocalOnly bypasses session). The public Host flow (PR-4 will
-wire ``LocalOrWebSession`` dependency into every /web route) will fall
-back here when there's no valid cookie.
+Installed loopback Web confirms the installation Account at ``/local``.
+Public browsers use the pairing-code entry at ``/login``. Both establish
+independent browser sessions; ``/owner`` retains its local-only boundary.
 
 Session boundary: browser cookies are backed by ``AuthToken.scope='app'`` with
 ``Device.platform='web'`` plus a fixed ``AuthToken.expires_at`` server TTL.
