@@ -71,6 +71,7 @@ def _apply_classification_and_duplicate_projection(
         "original_currency_code",
         "original_amount_minor",
         "exchange_rate_date",
+        "manual_exchange_rate",
         "merchant",
         "spent_at",
         "expense_time",

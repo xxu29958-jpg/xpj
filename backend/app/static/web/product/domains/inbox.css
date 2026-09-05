@@ -612,8 +612,39 @@
     pointer-events: none;
 }
 
-.product-drawer-input-prefix .product-input {
+.expense-core-fields .product-drawer-input-prefix > input.product-input {
     padding-inline-start: var(--space-8);
+}
+
+.expense-manual-fx {
+    display: grid;
+    gap: var(--space-4);
+    padding: var(--space-4);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-card);
+    background: var(--surface-sunken);
+}
+
+.expense-manual-fx-copy {
+    display: grid;
+    gap: var(--space-1);
+    color: var(--text-default);
+}
+
+.expense-manual-fx-copy > span {
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
+
+.expense-manual-fx-equation {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr) max-content;
+    gap: var(--space-3);
+    align-items: center;
+}
+
+.expense-manual-fx-status {
+    margin: 0;
 }
 
 .product-drawer-actions {
@@ -630,7 +661,8 @@
 
 @media (max-width: 48rem) {
     .product-drawer-facts,
-    .product-drawer-field-row {
+    .product-drawer-field-row,
+    .expense-manual-fx-equation {
         grid-template-columns: minmax(0, 1fr);
     }
 

@@ -99,6 +99,37 @@
     </label>
   </div>
 
+  {% if e.manual_fx_editable %}
+  <section class="expense-manual-fx" aria-labelledby="{{ _p }}-manual-fx-title">
+    <div class="expense-manual-fx-copy">
+      <strong id="{{ _p }}-manual-fx-title">补充本笔账单的汇率</strong>
+      <span>仅用于本笔账单，不会修改同一天的其它账单或账本共用汇率。</span>
+    </div>
+    <label class="product-field expense-manual-fx-field" for="{{ _p }}-manual-exchange-rate">
+      <span class="expense-manual-fx-equation">
+        <span>1 {{ e.original_currency_code }} =</span>
+        <input id="{{ _p }}-manual-exchange-rate"
+               class="product-input"
+               type="text"
+               inputmode="decimal"
+               name="manual_exchange_rate"
+               value="{{ e.manual_exchange_rate_value }}"
+               autocomplete="off"
+               placeholder="例如 7.00000000"
+               {% if field_errors.get('manual_exchange_rate') %}aria-invalid="true" aria-describedby="{{ _p }}-manual-rate-error"{% endif %}
+               {% if not can_write %}disabled{% endif %}>
+        <span>{{ e.home_currency_code }}</span>
+      </span>
+      {% if field_errors.get('manual_exchange_rate') %}<span id="{{ _p }}-manual-rate-error" class="error-text">{{ field_errors.get('manual_exchange_rate') }}</span>{% endif %}
+    </label>
+    {% if e.manual_fx_saved %}
+    <div class="product-feedback product-feedback--success expense-manual-fx-status" role="status">
+      汇率已保存，本笔账单仍待确认。请核对上方折算后的本位币金额，再确认入账。
+    </div>
+    {% endif %}
+  </section>
+  {% endif %}
+
   <label class="product-field" for="{{ _p }}-merchant">
     <span>商家</span>
     <input id="{{ _p }}-merchant"

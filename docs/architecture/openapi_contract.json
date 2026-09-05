@@ -1753,6 +1753,11 @@
             "title": "Ledger Id",
             "type": "string"
           },
+          "manual_exchange_rate": {
+            "default": "",
+            "title": "Manual Exchange Rate",
+            "type": "string"
+          },
           "merchant": {
             "anyOf": [
               {
@@ -3756,6 +3761,11 @@
             "title": "Ledger Id",
             "type": "string"
           },
+          "manual_exchange_rate": {
+            "default": "",
+            "title": "Manual Exchange Rate",
+            "type": "string"
+          },
           "merchant": {
             "anyOf": [
               {
@@ -3806,6 +3816,11 @@
             "default": "",
             "title": "Return To",
             "type": "string"
+          },
+          "save_before_confirm": {
+            "default": 0,
+            "title": "Save Before Confirm",
+            "type": "integer"
           },
           "tags": {
             "default": "",
@@ -9731,6 +9746,20 @@
               }
             ],
             "title": "Expense Time"
+          },
+          "manual_exchange_rate": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pending bill only: one original-currency major unit in home-currency major units. Applies only to this bill.",
+            "title": "Manual Exchange Rate"
           },
           "merchant": {
             "anyOf": [

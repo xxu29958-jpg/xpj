@@ -124,7 +124,9 @@ class NotificationDraftCreateRequest(BaseModel):
     notification_key: str | None = Field(default=None, max_length=512)
 
 
-class ExpenseUpdateRequest(BaseModel):
+class ExpenseFieldChanges(BaseModel):
+    """Editable bill fields shared by pending review and explicit corrections."""
+
     model_config = ConfigDict(extra="forbid")
 
     expected_row_version: int
@@ -143,6 +145,13 @@ class ExpenseUpdateRequest(BaseModel):
     regret_score: int | None = Field(default=None, ge=1, le=5)
 
     _tags_fit_mirror = field_validator("tags")(validate_tags_fit_storage)
+
+
+class ExpenseUpdateRequest(ExpenseFieldChanges):
+    manual_exchange_rate: NonNegativeCanonicalDecimalInput | None = Field(
+        default=None,
+        description="Pending bill only: one original-currency major unit in home-currency major units. Applies only to this bill.",
+    )
 
 
 class ExpenseConfirmRequest(BaseModel):

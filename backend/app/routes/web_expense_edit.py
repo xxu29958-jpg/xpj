@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Form, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse, Response
 from sqlalchemy.orm import Session
 
@@ -10,6 +10,7 @@ from app.database import get_db
 from app.errors import AppError
 from app.routes._web_confirmed_write_guard import confirmed_write_guard_response
 from app.routes._web_expense_edit_command import apply_web_expense_form
+from app.routes._web_expense_edit_form import WebExpenseEditForm, web_expense_edit_form
 from app.routes._web_expense_fact import web_fact_context
 from app.routes._web_expense_helpers import (
     web_edit_context,
@@ -28,7 +29,6 @@ from app.routes.web_common import (
     _web_redirect,
     templates,
 )
-from app.services.expense_service import update_expense
 
 router = APIRouter(prefix="/web", tags=["web"])
 
@@ -113,36 +113,14 @@ def web_edit_get(
 def web_save(
     expense_id: int,
     request: Request,
-    amount_yuan: str | None = Form(default=None),
-    original_currency: str = Form(default=""),
-    merchant: str | None = Form(default=None),
-    category: str = Form(default=""),
-    note: str = Form(default=""),
-    # ``expense_time``: blank = leave untouched (FastAPI normalises a blank
-    # optional Form to None, which matches the wanted semantics here).
-    expense_time: str | None = Form(default=None),
-    # Blank tags clear because the browser edit form always carries this field.
-    tags: str = Form(default=""),
-    ledger_id: str = Form(default=""),
-    expected_row_version: str = Form(default=""),
-    idempotency_key: str = Form(default=""),
-    # 批10 review flow: ``return_to`` (whitelist, no-JS path) sends a successful
-    # save back to a list page instead of /web/expenses/{id}/edit — fixing the
-    # "saved → popped out of the queue" full-page bounce even with JS off.
-    # ``fragment`` switches the response to the drawer fetch-mutation contract:
-    # success → tiny 200 marker, error → the drawer fragment carrying the error.
-    return_to: str = Form(default=""),
-    return_month: str = Form(default=""),
-    return_filter: str = Form(default=""),
-    return_page: str = Form(default=""),
-    return_tag: str = Form(default=""),
-    return_query: str = Form(default=""),
-    fragment: int = Form(default=0),
+    form: WebExpenseEditForm = Depends(web_expense_edit_form),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> Response:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    selected_id = _resolve_selected_ledger_id(
+        db, form.ledger_id or None, options, request=request
+    )
     _require_selected_ledger_write(options, selected_id)
     guarded = confirmed_write_guard_response(
         db,
@@ -151,7 +129,7 @@ def web_save(
         selected_id,
         expense_id,
         error_code="expense_correction_required",
-        fragment=bool(fragment),
+        fragment=bool(form.fragment),
     )
     if guarded is not None:
         return guarded
@@ -159,16 +137,7 @@ def web_save(
         db,
         expense_id=expense_id,
         selected_ledger_id=selected_id,
-        expected_row_version=expected_row_version,
-        idempotency_key=idempotency_key,
-        amount_yuan=amount_yuan,
-        original_currency=original_currency,
-        merchant=merchant,
-        category=category,
-        note=note,
-        tags=tags,
-        expense_time=expense_time,
-        update_command=update_expense,
+        form=form,
     )
     return web_save_response(
         db,
@@ -181,11 +150,6 @@ def web_save(
         form_values=outcome.form_values,
         field_errors=outcome.field_errors,
         conflict=outcome.conflict,
-        fragment=fragment,
-        return_to=return_to,
-        return_month=return_month,
-        return_filter=return_filter,
-        return_page=return_page,
-        return_tag=return_tag,
-        return_query=return_query,
+        fragment=form.fragment,
+        **form.return_context.as_kwargs(),
     )

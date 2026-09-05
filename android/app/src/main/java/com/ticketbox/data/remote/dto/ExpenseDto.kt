@@ -134,6 +134,8 @@ data class ExpenseUpdateRequest(
     val originalAmount: String? = null,
     @param:Json(name = "spent_at")
     val spentAt: String? = null,
+    @param:Json(name = "manual_exchange_rate")
+    val manualExchangeRate: String? = null,
     val merchant: String?,
     val category: String?,
     val note: String?,

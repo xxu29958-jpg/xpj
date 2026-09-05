@@ -16,5 +16,6 @@ object FxContract {
     const val StatusReady = "ready"
     const val StatusPending = "pending"
     const val SourceBase = "base"
+    const val SourceManual = "manual"
     const val BaseRateToHome = "1"
 }

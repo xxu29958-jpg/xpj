@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.routes._web_expense_edit_form import WebExpenseEditForm
 from app.routes._web_expense_form import (
     parse_expense_time_local,
     parse_original_amount_minor,
@@ -19,7 +20,8 @@ from app.routes._web_session_common import parse_form_row_version_token
 from app.schemas import ExpenseUpdateRequest
 from app.services.currency_common import normalize_currency_code
 from app.services.data_quality_service import is_uncategorized_expense_category
-from app.services.expense_service import get_expense, update_expense
+from app.services.expense_edit_command_service import edit_expense_submission
+from app.services.expense_service import get_expense
 from app.services.tag_service import normalize_tags
 from app.services.time_service import ensure_utc
 
@@ -36,17 +38,6 @@ class WebExpenseSaveOutcome:
     conflict: bool = False
 
 
-@dataclass(frozen=True)
-class WebExpenseConfirmOutcome:
-    """Atomic save-and-confirm result consumed by the HTML response adapter."""
-
-    error: str | None = None
-    error_status: int = 422
-    form_values: dict[str, str] | None = None
-    field_errors: dict[str, str] | None = None
-    conflict: bool = False
-
-
 class _ExpenseCurrencySnapshot(Protocol):
     original_currency_code: str | None
     original_amount_minor: int | None
@@ -57,21 +48,13 @@ class _ExpenseCurrencySnapshot(Protocol):
     tags: str | None
     expense_time: object | None
 
-
-class _UpdatedExpense(Protocol):
-    row_version: int
-
-
-class _ExpenseUpdateCommand(Protocol):
-    def __call__(
-        self,
-        db: Session,
-        expense_id: int,
-        tenant_id: str,
-        payload: ExpenseUpdateRequest,
-        *,
-        commit: bool = True,
-    ) -> _UpdatedExpense: ...
+_SCHEMA_ERROR_MESSAGES = {
+    "merchant": "商家最多 255 个字符。",
+    "category": "分类最多 64 个字符。",
+    "expected_row_version": "页面已过期，请刷新后重新保存。",
+    "manual_exchange_rate": "汇率格式不正确。",
+}
+_DEFAULT_SCHEMA_ERROR_MESSAGE = "提交参数不正确，请检查后重试。"
 
 
 def _submitted_form_values(
@@ -80,24 +63,34 @@ def _submitted_form_values(
     idempotency_key: str,
     amount_yuan: str | None,
     original_currency: str,
+    manual_exchange_rate: str | None,
     merchant: str | None,
     category: str | None,
     note: str | None,
     tags: str | None,
     expense_time: str | None,
 ) -> dict[str, str]:
-    values = {
+    values: dict[str, str | None] = {
         "expected_row_version": expected_row_version,
         "idempotency_key": idempotency_key,
         "amount_yuan": amount_yuan,
         "original_currency": original_currency,
+        "manual_exchange_rate": manual_exchange_rate,
         "merchant": merchant,
         "category": category,
         "note": note,
         "tags": tags,
         "expense_time": expense_time,
     }
-    return {key: value for key, value in values.items() if value is not None}
+    # Browser controls submit blank text as an empty string. FastAPI normalises
+    # blanks for optional fields to None, so restore the raw-form shape here:
+    # it is both the failed-form value source and the stable idempotency intent.
+    return {key: value if value is not None else "" for key, value in values.items()}
+
+
+def _edit_intent_body(form_values: dict[str, str]) -> dict[str, object]:
+    metadata = {"expected_row_version", "idempotency_key"}
+    return {key: value for key, value in form_values.items() if key not in metadata}
 
 
 def _validated_currency_snapshot(
@@ -155,16 +148,13 @@ def _schema_error(
 ) -> tuple[str, dict[str, str]]:
     first = exc.errors(include_url=False)[0]
     field = str(first.get("loc", ("form",))[-1])
-    if field == "merchant":
-        message = "商家最多 255 个字符。"
-    elif field == "category":
-        message = "分类最多 64 个字符。"
-    elif field == "tags":
-        message = "标签最多 500 个字符。" if len(form_values.get("tags", "")) > 500 else "单个标签最多 64 个字符。"
-    elif field == "expected_row_version":
-        message = "页面已过期，请刷新后重新保存。"
-    else:
-        message = "提交参数不正确，请检查后重试。"
+    tag_message = (
+        "标签最多 500 个字符。"
+        if len(form_values.get("tags", "")) > 500
+        else "单个标签最多 64 个字符。"
+    )
+    messages = {**_SCHEMA_ERROR_MESSAGES, "tags": tag_message}
+    message = messages.get(field, _DEFAULT_SCHEMA_ERROR_MESSAGE)
     return message, {field: message}
 
 
@@ -282,6 +272,7 @@ def _validated_update_request(
     note: str | None,
     tags: str | None,
     expense_time: str | None,
+    manual_exchange_rate: str | None,
     form_values: dict[str, str],
     allow_currency_change: bool,
 ) -> tuple[ExpenseUpdateRequest | None, WebExpenseSaveOutcome | None]:
@@ -323,6 +314,11 @@ def _validated_update_request(
             expense_time_value=expense_time_value,
         )
     )
+    if manual_exchange_rate is not None and manual_exchange_rate.strip():
+        # This is an explicit one-expense snapshot input. Keep it in the same
+        # PATCH as amount/date edits so the server derives home amount,
+        # provenance and effective rate date atomically.
+        payload_args["manual_exchange_rate"] = manual_exchange_rate.strip()
     try:
         payload = ExpenseUpdateRequest(**payload_args)
     except ValidationError as exc:
@@ -340,17 +336,7 @@ def apply_web_expense_form(
     *,
     expense_id: int,
     selected_ledger_id: str,
-    expected_row_version: str,
-    amount_yuan: str | None,
-    original_currency: str,
-    merchant: str | None,
-    category: str | None,
-    note: str | None,
-    tags: str | None,
-    expense_time: str | None,
-    idempotency_key: str = "",
-    commit: bool = True,
-    update_command: _ExpenseUpdateCommand = update_expense,
+    form: WebExpenseEditForm,
 ) -> WebExpenseSaveOutcome:
     """Validate browser input against the persisted currency snapshot, then save."""
 
@@ -358,34 +344,52 @@ def apply_web_expense_form(
         db,
         expense_id=expense_id,
         selected_ledger_id=selected_ledger_id,
-        expected_row_version=expected_row_version,
-        idempotency_key=idempotency_key,
-        amount_yuan=amount_yuan,
-        original_currency=original_currency,
-        merchant=merchant,
-        category=category,
-        note=note,
-        tags=tags,
-        expense_time=expense_time,
+        expected_row_version=form.expected_row_version,
+        idempotency_key=form.idempotency_key,
+        amount_yuan=form.amount_yuan,
+        original_currency=form.original_currency,
+        manual_exchange_rate=form.manual_exchange_rate,
+        merchant=form.merchant,
+        category=form.category,
+        note=form.note,
+        tags=form.tags,
+        expense_time=form.expense_time,
     )
     if payload is None:
         return prepared
 
     try:
-        updated = update_command(
+        updated = edit_expense_submission(
             db,
-            expense_id,
-            selected_ledger_id,
-            payload,
-            commit=commit,
+            expense_id=expense_id,
+            tenant_id=selected_ledger_id,
+            expected_row_version=payload.expected_row_version,
+            request_expected_row_version=payload.expected_row_version,
+            idempotency_key=form.idempotency_key or None,
+            intent_body=_edit_intent_body(prepared.form_values or {}),
+            update_payload=payload,
         )
     except AppError as exc:
         db.rollback()
         conflict = exc.error == "state_conflict"
         message = "账单已在其它端被修改，请刷新后重试。" if conflict else exc.message
+        form_values = prepared.form_values
+        if form_values and exc.error in {
+            "idempotency_key_required",
+            "idempotency_key_reused",
+        }:
+            form_values = {**form_values, "idempotency_key": ""}
+        field_errors = None
+        if exc.error in {
+            "exchange_rate_invalid",
+            "exchange_rate_out_of_range",
+            "exchange_rate_base_currency",
+        }:
+            field_errors = {"manual_exchange_rate": exc.message}
         return _failure(
             message,
-            form_values=prepared.form_values,
+            form_values=form_values,
+            field_errors=field_errors,
             status_code=web_form_error_status(exc),
             conflict=conflict,
         )
@@ -411,6 +415,7 @@ def prepare_web_expense_form(
     tags: str | None,
     expense_time: str | None,
     allow_currency_change: bool = False,
+    manual_exchange_rate: str | None = None,
 ) -> tuple[ExpenseUpdateRequest | None, WebExpenseSaveOutcome]:
     """Parse one browser snapshot without owning its write transaction."""
 
@@ -419,6 +424,7 @@ def prepare_web_expense_form(
         idempotency_key=idempotency_key,
         amount_yuan=amount_yuan,
         original_currency=original_currency,
+        manual_exchange_rate=manual_exchange_rate,
         merchant=merchant,
         category=category,
         note=note,
@@ -440,6 +446,7 @@ def prepare_web_expense_form(
         note=note,
         tags=tags,
         expense_time=expense_time,
+        manual_exchange_rate=manual_exchange_rate,
         form_values=form_values,
         allow_currency_change=allow_currency_change,
     )

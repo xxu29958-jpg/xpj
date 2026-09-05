@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse, Response
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.routes._web_expense_manual_fx_presenter import project_manual_fx_edit_views
 from app.routes._web_expense_return_context import (
     edit_context_params,
     flow_href,
@@ -234,6 +235,7 @@ def web_edit_context(
     )
     current_expense_view = expense_view.copy()
     _overlay_submitted_expense_values(expense_view, form_values)
+    project_manual_fx_edit_views(expense_view, current_expense_view, form_values)
     if form_values and not conflict and form_values.get("expected_row_version"):
         expense_view["row_version"] = form_values["expected_row_version"]
     ctx["expense"] = expense_view
@@ -453,9 +455,21 @@ def web_save_response(
         )
     if fragment:
         return drawer_fragment_ok("save")
+    manual_rate_submitted = bool(
+        form_values and form_values.get("manual_exchange_rate", "").strip()
+    )
     return _web_redirect(
-        resolve_return_to(return_to, f"/web/expenses/{expense_id}/edit"),
+        (
+            f"/web/expenses/{expense_id}/edit"
+            if manual_rate_submitted
+            else resolve_return_to(return_to, f"/web/expenses/{expense_id}/edit")
+        ),
         selected_id,
+        msg=(
+            "汇率已保存，本笔账单仍待确认。请核对折算后的本位币金额。"
+            if manual_rate_submitted
+            else None
+        ),
         **return_context_params(
             return_to,
             return_month=return_month,

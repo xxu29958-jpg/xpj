@@ -343,6 +343,7 @@ fun ExpenseDraft.toRequest(baseline: Expense?): ExpenseUpdateRequest {
         originalCurrency = if (isCreate || currencyChanged) submittedCurrency?.storageKey else null,
         originalAmount = if (isCreate || amountChanged) submittedAmountText else null,
         spentAt = if (isCreate || timeChanged) expenseTime else null,
+        manualExchangeRate = manualExchangeRate,
         merchant = merchant,
         // null/blank category stays OUT of the PATCH body (exclude_unset):
         // writing 其他 here would silently erase the missing-category fact on

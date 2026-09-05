@@ -378,9 +378,9 @@ def test_route_pair_web_coverage_is_complete_and_gated(monkeypatch) -> None:
         "list_expense_items",
         "now_utc",
     }.isdisjoint(mod._SERVICE_FUNCS)
-    assert "update_expense" in mod._route_ops(
-        routes[("POST", "/web/expenses/{expense_id}/save")]
-    )
+    save_ops = mod._route_ops(routes[("POST", "/web/expenses/{expense_id}/save")])
+    assert "edit_expense_submission" in save_ops
+    assert "update_expense" not in save_ops
 
     # The thin-route contract is structural, not an alias/name-intersection
     # heuristic: moving writes and commit ownership back into the handler reds.

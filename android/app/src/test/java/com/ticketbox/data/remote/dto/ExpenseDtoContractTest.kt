@@ -166,4 +166,26 @@ class ExpenseDtoContractTest {
 
         assertEquals("""{"expected_row_version":7}""", json)
     }
+
+    @Test
+    fun updateRequestCarriesManualExchangeRateAsExactText() {
+        val json = moshi.adapter(ExpenseUpdateRequest::class.java).toJson(
+            ExpenseUpdateRequest(
+                expectedRowVersion = 7L,
+                manualExchangeRate = "0.048",
+                merchant = null,
+                category = null,
+                note = null,
+                expenseTime = null,
+                tags = null,
+                valueScore = null,
+                regretScore = null,
+            ),
+        )
+
+        assertEquals(
+            """{"expected_row_version":7,"manual_exchange_rate":"0.048"}""",
+            json,
+        )
+    }
 }

@@ -9,6 +9,7 @@ import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.UploadResponseDto
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.PendingUploadReceipt
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.mergeExpenseCategories
@@ -266,7 +267,11 @@ internal class ExpensePendingRepository(
     private fun projectOptimisticExpense(baseline: Expense, draft: ExpenseDraft): Expense {
         // Only fields the draft can change get overwritten; the rest
         // (timestamps, server-side derived state) stay at baseline.
-        return baseline.copy(
+        // A queued manual FX intent is the exception: the old converted amount
+        // and ready snapshot are no longer true after the rate changes. Keep
+        // the user's original-side edits visible, but wait for the server to
+        // calculate and return the new home-side snapshot.
+        val projected = baseline.copy(
             amountCents = draft.amountCents ?: baseline.amountCents,
             originalCurrencyCode = draft.originalCurrencyCode ?: baseline.originalCurrencyCode,
             originalAmountMinor = draft.originalAmountMinor ?: baseline.originalAmountMinor,
@@ -277,6 +282,18 @@ internal class ExpensePendingRepository(
             tags = draft.tags ?: baseline.tags,
             valueScore = draft.valueScore ?: baseline.valueScore,
             regretScore = draft.regretScore ?: baseline.regretScore,
+        )
+        if (draft.manualExchangeRate == null) return projected
+        return projected.copy(
+            amountCents = null,
+            homeAmountCents = null,
+            fxRate = null,
+            fxRateDate = null,
+            fxSource = null,
+            exchangeRateToCny = null,
+            exchangeRateDate = null,
+            exchangeRateSource = null,
+            fxStatus = FxContract.StatusPending,
         )
     }
 

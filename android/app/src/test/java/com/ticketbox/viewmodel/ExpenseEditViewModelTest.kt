@@ -17,6 +17,7 @@ import com.ticketbox.domain.model.ExpenseSplit
 import com.ticketbox.domain.model.ExpenseSplitDraft
 import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.FamilyMember
+import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.UiText
 import kotlin.test.Test
@@ -68,8 +69,13 @@ internal class ExpenseEditViewModelTest {
         return vm
     }
 
-    private fun draft(amountCents: Long? = null, merchant: String? = null): ExpenseDraft = ExpenseDraft(
+    private fun draft(
+        amountCents: Long? = null,
+        merchant: String? = null,
+        manualExchangeRate: String? = null,
+    ): ExpenseDraft = ExpenseDraft(
         amountCents = amountCents,
+        manualExchangeRate = manualExchangeRate,
         merchant = merchant,
         category = null,
         note = null,
@@ -196,6 +202,71 @@ internal class ExpenseEditViewModelTest {
         assertNotNull(state.message)
         assertEquals(MessageTone.Danger, state.messageTone)
         assertFalse(vm.consumeDone())
+    }
+
+    @Test
+    fun manualRateSyncedSaveStaysOpenForCanonicalReview() = edit { fake ->
+        val pendingFx = fake.baseExpense.copy(
+            amountCents = null,
+            homeAmountCents = null,
+            originalCurrency = CurrencyCode.JPY,
+            originalCurrencyCode = CurrencyCode.JPY,
+            originalCurrencyCodeRaw = "JPY",
+            originalAmountMinor = 1200L,
+            fxRate = null,
+            exchangeRateToCny = null,
+            fxStatus = FxContract.StatusPending,
+        )
+        fake.fetchExpenseResponder = { Result.success(pendingFx) }
+        val vm = viewModel(fake)
+        val saved = pendingFx.copy(
+            amountCents = 5760L,
+            homeAmountCents = 5760L,
+            fxRate = "0.048",
+            exchangeRateToCny = "0.048",
+            fxSource = "manual",
+            exchangeRateSource = "manual",
+            fxStatus = FxContract.StatusReady,
+            updatedAt = "2026-05-05T01:00:00Z",
+            rowVersion = 2L,
+        )
+        fake.saveOfflineResponder = { _, _, _ -> Result.success(SaveOutcome.Synced(saved)) }
+
+        vm.save(draft(manualExchangeRate = "0.048"))
+        advanceUntilIdle()
+
+        assertEquals(saved, vm.uiState.value.expense)
+        assertEquals(UiText.res(R.string.expense_edit_manual_rate_saved), vm.uiState.value.message)
+        assertEquals(MessageTone.Success, vm.uiState.value.messageTone)
+        assertFalse(vm.consumeDone(), "canonical FX must stay visible before manual confirmation")
+    }
+
+    @Test
+    fun manualRateQueuedSaveKeepsPendingStateOpenUntilServerCalculation() = edit { fake ->
+        val pendingFx = fake.baseExpense.copy(
+            amountCents = null,
+            homeAmountCents = null,
+            originalCurrency = CurrencyCode.USD,
+            originalCurrencyCode = CurrencyCode.USD,
+            originalCurrencyCodeRaw = "USD",
+            originalAmountMinor = 1200L,
+            fxRate = null,
+            exchangeRateToCny = null,
+            fxStatus = FxContract.StatusPending,
+        )
+        fake.fetchExpenseResponder = { Result.success(pendingFx) }
+        val vm = viewModel(fake)
+        fake.saveOfflineResponder = { _, _, _ -> Result.success(SaveOutcome.Queued(pendingFx)) }
+
+        vm.save(draft(manualExchangeRate = "7.20"))
+        advanceUntilIdle()
+
+        assertEquals(FxContract.StatusPending, vm.uiState.value.expense?.fxStatus)
+        assertNull(vm.uiState.value.expense?.homeAmountCents)
+        assertEquals(UiText.res(R.string.expense_edit_manual_rate_offline_queued), vm.uiState.value.message)
+        assertEquals(MessageTone.Info, vm.uiState.value.messageTone)
+        assertFalse(vm.consumeDone(), "queued rate intent must remain open and visibly unconfirmed")
+        assertEquals(0, fake.confirmCalls)
     }
 
     @Test

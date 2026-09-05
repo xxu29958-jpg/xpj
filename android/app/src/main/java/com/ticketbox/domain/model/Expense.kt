@@ -127,6 +127,8 @@ data class ExpenseDraft(
     val amountCents: Long?,
     val originalCurrencyCode: CurrencyCode? = null,
     val originalAmountMinor: Long? = null,
+    /** Exact decimal text: 1 original major unit = N home major units. */
+    val manualExchangeRate: String? = null,
     val merchant: String?,
     val category: String?,
     val note: String?,

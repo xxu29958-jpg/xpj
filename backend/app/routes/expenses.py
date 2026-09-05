@@ -45,6 +45,7 @@ from app.services.category_preference_service import (
     restore_category_preference,
 )
 from app.services.debt_service import repayment_draft_response
+from app.services.expense_edit_command_service import edit_expense_submission
 from app.services.expense_response_service import (
     expense_raw_text_by_id,
     expense_to_response,
@@ -65,7 +66,6 @@ from app.services.expense_service import (
     resolve_expense_for_mutation,
     retry_expense_ocr,
     undo_reject_expense,
-    update_expense,
 )
 from app.services.expense_split_service import list_expense_splits, replace_expense_splits
 from app.services.idempotency import (
@@ -501,38 +501,19 @@ def patch_expense(
         device_id=auth.device_id,
         expected_row_version=payload.expected_row_version,
     )
-    claim = claim_idempotent_request(
+    expense = edit_expense_submission(
         db,
-        idempotency_key=idempotency_key,
+        expense_id=expense_pk,
         tenant_id=auth.tenant_id,
-        operation="patch_expense",
-        target_id=str(expense_pk),
-        body=payload.model_dump(mode="json", exclude_unset=True, exclude={"expected_row_version"}),
-        # RAW sentinel, not effective — a first-write replay must keep a stable
-        # fingerprint even though the current row_version may have drifted.
-        expected_row_version=payload.expected_row_version,
+        expected_row_version=effective_row_version,
+        request_expected_row_version=payload.expected_row_version,
+        idempotency_key=idempotency_key,
+        intent_body=payload.model_dump(
+            mode="json", exclude_unset=True, exclude={"expected_row_version"}
+        ),
+        update_payload=payload,
+        require_idempotency=True,
     )
-    if claim is None:
-        # §4.6 HIT: the original PATCH already committed — re-serialise the row's
-        # current canonical state, skipping the OCC claim that would false-409.
-        # A resource hard-deleted between the original commit and this replay (an
-        # extreme tail — the replay window is seconds, expenses soft-reject) makes
-        # get_expense honestly 404: a deleted row has no canonical state.
-        expense = get_expense(db, expense_pk, auth.tenant_id)
-        return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
-
-    # PROCEED: run the mutation without committing, record the key's success,
-    # then commit both atomically (§4.5).
-    expense = update_expense(
-        db,
-        expense_pk,
-        auth.tenant_id,
-        payload.model_copy(update={"expected_row_version": effective_row_version}),
-        commit=False,
-    )
-    mark_idempotency_succeeded(db, claim, resource_type="expense", resource_id=str(expense_pk))
-    db.commit()
-    db.refresh(expense)
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 
 
