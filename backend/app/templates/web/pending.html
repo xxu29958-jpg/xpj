@@ -31,24 +31,14 @@
       {% endif %}
     </p>
   </div>
+  {% if pending_count %}
   <div class="product-page-actions">
     {% if can_write %}
-    {# ledger 必须在 multipart body 解析前完成授权，因此放在 query；csrf 留在
-       body。timezone 由 JS 渐进写入 action query，无 JS 时后端使用默认时区。 #}
-    <form class="inbox-upload-form" id="capture" method="post" action="/web/pending/upload{{ _q }}" data-inbox-capture enctype="multipart/form-data">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      {# 原生 file input 常显是唯一事实 owner (type/name/accept/required/
-         aria-label 不变): 选中文件名由浏览器原生呈现 — 无 JS 或 JS 失败时
-         用户仍看到将上传的文件; 按钮外观由 ::file-selector-button 承担,
-         绝不自动提交。 #}
-      <span class="file-picker">
-        <input class="file-picker-input" id="inbox-upload-file" type="file" name="file" accept="image/*" required aria-label="选择小票图片">
-      </span>
-      <button class="product-button product-button--primary" type="submit">上传小票</button>
-    </form>
+    {% include "_inbox_capture.html" %}
     {% endif %}
     <a class="product-button" href="/web/import{{ _q }}">导入与导出</a>
   </div>
+  {% endif %}
 </header>
 
 {# K3: 队列概况并入页头判断句 (不再独立成区); 可行动计数在下方筛选 pill 上。 #}
@@ -106,6 +96,7 @@
 </div>
 {% endif %}
 
+{% if pending_count %}
 <nav class="product-commandbar" aria-label="待处理筛选">
   <div class="product-segments">
     <a class="filter-tab{% if filter == 'all' %} is-active{% endif %}"
@@ -148,8 +139,10 @@
     当前筛选命中 {{ filtered_count }} 笔；切回“全部”可查看完整队列。
   {% endif %}
 </p>
+{% endif %}
 
 <section class="exp-table" id="exp-table" data-ledger="{{ selected_ledger_id }}" aria-label="待处理账单">
+  {% if expenses %}
   {# S4-R1: 表头不做整树 aria-hidden (#check-all 是可聚焦控件, 藏在 aria-hidden
      里读屏会摸到无公告控件); 只对纯展示列标签隐藏, 控件暴露 role/label/state。 #}
   <div class="exp-head">
@@ -168,6 +161,7 @@
     <div aria-hidden="true" class="text-end">金额</div>
     <div aria-hidden="true">状态与操作</div>
   </div>
+  {% endif %}
   {% for e in expenses %}
   {# S4-R1 行结构: 勾选控件移出行链接 (HTML 禁止链接内嵌交互控件, JS 未载时
      嵌套点击会穿透跳转) — 选择槽、整行链接与 .exp-flags 状态/操作槽是
@@ -272,24 +266,30 @@
     </div>
   </div>
   {% else %}
-  <div class="product-state">
-    {% if filter == 'all' %}
+  <div class="product-state{% if not pending_count %} inbox-empty{% endif %}">
+    {% if not pending_count %}
     <div class="product-state-figure" aria-hidden="true">
-      <img src="/static/web/product/mascot/jiajia-dozing.png" alt=""
-           width="259" height="342" loading="lazy" decoding="async">
+      <img src="/static/web/product/art/receipt-tray.png" alt=""
+           width="1536" height="1024" decoding="async">
     </div>
-    <div class="product-state-title">收件队列已经清空</div>
-    <div class="product-state-body">
-      新上传的截图、OCR 识别结果和导入草稿会出现在这里；手动记账可直接在流水中查看。
-    </div>
-    <div class="product-state-body">
+    <div class="inbox-empty-content">
+      <h2 class="product-state-title">还没有待处理的小票</h2>
+      <p class="product-state-body">
+        新上传的截图、OCR 识别结果和导入草稿会出现在这里；手动记账可直接在流水中查看。
+      </p>
       {% if can_write %}
-        还没配好进票方式？{% if show_owner_upload_setup %}<a href="/owner/upload-links">配 iPhone 快捷指令</a> · {% endif %}<a href="/web/import{{ _q }}">从 CSV 导入</a>。
+      {% include "_inbox_capture.html" %}
+      <div class="inbox-empty-links">
+        <a href="/web/import{{ _q }}">从 CSV 导入</a>
+        {% if show_owner_upload_setup %}<a href="/owner/upload-links">配 iPhone 快捷指令</a>{% endif %}
+      </div>
       {% else %}
+      <p class="product-state-body">
         当前为只读访问；可前往<a href="/web/import{{ _q }}">导出当前账本</a>留存副本。
+      </p>
       {% endif %}
+      <a class="product-state-action" href="/web/confirmed{{ _q }}">查看全部流水</a>
     </div>
-    <a class="product-state-action" href="/web/confirmed{{ _q }}">查看全部流水</a>
     {% else %}
     <div class="product-state-title">没有符合当前条件的账单</div>
     <div class="product-state-body">换一个筛选条件，或返回完整队列继续处理。</div>
@@ -299,7 +299,7 @@
   {% endfor %}
 </section>
 
-{% if can_write %}
+{% if can_write and expenses %}
 <form id="bulk-form" method="post" action="/web/review/bulk" class="bulk-bar" data-bulk>
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">

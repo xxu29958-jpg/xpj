@@ -458,15 +458,13 @@ button[disabled] {
 /* W1: 空态插画槽 — 真实锁定夹夹资产原样入容器, 只做尺度/投影,
    不抠图不改色; aria-hidden 装饰, 事实由 title/body 文本承担。 */
 .product-state-figure {
-    margin-block-end: var(--space-5);
+    margin: 0;
 }
 
 .product-state-figure img {
     display: block;
     width: calc(var(--space-12) * 2.5);
     height: auto;
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-card);
 }
 
 .empty-body,
