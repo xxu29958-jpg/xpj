@@ -45,7 +45,6 @@ import com.ticketbox.ui.design.LocalStatsTokens
 import com.ticketbox.ui.design.LocalSwipeActionTokens
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.SkeletonTokens
-import com.ticketbox.ui.design.backgroundVisualsForSkin
 import com.ticketbox.ui.design.chartTokensForSkin
 import com.ticketbox.ui.design.goalTokensForSkin
 import com.ticketbox.ui.design.skeletonTokensForSkin
@@ -168,7 +167,8 @@ fun colorSchemeForSkin(skin: AppSkin): ColorScheme {
 }
 
 fun backgroundBrushForSkin(skin: AppSkin): Brush {
-    return Brush.verticalGradient(backgroundVisualsForSkin(skin).baseGradient)
+    val visuals = themeVisualsForSkin(skin)
+    return Brush.verticalGradient(listOf(visuals.backgroundTop, visuals.backgroundBottom))
 }
 
 @Composable

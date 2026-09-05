@@ -80,6 +80,10 @@
     }
     chart.setOption(build());
     new ResizeObserver(function () { chart.resize(); }).observe(el);
+    // Canvas does not inherit changed CSS colors. Reproject the same data/instance.
+    new MutationObserver(function () { chart.setOption(build()); }).observe(document.documentElement, {
+      attributes: true, attributeFilter: ["data-theme", "data-accent"],
+    });
 
     // 把环图 legend dots 的颜色也按 chart-series 涂上
     document.querySelectorAll(".chart-legend-0").forEach(function (n) { n.style.background = app.readVar("--chart-series-1"); });

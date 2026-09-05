@@ -101,5 +101,9 @@
     }
     chart.setOption(build());
     new ResizeObserver(function () { chart.resize(); }).observe(el);
+    // Canvas does not inherit changed CSS colors. Reproject the same data/instance.
+    new MutationObserver(function () { chart.setOption(build()); }).observe(document.documentElement, {
+      attributes: true, attributeFilter: ["data-theme", "data-accent"],
+    });
   };
 })(window, document);

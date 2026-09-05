@@ -30,14 +30,7 @@
 
   <nav class="desktop-nav" aria-label="产品导航">
     <div class="nav-primary">
-      <a class="nav-item {% if _domain == 'inbox' %}active{% endif %}" href="/web/pending{{ q }}"{% if _domain == 'inbox' %} aria-current="location"{% endif %}>
-        <span>收件</span>
-        {% if pending_count %}<span class="nav-badge">{{ pending_count }}</span>{% endif %}
-      </a>
-      <a class="nav-item {% if _domain == 'transactions' %}active{% endif %}" href="/web/confirmed{{ q }}"{% if _domain == 'transactions' %} aria-current="location"{% endif %}><span>流水</span></a>
-      <a class="nav-item {% if _domain == 'obligations' %}active{% endif %}" href="/web/debts{{ q }}"{% if _domain == 'obligations' %} aria-current="location"{% endif %}><span>往来</span></a>
-      <a class="nav-item {% if _domain == 'plans' %}active{% endif %}" href="/web/budgets{{ q }}"{% if _domain == 'plans' %} aria-current="location"{% endif %}><span>计划</span></a>
-      <a class="nav-item {% if _domain == 'insights' %}active{% endif %}" href="/web/overview{{ q }}"{% if _domain == 'insights' %} aria-current="location"{% endif %}><span>洞察</span></a>
+      {% include "_primary_nav_links.html" %}
 
       {# 桌面当前域子导航：只展开活跃域的页级链接; 工作区兜底域不渲染。 #}
       {% if _domain != 'workspace' %}

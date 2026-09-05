@@ -23,6 +23,7 @@ const vm = require("vm");
 function makeContext(preset, brandAttrs) {{
   const store = Object.assign({{}}, preset);
   const attrs = {{}};
+  const observers = [];
   const brand = {{
     attrs: Object.assign({{}}, brandAttrs),
     getAttribute: (name) => brand.attrs[name] || null,
@@ -34,18 +35,42 @@ function makeContext(preset, brandAttrs) {{
   }};
   const document = {{
     documentElement: {{
-      setAttribute: (name, value) => {{ attrs[name] = String(value); }},
+      setAttribute: (name, value) => {{
+        attrs[name] = String(value);
+        observers.filter(o => o.options.attributeFilter.includes(name)).forEach(o => o.callback());
+      }},
       getAttribute: (name) => (name in attrs ? attrs[name] : null),
     }},
-    querySelectorAll: (selector) => selector.startsWith(".brand-mark-img") ? [brand] : [],
+    querySelectorAll: (selector) => {{
+      if (selector.startsWith(".brand-mark-img")) return [brand];
+      if (selector === "[data-appearance-popover]") {{
+        return [{{ querySelectorAll: () => [], closest: () => null }}];
+      }}
+      return [];
+    }},
   }};
   const window = {{ localStorage, addEventListener: () => {{}} }};
-  const context = {{ window, document, localStorage }};
+  const context = {{ window, document, localStorage, MutationObserver: class {{
+    constructor(callback) {{ this.callback = callback; }}
+    observe(target, options) {{ this.options = options; observers.push(this); }}
+  }} }};
   vm.runInNewContext(fs.readFileSync(__BOOTSTRAP__, "utf8"), context);
   return {{ store, attrs, brand, context }};
 }}
 
 const result = {{}};
+
+// 未选择外观时采用干净底面，但不能覆写用户已选择的纸纹。
+const fresh = makeContext({{}});
+vm.runInNewContext(fs.readFileSync(__THEME__, "utf8"), fresh.context);
+fresh.context.window.TicketboxWeb.initThemeControl();
+result.fresh = {{
+  texture: fresh.context.window.TicketboxWeb.currentTextureMode(),
+  appliedTexture: fresh.attrs["data-texture"],
+  storedTexture: fresh.store["ui-texture"] || null,
+}};
+const fiber = makeContext({{ "ui-texture": "fiber" }});
+result.explicitFiber = fiber.attrs["data-texture"];
 
 // 1) 外部 bootstrap: 显式 flat + plum 还原到 <html data-*>。
 const restored = makeContext({{ "ui-texture": "flat", "ui-accent": "plum" }});
@@ -91,6 +116,40 @@ const branded = makeContext({{}}, {{
 vm.runInNewContext(fs.readFileSync(__THEME__, "utf8"), branded.context);
 branded.context.window.TicketboxWeb.applyThemeMode("midnight");
 result.brand = {{ src: branded.brand.attrs.src }};
+
+// 5) 两个真实 canvas consumer 原地跟随主题/强调色，不新建实例、不改金额。
+const live = makeContext({{}});
+vm.runInNewContext(fs.readFileSync(__THEME__, "utf8"), live.context);
+const liveApp = live.context.window.TicketboxWeb;
+liveApp.readVar = name => [live.attrs["data-theme"] || "paper", live.attrs["data-accent"] || "evergreen", name].join(":");
+liveApp.homeMinorToMajor = value => value / 100;
+liveApp.homeMinorToMajorText = value => String(value / 100);
+const chartElements = {{
+  "chart-category": {{id: "donut", getAttribute: () => JSON.stringify([{{name:"餐饮", amount_major:12.34, amount_label:"¥12.34"}}])}},
+  "chart-trend": {{id: "trend", getAttribute: () => JSON.stringify([{{month:"2026-09", amount_cents:1234, budget_cents:2000}}])}},
+}};
+live.context.document.getElementById = id => chartElements[id] || null;
+live.context.ResizeObserver = class {{ observe() {{}} }};
+const charts = {{}};
+let chartInstances = 0;
+live.context.echarts = {{init: el => {{
+  chartInstances += 1;
+  const state = charts[el.id] = {{renders:0}};
+  return {{setOption: option => {{state.option = option; state.renders += 1;}}, resize() {{}}}};
+}}}};
+vm.runInNewContext(fs.readFileSync(__DONUT__, "utf8"), live.context);
+vm.runInNewContext(fs.readFileSync(__TREND__, "utf8"), live.context);
+liveApp.initCategoryDonut();
+liveApp.initTrendChart();
+liveApp.applyThemeMode("midnight");
+const darkBorder = charts.donut.option.series[0].itemStyle.borderColor;
+liveApp.applyAccentMode("plum");
+result.charts = {{
+  instances: chartInstances, donutRenders: charts.donut.renders, trendRenders: charts.trend.renders,
+  darkBorder, trendAccent: charts.trend.option.series[2].lineStyle.color,
+  donutAmount: charts.donut.option.series[0].data[0].amountLabel,
+  trendAmount: charts.trend.option.series[1].data[0].value,
+}};
 process.stdout.write(JSON.stringify(result));
 """
 
@@ -99,6 +158,8 @@ def _contract_script(bootstrap: Path, theme: Path) -> str:
     return (
         _NODE_CONTRACT.replace("__BOOTSTRAP__", json.dumps(str(bootstrap)))
         .replace("__THEME__", json.dumps(str(theme)))
+        .replace("__DONUT__", json.dumps(str(theme.with_name("category-donut.js"))))
+        .replace("__TREND__", json.dumps(str(theme.with_name("trend-chart.js"))))
         .replace("{{", "{")
         .replace("}}", "}")
     )
@@ -124,11 +185,13 @@ def test_appearance_bootstrap_and_theme_share_one_preference_contract() -> None:
     )
     assert completed.returncode == 0, completed.stderr
     assert json.loads(completed.stdout) == {
+        "fresh": {"texture": "flat", "appliedTexture": "flat", "storedTexture": None},
+        "explicitFiber": "fiber",
         "restored": {"texture": "flat", "accent": "plum"},
         "failClosed": {
             "texture": None,
             "accent": None,
-            "readTexture": "fiber",
+            "readTexture": "flat",
             "readAccent": "evergreen",
         },
         "shared": {
@@ -141,5 +204,14 @@ def test_appearance_bootstrap_and_theme_share_one_preference_contract() -> None:
         },
         "brand": {
             "src": "/static/web/product/brand/brand-mark-midnight.png",
+        },
+        "charts": {
+            "instances": 2,
+            "donutRenders": 3,
+            "trendRenders": 3,
+            "darkBorder": "midnight:evergreen:--surface-card",
+            "trendAccent": "midnight:plum:--brand-primary",
+            "donutAmount": "¥12.34",
+            "trendAmount": 12.34,
         },
     }

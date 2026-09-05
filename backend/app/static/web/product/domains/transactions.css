@@ -436,6 +436,7 @@
     .confirmed-bulk-bar {
         align-items: stretch;
         flex-direction: column;
+        flex-wrap: nowrap;
     }
 
     .confirmed-bulk-bar .bulk-reason {
@@ -444,8 +445,15 @@
     }
 
     .confirmed-bulk-bar .bulk-group {
+        display: grid;
+        min-width: 0;
+        grid-template-columns: minmax(0, 1fr) auto;
         padding-inline-start: 0;
         border-inline-start: 0;
+    }
+
+    .confirmed-bulk-bar .bulk-hint {
+        grid-column: 1 / -1;
     }
 }
 
