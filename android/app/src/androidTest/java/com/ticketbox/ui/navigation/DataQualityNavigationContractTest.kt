@@ -13,6 +13,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -22,8 +23,11 @@ import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.ui.screens.pending.NeedsReviewFilter
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.LedgerDataQualityFilter
+import com.ticketbox.viewmodel.PendingListLoadState
+import com.ticketbox.viewmodel.PendingViewModel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Rule
 import org.junit.Test
@@ -124,14 +128,19 @@ class DataQualityNavigationContractTest {
     @Test
     fun inboxRemediationEntryResyncsPendingList() {
         setContractContent(useRealInboxRoute = true)
+        val initialPending = currentPendingViewModel()
+        waitForPendingSync(initialPending, minimumSyncs = 1)
         composeRule.runOnIdle {
-            // The real PendingViewModel's init load fired exactly one sync.
+            // Initial cache IO, API sync and Room write-through have completed.
             assertEquals(1, apiProbe.pendingExpensesCallCount)
         }
 
         openDataQualityFromInsights()
         composeRule.onNodeWithText(TEXT_MISSING_MERCHANT).performClick()
         composeRule.waitForIdle()
+        val returnedPending = currentPendingViewModel()
+        assertSame("Targeted landing must retain the Inbox ViewModel owner", initialPending, returnedPending)
+        waitForPendingSync(returnedPending, minimumSyncs = 2)
 
         composeRule.runOnIdle {
             assertEquals(PrimaryDomain.Inbox.route, navController.currentDestination?.route)
@@ -140,6 +149,20 @@ class DataQualityNavigationContractTest {
             assertEquals(2, apiProbe.pendingExpensesCallCount)
             // The real PendingScreen consumed the posted filter request.
             assertNull(shellState.pendingFilterRequest.pending)
+        }
+    }
+
+    private fun currentPendingViewModel(): PendingViewModel = composeRule.runOnIdle {
+        ViewModelProvider(navController.getBackStackEntry(PrimaryDomain.Inbox.route))[PendingViewModel::class.java]
+    }
+
+    private fun waitForPendingSync(viewModel: PendingViewModel, minimumSyncs: Int) {
+        // Compose idleness and API entry are not completion of external IO.
+        // Loaded is published only after the repository's Room write-through.
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            val state = viewModel.uiState.value
+            state.listLoadState == PendingListLoadState.Loaded && !state.loading &&
+                apiProbe.pendingExpensesCallCount >= minimumSyncs
         }
     }
 
