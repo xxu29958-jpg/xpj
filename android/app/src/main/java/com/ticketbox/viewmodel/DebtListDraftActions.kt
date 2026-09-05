@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 enum class DebtDraftField {
     Direction,
     Counterparty,
+    Note,
     Amount,
     Kind,
     InstallmentCount,
@@ -14,6 +15,9 @@ fun DebtListViewModel.updateDraftDirection(value: String) =
 
 fun DebtListViewModel.updateDraftCounterparty(value: String) =
     updateDraftField(DebtDraftField.Counterparty, value)
+
+fun DebtListViewModel.updateDraftNote(value: String) =
+    updateDraftField(DebtDraftField.Note, value)
 
 fun DebtListViewModel.updateDraftAmount(value: String) =
     updateDraftField(DebtDraftField.Amount, value)

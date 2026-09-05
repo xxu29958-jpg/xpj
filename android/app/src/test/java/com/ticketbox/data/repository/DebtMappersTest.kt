@@ -26,6 +26,7 @@ class DebtMappersTest {
             counterpartyType = DebtCounterpartyTypes.EXTERNAL,
             counterpartyAccountId = null,
             counterpartyLabel = "房东",
+            note = "房租押金，搬离时核对",
             principalAmountCents = 50_000,
             remainingAmountCents = 30_000,
             paidAmountCents = 20_000,
@@ -43,6 +44,7 @@ class DebtMappersTest {
         assertEquals("debt-1", debt.publicId)
         assertNull(debt.ledgerId)
         assertEquals("房东", debt.counterpartyLabel)
+        assertEquals("房租押金，搬离时核对", debt.note)
         assertEquals(50_000L, debt.principalAmountCents)
         assertEquals(30_000L, debt.remainingAmountCents)
         assertEquals(20_000L, debt.paidAmountCents)
@@ -125,6 +127,7 @@ class DebtMappersTest {
         val request = DebtDraft(
             direction = DebtDirections.OWED_TO_ME,
             counterpartyLabel = "  小王  ",
+            note = "  出差垫付车费\n待报销后归还  ",
             principalAmountCents = 12_345,
         ).toCreateRequest()
 
@@ -133,6 +136,7 @@ class DebtMappersTest {
         assertEquals(DebtCounterpartyTypes.EXTERNAL, request.counterpartyType)
         assertEquals(DebtSourceTypes.MANUAL, request.sourceType)
         assertEquals("小王", request.counterpartyLabel)
+        assertEquals("出差垫付车费\n待报销后归还", request.note)
         assertEquals(12_345L, request.principalAmountCents)
         // 8e-6e: an untouched draft carries the default kind (unspecified) into the create body.
         assertEquals(DebtKinds.UNSPECIFIED, request.debtKind)
@@ -148,6 +152,15 @@ class DebtMappersTest {
         ).toCreateRequest()
 
         assertEquals(DebtKinds.REVOLVING, request.debtKind)
+        assertNull(request.note)
+        assertNull(
+            DebtDraft(
+                direction = DebtDirections.I_OWE,
+                counterpartyLabel = "同行人",
+                principalAmountCents = 100,
+                note = " \n ",
+            ).toCreateRequest().note,
+        )
     }
 
     @Test

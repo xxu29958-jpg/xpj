@@ -372,6 +372,10 @@
     <string name="debt_create_label_direction">方向</string>
     <string name="debt_create_label_counterparty">欠款对象</string>
     <string name="debt_create_label_amount">金额</string>
+    <string name="debt_create_label_note">往来说明（可选）</string>
+    <string name="debt_context_title">往来说明</string>
+    <string name="debt_context_hint">记下缘由或约定，方便以后核对</string>
+    <string name="debt_context_too_long">往来说明最多 500 字，请缩短后再保存。输入已保留。</string>
     <string name="debt_create_save">保存</string>
     <string name="debt_create_submitting">保存中…</string>
     <string name="debt_create_currency_unconfirmed">暂时无法确认账本币种口径，暂不能新建欠款。可检查网络后重试。</string>

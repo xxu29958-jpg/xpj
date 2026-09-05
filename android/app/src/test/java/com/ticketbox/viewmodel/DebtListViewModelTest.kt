@@ -305,12 +305,15 @@ class DebtListViewModelTest {
 
         viewModel.updateDraftCounterparty("小王")
         viewModel.updateDraftAmount("100")
+        viewModel.updateDraftNote("出差垫付车费")
         viewModel.submitDraft()
         advanceUntilIdle()
 
         assertTrue(viewModel.state.value.addDraft.validationError != null)
         // The form retains the user's input so they can retry, not wiped.
         assertEquals("小王", viewModel.state.value.addDraft.counterpartyLabel)
+        assertEquals("出差垫付车费", viewModel.state.value.addDraft.note)
+        assertEquals("出差垫付车费", repo.createDrafts.single().note)
         assertEquals(false, viewModel.state.value.isSubmitting)
     }
 

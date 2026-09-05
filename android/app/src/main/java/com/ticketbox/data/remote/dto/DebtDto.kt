@@ -91,6 +91,7 @@ data class DebtDto(
     // the server computes it (get_participant_debt_response), the client never derives it.
     @param:Json(name = "is_forgiven")
     val isForgiven: Boolean = false,
+    val note: String? = null,
 )
 
 data class DebtListResponseDto(
@@ -160,6 +161,7 @@ data class DebtCreateRequestDto(
     val installmentCount: Long? = null,
     @param:Json(name = "installment_period_months")
     val installmentPeriodMonths: Long? = null,
+    val note: String? = null,
 )
 
 /**

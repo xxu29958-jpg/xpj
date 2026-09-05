@@ -84,6 +84,7 @@ import com.ticketbox.viewmodel.updateDraftDirection
 import com.ticketbox.viewmodel.updateDraftInstallmentCount
 import com.ticketbox.viewmodel.updateDraftInstallmentPeriod
 import com.ticketbox.viewmodel.updateDraftKind
+import com.ticketbox.viewmodel.updateDraftNote
 import kotlinx.coroutines.delay
 
 /** 操作成功提示的展示时长，到点自动收起，与既有 undo 卡片的定时关闭同一惯例。 */
@@ -487,6 +488,20 @@ private fun DebtDraftForm(
             modifier = Modifier.fillMaxWidth(),
         )
         DebtKindCreateField(selected = draft.kind, onSelect = viewModel::updateDraftKind)
+        AppTextInput(
+            state = AppTextInputState(
+                label = stringResource(R.string.debt_create_label_note),
+                value = draft.note,
+                placeholder = stringResource(R.string.debt_context_hint),
+                trailingLabel = "${draft.noteCharacterCount}/500",
+                singleLine = false,
+                minLines = 2,
+                isError = draft.noteTooLong,
+                enabled = !state.isSubmitting,
+            ),
+            actions = AppTextInputActions(onValueChange = viewModel::updateDraftNote),
+            modifier = Modifier.fillMaxWidth(),
+        )
         DebtInstallmentCountField(kind = draft.kind, countInput = draft.installmentCountInput, onValueChange = viewModel::updateDraftInstallmentCount)
         DebtInstallmentPeriodField(kind = draft.kind, periodInput = draft.installmentPeriodInput, onValueChange = viewModel::updateDraftInstallmentPeriod)
         draft.validationError?.let { err ->

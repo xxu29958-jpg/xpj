@@ -84,6 +84,7 @@ def _create_payload(
     *,
     direction: str,
     counterparty_label: str,
+    note: str,
     amount_major: str,
     currency_code: str,
     event_time: str,
@@ -112,6 +113,7 @@ def _create_payload(
         direction=(direction or "").strip(),
         counterparty_type="external",
         counterparty_label=(counterparty_label or "").strip(),
+        note=note,
         principal_amount_cents=amount_minor if code == home_currency else None,
         original_currency=code if code != home_currency else None,
         original_amount=Decimal(amount_text) if code != home_currency else None,
@@ -137,6 +139,7 @@ def web_create_debt(
     ledger_id: str = Form(default=""),
     direction: str = Form(default=""),
     counterparty_label: str = Form(default=""),
+    note: str = Form(default=""),
     amount_major: str = Form(default=""),
     currency_code: str = Form(default=""),
     event_time: str = Form(default=""),
@@ -159,6 +162,7 @@ def web_create_debt(
     values = {
         "direction": direction,
         "counterparty_label": counterparty_label,
+        "note": note,
         "amount_major": amount_major,
         "currency_code": currency_code,
         "event_time": event_time,
@@ -172,6 +176,7 @@ def web_create_debt(
         payload = _create_payload(
             direction=direction,
             counterparty_label=counterparty_label,
+            note=note,
             amount_major=amount_major,
             currency_code=currency_code,
             event_time=event_time,
@@ -192,7 +197,7 @@ def web_create_debt(
             message = _error_message(exc)
             status_code = exc.status_code
         else:
-            message = "请检查方向、机构、本金、币种和分期设置。"
+            message = "请检查方向、对方、金额、币种、分期设置和往来说明（最多 500 字）。"
             status_code = 422
         return _render_create_error(
             request,

@@ -205,6 +205,15 @@ internal fun DebtSummaryCard(debt: Debt) {
                 tone = debtLinkStatusTone(debt.status),
             )
         }
+        debt.note?.takeIf { it.isNotBlank() }?.let { note ->
+            HorizontalDivider()
+            Text(
+                stringResource(R.string.debt_context_title),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(note, style = MaterialTheme.typography.bodyMedium)
+        }
     }
 }
 

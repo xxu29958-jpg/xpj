@@ -51,7 +51,7 @@ def test_money_widening_uses_caller_transaction_without_c07_context() -> None:
         config.attributes["connection"] = connection
         command.upgrade(config, "head")
 
-    assert current_revision() == "20260901_0001"
+    assert current_revision() == "20260905_0001"
 
 
 def test_frozen_migration_legacy_checks_match_ready_absence_contract() -> None:

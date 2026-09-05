@@ -218,6 +218,7 @@ def _detail_view(debt) -> dict:
         "public_id": debt.public_id,
         "name": name,
         "is_member": use_member,
+        "note": debt.note,
         "is_voided": status == "voided",
         "debt_kind": debt.debt_kind,
         # External keeps the editorial split hero; member detail uses one quiet exact

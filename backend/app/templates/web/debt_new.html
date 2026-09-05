@@ -13,7 +13,7 @@
   <div class="product-page-heading">
     <span class="product-eyebrow">往来 / 新建欠款</span>
     <h1 class="page-title">新建欠款</h1>
-    <p class="product-page-summary">记一笔和账本外的人之间的往来。所有提交走服务端幂等事务，重复点击不会记成两笔。</p>
+    <p class="product-page-summary">记下你与账本外的人或机构之间的应付和应收，方便后续核对。</p>
   </div>
 </header>
 
@@ -60,8 +60,9 @@
         <input id="debt-new-event-time" class="product-input" name="event_time" type="date" value="{{ values.event_time or today }}" required>
       </div>
       <div class="product-field">
-        <label for="debt-new-note">备注（可选）</label>
-        <input id="debt-new-note" class="product-input" name="note" type="text" maxlength="80" placeholder="比如：一起出差垫的" value="{{ values.note or '' }}">
+        <label for="debt-new-note">往来说明（可选）</label>
+        <textarea id="debt-new-note" class="product-input" name="note" rows="3" maxlength="500" aria-describedby="debt-new-note-hint" placeholder="比如：一起出差垫付的交通费">{{ values.note or '' }}</textarea>
+        <p id="debt-new-note-hint" class="hint">记下缘由或约定，方便以后核对。最多 500 字。</p>
       </div>
     </div>
 
