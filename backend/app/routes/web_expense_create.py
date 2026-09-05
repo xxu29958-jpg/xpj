@@ -19,6 +19,7 @@ from app.routes._web_expense_form import (
     parse_expense_time_local,
     web_form_error_status,
 )
+from app.routes._web_manual_draft import manual_draft_scope
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -55,6 +56,7 @@ def _manual_expense_context(
     values: dict[str, str] | None = None,
     client_ref: str | None = None,
     error: str | None = None,
+    draft_result: str = "",
 ) -> dict:
     context = _base_ctx(
         request,
@@ -80,6 +82,8 @@ def _manual_expense_context(
             "form_error": error,
             "form_ledger_id": form_ledger_id,
             "form_device_public_id": form_device_public_id,
+            "manual_draft_scope": manual_draft_scope(db, _session_writer_auth(request, selected_id)),
+            "manual_draft_result": draft_result,
             "spent_at": current_values.get("spent_at")
             or now_utc()
             .astimezone(accounting_zone())
@@ -277,6 +281,11 @@ def web_manual_expense_create(
                 error=message,
                 form_ledger_id=ledger_id,
                 form_device_public_id=expected_device_public_id,
+                draft_result=(
+                    "rejected" if status_code == 422 and not (
+                        isinstance(exc, AppError) and exc.code == "idempotency_key_reused"
+                    ) else "blocked"
+                ),
             ),
             status_code=status_code,
         )
