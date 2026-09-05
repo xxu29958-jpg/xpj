@@ -24,7 +24,7 @@
        Light surfaces span L=0.946–0.997; text spans L=0.235–0.660. */
     --surface-app: #f5f9f6;
     --surface-card: #fdfefd;
-    --surface-raised: var(--surface-card);
+    --surface-raised: #fdfefd;
     --surface-nav: #f8fbf9;
     --surface-sunken: #e9efeb;
     /* 自定义背景遮罩（全局背景批）：用户照片亮度不可预知，同一固定层上叠
@@ -38,7 +38,7 @@
     --text-muted: #49504c;
     --text-meta: #606762;
     --text-faint: #8f9490;
-    --text-on-primary: var(--surface-card);
+    --text-on-primary: #fdfefd;
 
     /* Brand — 深常青印泥, 只用于主 CTA、选中态与焦点 */
     --brand-primary: #14504a;
