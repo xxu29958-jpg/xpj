@@ -16,6 +16,7 @@ import androidx.compose.ui.res.integerResource
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.R
+import com.ticketbox.data.repository.DebtCreationActions
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.data.repository.OutboxRepository
@@ -118,6 +119,7 @@ internal data class SettingsRouteRepositories(
     val ledgerRepository: LedgerRepository,
     val expenseRepository: ExpenseRepository,
     val outboxRepository: OutboxRepository,
+    val debtCreationRepository: DebtCreationActions,
     val activeLedgerId: String?,
 )
 
@@ -370,6 +372,7 @@ internal fun SettingsDestinationHost(
                 factory = outboxStatusViewModelFactory(
                     repositories.outboxRepository,
                     repositories.expenseRepository,
+                    repositories.debtCreationRepository,
                 ),
             )
             SyncStatusScreen(

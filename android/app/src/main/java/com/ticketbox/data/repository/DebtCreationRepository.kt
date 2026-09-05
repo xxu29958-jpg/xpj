@@ -18,6 +18,7 @@ interface DebtCreationActions {
     fun currentAccess(): LedgerAccessContext?
     fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?>
     fun observePendingCreations(): Flow<DebtCreationQueueSnapshot>
+    fun describePendingCreation(row: OutboxRow): PendingDebtCreation?
     suspend fun createDebt(
         expectedBinding: LogicalSessionBinding,
         draft: DebtDraft,
@@ -41,6 +42,14 @@ class DebtCreationRepository(
     }
 
     override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> = apiProvider.observeActiveLedgerAccess()
+
+    /** Describe this exact visible row; recovery does not subscribe to a second queue snapshot. */
+    override fun describePendingCreation(row: OutboxRow): PendingDebtCreation? {
+        if (row.type != PendingMutationType.CreateDebt) return null
+        val binding = guard.captureLogicalBinding() ?: return null
+        if (row.ownerKey != binding.ownerKey || row.ledgerId != binding.ledgerId) return null
+        return row.toPendingDebtCreation(payloadAdapter)
+    }
 
     override suspend fun createDebt(
         expectedBinding: LogicalSessionBinding,

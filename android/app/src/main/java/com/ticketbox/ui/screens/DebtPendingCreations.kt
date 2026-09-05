@@ -37,7 +37,7 @@ internal fun DebtPendingCreations(
         )
         intents.forEachIndexed { index, intent ->
             AppListRow(onClick = onOpenSyncStatus, showDivider = index < intents.lastIndex) {
-                PendingCreationContent(intent)
+                DebtCreationIntentSummary(intent)
             }
         }
         TextButton(onClick = onOpenSyncStatus) {
@@ -47,7 +47,7 @@ internal fun DebtPendingCreations(
 }
 
 @Composable
-private fun PendingCreationContent(intent: PendingDebtCreation) {
+internal fun DebtCreationIntentSummary(intent: PendingDebtCreation) {
     val draft = intent.draft
     val currency = intent.homeCurrency
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {

@@ -1,8 +1,10 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.R
+import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.repository.ExpenseRepository
+import com.ticketbox.data.repository.DebtCreationRepository
 import com.ticketbox.data.repository.FakeApiService
 import com.ticketbox.data.repository.FakeApiServiceFactory
 import com.ticketbox.data.repository.FakeExpenseDao
@@ -11,6 +13,7 @@ import com.ticketbox.data.repository.TestSessionFixture
 import com.ticketbox.data.repository.OutboxRepository
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.testOutboxRepository
+import com.ticketbox.data.repository.testApiServiceProvider
 import com.ticketbox.data.repository.testServerSessionBinding
 import com.ticketbox.data.repository.boundSettingsStore
 import com.ticketbox.domain.model.MessageTone
@@ -48,7 +51,7 @@ class OutboxStatusViewModelTest {
     fun keepMineWithoutServerRowShowsDangerTone() = runTest(dispatcher) {
         val harness = harness()
         val row = harness.conflictRow(targetId = "expense:local:client-1")
-        val vm = OutboxStatusViewModel(harness.outbox, harness.expenseRepository)
+        val vm = OutboxStatusViewModel(harness.outbox, harness.expenseRepository, harness.debtCreation)
         runCurrent()
 
         vm.keepMine(row)
@@ -63,7 +66,7 @@ class OutboxStatusViewModelTest {
     fun resolvingRowClearsStaleDangerTone() = runTest(dispatcher) {
         val harness = harness()
         val row = harness.conflictRow(targetId = "expense:local:client-1")
-        val vm = OutboxStatusViewModel(harness.outbox, harness.expenseRepository)
+        val vm = OutboxStatusViewModel(harness.outbox, harness.expenseRepository, harness.debtCreation)
         runCurrent()
 
         vm.keepMine(row)
@@ -99,14 +102,19 @@ class OutboxStatusViewModelTest {
                 tokenStore = tokenStore,
             ),
         )
+        val outbox = testOutboxRepository(dao = FakePendingMutationDao())
         return Harness(
-            outbox = testOutboxRepository(dao = FakePendingMutationDao()),
+            outbox = outbox,
             expenseRepository = expenseRepository,
+            debtCreation = DebtCreationRepository(
+                testApiServiceProvider(api, tokenStore), outbox, OutboxAdapterGraph().debtCreateAdapter,
+            ),
         )
     }
 
     private data class Harness(
         val outbox: OutboxRepository,
         val expenseRepository: ExpenseRepository,
+        val debtCreation: DebtCreationRepository,
     )
 }
