@@ -228,7 +228,8 @@ def test_web_budgets_selected_ledger_isolated(web_client: TestClient, *, identit
 
     assert response.status_code == 200
     assert "灰度用户1" in response.text
-    assert "还没有本月预算" in response.text
+    assert "从一个总额开始" in response.text
+    assert "本月预算剩余" not in response.text
     assert "¥1000.00" not in response.text
 
     gray_expense = web_client.post(
