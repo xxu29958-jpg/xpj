@@ -76,6 +76,7 @@ import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.tabularNum
+import com.ticketbox.viewmodel.DebtDraftUi
 import com.ticketbox.viewmodel.DebtListUiState
 import com.ticketbox.viewmodel.DebtListViewModel
 import com.ticketbox.viewmodel.updateDraftAmount
@@ -488,20 +489,7 @@ private fun DebtDraftForm(
             modifier = Modifier.fillMaxWidth(),
         )
         DebtKindCreateField(selected = draft.kind, onSelect = viewModel::updateDraftKind)
-        AppTextInput(
-            state = AppTextInputState(
-                label = stringResource(R.string.debt_create_label_note),
-                value = draft.note,
-                placeholder = stringResource(R.string.debt_context_hint),
-                trailingLabel = "${draft.noteCharacterCount}/500",
-                singleLine = false,
-                minLines = 2,
-                isError = draft.noteTooLong,
-                enabled = !state.isSubmitting,
-            ),
-            actions = AppTextInputActions(onValueChange = viewModel::updateDraftNote),
-            modifier = Modifier.fillMaxWidth(),
-        )
+        DebtContextField(draft = draft, enabled = !state.isSubmitting, onValueChange = viewModel::updateDraftNote)
         DebtInstallmentCountField(kind = draft.kind, countInput = draft.installmentCountInput, onValueChange = viewModel::updateDraftInstallmentCount)
         DebtInstallmentPeriodField(kind = draft.kind, periodInput = draft.installmentPeriodInput, onValueChange = viewModel::updateDraftInstallmentPeriod)
         draft.validationError?.let { err ->
@@ -541,6 +529,24 @@ private fun DebtDraftForm(
             ),
         )
     }
+}
+
+@Composable
+private fun DebtContextField(draft: DebtDraftUi, enabled: Boolean, onValueChange: (String) -> Unit) {
+    AppTextInput(
+        state = AppTextInputState(
+            label = stringResource(R.string.debt_create_label_note),
+            value = draft.note,
+            placeholder = stringResource(R.string.debt_context_hint),
+            trailingLabel = "${draft.noteCharacterCount}/500",
+            singleLine = false,
+            minLines = 2,
+            isError = draft.noteTooLong,
+            enabled = enabled,
+        ),
+        actions = AppTextInputActions(onValueChange = onValueChange),
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 @Composable

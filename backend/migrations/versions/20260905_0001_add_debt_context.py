@@ -52,5 +52,8 @@ def assert_postcondition(bind: sa.Connection) -> None:
     if note is None or not note["nullable"] or not isinstance(note["type"], sa.Text):
         raise RuntimeError("nullable Debt context column is missing")
     current = bind.scalar(sa.text("SELECT schema_revision FROM dataset_authority WHERE singleton_id = 1"))
-    if current != revision:
+    live_revision = bind.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
+    # Support both the inline migration checkpoint and release-head revalidation.
+    expected_revision = revision if live_revision == down_revision else live_revision
+    if current != expected_revision:
         raise RuntimeError("dataset authority revision is not aligned with Debt context schema")
