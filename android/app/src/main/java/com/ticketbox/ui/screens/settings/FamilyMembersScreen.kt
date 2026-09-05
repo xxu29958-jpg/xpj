@@ -224,6 +224,7 @@ private fun InviteFamilySection(
 ) {
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
+    val shareChooserTitle = stringResource(R.string.family_members_invite_share_chooser)
     SettingsSection(
         title = stringResource(R.string.family_members_section_invite),
         icon = Icons.Filled.Group,
@@ -246,7 +247,7 @@ private fun InviteFamilySection(
                         context.startActivity(
                             Intent.createChooser(
                                 send,
-                                context.getString(R.string.family_members_invite_share_chooser),
+                                shareChooserTitle,
                             ),
                         )
                     },
