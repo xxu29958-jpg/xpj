@@ -53,7 +53,7 @@
     <string name="ledger_empty_title_default">本地还没有已确认账单</string>
     <string name="ledger_empty_body_filtered">可以切换月份、分类或标签，或下拉刷新。</string>
     <string name="ledger_empty_body_readonly">当前角色可查看已入账记录，不能手动记账。</string>
-    <string name="ledger_empty_body_default">在待确认页确认几笔账单后，账本会在这里显示。</string>
+    <string name="ledger_empty_body_default">可以直接记一笔，或上传小票核对后入账。</string>
     <string name="ledger_empty_reset_filters">重置筛选</string>
 
     <!-- LedgerInlineFilters：内联 chip 筛选 -->

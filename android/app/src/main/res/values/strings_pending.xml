@@ -16,7 +16,7 @@
 
     <!-- 空态：内容面板 -->
     <string name="pending_empty_card_title_loading">正在整理待确认账单</string>
-    <string name="pending_empty_card_title">队列已清空</string>
+    <string name="pending_empty_card_title">还没有待处理的小票</string>
     <string name="pending_empty_card_body_readonly">当前队列为空。</string>
     <string name="pending_empty_card_body_loading">同步中，显示最近一次状态。</string>
     <string name="pending_empty_card_body">新截图会先待确认，确认后入账。</string>
@@ -68,7 +68,7 @@
     <string name="pending_queue_overview_priority_ready">%1$d 条可直接确认入账。</string>
     <string name="pending_queue_overview_priority_review">当前队列需要逐条核对。</string>
     <string name="pending_queue_overview_priority_cache">当前是本机缓存，数量只作线索；刷新成功后再批量确认。</string>
-    <string name="pending_queue_overview_priority_empty">队列已清空。</string>
+    <string name="pending_queue_overview_priority_empty">当前没有待处理记录。</string>
     <string name="pending_queue_overview_ready_label">可确认</string>
     <string name="pending_queue_overview_ready_cache_label">本机可确认</string>
     <string name="pending_queue_overview_review_label">需核对</string>

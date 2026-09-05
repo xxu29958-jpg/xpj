@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 import pytest
+from _web_bulk_test_support import seed_pending_with_amount as _seed_pending_with_amount
 from fastapi.testclient import TestClient
 
 from app.version import STATIC_ASSET_VERSION
@@ -23,20 +24,18 @@ def test_web_pending_local_returns_200(web_client: TestClient) -> None:
     assert "待确认" in resp.text
 
 
-def test_web_pending_empty_all_offers_upload_entry_links(web_client: TestClient) -> None:
-    """空账本待确认页(filter=all)的空态不止「解释发生了什么」,还给「下一步去哪」:
-    iPhone 快捷指令配置 + CSV 导入两个直达链接(ledger_id 透传)。filter≠all 的空态
-    是过滤无结果,不挂这些入口。撤掉空态链接本测试必红。
-
-    判别用 /owner/upload-links —— 它只在本空态分支出现;/web/import 不能当判别,
-    页头「导入与导出」按钮在任何状态下都有该链接。"""
+def test_web_pending_empty_all_offers_upload_entry_links(
+    web_client: TestClient, *, identity,
+) -> None:
+    """Empty totals offer ingestion; a populated queue's empty filter offers recovery."""
     resp = web_client.get("/web/pending?ledger_id=owner")
     assert resp.status_code == 200
     body = resp.text
     assert 'href="/owner/upload-links"' in body
     assert "从 CSV 导入" in body  # 空态内的 CSV 导入直达(措辞区别于页头「导入与导出」)
 
-    # 过滤态空(疑似重复)只说没有符合条件,不重复挂首日入口。
+    # A real nonempty total is required before this is a filtered-empty state.
+    _seed_pending_with_amount(web_client, "9.00", "X", identity=identity)
     filtered = web_client.get("/web/pending?ledger_id=owner&filter=duplicate")
     assert filtered.status_code == 200
     assert "没有符合当前条件的账单" in filtered.text

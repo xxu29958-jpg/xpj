@@ -4,15 +4,18 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.text.TextLayoutResult
@@ -25,6 +28,7 @@ import com.ticketbox.domain.model.ExpenseLineageStatus
 import com.ticketbox.domain.model.ExpenseSourceValues
 import com.ticketbox.domain.model.MONEY_MINOR_MAX
 import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.screens.ledger.LedgerExpenseItemActions
 import com.ticketbox.ui.screens.ledger.LedgerExpenseItemState
 import com.ticketbox.ui.screens.ledger.LedgerExpenseListRow
@@ -111,8 +115,12 @@ class LedgerHeaderEntryTest {
     fun writerEmptyUnfilteredHasSingleRecordCtaAndNoRefreshButton() {
         render(LedgerUiState(monthFilter = "", syncedInCurrentSession = true))
 
+        saveConsumerArtPreview("ledger-paper-writer", composeRule.onRoot().captureToImage().asAndroidBitmap())
+        composeRule.onNodeWithText("可以直接记一笔，或上传小票核对后入账。").assertIsDisplayed()
         assertRecordCtaCount(1)
         composeRule.onAllNodesWithText("更新账本").assertCountEquals(0)
+        composeRule.onNodeWithText("记一笔").performClick()
+        composeRule.onNodeWithText("手动记一笔").assertIsDisplayed()
     }
 
     @Test

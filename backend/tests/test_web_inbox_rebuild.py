@@ -224,21 +224,50 @@ def test_inbox_pages_have_no_legacy_presentation_dom(
         assert 'name="csrf_token"' in form_html
 
 
+@pytest.mark.parametrize("selected_filter", ["all", "missing_amount"])
 def test_inbox_empty_state_matches_real_ingestion_routing(
     web_client: TestClient,
+    selected_filter: str,
 ) -> None:
-    """S4 (矿回收 + main 保留): 空队列文案反映真实 ingest 路径; main 的首日
-    上传入口 (/owner/upload-links + 从 CSV 导入) 保留在空态里。"""
-    pending = web_client.get("/web/pending?ledger_id=owner")
+    """An empty queue offers ingestion, without unusable selection/filter chrome."""
+    pending = web_client.get(f"/web/pending?ledger_id=owner&filter={selected_filter}")
 
     assert pending.status_code == 200
     body = pending.text
+    assert "还没有待处理的小票" in body
+    assert "收件队列已经清空" not in body
+    assert 'aria-label="待处理筛选"' not in body
+    assert 'id="check-all"' not in body
+    assert 'id="bulk-form"' not in body
+    assert "按最新上传排序" not in body
+    assert body.count('id="capture"') == 1
+    capture = re.search(r'<form[^>]+id="capture".*?</form>', body, re.S)
+    assert capture is not None
+    assert 'action="/web/pending/upload?ledger_id=owner"' in capture.group(0)
+    assert 'name="csrf_token"' in capture.group(0)
+    assert 'type="file" name="file" accept="image/*" required' in capture.group(0)
     assert "新上传的截图、OCR 识别结果和导入草稿会出现在这里" in body
     assert "手动记账可直接在流水中查看" in body
     assert "手动记录和导入草稿会出现在这里" not in body
     # main 保留 (矿无): 空态给上传入口直达。
     assert 'href="/owner/upload-links"' in body
     assert "从 CSV 导入" in body
+
+
+def test_inbox_filtered_empty_keeps_return_path_without_selection(
+    web_client: TestClient, *, identity,
+) -> None:
+    _seed_pending_with_amount(web_client, "9.00", "X", identity=identity)
+    response = web_client.get("/web/pending?ledger_id=owner&filter=missing_amount")
+
+    assert response.status_code == 200
+    body = response.text
+    assert 'aria-label="待处理筛选"' in body
+    assert "没有符合当前条件的账单" in body
+    assert 'href="/web/pending?ledger_id=owner">返回全部</a>' in body
+    assert 'id="check-all"' not in body
+    assert 'id="bulk-form"' not in body
+    assert 'id="capture"' in body
 
 
 def test_inbox_pending_rows_keep_checkbox_outside_row_link(web_client: TestClient, *, identity) -> None:
