@@ -13,7 +13,10 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.network_boundary import require_owner_console_local
 from app.services import owner_console_service as owner_svc
-from app.services.ledger_service import find_owner_account_id_for_ledger
+from app.services.ledger_service import (
+    find_owner_account_id_for_ledger,
+    list_ledgers_for_account,
+)
 
 
 def parse_form_row_version_token(value: str) -> int | None:
@@ -99,17 +102,31 @@ def _list_ledger_options(db: Session) -> list[LedgerOption]:
 
 
 def _project_session_ledger_options(
+    db: Session | None,
     options: list[LedgerOption] | None,
     session_auth,
 ) -> None:
-    """Project a public Web session to its single authorized ledger."""
+    """Project a browser session to every live membership of its Account."""
 
     if options is None:
         return
-    matched = next(
-        (opt for opt in options if opt.ledger_id == session_auth.ledger_id),
-        None,
-    )
+    by_id = {option.ledger_id: option for option in options}
+    account_id = getattr(session_auth, "account_id", None)
+    if db is not None and account_id is not None:
+        options[:] = [
+            LedgerOption(
+                ledger_id=summary.ledger_id,
+                name=summary.name,
+                role=summary.role,
+                is_default=summary.is_default,
+                pending_count=(by_id[summary.ledger_id].pending_count if summary.ledger_id in by_id else 0),
+                confirmed_count=(by_id[summary.ledger_id].confirmed_count if summary.ledger_id in by_id else 0),
+            )
+            for summary in list_ledgers_for_account(db, account_id=account_id)
+        ]
+        return
+
+    matched = by_id.get(session_auth.ledger_id)
     options[:] = [
         LedgerOption(
             ledger_id=session_auth.ledger_id,
@@ -181,7 +198,9 @@ def _resolve_selected_ledger_id(
                 )
                 session_auth = dataclasses.replace(session_auth, role=live_role)
                 request.state.web_session_auth = session_auth
-            _project_session_ledger_options(options, session_auth)
+                _project_session_ledger_options(None, options, session_auth)
+                return session_auth.ledger_id
+            _project_session_ledger_options(db, options, session_auth)
             return session_auth.ledger_id
 
     opts = options if options is not None else _list_ledger_options(db)

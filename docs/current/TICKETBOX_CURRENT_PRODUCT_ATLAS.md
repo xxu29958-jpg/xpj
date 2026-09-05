@@ -295,11 +295,9 @@ Current-slice evidence (revisit on the listed paths or a direct failing journey;
 
 The complete Web recycle journey becomes the only product owner for list/restore. Owner Console links to that journey for operator convenience; its narrower duplicate query/restore implementation is physically retired.
 
-### First use and binding — current independent slice
+### First use and binding — invitation handoff closed, local Web identity active
 
-The verified `684c0dd8` baseline has working Account/Device/Member/Invitation/Session owners, Android durable enrollment and Desktop credential storage. The user journey is incomplete: Web login asks family members to obtain an Owner pairing code, but Owner pairing authorizes an additional device for the Owner's existing identity. The actual family invitation page sends new members to Android. A browser-only new member therefore lacks a direct invitation/enrollment consumer.
-
-Android also asks already-authenticated members for account/device names which the existing-session acceptance branch does not consume. Its invite screen uses non-restorable local inputs although the preview survives in its ViewModel. These are real task costs, not missing backend identities.
+The exact `8aca512a6fe6ac64e1fe7d76bece66fccc4be214` starting main baseline has working Account/Device/Member/Invitation/Session owners, Android durable enrollment, Desktop credential storage and a native Web invitation consumer. At that baseline, local Web still treated loopback location as an anonymous Owner projection. This slice closes that break by establishing a real browser Account/Device/Session before product work.
 
 ```mermaid
 flowchart LR
@@ -313,13 +311,13 @@ flowchart LR
     Entry -->|Viewer| Read[Read recent transactions]
 ```
 
-Current task: complete family invitation handoff on Web and Android using existing enrollment/session owners. The entry itself carries intent; users do not choose a technical pairing/invitation category. Ask a new person only for a display name, default device identity, remove redundant authenticated-name fields, show destination/role before acceptance and keep failure recovery in the same task.
+The family invitation handoff now uses existing enrollment/session owners on Web and Android. The entry itself carries intent; users do not choose a technical pairing/invitation category. A new person supplies only a display name, the device identity is product-owned, destination/role is shown before acceptance and failure recovery remains in the same task.
 
 The shared create-invitation result supplies an optional `https://configured-origin/web/auth/join#invite=...` URL. Its origin comes from the configured public endpoint, never the request Host. Without that configuration, the existing one-time token remains available for explicit paste. This is configured access, not proof of network reachability. No new token store is introduced.
 
 Web removes the fragment before submitting a native preview form; each acceptance form retains its own target, not a shared target cookie. Existing Web identity is checked independently of the old selected ledger, without dropping Web platform/expiry requirements. A new browser uses the existing recoverable enrollment proof and the same eight-hour policy as browser pairing. Android accepts the link through paste or explicit text sharing, previews anonymously, and compares server identity and data generation. For the same server it accepts only through its current authenticated binding. A different server opens the browser continuation and cannot replace the app's identity or Outbox. Arbitrary-domain verified Android App Links are not claimed.
 
-These consumer paths are under construction, not shipped guarantees. The small gate map below retires with this slice except for its actual semantic regressions; revisit only when the listed owners/consumers change or a direct user counterexample appears.
+These invitation consumers were merged and qualified on the exact main SHA above. The small gate map below remains only as semantic regression ownership; revisit it when the listed owners/consumers change or a direct user counterexample appears.
 
 | Claim and falsifier | Owner / real consumers and changed paths | Matching proof / cost |
 |---|---|---|
@@ -328,7 +326,21 @@ These consumer paths are under construction, not shipped guarantees. The small g
 | Same-server acceptance preserves the binding and pending intent; foreign server never receives the stored credential or replaces local identity | Android join repository, session coordinator, navigation and screens | Focused JVM transport/session/Outbox assertions; exact cloud Connected for real integration |
 | Public schemas match changed consumers and current candidate qualifies | Invitation DTO/OpenAPI; Web/Android/backend lanes | Generated schema and exact SHA cloud results; no new audit registry or fixed test-count claim |
 
-Desktop first-use explanation, expired-code recovery links and Web manual entry remain recorded companion gaps. They do not authorize reopening installer, account recovery, upgrades or other Windows HOLD work.
+#### Local Web identity — active independent slice
+
+The loopback browser is a product client, not proof of identity. On an installed dataset it must consume the single `InstallationOwnerClaim.account_id`, show the real Account plus live ledger/role choices, and establish one recoverable eight-hour Web Device/session after one explicit confirmation. The claim's Windows source Device must still belong to that Account and remain live before it can authorize a new browser Device. It must not ask for a technical connection code or device name, require the Desktop Manager to be opened first, infer the first Account, or grant Owner because the request came from loopback. Development datasets without an installation claim retain their explicit development-only compatibility path; an installed dataset with a missing or ambiguous claim enters recovery instead of choosing an identity.
+
+The session principal is independent of its compatibility-default ledger. A live Account/Device credential may switch among that Account's active memberships without changing identity. Every read and write reuses the current membership role; a removed membership or archived ledger cannot be resurrected by the cookie. Invalid, revoked or expired cookies are cleared and sent back to the identity task, never to the anonymous Owner projection. Recovery drops a stale `ledger_id`; an expired unsafe form submission returns through its same-origin Web GET page, or `/web` when no safe referrer exists, rather than treating the mutation URL as a GET. An otherwise valid Web cookie for another Account is also cleared on installed loopback and cannot replace the installation claim. Local logout revokes the browser token and returns to the local confirmation task; public logout keeps the pairing entry. The first confirmation and a proven response-loss retry share the existing enrollment proof, Device and token; reusing the proof for another Account or ledger is refused and clears the spent proof so a fresh confirmation can recover.
+
+| Claim and falsifier | Owner / real consumers and changed paths | Matching proof / cost |
+|---|---|---|
+| The installation Account is the browser actor even when it is only a member of another Account's ledger; falsified by an expense/audit row attributed to the ledger owner | Installation claim + identity enrollment; loopback auth entry, middleware and one real Web mutation | Real PostgreSQL browser form and canonical stored actor/device assertion; focused local lane |
+| Viewer can connect and read but cannot write; role removal or ledger archive takes effect before the next action | Live LedgerMember/Ledger state; session projection and write gate | Real browser GET plus native POST denial after live state mutation; focused local lane |
+| A bad cookie never falls through to local Owner, while a live identity can choose another active membership after its old default dies | Web credential owner + ledger switch service; middleware and ledger selector | Invalid/revoked/expired cookie redirects and clears; identity-level picker switches with the same Account/Device/token |
+| Response loss returns the same Device/token and the same proof cannot target a different Account or ledger | DeviceEnrollmentAttempt + internal installation pairing source | Two submissions with the same proof plus changed-target refusal; row-count and credential-hash assertions |
+| Public Owner pairing and Desktop bridge behavior do not change | Existing public `/web/auth/login`, pairing service and Desktop bridge middleware | Existing focused auth/public/desktop regressions; no Windows lifecycle or installer qualification claim |
+
+Desktop first-use explanation, expired-code recovery links and Web manual entry remain recorded companion gaps after this identity slice. Installation currency adoption remains a Desktop-only ceremony. These facts do not authorize reopening installer, account recovery, upgrades or other Windows HOLD work.
 
 Review carry-forward — `HOLD`: an unbound Android invitation can be previewed before an in-place dataset restore and accepted after the restore has changed `client_generation`, if the restored backup contains the same unused invitation. Existing enrollment persists URL/token/name/device and validates the returned attempt, but does not persist the preview's dataset/generation. Closing this requires an expected-identity field in the durable enrollment intent/secure codec and validation before credential publication, including process-death recovery; a ViewModel-only check would be incomplete. The counterexample depends on the held restore lifecycle and is not a current invitation-consumer blocker. Revisit with the restore qualification or an independently scoped enrollment-identity change; do not silently drop it or reopen Windows lifecycle in this slice. Evidence: `dataset_restore_service.resolve_restored_dataset_plan`, Android `DeviceEnrollmentIntent.Invitation`, `SecureDeviceEnrollmentCodec` and `DeviceEnrollmentCoordinator.accept` on review subject `2a5425db`.
 

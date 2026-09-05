@@ -28,15 +28,17 @@ URL editing).
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
 
+from app.config import runtime_settings_service_owned
 from app.database import SessionLocal
 from app.errors import AppError, error_response
 from app.network_boundary import is_loopback_request
+from app.routes._web_session_common import _safe_same_site_redirect_path
 from app.routes.web_auth import (
     SESSION_COOKIE_MAX_AGE_SECONDS,
     SESSION_COOKIE_NAME,
@@ -45,11 +47,15 @@ from app.routes.web_auth import (
 )
 from app.services.identity_service import (
     authenticate_desktop_session_token,
+    authenticate_web_session_principal,
     authenticate_web_session_token,
+    installation_web_identity_present,
+    resolve_installation_web_account_id,
 )
 
 DESKTOP_BRIDGE_HEADER = "X-Ticketbox-Desktop-Bridge"
 DESKTOP_BRIDGE_VERSION = "v1"
+_DESKTOP_ONLY_WEB_PATHS = frozenset({"/web/currency-adoption"})
 
 
 def _request_id(request: Request) -> str | None:
@@ -100,16 +106,52 @@ def _ledger_binding_error(request: Request, ledger_id: str) -> Response | None:
     )
 
 
+def _normalized_recovery_target(raw: str | None) -> str:
+    target = _safe_same_site_redirect_path(
+        raw,
+        allowed_roots=("/web",),
+        fallback="/web",
+    )
+    parsed = urlsplit(target)
+    if unquote(parsed.path).startswith("/web/auth/"):
+        return "/web"
+    query = urlencode(
+        [
+            (key, value)
+            for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+            if key != "ledger_id"
+        ]
+    )
+    return urlunsplit(("", "", parsed.path, query, ""))
+
+
+def _session_recovery_target(request: Request) -> str:
+    if request.method.upper() in {"GET", "HEAD"}:
+        return _normalized_recovery_target(
+            urlunsplit(("", "", request.url.path, request.url.query, ""))
+        )
+
+    referer = urlsplit(request.headers.get("referer", ""))
+    if (
+        referer.scheme.lower() != request.url.scheme.lower()
+        or referer.netloc.lower() != request.url.netloc.lower()
+    ):
+        return "/web"
+    return _normalized_recovery_target(
+        urlunsplit(("", "", referer.path, referer.query, ""))
+    )
+
+
 def _login_redirect_url(request: Request) -> str:
-    path = request.url.path
-    # Preserve where the user was trying to go so login can bounce them back.
-    # _safe_next_url on the login route will still re-validate this string.
-    query = request.url.query
-    target_after_login = f"{path}?{query}" if query else path
-    # Reject obvious junk that would never make sense as a destination.
-    if not target_after_login.startswith("/web") or target_after_login.startswith("/web/auth/"):
-        target_after_login = "/web"
-    return f"/web/auth/login?{urlencode({'next': target_after_login})}"
+    return f"/web/auth/login?{urlencode({'next': _session_recovery_target(request)})}"
+
+
+def _local_identity_redirect_url(request: Request) -> str:
+    return f"/web/auth/local?{urlencode({'next': _session_recovery_target(request)})}"
+
+
+def _ledger_picker_redirect_url(request: Request) -> str:
+    return f"/web/auth/ledgers?{urlencode({'next': _session_recovery_target(request)})}"
 
 
 def _is_session_required(request: Request) -> bool:
@@ -181,6 +223,59 @@ async def _desktop_bridge_session_gate(
     return await call_next(request)
 
 
+async def _browser_cookie_session_gate(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+    *,
+    login_url: str,
+    required_account_id: int | None = None,
+) -> Response:
+    token = read_session_token(request)
+    if not token:
+        return RedirectResponse(url=login_url, status_code=303)
+
+    try:
+        with SessionLocal() as db:
+            principal = authenticate_web_session_principal(
+                db,
+                token,
+                ttl_seconds=SESSION_COOKIE_MAX_AGE_SECONDS,
+            )
+            if required_account_id is not None and principal.account_id != required_account_id:
+                redirect = RedirectResponse(url=login_url, status_code=303)
+                clear_session_cookie(redirect)
+                return redirect
+            try:
+                result = authenticate_web_session_token(
+                    db,
+                    token,
+                    ttl_seconds=SESSION_COOKIE_MAX_AGE_SECONDS,
+                )
+            except AppError:
+                return RedirectResponse(
+                    url=_ledger_picker_redirect_url(request),
+                    status_code=303,
+                )
+    except AppError:
+        redirect = RedirectResponse(url=login_url, status_code=303)
+        clear_session_cookie(redirect)
+        return redirect
+    except SQLAlchemyError:
+        return error_response(
+            "server_error",
+            "网页版登录状态暂时不可用，请稍后再试。",
+            status_code=503,
+            request_id=_request_id(request),
+        )
+
+    request.state.web_session_principal = principal
+    request.state.web_session_auth = result.auth
+    ledger_error = _ledger_binding_error(request, result.auth.ledger_id)
+    if ledger_error is not None:
+        return ledger_error
+    return await call_next(request)
+
+
 async def web_session_gate(
     request: Request,
     call_next: Callable[[Request], Awaitable[Response]],
@@ -197,55 +292,52 @@ async def web_session_gate(
             marker=desktop_marker,
         )
 
+    if (
+        _is_web_path(request)
+        and not request.url.path.startswith("/web/auth/")
+        and request.url.path not in _DESKTOP_ONLY_WEB_PATHS
+        and is_loopback_request(request)
+    ):
+        try:
+            with SessionLocal() as db:
+                has_installation_identity = installation_web_identity_present(db)
+                installation_account_id = (
+                    resolve_installation_web_account_id(db)
+                    if has_installation_identity
+                    else None
+                )
+        except AppError as exc:
+            return _app_error_response(request, exc)
+        except SQLAlchemyError:
+            return error_response(
+                "server_error",
+                "本机身份暂时不可用，请稍后再试。",
+                status_code=503,
+                request_id=_request_id(request),
+            )
+        if has_installation_identity:
+            return await _browser_cookie_session_gate(
+                request,
+                call_next,
+                login_url=_local_identity_redirect_url(request),
+                required_account_id=installation_account_id,
+            )
+        if runtime_settings_service_owned():
+            return error_response(
+                "installation_identity_recovery_required",
+                "当前安装缺少本机身份声明，请先完成身份修复。",
+                status_code=409,
+                request_id=_request_id(request),
+            )
+
     if not _is_session_required(request):
         return await call_next(request)
 
-    token = read_session_token(request)
-    if not token:
-        return RedirectResponse(url=_login_redirect_url(request), status_code=303)
-
-    try:
-        with SessionLocal() as db:
-            result = authenticate_web_session_token(
-                db,
-                token,
-                ttl_seconds=SESSION_COOKIE_MAX_AGE_SECONDS,
-            )
-    except AppError:
-        # Cookie value doesn't map to a live AuthToken anymore — wipe it
-        # so the browser stops sending a dead value, then send the user
-        # to the login screen.
-        redirect = RedirectResponse(url=_login_redirect_url(request), status_code=303)
-        clear_session_cookie(redirect)
-        return redirect
-    except SQLAlchemyError:
-        return error_response(
-            "server_error",
-            "网页版登录状态暂时不可用，请稍后再试。",
-            status_code=503,
-            request_id=getattr(request.state, "request_id", None),
-        )
-
-    # Stash session auth so _resolve_selected_ledger_id can force-lock the
-    # rendered ledger to the session's account.
-    auth = result.auth
-    request.state.web_session_auth = auth
-
-    # Defense: the cookie says "I'm bound to ledger X", but the URL says
-    # "?ledger_id=Y". Refuse rather than silently follow either signal —
-    # this is how cookie-bound users would otherwise be able to peek at a
-    # different ledger they happen to have query knowledge of.
-    requested_ledger = (request.query_params.get("ledger_id") or "").strip()
-    if requested_ledger and requested_ledger != auth.ledger_id:
-        return error_response(
-            "ledger_forbidden",
-            "当前会话只能访问绑定的账本。",
-            status_code=403,
-            request_id=getattr(request.state, "request_id", None),
-        )
-
-    response = await call_next(request)
-    return response
+    return await _browser_cookie_session_gate(
+        request,
+        call_next,
+        login_url=_login_redirect_url(request),
+    )
 
 
 __all__ = [

@@ -9,6 +9,15 @@
 {% set _role = selected_ledger_role or 'owner' %}
 {% set _role_zh = {'owner': '拥有者', 'member': '成员', 'viewer': '只读'}.get(_role, _role|upper) %}
 {% set _ledger_kind = '个人账本' if selected_ledger_is_default else '共享账本' %}
+{% macro ledger_option_content(opt) %}
+  {% set _opt_role = opt.role or 'owner' %}
+  <div class="ledger-avatar ledger-avatar--sm" aria-hidden="true">{{ opt.name[:1] if opt.name else '夹' }}</div>
+  <div class="meta">
+    <div class="name">{{ opt.name }}{% if opt.is_default %} · 默认{% endif %}</div>
+    <div class="sub">{{ opt.ledger_id }}</div>
+  </div>
+  <div class="role-badge ledger-role-chip ledger-role-{{ _opt_role }} {{ _opt_role }}">{{ {'owner': '拥有者', 'member': '成员', 'viewer': '只读'}.get(_opt_role, _opt_role|upper) }}</div>
+{% endmacro %}
 <div class="ledger-switcher-wrap">
 <details class="ledger-switcher" id="ledger-switcher">
   <summary class="chrome-trigger ledger-switcher-trigger" aria-label="账户与账本">
@@ -19,16 +28,21 @@
   <div class="chrome-popover ledger-popover" id="ledger-popover">
     <div class="head">切换账本</div>
     {% for opt in ledger_options %}
-    {% set _opt_role = opt.role or 'owner' %}
+    {% if request.state.web_session_auth and request.state.web_session_platform != "desktop" %}
+    <form class="ledger-switch-form" method="post" action="/web/auth/ledgers">
+      {{ csrf_field|safe }}
+      <input type="hidden" name="ledger_id" value="{{ opt.ledger_id }}">
+      <input type="hidden" name="next" value="{{ ledger_switch_next_url }}">
+      <button class="row {% if opt.ledger_id == selected_ledger_id %}on{% endif %}" type="submit">
+        {{ ledger_option_content(opt) }}
+      </button>
+    </form>
+    {% else %}
     <a class="row {% if opt.ledger_id == selected_ledger_id %}on{% endif %}"
        href="{{ request.url.path }}?ledger_id={{ opt.ledger_id }}{% for k, v in request.query_params.multi_items() %}{% if k != 'ledger_id' %}&{{ k }}={{ v }}{% endif %}{% endfor %}">
-      <div class="ledger-avatar ledger-avatar--sm" aria-hidden="true">{{ opt.name[:1] if opt.name else '夹' }}</div>
-      <div class="meta">
-        <div class="name">{{ opt.name }}{% if opt.is_default %} · 默认{% endif %}</div>
-        <div class="sub">{{ opt.ledger_id }}</div>
-      </div>
-      <div class="role-badge ledger-role-chip ledger-role-{{ _opt_role }} {{ _opt_role }}">{{ {'owner': '拥有者', 'member': '成员', 'viewer': '只读'}.get(_opt_role, _opt_role|upper) }}</div>
+      {{ ledger_option_content(opt) }}
     </a>
+    {% endif %}
     {% endfor %}
     {# ≤40rem 顶栏只留 收票/我 — 搜索与外观收进本面板 (shell.css 的
        .ledger-mobile-links 仅在 ≤40rem 显示; 宽屏由 topbar 独立入口承担)。

@@ -49,7 +49,10 @@ def _ensure_ledger(db: Session, *, ledger_id: str, name: str, owner_account: Acc
             ledger.name = _clean_name(name, ledger_id)
         if not ledger.owner_account_id:
             ledger.owner_account_id = owner_account.id
-    _ensure_membership(db, ledger.ledger_id, owner_account.id, "owner")
+    # Existing ledgers already carry their identity owner.  Startup seeding
+    # may repair that owner's membership, but must never promote whichever
+    # Account happened to sort first into somebody else's ledger.
+    _ensure_membership(db, ledger.ledger_id, ledger.owner_account_id, "owner")
     return ledger
 
 
@@ -85,7 +88,7 @@ def ensure_identity_seed(db: Session) -> None:
     for ledger_id in sorted(ledger_ids_from_data - seen):
         ledger = _ledger_by_id(db, ledger_id)
         if ledger is not None:
-            _ensure_membership(db, ledger.ledger_id, owner.id, "owner")
+            _ensure_membership(db, ledger.ledger_id, ledger.owner_account_id, "owner")
 
 
 def ensure_identity_for_existing_ledger_ids(db: Session, ledger_ids: set[str]) -> None:
