@@ -276,7 +276,7 @@ class JoinFamilyLedgerViewModelTest {
             assertEquals("join.example.com", failed.sourceHost)
 
             viewModel.previewCurrentInput()
-            viewModel.uiState.first { it.previewing }
+            advanceUntilIdle()
             val retried = viewModel.uiState.first { !it.previewing && (it.preview != null || it.error != null) }
 
             assertNotNull(retried.preview)
