@@ -58,6 +58,7 @@
     --font-product: "Ticketbox Sans", "Microsoft YaHei UI", "PingFang SC", sans-serif;
     --font-numeric: "Ticketbox Figures", "Ticketbox Sans", sans-serif;
     --mobile-chrome-block-size: calc(var(--space-10) + var(--space-2));
+    --mobile-nav-block-size: var(--space-12);
 }
 
 *,
@@ -71,7 +72,7 @@ html {
     min-height: 100%;
     background: var(--surface-app);
     color: var(--text-default);
-    font-family: var(--font-product);
+    font-family: var(--font-numeric);
     font-size: var(--type-body-size);
     line-height: var(--type-body-line);
     text-rendering: optimizeLegibility;
@@ -83,6 +84,7 @@ body {
     background: var(--surface-app);
     background-image: var(--surface-app-image, none);
     color: var(--text-default);
+    font-size: var(--type-subtitle-size);
 }
 
 button,
@@ -218,14 +220,14 @@ a {
 .nav-subnav > a {
     position: relative;
     display: flex;
-    min-height: var(--space-9);
+    min-height: var(--target-min);
     align-items: center;
     justify-content: space-between;
     gap: var(--space-3);
     padding: var(--space-3) var(--space-4);
     border-radius: var(--radius-sm);
     color: var(--text-muted);
-    font-size: var(--type-body-size);
+    font-size: var(--type-subtitle-size);
     font-weight: var(--type-body-weight);
     text-decoration: none;
     transition:
@@ -239,7 +241,22 @@ a {
     padding-block: var(--space-2);
     padding-inline-start: var(--space-6);
     color: var(--text-meta);
-    font-size: var(--type-caption-size);
+    font-size: var(--type-body-size);
+}
+
+.nav-primary > .nav-item {
+    justify-content: flex-start;
+    border-radius: var(--radius-md);
+    gap: var(--space-4);
+}
+
+.nav-icon {
+    display: block;
+    flex: 0 0 auto;
+}
+
+.nav-item > .nav-badge {
+    margin-inline-start: auto;
 }
 
 .nav-item:hover,
@@ -260,18 +277,9 @@ a {
 }
 
 .nav-subnav > a.active {
+    background: var(--surface-sunken);
     color: var(--text-default);
     font-weight: var(--type-subtitle-weight);
-}
-
-.nav-subnav > a.active::before {
-    position: absolute;
-    inset-block: var(--space-3);
-    inset-inline-start: var(--space-3);
-    width: var(--space-1);
-    border-radius: var(--radius-pill);
-    background: var(--brand-primary);
-    content: "";
 }
 
 .nav-badge {
@@ -343,8 +351,7 @@ a {
     gap: var(--space-4);
     padding: var(--space-3) var(--space-7);
     border-block-end: 1px solid var(--border-card);
-    background: color-mix(in srgb, var(--surface-app) 92%, transparent);
-    backdrop-filter: blur(var(--space-3));
+    background: var(--surface-nav);
 }
 
 .topbar-context {
@@ -385,15 +392,6 @@ a {
     white-space: nowrap;
 }
 
-.topbar-ledger {
-    overflow: hidden;
-    max-width: calc(var(--space-12) * 3);
-    color: var(--text-meta);
-    font-size: var(--type-caption-size);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
 .topbar-spacer {
     flex: 1;
 }
@@ -411,7 +409,7 @@ a {
     background: transparent;
     color: var(--text-muted);
     cursor: pointer;
-    font-size: var(--type-caption-size);
+    font-size: var(--type-body-size);
     font-weight: var(--type-subtitle-weight);
     text-decoration: none;
     white-space: nowrap;
@@ -458,7 +456,7 @@ a {
     background: transparent;
     color: var(--text-muted);
     cursor: pointer;
-    font-size: var(--type-caption-size);
+    font-size: var(--type-body-size);
     font-weight: var(--type-subtitle-weight);
     white-space: nowrap;
 }
@@ -870,12 +868,6 @@ details[open] > .chrome-trigger {
         display: inline-flex;
     }
 
-    /* W1 repair: ≤64rem 账本身份只出现在「我」触发器 — topbar-ledger 隐藏,
-       消除与品牌并置的双重身份读; 不再只在 ≤40rem 隐藏。 */
-    .topbar-ledger {
-        display: none;
-    }
-
     /* W1 repair: popover 是相对 sticky mobile-chrome 的全宽 sheet —
        wrap/details 退出定位上下文, 面板横向撑满 chrome 内边距, 不再被
        窄触发器锚成 ~74px 竖条 (当前 360「我」不可用的根因)。 */
@@ -891,8 +883,7 @@ details[open] > .chrome-trigger {
         max-inline-size: none;
     }
 
-    /* W1 IA-B: 五域主导航 = fixed 底部 nav (拇指区, 纯文字项, safe-area);
-       active = 顶部 2px 指示条 + 强调色文字, 不用旧下划阴影/图标。 */
+    /* Five stable touch destinations, with the same icons and labels as desktop. */
     .mobile-primary-nav {
         position: fixed;
         inset-inline: 0;
@@ -906,7 +897,8 @@ details[open] > .chrome-trigger {
     }
 
     .mobile-primary-nav .nav-item {
-        min-height: calc(var(--space-10) + var(--space-2));
+        min-height: var(--mobile-nav-block-size);
+        flex-direction: column;
         justify-content: center;
         gap: var(--space-1);
         padding: var(--space-2) var(--space-1);
@@ -916,10 +908,16 @@ details[open] > .chrome-trigger {
     }
 
     .mobile-primary-nav .nav-item.active {
-        background: transparent;
-        box-shadow: inset 0 var(--space-1) 0 var(--brand-primary);
+        background: var(--brand-primary-bg);
         color: var(--brand-primary-strong);
         font-weight: var(--type-subtitle-weight);
+    }
+
+    .mobile-primary-nav .nav-badge {
+        position: absolute;
+        inset-block-start: var(--space-2);
+        inset-inline-start: calc(50% + var(--space-3));
+        margin: 0;
     }
 
     /* W1 IA-B: 域内页签移入 main 首元素, in-flow 随页滚动 — 安静文字 tab,
@@ -966,7 +964,7 @@ details[open] > .chrome-trigger {
     .content[data-page-level="tertiary"] {
         width: 100%;
         padding: var(--space-6) var(--space-5)
-            calc(var(--space-10) + var(--space-2) + env(safe-area-inset-bottom) + var(--space-7));
+            calc(var(--mobile-nav-block-size) + env(safe-area-inset-bottom) + var(--space-7));
     }
 }
 

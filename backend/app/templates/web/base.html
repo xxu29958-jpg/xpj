@@ -131,7 +131,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="csrf-token" content="{{ csrf_token }}">
-  <meta name="theme-color" content="#f6f2ea">
+  <meta name="theme-color" content="#f5f9f6">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="小票夹">
@@ -205,7 +205,6 @@
       <div class="topbar-context" aria-label="当前位置">
         <span class="topbar-domain">{{ _domain_label }}</span>
         <span class="topbar-title">{{ page_title or _domain_label }}</span>
-        <span class="topbar-ledger">{{ selected_ledger_name }}</span>
       </div>
       <div class="topbar-spacer"></div>
       {% if request.state.web_session_platform == "desktop" %}

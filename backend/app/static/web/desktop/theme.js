@@ -53,7 +53,6 @@
   };
 
   app.currentTextureMode = function currentTextureMode() {
-    // W1: 无显式偏好的新会话默认 fiber (纸纹上背景层); 显式 flat 永远尊重。
     return prefs.read("texture");
   };
 
@@ -114,10 +113,10 @@
     // bootstrap 未加载 (静态资产失败) 时外观层整体不可用, 诚实静默退出。
     if (!roots.length || !prefs) return;
 
-    // 对齐本地值（anti-FOUC bootstrap 之外的兜底：脚本被裁切/禁用后重进时
-    // 也保证 <html> 属性、存储与按钮态三者一致）。
-    app.applyTextureMode(app.currentTextureMode());
-    app.applyAccentMode(app.currentAccentMode());
+    // 初始化只投影现有偏好，不把产品默认值伪装成用户的显式选择。
+    // 持久化仍由下面的用户操作经同一 prefs owner 完成。
+    prefs.apply(document.documentElement, "texture", app.currentTextureMode());
+    prefs.apply(document.documentElement, "accent", app.currentAccentMode());
 
     roots.forEach((root) => {
       bindAxis(root, "data-theme-mode", app.applyThemeMode);

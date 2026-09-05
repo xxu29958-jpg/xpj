@@ -226,7 +226,7 @@ def test_budgets_product_body_retires_legacy_stack(web_client: TestClient) -> No
         assert retired not in body
     assert "/static/web/pages/budgets.css" not in body
     assert "desktop-shell-active" not in body
-    assert '<span class="product-eyebrow">计划 / 月度预算</span>' in body
+    assert '<h1 class="page-title">月度预算</h1>' in body
     assert "<style" not in body
     assert 'style="' not in body
     _assert_shell_chrome_has_no_inline_style(body)
@@ -248,7 +248,7 @@ def test_confirmed_product_body_retires_legacy_stack_and_fake_filter(
     assert "/static/web/desktop/ledger-filter.js" not in body
     assert "data-ledger-filter" not in body
 
-    assert '<span class="product-eyebrow">流水 / 已确认</span>' in body
+    assert '<h1 class="page-title">已确认流水</h1>' in body
     assert "ledger-stream" in body
     assert 'aria-label="本月概况"' in body
     assert "每日分布" in body

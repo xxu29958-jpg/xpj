@@ -756,7 +756,7 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
 
 @media (max-width: 64rem) {
     .bulk-bar {
-        inset-block-end: calc(var(--space-10) + var(--space-2) + env(safe-area-inset-bottom) + var(--space-3));
+        inset-block-end: calc(var(--mobile-nav-block-size) + env(safe-area-inset-bottom) + var(--space-3));
         flex-wrap: wrap;
     }
 

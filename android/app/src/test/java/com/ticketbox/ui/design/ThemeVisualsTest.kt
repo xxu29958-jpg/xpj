@@ -16,19 +16,8 @@ class ThemeVisualsTest {
             assertTrue(visuals.solidCard.alpha > 0.99f, "$skin solid card should be opaque")
             assertTrue(visuals.paperCard.alpha > 0.99f, "$skin paper card should be opaque")
             assertTrue(visuals.shadowTint.alpha > 0.99f, "$skin shadow tint should be opaque")
-        }
-    }
-
-    @Test
-    fun everySkinHasLayeredBackgroundVisuals() {
-        AppSkin.entries.forEach { skin ->
-            val visuals = backgroundVisualsForSkin(skin)
-
-            assertTrue(visuals.baseGradient.size >= 3, "$skin background should use layered vertical gradient")
-            assertTrue(visuals.topGlowAlpha > 0f, "$skin top glow should be visible")
-            assertTrue(visuals.sideGlowAlpha > 0f, "$skin side glow should be visible")
-            assertTrue(visuals.bottomMist.isNotEmpty(), "$skin bottom mist should be configured")
-            assertTrue(visuals.textureAlpha > 0f, "$skin texture should be configured")
+            assertTrue(visuals.backgroundTop.alpha > 0.99f, "$skin background top should be opaque")
+            assertTrue(visuals.backgroundBottom.alpha > 0.99f, "$skin background bottom should be opaque")
         }
     }
 

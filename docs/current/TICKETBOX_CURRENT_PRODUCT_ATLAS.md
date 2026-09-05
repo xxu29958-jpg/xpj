@@ -394,6 +394,10 @@ The wave is in construction through #362. Its first task aligns Web and Android 
 
 ## 7. Construction order
 
+The first art task (#362) is now closed: exact candidate `ada29913` and merge-main `fba121c9552d9dca4a03fe319da587d31f2bf2a9` independently passed CI, CodeQL and actual Connected workflows. Main's runs are `33977721474`, `33977721459` and `33977721470`; final candidate PNGs match the already inspected consumer frames. This supersedes the pending-integration status above, without relabeling historical failed candidates.
+
+The next bounded task is the consumer workspace frame: clean-default Web surfaces with preserved explicit preferences, synchronized light/dark neutral tokens, one icon-and-label primary navigation for desktop/mobile, fewer repeated headings and a single Android default-background palette. Actual 360 px populated-page inspection admitted and fixed Ledger batch-form overflow; actual theme switching admitted stale canvas colors in both existing chart consumers, covered by an observed pure-Node RED/GREEN. The shared frame is awaiting its own exact cloud qualification. Complete art, real Android journeys, form/draft convenience and the remaining product tasks stay open in the same wave, not a separate demo or acceptance claim. Details are in the existing consumer-art plan.
+
 1. **Recognition control:** close configured → enabled → observable for receipt and debt-bill recognition in the existing runtime-settings owner.
 2. **Currency adoption ceremony:** unblock an installation that otherwise cannot perform any money write.
 3. **Pending FX recovery:** complete a single-bill edit/preview/confirm journey across Web and Android.
