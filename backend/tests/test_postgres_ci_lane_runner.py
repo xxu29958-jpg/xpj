@@ -34,12 +34,12 @@ class _DeselectRecorder:
 
 
 class _ShardConfig:
-    def __init__(self, lane: str, shard_index: int) -> None:
+    def __init__(self, lane: str, shard_index: int, shard_count: int) -> None:
         self.hook = _DeselectRecorder()
         self._options = {
             POSTGRES_PYTEST_LANE_DEST: lane,
             POSTGRES_PYTEST_SHARD_INDEX_DEST: shard_index,
-            POSTGRES_PYTEST_SHARD_COUNT_DEST: 2,
+            POSTGRES_PYTEST_SHARD_COUNT_DEST: shard_count,
         }
 
     def getoption(self, name: str) -> object:
@@ -69,14 +69,14 @@ def _assert_generated_lane_commands() -> None:
     real_db = build_pytest_command(
         lane="real-db",
         workers=1,
-        shard_index=1,
-        shard_count=2,
+        shard_index=2,
+        shard_count=3,
     )
     assert "-n" not in ordinary_serial
     assert real_db[real_db.index("-m", 3) + 1] == "real_db"
     assert real_db[real_db.index("--xpj-postgres-lane") + 1] == "real-db"
-    assert real_db[real_db.index("--xpj-postgres-shard-index") + 1] == "1"
-    assert real_db[real_db.index("--xpj-postgres-shard-count") + 1] == "2"
+    assert real_db[real_db.index("--xpj-postgres-shard-index") + 1] == "2"
+    assert real_db[real_db.index("--xpj-postgres-shard-count") + 1] == "3"
     assert "-n" not in real_db
 
 
@@ -163,12 +163,12 @@ def _assert_nodeid_shards_form_an_exact_partition() -> None:
     validate_shard_coordinates(lane=None, shard_index=0, shard_count=1)
 
 
-def _hook_partition(lane: str, shard_index: int) -> tuple[set[str], set[str]]:
+def _hook_partition(lane: str, shard_index: int, shard_count: int) -> tuple[set[str], set[str]]:
     items = [
         SimpleNamespace(nodeid=f"tests/test_example.py::test_case[{index}]")
         for index in range(64)
     ]
-    config = _ShardConfig(lane, shard_index)
+    config = _ShardConfig(lane, shard_index, shard_count)
     pytest_collection_modifyitems(config, items)
     return (
         {str(item.nodeid) for item in items},
@@ -181,13 +181,15 @@ def _assert_hook_forms_complementary_shards() -> None:
         f"tests/test_example.py::test_case[{index}]"
         for index in range(64)
     }
-    for lane in ("ordinary", "real-db"):
-        selected_zero, deselected_zero = _hook_partition(lane, 0)
-        selected_one, deselected_one = _hook_partition(lane, 1)
-        assert selected_zero.isdisjoint(selected_one)
-        assert selected_zero | selected_one == expected
-        assert deselected_zero == selected_one
-        assert deselected_one == selected_zero
+    for lane, shard_count in (("ordinary", 2), ("real-db", 3)):
+        combined: set[str] = set()
+        for shard_index in range(shard_count):
+            selected, deselected = _hook_partition(lane, shard_index, shard_count)
+            assert selected
+            assert combined.isdisjoint(selected)
+            assert deselected == expected - selected
+            combined.update(selected)
+        assert combined == expected
 
 
 def _assert_collection_contract_is_fail_closed() -> None:
