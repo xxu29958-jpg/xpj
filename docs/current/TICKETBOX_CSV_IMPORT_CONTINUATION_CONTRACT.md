@@ -178,3 +178,57 @@ native-form PG cases have no diff. Final narrow checks are recorded in the hando
 No local PostgreSQL, Android build, application, browser or broad suite was run. Production
 cloud GREEN, final review and integration qualification remain outstanding; the dirty diff
 is reviewable implementation evidence, not a new qualified HEAD.
+
+## Interrupted finalization: admitted P2, test-first follow-up
+
+The controller committed the initial production candidate as
+`7de2c9af99c503a540d88636bf1578626a0728cb`, tree
+`d6e0514831ac65915f748b0cdedce96e6ebd441e`; independent review then found a real
+unclosed result consumer. This follow-up changes tests and this contract only until
+actual PostgreSQL behavior RED. It does not authorize a GET writer or a lease change.
+
+| Item | Current bounded decision |
+| --- | --- |
+| Goal | After the final CSV row commits but batch finalization is interrupted, the original hub/detail and API detail/rows batch projection must expose the actual imported result or downloadable error. |
+| Allowed changes now | Extend the existing native-form PostgreSQL test file with the real interrupted producer, preserving all original cases; record its impact and exact cloud selection. Production waits for actual RED. |
+| Forbidden surface | No new import/lease/status writer, database schema, API contract change, simulated database terminal rows, local PG/Gradle, commit or push by the worker. |
+| Done checks | Real single-row apply commits through the original owner, execution stops before finalize, canonical pending/error reads establish the result, and Web/API readers agree while persisted batch cache/lease stay unchanged. Both applied and insert_failed outcomes matter; valid_rows retains its original preview meaning. |
+| Evidence | Fixed starting production `7de2c9af`, clean at handoff. New PG probes are source-only until the controller runs this test-only candidate in cloud; earlier six PG and five pure results do not prove this window. |
+
+| Before producer / consumer | Exact gap and minimal boundary |
+| --- | --- |
+| `_apply._apply_one_claimed_csv_import_row` / `_mark_csv_import_row_insert_failed` | The success path commits at `_apply.py:275`; the error path commits at `:195`. The subsequent `_finalize_csv_import_apply_success` call at `:397` is the first batch-count refresh. Stopping there leaves a durable terminal row and stale zero batch counters. |
+| `_queries.get_csv_import_batch_progress` / `list_csv_import_batches` | The grouped query reads only valid/applying. With a committed terminal row it correctly reports zero remaining, but the progress label still reads cached batch applied/error counts and therefore reports an empty receipt. |
+| `import_batch.html` and `import_export.html` | Both still use cached applied/error counts for displayed totals and result/error actions. Detail can hide the real pending/error destination while also offering no apply action; hub can call a nonempty result empty. |
+| Canonical pending and error CSV owners | They read the committed Expense or CsvImportRow and can already return the real result. They remain the counterevidence to the stale view; no writer change is needed. |
+| API detail and rows readers | `routes/imports.py:49–50` serializes cached batch fields; `_lifecycle.py:239–240` embeds the same stale batch in the row response. Neither the schema nor the current working contract defines these counters as a last-finalized snapshot. Both read consumers must use current whole-batch counts, independently of the row page/status filter, through a read-only response mapping. |
+| Persisted count consumer | `_csv_io._refresh_batch_counts:78–89` already defines applied as the applied-row count, inserted_count as that same cumulative count, and errors as error + insert_failed. `_apply_lease:143` invokes it in finalization. The expected single aggregation owner must replace this query too; preserve the existing assignments, transaction/commit point and lease owner. GET must not call this writer. |
+| Create response / original preview semantics | `_lifecycle:194–205` constructs parse totals and valid/error counts, writes the rows and commits before returning; `routes/imports.py:40` then serializes the batch. `total_rows` and `valid_rows` are original parse facts, not effective remainder. The same read-only response mapping can serve create without changing these meanings or creation order. |
+| Apply success / idempotency success responses | `_apply:397–410` and `_idempotency:84–97` finalize, commit and refresh before building their batch response. Their normal cached counts are already current at that point, unlike an interrupted read. Migrate their batch serialization to the same response mapping while preserving the top-level per-request inserted_count (including zero for an idempotency hit), existing first result and finalize/commit ordering. |
+| Expected production correction after RED | Extend one grouped row read to supply remaining, applied and error counts; migrate Web progress/templates, API detail/rows/create/apply batch response mapping and the existing finalized-cache consumer. Keep field names/meanings, stored metadata, apply/finalization positions, leases and row keys unchanged. No second count predicate or GET mutation. |
+
+The new PostgreSQL test uses the existing native preview helper, then the real apply
+service with a single-row batch. It injects a caught `KeyboardInterrupt` only at the
+finalize seam, after the real row commit; the error variant uses the existing processing
+seam to produce a real `insert_failed` commit. No cached counter or terminal row is
+manufactured in SQL. This is an actual service execution interruption at a precise
+boundary, not a claim of real process death. Subsequent native hub/detail requests are
+compared with the existing pending API and error CSV. The test also captures the API detail
+and row response batch counters, requiring current applied/error/cumulative inserted counts
+while valid_rows remains one. A direct persisted-state read before/after all GET consumers
+verifies that the API projection did not repair cached counters or release the lease.
+
+Test-only handoff selection:
+`backend/tests/test_web_import_review_native_forms.py::test_native_csv_committed_result_survives_interrupted_finalization[applied]`
+and the same node with `[insert_failed]`. These two cases have **not been executed locally**;
+their expected current failure is the final observed Web/API counts and missing result
+actions, after committed row/canonical-result and unchanged-persistence preconditions pass.
+The existing six PG cases and every pre-existing test/helper body and parameterization
+were AST-compared with `7de2c9af` and remain unchanged. The file has 410 lines; AST syntax,
+Ruff and `git diff --check` passed. No production file or OpenAPI snapshot changed.
+
+Individual current classifier results: this test file selects PostgreSQL; this contract
+selects no heavy lane. The directly affected `_queries`, `_csv_io`, `_lifecycle`, `_apply`,
+`_idempotency` and `routes/imports.py` paths each select PostgreSQL/frozen backend. The
+existing Web route and both templates each select PostgreSQL/frozen backend/Desktop/Windows.
+These are actual classifier results, not executed integration results or a production fix.

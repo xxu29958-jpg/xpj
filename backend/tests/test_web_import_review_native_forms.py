@@ -1,7 +1,7 @@
 """Rendered import/review forms must work without client-side token injection."""
 
 import re
-from datetime import timedelta
+from datetime import datetime, timedelta
 from html import unescape
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
@@ -316,3 +316,95 @@ def test_native_csv_older_batch_remains_reachable_through_hub_pagination(web_cli
         assert f'href="/web/import/{older_id}/errors.csv?ledger_id=owner"' in detail.text
         errors = web_client.get(f"/web/import/{older_id}/errors.csv?ledger_id=owner")
         assert errors.status_code == 200 and "Original older row" in errors.text
+
+
+def _interrupt_csv_before_finalize(monkeypatch, *, public_id: str, row_outcome: str) -> None:
+    from app.errors import AppError
+    from app.services.csv_import_batch_service import _apply
+
+    def stop_before_finalize(*_args, **_kwargs):
+        raise KeyboardInterrupt("CSV execution stopped before batch finalization")
+
+    def reject_row(*_args, **_kwargs):
+        raise AppError("invalid_request", "This original row could not be imported.", status_code=422)
+
+    monkeypatch.setattr(_apply, "_finalize_csv_import_apply_success", stop_before_finalize)
+    if row_outcome == "insert_failed":
+        monkeypatch.setattr(_apply, "_process_csv_import_apply_row", reject_row)
+    # The original service commits the terminal row. Only its later finalization is stopped.
+    with SessionLocal() as db, pytest.raises(KeyboardInterrupt, match="before batch finalization"):
+        _apply.apply_csv_import_batch(db, tenant_id="owner", public_id=public_id, batch_size=1)
+
+
+def _csv_receipt_rendered_counts(hub: str, detail: str, public_id: str) -> tuple[list[int], list[int]]:
+    batch_row = next(
+        row for row in re.findall(r"<tr\b[^>]*>(.*?)</tr>", hub, re.DOTALL)
+        if f"/web/import/{public_id}?" in row
+    )
+    cells = re.findall(r"<td\b[^>]*>(.*?)</td>", batch_row, re.DOTALL)
+    metrics = dict(re.findall(r"<span>([^<]+)</span><strong>(\d+)</strong>", detail))
+    return [int(value.strip()) for value in cells[2:5]], [
+        int(metrics[label]) for label in ("剩余可导入", "已导入", "错误行")
+    ]
+
+
+def _csv_persisted_receipt_state(public_id: str) -> tuple[int, int, int, str, datetime | None, datetime]:
+    with SessionLocal() as db:
+        row = db.execute(select(
+            CsvImportBatch.applied_rows, CsvImportBatch.error_rows, CsvImportBatch.inserted_count,
+            CsvImportBatch.status, CsvImportBatch.locked_until, CsvImportBatch.updated_at,
+        ).where(CsvImportBatch.public_id == public_id, CsvImportBatch.tenant_id == "owner")).one()
+        return tuple(row)
+
+
+@pytest.mark.parametrize("row_outcome", ["applied", "insert_failed"])
+def test_native_csv_committed_result_survives_interrupted_finalization(
+    web_client, identity, monkeypatch, row_outcome,
+) -> None:
+    public_id, detail_url = _preview_native_csv(
+        web_client, ledger_id="owner", file_name="interrupted.csv",
+        csv_text="amount_yuan,merchant\n3.00,Terminal original row\n",
+    )
+    _interrupt_csv_before_finalize(monkeypatch, public_id=public_id, row_outcome=row_outcome)
+    batch_url = f"/api/imports/csv/{public_id}"
+    cached = _csv_persisted_receipt_state(public_id)
+    assert cached[:4] == (0, 0, 0, "applying") and cached[4] is not None
+    api_detail = web_client.get(batch_url, headers=identity.app_headers)
+    rows = web_client.get(f"{batch_url}/rows", headers=identity.app_headers)
+    assert api_detail.status_code == 200 and rows.status_code == 200
+    assert [row["status"] for row in rows.json()["items"]] == [row_outcome]
+    pending = web_client.get("/api/expenses/pending", headers=identity.app_headers)
+    errors = web_client.get(f"/web/import/{public_id}/errors.csv?ledger_id=owner")
+    applied_count = int(row_outcome == "applied")
+    error_count = 1 - applied_count
+    assert pending.status_code == 200 and errors.status_code == 200
+    assert len(pending.json()) == applied_count
+    assert ("Terminal original row" in errors.text) == bool(error_count)
+    if applied_count:
+        assert pending.json()[0]["merchant"] == "Terminal original row"
+        assert pending.json()[0]["amount_cents"] == 300
+    hub = web_client.get("/web/import?ledger_id=owner")
+    detail = web_client.get(detail_url)
+    assert hub.status_code == 200 and detail.status_code == 200
+    _batch_href(hub.text, public_id, "owner")
+    assert f"/web/import/{public_id}/apply" not in hidden_post_forms(detail.text)
+    # GET must expose committed facts without refreshing the cached batch or releasing its lease.
+    assert _csv_persisted_receipt_state(public_id) == cached
+    count_fields = ("valid_rows", "applied_rows", "error_rows", "inserted_count")
+    observed = {
+        "api_detail_counts": [api_detail.json()[key] for key in count_fields],
+        "api_rows_counts": [rows.json()["batch"][key] for key in count_fields],
+        "counts": _csv_receipt_rendered_counts(hub.text, detail.text, public_id),
+        "hub_empty": "没有数据行" in hub.text,
+        "detail_empty": "没有数据行" in detail.text,
+        "review": 'href="/web/pending?ledger_id=owner"' in _batch_next_actions(detail.text),
+        "hub_errors": f'href="/web/import/{public_id}/errors.csv?ledger_id=owner"' in hub.text,
+        "detail_errors": f'href="/web/import/{public_id}/errors.csv?ledger_id=owner"' in detail.text,
+    }
+    assert observed == {
+        "api_detail_counts": [1, applied_count, error_count, applied_count],
+        "api_rows_counts": [1, applied_count, error_count, applied_count],
+        "counts": ([0, applied_count, error_count], [0, applied_count, error_count]),
+        "hub_empty": False, "detail_empty": False, "review": bool(applied_count),
+        "hub_errors": bool(error_count), "detail_errors": bool(error_count),
+    }
