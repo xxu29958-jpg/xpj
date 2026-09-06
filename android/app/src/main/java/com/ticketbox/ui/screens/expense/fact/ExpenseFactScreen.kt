@@ -29,6 +29,8 @@ import com.ticketbox.viewmodel.openCorrectionSheet
 import com.ticketbox.viewmodel.toggleTimelineExpanded
 import com.ticketbox.viewmodel.recoverCorrection
 import com.ticketbox.viewmodel.refreshCorrectionFact
+import com.ticketbox.viewmodel.currentCorrectionItems
+import com.ticketbox.viewmodel.currentCorrectionSplits
 
 /**
  * A1: confirmed 账单事实屏（read-first）。段落顺序 = 用户任务顺序：
@@ -82,8 +84,8 @@ private fun FactCorrectionSubmissions(state: ExpenseFactUiState, viewModel: Expe
             ExpenseCorrectionSubmissionCard(pending,
                 options = CorrectionSubmissionOptions(canModify = !state.readOnly, busy = state.correctionRecoveryBusy,
                     refreshPending = state.expenseLoadState != ExpenseDetailDataLoadState.Loaded ||
-                        state.itemsLoadState != ExpenseDetailDataLoadState.Loaded ||
-                        state.splitsLoadState != ExpenseDetailDataLoadState.Loaded ||
+                        state.currentCorrectionItems == null ||
+                        state.currentCorrectionSplits == null ||
                         state.revisionsLoadState != ExpenseDetailDataLoadState.Loaded ||
                         state.factBundleLoadState != ExpenseDetailDataLoadState.Loaded),
                 actions = CorrectionSubmissionActions(recover = { drop -> viewModel.recoverCorrection(pending.row.id, drop) },
@@ -117,6 +119,7 @@ private fun FactContentSections(
                     state = state,
                     onRetryItems = viewModel::loadExpenseItems,
                     onRetrySplits = viewModel::loadExpenseSplits,
+                    onRefreshFact = viewModel::refreshCorrectionFact,
                     onAcknowledgeItems = viewModel::acknowledgeItemsMismatch,
                 )
                 FactTimelineSection(

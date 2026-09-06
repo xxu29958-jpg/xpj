@@ -95,6 +95,15 @@ internal class ExpenseFactViewModelCorrectionTest : ExpenseFactViewModelTestBase
         assertNull(vm.uiState.value.message)
         assertEquals(0, fake.correctCalls, "reason 空白不得发出更正请求")
         assertTrue(vm.uiState.value.correction.open, "本地拦截后表单保持打开")
+
+        vm.updateCorrectionField(CorrectionScalarField.Reason, "\u0085")
+        vm.submitCorrection()
+        advanceUntilIdle()
+        assertEquals(0, fake.correctCalls, "Python 空白 U+0085 不得保存成必然被拒绝的意图")
+        assertTrue(vm.uiState.value.correction.submitError != null)
+        assertEquals("\u0085", vm.uiState.value.correction.reason)
+        assertEquals("新商家", vm.uiState.value.correction.merchant)
+        assertTrue(vm.uiState.value.correction.open)
     }
 
     @Test
@@ -232,6 +241,7 @@ internal class ExpenseFactViewModelCorrectionTest : ExpenseFactViewModelTestBase
         fake.splitsResult = Result.success(
             ExpenseSplits(
                 expenseId = fake.baseExpense.id,
+                parentRowVersion = fake.baseExpense.rowVersion,
                 parentAmountCents = 1_000L,
                 splitsTotalAmountCents = 1_000L,
                 mismatchCents = 0L,
@@ -278,6 +288,7 @@ internal class ExpenseFactViewModelCorrectionTest : ExpenseFactViewModelTestBase
         fake.splitsResult = Result.success(
             ExpenseSplits(
                 expenseId = fake.baseExpense.id,
+                parentRowVersion = fake.baseExpense.rowVersion,
                 parentAmountCents = 1_000L,
                 splitsTotalAmountCents = 1_000L,
                 mismatchCents = 0L,

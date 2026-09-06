@@ -4,6 +4,8 @@ import androidx.annotation.StringRes
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.changesAdvisorPayloadAgainst
+import com.ticketbox.data.repository.RepositoryException
+import com.ticketbox.data.repository.toRequest
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import com.ticketbox.domain.model.UiText
@@ -27,8 +29,8 @@ fun ExpenseFactViewModel.openCorrectionSheet() {
     val state = _uiState.value
     if (!state.canStartCorrection) return
     val expense = state.expense ?: return
-    correctionOriginalItems = state.expenseItems
-    correctionOriginalSplits = state.expenseSplits
+    correctionOriginalItems = state.currentCorrectionItems
+    correctionOriginalSplits = state.currentCorrectionSplits
     correctionBaseline = expense
     correctionBinding = state.correctionAccess?.binding
     val zoneId = ZoneId.of(repository.currentTimezoneId())
@@ -106,6 +108,7 @@ private fun ExpenseFactViewModel.rejectCorrection(@StringRes resId: Int): Expens
  * 纯计算 + state 消息，便于单测（reason 门 / 零变更门 / diff 内容）。
  */
 internal fun ExpenseFactViewModel.buildCorrectionDraftOrMessage(): ExpenseCorrectionDraft? {
+    if (!requireCurrentCorrectionContext()) return null
     val expense = correctionBaseline ?: return null
     val form = _uiState.value.correction
     if (form.reason.isBlank()) return rejectCorrection(R.string.expense_correction_reason_required)
@@ -144,8 +147,15 @@ internal fun ExpenseFactViewModel.buildCorrectionDraftOrMessage(): ExpenseCorrec
         items = items,
         splits = splits,
     )
-    if (wouldOverallocateLoadedSplits(expense, draft, correctionOriginalSplits)) {
+    val knownSplits = correctionOriginalSplits?.takeIf { expense.matchesFactVersion(it.expenseId, it.parentRowVersion) }
+    if (wouldOverallocateLoadedSplits(expense, draft, knownSplits)) {
         return rejectCorrection(R.string.error_expense_split_total_exceeds_parent)
+    }
+    try {
+        draft.toRequest(expense.rowVersion)
+    } catch (error: RepositoryException) {
+        _uiState.update { it.copy(correction = it.correction.copy(submitError = error.toUiText(R.string.expense_correction_failed))) }
+        return null
     }
     return draft
 }
@@ -153,7 +163,7 @@ internal fun ExpenseFactViewModel.buildCorrectionDraftOrMessage(): ExpenseCorrec
 /** 提交按钮的可用性（屏幕用它做禁用态而不是错误说教）：reason 非空且不在保存中。 */
 fun ExpenseFactViewModel.canSubmitCorrection(): Boolean {
     val form = _uiState.value.correction
-    return form.open && !form.saving && form.reason.isNotBlank()
+    return form.open && !form.saving && form.reason.isNotBlank() && correctionContextError() == null
 }
 
 fun ExpenseFactViewModel.submitCorrection() {
@@ -164,6 +174,7 @@ fun ExpenseFactViewModel.submitCorrection() {
     val invalidatesAdvice = draft.changesAdvisorPayloadAgainst(expense)
     updateCorrection { it.copy(saving = true) }
     viewModelScope.launch {
+        if (!requireCurrentCorrectionContext()) return@launch
         repository.submitCorrection(binding, expense, draft)
             .onSuccess {
                 if (_uiState.value.correctionAccess?.binding != binding) return@onSuccess

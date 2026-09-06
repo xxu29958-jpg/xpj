@@ -33,7 +33,9 @@ internal class ExpenseCorrectionRepository(
             if (core.ledgerRequestGuard.captureLogicalBinding() != access.binding) ExpenseCorrectionObservation(null, emptyList())
             else ExpenseCorrectionObservation(access, rows.map { row ->
                 val intent = adapter.readSupportedCorrection(row)
-                PendingExpenseCorrection(row, intent, if (intent == null) legacyAdapter.readCorrectionJson(row.payloadJson) else null)
+                PendingExpenseCorrection(row, intent, if (intent == null) {
+                    adapter.readDisplayCorrection(row) ?: legacyAdapter.readCorrectionJson(row.payloadJson)
+                } else null)
             })
         }
     }

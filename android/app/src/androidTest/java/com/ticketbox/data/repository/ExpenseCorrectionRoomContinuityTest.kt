@@ -135,6 +135,45 @@ class ExpenseCorrectionRoomContinuityTest {
     }
 
     @Test
+    fun androidUnicodeAdmissionKeepsTheOriginalRequestInRoom() = runBlocking {
+        val boundaries = listOf(
+            Triple("sharp s", "ß".repeat(32), "ß".repeat(33)),
+            Triple("capital sharp s", "ẞ".repeat(32), "ẞ".repeat(33)),
+            Triple("supplementary character", "\uD83D\uDE42".repeat(64), "\uD83D\uDE42".repeat(65)),
+            Triple("NEXT LINE whitespace", "a".repeat(31) + "\u0085".repeat(5) + "b".repeat(32),
+                "a".repeat(32) + "\u0085".repeat(5) + "b".repeat(32)),
+        )
+        for ((label, accepted, refused) in boundaries) {
+            val repository = fixture.reopen().expenseRepository
+            try {
+                val binding = requireNotNull(repository.observeCorrections().first().access).binding
+                val baseline = fixture.network.current.toDomain()
+                val schedulesBefore = fixture.schedules
+                assertTrue(label, repository.submitCorrection(binding, baseline,
+                    ExpenseCorrectionDraft("核对标签", tags = refused)).isFailure)
+                assertTrue(label, fixture.stored().isEmpty())
+                assertEquals(label, schedulesBefore, fixture.schedules)
+                val id = repository.submitCorrection(binding, baseline,
+                    ExpenseCorrectionDraft("核对标签", tags = accepted)).getOrThrow()
+                val original = fixture.stored().single()
+                val pending = fixture.reopen().expenseRepository.observeCorrections().first().corrections.single()
+                assertEquals(label, id, pending.row.id)
+                assertEquals(label, accepted, requireNotNull(pending.intent).request.tags)
+                assertEquals(label, baseline.rowVersion, pending.row.expectedRowVersion)
+                assertEquals(label, binding.ownerKey, pending.row.ownerKey)
+                assertEquals(label, binding.ledgerId, pending.row.ledgerId)
+                assertFalse(label, pending.row.idempotencyKey.isNullOrBlank())
+                assertEquals(label, original, fixture.stored().single())
+                assertEquals(label, schedulesBefore + 1, fixture.schedules)
+                assertEquals(label, 0, fixture.network.calls.size)
+            } finally {
+                // Isolate each literal boundary in the same real Room fixture, without fabricating delivery.
+                fixture.close()
+            }
+        }
+    }
+
+    @Test
     fun sharedCorrectionRecoveryExplainsProtocolRefusalWithoutChangingOriginalCommand() {
         val graph = fixture.reopen()
         runBlocking {

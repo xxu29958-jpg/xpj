@@ -153,7 +153,7 @@ class ExpenseFactViewModel(
     internal var correctionOriginalSplits: ExpenseSplits? = null
     internal var correctionBaseline: Expense? = null
     internal var correctionBinding: com.ticketbox.data.repository.LogicalSessionBinding? = null
-    internal var observedCorrectionCompletions: Set<Long> = emptySet()
+    internal var observedCorrectionCompletions: Set<Long>? = null
     internal var expenseLoadGeneration = 0L
     internal var itemsLoadGeneration = 0L
     internal var splitsLoadGeneration = 0L
@@ -177,26 +177,28 @@ class ExpenseFactViewModel(
     val uiState: StateFlow<ExpenseFactUiState> = _uiState.asStateFlow()
 
     init {
-        observeCorrectionSubmissions()
-        if (initialExpense == null) {
-            loadExpense()
-        } else if (initialExpense.canInitiateBillSplit(_uiState.value.readOnly)) {
-            loadBillSplitSent()
+        observeCorrectionSubmissions {
+            val knownExpense = _uiState.value.expense
+            if (knownExpense == null) {
+                loadExpense(initialLoad = true)
+            } else if (knownExpense.canInitiateBillSplit(_uiState.value.readOnly)) {
+                loadBillSplitSent(onlyIfUnknown = true)
+            }
+            loadCategories()
+            knownExpense?.let { loadThumbnailFor(it) }
+            loadExpenseItems()
+            loadExpenseSplits()
+            loadExpenseFactBundle()
+            loadExpenseRevisions()
+            loadRevisionMemberNames()
         }
-        loadCategories()
-        initialExpense?.let { loadThumbnailFor(it) }
-        loadExpenseItems()
-        loadExpenseSplits()
-        loadExpenseFactBundle()
-        loadExpenseRevisions()
-        loadRevisionMemberNames()
     }
 
     fun retryLoadExpense() {
         loadExpense()
     }
 
-    private fun loadExpense() {
+    private fun loadExpense(initialLoad: Boolean = false) {
         val generation = ++expenseLoadGeneration
         viewModelScope.launch {
             _uiState.update {
@@ -226,8 +228,8 @@ class ExpenseFactViewModel(
                     }
                     loadThumbnailFor(expense)
                     // confirmed 才能发起拆账邀请（domain 门）；满足才拉取，避免无谓请求。
-                    if (expense.canInitiateBillSplit(_uiState.value.readOnly)) {
-                        loadBillSplitSent()
+                    if (_uiState.value.expense?.canInitiateBillSplit(_uiState.value.readOnly) == true) {
+                        loadBillSplitSent(onlyIfUnknown = initialLoad)
                     }
                 }
                 .onFailure { refreshError ->
@@ -281,10 +283,14 @@ class ExpenseFactViewModel(
     }
 
     private fun loadCategories() {
+        val binding = _uiState.value.correctionAccess?.binding ?: return
         viewModelScope.launch {
+            if (binding != _uiState.value.correctionAccess?.binding) return@launch
             repository.categories()
                 .onSuccess { list ->
-                    _uiState.update { it.copy(categories = list) }
+                    _uiState.update {
+                        if (binding == it.correctionAccess?.binding) it.copy(categories = list) else it
+                    }
                 }
         }
     }
