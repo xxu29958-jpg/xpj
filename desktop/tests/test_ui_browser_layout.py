@@ -666,7 +666,7 @@ pytest_plugins = ["tests._real_backend"]
 _SERVED_WEB_PROBE = """
 (() => {
   const atWeb = location.pathname === "/web" || location.pathname === "/web/pending";
-  if (!atWeb || !document.querySelector("#main-content")) return undefined;
+  if (!atWeb || document.readyState !== "complete" || !document.querySelector("#main-content")) return undefined;
   const interactive = [...document.querySelectorAll("button, a, input, select, textarea")];
   const visible = interactive.filter((el) => {
     const style = getComputedStyle(el);
@@ -675,6 +675,8 @@ _SERVED_WEB_PROBE = """
   });
   return JSON.stringify({
     overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    viewportWidth: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth,
     ledgerChip: Boolean(document.querySelector(".ledger-role-chip")),
     hasOwnerLedger: document.body.innerText.includes("我的小票夹"),
     unnamedControls: visible.filter((el) =>
@@ -723,7 +725,7 @@ def test_served_web_layout_through_manager_bff(
     assert not bootstrap_path.exists()
     assert isinstance(value, str)
     probe = json.loads(value)
-    assert probe["overflow"] is False
+    assert probe["overflow"] is False, (probe["viewportWidth"], probe["scrollWidth"])
     assert probe["ledgerChip"] is True
     assert probe["hasOwnerLedger"] is True
     assert probe["unnamedControls"] == 0
@@ -1006,7 +1008,7 @@ def test_prompt_product_failures_retire_prior_dom_without_erasing_public_status(
     assert probe["sessionSchemaRejected"] == degraded
     assert probe["sessionRoleSchemaRejected"] == degraded
     assert probe["unpaired"] == {
-        "productState": "输入安装器提供的“绑定此电脑”码，连接桌面账本。",
+        "productState": "获取自己的设备绑定码，连接这台电脑上的桌面账本。",
         "productHomeHidden": True,
         "productPairHidden": False,
         "productManageHidden": True,

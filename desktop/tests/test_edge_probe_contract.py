@@ -13,13 +13,13 @@ import pytest
 from tests import _edge_cdp
 
 
-def _theme_probe() -> str:
-    source = Path(__file__).with_name("test_web_bff_edge_e2e.py").read_text(encoding="utf-8")
+def _probe(module_name: str, constant_name: str) -> str:
+    source = Path(__file__).with_name(module_name).read_text(encoding="utf-8")
     module = ast.parse(source)
     assignment = next(
         statement for statement in module.body
         if isinstance(statement, ast.Assign)
-        and any(isinstance(target, ast.Name) and target.id == "_THEME_PROBE" for target in statement.targets)
+        and any(isinstance(target, ast.Name) and target.id == constant_name for target in statement.targets)
     )
     return ast.literal_eval(assignment.value)
 
@@ -51,7 +51,7 @@ try {
 """
     completed = subprocess.run(
         [node, "-e", script],
-        input=json.dumps({"probe": _theme_probe(), "stage": stage}),
+        input=json.dumps({"probe": _probe("test_web_bff_edge_e2e.py", "_THEME_PROBE"), "stage": stage}),
         capture_output=True,
         text=True,
         check=True,
@@ -63,6 +63,50 @@ try {
         "cookie": "ui_theme=midnight",
         "systemPressed": "true",
     }
+    assert json.loads(completed.stdout) == expected
+
+
+@pytest.mark.parametrize(("module_name", "constant_name"), [
+    ("test_web_bff_edge_e2e.py", "_REAL_RENDER_PROBE"),
+    ("test_ui_browser_layout.py", "_SERVED_WEB_PROBE"),
+])
+@pytest.mark.parametrize("stage", ["loading", "interactive", "complete"])
+def test_served_web_geometry_waits_for_load_but_reports_completed_overflow(
+    module_name: str, constant_name: str, stage: str,
+) -> None:
+    node = shutil.which("node")
+    assert node is not None, "Node.js is required for the dependency-free Edge probe contract"
+    script = r"""
+const fs = require("node:fs");
+const vm = require("node:vm");
+const {probe, stage} = JSON.parse(fs.readFileSync(0, "utf8"));
+const context = vm.createContext({
+  document: {
+    readyState: stage,
+    documentElement: {scrollWidth: 1200, clientWidth: 1180},
+    querySelector: () => ({}),
+    querySelectorAll: () => [],
+    body: {innerText: "我的小票夹"},
+    title: "账本",
+  },
+  location: {pathname: "/web/pending", href: "http://127.0.0.1/web/pending"},
+  fetch: async () => ({status: 403}),
+});
+(async () => {
+  vm.runInContext(probe, context);
+  await new Promise(setImmediate);
+  const value = vm.runInContext(probe, context);
+  process.stdout.write(JSON.stringify(value === undefined
+    ? {pending: true}
+    : {pending: false, overflow: JSON.parse(value).overflow}));
+})().catch(() => { process.exitCode = 1; });
+"""
+    completed = subprocess.run(
+        [node, "-e", script],
+        input=json.dumps({"probe": _probe(module_name, constant_name), "stage": stage}),
+        capture_output=True, text=True, check=True, timeout=10,
+    )
+    expected = {"pending": False, "overflow": True} if stage == "complete" else {"pending": True}
     assert json.loads(completed.stdout) == expected
 
 

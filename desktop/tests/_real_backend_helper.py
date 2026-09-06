@@ -32,7 +32,7 @@ def main() -> int:
     database_url = os.environ.get("SMOKE_DATABASE_URL") or os.environ.get("DATABASE_URL")
     cluster_identity = os.environ.get("XPJ_TEST_CLUSTER_IDENTITY")
     passfile = os.environ.get("PGPASSFILE")
-    if not database_url or not cluster_identity:
+    if not database_url and not cluster_identity:
         rendered = render_environment(
             host="localhost",
             port=TEST_POSTGRES_CONTRACT.ports.local,
@@ -46,10 +46,12 @@ def main() -> int:
                 TEST_POSTGRES_CONTRACT.ports.local
             ),
         )
-        database_url = database_url or rendered["SMOKE_DATABASE_URL"]
-        cluster_identity = cluster_identity or rendered["XPJ_TEST_CLUSTER_IDENTITY"]
-        passfile = passfile or rendered["PGPASSFILE"]
-        os.environ.setdefault("PGPASSFILE", passfile)
+        database_url = rendered["SMOKE_DATABASE_URL"]
+        cluster_identity = rendered["XPJ_TEST_CLUSTER_IDENTITY"]
+        passfile = rendered["PGPASSFILE"]
+    elif not all((database_url, cluster_identity, passfile)):
+        raise ValueError("Explicit test database authority must be complete: URL, cluster identity and passfile.")
+    os.environ["PGPASSFILE"] = passfile
     os.environ["DATABASE_URL"] = database_url
     os.environ["XPJ_TEST_CLUSTER_IDENTITY"] = cluster_identity
     port = int(os.environ["XPJ_E2E_BACKEND_PORT"])

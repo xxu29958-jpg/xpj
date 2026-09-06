@@ -198,12 +198,30 @@ def test_shared_web_surface_selects_desktop_edge_consumer() -> None:
         "backend/app/static/web/appearance-bootstrap.js",
         "backend/app/static/web/desktop/theme.js",
         "backend/app/static/web/desktop.js",
+        "backend/app/static/web/pwa-register.js",
+        "backend/app/static/web/sw.js",
+        "backend/app/static/web/product/shell.css",
+        "backend/app/static/web/product/components.css",
+        "backend/app/static/web/product/domains/inbox.css",
+        "backend/app/static/web/fonts/NotoSansSC-Regular.woff2",
+        "backend/app/static/web/product/brand/brand-mark.png",
+        "backend/app/static/web/product/textures/paper-fiber.webp",
         "backend/app/static/shared/tokens.css",
+        "backend/app/static/shared/csrf.js",
+        "backend/app/static/shared/confirm-modal.js",
+        "backend/app/static/shared/confirm-modal.css",
         "backend/app/templates/web/base.html",
+        "backend/app/templates/web/pending.html",
+        "backend/app/templates/web/_sidebar_nav.html",
+        "backend/app/templates/web/_inbox_capture.html",
+        "backend/app/routes/web_app.py",
         "backend/app/routes/web_pending.py",
+        "backend/app/routes/web_common.py",
+        "backend/app/routes/_web_session_common.py",
+        "backend/app/routes/_web_pending_enrichment_watch.py",
         "backend/app/routes/_web_money_views.py",
     ):
-        _assert_path_scopes((path,), "postgres", "backend_frozen", "desktop")
+        _assert_path_scopes((path,), "postgres", "backend_frozen", "desktop", "windows")
     _assert_path_scopes(
         ("backend/app/routes/web_auth.py",),
         "postgres",
@@ -218,6 +236,7 @@ def test_shared_web_surface_selects_desktop_edge_consumer() -> None:
     assert ordinary["postgres"] is True
     assert ordinary["backend_frozen"] is True
     assert ordinary["desktop"] is False
+    assert ordinary["windows"] is False
 
 
 def test_desktop_bff_static_prefixes_follow_allowlist() -> None:
@@ -227,7 +246,7 @@ def test_desktop_bff_static_prefixes_follow_allowlist() -> None:
     assert "backend/app/static/shared/" in prefixes
     assert "backend/app/static/owner/" not in prefixes
     for prefix in prefixes:
-        _assert_path_scopes((f"{prefix}probe.css",), "postgres", "backend_frozen", "desktop")
+        _assert_path_scopes((f"{prefix}probe.css",), "postgres", "backend_frozen", "desktop", "windows")
 
 
 def test_desktop_build_contract_runs_tests_and_packaging() -> None:
@@ -257,6 +276,46 @@ def test_version_contract_crosses_backend_desktop_and_packaging() -> None:
         "android": False,
         "windows": True,
     }
+
+
+def test_real_desktop_backend_consumers_require_the_native_postgres_lane() -> None:
+    for path in (
+        "desktop/tests/_edge_cdp.py",
+        "desktop/tests/_real_backend.py",
+        "desktop/tests/_real_backend_helper.py",
+        "desktop/tests/test_web_bff_edge_e2e.py",
+        "desktop/tests/test_desktop_first_use_backend.py",
+        "desktop/tests/test_ui_browser_layout.py",
+    ):
+        _assert_path_scopes((path,), "desktop", "windows")
+
+
+def test_desktop_pairing_producers_require_the_real_desktop_consumer() -> None:
+    for path in (
+        "backend/app/auth.py",
+        "backend/app/database/__init__.py",
+        "backend/app/network_boundary.py",
+        "backend/app/middleware/web_session.py",
+        "backend/app/services/server_identity_service.py",
+        "backend/app/services/session_refresh_service.py",
+        "backend/app/services/ledger_contracts.py",
+        "backend/app/services/ledger_archive_service.py",
+        "backend/app/services/admin_service/_dtos.py",
+        "backend/app/routes/auth.py",
+        "backend/app/routes/devices.py",
+        "backend/app/routes/ledgers.py",
+        "backend/app/routes/desktop.py",
+        "backend/app/services/owner_device_service.py",
+        "backend/app/services/desktop_switch_service.py",
+        "backend/app/services/ledger_service.py",
+        "backend/app/schemas/_identity.py",
+        "backend/app/services/desktop_activation_service.py",
+        "backend/app/services/session_lifecycle_service.py",
+        "backend/app/services/identity_service/__init__.py",
+        "backend/app/services/identity_service/_pair.py",
+        "backend/app/services/identity_service/_enrollment.py",
+    ):
+        _assert_path_scopes((path,), "postgres", "backend_frozen", "windows")
 
 
 def test_always_on_contract_tests_do_not_expand_heavy_scopes() -> None:
