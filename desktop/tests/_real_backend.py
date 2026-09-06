@@ -108,7 +108,10 @@ def real_backend(tmp_path_factory: pytest.TempPathFactory):
     port = _free_port()
     scratch = tmp_path_factory.mktemp("real-backend-e2e")
     env = {
-        **os.environ,
+        # Hosted Windows images set PGPASSWORD for their unrelated installation.
+        # Only the explicit test passfile may supplement the helper's sealed route.
+        **{key: value for key, value in os.environ.items()
+           if not key.upper().startswith("PG") or key.upper() == "PGPASSFILE"},
         "UPLOAD_TOKEN": "e2e-upload-token",
         "APP_TOKEN": "e2e-app-token",
         "ADMIN_TOKEN": "e2e-admin-token",
