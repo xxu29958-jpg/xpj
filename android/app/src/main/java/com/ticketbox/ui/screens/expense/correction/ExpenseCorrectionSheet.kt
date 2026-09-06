@@ -17,7 +17,6 @@ import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.ui.asString
 import com.ticketbox.domain.model.MessageTone
-import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.AppSectionHeader
 import com.ticketbox.ui.components.AppSheetAction
@@ -33,6 +32,7 @@ import com.ticketbox.ui.screens.expense.ExpenseEditMerchantField
 import com.ticketbox.ui.screens.expense.ExpenseEditNoteField
 import com.ticketbox.ui.screens.expense.ExpenseCurrencySelector
 import com.ticketbox.ui.screens.expense.ExpenseEditSheetScaffold
+import com.ticketbox.viewmodel.ExpenseCorrectionAvailability
 import com.ticketbox.viewmodel.ExpenseFactUiState
 import com.ticketbox.viewmodel.currentCorrectionItems
 import com.ticketbox.viewmodel.currentCorrectionSplits
@@ -64,10 +64,7 @@ internal data class ExpenseCorrectionSheetActions(
 @Composable
 internal fun ExpenseCorrectionSheet(
     state: ExpenseFactUiState,
-    canSubmit: Boolean,
-    canEditItems: Boolean,
-    canEditSplits: Boolean,
-    contextError: UiText?,
+    availability: ExpenseCorrectionAvailability,
     actions: ExpenseCorrectionSheetActions,
 ) {
     if (state.expense == null) return
@@ -88,7 +85,7 @@ internal fun ExpenseCorrectionSheet(
                         announceUpdates = true,
                     )
                 }
-                (contextError ?: state.correction.submitError)?.let { error ->
+                (availability.contextError ?: state.correction.submitError)?.let { error ->
                     AppStatusBanner(
                         message = error,
                         tone = MessageTone.Danger,
@@ -99,7 +96,7 @@ internal fun ExpenseCorrectionSheet(
                 CorrectionCurrencySection(state = state, actions = actions)
                 CorrectionScalarSection(state = state, actions = actions)
                 CorrectionScoreSection(state = state, actions = actions)
-                CorrectionCollectionEntries(state, canEditItems, canEditSplits, contextError, actions)
+                CorrectionCollectionEntries(state, availability, actions)
                 AppSheetActionRow(
                     primary = AppSheetAction(
                         text = if (state.correction.saving) {
@@ -107,7 +104,7 @@ internal fun ExpenseCorrectionSheet(
                         } else {
                             stringResource(R.string.expense_correction_submit)
                         },
-                        enabled = canSubmit,
+                        enabled = availability.canSubmit,
                         onClick = actions.onSubmit,
                     ),
                 )
@@ -119,24 +116,22 @@ internal fun ExpenseCorrectionSheet(
 @Composable
 private fun CorrectionCollectionEntries(
     state: ExpenseFactUiState,
-    canEditItems: Boolean,
-    canEditSplits: Boolean,
-    contextError: UiText?,
+    availability: ExpenseCorrectionAvailability,
     actions: ExpenseCorrectionSheetActions,
 ) {
     CorrectionEntryRow(
         title = stringResource(R.string.expense_correction_items_entry),
         touched = state.correction.itemsTouched,
-        enabled = !state.correction.saving && canEditItems,
+        enabled = !state.correction.saving && availability.canEditItems,
         onClick = actions.onOpenItems,
     )
     CorrectionEntryRow(
         title = stringResource(R.string.expense_correction_splits_entry),
         touched = state.correction.splitsTouched,
-        enabled = !state.correction.saving && canEditSplits,
+        enabled = !state.correction.saving && availability.canEditSplits,
         onClick = actions.onOpenSplits,
     )
-    if (contextError == null && (state.currentCorrectionItems == null || state.currentCorrectionSplits == null)) {
+    if (availability.contextError == null && (state.currentCorrectionItems == null || state.currentCorrectionSplits == null)) {
         Text(
             text = stringResource(R.string.expense_correction_collections_not_current),
             style = MaterialTheme.typography.bodySmall,

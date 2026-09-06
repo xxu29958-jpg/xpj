@@ -100,3 +100,21 @@ PG/完整集成由现有生产者承担：`test_public_host_surface_regression.p
 施工后：最前面的 URI/数值地址验证在环境 token 读取及唯一请求函数调用之前拒绝非环回或非 HTTP(S) 根地址；静态错误不回显参数。保留验证后 URI 的原始 authority 拼写，避免 Windows PowerShell 的 `GetLeftPart` 将 `[::1]` 展开后改变文档要求的精确 Host；首次候选这一差异实际由 IPv6 控制捕获（11 PASS / 1 FAIL），修正后原组 **12 PASS（0.35 秒）**。请求保留原三条清理 route、auth、orphan query 与 timeout，仅禁止重定向。帮助和 DATA_RETENTION 同步；没有读取真实环境凭据或执行 HTTP、清理、PG、安装动作。
 
 直接 classifier 实测脚本单路径原本已选择全部五个 scope，新测试文件单路径选择 Desktop；该 Windows job 正常收集此完整 PowerShell 行为测试，无新增 workflow/selector。原后端 guard/router/服务、参数、持久数据与 tmp 不改。Python Ruff、PowerShell parser 与 diff 检查作为短门；最终组合 exact cloud、独立复核、formal resolved 和主分支资格仍由主控完成。
+
+### 当前云端 gate：维护 URL 准入边界的具名提取
+
+施工前固定 `de8655efa79fe21c4ab4cc7b5381ce47ff44a92a` / tree `2e1c706e6283f69b0c2b08dabb19779dfbe4c5c9`，仅保留原 `?? tmp/`。实际 CI `34057157832` / Backend contracts `101551067848` / weight artifact `9996388192` 报告：`maintenance_ticketbox.ps1` 顶层 PowerShell AST complexity 从 main `67f0f1cb` 的 12 增至 21，超过原阈值 15，导致复杂函数数 22→23、excess 298→304。这是本片 URL 强制准入增加顶层责任的实证，区别于同候选父 Facts 的 Kotlin 体量及 Detekt 失败；没有把整份 CI 失败称为维护行为失败。
+
+| 施工前 impact：入口 / 消费者 / 旧出口 | 本次最小调整与不变量 |
+| --- | --- |
+| CLI `ServerUrl` → URI 解析、根地址限制与环回检查 → `BaseUrl` | 将完整准入块移入同文件的具名函数，唯一调用显式传入 `ServerUrl` 并取得验证后的 URI；原条件、短路顺序、异常类型与静态文案不变。继续使用 `OriginalString.TrimEnd('/')`，保留 IPv6 与精确 Host 拼写。 |
+| 显式 `AdminToken`、环境 token → `Invoke-MaintenancePost` | 准入调用仍先于环境 token 读取及任何请求；函数不接收或读取凭据。非法地址仍在凭据使用前拒绝，原认证 owner 不变。 |
+| confirmed / rejected / orphan 三路清理、orphan dry-run/delete、Vacuum 与无动作帮助 | 原三个固定 POST、query、timeout、`MaximumRedirection 0`、结果输出、无操作帮助及 autovacuum 提示均保留；不改变持久化、协议、清理／恢复权限或安装生命周期。 |
+| `test_maintenance_script_boundary.py` → Windows Desktop job | 原 12 项完整脚本行为断言继续承担九个拒绝和三种合法 authority 的真实 PowerShell 验证；HTTP 拦截与合成 token 不变，不新增镜像测试。 |
+| `repository_weight_powershell.ps1` → weight / Backend contracts | 使用既有 AST producer 对修改前后这个脚本定向测量；不改分析器、阈值、抑制或 selector。脚本原五个 CI scope、原 Desktop 测试收集入口保留。 |
+
+仅授权修改维护脚本及本合同；短门为上述原 12 项、定向 AST 和 diff／原块一致性检查。完整云端资格仍须由主控在最终候选取得。
+
+施工后：新增 `Resolve-MaintenanceUri(ServerUrl)` 只拥有原 URL 准入与已验证 URI 返回，唯一显式调用仍在环境 token 读取前。与固定 de 逐块比较，准入条件／异常块除缩进外一致，调用之后从 `ProjectRoot` 起的全部原代码一致，文件 BOM 和调用之前的编码设置也保留。因此三个维护出口、orphan query、重定向禁止、token 获取／发送顺序、帮助及 Vacuum 均未重写，没有另一份准入或凭据 owner。
+
+实际短验证：原 `test_maintenance_script_boundary.py` **12 passed / 0 failed / 0 errors / 0 skipped（0.40 秒）**，完整脚本在 Windows PowerShell 中执行，合法请求仍仅由原 harness 拦截 confirmed/rejected 两路；orphan 分支由上述原代码一致性确认，没有执行真实清理。既有 `repository_weight_powershell.ps1` 在 PowerShell `5.1.26100.9168` 对 de 与工作稿定向解析：顶层 CC **21→12**，新具名边界 **10 / 20 行 / 1 个显式参数**；其余三个函数 CC 保持 **4、2、1**。本文件不再贡献阈值 15 以上的函数或超额，未更改计量口径。JUnit、原测试输出与前后 AST JSON 保存于仓库外 `gov-qualification-de8655ef-20260907` 证据目录。此结果仅证明本次原行为与定向体量，不替代新候选完整 weight、CI、CodeQL 或 Connected；父 Facts 已知失败仍由主控处理。
