@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TypedDict
 
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse
@@ -34,6 +34,13 @@ from app.services.recurring_occurrence_query import total_outstanding_recurring_
 from app.services.spending_contract_service import current_accounting_month
 
 router = APIRouter(prefix="/web/budget-advise", tags=["web"])
+
+
+class _AdvisorReadinessContext(TypedDict):
+    provider_name: str
+    provider_enabled: bool
+    advisor_can_request: bool
+    advisor_blocked_message: str | None
 
 
 @router.get("", response_class=HTMLResponse)
@@ -164,7 +171,7 @@ def _render_budget_advise(
     return templates.TemplateResponse(request=request, name="budget_advise.html", context=ctx)
 
 
-def _advisor_readiness_context(request: Request, *, selected: str, options: list) -> dict[str, Any]:
+def _advisor_readiness_context(request: Request, *, selected: str, options: list) -> _AdvisorReadinessContext:
     readiness = get_advisor_readiness()
     blocked_reason = readiness.blocked_reason(_actor_role(request, ledger_id=selected, options=options))
     return {
