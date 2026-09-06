@@ -106,6 +106,7 @@ data class PendingScreenChromeActions(
     val onOpenDataQuality: () -> Unit,
     val onRetryEnrichment: () -> Unit,
     val onRetryCapacityUpload: () -> Unit,
+    val onDiscardCapacityUpload: () -> Unit,
     val requestedFilter: NeedsReviewFilter? = null,
     val onRequestedFilterConsumed: () -> Unit = {},
 )

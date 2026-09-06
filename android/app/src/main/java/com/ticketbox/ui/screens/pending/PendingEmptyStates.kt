@@ -124,7 +124,7 @@ internal fun EmptyPendingState(
                         text = stringResource(cta.labelRes),
                         icon = Icons.Filled.AddPhotoAlternate,
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = cta.enabled,
+                        enabled = cta.enabled && state.canStartUpload,
                         onClick = onUploadScreenshot,
                     )
                 }
@@ -146,6 +146,7 @@ internal data class EmptyPendingStateModel(
     val loading: Boolean = false,
     val readOnly: Boolean,
     val showUploadGuide: Boolean,
+    val canStartUpload: Boolean = !uploading && !readOnly,
 )
 
 /**
