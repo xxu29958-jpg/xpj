@@ -54,7 +54,6 @@ class IncomePlanEditViewModel(
     private val repository: IncomePlanActions,
     private val debts: DebtActions,
     private val onDataChanged: () -> Unit = {},
-    private val currentMonth: () -> YearMonth = { YearMonth.now() },
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(IncomePlanEditUiState())
@@ -106,7 +105,7 @@ class IncomePlanEditViewModel(
         }
     }
 
-    fun openEdit(plan: IncomePlan) {
+    fun openEdit(plan: IncomePlan, intentMonth: String) {
         val binding = activeBinding ?: return
         if (!activeCanModify) return
         // busy 期间不切 target：在途提交的结果只归属原会话（sheet 忙碌时行不可点，此为双守门）。
@@ -121,11 +120,11 @@ class IncomePlanEditViewModel(
                     sourceAmountCents = plan.amountCents,
                     baseline = plan,
                     draft = IncomePlanDraftUi(
-                        intentMonth = currentMonth().toString(),
+                        intentMonth = intentMonth,
                         label = plan.label,
                         sourceType = plan.sourceType,
                         frequency = plan.frequency,
-                        incomeMonthInput = plan.incomeMonth ?: YearMonth.now().toString(),
+                        incomeMonthInput = plan.incomeMonth ?: intentMonth,
                         amountYuanInput = currency
                             ?.let { code -> formatAmountInput(plan.amountCents, code) }
                             .orEmpty(),

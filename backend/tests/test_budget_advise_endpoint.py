@@ -12,7 +12,7 @@ Locks in:
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -165,8 +165,6 @@ def test_builder_sends_generalized_income_plan(identity) -> None:  # noqa: ARG00
             label="Acme Corp 工资",
             source_type="工资",
             amount_cents=1_500_000,
-            # Current-month income is filtered by pay day; keep this line
-            # applicable no matter which day the test suite runs.
             pay_day=1,
         )
         db.commit()
@@ -195,6 +193,7 @@ def test_builder_sends_only_income_applicable_to_advice_month(identity) -> None:
         create_income_plan(
             db,
             tenant_id="owner",
+            now=datetime(2026, 6, 1, tzinfo=UTC),
             label="monthly",
             source_type="salary",
             amount_cents=1_000_000,
@@ -203,6 +202,7 @@ def test_builder_sends_only_income_applicable_to_advice_month(identity) -> None:
         create_income_plan(
             db,
             tenant_id="owner",
+            now=datetime(2026, 6, 1, tzinfo=UTC),
             label="june bonus",
             source_type="bonus",
             amount_cents=200_000,
@@ -213,6 +213,7 @@ def test_builder_sends_only_income_applicable_to_advice_month(identity) -> None:
         create_income_plan(
             db,
             tenant_id="owner",
+            now=datetime(2026, 6, 1, tzinfo=UTC),
             label="july bonus",
             source_type="bonus",
             amount_cents=300_000,

@@ -58,6 +58,8 @@ class IncomePlanViewModelTest {
         assertEquals(120_000L, state.totalActiveAmountCents)
         assertEquals(120_000L, state.currentMonthSummary.expectedAmountCents)
         assertEquals(2, state.currentMonthSummary.effectivePlanCount)
+        assertEquals("2026-09", state.addDraft.intentMonth)
+        assertEquals("2026-09", state.addDraft.incomeMonthInput)
         assertEquals(50_000L, state.scheduledAmountCents)
         assertEquals("2026-09", state.forecastMonth)
     }

@@ -181,4 +181,5 @@
     <string name="income_plan_edit_retry">重试原提交</string>
     <string name="income_plan_edit_drop">放弃本机提交</string>
     <string name="income_plan_edit_drop_explanation">这只移除本机保存的提交，不会撤销可能已在服务端完成的修改。请核对当前计划后再提交新操作。</string>
+    <string name="income_plan_edit_expired">这条修改已超过重试期限。请先刷新核对计划，再决定是否重新修改；本机记录仍然保留。</string>
 </resources>

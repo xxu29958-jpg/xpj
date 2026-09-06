@@ -37,7 +37,7 @@ class IncomePlanIntentContinuityTest {
 
         assertEquals(1, fixture.engine(fixture.outbox, fixture.clock).drainOnce().retryable)
         assertEquals(original.payload, fixture.dao.rows.getValue(id).payload)
-        val october = Clock.offset(fixture.clock, Duration.ofDays(31))
+        val october = Clock.offset(fixture.clock, Duration.ofDays(1))
         fixture.api.loseResponse = false
         assertEquals(1, fixture.engine(fixture.newOutbox(october), october).drainOnce().done)
         assertEquals(2, fixture.api.calls.size)
@@ -84,7 +84,7 @@ private class IncomeIntentFixture {
     }, session)
     val binding = requireNotNull(LedgerRequestGuard(provider).captureLogicalBinding())
     val dao = FakePendingMutationDao()
-    val clock: Clock = Clock.fixed(Instant.parse("2026-09-06T00:00:00Z"), ZoneOffset.UTC)
+    val clock: Clock = Clock.fixed(Instant.parse("2026-09-30T15:30:00Z"), ZoneOffset.UTC)
     val scheduledDepths = mutableListOf<Int>()
     val adapter = OutboxAdapterGraph().incomePlanUpdateAdapter
     val outbox = newOutbox(clock)

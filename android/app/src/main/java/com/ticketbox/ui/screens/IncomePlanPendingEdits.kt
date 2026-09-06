@@ -18,6 +18,7 @@ import com.ticketbox.data.repository.PendingIncomePlanEdit
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.screens.settings.isExpiredFailure
 
 @Composable
 internal fun IncomePlanIntentSummary(pending: PendingIncomePlanEdit) {
@@ -49,7 +50,9 @@ private fun IncomePlanPendingEdit(pending: PendingIncomePlanEdit, recover: (Pend
         R.string.income_plan_edit_waiting else R.string.income_plan_edit_attention))
     IncomePlanIntentSummary(pending)
     if (pending.row.status == PendingMutationStatus.Conflict) Text(stringResource(R.string.income_plan_edit_conflict))
-    if (pending.row.status == PendingMutationStatus.Failed) {
+    val expired = isExpiredFailure(pending.row.lastError)
+    if (expired) Text(stringResource(R.string.income_plan_edit_expired))
+    if (pending.row.status == PendingMutationStatus.Failed && !expired) {
         TextButton(onClick = { recover(pending, false) }, enabled = pending.intent != null) {
             Text(stringResource(R.string.income_plan_edit_retry))
         }

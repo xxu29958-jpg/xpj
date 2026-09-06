@@ -44,7 +44,7 @@ data class IncomePlanUiState(
     val pendingEdits: List<PendingIncomePlanEdit> = emptyList(),
     val currentMonthSummary: IncomePlanMonthSummary = IncomePlanMonthSummary(),
     val error: UiText? = null,
-    val addDraft: IncomePlanDraftUi = IncomePlanDraftUi(),
+    val addDraft: IncomePlanDraftUi = IncomePlanDraftUi(intentMonth = "", incomeMonthInput = ""),
     val isSubmitting: Boolean = false,
     val flashMessage: UiText? = null,
     /**
@@ -83,7 +83,7 @@ data class IncomePlanDraftUi(
     val homeCurrency: CurrencyCode? = null,
 ) {
     val isValid: Boolean
-        get() = label.trim().isNotEmpty() &&
+        get() = intentMonth.isNotEmpty() && label.trim().isNotEmpty() &&
             parsedAmountCents() != null &&
             parsedPayDay() != null &&
             (frequency == IncomeFrequency.MONTHLY || parsedIncomeMonth() != null)
@@ -108,6 +108,7 @@ data class IncomePlanDraftUi(
 }
 
 private fun IncomePlanDraftUi.toRepositoryDraftOrNull(): IncomePlanDraft? {
+    if (intentMonth.isEmpty()) return null
     val cleanLabel = label.trim().takeIf(String::isNotEmpty) ?: return null
     val amount = parsedAmountCents() ?: return null
     val payDay = parsedPayDay() ?: return null
@@ -207,6 +208,10 @@ class IncomePlanViewModel(
                         totalActiveAmountCents = listing.totalActiveAmountCents,
                         scheduledAmountCents = listing.scheduledAmountCents,
                         forecastMonth = listing.month,
+                        addDraft = _state.value.addDraft.let { draft ->
+                            if (draft.intentMonth.isEmpty()) draft.copy(intentMonth = listing.month,
+                                incomeMonthInput = draft.incomeMonthInput.ifEmpty { listing.month }) else draft
+                        },
                         currentMonthSummary = IncomePlanMonthSummary(listing.effectivePlanCount, listing.totalActiveAmountCents),
                         error = archivedError,
                     )
@@ -273,7 +278,7 @@ class IncomePlanViewModel(
     }
 
     fun resetDraft() {
-        _state.update { it.copy(addDraft = IncomePlanDraftUi(intentMonth = it.forecastMonth ?: YearMonth.now().toString()),
+        _state.update { it.copy(addDraft = IncomePlanDraftUi(intentMonth = it.forecastMonth.orEmpty(), incomeMonthInput = it.forecastMonth.orEmpty()),
             isSubmitting = false, addSucceeded = false) }
         // 草稿重建后重新注入账本币种（R12-D + R14-6 共享同源裁决；不清 homeCurrency 则新草稿永远 null 禁写）。
         viewModelScope.launch {
@@ -318,7 +323,8 @@ class IncomePlanViewModel(
                     _state.update {
                         it.copy(
                             isSubmitting = false,
-                            addDraft = IncomePlanDraftUi(homeCurrency = it.addDraft.homeCurrency),
+                            addDraft = IncomePlanDraftUi(intentMonth = it.forecastMonth.orEmpty(),
+                                incomeMonthInput = it.forecastMonth.orEmpty(), homeCurrency = it.addDraft.homeCurrency),
                             flashMessage = UiText.res(R.string.income_plan_added),
                             addSucceeded = true,
                         )

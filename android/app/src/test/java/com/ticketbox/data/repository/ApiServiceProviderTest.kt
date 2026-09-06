@@ -196,14 +196,14 @@ class ApiServiceProviderTest {
         val results = listOf(
             BudgetRepository(provider).monthlyBudget(binding, "2026-05"),
             RecurringRepository(provider).items(binding, includeArchived = true),
-            IncomePlanRepository(provider, testOutboxRepository(), com.ticketbox.OutboxAdapterGraph().incomePlanUpdateAdapter).listActive(binding),
+            IncomePlanRepository(provider, testOutboxRepository(dao = FakePendingMutationDao()), com.ticketbox.OutboxAdapterGraph().incomePlanUpdateAdapter).listActive(binding),
             BudgetRepository(provider).saveMonthlyBudget(
                 binding,
                 "2026-05",
                 BudgetMonthlyUpdate(totalAmountCents = 300_000),
             ),
             RecurringRepository(provider).pause(binding, "recurring-1", expectedRowVersion = 1L),
-            IncomePlanRepository(provider, testOutboxRepository(), com.ticketbox.OutboxAdapterGraph().incomePlanUpdateAdapter).archive(binding, "income-1", expectedRowVersion = 1L, intentMonth = "2026-09"),
+            IncomePlanRepository(provider, testOutboxRepository(dao = FakePendingMutationDao()), com.ticketbox.OutboxAdapterGraph().incomePlanUpdateAdapter).archive(binding, "income-1", expectedRowVersion = 1L, intentMonth = "2026-09"),
         )
 
         assertTrue(results.all(Result<*>::isFailure))

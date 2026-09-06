@@ -134,6 +134,7 @@ fun IncomePlanScreen(
                 if (state.canModify) {
                     AppSecondaryButton(
                         text = stringResource(R.string.income_plan_add_action_short),
+                        enabled = state.forecastMonth != null,
                         leadingIcon = Icons.Default.Add,
                         onClick = {
                             viewModel.resetDraft()
@@ -149,7 +150,7 @@ fun IncomePlanScreen(
             editFlash = editState.flashMessage,
             currency = currency,
             viewModel = viewModel,
-            onEditPlan = editViewModel::openEdit,
+            onEditPlan = { plan -> state.forecastMonth?.let { editViewModel.openEdit(plan, it) } },
         )
     }
 

@@ -87,7 +87,7 @@ class IncomePlanRoomContinuityTest {
         compose.runOnIdle {
             model.value = IncomePlanViewModel(graph.incomePlanRepository, fixture.debts)
             editor.value = IncomePlanEditViewModel(graph.incomePlanRepository, fixture.debts,
-                onDataChanged = { model.value?.refresh() }, currentMonth = fixture::currentMonth)
+                onDataChanged = { model.value?.refresh() })
         }
     }
 

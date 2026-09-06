@@ -25,7 +25,6 @@ import java.lang.reflect.Proxy
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
-import java.time.YearMonth
 import java.time.ZoneOffset
 import kotlinx.coroutines.flow.flowOf
 
@@ -33,7 +32,7 @@ import kotlinx.coroutines.flow.flowOf
 internal class IncomePlanConnectedFixture(private val context: Context) {
     private val name = "income-plan-continuity.db"
     private var database: AppDatabase? = null
-    private var clock: Clock = Clock.fixed(Instant.parse("2026-09-06T00:00:00Z"), ZoneOffset.UTC)
+    private var clock: Clock = Clock.fixed(Instant.parse("2026-09-30T15:30:00Z"), ZoneOffset.UTC)
     val network = IncomeConnectedNetwork()
     private val adapters = OutboxAdapterGraph()
     private val session = incomeConnectedSession()
@@ -41,8 +40,6 @@ internal class IncomePlanConnectedFixture(private val context: Context) {
     val debts = object : DebtActions by incomeProxy<DebtActions>({ error("Unexpected debt method: $it") }) {
         override suspend fun listDebts(lens: DebtListLens) = Result.success(DebtListPage(emptyList(), "CNY"))
     }
-
-    fun currentMonth(): YearMonth = YearMonth.now(clock)
 
     fun reopen(): RepositoryGraph {
         database?.close()
@@ -72,7 +69,7 @@ internal class IncomePlanConnectedFixture(private val context: Context) {
         listOf(UpdateIncomePlanDispatcher({ network.service }, adapters.incomePlanUpdateAdapter)),
         maxAttempts = maxAttempts, now = clock::millis).drainOnce()
 
-    fun advanceToOctober() { clock = Clock.offset(clock, Duration.ofDays(31)); network.month = "2026-10" }
+    fun advanceToOctober() { clock = Clock.offset(clock, Duration.ofDays(1)); network.month = "2026-10" }
 
     fun close() { database?.close(); context.deleteDatabase(name) }
 }
@@ -113,7 +110,7 @@ private fun incomeConnectedSession() = LocalSessionRecord(
     serverUrl = "https://income.example.test", credential = StoredSessionToken(token = "synthetic-session"),
     identity = LocalSessionIdentity(accountPublicId = "40000000-0000-4000-8000-000000000003",
         devicePublicId = "40000000-0000-4000-8000-000000000004", accountName = "测试成员", ledgerId = "income-ledger",
-        ledgerName = "测试账本", deviceName = "测试设备", role = "owner", boundAt = "2026-09-06T00:00:00Z"),
+        ledgerName = "测试账本", deviceName = "测试设备", role = "owner", boundAt = "2026-09-30T15:30:00Z"),
 )
 
 private inline fun <reified T> incomeProxy(crossinline answer: (String) -> Any?): T =
