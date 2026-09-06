@@ -319,22 +319,29 @@ def test_real_edge_navigates_manager_session_and_uses_bff_consumer(tmp_path: Pat
     consumer = _AuditedConsumerServer()
     backend_origin = f"http://127.0.0.1:{consumer.server_address[1]}"
     manager = _manager(tmp_path, backend_origin)
-    bootstrap_path = tmp_path / "desktop-bootstrap.html"
-    bootstrap_url = manager.prepare_web_bootstrap(bootstrap_path)
-    assert _INSTANCE_SECRET not in bootstrap_url
+    bootstrap_paths: list[Path] = []
+
+    def prepare_url(attempt: int) -> str:
+        path = tmp_path / f"desktop-bootstrap-{attempt}.html"
+        bootstrap_paths.append(path)
+        bootstrap_url = manager.prepare_web_bootstrap(path)
+        assert _INSTANCE_SECRET not in bootstrap_url
+        return bootstrap_url
+
     assert _INSTANCE_SECRET not in str(tmp_path / "edge-bff-e2e-profile")
 
     with _serving(consumer), _serving(manager):
         value = evaluate_page(
             edge,
             profile=tmp_path / "edge-bff-e2e-profile",
-            url=bootstrap_url,
+            prepare_url=prepare_url,
             width=820,
             height=660,
             expression=_EDGE_PROBE,
         )
 
-    assert not bootstrap_path.exists()
+    assert bootstrap_paths
+    assert all(not path.exists() for path in bootstrap_paths)
     assert isinstance(value, str)
     dom = json.loads(value)
     assert dom == {
@@ -375,13 +382,12 @@ def test_real_edge_theme_change_stays_in_the_browser(tmp_path: Path) -> None:
     consumer = _AuditedConsumerServer(theme_fixture=True)
     backend_origin = f"http://127.0.0.1:{consumer.server_address[1]}"
     manager = _manager(tmp_path, backend_origin)
-    bootstrap_url = manager.prepare_web_bootstrap(tmp_path / "theme-bootstrap.html")
 
     with _serving(consumer), _serving(manager):
         value = evaluate_page(
             edge,
             profile=tmp_path / "edge-theme-bridge-profile",
-            url=bootstrap_url,
+            prepare_url=lambda attempt: manager.prepare_web_bootstrap(tmp_path / f"theme-bootstrap-{attempt}.html"),
             width=820,
             height=660,
             expression=_THEME_PROBE,
@@ -462,19 +468,26 @@ def test_real_backend_bootstrap_pair_bridge_render_probe(
         assert projection["role"] == "owner"
         assert "session_token" not in projection
 
-        bootstrap_path = tmp_path / f"render-{width}x{height}" / "bootstrap.html"
-        bootstrap_url = manager.prepare_web_bootstrap(bootstrap_path)
-        assert _INSTANCE_SECRET not in bootstrap_url
+        bootstrap_paths: list[Path] = []
+
+        def prepare_url(attempt: int) -> str:
+            path = tmp_path / f"render-{width}x{height}" / f"bootstrap-{attempt}.html"
+            bootstrap_paths.append(path)
+            bootstrap_url = manager.prepare_web_bootstrap(path)
+            assert _INSTANCE_SECRET not in bootstrap_url
+            return bootstrap_url
+
         value = evaluate_page(
             edge,
             profile=tmp_path / f"edge-real-{width}x{height}",
-            url=bootstrap_url,
+            prepare_url=prepare_url,
             width=width,
             height=height,
             expression=_REAL_RENDER_PROBE,
         )
 
-    assert not bootstrap_path.exists()
+    assert bootstrap_paths
+    assert all(not path.exists() for path in bootstrap_paths)
     assert isinstance(value, str)
     probe = json.loads(value)
     assert probe["overflow"] is False, (probe["viewportWidth"], probe["scrollWidth"])
