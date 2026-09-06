@@ -22,6 +22,7 @@
 - 确认仓库、分支/worktree、exact HEAD 与 `git status --short`；不得猜测当前基线。
 - 恢复当前任务合同；`.claude/HANDOFF.md` 存在且非 `IDLE` 时把它作为短交接读取，压缩上下文后重新读取。
 - 用目录、搜索、调用链和测试定位责任面；只读真正影响本任务的章节和 ADR。
+- 需要了解模块体量、复杂函数或债务变化时，优先读对应 exact SHA 的 CI `repository-codebase-weight` 报告；入口与口径见 `docs/rules/CODE_QUALITY_STANDARDS.md` 的全仓工程地图。把它作为源码导航，不代替产品合同或真实调用链，不为普通修改重复跑全仓重测试。
 - 明确五项：`Goal / Allowed Changes / Forbidden Surface / Done Checks / Evidence`。用户已给出的口语要求应翻译成这五项，不另造庞大流程。
 - 先分清现存基线失败与本次回归。没有证据时，不把旧失败算到本次修改上，也不顺手修。
 

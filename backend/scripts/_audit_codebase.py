@@ -1,4 +1,4 @@
-"""Read-only codebase audit. Walks app/, scripts/, tests/ and reports symptoms
+"""Read-only Backend Python audit. Walks app/, scripts/, tests/ and reports symptoms
 across 7 dimensions (A-G). Writes nothing to the codebase."""
 
 from __future__ import annotations
@@ -1145,7 +1145,7 @@ AUDITS = tuple(
 
 def main() -> int:
     print("=" * 78)
-    print("CODEBASE AUDIT — read-only")
+    print("BACKEND PYTHON AUDIT — read-only (not whole repository)")
     print("=" * 78)
     counts: DebtCounts = {}
     for audit in AUDITS:
