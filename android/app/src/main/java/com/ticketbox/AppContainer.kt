@@ -180,11 +180,9 @@ class AppContainer(context: Context) {
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.correctionAdapter,
                 cacheAuthoritativeExpense = { ledgerId, expense ->
-                    database.expenseDao().upsertByServerIdForLedger(
-                        ledgerId,
-                        expense.toEntity(ledgerId),
-                    )
+                    database.expenseDao().upsertByServerIdForLedger(ledgerId, expense.toEntity(ledgerId))
                 },
+                onConfirmedCommitted = { ledgerId -> expenseRepository.onConfirmedCommitted(ledgerId) },
             ),
             // issue #65 slice 4: POST /api/expenses/manual via outbox (offline manual
             // create). On success, write the server-assigned id/public_id/row_version

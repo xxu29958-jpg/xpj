@@ -95,3 +95,31 @@ internal fun overviewCaptionResource(overview: SyncStatusOverview): Int =
     } else {
         R.string.sync_status_overview_caption_queued
     }
+
+/** Translate known outbox error markers; never expose raw transport or engine errors to users. */
+@Composable
+internal fun friendlyLastError(raw: String?, fallback: String): String {
+    val text = raw?.trim().orEmpty()
+    if (text.isEmpty()) return fallback
+    return when {
+        text.startsWith("max_attempts_exceeded") -> stringResource(R.string.sync_status_error_max_attempts)
+        text.startsWith("no_dispatcher_registered") -> stringResource(R.string.sync_status_error_no_dispatcher)
+        text.startsWith("outbox_row_expired") -> stringResource(R.string.sync_status_error_expired)
+        text in syncStatusExactErrorMessageResources ->
+            stringResource(syncStatusExactErrorMessageResources.getValue(text))
+        else -> fallback
+    }
+}
+
+internal val syncStatusExactErrorMessageResources = mapOf(
+    "runtime_version_mismatch" to R.string.sync_status_error_protocol_mismatch,
+    "client_upgrade_required" to R.string.sync_status_error_protocol_mismatch,
+    "rule_category_deleted" to R.string.sync_status_error_rule_category_deleted,
+    "debt_create_payload_unsupported" to R.string.debt_create_pending_unsupported,
+    "debt_create_intent_invalid" to R.string.debt_create_sync_rejected,
+    "debt_create_binding_changed" to R.string.debt_create_sync_rejected,
+    "debt_create_rejected" to R.string.debt_create_sync_rejected,
+    "debt_create_response_unverified" to R.string.debt_create_sync_uncertain,
+    "debt_create_response_pending" to R.string.debt_create_sync_uncertain,
+    "debt_create_connection_interrupted" to R.string.debt_create_sync_uncertain,
+)

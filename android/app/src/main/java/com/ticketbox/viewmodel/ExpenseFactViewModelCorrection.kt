@@ -3,11 +3,9 @@ package com.ticketbox.viewmodel
 import androidx.annotation.StringRes
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
-import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.data.repository.changesAdvisorPayloadAgainst
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
-import com.ticketbox.domain.model.ExpenseCorrectionOutcome
 import com.ticketbox.domain.model.UiText
 import java.time.ZoneId
 import kotlinx.coroutines.flow.update
@@ -15,8 +13,8 @@ import kotlinx.coroutines.launch
 
 /**
  * A1: 显式更正流 —— reason + scalar/items/splits 组合为**一次** correction
- * intent；只提交相对 baseline 发生变化的字段（零变更禁提交）；四态
- * （Synced / Queued / validation / conflict）都有用户可继续的表达。
+ * intent；只提交相对已核对 baseline 发生变化的字段（零变更禁提交）。
+ * 接受提交只表示 Room 已保存；真实送达与冲突由持久观察呈现。
  *
  * 责任边界：表单开关与标量字段、diff 汇总与提交四态在本文件；明细/拆账子
  * surface 与其 diff 在 [ExpenseFactViewModelCorrectionLines.kt]（detekt 拆分）。
@@ -26,7 +24,13 @@ import kotlinx.coroutines.launch
 
 fun ExpenseFactViewModel.openCorrectionSheet() {
     if (blockReadOnlyWrite()) return
-    val expense = _uiState.value.expense ?: return
+    val state = _uiState.value
+    if (!state.canStartCorrection) return
+    val expense = state.expense ?: return
+    correctionOriginalItems = state.expenseItems
+    correctionOriginalSplits = state.expenseSplits
+    correctionBaseline = expense
+    correctionBinding = state.correctionAccess?.binding
     val zoneId = ZoneId.of(repository.currentTimezoneId())
     _uiState.update {
         it.copy(correction = initialCorrectionFormState(expense, zoneId))
@@ -102,7 +106,7 @@ private fun ExpenseFactViewModel.rejectCorrection(@StringRes resId: Int): Expens
  * 纯计算 + state 消息，便于单测（reason 门 / 零变更门 / diff 内容）。
  */
 internal fun ExpenseFactViewModel.buildCorrectionDraftOrMessage(): ExpenseCorrectionDraft? {
-    val expense = _uiState.value.expense ?: return null
+    val expense = correctionBaseline ?: return null
     val form = _uiState.value.correction
     if (form.reason.isBlank()) return rejectCorrection(R.string.expense_correction_reason_required)
     val scalar = try {
@@ -111,12 +115,12 @@ internal fun ExpenseFactViewModel.buildCorrectionDraftOrMessage(): ExpenseCorrec
         return rejectCorrection(e.resId)
     }
     val items = try {
-        computeCorrectionItemsChange(expense, form, _uiState.value.expenseItems)
+        computeCorrectionItemsChange(expense, form, correctionOriginalItems)
     } catch (e: CorrectionValidationError) {
         return rejectCorrection(e.resId)
     }
     val splits = try {
-        computeCorrectionSplitsChange(expense, form, _uiState.value.expenseSplits)
+        computeCorrectionSplitsChange(expense, form, correctionOriginalSplits)
     } catch (e: CorrectionValidationError) {
         return rejectCorrection(e.resId)
     }
@@ -140,7 +144,7 @@ internal fun ExpenseFactViewModel.buildCorrectionDraftOrMessage(): ExpenseCorrec
         items = items,
         splits = splits,
     )
-    if (wouldOverallocateLoadedSplits(expense, draft, _uiState.value.expenseSplits)) {
+    if (wouldOverallocateLoadedSplits(expense, draft, correctionOriginalSplits)) {
         return rejectCorrection(R.string.error_expense_split_total_exceeds_parent)
     }
     return draft
@@ -153,58 +157,25 @@ fun ExpenseFactViewModel.canSubmitCorrection(): Boolean {
 }
 
 fun ExpenseFactViewModel.submitCorrection() {
-    if (blockReadOnlyWrite()) return
-    val expense = _uiState.value.expense ?: return
+    if (blockReadOnlyWrite() || !_uiState.value.correction.open || _uiState.value.correction.saving) return
+    val expense = correctionBaseline ?: return
+    val binding = correctionBinding ?: return
     val draft = buildCorrectionDraftOrMessage() ?: return
     val invalidatesAdvice = draft.changesAdvisorPayloadAgainst(expense)
+    updateCorrection { it.copy(saving = true) }
     viewModelScope.launch {
-        updateCorrection { it.copy(saving = true) }
-        repository.correctExpenseAllowingOffline(expense, draft)
-            .onSuccess { outcome -> publishCorrectionOutcome(outcome, draft, invalidatesAdvice) }
-            .onFailure { error ->
-                val isConflict = (error as? RepositoryException)?.errorCode == "state_conflict"
-                if (isConflict) {
-                    // direct 409：刷新权威事实 + 时间线，保留用户已填表单，
-                    // 用 banner 说明而不是静默吞掉。
-                    _uiState.update {
-                        it.copy(
-                            correction = it.correction.copy(
-                                conflictMessage = UiText.res(R.string.expense_correction_conflict),
-                                saving = false,
-                            ),
-                        )
-                    }
-                    refreshAuthoritativeFact()
-                } else {
-                    _uiState.update {
-                        it.copy(
-                            correction = it.correction.copy(
-                                saving = false,
-                                submitError = error.toUiText(R.string.expense_correction_failed),
-                            ),
-                        )
-                    }
-                }
+        repository.submitCorrection(binding, expense, draft)
+            .onSuccess {
+                if (_uiState.value.correctionAccess?.binding != binding) return@onSuccess
+                _uiState.update { state -> state.copy(correction = CorrectionFormState(),
+                    message = null,
+                    messageTone = com.ticketbox.domain.model.MessageTone.Info,
+                    doneAdviceInputsChanged = state.doneAdviceInputsChanged || invalidatesAdvice) }
             }
-    }
-}
-
-private fun ExpenseFactViewModel.refreshAuthoritativeFact() {
-    viewModelScope.launch {
-        repository.fetchExpense(expenseId)
-            .onSuccess { expense ->
-                _uiState.update {
-                    it.copy(
-                        expense = expense,
-                        expenseLoading = false,
-                        expenseLoadState = ExpenseDetailDataLoadState.Loaded,
-                        expenseStale = false,
-                        expenseLoadMessage = null,
-                    )
-                }
-                loadExpenseItems()
-                loadExpenseSplits()
-                loadExpenseRevisions()
+            .onFailure { error ->
+                if (_uiState.value.correctionAccess?.binding != binding) return@onFailure
+                _uiState.update { state -> state.copy(correction = state.correction.copy(saving = false,
+                    submitError = error.toUiText(R.string.expense_correction_failed))) }
             }
     }
 }

@@ -33,7 +33,7 @@ class ExpenseRepositoryConfirmedSyncTest {
             )
         }
         val apiService = FakeApiService(events, confirmedFailuresRemaining = 0)
-        val repository = ExpenseRepository(
+        val repository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = FakeExpenseDao(),
             binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(apiService),
@@ -53,7 +53,7 @@ class ExpenseRepositoryConfirmedSyncTest {
     @Test
     fun confirmedSyncUsesLargestSupportedPageSize() = runTest {
         val apiService = FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0)
-        val repository = ExpenseRepository(
+        val repository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = FakeExpenseDao(),
             binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(apiService),
@@ -74,7 +74,7 @@ class ExpenseRepositoryConfirmedSyncTest {
         dao.insert(cachedConfirmedEntity(serverId = 9, publicId = "remote-kept", merchant = "旧高德"))
         dao.insert(cachedConfirmedEntity(serverId = 99, publicId = "remote-deleted", merchant = "已删除"))
         val settingsStore = boundSettingsStore()
-        val repository = ExpenseRepository(
+        val repository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = dao,
             binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0)),
@@ -109,7 +109,7 @@ class ExpenseRepositoryConfirmedSyncTest {
                 )
             }
         }
-        val repository = ExpenseRepository(
+        val repository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = dao,
             binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(apiService),
@@ -131,7 +131,7 @@ class ExpenseRepositoryConfirmedSyncTest {
         val dao = FakeExpenseDao()
         dao.insert(cachedConfirmedEntity(serverId = 99, publicId = "other-filter-row", merchant = "不在当前筛选"))
         val settingsStore = boundSettingsStore()
-        val repository = ExpenseRepository(
+        val repository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = dao,
             binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0)),
@@ -163,7 +163,7 @@ class ExpenseRepositoryConfirmedSyncTest {
                 )
             )
         }
-        val repository = ExpenseRepository(
+        val repository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = dao,
             binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0)),
@@ -201,7 +201,7 @@ class ExpenseRepositoryConfirmedSyncTest {
                 total = 2,
             )
         }
-        val repository = ExpenseRepository(
+        val repository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = dao,
             binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(apiService),
@@ -242,7 +242,7 @@ class ExpenseRepositoryConfirmedSyncTest {
                 tokenStore.switchLedgerForFixture("family", "Family Ledger", role = "member")
             }
         }
-        val repository = ExpenseRepository(
+        val repository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = dao,
             binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(apiService),
@@ -271,7 +271,7 @@ class ExpenseRepositoryConfirmedSyncTest {
                 tokenStore.rebindToDifferentServerForFixture("https://other.example.com", "token-b")
             }
         }
-        val repository = ExpenseRepository(
+        val repository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = dao,
             binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(apiService),
@@ -314,7 +314,10 @@ class ExpenseRepositoryConfirmedSyncTest {
             ),
             deviceNameProvider = { "Android Test Device" },
             sessionCoordinator = coordinator,
-            offlineMutations = ExpenseOfflineMutationWiring(outbox = outbox),
+            offlineMutations = ExpenseOfflineMutationWiring(outbox = outbox,
+            correctionAdapter = com.ticketbox.OutboxAdapterGraph().correctionAdapter,
+            legacyCorrectionAdapter = com.ticketbox.OutboxAdapterGraph().legacyCorrectionAdapter,
+        ),
         )
 
         val sync = async { repository.syncConfirmed().getOrThrow() }

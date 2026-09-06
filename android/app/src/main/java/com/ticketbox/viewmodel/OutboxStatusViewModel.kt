@@ -50,6 +50,11 @@ class OutboxStatusViewModel(
 
     init {
         viewModelScope.launch {
+            expenseRepository.observeCorrections().collect { observation ->
+                _uiState.update { it.copy(correctionObservation = observation) }
+            }
+        }
+        viewModelScope.launch {
             outbox.observeStatus().collect { status ->
                 val descriptions = status.failed.mapNotNull { row ->
                     debtCreation.describePendingCreation(row)?.let { row.id to it }
@@ -68,6 +73,7 @@ class OutboxStatusViewModel(
 
     /** "用我的覆盖" — re-apply my change on top of the server's latest. */
     fun keepMine(row: OutboxRow) {
+        if (row.type == PendingMutationType.CorrectExpense) return
         if (_uiState.value.busyRowId != null) return
         viewModelScope.launch {
             _uiState.update { it.copy(busyRowId = row.id, message = null, messageTone = MessageTone.Neutral) }
@@ -88,12 +94,17 @@ class OutboxStatusViewModel(
     }
 
     /** "放弃我的改动" — discard the queued change; the server's version wins. */
-    fun dropMine(row: OutboxRow) = resolve(row) {
-        outbox.resolveConflict(row.id, ConflictResolution.DropMine)
+    fun dropMine(row: OutboxRow) {
+        if (row.type == PendingMutationType.CorrectExpense) recoverCorrection(row, true)
+        else resolve(row) { outbox.resolveConflict(row.id, ConflictResolution.DropMine) }
     }
 
     /** "重试" — flip a FAILED row back to PENDING for the next drain. */
     fun retry(row: OutboxRow) {
+        if (row.type == PendingMutationType.CorrectExpense) {
+            recoverCorrection(row, false)
+            return
+        }
         if (row.type == PendingMutationType.UpdateIncomePlan && incomePlans.describeEdit(row)?.hasSupportedIntent != true) {
             _uiState.update { it.copy(message = UiText.res(R.string.income_plan_edit_unsupported), messageTone = MessageTone.Danger) }
             return
@@ -102,8 +113,18 @@ class OutboxStatusViewModel(
     }
 
     /** "放弃" — drop a FAILED row. */
-    fun dropFailed(row: OutboxRow) = resolve(row) {
-        outbox.resolveFailed(row.id, FailedResolution.Drop)
+    fun dropFailed(row: OutboxRow) {
+        if (row.type == PendingMutationType.CorrectExpense) recoverCorrection(row, true)
+        else resolve(row) { outbox.resolveFailed(row.id, FailedResolution.Drop) }
+    }
+
+    private fun recoverCorrection(row: OutboxRow, drop: Boolean) {
+        val binding = _uiState.value.correctionObservation.access?.binding ?: return
+        resolve(row) {
+            expenseRepository.recoverCorrection(binding, row.id, drop).onFailure { error ->
+                _uiState.update { it.copy(message = error.toUiText(R.string.expense_correction_failed), messageTone = MessageTone.Danger) }
+            }
+        }
     }
 
     /** Remove only ownerless or foreign-owner rows after the screen confirms it. */
@@ -156,6 +177,8 @@ class OutboxStatusViewModel(
 }
 
 data class OutboxStatusUiState(
+    val correctionObservation: com.ticketbox.data.repository.ExpenseCorrectionObservation =
+        com.ticketbox.data.repository.ExpenseCorrectionObservation(null, emptyList()),
     val status: OutboxStatus = OutboxStatus(queueDepth = 0, conflicts = emptyList(), failed = emptyList()),
     val failedDebtCreations: Map<Long, PendingDebtCreation> = emptyMap(),
     val recurringOccurrences: Map<Long, com.ticketbox.data.repository.PendingOccurrencePayment> = emptyMap(),

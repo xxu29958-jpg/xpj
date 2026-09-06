@@ -69,6 +69,9 @@ data class ExpenseFactUiState(
     /** null means the current member directory could not be read. */
     val revisionMemberNames: Map<Long, String>? = null,
     val timelineExpanded: Boolean = false,
+    val correctionAccess: com.ticketbox.data.repository.LedgerAccessContext? = null,
+    val corrections: List<com.ticketbox.data.repository.PendingExpenseCorrection> = emptyList(),
+    val correctionRecoveryBusy: Boolean = false,
     // 更正流（correction 扩展拥有全部逻辑）。
     val correction: CorrectionFormState = CorrectionFormState(),
     // 退回与冲销（offsets 扩展拥有逻辑；bundle = 服务端原子事实包，pending 只是
@@ -104,7 +107,10 @@ data class ExpenseFactUiState(
 
     /** 与编辑页同义：本次离开时需要失效建议缓存（金额/币种/分类/时间发生了变化）。 */
     val doneAdviceInputsChanged: Boolean = false,
-)
+) {
+    val canStartCorrection: Boolean get() = !readOnly && correctionAccess != null && !expenseStale &&
+        expenseLoadState == ExpenseDetailDataLoadState.Loaded && corrections.none { !it.delivered }
+}
 
 /** 更正表单态（reason 必填但降层级；draft 相对 baseline 的 diff 决定提交内容）。 */
 data class CorrectionFormState(
@@ -143,6 +149,14 @@ class ExpenseFactViewModel(
     initialExpense: Expense? = null,
 ) : ViewModel() {
 
+    internal var correctionOriginalItems: ExpenseItems? = null
+    internal var correctionOriginalSplits: ExpenseSplits? = null
+    internal var correctionBaseline: Expense? = null
+    internal var correctionBinding: com.ticketbox.data.repository.LogicalSessionBinding? = null
+    internal var observedCorrectionCompletions: Set<Long> = emptySet()
+    internal var expenseLoadGeneration = 0L
+    internal var itemsLoadGeneration = 0L
+    internal var splitsLoadGeneration = 0L
     internal var revisionLoadGeneration = 0L
 
     /** bundle 读/命令的 authority 序号：只在调用点同步递增（见 Offsets 扩展）。 */
@@ -163,6 +177,7 @@ class ExpenseFactViewModel(
     val uiState: StateFlow<ExpenseFactUiState> = _uiState.asStateFlow()
 
     init {
+        observeCorrectionSubmissions()
         if (initialExpense == null) {
             loadExpense()
         } else if (initialExpense.canInitiateBillSplit(_uiState.value.readOnly)) {
@@ -182,6 +197,7 @@ class ExpenseFactViewModel(
     }
 
     private fun loadExpense() {
+        val generation = ++expenseLoadGeneration
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
@@ -193,6 +209,7 @@ class ExpenseFactViewModel(
             }
             repository.fetchExpense(expenseId)
                 .onSuccess { expense ->
+                    if (generation != expenseLoadGeneration) return@onSuccess
                     _uiState.update {
                         // 单调采用：bundle 读/命令已发布更新的 root 时，较旧的
                         // fetchExpense 响应不倒灌 expense（OCC token 不回退）。
@@ -214,6 +231,7 @@ class ExpenseFactViewModel(
                     }
                 }
                 .onFailure { refreshError ->
+                    if (generation != expenseLoadGeneration) return@onFailure
                     resolveExpenseRefreshFailure(refreshError)
                 }
         }
@@ -343,6 +361,7 @@ class ExpenseFactViewModel(
     }
 
     fun loadExpenseItems() {
+        val generation = ++itemsLoadGeneration
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
@@ -353,6 +372,7 @@ class ExpenseFactViewModel(
             }
             repository.fetchExpenseItems(expenseId)
                 .onSuccess { items ->
+                    if (generation != itemsLoadGeneration) return@onSuccess
                     _uiState.update {
                         it.copy(
                             expenseItems = items,
@@ -363,6 +383,7 @@ class ExpenseFactViewModel(
                     }
                 }
                 .onFailure { error ->
+                    if (generation != itemsLoadGeneration) return@onFailure
                     _uiState.update {
                         it.copy(
                             itemsLoading = false,
@@ -375,6 +396,7 @@ class ExpenseFactViewModel(
     }
 
     fun loadExpenseSplits() {
+        val generation = ++splitsLoadGeneration
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
@@ -385,6 +407,7 @@ class ExpenseFactViewModel(
             }
             repository.fetchExpenseSplits(expenseId)
                 .onSuccess { splits ->
+                    if (generation != splitsLoadGeneration) return@onSuccess
                     _uiState.update {
                         it.copy(
                             expenseSplits = splits,
@@ -395,6 +418,7 @@ class ExpenseFactViewModel(
                     }
                 }
                 .onFailure { error ->
+                    if (generation != splitsLoadGeneration) return@onFailure
                     _uiState.update {
                         it.copy(
                             splitsLoading = false,

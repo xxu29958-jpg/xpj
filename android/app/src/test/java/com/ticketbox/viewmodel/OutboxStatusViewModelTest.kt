@@ -113,7 +113,7 @@ class OutboxStatusViewModelTest {
     private fun harness(): Harness {
         val tokenStore = TestSessionFixture().apply { saveToken("session-token") }
         val api = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0))
-        val expenseRepository = ExpenseRepository(
+        val expenseRepository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = FakeExpenseDao(),
             binding = testServerSessionBinding(
                 apiClient = api,

@@ -113,7 +113,7 @@ class DebtCreationRecoveryTest {
                     .create(OutboxStatusViewModel::class.java)
             }
             TicketboxTheme(skin = AppSkin.Default) {
-                SyncStatusScreen(viewModel, onBack = {})
+                SyncStatusScreen(viewModel, onBack = {}, onOpenExpense = {})
             }
         }
         compose.waitUntil(5_000) { ::viewModel.isInitialized && viewModel.uiState.value.status.failed.size == 2 }

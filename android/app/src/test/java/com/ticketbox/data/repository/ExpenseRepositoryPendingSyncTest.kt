@@ -65,7 +65,7 @@ internal class ExpenseRepositoryPendingSyncTest {
             }
         }
         val dao = FakeExpenseDao()
-        val repository = ExpenseRepository(
+        val repository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = dao,
             binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(api),

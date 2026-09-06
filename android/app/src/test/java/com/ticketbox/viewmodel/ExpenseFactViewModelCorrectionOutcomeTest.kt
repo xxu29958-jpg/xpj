@@ -1,15 +1,12 @@
 package com.ticketbox.viewmodel
 
-import com.ticketbox.R
 import com.ticketbox.data.repository.RepositoryException
-import com.ticketbox.data.repository.projectCorrection
-import com.ticketbox.domain.model.ExpenseCorrectionOutcome
+import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.domain.model.ExpenseItem
 import com.ticketbox.domain.model.ExpenseItems
 import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.ItemsSumStatus
 import com.ticketbox.domain.model.MessageTone
-import com.ticketbox.domain.model.UiText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -22,7 +19,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 internal class ExpenseFactViewModelCorrectionOutcomeTest : ExpenseFactViewModelTestBase() {
 
     @Test
-    fun `synced correction closes the sheet, applies the authoritative expense and reloads the timeline`() = edit { fake ->
+    fun `accepted correction leaves facts unchanged then DONE reloads authoritative expense and timeline`() = edit { fake ->
         val vm = viewModel(fake)
         val revisionsBefore = fake.fetchRevisionsCalls
         vm.openCorrectionSheet()
@@ -32,10 +29,14 @@ internal class ExpenseFactViewModelCorrectionOutcomeTest : ExpenseFactViewModelT
         vm.submitCorrection()
         advanceUntilIdle()
 
-        assertFalse(vm.uiState.value.correction.open, "Synced 后 sheet 关闭")
+        assertFalse(vm.uiState.value.correction.open)
+        assertEquals("旧商家", vm.uiState.value.expense?.merchant)
+        assertEquals(revisionsBefore, fake.fetchRevisionsCalls)
+        fake.baseExpense = fake.baseExpense.copy(merchant = "新商家", rowVersion = 2, factRevision = 2)
+        fake.settleCorrection(PendingMutationStatus.Done)
+        advanceUntilIdle()
         assertEquals("新商家", vm.uiState.value.expense?.merchant)
-        assertEquals(R.string.expense_correction_saved, (vm.uiState.value.message as? UiText.Res)?.id)
-        assertEquals(MessageTone.Success, vm.uiState.value.messageTone)
+        assertTrue(vm.uiState.value.corrections.single().delivered)
         assertEquals(revisionsBefore + 1, fake.fetchRevisionsCalls, "Synced 后重拉时间线（不本地伪造 revision）")
         assertFalse(vm.uiState.value.doneAdviceInputsChanged, "仅商家变化不应失效建议缓存")
     }
@@ -69,10 +70,7 @@ internal class ExpenseFactViewModelCorrectionOutcomeTest : ExpenseFactViewModelT
     }
 
     @Test
-    fun `queued correction surfaces the offline hint with the optimistic expense`() = edit { fake ->
-        fake.correctResult = { expense, _ ->
-            Result.success(ExpenseCorrectionOutcome.Queued(expense = expense.copy(merchant = "新商家")))
-        }
+    fun `queued correction exposes original input without overwriting the authoritative expense`() = edit { fake ->
         val vm = viewModel(fake)
         vm.openCorrectionSheet()
         vm.updateCorrectionField(CorrectionScalarField.Reason, "小票金额看错了")
@@ -82,8 +80,9 @@ internal class ExpenseFactViewModelCorrectionOutcomeTest : ExpenseFactViewModelT
         advanceUntilIdle()
 
         assertFalse(vm.uiState.value.correction.open)
-        assertEquals("新商家", vm.uiState.value.expense?.merchant)
-        assertEquals(R.string.expense_correction_queued, (vm.uiState.value.message as? UiText.Res)?.id)
+        assertEquals("旧商家", vm.uiState.value.expense?.merchant)
+        assertEquals("新商家", vm.uiState.value.corrections.single().intent?.request?.merchant)
+        assertEquals(PendingMutationStatus.Pending, vm.uiState.value.corrections.single().row.status)
         assertEquals(MessageTone.Info, vm.uiState.value.messageTone)
     }
 
@@ -98,9 +97,6 @@ internal class ExpenseFactViewModelCorrectionOutcomeTest : ExpenseFactViewModelT
                 splits = emptyList(),
             ),
         )
-        fake.correctResult = { expense, draft ->
-            Result.success(ExpenseCorrectionOutcome.Queued(expense.projectCorrection(draft)))
-        }
         val vm = viewModel(fake)
         vm.openCorrectionSheet()
         vm.updateCorrectionField(CorrectionScalarField.Reason, "金额应更高")
@@ -109,10 +105,11 @@ internal class ExpenseFactViewModelCorrectionOutcomeTest : ExpenseFactViewModelT
         vm.submitCorrection()
         advanceUntilIdle()
 
-        assertEquals(1_200L, vm.uiState.value.expense?.amountCents)
-        assertEquals(1_200L, vm.uiState.value.expenseSplits?.parentAmountCents)
+        assertEquals(1_000L, vm.uiState.value.expense?.amountCents)
+        assertEquals(1_000L, vm.uiState.value.expenseSplits?.parentAmountCents)
         assertEquals(1_000L, vm.uiState.value.expenseSplits?.splitsTotalAmountCents)
-        assertEquals(200L, vm.uiState.value.expenseSplits?.mismatchCents)
+        assertEquals(0L, vm.uiState.value.expenseSplits?.mismatchCents)
+        assertEquals(1_200L, vm.uiState.value.corrections.single().intent?.request?.originalAmountMinor)
     }
 
     @Test
@@ -142,9 +139,6 @@ internal class ExpenseFactViewModelCorrectionOutcomeTest : ExpenseFactViewModelT
                 ),
             ),
         )
-        fake.correctResult = { expense, draft ->
-            Result.success(ExpenseCorrectionOutcome.Queued(expense.projectCorrection(draft)))
-        }
         val vm = viewModel(fake)
         vm.openCorrectionSheet()
         vm.updateCorrectionField(CorrectionScalarField.Reason, "金额应更高")
@@ -153,34 +147,58 @@ internal class ExpenseFactViewModelCorrectionOutcomeTest : ExpenseFactViewModelT
         vm.submitCorrection()
         advanceUntilIdle()
 
-        assertEquals(1_200L, vm.uiState.value.expense?.amountCents)
-        assertEquals(1_200L, vm.uiState.value.expenseItems?.parentAmountCents)
+        assertEquals(1_000L, vm.uiState.value.expense?.amountCents)
+        assertEquals(1_000L, vm.uiState.value.expenseItems?.parentAmountCents)
         assertEquals(1_000L, vm.uiState.value.expenseItems?.itemsTotalAmountCents)
-        // parent(1200) − total(1000) = +200，与服务端同步后的真值同号。
-        assertEquals(200L, vm.uiState.value.expenseItems?.mismatchCents)
-        assertEquals(ItemsSumStatus.MISMATCH_KNOWN, vm.uiState.value.expenseItems?.itemsSumStatus)
+        // Pending input is not an authoritative parent/collection replacement.
+        assertEquals(0L, vm.uiState.value.expenseItems?.mismatchCents)
+        assertEquals(1_200L, vm.uiState.value.corrections.single().intent?.request?.originalAmountMinor)
+        assertEquals(ItemsSumStatus.MATCHED, vm.uiState.value.expenseItems?.itemsSumStatus)
     }
 
     @Test
-    fun `direct state_conflict refreshes the authoritative fact and keeps the sheet open`() = edit { fake ->
-        fake.correctResult = { _, _ ->
-            Result.failure(RepositoryException(errorCode = "state_conflict", message = "conflict"))
-        }
+    fun `durable conflict preserves original submission and requires review instead of a new token`() = edit { fake ->
         val vm = viewModel(fake)
         vm.openCorrectionSheet()
-        vm.updateCorrectionField(CorrectionScalarField.Reason, "小票金额看错了")
+        vm.updateCorrectionField(CorrectionScalarField.Reason, "原更正")
         vm.updateCorrectionField(CorrectionScalarField.Merchant, "我手里的旧值")
-
-        val fetchesBefore = fake.fetchExpenseCalls
         vm.submitCorrection()
         advanceUntilIdle()
+        val original = vm.uiState.value.corrections.single()
+        fake.settleCorrection(PendingMutationStatus.Conflict)
+        advanceUntilIdle()
+        val conflict = vm.uiState.value.corrections.single()
+        assertEquals(original.intent, conflict.intent)
+        assertEquals(original.row.idempotencyKey, conflict.row.idempotencyKey)
+        assertFalse(conflict.canRetry)
+        assertTrue(conflict.canDiscard)
+        vm.openCorrectionSheet()
+        assertFalse(vm.uiState.value.correction.open)
+    }
 
-        assertEquals(
-            R.string.expense_correction_conflict,
-            (vm.uiState.value.correction.conflictMessage as? UiText.Res)?.id,
-        )
-        assertTrue(vm.uiState.value.correction.open, "冲突后表单保持打开（提交值保留）")
-        assertFalse(vm.uiState.value.correction.saving)
-        assertTrue(fake.fetchExpenseCalls > fetchesBefore, "冲突后必须重取权威事实")
+    @Test
+    fun `delivery remains visible through failed reads and screen recreation`() = edit { fake ->
+        val vm = viewModel(fake)
+        vm.openCorrectionSheet()
+        vm.updateCorrectionField(CorrectionScalarField.Reason, "金额")
+        vm.updateCorrectionField(CorrectionScalarField.Amount, "12.00")
+        vm.submitCorrection()
+        advanceUntilIdle()
+        fake.fetchExpenseFailure = RepositoryException("offline")
+        fake.settleCorrection(PendingMutationStatus.Done)
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.corrections.single().delivered)
+        assertEquals(1_000L, vm.uiState.value.expense?.amountCents)
+        assertTrue(vm.uiState.value.expenseStale)
+        val reopened = viewModel(fake)
+        assertTrue(reopened.uiState.value.corrections.single().delivered)
+        assertEquals(ExpenseDetailDataLoadState.Failed, reopened.uiState.value.expenseLoadState)
+        fake.fetchExpenseFailure = null
+        fake.baseExpense = fake.baseExpense.copy(amountCents = 1200, rowVersion = 2, factRevision = 2)
+        reopened.refreshCorrectionFact()
+        advanceUntilIdle()
+        assertEquals(1_200L, reopened.uiState.value.expense?.amountCents)
+        assertTrue(reopened.uiState.value.corrections.single().delivered)
+        assertEquals(1, fake.correctCalls, "read recovery cannot resubmit")
     }
 }

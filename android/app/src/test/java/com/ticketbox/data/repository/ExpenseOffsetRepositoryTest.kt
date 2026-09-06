@@ -147,9 +147,11 @@ internal class ExpenseOffsetRepositoryTest : ExpensePendingRepositoryOutboxTestB
             tokenStore = seededTokenStore(),
         ),
         offlineMutations = ExpenseOfflineMutationWiring(
-            outbox = outbox,
-            offsetCreateAdapter = moshi().adapter(ExpenseOffsetCreateRequestDto::class.java),
-            offsetVoidAdapter = moshi().adapter(ExpenseOffsetVoidOutboxPayload::class.java),
+            outbox = outbox ?: testOutboxRepository(FakePendingMutationDao()),
+            offsetCreateAdapter = moshi().adapter(ExpenseOffsetCreateRequestDto::class.java).takeIf { outbox != null },
+            offsetVoidAdapter = moshi().adapter(ExpenseOffsetVoidOutboxPayload::class.java).takeIf { outbox != null },
+            correctionAdapter = com.ticketbox.OutboxAdapterGraph().correctionAdapter,
+            legacyCorrectionAdapter = com.ticketbox.OutboxAdapterGraph().legacyCorrectionAdapter,
         ),
     )
 

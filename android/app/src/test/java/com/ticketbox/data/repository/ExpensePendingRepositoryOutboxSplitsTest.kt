@@ -49,6 +49,8 @@ internal class ExpensePendingRepositoryOutboxSplitsTest : ExpensePendingReposito
         offlineMutations = ExpenseOfflineMutationWiring(
             outbox = outbox,
             replaceSplitsAdapter = moshi().adapter(ExpenseSplitReplaceRequestDto::class.java),
+            correctionAdapter = com.ticketbox.OutboxAdapterGraph().correctionAdapter,
+            legacyCorrectionAdapter = com.ticketbox.OutboxAdapterGraph().legacyCorrectionAdapter,
         ),
     )
 

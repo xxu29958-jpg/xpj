@@ -260,6 +260,7 @@ interface PendingMutationDao {
           AND ownerKey = :ownerKey
           AND ledgerId = :ledgerId
           AND status = 'conflict'
+          AND type != 'correct_expense'
         """,
     )
     suspend fun requeueConflictWithFreshToken(
@@ -286,6 +287,7 @@ interface PendingMutationDao {
           AND ownerKey = :ownerKey
           AND ledgerId = :ledgerId
           AND status = 'failed'
+          AND type != 'correct_expense'
         """,
     )
     suspend fun requeueFailedWithFreshToken(
@@ -396,14 +398,14 @@ interface PendingMutationDao {
           AND ledgerId = :ledgerId
           AND targetId = :targetId
           AND status = 'pending'
-          AND type != :preservedTokenType
+          AND type NOT IN (:preservedTokenTypes)
         """,
     )
     suspend fun cascadeFreshTokenForTarget(
         ownerKey: String,
         ledgerId: String,
         targetId: String,
-        preservedTokenType: String,
+        preservedTokenTypes: List<String>,
         freshToken: Long,
     ): Int
 

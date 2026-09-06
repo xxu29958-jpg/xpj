@@ -14,7 +14,6 @@ import com.ticketbox.data.remote.PageQuery
 import com.ticketbox.data.remote.dto.AuthCheckDto
 import com.ticketbox.data.remote.dto.ConfirmedExpenseStreamItemDto
 import com.ticketbox.data.remote.dto.ExpenseDto
-import com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto
 import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseOffsetCreateRequestDto
@@ -69,7 +68,7 @@ internal class ExpenseRepositoryCore(
     val binding: ServerSessionBinding,
     val deviceNameProvider: () -> String,
     val sessionCoordinator: LocalLedgerSessionCoordinator,
-    val offlineMutations: ExpenseOfflineMutationWiring = ExpenseOfflineMutationWiring(),
+    val offlineMutations: ExpenseOfflineMutationWiring,
 ) {
     val settingsStore: TicketboxSettingsStore
         get() = binding.settingsStore
@@ -81,8 +80,6 @@ internal class ExpenseRepositoryCore(
         get() = offlineMutations.outbox
     val patchExpenseAdapter: JsonAdapter<ExpenseUpdateRequest>?
         get() = offlineMutations.patchExpenseAdapter
-    val correctionAdapter: JsonAdapter<ExpenseCorrectionRequestDto>?
-        get() = offlineMutations.correctionAdapter
     val expenseStateTokenAdapter: JsonAdapter<ExpenseStateTokenRequest>?
         get() = offlineMutations.expenseStateTokenAdapter
     val replaceItemsAdapter: JsonAdapter<ExpenseItemReplaceRequestDto>?

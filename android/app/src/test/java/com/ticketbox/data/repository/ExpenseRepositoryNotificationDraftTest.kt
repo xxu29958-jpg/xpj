@@ -31,7 +31,7 @@ class ExpenseRepositoryNotificationDraftTest {
         }
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
         val apiClient = FakeApiServiceFactory(apiService)
-        val repository = ExpenseRepository(
+        val repository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = dao,
             binding = testServerSessionBinding(
                 apiClient = apiClient,
@@ -78,7 +78,7 @@ class ExpenseRepositoryNotificationDraftTest {
         }
         val tokenStore = TestSessionFixture().apply { saveToken("session-owner") }
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
-        val repository = ExpenseRepository(
+        val repository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = FakeExpenseDao(),
             binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(apiService),
@@ -109,7 +109,7 @@ class ExpenseRepositoryNotificationDraftTest {
     fun notificationDraftDoesNotCrossPrincipalWithSameLedgerId() = runTest {
         val tokenStore = TestSessionFixture().apply { saveToken("session-owner") }
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
-        val repository = ExpenseRepository(
+        val repository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = FakeExpenseDao(),
             binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(apiService),

@@ -12,7 +12,6 @@ import com.ticketbox.data.remote.dto.RuleApplicationListDto
 import com.ticketbox.data.remote.dto.RuleApplicationRollbackDto
 import com.ticketbox.data.remote.dto.RuleApplyConfirmedRequestDto
 import com.ticketbox.data.remote.dto.RuleApplyConfirmedResponseDto
-import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.FakeApiService
 import com.ticketbox.data.repository.FakeExpenseDao
 import com.ticketbox.data.repository.TestSessionFixture
@@ -231,7 +230,7 @@ class CategoryRulesViewModelTest {
                 tokenStore = tokenStore,
             ),
         )
-        val expenseRepository = ExpenseRepository(
+        val expenseRepository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = FakeExpenseDao(),
             binding = testServerSessionBinding(
                 apiClient = apiFactory,

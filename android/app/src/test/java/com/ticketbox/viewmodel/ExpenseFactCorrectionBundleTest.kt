@@ -1,12 +1,9 @@
 package com.ticketbox.viewmodel
 
-import com.ticketbox.R
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.data.repository.expenseFactBundleDtoFixture
 import com.ticketbox.data.repository.toDomain
-import com.ticketbox.domain.model.ExpenseCorrectionOutcome
-import com.ticketbox.domain.model.MessageTone
-import com.ticketbox.domain.model.UiText
+import com.ticketbox.data.local.PendingMutationStatus
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlin.test.Test
@@ -30,14 +27,7 @@ internal class ExpenseFactCorrectionBundleTest : ExpenseFactViewModelTestBase() 
             rowVersion = original.root.rowVersion + 1,
             factRevision = original.root.factRevision + 1,
         )
-        val syncedCorrection = fake.correctResult
-        fake.correctResult = { expense, draft ->
-            syncedCorrection(expense, draft).map { outcome ->
-                (outcome as ExpenseCorrectionOutcome.Synced).copy(expense = corrected)
-            }
-        }
         fake.factBundleResult = {
-            assertEquals(corrected, vm.uiState.value.expense)
             assertNull(vm.uiState.value.factBundle, "A committed correction invalidates the old summary before reading")
             Result.failure(RepositoryException(errorCode = "server_unavailable", message = "offline"))
         }
@@ -46,13 +36,15 @@ internal class ExpenseFactCorrectionBundleTest : ExpenseFactViewModelTestBase() 
         vm.updateCorrectionField(CorrectionScalarField.Reason, "Correct the original bill amount")
         vm.submitCorrection()
         advanceUntilIdle()
+        fake.baseExpense = corrected
+        fake.settleCorrection(PendingMutationStatus.Done)
+        advanceUntilIdle()
 
         assertEquals(2, fake.fetchFactBundleCalls, "Correction success must refresh the existing fact-bundle owner")
         assertEquals(corrected, vm.uiState.value.expense)
         assertNull(vm.uiState.value.factBundle)
         assertEquals(ExpenseDetailDataLoadState.Failed, vm.uiState.value.factBundleLoadState)
-        assertEquals(R.string.expense_correction_saved, (vm.uiState.value.message as? UiText.Res)?.id)
-        assertEquals(MessageTone.Success, vm.uiState.value.messageTone)
+        kotlin.test.assertTrue(vm.uiState.value.corrections.single().delivered)
 
         val refreshed = original.copy(
             root = corrected,
@@ -70,6 +62,6 @@ internal class ExpenseFactCorrectionBundleTest : ExpenseFactViewModelTestBase() 
 
         assertEquals(refreshed, vm.uiState.value.factBundle)
         assertEquals(ExpenseDetailDataLoadState.Loaded, vm.uiState.value.factBundleLoadState)
-        assertEquals(R.string.expense_correction_saved, (vm.uiState.value.message as? UiText.Res)?.id)
+        kotlin.test.assertTrue(vm.uiState.value.corrections.single().delivered)
     }
 }
