@@ -15,7 +15,7 @@ import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
 
-interface RecurringApi {
+interface RecurringApi : RecurringOccurrenceApi {
     @GET("api/insights/recurring-candidates")
     suspend fun recurringCandidates(
         @Query("timezone") timezone: String? = null,

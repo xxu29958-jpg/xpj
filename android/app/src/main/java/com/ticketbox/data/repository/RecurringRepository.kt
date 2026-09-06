@@ -74,6 +74,7 @@ class RecurringRepository(
     outbox: OutboxRepository? = null,
     createAdapter: JsonAdapter<RecurringItemCreateRequestDto>? = null,
     updateAdapter: JsonAdapter<RecurringItemUpdateRequestDto>? = null,
+    occurrenceAdapter: JsonAdapter<RecurringOccurrencePayload>? = null,
 ) : RecurringActions,
     RecurringManualMutationActions by RecurringMutationClient(
         requestGuard = LedgerRequestGuard(apiProvider),
@@ -85,6 +86,9 @@ class RecurringRepository(
     ) {
     private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
     private val errorHandler = recurringErrorHandler(apiProvider)
+    val occurrences: RecurringOccurrenceActions by lazy {
+        RecurringOccurrenceRepository(apiProvider, requireNotNull(outbox), requireNotNull(occurrenceAdapter))
+    }
 
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
 

@@ -172,7 +172,7 @@ def test_budget_advise_page_renders_with_default_empty_provider(
     resp = web_client.get("/web/budget-advise")
     assert resp.status_code == 200
     body = resp.text
-    assert "本月可自由支配" in body
+    assert "本月预计可安排" in body
     assert "智能建议未开启" in body
     assert "本地计算不受影响" in body
     assert 'name="run_advise"' not in body

@@ -26,10 +26,10 @@ from app.services.budget_advisor_service import (
 )
 from app.services.budget_baseline_service import (
     compute_monthly_discretionary,
-    total_active_recurring_monthly_cents,
     total_confirmed_spent_cents,
 )
 from app.services.income_plan_service import total_monthly_income_cents
+from app.services.recurring_occurrence_query import total_outstanding_recurring_cents
 from app.services.spending_contract_service import current_accounting_month
 from app.tenants import AuthContext
 
@@ -64,7 +64,7 @@ def get_discretionary(
         tenant_id=auth.tenant_id,
         month=month_label,
     )
-    fixed = total_active_recurring_monthly_cents(db, tenant_id=auth.tenant_id)
+    fixed = total_outstanding_recurring_cents(db, tenant_id=auth.tenant_id, month=month)
     spent = total_confirmed_spent_cents(
         db,
         tenant_id=auth.tenant_id,

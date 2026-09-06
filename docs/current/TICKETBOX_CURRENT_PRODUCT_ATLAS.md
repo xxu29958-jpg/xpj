@@ -383,7 +383,7 @@ Review carry-forward — `HOLD`: an unbound Android invitation can be previewed 
 
 ## 6. Visual art and convenience — explicit delivery wave
 
-Visual art is a first-class product outcome, not an implied subtask of functionality or an RC-day polish pass. Each active slice preserves usable visual and interaction states. Once the current Web/Android consumer migration is closed, complete a dedicated whole-product art, visual and convenience wave before continuing the remaining product expansion.
+Visual art remains a required product outcome. The Owner's latest September 6 ruling changes the order: first strengthen and complete the whole system's horizontal and vertical capability gaps, then resume visual and interaction details. Active capability work must still preserve usable states and reachable actions; the pending art wave no longer delays missing user tasks, cross-client integration, shared ownership or failure recovery.
 
 The Owner's September 5 photo is a reference, not a selected design or a requirement to preserve its palette or paper treatment. The main agent owns the final design direction: modern consumer software, not a dated desktop-management or government-service aesthetic. Existing themes, panels and assets have no visual authority; typography, spacing, hierarchy, controls and feedback must work together across real daily tasks.
 
@@ -402,13 +402,11 @@ The consumer workspace frame (#366) adds clean-default Web surfaces with preserv
 
 ## 7. Construction order
 
-1. **Recognition control:** close configured → enabled → observable for receipt and debt-bill recognition in the existing runtime-settings owner.
-2. **Currency adoption ceremony:** unblock an installation that otherwise cannot perform any money write.
-3. **Pending FX recovery:** complete a single-bill edit/preview/confirm journey across Web and Android.
-4. **First use and binding:** verify and simplify the role-specific connection, identity, ledger and first-entry journey, without reopening Windows lifecycle.
-5. **Consumer migration closure, then visual-art and convenience wave:** verify that already-productized Web/Android capabilities survived the migration, complete the explicit wave above, and retire replaced production visual structures.
-6. **Backstage consolidation:** retire duplicate recycle/admin/developer surfaces and replace raw implementation detail with task health.
-7. Return to the five domains, select the highest user-value `PARTIAL` or `MISSING` chain, and repeat until exact RC.
+1. **Reconfirm substantive gaps on the current system:** trace the five domains and Backstage through real user entry, fact/command/query owner, all affected clients, applicable identity/OCC/offline/failure recovery and observable outcome. Distinguish a missing capability from existing functionality awaiting integrated proof. Previously qualified recognition, currency, FX and other slices remain closed unless a current counterexample reopens them.
+2. **Complete capability chains by product impact:** prioritize missing core tasks, financial/identity/intent safety, broken cross-client consumers and genuine duplicated responsibility. Strengthen foundations together with their actual consumers and retire superseded writers/surfaces. Keep one production writer and bounded, independently adjudicated read-only roles.
+3. **Close the integrated functional packages below:** first use, capture/facts/reference, relationships, planning/insights, Backstage readiness and cross-client continuity. Complete one coherent responsibility at a time; do not replace missing outcomes with an API, page inventory or passing audit.
+4. **Resume visual and interaction details:** preserve the existing isolated work and evidence, including draft #372's keyboard action layout. Qualify these on their eventual exact candidate after the system capability priority is satisfied.
+5. **Freeze and rehearse the full Internal Beta RC:** actual product and data/identity outcomes on the exact release artifacts, with the unchanged Windows HOLD boundary.
 
 Each slice stops after its frozen user postcondition is true, targeted regression passes, and exact-head cloud evidence has a disposition. Neighboring gaps remain in this goal map, with the owning journey and a reactivation step, rather than disappearing through repeated HOLD decisions. Fewer repeated inputs, fewer unnecessary page transitions, clear keyboard/touch actions and recoverable drafts are product outcomes, not optional finishing polish.
 
@@ -427,7 +425,26 @@ This is the finite delivery view of the same Goal and Product/G2 contracts, not 
 | Cross-client continuity and data safety | Identity, Money/Time, OCC/idempotency, attachments and Room/Outbox have existing owners and strong slices, not a current complete dress rehearsal | On the final candidate, role/revocation, token rotation, ledger switch, offline intent, actual process interruption, reconnect/conflict/quarantine, originals/provenance and supported export/data-safety outcomes remain correct. Room close/reopen alone does not prove process death |
 | Exact RC freeze and delivery | Not started as final qualification; no current `INTERNAL_BETA_READY` claim | Freeze the exact main/tree, Setup/APK and manifests, then complete the contract's clean-Windows, cross-client product and reboot/data/identity rehearsal. Record accepted non-blocking limits and the unchanged Windows HOLD boundary |
 
-**Current next action:** #370 is closed on independently qualified main `5791d176`, retaining the original retry/drop authority. The Owner next requested a bounded whole-repository codebase-weight/debt gate: exact base/head, production/test/tooling, module/language/file detail, LOC trends and non-growing measured debt. Finish that engineering-map interlude, then return to these capability-strengthening and consumer-grade delivery packages. The keyboard-visible form check stays in the consumer-journey package; a non-keyboard screenshot cannot close it. The other packages are remaining delivery obligations, not permission to start parallel rewrites.
+**Current next action:** #371 closed the repository-weight interlude on independently qualified main `1d5cc293a94dd7e9b13fdf2a5442d505907d7d3b` (CI `34000818853`, CodeQL `34000818829`, actual Connected `34000818849`). On September 6 the Owner twice prioritized strengthening and completing the entire system's horizontal and vertical gaps before small interaction details. Work now continues on isolated `codex/system-capability-completion-20260906` from that verified main. The first construction target is the missing explicit monthly recurring fulfillment relationship, governed by the [current working contract](TICKETBOX_RECURRING_OCCURRENCE_CONTRACT.md): plan → selected canonical payment → outstanding reservation/reminder → Web/Android → reversible association and intent recovery. Draft #372 remains unmerged on its separate branch, with a local test follow-up preserved for later qualification. No detail-level image, keyboard or cosmetic task gates the capability work, and the original full Goal remains active.
+
+The bounded September 6 source map found the following substantive candidates.
+The rows distinguish source candidates from the current recurring implementation and observed evidence.
+Both independent read-only snapshots matched their original manifests on return.
+
+| Capability and owner | Consequence and next falsifier | Disposition |
+| --- | --- | --- |
+| Planning recurring occurrence → discretionary Web/API | Explicit monthly payment association now feeds outstanding reservations and derived reminders through one owner. Web/Android expose link, original-payment inspection and undo; Android persists original intent before dispatch and retains readable recovery. | In qualification in draft #373. PostgreSQL RED observed on `5c7560b2`; `ce293ece` passed the new API/Web regressions and real-db shards, but failed other required gates. Bounded review fixes are implemented; final candidate/main and actual Android Connected remain pending. |
+| Income plan projection → Web income/discretionary | Current active plans can be called received income and reinterpreted across past months. Create an unpaid plan after its pay day, query a prior month, then archive it. Android already labels its totals as estimates. | Retained next Planning task; do not invent a complete income accounting domain from this finding. |
+| FX scheduler → Owner operational status | Lease acquisition failure can escape the loop while the page derives enabled state only from configuration. Fail the first lease operation, then recover and inspect the next sync and Owner status. | Retained Backstage recovery task; existing rate snapshots and manual refresh remain. |
+| Owner recycle surface → canonical restore | Live Owner aggregation omits merchant catalog while Web/API/Android support it. Restore a deleted merchant through the migrated Owner entry, retire duplicate business recovery dispatch, preserve existing ledger governance restore. | Retained consolidation task; no claim that all low-level writers are duplicated. |
+| Advisor owner → Owner/Web/API readiness | Provider name and consent can appear callable before model/URL/credential validation. Remove each required configuration item and prove refusal before outbound execution with a truthful shared status. | Retained readiness task; no new secret or host-setting surface. |
+
+Direct Debt repayment/adjustment commands also need a bounded unknown-result retry
+probe: they mint fresh keys while backend OCC prevents blind same-version replay.
+No duplicate-payment failure has been proved; admit only after distinguishing
+conflict recovery from actual duplicate posting. Existing budgets, goals, debt plans,
+reports, data health and background tasks have real owners/consumers and need
+integrated qualification. Dormant public-admin APIs alone do not authorize a new UI.
 
 **Non-blocking optimization:** cosmetic alternatives that do not impair the selected consumer design, speculative abstractions, redundant tests and hypothetical unsupported-platform matrices do not delay RC. A genuine missing public task, data/identity/intent risk or required final evidence is not reclassified as optional merely to meet an estimate. New findings need a current owner, user consequence and decision, and enter the appropriate existing package.
 

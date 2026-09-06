@@ -16,22 +16,22 @@
   <div class="product-page-heading">
     <span class="product-eyebrow">计划 / 预算建议</span>
     <h1 class="page-title">预算建议</h1>
-    <p class="product-page-summary">{{ month }} · 本月可自由支配由你的账本实时算出；智能建议可选，默认不调用。</p>
+    <p class="product-page-summary">{{ month }} · 按收入计划与已确认支出估算剩余安排空间；智能建议可选，默认不调用。</p>
   </div>
 </header>
 
 <div class="plan-flow">
-<section class="product-panel product-panel--padded" aria-label="本月可自由支配">
+<section class="product-panel product-panel--padded" aria-label="本月预计可安排">
   <div class="plan-discretionary">
     <div>
-      <span class="product-eyebrow">本月可自由支配</span>
+      <span class="product-eyebrow">本月预计可安排</span>
       <span class="plan-income-value"><small>{{ home_currency_symbol }}</small>{{ discretionary_yuan }}</span>
     </div>
-    <p>已到账收入 − 固定支出 − 已花 − 储蓄目标 − 备用金。全部用你的账本由本地服务实时计算，不调用外部 AI。</p>
+    <p>计划收入 − 尚未履约的固定支出 − 已花 − 储蓄目标 − 备用金。这是计划估算，不代表实际到账或账户余额；已关联付款的固定支出不会重复预留。</p>
   </div>
   <div class="plan-breakdown">
-    <span><small>已到账收入</small><strong>{{ home_currency_symbol }}{{ income_yuan }}</strong></span>
-    <span><small>固定支出</small><strong>− {{ home_currency_symbol }}{{ fixed_yuan }}</strong></span>
+    <span><small>计划收入</small><strong>{{ home_currency_symbol }}{{ income_yuan }}</strong></span>
+    <span><small>待履约预留</small><strong>− {{ home_currency_symbol }}{{ fixed_yuan }}</strong></span>
     <span><small>已花</small><strong>− {{ home_currency_symbol }}{{ spent_yuan }}</strong></span>
     <span><small>储蓄目标</small><strong>− {{ home_currency_symbol }}{{ savings_yuan }}</strong></span>
     <span><small>备用金</small><strong>− {{ home_currency_symbol }}{{ reserved_yuan }}</strong></span>

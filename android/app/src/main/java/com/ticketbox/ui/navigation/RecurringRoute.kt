@@ -18,6 +18,7 @@ internal fun RecurringRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
     onDataChanged: () -> Unit = {},
+    onOpenExpense: (Long) -> Unit = {},
 ) {
     val recurringViewModel: RecurringViewModel = viewModel(
         factory = recurringViewModelFactory(
@@ -26,11 +27,16 @@ internal fun RecurringRoute(
         ),
     )
     val state by recurringViewModel.uiState.collectAsStateWithLifecycle()
+    val occurrenceModel = recurringOccurrenceModel(screenFactory) {
+        recurringViewModel.refresh()
+        onDataChanged()
+    }
     RecurringScreen(
         state = state,
         actions = RecurringScreenActions(
             onRefresh = recurringViewModel::refresh,
             items = RecurringItemActions(
+                onOpenOccurrence = occurrenceModel::open,
                 onPause = recurringViewModel::pause,
                 onResume = recurringViewModel::resume,
                 onArchive = recurringViewModel::archive,
@@ -48,4 +54,5 @@ internal fun RecurringRoute(
             onBack = onBack,
         ),
     )
+    RecurringOccurrenceHost(occurrenceModel, onOpenExpense)
 }

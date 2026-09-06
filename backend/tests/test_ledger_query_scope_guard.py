@@ -23,6 +23,8 @@ LEDGER_SCOPED_MODELS = {
     "Goal",
     "MerchantAlias",
     "RecurringItem",
+    "RecurringOccurrence",
+    "RecurringOccurrenceRevision",
     "RuleApplicationBatch",
     "RuleApplicationChange",
     "Tag",

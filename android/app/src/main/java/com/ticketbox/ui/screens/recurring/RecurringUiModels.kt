@@ -55,7 +55,7 @@ internal fun recurringHeroModel(
         factual = items.isNotEmpty() || loadState == RecurringListLoadState.Loaded,
         totalCents = active.sumOf { it.baselineAmountCents },
         activeCount = active.size,
-        nearestNextDate = active.mapNotNull { it.nextExpectedDate }.minOrNull(),
+        nearestNextDate = active.mapNotNull { it.nextDueDate }.minOrNull(),
     )
 }
 
@@ -75,7 +75,7 @@ internal data class RecurringItemMeta(
 internal fun recurringItemMeta(item: RecurringItem): RecurringItemMeta {
     val observed = item.occurrenceCount > 0
     return RecurringItemMeta(
-        nextExpectedDate = item.nextExpectedDate,
+        nextExpectedDate = item.nextDueDate,
         observedCount = if (observed) item.occurrenceCount else null,
         lastObservedDate = if (observed) item.lastSeenAt?.take(10) else null,
         anomalyDeltaPercent = item.amountDeltaPercent
@@ -107,10 +107,10 @@ internal fun recurringScreenDerived(state: RecurringUiState, tab: RecurringTab):
     val paused = state.items.filter { it.status == "paused" }
     val archived = state.items.filter { it.status == "archived" }
     // 即将 ≠ 活跃换序：严格定义为 active 且下次日期非空；无日期项只留在活跃。
-    val upcoming = active.filter { it.nextExpectedDate != null }
+    val upcoming = active.filter { it.nextDueDate != null }
     val visible = when (tab) {
         RecurringTab.Upcoming -> upcoming.sortedWith(
-            compareBy<RecurringItem> { it.nextExpectedDate }.thenBy { it.merchant },
+            compareBy<RecurringItem> { it.nextDueDate }.thenBy { it.merchant },
         )
         RecurringTab.Active -> active.sortedBy { it.merchant }
         RecurringTab.Paused -> paused.sortedBy { it.merchant }

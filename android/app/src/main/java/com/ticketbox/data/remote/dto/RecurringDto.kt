@@ -120,6 +120,8 @@ data class RecurringItemDto(
     val pausedAt: String?,
     @param:Json(name = "archived_at")
     val archivedAt: String?,
+    @param:Json(name = "next_due_date")
+    val nextDueDate: String? = null,
 )
 
 // ADR-0038 PR-A: OCC token body for pause/resume. Mirrors the backend

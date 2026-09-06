@@ -231,6 +231,9 @@ private fun RecurringItemRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(modifier = Modifier.weight(1f)) { RecurringStatusChips(item, meta) }
+            androidx.compose.material3.TextButton(onClick = { actions.onOpenOccurrence(item) }) {
+                Text(stringResource(R.string.occurrence_open))
+            }
             if (canModify) {
                 RecurringRowIconActions(item = item, capabilities = capabilities, actions = actions)
             }

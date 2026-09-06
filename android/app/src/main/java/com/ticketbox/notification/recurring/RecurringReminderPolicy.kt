@@ -54,15 +54,15 @@ fun recurringReminderSentKey(
 ): String = "v1:$ledgerId:$itemPublicId:$expectedDate:${kind.name}"
 
 /**
- * MVP 提醒策略（ADR Contract 3）。**只消费 [RecurringItem.nextExpectedDate]，绝不读 frequency**
+ * 提醒策略只消费后端履约派生的 [RecurringItem.nextDueDate]，不从计划锚点或 frequency 推导。
  * （当前后端 frequency 只有 monthly，但提醒层不得写死 monthly——多频率 recurring 落地时此层不需改）。
  *
  * 判定（OVERDUE 优先于 DUE_SOON）：
  *
  *     status != "active"                            -> NONE
- *     nextExpectedDate 缺失 / 不可解析              -> NONE（item-level skip，不让单条坏日期炸全局）
- *     nextExpectedDate < today                      -> OVERDUE
- *     today <= nextExpectedDate <= today + 7 天      -> DUE_SOON
+ *     nextDueDate 缺失 / 不可解析                   -> NONE（item-level skip，不让单条坏日期炸全局）
+ *     nextDueDate < today                          -> OVERDUE
+ *     today <= nextDueDate <= today + 7 天          -> DUE_SOON
  *     否则（窗口外的未来日期）                       -> NONE
  *
  * [today] 由可注入 clock / date provider 提供（[RecurringReminderEngine] 传入），便于测试钉边界。
@@ -76,7 +76,7 @@ class RecurringReminderPolicy(
      */
     fun evaluate(today: LocalDate, item: RecurringItem): RecurringReminderDecision? {
         if (item.status != STATUS_ACTIVE) return null
-        val expectedDate = parseExpectedDate(item.nextExpectedDate) ?: return null
+        val expectedDate = parseExpectedDate(item.nextDueDate) ?: return null
         val kind = when {
             expectedDate.isBefore(today) -> RecurringReminderKind.OVERDUE
             !expectedDate.isAfter(today.plusDays(dueSoonWindowDays)) -> RecurringReminderKind.DUE_SOON

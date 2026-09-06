@@ -116,9 +116,11 @@ internal fun SyncStatusScreenContent(
         SyncStatusPageBody(
             state = state,
             actions = actions.copy(
-                onDropMine = { confirmingDrop = SyncStatusDropSelection(it, failed = false, debtCreation = null) },
+                onDropMine = { confirmingDrop = SyncStatusDropSelection(it, failed = false, debtCreation = null,
+                    recurringOccurrence = state.recurringOccurrences[it.id]) },
                 onDropFailed = { row ->
-                    confirmingDrop = SyncStatusDropSelection(row, failed = true, debtCreation = state.failedDebtCreations[row.id])
+                    confirmingDrop = SyncStatusDropSelection(row, failed = true, debtCreation = state.failedDebtCreations[row.id],
+                        recurringOccurrence = state.recurringOccurrences[row.id])
                 },
                 onClearQuarantined = { confirmingClearQuarantined = true },
             ),
@@ -167,6 +169,7 @@ private fun SyncStatusPageBody(
     if (status.conflicts.isNotEmpty()) {
         SettingsSection(title = stringResource(R.string.sync_status_section_needs_action), icon = Icons.Filled.SyncProblem) {
             status.conflicts.forEach { row ->
+                state.recurringOccurrences[row.id]?.let { com.ticketbox.ui.screens.recurring.RecurringOccurrenceIntentSummary(it) }
                 ConflictCard(
                     row = row,
                     busy = state.busyRowId == row.id,
@@ -180,6 +183,7 @@ private fun SyncStatusPageBody(
     if (status.failed.isNotEmpty()) {
         SettingsSection(title = stringResource(R.string.sync_status_section_failed), icon = Icons.Filled.ErrorOutline) {
             status.failed.forEach { row ->
+                state.recurringOccurrences[row.id]?.let { com.ticketbox.ui.screens.recurring.RecurringOccurrenceIntentSummary(it) }
                 FailedCard(
                     row = row,
                     debtCreation = state.failedDebtCreations[row.id],
@@ -386,6 +390,7 @@ internal val syncStatusMutationLabelResources = mapOf(
     PendingMutationType.UpdateIncomePlan to R.string.sync_status_mutation_update_income_plan,
     PendingMutationType.CreateRecurringItem to R.string.sync_status_mutation_create_recurring_item,
     PendingMutationType.UpdateRecurringItem to R.string.sync_status_mutation_update_recurring_item,
+    PendingMutationType.SetRecurringOccurrencePayment to R.string.sync_status_mutation_recurring_occurrence,
     PendingMutationType.CreateExpenseOffset to R.string.sync_status_mutation_create_expense_offset,
     PendingMutationType.VoidExpenseOffset to R.string.sync_status_mutation_void_expense_offset,
     PendingMutationType.Unknown to R.string.sync_status_mutation_unknown,

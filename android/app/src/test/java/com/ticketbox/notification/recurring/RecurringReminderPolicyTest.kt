@@ -34,6 +34,7 @@ class RecurringReminderPolicyTest {
         occurrenceCount = 3,
         lastSeenAt = "2026-05-01T00:00:00Z",
         nextExpectedDate = nextExpectedDate,
+        nextDueDate = nextExpectedDate,
         status = status,
         confidence = "high",
         source = "candidate",

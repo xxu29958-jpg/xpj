@@ -11,6 +11,8 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from app.models import Expense, RecurringItem
 from app.services.owner_console_service._common import _owner_ledger_ids
+from app.services.recurring_occurrence_query import next_due_dates_for_ledgers
+from app.services.spending_contract_service import accounting_zone
 from app.services.time_service import now_utc
 
 
@@ -53,35 +55,8 @@ def _empty_recurring_ops() -> RecurringOpsVM:
     )
 
 
-def _count_due_soon(
-    db: Session, ledger_ids: list[str], *, today: date, soon: date
-) -> int:
-    return int(
-        db.scalar(
-            select(func.count())
-            .select_from(RecurringItem)
-            .where(RecurringItem.tenant_id.in_(ledger_ids))
-            .where(RecurringItem.status == "active")
-            .where(RecurringItem.next_expected_date.is_not(None))
-            .where(RecurringItem.next_expected_date >= today)
-            .where(RecurringItem.next_expected_date <= soon)
-        )
-        or 0
-    )
-
-
-def _count_overdue(db: Session, ledger_ids: list[str], *, today: date) -> int:
-    return int(
-        db.scalar(
-            select(func.count())
-            .select_from(RecurringItem)
-            .where(RecurringItem.tenant_id.in_(ledger_ids))
-            .where(RecurringItem.status == "active")
-            .where(RecurringItem.next_expected_date.is_not(None))
-            .where(RecurringItem.next_expected_date < today)
-        )
-        or 0
-    )
+def _active_due_dates(db: Session, ledger_ids: list[str]) -> list[date]:
+    return next_due_dates_for_ledgers(db, tenant_ids=ledger_ids)
 
 
 def _notification_draft_filter() -> ColumnElement[bool]:
@@ -136,14 +111,15 @@ def get_recurring_ops(db: Session) -> RecurringOpsVM:
         return _empty_recurring_ops()
 
     now = now_utc()
-    today = now.date()
+    today = now.astimezone(accounting_zone()).date()
     soon = today + timedelta(days=7)
+    due_dates = _active_due_dates(db, ledger_ids)
     return RecurringOpsVM(
         active_count=_count_recurring(db, ledger_ids, "active"),
         paused_count=_count_recurring(db, ledger_ids, "paused"),
         archived_count=_count_recurring(db, ledger_ids, "archived"),
-        due_soon_count=_count_due_soon(db, ledger_ids, today=today, soon=soon),
-        overdue_count=_count_overdue(db, ledger_ids, today=today),
+        due_soon_count=sum(today <= day <= soon for day in due_dates),
+        overdue_count=sum(day < today for day in due_dates),
         notification_pending_count=_count_notification_pending(db, ledger_ids),
         notification_recent_24h_count=_count_notification_recent(db, ledger_ids, now=now),
         notification_incomplete_count=_count_notification_incomplete(db, ledger_ids),

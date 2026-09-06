@@ -111,6 +111,7 @@ internal fun NavGraphBuilder.addPlanRoutes(
             RecurringRoute(
                 screenFactory = screenFactory,
                 onBack = onBack,
+                onOpenExpense = navController::openExpense,
                 onDataChanged = {
                     markPlanWriteCompleted(shellState, invalidatesAdvice = true) {
                         screenFactory.budgetRepository.invalidateBudgetAdvice()
@@ -233,6 +234,7 @@ internal fun NavGraphBuilder.addObligationRoutes(
             val vm: OutboxStatusViewModel = viewModel(
                 factory = outboxStatusViewModelFactory(
                     screenFactory.outboxRepository, screenFactory.repository, screenFactory.debtCreationRepository,
+                    screenFactory.recurringRepository.occurrences,
                 ),
             )
             SyncStatusScreen(viewModel = vm, onBack = onBack)

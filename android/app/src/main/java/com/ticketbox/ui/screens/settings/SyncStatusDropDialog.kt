@@ -23,6 +23,7 @@ internal data class SyncStatusDropSelection(
     val row: OutboxRow,
     val failed: Boolean,
     val debtCreation: PendingDebtCreation?,
+    val recurringOccurrence: com.ticketbox.data.repository.PendingOccurrencePayment? = null,
 )
 
 private data class DropConfirmationText(val title: String, val text: String, val confirmWord: String)
@@ -44,6 +45,7 @@ internal fun SyncStatusDropDialog(
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             ) {
                 selection.debtCreation?.let { DebtCreationIntentSummary(it) }
+                selection.recurringOccurrence?.let { com.ticketbox.ui.screens.recurring.RecurringOccurrenceIntentSummary(it) }
                 Text(copy.text)
             }
         },
@@ -65,6 +67,11 @@ private fun dropConfirmationText(selection: SyncStatusDropSelection): DropConfir
     val debtCreation = row.type == PendingMutationType.CreateDebt
     val label = stringResource(syncStatusMutationLabelRes(row.type))
     return when {
+        row.type == PendingMutationType.SetRecurringOccurrencePayment -> DropConfirmationText(
+            stringResource(R.string.occurrence_drop),
+            stringResource(R.string.occurrence_drop_explanation),
+            stringResource(R.string.occurrence_drop),
+        )
         !selection.failed -> DropConfirmationText(
             stringResource(R.string.sync_status_conflict_drop_dialog_title),
             stringResource(R.string.sync_status_conflict_drop_dialog_text, label),
