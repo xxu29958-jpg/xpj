@@ -205,25 +205,17 @@ class DebtAdjustmentRepositoryTest {
     }
 
     @Test
-    fun zeroAmountCannotPublishOrSend() = runTest {
-        val fixture = DebtAdjustmentFixture()
+    fun zeroAmountOrBlankReasonCannotPublishOrSend() = runTest {
+        for ((amountCents, reason) in listOf(0L to "  补记借款  ", 3_000L to "   ")) {
+            val fixture = DebtAdjustmentFixture()
+            val input = "amountCents=$amountCents, reason='$reason'"
 
-        assertTrue(fixture.save(amountCents = 0L).isFailure)
+            assertTrue(fixture.save(amountCents = amountCents, reason = reason).isFailure, input)
 
-        assertTrue(fixture.dao.rows.isEmpty())
-        assertTrue(fixture.queueDepthAtSchedule.isEmpty())
-        assertTrue(fixture.api.calls.isEmpty())
-    }
-
-    @Test
-    fun blankReasonCannotPublishOrSend() = runTest {
-        val fixture = DebtAdjustmentFixture()
-
-        assertTrue(fixture.save(reason = "   ").isFailure)
-
-        assertTrue(fixture.dao.rows.isEmpty())
-        assertTrue(fixture.queueDepthAtSchedule.isEmpty())
-        assertTrue(fixture.api.calls.isEmpty())
+            assertTrue(fixture.dao.rows.isEmpty(), input)
+            assertTrue(fixture.queueDepthAtSchedule.isEmpty(), input)
+            assertTrue(fixture.api.calls.isEmpty(), input)
+        }
     }
 
     @Test
