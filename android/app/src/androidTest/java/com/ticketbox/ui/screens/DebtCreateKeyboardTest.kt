@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens
 
+import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.view.View
 import android.view.inspector.WindowInspector
@@ -16,7 +17,6 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.viewModelScope
-import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
@@ -32,7 +32,6 @@ import org.junit.Rule
 import org.junit.Test
 
 /** Real modal sheet and OS IME; only the already-covered durable publication boundary is gated. */
-@SdkSuppress(minSdkVersion = 29)
 class DebtCreateKeyboardTest {
     @get:Rule val compose = createComposeRule()
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -117,10 +116,15 @@ class DebtCreateKeyboardTest {
         assertTrue("Save remains inside the sheet viewport", bounds.top >= 0f && bounds.height > 0f)
     }
 
-    private fun keyboardWindow(): View? = WindowInspector.getGlobalWindowViews().firstOrNull { window ->
-        val insets = ViewCompat.getRootWindowInsets(window)
-        window.hasWindowFocus() && insets?.isVisible(WindowInsetsCompat.Type.ime()) == true &&
-            insets.getInsets(WindowInsetsCompat.Type.ime()).bottom > 0
+    private fun keyboardWindow(): View? {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            return WindowInspector.getGlobalWindowViews().firstOrNull { window ->
+                val insets = ViewCompat.getRootWindowInsets(window)
+                window.hasWindowFocus() && insets?.isVisible(WindowInsetsCompat.Type.ime()) == true &&
+                    insets.getInsets(WindowInsetsCompat.Type.ime()).bottom > 0
+            }
+        }
+        error("The OS keyboard probe requires API 29 or later; qualification runs on API 36")
     }
 
     private fun text(resource: Int): String = instrumentation.targetContext.getString(resource)
