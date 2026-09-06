@@ -116,8 +116,8 @@ class OutboxDrainWorkerTest {
 
     @Test
     fun `discarded only → SUCCESS`() {
-        // Server told us the row is moot (404 / structural 409).
-        // No backoff needed.
+        // The dispatcher has already established a legitimate terminal result.
+        // This scheduler test does not classify raw HTTP refusals.
         assertEquals(
             DrainOutcome.SUCCESS,
             OutboxDrainWorker.classify(summary(DrainSummaryFixture(attempted = 1, discarded = 1))),

@@ -84,9 +84,8 @@ class OutboxDrainEngineTest {
 
     @Test
     fun discardedDispatchMarksRowDoneSilently() = runTest {
-        // ADR-0038 contract: 404 / non-conflict 409 → discard, no
-        // user-facing banner. The drain engine surfaces this as
-        // markDone so cleanup garbage-collects the row.
+        // A positively established terminal result retires the row. Unknown
+        // HTTP refusals must never reach the engine as Discarded.
         val (engine, outbox) = withDispatcher(
             StubDispatcher(result = DispatchResult.Discarded("已不存在")),
         )
