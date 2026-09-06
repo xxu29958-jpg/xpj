@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -57,7 +59,9 @@ def _lock_series(db, *, tenant_id, public_id, expected_row_version):
     return item
 
 
-def _lock_payment(db, *, tenant_id, payload, item, period):
+def _lock_payment(
+    db: Session, *, tenant_id: str, payload: RecurringOccurrenceWriteRequest, item: RecurringItem, period: date,
+) -> Expense | None:
     if payload.expense_public_id is None:
         return None
     # Lock the root before checking offsets; offset/correction commands lock this

@@ -5,13 +5,19 @@ from __future__ import annotations
 from calendar import monthrange
 from datetime import date
 
-from sqlalchemy import exists, select
+from sqlalchemy import exists, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import Expense, ExpenseOffsetFact, RecurringItem, RecurringOccurrence
 from app.money_contract import projection_sum_to_int
 from app.schemas._recurring_occurrence import RecurringOccurrenceResponse
-from app.services.spending_contract_service import clean_month, current_accounting_month, shift_month
+from app.services.spending_contract_service import (
+    clean_month,
+    current_accounting_month,
+    month_bounds_utc,
+    shift_month,
+    stat_time_expr,
+)
 
 
 def occurrence_period(month: str | None) -> date:
@@ -19,6 +25,10 @@ def occurrence_period(month: str | None) -> date:
 
 
 def eligible_payment_query(*, tenant_id: str):
+    return _eligible_payments_for_ledgers([tenant_id])
+
+
+def _eligible_payments_for_ledgers(tenant_ids: list[str]):
     reversal = exists(select(ExpenseOffsetFact.id).where(
         ExpenseOffsetFact.tenant_id == Expense.tenant_id,
         ExpenseOffsetFact.expense_id == Expense.id,
@@ -26,11 +36,37 @@ def eligible_payment_query(*, tenant_id: str):
         ExpenseOffsetFact.status == "active",
     )).correlate(Expense)
     return select(Expense).where(
-        Expense.tenant_id == tenant_id,
+        Expense.tenant_id.in_(tenant_ids),
         Expense.status == "confirmed",
-        Expense.amount_cents > 0,
+        Expense.amount_cents >= 0,
         ~reversal,
     )
+
+
+def find_recurring_payments(db: Session, *, tenant_id: str, month: str | None, query: str) -> list[Expense]:
+    statement = eligible_payment_query(tenant_id=tenant_id)
+    if month:
+        start, end = month_bounds_utc(month)
+        statement = statement.where(stat_time_expr() >= start, stat_time_expr() < end)
+    if query:
+        statement = statement.where(or_(
+            Expense.merchant.contains(query, autoescape=True), Expense.note.contains(query, autoescape=True),
+        ))
+    return list(db.scalars(statement.order_by(stat_time_expr().desc(), Expense.id.desc()).limit(101)))
+
+
+def next_due_dates_for_ledgers(db: Session, *, tenant_ids: list[str]) -> list[date]:
+    items = list(db.scalars(select(RecurringItem).where(
+        RecurringItem.tenant_id.in_(tenant_ids), RecurringItem.status == "active",
+    )))
+    rows = db.execute(select(RecurringOccurrence.series_id, RecurringOccurrence.period_start).where(
+        RecurringOccurrence.tenant_id.in_(tenant_ids),
+        RecurringOccurrence.expense_id.in_(_eligible_payments_for_ledgers(tenant_ids).with_only_columns(Expense.id)),
+    ))
+    fulfilled: dict[int, set[date]] = {}
+    for series_id, period in rows:
+        fulfilled.setdefault(series_id, set()).add(period)
+    return [day for item in items if (day := next_due_date(item, fulfilled.get(item.id, set()))) is not None]
 
 
 def fulfilled_periods(

@@ -76,7 +76,7 @@ class RecurringReminderPolicy(
      */
     fun evaluate(today: LocalDate, item: RecurringItem): RecurringReminderDecision? {
         if (item.status != STATUS_ACTIVE) return null
-        val expectedDate = parseExpectedDate(item.nextExpectedDate) ?: return null
+        val expectedDate = parseExpectedDate(item.nextDueDate) ?: return null
         val kind = when {
             expectedDate.isBefore(today) -> RecurringReminderKind.OVERDUE
             !expectedDate.isAfter(today.plusDays(dueSoonWindowDays)) -> RecurringReminderKind.DUE_SOON

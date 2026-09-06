@@ -127,6 +127,28 @@ def _link_payload(series, payment, *, version=0):
     }
 
 
+def test_confirmed_payment_corrected_to_zero_still_fulfills_explicit_obligation(client: TestClient, *, identity) -> None:
+    series = _create_series(client, identity)
+    payment = _payment(client, identity)
+    path = f"/api/recurring/items/{series['public_id']}/occurrences/2026-09"
+    linked = client.put(path, headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+                        json=_link_payload(series, payment))
+    assert linked.status_code == 200, linked.json()
+    corrected = client.post(
+        f"/api/expenses/{payment['id']}/corrections",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": payment["row_version"], "reason": "核对原账单金额", "amount_cents": 0},
+    )
+    assert corrected.status_code == 201, corrected.json()
+    current = client.get(path, headers=identity.app_headers).json()
+    assert current["state"] == "fulfilled"
+    assert current["paid_amount_cents"] == 0
+    assert current["reserved_amount_cents"] == 0
+    assert current["next_due_date"] == "2026-10-05"
+    budget = client.get("/api/budget/discretionary?month=2026-09", headers=identity.app_headers).json()
+    assert budget["fixed_expenses_cents"] == 0
+
+
 def test_occurrence_conflicts_and_payment_reversal_are_visible(client: TestClient, *, identity) -> None:
     series = _create_series(client, identity)
     payment = _payment(client, identity)

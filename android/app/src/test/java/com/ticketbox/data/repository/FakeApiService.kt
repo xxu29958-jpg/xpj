@@ -84,6 +84,12 @@ internal class FakeApiService(
     private val serverSettingsResult: ServerSettingsDto? = null,
     private val merchantApi: FakeMerchantApi = FakeMerchantApi(),
 ) : ApiService {
+    override suspend fun recurringOccurrence(publicId: String, month: String): com.ticketbox.data.remote.dto.RecurringOccurrenceDto =
+        error("Unexpected recurring occurrence read")
+    override suspend fun setRecurringOccurrencePayment(
+        publicId: String, month: String, request: com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto,
+        idempotencyKey: String,
+    ): com.ticketbox.data.remote.dto.RecurringOccurrenceDto = error("Unexpected recurring occurrence write")
     var lastNotificationDraftRequest: NotificationDraftRequestDto? = null
     var lastConfirmedMonth: String? = null
     var lastConfirmedCategory: String? = null

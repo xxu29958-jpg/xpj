@@ -291,6 +291,10 @@ class AppContainer(context: Context) {
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.debtCreateAdapter,
             ),
+            com.ticketbox.data.repository.RecurringOccurrenceDispatcher(
+                apiProvider = ::outboxApi,
+                payloadAdapter = outboxAdapters.recurringOccurrenceAdapter,
+            ),
             UpdateRecurringItemDispatcher(
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.recurringUpdateAdapter,

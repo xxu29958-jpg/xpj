@@ -11,7 +11,7 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from app.models import Expense, RecurringItem
 from app.services.owner_console_service._common import _owner_ledger_ids
-from app.services.recurring_occurrence_query import next_due_dates
+from app.services.recurring_occurrence_query import next_due_dates_for_ledgers
 from app.services.spending_contract_service import accounting_zone
 from app.services.time_service import now_utc
 
@@ -56,16 +56,7 @@ def _empty_recurring_ops() -> RecurringOpsVM:
 
 
 def _active_due_dates(db: Session, ledger_ids: list[str]) -> list[date]:
-    dates = []
-    for ledger_id in ledger_ids:
-        items = list(db.scalars(select(RecurringItem).where(
-            RecurringItem.tenant_id == ledger_id, RecurringItem.status == "active",
-        )))
-        dates.extend(
-            day for day in next_due_dates(db, tenant_id=ledger_id, items=items).values()
-            if day is not None
-        )
-    return dates
+    return next_due_dates_for_ledgers(db, tenant_ids=ledger_ids)
 
 
 def _notification_draft_filter() -> ColumnElement[bool]:

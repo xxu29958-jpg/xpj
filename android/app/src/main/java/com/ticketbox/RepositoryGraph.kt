@@ -102,6 +102,7 @@ internal class RepositoryGraph(
         outbox = outbox,
         createAdapter = outboxAdapters.recurringCreateAdapter,
         updateAdapter = outboxAdapters.recurringUpdateAdapter,
+        occurrenceAdapter = outboxAdapters.recurringOccurrenceAdapter,
     )
 
     val budgetRepository = BudgetRepository(

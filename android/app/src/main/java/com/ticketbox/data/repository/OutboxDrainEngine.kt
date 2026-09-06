@@ -142,6 +142,7 @@ class OutboxDrainEngine(
             PendingMutationType.UpdateIncomePlan,
             PendingMutationType.CreateRecurringItem,
             PendingMutationType.UpdateRecurringItem,
+            PendingMutationType.SetRecurringOccurrencePayment,
             PendingMutationType.VoidExpenseOffset,
         )
     }

@@ -221,6 +221,8 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/review/bulk"): "writer-only",
     # Recurring
     ("GET", "/web/recurring"): "local-only-rendering",
+    ("GET", "/web/recurring/{public_id}/occurrence"): "local-only-rendering",
+    ("POST", "/web/recurring/{public_id}/occurrence"): "writer-only",
     # A3 manual create/edit: web surface of POST/PATCH /api/recurring/items.
     ("POST", "/web/recurring/create"): "writer-only",
     ("POST", "/web/recurring/{public_id}/edit"): "writer-only",

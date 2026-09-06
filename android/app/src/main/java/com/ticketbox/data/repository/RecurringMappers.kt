@@ -28,6 +28,7 @@ fun RecurringItemDto.toDomain(): RecurringItem = RecurringItem(
     rowVersion = rowVersion,
     pausedAt = pausedAt,
     archivedAt = archivedAt,
+    nextDueDate = nextDueDate,
 )
 
 fun RecurringCandidate.toConfirmRequest(nextExpectedDate: String? = null): RecurringCandidateConfirmRequestDto =

@@ -7,12 +7,10 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse
 from pydantic import ValidationError
-from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.models import Expense
 from app.routes._web_session_common import resolve_web_actor
 from app.routes.web_common import (
     LocalOnly,
@@ -26,29 +24,18 @@ from app.routes.web_common import (
 )
 from app.schemas._recurring_occurrence import RecurringOccurrenceWriteRequest
 from app.services.recurring_occurrence_command import set_occurrence_payment
-from app.services.recurring_occurrence_query import eligible_payment_query, occurrence_period, occurrence_response
+from app.services.recurring_occurrence_query import find_recurring_payments, occurrence_period, occurrence_response
 from app.services.recurring_service import get_recurring_item
 from app.services.spending_contract_service import (
     accounting_datetime_label,
-    month_bounds_utc,
     stat_time,
-    stat_time_expr,
 )
 
 router = APIRouter()
 
 
 def _payments(db, *, ledger_id, month, query, currency):
-    statement = eligible_payment_query(tenant_id=ledger_id)
-    if month:
-        start, end = month_bounds_utc(month)
-        statement = statement.where(stat_time_expr() >= start, stat_time_expr() < end)
-    if query:
-        statement = statement.where(or_(
-            Expense.merchant.contains(query, autoescape=True),
-            Expense.note.contains(query, autoescape=True),
-        ))
-    rows = db.scalars(statement.order_by(stat_time_expr().desc(), Expense.id.desc()).limit(101)).all()
+    rows = find_recurring_payments(db, tenant_id=ledger_id, month=month, query=query)
     return [{
         "public_id": row.public_id, "id": row.id, "row_version": row.row_version,
         "merchant": row.merchant or "未填写商家",
@@ -59,9 +46,9 @@ def _payments(db, *, ledger_id, month, query, currency):
 
 
 def _page(
-    request, db, *, public_id, ledger_id, month=None, payment_month=None,
+    request: Request, db: Session, *, public_id: str, ledger_id: str | None, month=None, payment_month=None,
     query="", message=None, error=None, retry=None,
-):
+) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
     item = get_recurring_item(db, tenant_id=selected, public_id=public_id)

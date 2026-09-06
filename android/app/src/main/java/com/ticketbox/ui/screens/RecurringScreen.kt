@@ -160,6 +160,7 @@ data class RecurringItemActions(
     val onRestore: (String, Long) -> Unit,
     val onCreate: (RecurringItemDraft) -> Long,
     val onEdit: (RecurringItem, RecurringItemPatch) -> Long,
+    val onOpenOccurrence: (RecurringItem) -> Unit = {},
 )
 
 data class RecurringCandidateActions(
