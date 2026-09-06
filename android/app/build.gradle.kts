@@ -416,6 +416,8 @@ dependencies {
     testImplementation(libs.sqlite.jdbc)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    // SdkSuppress is used by our test source; Compose brings this runner only at runtime.
+    androidTestImplementation(libs.androidx.test.runner)
     // ADR-0041 follow-up: real Room v10→v11 MigrationTestHelper coverage,
     // unblocked by aligning kotlinx-serialization to 1.10.0 (configurations
     // force above). Test-only artifact of the adopted Room library (same 2.8.4).

@@ -59,3 +59,11 @@ Android fast job `101556343768` 的 artifact `9997142562` 实际 JVM XML 为 215
 本轮不把清理失败算作业务反例，也不以捕获异常、放宽不可读前提或跳过当前 emulator 测试制造 RED/GREEN。证据保存在独立 qualification 目录，源码树不保存 raw log 或 credentials。
 
 本轮实际秒级检查：三个原 Connected 方法逐字不变；新方法排除标准 resource lifecycle 改动后，全部业务源码行不变；PG 文件与 e22 相同。复用既有 `repository_weight_functions._lizard_functions` 和 pinned Lizard 1.24.0 检查两份 Kotlin 文件，未报 over-80 / over-15；新方法实际文本跨度为 74 行，Kotlin 嵌套解析仍只是导航估计。`git diff --check` 通过。没有安装依赖、运行本机 Gradle / PG / emulator、stage / commit / push；新候选仍需云端证明预期恢复业务 RED。
+
+## 1582 的实际编译失败与 test source 依赖闭合
+
+Root 核准并发布 `1582d819956ecf6d4dc7053145bebc2bc5882bd4`，tree `12744d36ffde91649756f99027294bf2432acdd7`；actual PR checkout `633775bdc669e40aae2526ab5c82f6caad3e620a` 同 tree。CI `34060606812` 的 Android fast job `101560358778` 成功，之前的 UseSdkSuppress lint 错误已不再阻断；CodeQL `34060606782` 成功。但 Connected `34060606814` / job `101560365404` 的 `compileGrayDebugAndroidTestKotlin` 实际失败：PendingLaunchActionEffectTest:27/118 无法解析 filters / SdkSuppress。Emulator 实际已启动；没有执行测试或生成 JUnit XML。artifact `9997433976` 只有运行前后诊断，不能用它声称 Android 业务 RED。这是测试源依赖遗漏，也说明 fast/lint 通过不能替代 instrumentation-source 编译。原 PG 回执业务反例仍使 real-db 1/3 失败；后续门禁继续按 actual head 记账。
+
+施工前后 impact：唯一新依赖消费者是 API 29 MediaStore 测试方法的 SdkSuppress；测试 runner 已经通过当前 Compose 测试运行时链存在，但没有进入该测试源码的 compile classpath。读取 Google Maven 原始 POM 得到：当前 BOM 2026.04.01 选择 ui-test 1.11.0；ui-test-android 的 runtime 依赖 espresso-core 3.5.0，其 runner 为 1.5.0。现有本机 runner-1.5.0 AAR 中也实际包含 `androidx/test/filters/SdkSuppress.class`。按[官方 API 归属](https://developer.android.com/reference/androidx/test/filters/SdkSuppress)，将这个已采用的 runner 版本显式加入 androidTestImplementation，并在现有 version catalog 命名，不升级测试运行时或增加 app production 依赖。
+
+该修正仅变更 catalog、app 的 instrumentation compile 依赖和本合同；不改三份原测试、新恢复断言、minSdk、fixture、生产上传、数据库、SDK 执行范围或 no-skip 门。旧的“靠间接 runtime 依赖可编译 SdkSuppress”假设退役。POM/AAR 的秒级来源核对与 TOML/diff 校验只证明依赖归属；新的 exact Connected 编译和实际业务反例仍待云端执行。
