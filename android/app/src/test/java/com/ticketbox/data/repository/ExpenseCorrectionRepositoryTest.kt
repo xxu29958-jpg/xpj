@@ -45,10 +45,73 @@ internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxT
                 assertEquals(draft.category, request.category, label)
                 assertEquals(draft.tags, request.tags, "$label must leave normalization to the backend")
                 assertEquals(draft.items?.map { it.name }, request.items?.map { it.name }, label)
+                assertEquals(draft.splits?.map { it.memberId }, request.splits?.map { it.memberId }, label)
                 assertEquals(7L, pending.row.expectedRowVersion)
                 assertNotNull(pending.row.idempotencyKey)
             }
         }
+    }
+
+    @Test
+    fun `stored oversized split replacement is readable but cannot become an original retry`() = runTest {
+        val queue = FakePendingMutationDao()
+        val outbox = testOutboxRepository(queue)
+        val repo = buildCorrectionRepository(FakeApiService(mutableListOf(), 0), outbox = outbox)
+        val binding = assertNotNull(repo.observeCorrections().first().access).binding
+        val request = ExpenseCorrectionRequestDto(7L, "保留原分摊", splits = List(101) {
+            com.ticketbox.data.remote.dto.ExpenseSplitRequestDto(it.toLong() + 1, 1L, "原备注")
+        })
+        val payload = ExpenseCorrectionPayload(1, 42L, "原商家", "CNY", 101L, "CNY",
+            binding.ownerKey, binding.ledgerId, binding.sessionGeneration, binding.bindingRevision, request)
+        val json = OutboxAdapterGraph().correctionAdapter.toJson(payload)
+        val id = outbox.enqueue(PendingMutationType.CorrectExpense, "expense:42", json, 7L, "original-splits-key")
+        outbox.markFailed(id, "validation_error")
+        val original = queue.rows.getValue(id)
+        val pending = repo.observeCorrections().first().corrections.single()
+
+        assertFalse(pending.hasSupportedIntent)
+        assertFalse(pending.canRetry)
+        assertEquals(request, pending.legacyRequest)
+        assertTrue(repo.recoverCorrection(binding, id, drop = false).isFailure)
+        assertEquals(original, queue.rows.getValue(id))
+        repo.recoverCorrection(binding, id, drop = true).getOrThrow()
+        assertTrue(queue.rows.isEmpty())
+    }
+
+    @Test
+    fun `definitive missing target keeps original command for review without futile retry`() = runTest {
+        val queue = FakePendingMutationDao()
+        val outbox = testOutboxRepository(queue)
+        var requests = 0
+        val api = object : ApiService by FakeApiService(mutableListOf(), 0) {
+            override suspend fun correctExpense(id: String, request: ExpenseCorrectionRequestDto,
+                idempotencyKey: String?): ExpenseCorrectionResponseDto {
+                requests++
+                throw httpException(404, """{"error":"not_found"}""")
+            }
+        }
+        val repo = buildCorrectionRepository(api, outbox = outbox)
+        val id = submit(repo, baselineExpense().copy(status = "confirmed", rowVersion = 7),
+            ExpenseCorrectionDraft("原更正", note = "保留内容")).getOrThrow()
+        val binding = assertNotNull(repo.observeCorrections().first().access).binding
+        val dispatcher = CorrectExpenseDispatcher({ api }, OutboxAdapterGraph().correctionAdapter,
+            cacheAuthoritativeExpense = { _, _ -> error("A refusal cannot publish a fact") },
+            onConfirmedCommitted = { error("A refusal is not committed") })
+        assertEquals(1, OutboxDrainEngine(outbox, listOf(dispatcher)).drainOnce().failures)
+        assertEquals(1, requests)
+        val pending = repo.observeCorrections().first().corrections.single()
+        val original = queue.rows.getValue(id)
+        assertEquals("correction_target_unavailable", pending.row.lastError)
+        assertTrue(pending.hasSupportedIntent)
+        assertFalse(pending.delivered)
+        assertFalse(pending.canRetry)
+        assertTrue(pending.canDiscard)
+        assertTrue(repo.recoverCorrection(binding, id, drop = false).isFailure)
+        assertEquals(original, queue.rows.getValue(id))
+        assertEquals(0, OutboxDrainEngine(outbox, listOf(dispatcher)).drainOnce().attempted)
+        assertEquals(1, requests)
+        repo.recoverCorrection(binding, id, drop = true).getOrThrow()
+        assertTrue(queue.rows.isEmpty())
     }
 
     @Test
@@ -301,5 +364,9 @@ private fun correctionAdmissionBoundaryCases(): List<Triple<String, ExpenseCorre
         add(Triple("U0085 stripped name 64", base.copy(tags = "\u0085".repeat(5) + "a".repeat(64) + "\u0085".repeat(5)), true))
         add(Triple("201 nonempty items", base.copy(items = List(201) { item.copy(name = "明细$it") }), false))
         add(Triple("200 nonempty items", base.copy(items = List(200) { item.copy(name = "明细$it") }), true))
+        add(Triple("101 nonempty splits", base.copy(splits = List(101) { ExpenseSplitDraft(it.toLong() + 1, 1L, null) }), false))
+        add(Triple("100 nonempty splits", base.copy(splits = List(100) { ExpenseSplitDraft(it.toLong() + 1, 1L, null) }), true))
+        add(Triple("zero split amount", base.copy(splits = listOf(ExpenseSplitDraft(1L, 0L, null))), false))
+        add(Triple("positive split amount", base.copy(splits = listOf(ExpenseSplitDraft(1L, 1L, null))), true))
     }
 }

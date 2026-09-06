@@ -1,7 +1,10 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.R
+import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.data.repository.ExpenseFactActions
 import com.ticketbox.domain.model.BillSplitStatusValues
+import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlin.test.Test
@@ -11,7 +14,9 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.TestScope
 
 /** A1: confirmed bill-split consumer moved from the legacy editor to the fact owner. */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -237,5 +242,89 @@ internal class ExpenseFactViewModelBillSplitTest : ExpenseFactViewModelTestBase(
         assertEquals(MessageTone.Danger, vm.uiState.value.billSplitMessageTone)
         assertFalse(vm.uiState.value.billSplitLoading)
         assertEquals(BillSplitSentLoadState.Failed, vm.uiState.value.billSplitSentLoadState)
+    }
+
+    @Test
+    fun `new invitations wait for correction refresh while existing invitations remain cancellable`() = edit { fake ->
+        assertInvitationActionsRespectCorrection(this, fake)
+    }
+
+    private suspend fun assertInvitationActionsRespectCorrection(scope: TestScope, fake: FakeExpenseFactActions) {
+        val cancelled = mutableListOf<String>()
+        prepareCorrectionInvitations(fake, cancelled)
+        val refresh = CompletableDeferred<Result<Expense>>()
+        var holdRefresh = false
+        val repository = object : ExpenseFactActions by fake {
+            override suspend fun fetchExpense(id: Long): Result<Expense> =
+                if (holdRefresh) refresh.await() else fake.fetchExpense(id)
+        }
+        val vm = ExpenseFactViewModel(expenseId = fake.baseExpense.id, repository = repository)
+        scope.advanceUntilIdle()
+        vm.openBillSplitInviteSheet()
+        scope.advanceUntilIdle()
+        vm.selectBillSplitInviteMember(3L)
+        vm.updateBillSplitInviteAmount("4.00")
+        assertTrue(vm.uiState.value.billSplitInviteSheetOpen)
+        vm.openCorrectionSheet()
+        vm.updateCorrectionField(CorrectionScalarField.Amount, "14.00")
+        vm.updateCorrectionField(CorrectionScalarField.Reason, "Correct before sharing this expense")
+        vm.submitCorrection()
+        scope.advanceUntilIdle()
+        assertEquals(PendingMutationStatus.Pending, vm.uiState.value.corrections.single().row.status)
+        vm.sendBillSplitInvite()
+        scope.advanceUntilIdle()
+        val sentWhilePending = fake.createBillSplitCalls
+        vm.cancelBillSplitInvitation("existing")
+        scope.advanceUntilIdle()
+        assertEquals(listOf("existing"), cancelled)
+        assertEquals(BillSplitStatusValues.CANCELLED, vm.uiState.value.billSplitSent.single().status)
+        vm.closeBillSplitInviteSheet()
+        vm.openBillSplitInviteSheet()
+        scope.advanceUntilIdle()
+        val openedWhilePending = vm.uiState.value.billSplitInviteSheetOpen
+        vm.closeBillSplitInviteSheet()
+
+        fake.baseExpense = fake.baseExpense.copy(
+            amountCents = 1_400L, homeAmountCents = 1_400L, originalAmountMinor = 1_400L,
+            rowVersion = 2L, factRevision = 2L,
+        )
+        holdRefresh = true
+        fake.settleCorrection(PendingMutationStatus.Done)
+        scope.advanceUntilIdle()
+        assertTrue(vm.uiState.value.corrections.single().delivered)
+        assertEquals(ExpenseDetailDataLoadState.Loading, vm.uiState.value.expenseLoadState)
+        vm.openBillSplitInviteSheet()
+        scope.advanceUntilIdle()
+        val openedBeforeRefresh = vm.uiState.value.billSplitInviteSheetOpen
+        vm.closeBillSplitInviteSheet()
+        refresh.complete(Result.success(fake.baseExpense))
+        scope.advanceUntilIdle()
+        assertEquals(fake.baseExpense, vm.uiState.value.expense)
+        vm.openBillSplitInviteSheet()
+        scope.advanceUntilIdle()
+        assertTrue(vm.uiState.value.billSplitInviteSheetOpen)
+        vm.selectBillSplitInviteMember(3L)
+        vm.updateBillSplitInviteAmount("4.00")
+        vm.sendBillSplitInvite()
+        scope.advanceUntilIdle()
+
+        assertEquals(0, sentWhilePending)
+        assertFalse(openedWhilePending)
+        assertFalse(openedBeforeRefresh)
+        assertEquals(1, fake.createBillSplitCalls)
+        assertEquals(Triple(7L, 333L, 400L), fake.lastCreateBillSplitArgs)
+        assertFalse(vm.uiState.value.billSplitInviteSheetOpen)
+    }
+
+    private fun prepareCorrectionInvitations(fake: FakeExpenseFactActions, cancelled: MutableList<String>) {
+        var existing = fake.sentInvite(publicId = "existing", amountCents = 100L)
+        fake.billSplitSentResult = { Result.success(listOf(existing)) }
+        fake.splitMembersResult = { Result.success(listOf(fake.member(memberId = 3L, accountId = 333L))) }
+        fake.createBillSplitResult = { _, _, _ -> Result.success(fake.sentInvite(publicId = "new")) }
+        fake.cancelBillSplitResult = { publicId ->
+            cancelled += publicId
+            existing = existing.copy(status = BillSplitStatusValues.CANCELLED)
+            Result.success(existing)
+        }
     }
 }

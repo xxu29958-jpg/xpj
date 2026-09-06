@@ -27,10 +27,16 @@ import com.ticketbox.viewmodel.CreateDebtGoalViewModel
 import com.ticketbox.viewmodel.RepaymentDraftInboxViewModel
 import com.ticketbox.viewmodel.DebtRepaymentHistoryViewModel
 import com.ticketbox.viewmodel.MemberRepaymentProposalViewModel
+import com.ticketbox.viewmodel.OutboxRecoveryRepositories
+import com.ticketbox.viewmodel.OutboxStatusViewModel
+import com.ticketbox.viewmodel.outboxStatusViewModelFactory
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -103,6 +109,74 @@ class DebtAdjustmentRoomContinuityTest {
 
     @Test
     fun retainedRepaymentDraftTargetsRefreshAfterBackgroundAdjustmentDelivery() = assertRetainedConsumerRefreshes("repaymentDraft")
+
+    @Test
+    fun globalDropOfUnknownAdjustmentRequiresCanonicalRecoveryForAllRetainedConsumers() {
+        fixture.network.current = fixture.network.current.copy(direction = "owed_to_me")
+        val graph = fixture.reopen()
+        var retained: RetainedAdjustmentConsumers? = null
+        var global: OutboxStatusViewModel? = null
+        val gate = CompletableDeferred<Unit>()
+        try {
+            compose.runOnIdle {
+                retained = RetainedAdjustmentConsumers(graph)
+                global = outboxStatusViewModelFactory(fixture.outbox, graph.expenseRepository,
+                    OutboxRecoveryRepositories(graph.debtCreationRepository, graph.recurringRepository.occurrences,
+                        graph.incomePlanRepository, graph.debtAdjustmentRepository)).create(OutboxStatusViewModel::class.java)
+            }
+            val consumers = requireNotNull(retained)
+            val sync = requireNotNull(global)
+            compose.waitUntil(10_000) { consumers.balances() == List(5) { 50_000L } }
+            compose.runOnIdle {
+                consumers.createGoal.updateName("保留原目标名称")
+                consumers.createGoal.toggleDebt(fixture.network.current.publicId)
+            }
+            saveAndCloseDetail(graph, fixture)
+            val original = fixture.stored().single()
+            assertEquals(1, runBlocking { fixture.drain(maxAttempts = 1) }.failures)
+            assertEquals(1, fixture.network.results.size)
+            assertEquals(53_000L, fixture.network.current.remainingAmountCents)
+            compose.waitUntil(10_000) { sync.uiState.value.status.failed.size == 1 }
+            for (field in listOf("payload", "expectedRowVersion", "idempotencyKey", "ownerKey", "ledgerId")) {
+                assertEquals(original[field], fixture.stored().single()[field])
+            }
+            fixture.network.failReads = true
+            fixture.network.readGate = gate
+            compose.runOnIdle { sync.dropFailed(sync.uiState.value.status.failed.single()) }
+            compose.waitUntil(10_000) { sync.uiState.value.status.failed.isEmpty() }
+            compose.waitUntil(10_000) { !consumers.createGoal.state.value.canSubmit &&
+                consumers.inbox.state.value.targetDebts.isEmpty() }
+            compose.runOnIdle {
+                assertFalse(consumers.createGoal.state.value.canSubmit)
+                assertTrue(consumers.inbox.state.value.targetDebts.isEmpty())
+            }
+            gate.complete(Unit)
+            compose.waitUntil(10_000) { consumers.allReadsFailed() }
+            assertFalse(consumers.createGoal.state.value.canSubmit)
+            assertTrue(consumers.inbox.state.value.targetDebts.isEmpty())
+            fixture.network.failReads = false
+            fixture.network.readGate = null
+            compose.runOnIdle { consumers.refresh() }
+            compose.waitUntil(10_000) { consumers.balances() == List(5) { 53_000L } }
+            assertRetainedAdjustmentSelection(consumers.createGoal, fixture.network.current.publicId)
+            assertRetainedAdjustmentSelection(consumers.inbox, fixture.network.current.publicId)
+            assertTrue(consumers.createGoal.state.value.canSubmit)
+            fixture.stored().singleOrNull()?.let { abandoned ->
+                for (field in listOf("payload", "expectedRowVersion", "idempotencyKey", "ownerKey", "ledgerId")) {
+                    assertEquals(original[field], abandoned[field])
+                }
+                assertTrue(abandoned["status"] != "done")
+            }
+            assertEquals(0, runBlocking { fixture.drain() }.done)
+            assertEquals(1, fixture.network.calls.size)
+            assertEquals(original["idempotencyKey"], fixture.network.calls.single().second)
+            assertEquals(1, fixture.network.results.size)
+            assertEquals(1, fixture.scheduleCalls)
+        } finally {
+            gate.complete(Unit)
+            compose.runOnIdle { retained?.close(); global?.viewModelScope?.cancel() }
+        }
+    }
 
     private fun assertRetainedConsumerRefreshes(consumer: String) {
         val retained = DebtAdjustmentConnectedFixture(InstrumentationRegistry.getInstrumentation().targetContext)

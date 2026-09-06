@@ -1,6 +1,7 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.DebtActions
+import com.ticketbox.data.repository.DebtAdjustmentFixture
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.data.repository.RepaymentDraftActions
@@ -14,6 +15,8 @@ import com.ticketbox.domain.model.RepaymentDraft
 import com.ticketbox.domain.model.RepaymentDraftStatuses
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -63,6 +66,71 @@ class RepaymentDraftInboxViewModelTest {
         // Only open + external/manual debts can take a direct repayment (mirrors guard_direct_fact_writable).
         assertEquals(listOf("open-external"), viewModel.state.value.targetDebts.map { it.publicId })
         assertEquals(false, viewModel.state.value.isLoading)
+    }
+
+    @Test
+    fun unresolvedAdjustmentsExcludeSuggestedAndManualRepaymentTargets() = runTest(dispatcher) {
+        for (status in listOf(PendingMutationStatus.Pending, PendingMutationStatus.InFlight,
+            PendingMutationStatus.Failed, PendingMutationStatus.Conflict)) {
+            val adjustments = DebtAdjustmentFixture()
+            val id = adjustments.save().getOrThrow()
+            val original = adjustments.dao.rows.getValue(id).copy(status = status.wireValue)
+            adjustments.dao.rows[id] = original
+            val blocked = adjustments.debt
+            val available = debt("unrelated-debt", rowVersion = 9L)
+            val pendingDraft = draft("draft-1", suggestedDebtPublicId = blocked.publicId)
+            val drafts = FakeRepaymentDraftActions(listResult = Result.success(listOf(pendingDraft)))
+            val model = RepaymentDraftInboxViewModel(drafts,
+                FakeRepayableDebtActions(listResult = Result.success(listOf(blocked, available))), adjustments.repository)
+            try {
+                advanceUntilIdle()
+                assertEquals(listOf(pendingDraft), model.state.value.drafts)
+                assertEquals(listOf(available), model.state.value.targetDebts, status.toString())
+                assertNull(model.state.value.suggestedDebtByDraftId[pendingDraft.publicId])
+                model.confirm(pendingDraft.publicId, blocked)
+                advanceUntilIdle()
+                assertTrue(drafts.confirmCalls.isEmpty())
+                assertNull(model.state.value.flashMessage)
+                assertEquals(original, adjustments.dao.rows.getValue(id))
+                assertTrue(adjustments.api.calls.isEmpty())
+            } finally {
+                model.viewModelScope.cancel()
+            }
+        }
+    }
+
+    @Test
+    fun previouslySelectedRepaymentTargetCannotRaceANewUnresolvedAdjustment() = runTest(dispatcher) {
+        val adjustments = DebtAdjustmentFixture()
+        val blocked = adjustments.debt
+        val available = debt("unrelated-debt", rowVersion = 9L)
+        val pendingDraft = draft("draft-1", suggestedDebtPublicId = blocked.publicId)
+        val drafts = FakeRepaymentDraftActions(listResult = Result.success(listOf(pendingDraft)))
+        val model = RepaymentDraftInboxViewModel(drafts,
+            FakeRepayableDebtActions(listResult = Result.success(listOf(blocked, available))), adjustments.repository)
+        try {
+            advanceUntilIdle()
+            val selected = model.state.value.suggestedDebtByDraftId.getValue(pendingDraft.publicId)
+            assertEquals(2L, selected.rowVersion)
+            val id = adjustments.save().getOrThrow()
+            val original = adjustments.dao.rows.getValue(id)
+            // The picker already holds this Debt. Do not deliver the next Room notification first.
+            model.confirm(pendingDraft.publicId, selected)
+            advanceUntilIdle()
+            assertTrue(drafts.confirmCalls.isEmpty())
+            assertEquals(listOf(pendingDraft), model.state.value.drafts)
+            assertNull(model.state.value.flashMessage)
+            assertEquals(original, adjustments.dao.rows.getValue(id))
+            assertEquals(listOf(available), model.state.value.targetDebts)
+
+            model.confirm(pendingDraft.publicId, available)
+            advanceUntilIdle()
+            assertEquals(listOf(ConfirmCall(pendingDraft.publicId, available.publicId, 9L)), drafts.confirmCalls)
+            assertEquals(original, adjustments.dao.rows.getValue(id))
+            assertTrue(adjustments.api.calls.isEmpty())
+        } finally {
+            model.viewModelScope.cancel()
+        }
     }
 
     @Test

@@ -1,6 +1,7 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.DebtActions
+import com.ticketbox.data.repository.DebtAdjustmentFixture
 import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Debt
@@ -13,6 +14,9 @@ import com.ticketbox.domain.model.DebtSourceTypes
 import com.ticketbox.ui.components.formatAmount
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
+import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -23,6 +27,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -155,6 +160,115 @@ class DebtDetailViewModelTest {
 
         assertNull(viewModel.state.value.debt)
         assertTrue(viewModel.state.value.error != null)
+    }
+
+    @Test
+    fun droppingUnverifiedAdjustmentBlocksOldFoldUntilCanonicalReadRecovers() = runTest(dispatcher) {
+        val adjustments = DebtAdjustmentFixture()
+        val canonical = adjustments.debt
+        val fresh = canonical.copy(rowVersion = 3L, remainingAmountCents = 53_000L)
+        val repo = FakeDebtDetailActions(getResult = Result.success(canonical),
+            writeResult = Result.success(fresh.copy(rowVersion = 4L, remainingAmountCents = 52_900L)))
+        val model = DebtDetailViewModel(repo, adjustments.repository)
+        val gate = CompletableDeferred<Unit>()
+        try {
+            model.loadDebt(canonical.publicId)
+            advanceUntilIdle()
+            model.openAction(DebtAction.Repayment)
+            model.updateActionInput(amount = "1.00")
+            val id = adjustments.save().getOrThrow()
+            adjustments.outbox.markFailed(id, "debt_adjustment_response_unverified")
+            advanceUntilIdle()
+            assertFalse(model.state.value.canWriteActions)
+            val original = adjustments.pending()
+            repo.getResult = Result.failure(IllegalStateException("Synthetic unavailable canonical read"))
+            repo.getGate = gate
+
+            model.recoverAdjustment(original, drop = true)
+            runCurrent()
+            assertTrue(adjustments.outbox.observeStatus().first().failed.none { it.id == id })
+            assertTrue(adjustments.outbox.dequeueNextRunnable().isEmpty())
+            assertEquals(listOf(canonical.publicId, canonical.publicId), repo.getCalls)
+            assertFalse(model.state.value.canWriteActions)
+            model.submit()
+            model.selectKind(DebtKinds.REVOLVING)
+            runCurrent()
+            assertTrue(repo.repaymentCalls.isEmpty())
+            assertTrue(repo.setKindCalls.isEmpty())
+            assertEquals(canonical, model.state.value.debt)
+            assertEquals("1.00", model.state.value.amountInput)
+            gate.complete(Unit)
+            advanceUntilIdle()
+            assertFalse(model.state.value.canWriteActions)
+            assertTrue(model.state.value.error != null)
+            assertTrue(model.state.value.adjustmentWriteMessage != null)
+            assertNull(model.state.value.flashMessage)
+
+            repo.getGate = null
+            repo.getResult = Result.success(fresh)
+            model.refresh()
+            advanceUntilIdle()
+            assertEquals(fresh, model.state.value.debt)
+            assertTrue(model.state.value.canWriteActions)
+            assertNull(model.state.value.error)
+            model.submit()
+            advanceUntilIdle()
+            assertEquals(listOf(WriteArgs(canonical.publicId, 3L, 100L, null)), repo.repaymentCalls)
+            assertTrue(adjustments.outbox.dequeueNextRunnable().isEmpty())
+            assertTrue(adjustments.api.calls.isEmpty())
+        } finally {
+            gate.complete(Unit)
+            model.viewModelScope.cancel()
+        }
+    }
+
+    @Test
+    fun droppedUnverifiedAdjustmentAcceptsUnchangedCanonicalVersionAndReopenStillRequiresRead() = runTest(dispatcher) {
+        val adjustments = DebtAdjustmentFixture()
+        val canonical = adjustments.debt
+        val repo = FakeDebtDetailActions(getResult = Result.success(canonical))
+        val model = DebtDetailViewModel(repo, adjustments.repository)
+        var reopened: DebtDetailViewModel? = null
+        val gate = CompletableDeferred<Unit>()
+        try {
+            model.loadDebt(canonical.publicId)
+            advanceUntilIdle()
+            val id = adjustments.save().getOrThrow()
+            adjustments.outbox.markFailed(id, "debt_adjustment_response_unverified")
+            advanceUntilIdle()
+            model.recoverAdjustment(adjustments.pending(), drop = true)
+            advanceUntilIdle()
+            assertTrue(adjustments.outbox.observeStatus().first().failed.none { it.id == id })
+            assertTrue(adjustments.outbox.dequeueNextRunnable().isEmpty())
+            assertEquals(listOf(canonical.publicId, canonical.publicId), repo.getCalls)
+            assertEquals(canonical, model.state.value.debt)
+            assertTrue(model.state.value.canWriteActions)
+            assertNull(model.state.value.error)
+            model.viewModelScope.cancel()
+
+            repo.getResult = Result.failure(IllegalStateException("Synthetic unavailable first read"))
+            repo.getGate = gate
+            val next = DebtDetailViewModel(repo, adjustments.repository).also { reopened = it }
+            next.loadDebt(canonical.publicId)
+            runCurrent()
+            assertFalse(next.state.value.canWriteActions)
+            assertNull(next.state.value.debt)
+            gate.complete(Unit)
+            advanceUntilIdle()
+            assertFalse(next.state.value.canWriteActions)
+            assertTrue(next.state.value.error != null)
+            repo.getGate = null
+            repo.getResult = Result.success(canonical)
+            next.refresh()
+            advanceUntilIdle()
+            assertEquals(canonical, next.state.value.debt)
+            assertTrue(next.state.value.canWriteActions)
+            assertTrue(repo.repaymentCalls.isEmpty())
+        } finally {
+            gate.complete(Unit)
+            model.viewModelScope.cancel()
+            reopened?.viewModelScope?.cancel()
+        }
     }
 
     @Test
@@ -786,6 +900,7 @@ private class FakeDebtDetailActions(
     var getResult: Result<Debt> = Result.success(sampleDebt("d1")),
     var writeResult: Result<Debt> = Result.success(sampleDebt("d1")),
 ) : DebtActions {
+    val getCalls = mutableListOf<String>()
     val repaymentCalls = mutableListOf<WriteArgs>()
     val voidCalls = mutableListOf<WriteArgs>()
     val setKindCalls = mutableListOf<KindArgs>()
@@ -800,6 +915,7 @@ private class FakeDebtDetailActions(
         Result.success(DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = null))
 
     override suspend fun getDebt(publicId: String): Result<Debt> {
+        getCalls += publicId
         // Capture the result at entry so a stalled load returns the snapshot it started with, even
         // if a newer load swaps getResult in the meantime.
         val captured = getResult
