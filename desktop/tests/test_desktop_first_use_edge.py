@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+
+import pytest
 
 from backend_manager.desktop_shell import discover_edge_executable
 from tests._edge_cdp import evaluate_page
 from tests.test_ui_browser_layout import _STARTUP_SCRIPT, _UI_HTML, _status
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows Edge consumer gate")
 def test_local_first_use_and_original_code_continuation(tmp_path: Path) -> None:
     edge = discover_edge_executable()
     assert edge is not None
@@ -34,7 +38,9 @@ def test_local_first_use_and_original_code_continuation(tmp_path: Path) -> None:
         "restartStillExplainsOriginalCode": True, "expiredCanGetNewCode": True,
         "pendingRebindExplained": True,
         "liveOldLedgerStillOffersOriginalCode": True, "liveOldLedgerCannotMintNewCode": True,
+        "pendingLedgerFailureOffersOriginalCode": True, "pendingLedgerFailureHidesBoundActions": True,
+        "pendingLedgerFailureClosesBothCodeEntries": True, "pendingLedgerFailureContinuesOriginalCode": True,
         "readFailureClosed": True, "unavailableClosed": True,
-        "readFailureClosesBothCodeEntries": True,
+        "readFailureClosesBothCodeEntries": True, "readFailureClosesPairEntry": True,
         "horizontalOverflow": False,
     }

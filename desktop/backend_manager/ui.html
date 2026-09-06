@@ -742,13 +742,13 @@
     function renderProduct() {
       const configured = Boolean(productSession && productSession.configured);
       const available = Boolean(latestStatus && latestStatus.product_available);
-      const productReadFailed = productSessionReadFailed || (configured && productLedgersReadFailed);
       const liveRow = configured
         ? productLedgers.find((row) => row.ledger_id === productSession.ledger_id)
         : null;
       const membershipLost = configured && productLedgers.length > 0 && !liveRow;
       const pending = productSession && productSession.pairing_recovery === "original_code_required";
       const showManage = configured && !membershipLost && !pending;
+      const productReadFailed = productSessionReadFailed || (showManage && productLedgersReadFailed);
       applyDesktopPairingAvailability();
       $("productFirstUseHelp").hidden = showManage || productReadFailed;
       if (productReadFailed) {

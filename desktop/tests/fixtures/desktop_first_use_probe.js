@@ -4,10 +4,12 @@ function installFirstUseFixture() {
     session: {configured: false},
     pairingResult: "invalid",
     readFails: false,
+    ledgerReadFails: false,
     ledgers: [
       {ledger_id: "family", name: "家庭账本", role: "member", is_default: true, is_current: false},
     ],
     commands: [],
+    pairRequests: [],
   };
   window.CONTROL_TOKEN = "synthetic-control";
   window.fetch = async (path, options = {}) => {
@@ -16,12 +18,16 @@ function installFirstUseFixture() {
       if (fixture.readFails) throw new Error("synthetic unavailable");
       return {ok: true, json: async () => fixture.session};
     }
-    if (path === "/api/product/ledgers") return {ok: true, json: async () => ({ledgers: fixture.ledgers})};
+    if (path === "/api/product/ledgers") {
+      if (fixture.ledgerReadFails) throw new Error("synthetic ledger read failure");
+      return {ok: true, json: async () => ({ledgers: fixture.ledgers})};
+    }
     if (path === "/api/open_pairing") {
       fixture.commands.push({path, method: options.method});
       return {ok: true, json: async () => fixture.status};
     }
     if (path === "/api/product/pair") {
+      fixture.pairRequests.push({method: options.method, ...JSON.parse(options.body)});
       if (fixture.pairingResult === "invalid") {
         return {ok: false, json: async () => ({message: "绑定码无效或过期，请重新生成。"})};
       }
@@ -106,6 +112,8 @@ async function probeReadFailureAndUnavailable(fixture, result) {
   result.readFailureClosed = document.getElementById("productPairGroup").hidden &&
     Boolean(firstUseCodeEntry() && firstUseCodeEntry().disabled);
   result.readFailureClosesBothCodeEntries = await cannotGenerateFirstUseCode(fixture);
+  result.readFailureClosesPairEntry = document.getElementById("pairAction").disabled &&
+    document.getElementById("pairingCodeInput").disabled;
   fixture.readFails = false;
   fixture.status.product_available = false;
   fixture.status.health = false;
@@ -114,11 +122,31 @@ async function probeReadFailureAndUnavailable(fixture, result) {
     document.getElementById("pairAction").disabled;
 }
 
+async function probePendingRebindWithLedgerReadFailure(fixture, result) {
+  fixture.ledgerReadFails = true;
+  await loadProductLedgers();
+  result.pendingLedgerFailureOffersOriginalCode = !document.getElementById("productPairGroup").hidden &&
+    !document.getElementById("pairingCodeInput").disabled && !document.getElementById("pairAction").disabled &&
+    document.getElementById("pairingCodeInput").value === "12345678" &&
+    document.getElementById("productState").textContent.includes("原绑定码");
+  result.pendingLedgerFailureHidesBoundActions = document.getElementById("productManageGroup").hidden &&
+    document.getElementById("productHomeLink").hidden && document.getElementById("importExportAction").disabled;
+  result.pendingLedgerFailureClosesBothCodeEntries = await cannotGenerateFirstUseCode(fixture);
+  const before = fixture.pairRequests.length;
+  document.getElementById("pairAction").click();
+  while (productBusy) await new Promise(requestAnimationFrame);
+  const submitted = fixture.pairRequests.at(-1);
+  result.pendingLedgerFailureContinuesOriginalCode = fixture.pairRequests.length === before + 1 &&
+    submitted.method === "POST" && submitted.pairing_code === "12345678";
+  fixture.ledgerReadFails = false;
+}
+
 (async () => {
   const fixture = installFirstUseFixture();
   const result = await probeFirstUseAndInvalidCode(fixture);
   await probeUnknownPairingAndExpiry(fixture, result);
   await probePendingRebindWithLiveLedger(fixture, result);
+  await probePendingRebindWithLedgerReadFailure(fixture, result);
   await probeReadFailureAndUnavailable(fixture, result);
   window.firstUseProbe = result;
 })().catch(() => { window.firstUseProbe = {probeError: true}; });
