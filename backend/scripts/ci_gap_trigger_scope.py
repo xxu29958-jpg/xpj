@@ -211,7 +211,7 @@ _WINDOWS_DATASET_MAINTENANCE_PREFIXES = (
 )
 _REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 _WEB_BFF_SOURCE = _REPO_ROOT / "desktop" / "backend_manager" / "web_bff.py"
-_DESKTOP_PRODUCT_SCOPES = ("postgres", "backend_frozen", "desktop")
+_DESKTOP_PRODUCT_SCOPES = ("postgres", "backend_frozen", "desktop", "windows")
 _DESKTOP_BFF_AUTH_ROUTES = frozenset({"backend/app/routes/web_auth.py"})
 
 
@@ -249,8 +249,9 @@ def desktop_bff_static_repo_prefixes() -> tuple[str, ...]:
     return unique
 
 
-# Desktop BFF proxies /web and /static/{web,shared}; Edge E2E also reads
-# those files from disk. /web/auth is rejected by the BFF, so web_auth.py
+# Desktop BFF proxies /web and /static/{web,shared}; the native backend gate
+# renders those pages and assets, in addition to the isolated Desktop probes.
+# /web/auth is rejected by the BFF, so web_auth.py
 # stays on the ordinary backend/app rule via the exact exclusion below.
 _SHARED_WEB_DESKTOP_PREFIXES = (
     *desktop_bff_static_repo_prefixes(),
@@ -269,6 +270,38 @@ _FROZEN_DESKTOP_FILES = {
     "desktop/requirements-build.txt",
     "desktop/requirements-build.lock",
 }
+_DESKTOP_BACKEND_CONSUMER_FILES = {
+    "desktop/tests/_edge_cdp.py",
+    "desktop/tests/_real_backend.py",
+    "desktop/tests/_real_backend_helper.py",
+    "desktop/tests/test_web_bff_edge_e2e.py",
+    "desktop/tests/test_desktop_first_use_backend.py",
+    "desktop/tests/test_ui_browser_layout.py",
+}
+# Derive the service dependencies with the existing native-producer walker.
+# Route guards remain explicit: broad schema re-exports are not task ownership.
+_DESKTOP_PAIRING_PRODUCER_FILES = _app_python_dependencies((
+    "app.services.owner_device_service",
+    "app.services.desktop_switch_service",
+    "app.services.desktop_activation_service",
+)) | {
+    "backend/app/auth.py",
+    "backend/app/database/__init__.py",
+    "backend/app/network_boundary.py",
+    "backend/app/middleware/web_session.py",
+    "backend/app/services/server_identity_service.py",
+    "backend/app/routes/auth.py",
+    "backend/app/routes/devices.py",
+    "backend/app/routes/ledgers.py",
+    "backend/app/routes/desktop.py",
+    "backend/app/services/owner_device_service.py",
+    "backend/app/services/desktop_switch_service.py",
+    "backend/app/services/ledger_service.py",
+    "backend/app/schemas/_identity.py",
+    "backend/app/services/desktop_activation_service.py",
+    "backend/app/services/session_lifecycle_service.py",
+}
+_DESKTOP_PAIRING_SCOPES = ("postgres", "backend_frozen", "windows")
 _EXACT_SCOPE_RULES = {
     **dict.fromkeys(_DOC_FILES, ()),
     **dict.fromkeys(_WINDOWS_ONLY_BACKEND_FILES, ("windows",)),
@@ -294,6 +327,8 @@ _EXACT_SCOPE_RULES = {
         ("postgres", "backend_frozen", "windows"),
     ),
     **dict.fromkeys(_FROZEN_DESKTOP_FILES, ("desktop", "windows")),
+    **dict.fromkeys(_DESKTOP_BACKEND_CONSUMER_FILES, ("desktop", "windows")),
+    **dict.fromkeys(_DESKTOP_PAIRING_PRODUCER_FILES, _DESKTOP_PAIRING_SCOPES),
     _CROSS_RUNTIME_RELEASE_CONFIG: ("postgres", "desktop", "windows"),
     "backend/app/version.py": ("postgres", "desktop", "windows"),
     "backend/packaging/windows-build-toolchain.json": ("postgres", "windows"),
@@ -312,6 +347,7 @@ _PREFIX_SCOPE_RULES = (
         _WINDOWS_DATASET_MAINTENANCE_PREFIXES,
         ("postgres", "backend_frozen", "windows"),
     ),
+    (("backend/app/services/identity_service/",), _DESKTOP_PAIRING_SCOPES),
     (_POSTGRES_WINDOWS_BACKEND_PREFIXES, ("postgres", "backend_frozen")),
     (_WINDOWS_ONLY_BACKEND_PREFIXES, ("windows",)),
     (("distribution/",), ("windows",)),
