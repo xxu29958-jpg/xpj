@@ -157,7 +157,7 @@ def _render_with_edge(tmp_path: Path, *, width: int, height: int, degraded: bool
     value = evaluate_page(
         edge,
         profile=profile,
-        url=page.as_uri(),
+        prepare_url=lambda _attempt: page.as_uri(),
         width=width,
         height=height,
         expression="document.body && document.body.getAttribute('data-layout-probe') || undefined",
@@ -328,7 +328,7 @@ def _render_behavior_probe(tmp_path: Path) -> dict[str, object]:
     value = evaluate_page(
         edge,
         profile=tmp_path / "edge-profile-behavior",
-        url=page.as_uri(),
+        prepare_url=lambda _attempt: page.as_uri(),
         width=820,
         height=660,
         expression="document.body && document.body.getAttribute('data-behavior-probe') || undefined",
@@ -465,9 +465,11 @@ def test_layout_probe_retries_a_fresh_edge_session_after_transport_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     profiles: list[Path] = []
+    urls: list[str] = []
 
-    def evaluate_once(_edge: str, *, profile: Path, **_kwargs: object) -> object:
+    def evaluate_once(_edge: str, *, profile: Path, url: str, **_kwargs: object) -> object:
         profiles.append(profile)
+        urls.append(url)
         if len(profiles) == 1:
             raise TimeoutError("synthetic DevTools stall")
         return {"ready": True}
@@ -477,7 +479,7 @@ def test_layout_probe_retries_a_fresh_edge_session_after_transport_timeout(
     result = evaluate_page(
         "edge.exe",
         profile=tmp_path / "profile",
-        url="file:///manager.html",
+        prepare_url=lambda attempt: f"file:///manager-{attempt}.html",
         width=390,
         height=844,
         expression="window.__layoutProbe",
@@ -488,6 +490,7 @@ def test_layout_probe_retries_a_fresh_edge_session_after_transport_timeout(
         tmp_path / "profile" / "attempt-1",
         tmp_path / "profile" / "attempt-2",
     ]
+    assert urls == ["file:///manager-1.html", "file:///manager-2.html"]
 
 
 def test_layout_probe_does_not_retry_a_semantic_assertion(
@@ -506,13 +509,37 @@ def test_layout_probe_does_not_retry_a_semantic_assertion(
         evaluate_page(
             "edge.exe",
             profile=tmp_path / "profile",
-            url="file:///manager.html",
+            prepare_url=lambda _attempt: "file:///manager.html",
             width=390,
             height=844,
             expression="window.__layoutProbe",
         )
 
     assert profiles == [tmp_path / "profile" / "attempt-1"]
+
+
+def test_layout_probe_does_not_retry_or_relabel_url_preparation_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    attempts: list[int] = []
+    preparation_error = OSError("bootstrap material could not be prepared")
+
+    def prepare_url(attempt: int) -> str:
+        attempts.append(attempt)
+        raise preparation_error
+
+    def evaluate_once(*_args: object, **_kwargs: object) -> object:
+        pytest.fail("a failed URL preparation must not launch Edge")
+
+    monkeypatch.setattr(_edge_cdp, "_evaluate_page_once", evaluate_once)
+    with pytest.raises(OSError) as raised:
+        evaluate_page(
+            "edge.exe", profile=tmp_path / "profile", prepare_url=prepare_url,
+            width=390, height=844, expression="window.__layoutProbe",
+        )
+    assert raised.value is preparation_error
+    assert attempts == [1]
 
 
 def test_edge_teardown_reaps_process_when_websocket_cleanup_fails(monkeypatch) -> None:
@@ -758,27 +785,36 @@ def test_served_web_layout_through_manager_bff(
             origin=manager_origin,
         )
         assert status == 200, projection
-        bootstrap_path = tmp_path / f"served-web-{width}x{height}" / "bootstrap.html"
-        bootstrap_url = manager.prepare_web_bootstrap(bootstrap_path)
+        bootstrap_dir = tmp_path / f"served-web-{width}x{height}"
+        bootstrap_paths: list[Path] = []
+
+        def prepare_url(attempt: int) -> str:
+            path = bootstrap_dir / f"bootstrap-{attempt}.html"
+            bootstrap_paths.append(path)
+            return manager.prepare_web_bootstrap(path)
+
         profile = tmp_path / f"edge-served-web-{width}x{height}"
         if lose_first_response:
             _lose_first_completed_served_web_response(
-                monkeypatch, bootstrap_path=bootstrap_path, profile=profile, record_property=record_property,
+                monkeypatch, bootstrap_path=bootstrap_dir / "bootstrap-1.html",
+                profile=profile, record_property=record_property,
             )
         value = evaluate_page(
             edge,
             profile=profile,
-            url=bootstrap_url,
+            prepare_url=prepare_url,
             width=width,
             height=height,
             expression=_SERVED_WEB_PROBE,
         )
 
-    assert not bootstrap_path.exists()
+    assert bootstrap_paths
+    assert all(not path.exists() for path in bootstrap_paths)
     _assert_served_web_layout(value)
     assert stores.sessions
     if lose_first_response:
         assert (profile / "attempt-2").is_dir()
+        assert bootstrap_paths == [bootstrap_dir / "bootstrap-1.html", bootstrap_dir / "bootstrap-2.html"]
 
 
 # ── Manager product card: hidden-authority + live ledger switching (218-E) ──
@@ -863,7 +899,7 @@ def test_product_card_visibility_matrix_is_hidden_authoritative(
     value = evaluate_page(
         edge,
         profile=tmp_path / f"edge-product-visibility-{width}x{height}",
-        url=page.as_uri(),
+        prepare_url=lambda _attempt: page.as_uri(),
         width=width,
         height=height,
         expression="document.body && document.body.getAttribute('data-visibility-probe') || undefined",
@@ -1020,7 +1056,7 @@ def test_prompt_product_failures_retire_prior_dom_without_erasing_public_status(
     value = evaluate_page(
         edge,
         profile=tmp_path / "edge-product-prompt-degradation",
-        url=page.as_uri(),
+        prepare_url=lambda _attempt: page.as_uri(),
         width=820,
         height=660,
         expression=(
@@ -1120,7 +1156,7 @@ def test_ledger_select_keeps_dirty_selection_until_successful_switch(tmp_path: P
     value = evaluate_page(
         edge,
         profile=tmp_path / "edge-product-dirty-selection",
-        url=page.as_uri(),
+        prepare_url=lambda _attempt: page.as_uri(),
         width=820,
         height=660,
         expression="document.body && document.body.getAttribute('data-dirty-probe') || undefined",
@@ -1180,7 +1216,7 @@ def test_ledger_list_refreshes_on_cadence_without_clobbering_dirty_selection(tmp
     value = evaluate_page(
         edge,
         profile=tmp_path / "edge-product-ledger-cadence",
-        url=page.as_uri(),
+        prepare_url=lambda _attempt: page.as_uri(),
         width=820,
         height=660,
         expression="document.body && document.body.getAttribute('data-cadence-probe') || undefined",
@@ -1252,7 +1288,7 @@ def test_product_card_role_follows_live_membership_and_handles_vanished_ledger(t
     value = evaluate_page(
         edge,
         profile=tmp_path / "edge-product-live-role",
-        url=page.as_uri(),
+        prepare_url=lambda _attempt: page.as_uri(),
         width=820,
         height=660,
         expression="document.body && document.body.getAttribute('data-live-role-probe') || undefined",

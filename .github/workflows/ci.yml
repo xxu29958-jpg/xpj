@@ -932,6 +932,24 @@ jobs:
       - name: Test
         run: .\.ci-venv\Scripts\python.exe -m pytest -q
 
+      - name: Real Web runtime consumers
+        run: |
+          $reportPath = Join-Path $env:RUNNER_TEMP 'web-edge-runtime-results.xml'
+          .\.ci-venv\Scripts\python.exe -m pytest --noconftest -q ../backend/tests/test_web_edge_runtime_contract.py --junitxml=$reportPath
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          [xml]$report = Get-Content -LiteralPath $reportPath -Raw
+          if (@($report.SelectNodes('//testcase')).Count -eq 0 -or @($report.SelectNodes('//skipped')).Count -gt 0) {
+            throw 'Web runtime qualification requires executed, non-skipped cases.'
+          }
+
+      - name: Upload Web runtime test results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: web-edge-runtime-test-results
+          path: ${{ runner.temp }}/web-edge-runtime-results.xml
+          if-no-files-found: error
+
       - name: Enforce Desktop scope result
         if: ${{ always() && !cancelled() }}
         shell: powershell
