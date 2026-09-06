@@ -175,6 +175,7 @@ internal class ExpenseFactViewModelCorrectionOutcomeTest : ExpenseFactViewModelT
         fake.splitsResult = Result.success(
             ExpenseSplits(
                 expenseId = fake.baseExpense.id,
+                parentRowVersion = fake.baseExpense.rowVersion,
                 parentAmountCents = 1_000L,
                 splitsTotalAmountCents = 1_000L,
                 mismatchCents = 0L,
@@ -201,6 +202,7 @@ internal class ExpenseFactViewModelCorrectionOutcomeTest : ExpenseFactViewModelT
         fake.itemsResult = Result.success(
             ExpenseItems(
                 expenseId = fake.baseExpense.id,
+                parentRowVersion = fake.baseExpense.rowVersion,
                 parentAmountCents = 1_000L,
                 itemsTotalAmountCents = 1_000L,
                 mismatchCents = 0L,

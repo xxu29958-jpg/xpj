@@ -99,6 +99,7 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
     var itemsResult: Result<ExpenseItems> = Result.success(
         ExpenseItems(
             expenseId = 7L,
+            parentRowVersion = 1L,
             parentAmountCents = 1000L,
             itemsTotalAmountCents = null,
             mismatchCents = null,
@@ -108,6 +109,7 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
     var splitsResult: Result<ExpenseSplits> = Result.success(
         ExpenseSplits(
             expenseId = 7L,
+            parentRowVersion = 1L,
             parentAmountCents = 1000L,
             splitsTotalAmountCents = null,
             mismatchCents = null,

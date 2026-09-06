@@ -5,6 +5,7 @@ import com.ticketbox.data.repository.ExpenseFactActions
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import com.ticketbox.domain.model.ExpenseItems
 import com.ticketbox.domain.model.ExpenseSplits
+import com.ticketbox.domain.model.FamilyMember
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -128,6 +129,70 @@ internal class ExpenseFactCorrectionCohortTest : ExpenseFactViewModelTestBase() 
         assertEquals(1, fake.correctCalls)
         assertEquals("名".repeat(255), fake.lastCorrectionDraft?.items?.single()?.name)
         assertFalse(vm.uiState.value.correction.open)
+    }
+
+    @Test
+    fun `closed split editor response cannot replace an amount entered after reopening`() = edit { fake ->
+        fake.useCurrentCollections()
+        val members = listOf(fake.member(3L))
+        val oldReplies = listOf(
+            Result.success(members) to false,
+            Result.failure<List<FamilyMember>>(java.io.IOException("obsolete member query")) to false,
+            Result.success(members) to true,
+        )
+        for ((oldResult, adoptBeforeReturn) in oldReplies) {
+            val firstMembers = CompletableDeferred<Result<List<FamilyMember>>>()
+            var readingForEditor = false
+            var editorReads = 0
+            val repository = object : ExpenseFactActions by fake {
+                override suspend fun fetchSplitMembers(): Result<List<FamilyMember>> {
+                    if (!readingForEditor) return Result.success(members)
+                    editorReads += 1
+                    return if (editorReads == 1) firstMembers.await() else Result.success(members)
+                }
+            }
+            val vm = ExpenseFactViewModel(fake.baseExpense.id, repository)
+            advanceUntilIdle()
+            readingForEditor = true
+            vm.openCorrectionSheet()
+            vm.openCorrectionSplitsEditor()
+            advanceUntilIdle()
+            assertEquals(1, editorReads)
+            assertTrue(vm.uiState.value.correction.splitMembersLoading)
+
+            vm.dismissCorrectionSplitsEditor()
+            assertFalse(vm.uiState.value.correction.splitEditorOpen)
+            vm.openCorrectionSplitsEditor()
+            advanceUntilIdle()
+            assertEquals(2, editorReads)
+            assertTrue(vm.uiState.value.correction.splitEditorOpen)
+            assertFalse(vm.uiState.value.correction.splitMembersLoading)
+            vm.updateCorrectionSplitDraft(3L, included = true, amountText = "7.00")
+            if (adoptBeforeReturn) {
+                vm.adoptCorrectionSplits()
+                vm.openCorrectionSplitsEditor()
+                advanceUntilIdle()
+                assertEquals(2, editorReads, "Adopted drafts reopen without another member request")
+                assertTrue(vm.uiState.value.correction.splitEditorOpen)
+                assertFalse(vm.uiState.value.correction.splitMembersLoading)
+            }
+            val editedDrafts = vm.uiState.value.correction.splitDrafts
+            assertEquals("7.00", editedDrafts.single().amountText)
+            assertTrue(editedDrafts.single().included)
+            assertEquals(0, fake.correctCalls)
+
+            val editedState = vm.uiState.value
+            assertTrue(firstMembers.complete(oldResult))
+            advanceUntilIdle()
+
+            assertEquals(
+                "7.00",
+                vm.uiState.value.correction.splitDrafts.single().amountText,
+                "The member response from the dismissed editor must not erase the new editor's input",
+            )
+            assertEquals(editedDrafts, vm.uiState.value.correction.splitDrafts)
+            assertEquals(editedState, vm.uiState.value, "Obsolete success or failure must not change the current editor")
+        }
     }
 
     private fun ExpenseFactViewModel.assertCollectionEditorsUnavailable() {

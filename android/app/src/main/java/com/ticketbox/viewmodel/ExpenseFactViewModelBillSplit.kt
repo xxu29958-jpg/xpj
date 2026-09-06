@@ -37,18 +37,24 @@ private data class FactBillSplitInviteRequest(
 )
 
 /** 拉取本票已发出的拆账邀请（账号维度返回后按 senderExpenseId 客户端过滤）。 */
-fun ExpenseFactViewModel.loadBillSplitSent() {
+fun ExpenseFactViewModel.loadBillSplitSent(onlyIfUnknown: Boolean = false) {
     val expense = _uiState.value.expense ?: return
+    val binding = _uiState.value.correctionAccess?.binding ?: return
+    if (onlyIfUnknown && _uiState.value.billSplitSentLoadState != BillSplitSentLoadState.Unknown) return
+    // Claim the first read before launch: root and bundle adoption can both reach this owner.
+    _uiState.update {
+        it.copy(
+            billSplitLoading = true,
+            billSplitSentLoadState = BillSplitSentLoadState.Loading,
+            billSplitMessage = null,
+            billSplitMessageTone = MessageTone.Neutral,
+        )
+    }
     viewModelScope.launch {
-        _uiState.update {
-            it.copy(
-                billSplitLoading = true,
-                billSplitSentLoadState = BillSplitSentLoadState.Loading,
-                billSplitMessage = null,
-                billSplitMessageTone = MessageTone.Neutral,
-            )
-        }
-        repository.fetchBillSplitSent()
+        if (binding != _uiState.value.correctionAccess?.binding) return@launch
+        val result = repository.fetchBillSplitSent()
+        if (binding != _uiState.value.correctionAccess?.binding) return@launch
+        result
             .onSuccess { sent ->
                 _uiState.update {
                     it.copy(
