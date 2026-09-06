@@ -124,7 +124,8 @@ internal class CorrectionConnectedNetwork {
             readable()
             return ExpenseRevisionPageDto(results.values.map { it.revision }, page, pageSize, results.size, current.factRevision)
         }
-        override suspend fun expenseFactBundle(id: Long): ExpenseFactBundleDto {
+        override suspend fun expenseFactBundle(id: String): ExpenseFactBundleDto {
+            check(id == current.id.toString())
             readable()
             val amount = requireNotNull(current.originalAmountMinor)
             return ExpenseFactBundleDto(current, ExpenseFinancialSummaryDto(amount, amount, amount, 0, amount,

@@ -38,8 +38,7 @@ private fun projectedCorrectionParent(
     draft.amountCents?.let { return it }
     val targetCurrency = draft.originalCurrencyCode ?: return null
     val targetAmount = draft.originalAmountMinor ?: return null
-    val homeCurrency = CurrencyCode.fromStorageKeyOrNull(expense.homeCurrencyCode)
-        ?: expense.homeCurrency.takeIf { expense.homeCurrencyCode.isNullOrBlank() } ?: return null
+    val homeCurrency = correctionHomeCurrency(expense) ?: return null
     if (targetCurrency == homeCurrency) return targetAmount
     val originalCurrency = CurrencyCode.fromStorageKeyOrNull(expense.originalCurrencyCodeRaw)
         ?: expense.originalCurrencyCode.takeIf { expense.originalCurrencyCodeRaw.isNullOrBlank() }
@@ -52,3 +51,7 @@ private fun projectedCorrectionParent(
             .longValueExact().takeIf { it in 0L..MONEY_MINOR_MAX }
     }.getOrNull()
 }
+
+private fun correctionHomeCurrency(expense: Expense): CurrencyCode? =
+    CurrencyCode.fromStorageKeyOrNull(expense.homeCurrencyCode)
+        ?: expense.homeCurrency.takeIf { expense.homeCurrencyCode.isNullOrBlank() }
