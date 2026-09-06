@@ -334,6 +334,17 @@ def _report_export_query(
     )
 
 
+def _six_month_history_view(rows: list[dict], *, currency_code: str) -> dict:
+    """Keep the history chart, accessible table, and average on the same series."""
+    return {
+        "six_month_trend": rows,
+        "six_month_average_amount_yuan": _six_month_average_amount_yuan(
+            rows,
+            currency_code=currency_code,
+        ),
+    }
+
+
 @router.get("", response_class=HTMLResponse)
 def web_reports(
     request: Request,
@@ -411,11 +422,7 @@ def web_reports(
                 timezone_name=timezone_name,
                 presentation_currency_code=home,
             ),
-            "six_month_trend": six_month_trend,
-            "six_month_average_amount_yuan": _six_month_average_amount_yuan(
-                six_month_trend,
-                currency_code=home,
-            ),
+            **_six_month_history_view(six_month_trend, currency_code=home),
         }
     )
     return templates.TemplateResponse(request=request, name="reports.html", context=ctx)
