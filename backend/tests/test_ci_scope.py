@@ -270,6 +270,19 @@ def test_real_desktop_backend_consumers_require_the_native_postgres_lane() -> No
         _assert_path_scopes((path,), "desktop", "windows")
 
 
+def test_desktop_pairing_producers_require_the_real_desktop_consumer() -> None:
+    for path in (
+        "backend/app/routes/auth.py",
+        "backend/app/schemas/_identity.py",
+        "backend/app/services/desktop_activation_service.py",
+        "backend/app/services/session_lifecycle_service.py",
+        "backend/app/services/identity_service/__init__.py",
+        "backend/app/services/identity_service/_pair.py",
+        "backend/app/services/identity_service/_enrollment.py",
+    ):
+        _assert_path_scopes((path,), "postgres", "backend_frozen", "windows")
+
+
 def test_always_on_contract_tests_do_not_expand_heavy_scopes() -> None:
     for path in (
         "backend/tests/test_android_test_qualification.py",

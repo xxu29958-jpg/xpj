@@ -276,6 +276,13 @@ _DESKTOP_BACKEND_CONSUMER_FILES = {
     "desktop/tests/test_desktop_first_use_backend.py",
     "desktop/tests/test_ui_browser_layout.py",
 }
+_DESKTOP_PAIRING_PRODUCER_FILES = {
+    "backend/app/routes/auth.py",
+    "backend/app/schemas/_identity.py",
+    "backend/app/services/desktop_activation_service.py",
+    "backend/app/services/session_lifecycle_service.py",
+}
+_DESKTOP_PAIRING_SCOPES = ("postgres", "backend_frozen", "windows")
 _EXACT_SCOPE_RULES = {
     **dict.fromkeys(_DOC_FILES, ()),
     **dict.fromkeys(_WINDOWS_ONLY_BACKEND_FILES, ("windows",)),
@@ -302,6 +309,7 @@ _EXACT_SCOPE_RULES = {
     ),
     **dict.fromkeys(_FROZEN_DESKTOP_FILES, ("desktop", "windows")),
     **dict.fromkeys(_DESKTOP_BACKEND_CONSUMER_FILES, ("desktop", "windows")),
+    **dict.fromkeys(_DESKTOP_PAIRING_PRODUCER_FILES, _DESKTOP_PAIRING_SCOPES),
     _CROSS_RUNTIME_RELEASE_CONFIG: ("postgres", "desktop", "windows"),
     "backend/app/version.py": ("postgres", "desktop", "windows"),
     "backend/packaging/windows-build-toolchain.json": ("postgres", "windows"),
@@ -320,6 +328,7 @@ _PREFIX_SCOPE_RULES = (
         _WINDOWS_DATASET_MAINTENANCE_PREFIXES,
         ("postgres", "backend_frozen", "windows"),
     ),
+    (("backend/app/services/identity_service/",), _DESKTOP_PAIRING_SCOPES),
     (_POSTGRES_WINDOWS_BACKEND_PREFIXES, ("postgres", "backend_frozen")),
     (_WINDOWS_ONLY_BACKEND_PREFIXES, ("windows",)),
     (("distribution/",), ("windows",)),
