@@ -338,7 +338,7 @@
         <tbody>
         {% for row in top_expenses %}
           <tr>
-            <td>{{ row.merchant }}</td>
+            <td><a href="{{ row.edit_href }}">{{ row.merchant }}</a></td>
             <td>{{ row.category }}</td>
             <td class="text-meta">{{ row.expense_time }}</td>
             <td class="amount">{{ home_currency_symbol }}{{ row.amount_yuan }}</td>

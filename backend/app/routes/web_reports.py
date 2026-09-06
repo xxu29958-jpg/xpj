@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
+from app.routes._web_expense_return_context import flow_href
 from app.routes._web_report_money_views import (
     category_comparison_view as _category_comparison_view,
 )
@@ -253,6 +254,10 @@ def _top_expenses_view(
         rows.append(
             {
                 "merchant": e.merchant or "未填写商家",
+                "edit_href": flow_href(
+                    f"/web/expenses/{e.id}/edit", ledger_id=tenant_id,
+                    return_to="reports", return_month=month,
+                ),
                 # The record's frozen unit wins; presentation authority only
                 # covers legacy rows that predate the carrier.
                 "amount_yuan": _amount_yuan(

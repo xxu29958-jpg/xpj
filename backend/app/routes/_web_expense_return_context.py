@@ -13,6 +13,7 @@ from app.services.web_search_service import MAX_QUERY_LENGTH
 RETURN_TO_PATHS: dict[str, str] = {
     "pending": "/web/pending",
     "confirmed": "/web/confirmed",
+    "reports": "/web/reports",
     "duplicates": "/web/duplicates",
     "search": "/web/search",
     "bill_splits_inbox": "/web/bill-splits/inbox",
@@ -21,6 +22,7 @@ RETURN_TO_PATHS: dict[str, str] = {
 RETURN_TO_LABELS: dict[str, str] = {
     "pending": "返回待确认",
     "confirmed": "返回已确认流水",
+    "reports": "返回原月份月报",
     "duplicates": "返回重复检查",
     "search": "返回搜索结果",
     "bill_splits_inbox": "返回拆账收件箱",
@@ -127,11 +129,16 @@ def return_context_params(
     if token == "pending":
         clean_filter = (return_filter or "").strip()
         return {"filter": clean_filter} if clean_filter in _PENDING_FILTERS else {}
-    if token == "confirmed":
+    if token in {"confirmed", "reports"}:
         params: dict[str, str] = {}
         clean_month = (return_month or "").strip()
         if _MONTH_RE.fullmatch(clean_month):
             params["month"] = clean_month
+        if token == "reports":
+            return params
+        if (return_filter or "").strip() == "missing_category":
+            params.pop("month", None)
+            params["filter"] = "missing_category"
         clean_page = (return_page or "").strip()
         if clean_page.isdigit() and 1 <= int(clean_page) <= 100_000:
             params["page"] = clean_page
