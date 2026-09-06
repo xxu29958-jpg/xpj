@@ -6,17 +6,20 @@ RepaymentDraft 事实集与 confirm 冻结币种比对。
 
 from __future__ import annotations
 
+from datetime import UTC, date, datetime
 from types import SimpleNamespace
+from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 from app.canonical_money_facts_contract import INSTALLATION_HOME_CURRENCY_KEY
 from app.config import get_settings
 from app.database import SessionLocal
 from app.errors import AppError
-from app.models import Debt, Expense
+from app.models import Debt, Expense, IncomePlanRevision
 from app.runtime_compatibility_contract import (
     RUNTIME_COMPATIBILITY_SESSION_KEY,
     RuntimeCompatibilityRequest,
@@ -220,8 +223,14 @@ def test_terminal_archive_restore_retries_do_not_require_a_writer(
         recurring_service,
     )
 
-    archived = SimpleNamespace(status="archived", archived_at=object())
-    active = SimpleNamespace(status="active", archived_at=None)
+    archived = SimpleNamespace(id=1, tenant_id="owner", row_version=2, status="archived", archived_at=object())
+    active = SimpleNamespace(id=2, tenant_id="owner", row_version=2, status="active", archived_at=None)
+    db = Mock(spec=Session)
+    db.scalar.side_effect = [
+        IncomePlanRevision(tenant_id=plan.tenant_id, plan_id=plan.id, revision_number=plan.row_version,
+            intent_month=date(2026, 1, 1), status=plan.status)
+        for plan in (archived, active)
+    ]
     _patch_terminal_retry_dependencies(
         monkeypatch,
         archived=archived,
@@ -240,12 +249,14 @@ def test_terminal_archive_restore_retries_do_not_require_a_writer(
         ),
         (
             income_plan_service.archive_income_plan,
-            {"public_id": "archived", "expected_row_version": 1},
+            {"public_id": "archived", "expected_row_version": 1,
+                "intent_month": "2026-01", "now": datetime(2026, 2, 1, tzinfo=UTC)},
             archived,
         ),
         (
             income_plan_service.restore_income_plan,
-            {"public_id": "active", "expected_row_version": 1},
+            {"public_id": "active", "expected_row_version": 1,
+                "intent_month": "2026-01", "now": datetime(2026, 2, 1, tzinfo=UTC)},
             active,
         ),
         (recurring_service.archive_recurring_item, {"public_id": "archived"}, archived),
@@ -262,7 +273,10 @@ def test_terminal_archive_restore_retries_do_not_require_a_writer(
         ),
     )
     for action, arguments, expected in cases:
-        assert action(object(), tenant_id="owner", **arguments) is expected
+        assert action(db, tenant_id="owner", **arguments) is expected
+    assert db.scalar.call_count == 2
+    db.add.assert_not_called()
+    db.commit.assert_not_called()
 
 
 def test_first_binding_rejected_when_legacy_cny_draft_exists(client: TestClient, monkeypatch, *, identity) -> None:
