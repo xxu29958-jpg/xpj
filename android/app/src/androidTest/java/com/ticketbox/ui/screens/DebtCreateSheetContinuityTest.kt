@@ -1,9 +1,6 @@
 package com.ticketbox.ui.screens
 
-import android.view.View
 import androidx.compose.runtime.remember
-import androidx.compose.ui.platform.ViewRootForTest
-import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -17,7 +14,6 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.window.DialogWindowProvider
 import androidx.lifecycle.viewModelScope
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
@@ -76,24 +72,21 @@ class DebtCreateSheetContinuityTest {
         compose.onNodeWithText(context.getString(R.string.debt_list_add)).performClick()
         compose.onAllNodes(hasSetTextAction())[0].performTextInput("小王")
         compose.onAllNodes(hasSetTextAction())[1].performScrollTo().performClick().performTextInput("123.45")
-        compose.onNodeWithText(context.getString(R.string.debt_create_save))
-            .performScrollTo().assertIsDisplayed().assertIsEnabled()
-        val beforeCapture = saveObservation()
         capture("debt-create-editing")
-        val touchBefore = saveObservation()
-        compose.onNode(hasText(context.getString(R.string.debt_create_save)) and hasClickAction()).performTouchInput {
-            assertTrue("Save injection visibleSize=$visibleSize; beforeCapture=[$beforeCapture]; " +
-                "before=[$touchBefore]", width > 0 && height > 0)
-            click()
-        }
+        // System window updates can resize the viewport during capture. Locate Save in the
+        // current viewport immediately before the user's touch, not before taking the preview.
+        compose.onNode(hasText(context.getString(R.string.debt_create_save)) and hasClickAction())
+            .performScrollTo().assertIsDisplayed().assertIsEnabled().performTouchInput {
+                assertTrue("Save injection visibleSize=$visibleSize", width > 0 && height > 0)
+                click()
+            }
         runCatching { compose.waitUntil(5_000) { viewModel.state.value.isSubmitting } }.getOrElse { error ->
             val observed = viewModel.state.value
             throw AssertionError("Save did not enter submission: canModify=${observed.canModify}, " +
                 "currencyReady=${observed.homeCurrencyResolved}, parsing=${observed.isParsingBill}, " +
                 "amountValid=${observed.addDraft.parsedAmountCents() != null}, " +
                 "labelPresent=${observed.addDraft.counterpartyLabel.isNotBlank()}, " +
-                "validation=${observed.addDraft.validationError}, calls=${creation.submitted.size}; " +
-                "before=[$touchBefore]; after=[${saveObservation()}]", error)
+                "validation=${observed.addDraft.validationError}, calls=${creation.submitted.size}", error)
         }
 
         compose.onNodeWithText("小王").assertIsNotEnabled()
@@ -109,38 +102,6 @@ class DebtCreateSheetContinuityTest {
             assertEquals(12_345L, creation.submitted.single().principalAmountCents)
             assertTrue(viewModel.state.value.debts.isEmpty())
         }
-    }
-
-    private fun saveObservation(): String {
-        val node = compose.onNodeWithText(context.getString(R.string.debt_create_save)).fetchSemanticsNode()
-        val label = compose.onNodeWithText(context.getString(R.string.debt_create_save), useUnmergedTree = true)
-            .fetchSemanticsNode()
-        val root = requireNotNull(node.root) as ViewRootForTest
-        return compose.runOnIdle {
-            val view = root.view
-            val window = generateSequence(view) { it.parent as? View }
-                .filterIsInstance<DialogWindowProvider>().first().window
-            "attached=${view.isAttachedToWindow}, focus=${view.hasWindowFocus()}, " +
-                "decorFocus=${window.decorView.hasWindowFocus()}, resumed=${root.isLifecycleInResumedState}, " +
-                "pendingLayout=${root.hasPendingMeasureOrLayout}, bounds=${node.boundsInRoot}, " +
-                "touch=${node.touchBoundsInRoot}, windowBounds=${node.boundsInWindow}, " +
-                "buttonId=${node.id}, buttonSize=${node.size}, buttonPosition=${node.positionInRoot}, " +
-                "labelId=${label.id}, labelSize=${label.size}, labelPosition=${label.positionInRoot}, " +
-                "labelBounds=${label.boundsInRoot}, firstEmptyAncestor=${firstEmptyAncestor(node)}"
-        }
-    }
-
-    private fun firstEmptyAncestor(node: SemanticsNode): String {
-        val source = node.layoutInfo.coordinates
-        var previous = "source size=${source.size}"
-        generateSequence(source) { it.parentCoordinates }.forEachIndexed { index, ancestor ->
-            val clipped = ancestor.localBoundingBoxOf(source, clipBounds = true)
-            val raw = ancestor.localBoundingBoxOf(source, clipBounds = false)
-            val current = "$index size=${ancestor.size} clipped=$clipped raw=$raw"
-            if (clipped.isEmpty || raw.isEmpty) return "$previous -> $current"
-            previous = current
-        }
-        return "none; root=$previous"
     }
 
     private fun capture(name: String) {
