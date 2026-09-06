@@ -278,7 +278,18 @@ _DESKTOP_BACKEND_CONSUMER_FILES = {
     "desktop/tests/test_desktop_first_use_backend.py",
     "desktop/tests/test_ui_browser_layout.py",
 }
-_DESKTOP_PAIRING_PRODUCER_FILES = {
+# Derive the service dependencies with the existing native-producer walker.
+# Route guards remain explicit: broad schema re-exports are not task ownership.
+_DESKTOP_PAIRING_PRODUCER_FILES = _app_python_dependencies((
+    "app.services.owner_device_service",
+    "app.services.desktop_switch_service",
+    "app.services.desktop_activation_service",
+)) | {
+    "backend/app/auth.py",
+    "backend/app/database/__init__.py",
+    "backend/app/network_boundary.py",
+    "backend/app/middleware/web_session.py",
+    "backend/app/services/server_identity_service.py",
     "backend/app/routes/auth.py",
     "backend/app/routes/devices.py",
     "backend/app/routes/ledgers.py",
