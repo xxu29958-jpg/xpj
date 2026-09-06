@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
 import com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto
@@ -17,6 +18,7 @@ import com.ticketbox.data.repository.occurrenceTarget
 import com.ticketbox.domain.model.ConfirmedStreamItem
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.RecurringItem
+import com.ticketbox.domain.model.UiText
 import java.time.YearMonth
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,8 +38,11 @@ data class RecurringOccurrenceUiState(
     val saving: Boolean = false,
     val acceptedId: Long? = null,
     val requestedPeriod: String = "current",
-    val message: String? = null,
+    val message: UiText? = null,
 ) {
+    val seriesPending: List<PendingOccurrencePayment> get() = queue.filter {
+        it.row.status != PendingMutationStatus.Done && it.row.targetId.startsWith("recurring_occurrence:" + item?.publicId + ":")
+    }
     val pending: List<PendingOccurrencePayment> get() = queue.filter {
         it.row.status != PendingMutationStatus.Done &&
             it.row.targetId == occurrenceTarget(item?.publicId.orEmpty(), occurrence?.period ?: requestedPeriod)
@@ -88,10 +93,12 @@ class RecurringOccurrenceViewModel(
         if (runCatching { YearMonth.parse(period).toString() == period }.getOrDefault(false)) {
             mutableState.update { it.copy(occurrence = null, choice = null, acceptedId = null, requestedPeriod = period) }
             load(period)
-        } else mutableState.update { it.copy(message = "请输入年月，例如 2026-09。") }
+        } else mutableState.update { it.copy(message = UiText.res(R.string.occurrence_invalid_month)) }
     }
 
-    fun refresh() = load(mutableState.value.occurrence?.period ?: mutableState.value.requestedPeriod)
+    fun refresh() {
+        load(mutableState.value.occurrence?.period ?: mutableState.value.requestedPeriod)
+    }
 
     fun choose(payment: ConfirmedStreamItem.ExpenseRow?, currency: CurrencyCode) {
         val state = mutableState.value
@@ -127,14 +134,14 @@ class RecurringOccurrenceViewModel(
                 saving = false,
                 acceptedId = result.getOrNull(),
                 choice = if (result.isSuccess) null else choice,
-                message = if (result.isSuccess) "提交已保存在本机，等待同步；本期状态以服务器确认为准。"
-                    else result.exceptionOrNull()?.message ?: "保存失败，请保留选择后重试。",
+                message = if (result.isSuccess) UiText.res(R.string.occurrence_saved_locally)
+                    else result.exceptionOrNull()?.message?.let(UiText::raw) ?: UiText.res(R.string.occurrence_save_failed),
             ) }
         }
     }
 
     fun recover(pending: PendingOccurrencePayment, drop: Boolean) {
-        if (pending !in mutableState.value.pending) return
+        if (pending !in mutableState.value.seriesPending) return
         viewModelScope.launch {
             when (pending.row.status) {
                 PendingMutationStatus.Conflict -> if (drop) outbox.resolveConflict(pending.row.id, ConflictResolution.DropMine)
@@ -159,10 +166,10 @@ class RecurringOccurrenceViewModel(
             if (requestEpoch != epoch || mutableState.value.access?.binding != binding) return@launch
             mutableState.update { it.copy(
                 loading = false, occurrence = result.getOrNull() ?: it.occurrence,
-                message = if (result.isFailure) "未能刷新期次。已加载的期次和付款仍可保存提交，联网后会校验版本。" else null,
+                message = if (result.isFailure) UiText.res(R.string.occurrence_refresh_failed) else null,
             ) }
             if (result.isSuccess) ledger.syncConfirmed().onFailure {
-                if (requestEpoch == epoch) mutableState.update { it.copy(message = "付款列表未刷新，当前显示本机已保存的流水。") }
+                if (requestEpoch == epoch) mutableState.update { it.copy(message = UiText.res(R.string.occurrence_payment_refresh_failed)) }
             }
         }
     }

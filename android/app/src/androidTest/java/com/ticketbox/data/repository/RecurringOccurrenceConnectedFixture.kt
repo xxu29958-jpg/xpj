@@ -69,8 +69,9 @@ internal class RecurringOccurrenceConnectedFixture(private val context: Context)
             while (cursor.moveToNext()) add(cursor.columnNames.mapIndexed { index, column -> column to cursor.getString(index) }.toMap())
         } }
 
-    suspend fun drain() = OutboxDrainEngine(outbox,
-        listOf(RecurringOccurrenceDispatcher({ network.service }, adapters.recurringOccurrenceAdapter)), now = clock::millis).drainOnce()
+    suspend fun drain(maxAttempts: Int = 10) = OutboxDrainEngine(outbox,
+        listOf(RecurringOccurrenceDispatcher({ network.service }, adapters.recurringOccurrenceAdapter)),
+        maxAttempts = maxAttempts, now = clock::millis).drainOnce()
 
     fun advanceForRetry() { clock = Clock.offset(clock, Duration.ofMinutes(2)) }
 
@@ -85,8 +86,12 @@ internal class OccurrenceConnectedNetwork {
     val calls = mutableListOf<Pair<RecurringOccurrencePaymentRequestDto, String>>()
     val results = mutableMapOf<String, RecurringOccurrenceDto>()
     var loseResponse = true
+    var failReads = false
     val service = object : ApiService by occurrenceProxy<ApiService>({ method, _ -> error("Unexpected remote method: $method") }) {
-        override suspend fun recurringOccurrence(publicId: String, month: String) = current
+        override suspend fun recurringOccurrence(publicId: String, month: String): RecurringOccurrenceDto {
+            if (failReads) throw IOException("Synthetic unavailable period read")
+            return current
+        }
         override suspend fun setRecurringOccurrencePayment(
             publicId: String, month: String, request: RecurringOccurrencePaymentRequestDto, idempotencyKey: String,
         ): RecurringOccurrenceDto {
@@ -97,7 +102,8 @@ internal class OccurrenceConnectedNetwork {
                 val linked = request.action == "link"
                 current.copy(rowVersion = current.rowVersion + 1, state = if (linked) "fulfilled" else "unfulfilled",
                     reservedAmountCents = if (linked) 0 else 10_000, expensePublicId = request.expensePublicId,
-                    paidAmountCents = if (linked) 12_345 else null, nextDueDate = if (linked) "2026-10-05" else "2026-09-05")
+                    paidAmountCents = if (linked) 12_345 else null, nextDueDate = if (linked) "2026-10-05" else "2026-09-05",
+                    expenseId = if (linked) 1 else null)
                     .also { current = it }
             }
             if (loseResponse) throw IOException("Synthetic lost response after acceptance")

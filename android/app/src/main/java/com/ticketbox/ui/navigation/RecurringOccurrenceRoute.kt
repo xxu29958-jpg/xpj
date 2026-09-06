@@ -20,7 +20,7 @@ internal fun recurringOccurrenceModel(factory: MainScreenFactory, onChanged: () 
     })
 
 @Composable
-internal fun RecurringOccurrenceHost(model: RecurringOccurrenceViewModel) {
+internal fun RecurringOccurrenceHost(model: RecurringOccurrenceViewModel, onOpenExpense: (Long) -> Unit) {
     val state by model.uiState.collectAsStateWithLifecycle()
     val currency = LocalCurrencyDisplay.current
     RecurringOccurrenceSheet(state, currency, OccurrenceSheetActions(
@@ -30,5 +30,6 @@ internal fun RecurringOccurrenceHost(model: RecurringOccurrenceViewModel) {
         onChoose = { model.choose(it, currency.homeCurrency) },
         onSubmit = model::submit,
         onRecover = model::recover,
+        onOpenExpense = { id -> model.dismiss(); onOpenExpense(id) },
     ))
 }

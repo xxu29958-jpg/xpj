@@ -1,6 +1,6 @@
 # Monthly recurring occurrence working product contract
 
-Status: accepted for construction; implementation and qualification pending.
+Status: implementation present; final candidate and main qualification pending.
 Decision date: 2026-09-06. Source base: `1d5cc293a94dd7e9b13fdf2a5442d505907d7d3b`.
 
 This is the maintained task contract for this vertical slice. Its authority is the
@@ -12,7 +12,7 @@ It does not replace the three original contracts or reopen Windows lifecycle HOL
 ## Problem and user outcome
 
 A household member records monthly rent, confirms its payment, and needs to know
-which obligations remain. Today the recurring registry stores a monthly baseline
+which obligations remain. At the source base the recurring registry stores a monthly baseline
 and a reminder date but no period fulfillment. The discretionary calculation
 subtracts both every active baseline and every confirmed expense. The same bill
 can occupy the calculation twice; payment cannot advance its reminder.
@@ -104,3 +104,19 @@ representative task requires split/partial payments; do not emulate them by chan
 financial amounts. Stop this slice when its task and gates pass. Retain income
 projection history, Backstage capability findings and other system gaps in the
 Atlas, then continue the original Goal. This slice cannot complete the full RC.
+
+## Current evidence (not release acceptance)
+
+- Test-only `5c7560b2` reproduced the missing occurrence route on cloud PostgreSQL:
+  CI `34004587739`, ordinary 2/2, confirmed payment followed by occurrence GET 404.
+- `ce293ece` passed ordinary 2/2 including explicit link, stable replay, undo,
+  correction to zero, reversal, cross-ledger/role and the real Web form journey;
+  all real-db shards and the Windows installer build also passed. Its full CI
+  failed on an explicit-scope static guard, Android copy/structure checks, a missing
+  required button icon, and a Desktop Node probe timeout. It is not a qualified candidate.
+- Bounded read-only reviews of `8c717248` backend and `ce293ece` Android retained
+  three concrete fixes: canonical confirmed zero amounts remain eligible; the
+  associated payment has a real detail entry; original submissions are identifiable
+  and recoverable without a successful period GET. Snapshot manifests matched.
+- Room close/reopen and synthetic response-loss probes are mechanism tests, not
+  process-death, cross-client, clean-Windows or full Internal Beta qualification.

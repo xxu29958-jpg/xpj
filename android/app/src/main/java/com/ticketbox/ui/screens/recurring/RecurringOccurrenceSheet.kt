@@ -3,6 +3,8 @@ package com.ticketbox.ui.screens.recurring
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -29,6 +31,7 @@ import com.ticketbox.domain.model.ExpenseLineageStatus
 import com.ticketbox.domain.model.filterConfirmedStreamItems
 import com.ticketbox.domain.model.recordCurrencyDisplay
 import com.ticketbox.ui.components.AppPrimaryButton
+import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
@@ -41,6 +44,7 @@ data class OccurrenceSheetActions(
     val onChoose: (ConfirmedStreamItem.ExpenseRow?) -> Unit,
     val onSubmit: () -> Unit,
     val onRecover: (PendingOccurrencePayment, Boolean) -> Unit,
+    val onOpenExpense: (Long) -> Unit = {},
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -54,18 +58,21 @@ fun RecurringOccurrenceSheet(
     ModalBottomSheet(onDismissRequest = actions.onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         AppSheetScaffold(title = item.merchant, subtitle = stringResource(R.string.occurrence_subtitle)) {
             OccurrencePeriodControls(state, actions)
-            state.message?.let { Text(it, modifier = Modifier.testTag("occurrence-message")) }
+            state.message?.let { Text(it.asString(), modifier = Modifier.testTag("occurrence-message")) }
+            state.seriesPending.forEach { OccurrencePending(it, actions.onRecover) }
             state.occurrence?.let { occurrence ->
                 Text(stringResource(occurrenceStateLabel(occurrence.state)), modifier = Modifier.testTag("occurrence-state"))
                 Text(stringResource(R.string.occurrence_reserved, formatDisplayAmount(occurrence.reservedAmountCents, currency)))
                 occurrence.paidAmountCents?.let { Text(stringResource(R.string.occurrence_paid_amount, formatDisplayAmount(it, currency))) }
+                occurrence.expenseId?.let { id ->
+                    TextButton(onClick = { actions.onOpenExpense(id) }) { Text(stringResource(R.string.occurrence_open_payment)) }
+                }
                 Text(stringResource(R.string.occurrence_next_due, occurrence.nextDueDate ?: stringResource(R.string.occurrence_no_reminder)))
                 if (occurrence.expensePublicId != null) {
                     TextButton(onClick = { actions.onChoose(null) }, enabled = state.canWrite) { Text(stringResource(R.string.occurrence_clear)) }
                 }
                 if (state.access?.canModify == false) Text(stringResource(R.string.occurrence_readonly))
                 OccurrenceChoice(state, currency, actions.onSubmit)
-                state.pending.forEach { OccurrencePending(it, actions.onRecover) }
                 if (state.canWrite) OccurrencePaymentPicker(state, actions.onChoose)
             }
         }
@@ -90,7 +97,7 @@ private fun OccurrenceChoice(state: RecurringOccurrenceUiState, currency: Curren
     val label = if (choice.request.action == "clear") stringResource(R.string.occurrence_clear_review)
         else stringResource(R.string.occurrence_link_review, choice.paymentLabel.orEmpty(), formatDisplayAmount(choice.paymentAmountCents ?: 0, currency))
     Text(label)
-    AppPrimaryButton(text = stringResource(R.string.occurrence_submit), onClick = submit,
+    AppPrimaryButton(text = stringResource(R.string.occurrence_submit), icon = Icons.Filled.Check, onClick = submit,
         enabled = state.canWrite, modifier = Modifier.fillMaxWidth().testTag("occurrence-submit"))
 }
 
@@ -101,9 +108,7 @@ private fun OccurrencePending(pending: PendingOccurrencePayment, recover: (Pendi
     HorizontalDivider()
     Text(stringResource(if (pending.row.status in setOf(PendingMutationStatus.Pending, PendingMutationStatus.InFlight))
         R.string.occurrence_pending else R.string.occurrence_attention))
-    if (intent == null) Text(stringResource(R.string.occurrence_unsupported))
-    else Text(stringResource(R.string.occurrence_original_intent, intent.period,
-        if (intent.request.action == "clear") stringResource(R.string.occurrence_clear) else intent.paymentLabel.orEmpty()))
+    RecurringOccurrenceIntentSummary(pending)
     if (pending.row.status == PendingMutationStatus.Failed) {
         TextButton(onClick = { recover(pending, false) }, enabled = intent != null) { Text(stringResource(R.string.occurrence_retry_original)) }
     }

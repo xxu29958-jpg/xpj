@@ -25,6 +25,7 @@ data class PendingOccurrencePayment(val row: OutboxRow, val intent: RecurringOcc
 interface RecurringOccurrenceActions {
     fun currentAccess(): LedgerAccessContext?
     fun observeAccess(): Flow<LedgerAccessContext?>
+    fun describe(row: OutboxRow): PendingOccurrencePayment?
     fun observeQueue(binding: LogicalSessionBinding): Flow<List<PendingOccurrencePayment>>
     suspend fun fetch(binding: LogicalSessionBinding, seriesId: String, period: String): Result<RecurringOccurrenceDto>
     suspend fun enqueue(binding: LogicalSessionBinding, draft: OccurrencePaymentDraft): Result<Long>
@@ -44,6 +45,14 @@ class RecurringOccurrenceRepository(
     }
 
     override fun observeAccess(): Flow<LedgerAccessContext?> = apiProvider.observeActiveLedgerAccess()
+
+    override fun describe(row: OutboxRow): PendingOccurrencePayment? {
+        val binding = currentAccess()?.binding ?: return null
+        if (row.type != PendingMutationType.SetRecurringOccurrencePayment ||
+            row.ownerKey != binding.ownerKey || row.ledgerId != binding.ledgerId
+        ) return null
+        return PendingOccurrencePayment(row, adapter.readSupportedOccurrence(row.payloadJson))
+    }
 
     override fun observeQueue(binding: LogicalSessionBinding): Flow<List<PendingOccurrencePayment>> =
         outbox.observeActiveByTypes(setOf(PendingMutationType.SetRecurringOccurrencePayment), includeCompleted = true)

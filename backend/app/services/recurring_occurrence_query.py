@@ -24,6 +24,14 @@ def occurrence_period(month: str | None) -> date:
     return date.fromisoformat(f"{clean_month(month or current_accounting_month())}-01")
 
 
+def get_occurrence(db: Session, *, tenant_id: str, series_id: int, period: date) -> RecurringOccurrence | None:
+    return db.scalar(select(RecurringOccurrence).where(
+        RecurringOccurrence.tenant_id == tenant_id,
+        RecurringOccurrence.series_id == series_id,
+        RecurringOccurrence.period_start == period,
+    ).execution_options(populate_existing=True))
+
+
 def eligible_payment_query(*, tenant_id: str):
     return _eligible_payments_for_ledgers([tenant_id])
 
@@ -59,9 +67,10 @@ def next_due_dates_for_ledgers(db: Session, *, tenant_ids: list[str]) -> list[da
     items = list(db.scalars(select(RecurringItem).where(
         RecurringItem.tenant_id.in_(tenant_ids), RecurringItem.status == "active",
     )))
+    eligible_ids = _eligible_payments_for_ledgers(tenant_ids).with_only_columns(Expense.id)
     rows = db.execute(select(RecurringOccurrence.series_id, RecurringOccurrence.period_start).where(
         RecurringOccurrence.tenant_id.in_(tenant_ids),
-        RecurringOccurrence.expense_id.in_(_eligible_payments_for_ledgers(tenant_ids).with_only_columns(Expense.id)),
+        RecurringOccurrence.expense_id.in_(eligible_ids),
     ))
     fulfilled: dict[int, set[date]] = {}
     for series_id, period in rows:
@@ -104,7 +113,7 @@ def next_due_dates(
 def occurrence_response(
     db: Session, *, item: RecurringItem, period: date,
 ) -> RecurringOccurrenceResponse:
-    row = db.get(RecurringOccurrence, (item.tenant_id, item.id, period))
+    row = get_occurrence(db, tenant_id=item.tenant_id, series_id=item.id, period=period)
     expense = db.scalar(select(Expense).where(
         Expense.tenant_id == item.tenant_id,
         Expense.id == row.expense_id,

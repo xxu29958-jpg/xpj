@@ -17,7 +17,12 @@ from app.services.idempotency import (
     fingerprint_request,
     mark_idempotency_succeeded,
 )
-from app.services.recurring_occurrence_query import eligible_payment_query, occurrence_period, occurrence_response
+from app.services.recurring_occurrence_query import (
+    eligible_payment_query,
+    get_occurrence,
+    occurrence_period,
+    occurrence_response,
+)
 from app.services.spending_contract_service import clean_month
 from app.services.time_service import now_utc
 
@@ -105,7 +110,7 @@ def set_occurrence_payment(
         db, tenant_id=tenant_id, public_id=public_id,
         expected_row_version=payload.expected_series_row_version,
     )
-    row = db.get(RecurringOccurrence, (tenant_id, item.id, period), populate_existing=True)
+    row = get_occurrence(db, tenant_id=tenant_id, series_id=item.id, period=period)
     if (row.row_version if row else 0) != payload.expected_row_version:
         raise AppError("state_conflict", status_code=409)
     payment = _lock_payment(db, tenant_id=tenant_id, payload=payload, item=item, period=period)

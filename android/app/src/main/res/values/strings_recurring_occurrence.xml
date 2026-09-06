@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="occurrence_open">查看本期</string>
+    <string name="occurrence_open_payment">查看关联账单</string>
+    <string name="occurrence_invalid_month">请输入年月，例如 2026-09。</string>
+    <string name="occurrence_saved_locally">提交已保存在本机，等待同步；本期状态以服务器确认为准。</string>
+    <string name="occurrence_save_failed">保存失败，请保留选择后重试。</string>
+    <string name="occurrence_refresh_failed">未能刷新期次。已加载的期次和付款仍可保存提交，联网后会校验版本。</string>
+    <string name="occurrence_payment_refresh_failed">付款列表未刷新，当前显示本机已保存的流水。</string>
     <string name="occurrence_subtitle">关联已确认付款，核对每月固定支出</string>
     <string name="occurrence_period">履约月份 · YYYY-MM</string>
     <string name="occurrence_show_period">查看该月</string>
