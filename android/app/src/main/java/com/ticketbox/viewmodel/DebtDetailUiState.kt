@@ -36,7 +36,7 @@ data class DebtDetailUiState(
     val adjustmentRefreshAfterVersion: Long? = null,
 ) {
     val canWriteActions: Boolean
-        get() = canModify && debt != null && !isSubmitting && !isLoading && adjustmentSnapshotLoaded &&
+        get() = canModify && debt != null && !isSubmitting && adjustmentSnapshotLoaded &&
             pendingAdjustments.isEmpty() && locallyAcceptedAdjustmentId == null && adjustmentRefreshAfterVersion == null
 
     val adjustmentWriteMessage: UiText?
