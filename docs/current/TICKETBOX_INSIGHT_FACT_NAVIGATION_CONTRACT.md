@@ -190,3 +190,11 @@ Exact `1f7d05b728c81631cd761ee39c365a8e7c26547c`（tree `31b97b35e697418746d8fdb
 施工后：既有 scope 测试新增反例实际 **1 RED（0.55 秒）**，准确差异为该文件 `desktop=false`；加入六个 exact 路径后整份原 scope 组 **22 PASS（0.83 秒）**。对当前 3,036 个 tracked 路径逐一比较前后 classifier，仅上表六个路径增加 Desktop，其余 scope 完全不变；四个实际 JS 的原 Desktop 触发保持。workflow 实际 parser 去掉新增执行/上传两步后，完整 YAML 数据与 `1f7d05b7` 相同；新步骤使用 `.ci-venv` 当前 Python、单文件 `--noconftest`，报告名 `web-edge-runtime-test-results`，非零/空报告/skip/缺 XML 均不能通过。三个实际用例和 tmp_path 唯一 fixture 经 AST 核对，未修改任何测试行为或产品素材。
 
 仓库实际 GitHub workflow contract audit **OK（4.65 秒）**，Ruff、源码 compile 与 diff 检查通过。本轮在原七文件之外仅增加修改 workflow、classifier 和既有 scope 测试，合同追加本项前后证据；没有新增框架、host 操作或数据库启动。第 16 个消费者已接入与接口变更同候选的真实 Windows producer，不再以长期 HOLD 跳过；其实际三例/no-skip/XML 结果仍等待主控提交后的 exact cloud，未在本机运行 Edge、PG、Gradle或长测，未 commit/push。
+
+### d264a844 的实际结果及分类器收敛
+
+源码 `d264a844d61bd97df4b15006c1d8c10ae0c39338` / tree `e29abb55d7ac083af057ecb254cadbaec3251c57` 已实际执行 CI `34048404374`。Native Windows job `101527512512` 成功，实际 checkout/source 均为此 source，artifact `9993831971` 为 **12 tests / 0 failure / 0 error / 0 skip**；response-loss case 保留 `cdp_response_loss_after_consumed_bootstrap_dom=attempt-1` 且最终 PASS。新正式 P1 `PRRT_kwDOS5LrfM6ftX-J` 因这项修正及全部原调用迁移被 resolved，并独立 readback；此状态不替整体 CI 资格。
+
+Desktop job `101527512586` 的原组是 460 PASS / 1 FAIL / 10 SKIP：未改的纯 Node `[no-root]` 用例在子进程完成前发生 10 秒 TimeoutExpired，新增三个 Web 用例因前置失败未执行。测试文件与实际 `_THEME_PROBE` 相对 `8ae144ef`、`1f7d05b7` 字节相同；有限分支无循环或异步，唯一指定本机纯例 1 PASS（0.17 秒）。启动、stdin、VM 或退出的具体超时原因仍 unknown。一次同 SHA job rerun 请求被 GitHub 拒绝，未启动复跑。相同继承字节在 Debt `a033c08b` 的 Desktop `101527709848` 已完整成功，artifact `9993938492` 实际显示新增三例 3 PASS / 0 error / 0 skip，但不拿该结果替 Web source 自身的 gate。
+
+Backend contracts `101527512484` 的独立失败为实际体量回归：classifier 从 492 增至 501 行，codebase 的 `files_over_500` 是 13 > 12，repository-weight artifact `9993895489` 唯一失败为 98 → 99；并非运行环境错误。精确六条路由原本只由一个中间集合供既有 exact mapping 消费，现删除该单次中间 manifest，将六个键值直接归入原 mapping；没有移文件、压空行、放宽门限或更改路由语义。源码自然为 498 行，原 scope 组 **22 PASS（0.80 秒）**；全部 3,036 tracked 路径与 d264 的 classifier 结果逐项相同，Ruff/diff 通过。本机 pytest 结束时报告旧全局 temp 的 ACL 清理失败警告，不处理该旧目录。新 exact source 的完整云端资格仍待取得。

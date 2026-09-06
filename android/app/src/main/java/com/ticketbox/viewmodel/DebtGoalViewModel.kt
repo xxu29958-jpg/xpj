@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
+import com.ticketbox.data.repository.DebtAdjustmentActions
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.DebtGoalComposition
 import com.ticketbox.domain.model.Goal
@@ -47,7 +48,11 @@ data class DebtGoalCelebration(val goalName: String)
 
 class DebtGoalViewModel(
     private val repository: ReportsActions,
+    private val adjustments: DebtAdjustmentActions,
 ) : ViewModel() {
+
+    private var adjustmentBinding = adjustments.currentAccess()?.binding
+    private var adjustmentSnapshotReady = false
 
     private val _state = MutableStateFlow(DebtGoalUiState(canModify = repository.canModifyLedger()))
     val state: StateFlow<DebtGoalUiState> = _state.asStateFlow()
@@ -70,7 +75,17 @@ class DebtGoalViewModel(
     private var latestRefreshGeneration = 0L
 
     init {
-        refresh()
+        viewModelScope.launch {
+            adjustments.observeCompletionRefreshes().collect { change ->
+                val changedBinding = adjustmentBinding != change.binding
+                adjustmentBinding = change.binding
+                adjustmentSnapshotReady = change.binding != null
+                if (change.binding == null) {
+                    loadGeneration++
+                    _state.value = DebtGoalUiState(canModify = false)
+                } else refresh(clearStale = changedBinding)
+            }
+        }
     }
 
     /**
@@ -82,6 +97,10 @@ class DebtGoalViewModel(
      * pull-to-refresh / in-place re-fetch (it keeps the open detail to re-latch it).
      */
     fun refresh(clearStale: Boolean = false) {
+        if (!adjustmentSnapshotReady) {
+            _state.update { it.copy(isLoading = adjustments.currentAccess() != null) }
+            return
+        }
         if (clearStale) {
             _state.update {
                 it.copy(goals = emptyList(), selectedGoal = null, error = null, flashMessage = null)
@@ -135,8 +154,15 @@ class DebtGoalViewModel(
      */
     private suspend fun latchSelectedDetail(gen: Long) {
         val selected = _state.value.selectedGoal ?: return
-        val fresh = repository.goal(selected.publicId).getOrNull() ?: return
-        if (gen != loadGeneration) return
+        // Both endpoints return the complete canonical Goal, including metadata and OCC.
+        val listed = _state.value.goals.firstOrNull { it.publicId == selected.publicId }
+        if (listed != null) _state.update { it.copy(selectedGoal = listed) }
+        val result = repository.goal(selected.publicId)
+        if (gen != loadGeneration || _state.value.selectedGoal?.publicId != selected.publicId) return
+        val fresh = result.getOrElse { err ->
+            _state.update { it.copy(error = err.toUiText(R.string.debt_goal_load_failed)) }
+            listed ?: return
+        }
         _state.update { current ->
             if (current.selectedGoal?.publicId == fresh.publicId) {
                 current.copy(selectedGoal = fresh, goals = current.goals.replaceGoal(fresh))

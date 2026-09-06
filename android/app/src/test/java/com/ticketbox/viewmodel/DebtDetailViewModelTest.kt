@@ -160,6 +160,8 @@ class DebtDetailViewModelTest {
     @Test
     fun openActionSetsActiveActionAndClearsInputs() = runTest(dispatcher) {
         val viewModel = DebtDetailViewModel(FakeDebtDetailActions(), FakeDebtAdjustmentActions())
+        viewModel.loadDebt("d1")
+        advanceUntilIdle()
         viewModel.updateActionInput(amount = "99")
         viewModel.openAction(DebtAction.Repayment)
 
@@ -290,26 +292,38 @@ class DebtDetailViewModelTest {
 
     @Test
     fun submitAdjustmentAppliesDecreaseSign() = runTest(dispatcher) {
-        val repo = FakeDebtDetailActions(getResult = Result.success(sampleDebt("d1", rowVersion = 2L)))
-        val adjustments = FakeDebtAdjustmentActions()
-        val viewModel = DebtDetailViewModel(repo, adjustments)
-        viewModel.loadDebt("d1")
-        advanceUntilIdle()
+        for ((amount, signedCents) in listOf("50" to -5_000L, "500" to -50_000L)) {
+            val canonical = sampleDebt("d1", rowVersion = 2L, remaining = 50_000L)
+            val repo = FakeDebtDetailActions(getResult = Result.success(canonical))
+            val adjustments = FakeDebtAdjustmentActions()
+            val viewModel = DebtDetailViewModel(repo, adjustments)
+            viewModel.loadDebt("d1")
+            advanceUntilIdle()
 
-        viewModel.openAction(DebtAction.Adjustment)
-        viewModel.updateActionInput(amount = "50")
-        viewModel.updateActionInput(reason = "减免")
-        viewModel.setAdjustmentSign(increase = false)
-        viewModel.submit()
-        advanceUntilIdle()
+            viewModel.openAction(DebtAction.Adjustment)
+            viewModel.updateActionInput(amount = "500.01", reason = "减免")
+            viewModel.setAdjustmentSign(increase = false)
+            viewModel.submit()
+            advanceUntilIdle()
+            assertTrue(viewModel.state.value.validationError != null)
+            assertEquals(DebtAction.Adjustment, viewModel.state.value.activeAction)
+            assertEquals("500.01", viewModel.state.value.amountInput)
+            assertEquals("减免", viewModel.state.value.reasonInput)
+            assertEquals(false, viewModel.state.value.adjustmentIncrease)
+            assertEquals(canonical, viewModel.state.value.debt)
+            assertTrue(adjustments.saveCalls.isEmpty())
 
-        val call = adjustments.saveCalls.single()
-        // Magnitude 50 with the decrease sign → a negative signed delta.
-        assertEquals(-5_000L, call.amountCents)
-        assertEquals("减免", call.reason)
-        assertEquals(2L, call.debt.rowVersion)
-        assertEquals("d1", call.debt.publicId)
-        assertEquals(adjustments.currentAccess()?.binding, call.binding)
+            viewModel.updateActionInput(amount = amount)
+            viewModel.submit()
+            advanceUntilIdle()
+
+            val call = adjustments.saveCalls.single()
+            assertEquals(signedCents, call.amountCents)
+            assertEquals("减免", call.reason)
+            assertEquals(2L, call.debt.rowVersion)
+            assertEquals("d1", call.debt.publicId)
+            assertEquals(adjustments.currentAccess()?.binding, call.binding)
+        }
     }
 
     @Test
@@ -405,7 +419,10 @@ class DebtDetailViewModelTest {
     @Test
     fun dismissActionClearsDialog() = runTest(dispatcher) {
         val viewModel = DebtDetailViewModel(FakeDebtDetailActions(), FakeDebtAdjustmentActions())
+        viewModel.loadDebt("d1")
+        advanceUntilIdle()
         viewModel.openAction(DebtAction.Adjustment)
+        assertEquals(DebtAction.Adjustment, viewModel.state.value.activeAction)
         viewModel.updateActionInput(amount = "5")
         viewModel.updateActionInput(reason = "x")
         viewModel.dismissAction()
@@ -648,6 +665,7 @@ class DebtDetailViewModelTest {
         viewModel.updateActionInput(amount = "100")
         viewModel.submit()
         advanceUntilIdle()
+        assertEquals(listOf(WriteArgs("d1", 5L, 10_000L, null)), repo.repaymentCalls)
         assertEquals(6L, viewModel.state.value.debt?.rowVersion)
 
         // Release the now-stale refresh; its rv5 snapshot must NOT revert the committed write — else
@@ -681,6 +699,8 @@ class DebtDetailViewModelTest {
         viewModel.updateActionInput(amount = "100")
         viewModel.submit()
         advanceUntilIdle()
+        assertEquals(listOf(WriteArgs("d1", 5L, 10_000L, null)), repo.repaymentCalls)
+        assertEquals(6L, viewModel.state.value.debt?.rowVersion)
         // The stalled refresh still owns the (true) loading flag; the write didn't touch it.
         assertTrue(viewModel.state.value.isLoading)
 
@@ -719,40 +739,37 @@ class DebtDetailViewModelTest {
 
     @Test
     fun staleDroppedMemberSnapshotDoesNotCelebrate() = runTest(dispatcher) {
-        // The gen-drop must run BEFORE detectSettleCelebration: a discarded stale snapshot must not
-        // fire a 两清 celebration (nor record a status edge). Pinned with a member debt — the only
-        // case where the guard interacts with celebration detection.
         val repo = FakeDebtDetailActions(
             getResult = Result.success(memberDebt(status = DebtLinkStatuses.OPEN)),
-            // A repayment that leaves it OPEN → no real edge, so the committed write never celebrates.
-            writeResult = Result.success(memberDebt(status = DebtLinkStatuses.OPEN)),
         )
         val viewModel = DebtDetailViewModel(repo, FakeDebtAdjustmentActions())
         viewModel.loadDebt("m1")
-        advanceUntilIdle() // open recorded as the non-cleared prior; no celebration
+        advanceUntilIdle()
+        assertNull(viewModel.celebration.value)
 
-        // A slow refresh stalls having captured a CLEARED member snapshot...
+        // A slow read captures a cleared member snapshot before a later authoritative read.
         val gate = CompletableDeferred<Unit>()
         repo.getGate = gate
-        repo.getResult = Result.success(memberDebt(status = DebtLinkStatuses.CLEARED))
+        repo.getResult = Result.success(memberDebt(status = DebtLinkStatuses.CLEARED).copy(rowVersion = 2))
         viewModel.refresh()
         runCurrent()
 
-        // ...superseded by a committed repayment (still OPEN, no edge).
+        // Member facts are read through their canonical owner, never a fake direct repayment.
+        val current = memberDebt(status = DebtLinkStatuses.OPEN).copy(rowVersion = 3)
         repo.getGate = null
-        viewModel.openAction(DebtAction.Repayment)
-        viewModel.updateActionInput(amount = "100")
-        viewModel.submit()
+        repo.getResult = Result.success(current)
+        viewModel.refresh()
         advanceUntilIdle()
+        assertEquals(current, viewModel.state.value.debt)
+        assertTrue(repo.repaymentCalls.isEmpty())
 
-        // Release the stale CLEARED snapshot; it is dropped before celebration detection, so no 两清
-        // fires from a discarded snapshot and the committed OPEN state is retained (also catches full
-        // guard removal — the CLEARED snapshot would otherwise both celebrate and overwrite).
         gate.complete(Unit)
         advanceUntilIdle()
         assertNull(viewModel.celebration.value)
         assertEquals(DebtLinkStatuses.OPEN, viewModel.state.value.debt?.status)
+        assertEquals(3L, viewModel.state.value.debt?.rowVersion)
     }
+
 }
 
 private data class WriteArgs(

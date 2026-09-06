@@ -1,6 +1,7 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.DebtActions
+import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.CsvExport
@@ -51,7 +52,7 @@ class CreateDebtGoalViewModelTest {
                 listOf(debt("open-1", "open"), debt("cleared-1", "cleared"), debt("voided-1", "voided")),
             ),
         )
-        val viewModel = CreateDebtGoalViewModel(FakeCreateReportsActions(canModify = false), debts)
+        val viewModel = CreateDebtGoalViewModel(FakeCreateReportsActions(canModify = false), debts, adjustments = FakeDebtAdjustmentActions())
         viewModel.reload()
         advanceUntilIdle()
 
@@ -62,14 +63,43 @@ class CreateDebtGoalViewModelTest {
     }
 
     @Test
-    fun reloadFailureSetsLoadError() = runTest(dispatcher) {
+    fun candidateRefreshRetainsDraftAfterFailureAndRecovery() = runTest(dispatcher) {
         val debts = FakeCreateDebtActions(listResult = Result.failure(RuntimeException("offline")))
-        val viewModel = CreateDebtGoalViewModel(FakeCreateReportsActions(), debts)
+        val reports = FakeCreateReportsActions()
+        val adjustments = FakeDebtAdjustmentActions()
+        val viewModel = CreateDebtGoalViewModel(reports, debts, adjustments)
         viewModel.reload()
         advanceUntilIdle()
 
         assertTrue(viewModel.state.value.candidates.isEmpty())
         assertTrue(viewModel.state.value.loadError != null)
+        val available = listOf(debt("open-1", "open"))
+        debts.listResult = Result.success(available)
+        viewModel.refreshCandidates()
+        advanceUntilIdle()
+        viewModel.updateName("保留原计划名称")
+        viewModel.toggleDebt("open-1")
+
+        debts.listResult = Result.failure(RuntimeException("offline after adjustment"))
+        adjustments.rows.value = listOf(pendingAdjustment(status = PendingMutationStatus.Done))
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.loadError != null)
+        assertFalse(viewModel.state.value.canSubmit)
+        viewModel.submit()
+        assertTrue(reports.createDebtGoalCalls.isEmpty())
+        assertEquals("保留原计划名称", viewModel.state.value.name)
+        assertEquals(setOf("open-1"), viewModel.state.value.selectedDebtIds)
+
+        debts.listResult = Result.success(available)
+        viewModel.refreshCandidates()
+        advanceUntilIdle()
+
+        assertNull(viewModel.state.value.loadError)
+        assertEquals(available, viewModel.state.value.candidates)
+        assertEquals("保留原计划名称", viewModel.state.value.name)
+        assertEquals(setOf("open-1"), viewModel.state.value.selectedDebtIds)
+        assertTrue(viewModel.state.value.canSubmit)
+        assertTrue(reports.createDebtGoalCalls.isEmpty())
     }
 
     @Test
@@ -89,7 +119,7 @@ class CreateDebtGoalViewModelTest {
         val reports = FakeCreateReportsActions()
         val viewModel = CreateDebtGoalViewModel(reports, FakeCreateDebtActions(
             listResult = Result.success(listOf(debt("open-1", "open"))),
-        ))
+        ), adjustments = FakeDebtAdjustmentActions())
         viewModel.reload()
         advanceUntilIdle()
         viewModel.toggleDebt("open-1") // selection present, but name is blank
@@ -107,7 +137,7 @@ class CreateDebtGoalViewModelTest {
         val reports = FakeCreateReportsActions()
         val viewModel = CreateDebtGoalViewModel(reports, FakeCreateDebtActions(
             listResult = Result.success(listOf(debt("open-1", "open"))),
-        ))
+        ), adjustments = FakeDebtAdjustmentActions())
         viewModel.reload()
         advanceUntilIdle()
         viewModel.updateName("还清欠款") // name present, but nothing selected
@@ -122,11 +152,13 @@ class CreateDebtGoalViewModelTest {
     @Test
     fun submitSuccessSetsCreatedSignalAndPassesSelectedIdsInCandidateOrder() = runTest(dispatcher) {
         val reports = FakeCreateReportsActions(createResult = Result.success(debtGoal("new-goal")))
-        val viewModel = CreateDebtGoalViewModel(reports, FakeCreateDebtActions(
+        val debts = FakeCreateDebtActions(
             listResult = Result.success(
                 listOf(debt("open-a", "open"), debt("open-b", "open"), debt("open-c", "open")),
             ),
-        ))
+        )
+        val adjustments = FakeDebtAdjustmentActions()
+        val viewModel = CreateDebtGoalViewModel(reports, debts, adjustments)
         viewModel.reload()
         advanceUntilIdle()
         // Select out of candidate order; submit must still send candidate order.
@@ -134,6 +166,25 @@ class CreateDebtGoalViewModelTest {
         viewModel.toggleDebt("open-a")
         viewModel.updateName("  还清欠款  ")
 
+        // A background correction clears a selected debt; never silently submit only the other id.
+        debts.listResult = Result.success(listOf(debt("open-a", "open"), debt("open-c", "cleared")))
+        adjustments.rows.value = listOf(pendingAdjustment(status = PendingMutationStatus.Done))
+        advanceUntilIdle()
+        assertEquals(setOf("open-a", "open-c"), viewModel.state.value.selectedDebtIds)
+        assertEquals("  还清欠款  ", viewModel.state.value.name)
+        assertFalse(viewModel.state.value.canSubmit)
+        viewModel.submit()
+        advanceUntilIdle()
+        assertTrue(reports.createDebtGoalCalls.isEmpty())
+        assertTrue(viewModel.state.value.formError != null)
+        viewModel.removeUnavailableSelections()
+        assertEquals(setOf("open-a"), viewModel.state.value.selectedDebtIds)
+        assertEquals("  还清欠款  ", viewModel.state.value.name)
+
+        debts.listResult = Result.success(listOf(debt("open-a", "open"), debt("open-c", "open")))
+        adjustments.rows.value += pendingAdjustment(id = 2, status = PendingMutationStatus.Done)
+        advanceUntilIdle()
+        viewModel.toggleDebt("open-c")
         viewModel.submit()
         advanceUntilIdle()
 
@@ -149,7 +200,7 @@ class CreateDebtGoalViewModelTest {
         val reports = FakeCreateReportsActions(createResult = Result.failure(RuntimeException("conflict")))
         val viewModel = CreateDebtGoalViewModel(reports, FakeCreateDebtActions(
             listResult = Result.success(listOf(debt("open-1", "open"))),
-        ))
+        ), adjustments = FakeDebtAdjustmentActions())
         viewModel.reload()
         advanceUntilIdle()
         viewModel.toggleDebt("open-1")
@@ -169,7 +220,7 @@ class CreateDebtGoalViewModelTest {
         val reports = FakeCreateReportsActions(createResult = Result.success(debtGoal("new-goal")))
         val viewModel = CreateDebtGoalViewModel(reports, FakeCreateDebtActions(
             listResult = Result.success(listOf(debt("open-1", "open"))),
-        ))
+        ), adjustments = FakeDebtAdjustmentActions())
         viewModel.reload()
         advanceUntilIdle()
         viewModel.toggleDebt("open-1")
@@ -201,6 +252,7 @@ class CreateDebtGoalViewModelTest {
         CreateDebtGoalViewModel(
             FakeCreateReportsActions(),
             FakeCreateDebtActions(listResult = Result.success(candidates)),
+            adjustments = FakeDebtAdjustmentActions(),
         )
 
     private fun debt(publicId: String, status: String): Debt = Debt(
@@ -250,7 +302,7 @@ private data class CreateDebtGoalCall(val name: String, val debtPublicIds: List<
 
 private class FakeCreateDebtActions(
     private val canModify: Boolean = true,
-    private val listResult: Result<List<Debt>> = Result.success(emptyList()),
+    var listResult: Result<List<Debt>> = Result.success(emptyList()),
 ) : DebtActions {
     override fun canModifyLedger(): Boolean = canModify
     override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens): Result<DebtListPage> =

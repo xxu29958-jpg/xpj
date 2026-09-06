@@ -136,6 +136,7 @@ internal val syncStatusExactErrorMessageResources = mapOf(
     "client_upgrade_required" to R.string.sync_status_error_protocol_mismatch,
     "rule_category_deleted" to R.string.sync_status_error_rule_category_deleted,
     "debt_adjustment_payload_unsupported" to R.string.debt_adjustment_unsupported,
+    "debt_adjustment_negative_remaining" to R.string.debt_adjustment_reduction_rejected,
     "debt_adjustment_response_unverified" to R.string.debt_adjustment_attention,
     "debt_adjustment_binding_changed" to R.string.debt_adjustment_attention,
     "debt_adjustment_connection_interrupted" to R.string.debt_adjustment_attention,

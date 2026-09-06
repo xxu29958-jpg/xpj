@@ -46,7 +46,7 @@ class ReceivablesViewModelTest {
                 ),
             ),
         )
-        val viewModel = ReceivablesViewModel(repo)
+        val viewModel = ReceivablesViewModel(repo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
 
         assertEquals(listOf("open", "cleared"), viewModel.state.value.receivables.map { it.publicId })
@@ -57,7 +57,7 @@ class ReceivablesViewModelTest {
     @Test
     fun refreshFailureSetsErrorAndClearsLoading() = runTest(dispatcher) {
         val repo = FakeReceivablesActions(result = Result.failure(RuntimeException("offline")))
-        val viewModel = ReceivablesViewModel(repo)
+        val viewModel = ReceivablesViewModel(repo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
 
         assertTrue(viewModel.state.value.receivables.isEmpty())
@@ -69,7 +69,7 @@ class ReceivablesViewModelTest {
     fun staleRefreshDoesNotClobberNewerData() = runTest(dispatcher) {
         // A slow earlier refresh must not overwrite a newer one (loadGeneration guard).
         val repo = FakeReceivablesActions(result = Result.success(listOf(sampleReceivable("first"))))
-        val viewModel = ReceivablesViewModel(repo)
+        val viewModel = ReceivablesViewModel(repo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
 
         // A slow refresh stalls inside listReceivables (it captured the "first" snapshot)...

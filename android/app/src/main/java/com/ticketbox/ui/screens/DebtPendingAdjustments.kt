@@ -31,6 +31,7 @@ internal fun DebtAdjustmentIntentSummary(pending: PendingDebtAdjustment) {
     Text(stringResource(R.string.debt_adjustment_original_amount,
         formatDisplayAmount(intent.request.amountCents, CurrencyDisplay.forRecord(intent.subject.homeCurrencyCode))))
     Text(intent.request.reason)
+    if (pending.reductionRejected) Text(stringResource(R.string.debt_adjustment_reduction_rejected))
 }
 
 /** Original commands remain readable even when the canonical detail cannot be fetched. */
@@ -56,7 +57,7 @@ private fun DebtPendingAdjustment(pending: PendingDebtAdjustment, recover: (Pend
         pending.row.lastError in setOf("runtime_version_mismatch", "client_upgrade_required") ->
             Text(stringResource(R.string.sync_status_error_protocol_mismatch))
     }
-    if (status == PendingMutationStatus.Failed && !expired && pending.hasSupportedIntent) {
+    if (pending.canRetry) {
         TextButton(onClick = { recover(pending, false) }) { Text(stringResource(R.string.debt_adjustment_retry)) }
     }
     if (needsAttention) {

@@ -9,11 +9,13 @@ import com.ticketbox.data.repository.DebtAdjustmentActions
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.PendingDebtAdjustment
 import com.ticketbox.data.repository.DebtActions
+import com.ticketbox.data.repository.isDebtAdjustmentReasonValid
+import com.ticketbox.data.repository.isDebtAdjustmentWithinBalance
+import com.ticketbox.data.repository.trimDebtAdjustmentReason
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtLinkStatuses
 import com.ticketbox.domain.model.DebtRepayment
-import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.parseAmountCents
 import kotlinx.coroutines.Job
@@ -22,50 +24,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-
-/**
- * 欠款详情与 external/manual 事实动作：记还款、调整本金、作废欠款或作废一笔还款。
- * 同一个动作面板与提交 owner 持有目标和草稿。每次命令携带已读取的 parent Debt rowVersion，
- * 已确认命令换入服务端 Debt；调整先保留原意图，确认同步后重读。成员/拆账仍走对方确认流程。
- */
-data class DebtDetailUiState(
-    val isLoading: Boolean = false,
-    val debt: Debt? = null,
-    val canModify: Boolean = true,
-    val error: UiText? = null,
-    val activeAction: DebtAction? = null,
-    val repaymentToVoid: DebtRepayment? = null,
-    val amountInput: String = "",
-    val reasonInput: String = "",
-    // Adjustment is a signed delta, but the decimal keyboard exposes no minus key, so the amount
-    // field is a positive magnitude and this toggle carries the sign (true = raise `remaining`).
-    val adjustmentIncrease: Boolean = true,
-    val validationError: UiText? = null,
-    val isSubmitting: Boolean = false,
-    val flashMessage: UiText? = null,
-    val pendingAdjustments: List<PendingDebtAdjustment> = emptyList(),
-) {
-    /**
-     * 金额输入框的显示/解析同源币种：本笔欠款的服务端 `homeCurrencyCode`（JPY 零小数
-     * 整数显示整数），未加载时落 display-home 兜底。显示侧（DebtActionForm 标签）与
-     * 解析侧（[DebtDetailViewModel.submit]）都必须从这一条派生，禁止再读恒 Base 的
-     * 环境 CurrencyDisplay（否则 JPY 欠款显示 ¥500.00 却按 JPY 实扣 500，见 PR#255 P1）。
-     */
-    val amountInputCurrency: CurrencyCode
-        get() = debt?.let { CurrencyCode.fromStorageKey(it.homeCurrencyCode) } ?: FxContract.HomeCurrency
-
-    /**
-     * record 币种是否在客户端支持集外（PR#255 R7-2 / R10⑤）：true 时**金额动作**（还款/调整）
-     * 禁用（DebtActionPanel 同条件门 + [DebtDetailViewModel.submit] fail-closed 双防）——
-     * 未知码禁落 CNY 解析（零小数币种的 "1200" 会被放大成 120000 minor，100×）；
-     * Void 不带金额解析，不在禁用面。
-     */
-    val currencyUnsupported: Boolean
-        get() = debt?.let { CurrencyCode.fromStorageKeyOrNull(it.homeCurrencyCode) == null } == true
-}
-
-/** Direct facts; single-payment void also requires the selected immutable repayment identity. */
-enum class DebtAction { Repayment, Adjustment, Void, RepaymentVoid }
 
 /**
  * A one-shot member-debt 两清 celebration signal (ADR-0049 §5.2 / slice 8e-4): the viewer witnessed a
@@ -142,7 +100,8 @@ class DebtDetailViewModel(
         adjustmentObservation?.cancel()
         completedAdjustments = null
         refreshedAdjustments.clear()
-        _state.update { it.copy(pendingAdjustments = emptyList()) }
+        _state.update { it.copy(pendingAdjustments = emptyList(), adjustmentSnapshotLoaded = false,
+            locallyAcceptedAdjustmentId = null, adjustmentRefreshAfterVersion = null) }
         loadedBinding?.let { binding ->
             adjustmentObservation = viewModelScope.launch {
                 adjustments.observeAdjustments(binding, publicId).collect { rows ->
@@ -150,7 +109,7 @@ class DebtDetailViewModel(
                     val done = rows.filter { it.row.status == PendingMutationStatus.Done }.mapTo(mutableSetOf()) { it.row.id }
                     val newlyDone = completedAdjustments?.let { done - it }.orEmpty()
                     completedAdjustments = done
-                    _state.update { it.copy(pendingAdjustments = rows.filter { row -> row.row.status != PendingMutationStatus.Done }) }
+                    _state.update { it.withAdjustmentRows(rows, newlyDone.isNotEmpty()) }
                     if (newlyDone.isNotEmpty()) { refreshedAdjustments += newlyDone; refresh() }
                 }
             }
@@ -200,6 +159,7 @@ class DebtDetailViewModel(
                         it.copy(
                             isLoading = false,
                             debt = debt,
+                            adjustmentRefreshAfterVersion = it.adjustmentRefreshAfterVersion?.takeIf { version -> debt.rowVersion <= version },
                             canModify = repository.canModifyLedger() && adjustments.currentAccess()?.canModify == true,
                             error = null,
                         )
@@ -216,8 +176,7 @@ class DebtDetailViewModel(
 
     fun openAction(action: DebtAction, repayment: DebtRepayment? = null) {
         val current = _state.value
-        if (current.isSubmitting) return
-        if (action == DebtAction.Adjustment && current.pendingAdjustments.isNotEmpty()) return
+        if (!current.canWriteActions) return
         if (action == DebtAction.RepaymentVoid) {
             val debt = current.debt ?: return
             if (!current.canModify || !debt.isDirectWritable || debt.isVoided || repayment?.isActive != true) return
@@ -281,7 +240,7 @@ class DebtDetailViewModel(
                         detectSettleCelebration(updated, previousStatusByPublicId, celebratedDebtIds)
                             ?.let { _celebration.value = it }
                     }
-                    _state.update { it.acceptAction(outcome, action) }
+                    _state.update { it.acceptAction(outcome, action, completedAdjustments.orEmpty()) }
                     if (outcome is DebtActionOutcome.Queued && outcome.intentId in completedAdjustments.orEmpty() &&
                         refreshedAdjustments.add(outcome.intentId)) refresh()
                 },
@@ -302,18 +261,24 @@ class DebtDetailViewModel(
      * 的开合是详情屏的本地 UI 态（镜像新建抽屉），故本 VM 只负责提交这一步。
      */
     fun selectKind(kind: String) {
-        val debt = _state.value.debt ?: return
-        if (kind == debt.debtKind) return
+        val current = _state.value
+        if (!current.canWriteActions) return
+        val debt = current.debt ?: return
+        val binding = loadedBinding ?: return
+        if (kind == debt.debtKind || adjustments.currentAccess()?.binding != binding) return
+        _state.update { it.copy(isSubmitting = true) }
         viewModelScope.launch {
-            repository.setDebtKind(debt.publicId, debt.rowVersion, kind).fold(
+            val result = repository.setDebtKind(debt.publicId, debt.rowVersion, kind)
+            if (loadedPublicId != debt.publicId || loadedBinding != binding || adjustments.currentAccess()?.binding != binding) return@launch
+            result.fold(
                 onSuccess = { updated ->
                     loadGeneration++
                     _state.update {
-                        it.copy(debt = updated, error = null, flashMessage = UiText.res(R.string.debt_kind_updated))
+                        it.copy(debt = updated, isSubmitting = false, error = null, flashMessage = UiText.res(R.string.debt_kind_updated))
                     }
                 },
                 onFailure = { err ->
-                    _state.update { it.copy(error = err.toUiText(R.string.debt_action_failed)) }
+                    _state.update { it.copy(isSubmitting = false, error = err.toUiText(R.string.debt_action_failed)) }
                 },
             )
         }
@@ -347,17 +312,24 @@ private sealed interface DebtActionOutcome {
 private data class DebtActionSubmission(val debt: Debt, val action: DebtAction, val input: DebtActionInput)
 
 private fun DebtDetailUiState.actionSubmission(): DebtActionSubmission? {
-    if (isSubmitting || !canModify) return null
+    if (!canWriteActions) return null
     val target = debt ?: return null
     val action = activeAction ?: return null
     if (action == DebtAction.RepaymentVoid && repaymentToVoid == null) return null
     return DebtActionSubmission(target, action, actionInput(target, action))
 }
 
-private fun DebtDetailUiState.acceptAction(outcome: DebtActionOutcome, action: DebtAction): DebtDetailUiState = copy(
+private fun DebtDetailUiState.acceptAction(
+    outcome: DebtActionOutcome,
+    action: DebtAction,
+    completedAdjustments: Set<Long>,
+): DebtDetailUiState = copy(
     debt = (outcome as? DebtActionOutcome.Committed)?.debt ?: debt,
     activeAction = null, repaymentToVoid = null, amountInput = "", reasonInput = "",
     isSubmitting = false, validationError = null,
+    locallyAcceptedAdjustmentId = if (outcome is DebtActionOutcome.Queued &&
+        outcome.intentId !in completedAdjustments && pendingAdjustments.none { it.row.id == outcome.intentId }
+    ) outcome.intentId else locallyAcceptedAdjustmentId,
     flashMessage = UiText.res(if (outcome is DebtActionOutcome.Queued) R.string.debt_adjustment_saved else debtActionDoneRes(action)),
 )
 
@@ -372,15 +344,18 @@ private data class DebtActionInput(
 private fun DebtDetailUiState.actionInput(debt: Debt, action: DebtAction): DebtActionInput {
     val currency = CurrencyCode.fromStorageKeyOrNull(debt.homeCurrencyCode)
     val magnitude = currency?.let { parseAmountCents(amountInput, it) }
-    val reason = reasonInput.trim()
+    val signedAmount = if (action == DebtAction.Adjustment && !adjustmentIncrease) magnitude?.unaryMinus() else magnitude
+    val reason = if (action == DebtAction.Adjustment) trimDebtAdjustmentReason(reasonInput) else reasonInput.trim()
     // Only amount commands require a supported currency; voids carry identity, OCC and reason.
     val error = if ((action == DebtAction.Repayment || action == DebtAction.Adjustment) && currency == null) {
         R.string.debt_action_currency_unsupported
     } else {
-        validateDebtAction(action, magnitude, reason)
+        validateDebtAction(action, magnitude, reason) ?: if (action == DebtAction.Adjustment && signedAmount != null &&
+            !isDebtAdjustmentWithinBalance(signedAmount, debt.remainingAmountCents)
+        ) R.string.debt_adjustment_exceeds_remaining else null
     }
     return DebtActionInput(
-        amountCents = if (action == DebtAction.Adjustment && !adjustmentIncrease) magnitude?.unaryMinus() else magnitude,
+        amountCents = signedAmount,
         reason = reason,
         repaymentPublicId = repaymentToVoid?.publicId,
         errorRes = error,
@@ -432,7 +407,7 @@ private fun validateDebtAction(action: DebtAction, amountCents: Long?, reason: S
     // The amount field is a positive magnitude (the sign comes from adjustmentIncrease), so an
     // empty/zero/negative magnitude or a blank reason is invalid.
     DebtAction.Adjustment ->
-        if (amountCents == null || amountCents <= 0L || reason.isEmpty()) {
+        if (amountCents == null || amountCents <= 0L || !isDebtAdjustmentReasonValid(reason)) {
             R.string.debt_action_adjustment_validation
         } else {
             null

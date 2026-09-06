@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -21,6 +22,7 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.ui.components.AppListRow
@@ -84,10 +86,10 @@ fun CreateDebtGoalScreen(
                 loading = state.isLoadingDebts,
                 hasReadableData = state.candidates.isNotEmpty(),
             ),
-            onRefresh = viewModel::reload,
+            onRefresh = viewModel::refreshCandidates,
         ),
         slots = AppSecondaryPageSlots(
-            status = { CreateDebtGoalStatusStack(state = state) },
+            status = { CreateDebtGoalStatusStack(state = state, onRemoveUnavailable = viewModel::removeUnavailableSelections) },
             bottomBar = {
                 CreateDebtGoalFooter(
                     selectedCount = state.selectedDebtIds.size,
@@ -114,13 +116,19 @@ fun CreateDebtGoalScreen(
 }
 
 @Composable
-private fun CreateDebtGoalStatusStack(state: CreateDebtGoalUiState) {
+private fun CreateDebtGoalStatusStack(state: CreateDebtGoalUiState, onRemoveUnavailable: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         AppDataAuthorityStrip(
             tone = if (state.isLoadingDebts) DataAuthorityTone.Refreshing else DataAuthorityTone.Backend,
         )
         state.formError?.let { err -> AppStatusBanner(message = err, tone = MessageTone.Danger) }
         state.loadError?.let { err -> AppStatusBanner(message = err, tone = MessageTone.Danger) }
+        if (state.unavailableSelectedDebtIds.isNotEmpty()) {
+            AppStatusBanner(message = UiText.res(R.string.debt_goal_create_selection_changed), tone = MessageTone.Info)
+            TextButton(onClick = onRemoveUnavailable) {
+                Text(stringResource(R.string.debt_goal_create_remove_unavailable))
+            }
+        }
     }
 }
 @Composable

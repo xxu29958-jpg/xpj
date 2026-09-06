@@ -5,6 +5,8 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.ticketbox.data.repository.ReceivablesActions
+import com.ticketbox.data.repository.LedgerAccessContext
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtCounterpartyTypes
@@ -40,6 +42,10 @@ class ReceivablesScreenNavigationTest {
                     memberReceivable(publicId = "debt-2", debtorName = "小红"),
                 ),
             ),
+            adjustments = initialAdjustmentReadFixture(LedgerAccessContext(
+                LogicalSessionBinding("https://receivables.example.test", "ledger", "viewer", "session", "binding"),
+                canModify = false,
+            )),
         )
 
         composeRule.setContent {

@@ -18,6 +18,8 @@ import androidx.lifecycle.viewModelScope
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
 import com.ticketbox.data.repository.DebtActions
+import com.ticketbox.data.repository.DebtAdjustmentActions
+import com.ticketbox.data.repository.DebtAdjustmentRefresh
 import com.ticketbox.data.repository.DebtCreationActions
 import com.ticketbox.data.repository.DebtCreationPendingState
 import com.ticketbox.data.repository.DebtCreationQueueSnapshot
@@ -60,7 +62,7 @@ class DebtCreateSheetContinuityTest {
     fun saveIsReachableAndSubmittedFieldsFreezeUntilLocalAcceptance() {
         val creation = SheetCreationGate()
         compose.setContent {
-            viewModel = remember { DebtListViewModel(sheetQueries(), creation) }
+            viewModel = remember { DebtListViewModel(sheetQueries(), creation, initialAdjustmentReadFixture(creation.currentAccess())) }
             TicketboxTheme(skin = AppSkin.Paper) {
                 DebtListScreen(
                     viewModel,
@@ -143,5 +145,17 @@ private fun sheetQueries(): DebtActions {
     return object : DebtActions by uncalled {
         override fun canModifyLedger() = true
         override suspend fun listDebts(lens: DebtListLens) = Result.success(DebtListPage(emptyList(), "CNY"))
+    }
+}
+
+/** Explicit known-empty adjustment read for isolated UI tests; mutations remain unexpected. */
+internal fun initialAdjustmentReadFixture(access: LedgerAccessContext): DebtAdjustmentActions {
+    val uncalled = Proxy.newProxyInstance(DebtAdjustmentActions::class.java.classLoader,
+        arrayOf(DebtAdjustmentActions::class.java)) { _, method, _ ->
+        error("Unexpected sheet adjustment fixture call: ${method.name}")
+    } as DebtAdjustmentActions
+    return object : DebtAdjustmentActions by uncalled {
+        override fun currentAccess() = access
+        override fun observeCompletionRefreshes() = flowOf(DebtAdjustmentRefresh(access.binding, initial = true))
     }
 }
