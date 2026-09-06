@@ -113,12 +113,12 @@
         <tr>
           <td>{{ batch.file_name }}<div class="text-meta">{{ batch_created_labels[batch.id] }}</div></td>
           <td><span class="product-status {{ status_tone }}">{{ status_label }}</span></td>
-          <td>{{ progress.remaining_valid_rows }}</td>
-          <td>{{ batch.applied_rows }}</td>
-          <td>{{ batch.error_rows }}</td>
+          <td>{{ progress.row_counts.remaining_valid_rows }}</td>
+          <td>{{ progress.row_counts.applied_rows }}</td>
+          <td>{{ progress.row_counts.error_rows }}</td>
           <td>
-            <a class="product-button product-button--quiet" href="/web/import/{{ batch.public_id }}{{ q }}">{{ '继续导入' if can_write and progress.remaining_valid_rows > 0 else '查看结果' }}</a>
-            {% if batch.error_rows > 0 %}
+            <a class="product-button product-button--quiet" href="/web/import/{{ batch.public_id }}{{ q }}">{{ '继续导入' if can_write and progress.row_counts.remaining_valid_rows > 0 else '查看结果' }}</a>
+            {% if progress.row_counts.error_rows > 0 %}
             <a href="/web/import/{{ batch.public_id }}/errors.csv{{ q }}">下载错误行</a>
             {% endif %}
           </td>

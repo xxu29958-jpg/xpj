@@ -66,7 +66,11 @@ def test_apply_refusal_retains_only_a_recoverable_original_batch(import_route, m
 def test_batch_actions_follow_effective_remainder_and_actual_applied_rows(
     import_route, status, total, valid, applied, errors,
 ):
-    from app.services.csv_import_batch_service._queries import CsvImportBatchPage, CsvImportBatchProgress
+    from app.services.csv_import_batch_service._queries import (
+        CsvImportBatchPage,
+        CsvImportBatchProgress,
+        CsvImportRowCounts,
+    )
 
     environment = Environment(
         loader=ChoiceLoader([
@@ -82,7 +86,7 @@ def test_batch_actions_follow_effective_remainder_and_actual_applied_rows(
     )
     flash_type = "success" if status == "applied" else "error"
     context = {
-        "batch": batch, "progress": CsvImportBatchProgress(batch, remaining_valid_rows=0),
+        "batch": batch, "progress": CsvImportBatchProgress(batch, CsvImportRowCounts(0, applied, errors)),
         "created_label": "2026-06-01", "updated_label": "2026-06-01",
         "q": "?ledger_id=family", "selected_ledger_id": "family", "can_write": True, "csrf_token": "fixture",
         "flash_message": "Import result", "flash_type": flash_type,

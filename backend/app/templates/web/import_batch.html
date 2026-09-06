@@ -32,9 +32,9 @@
 
 <section class="import-metrics import-metrics--pair" aria-label="批次概况">
   <div class="import-metric is-primary"><span>总行数</span><strong>{{ batch.total_rows }}</strong></div>
-  <div class="import-metric is-success"><span>剩余可导入</span><strong>{{ progress.remaining_valid_rows }}</strong></div>
-  <div class="import-metric is-warning"><span>错误行</span><strong>{{ batch.error_rows }}</strong></div>
-  <div class="import-metric"><span>已导入</span><strong>{{ batch.applied_rows }}</strong></div>
+  <div class="import-metric is-success"><span>剩余可导入</span><strong>{{ progress.row_counts.remaining_valid_rows }}</strong></div>
+  <div class="import-metric is-warning"><span>错误行</span><strong>{{ progress.row_counts.error_rows }}</strong></div>
+  <div class="import-metric"><span>已导入</span><strong>{{ progress.row_counts.applied_rows }}</strong></div>
 </section>
 
 <section class="product-panel product-panel--padded" aria-label="下一步">
@@ -42,7 +42,7 @@
     <h2 class="product-panel-title">下一步</h2>
   </div>
   {# 剩余行取真实 valid/applying；已经导入与错误下载分别保留原结果入口。 #}
-  {% if can_write and progress.remaining_valid_rows > 0 %}
+  {% if can_write and progress.row_counts.remaining_valid_rows > 0 %}
   <form method="post" action="/web/import/{{ batch.public_id }}/apply" class="product-form-grid import-apply-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
@@ -56,15 +56,15 @@
   {% elif not can_write %}
   <p class="text-meta">只读角色只能查看导入批次。</p>
   {% endif %}
-  {% if batch.applied_rows > 0 %}
+  {% if progress.row_counts.applied_rows > 0 %}
   <div class="import-batch-done">
     <a href="/web/pending{{ q }}" class="product-button product-button--primary">查看待确认</a>
-    <p class="text-meta">本批次已导入 {{ batch.applied_rows }} 行，可前往「待确认」队列复核；复核后才入账。</p>
+    <p class="text-meta">本批次已导入 {{ progress.row_counts.applied_rows }} 行，可前往「待确认」队列复核；复核后才入账。</p>
   </div>
-  {% elif progress.remaining_valid_rows == 0 %}
+  {% elif progress.row_counts.remaining_valid_rows == 0 %}
   <p class="text-meta">本批次没有进入待确认队列的账单，也没有可继续导入的行。</p>
   {% endif %}
-  {% if batch.error_rows > 0 %}
+  {% if progress.row_counts.error_rows > 0 %}
   <p class="import-export-note"><a href="/web/import/{{ batch.public_id }}/errors.csv{{ q }}">下载错误行 CSV</a>，修正后重新上传即可。</p>
   {% endif %}
   {% if batch.last_error %}

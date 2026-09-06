@@ -14,7 +14,7 @@ from app.config import get_settings
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import CsvImportBatch, CsvImportRow
-from app.schemas import CsvImportBatchResponse, CsvImportRowsResponse
+from app.schemas import CsvImportRowsResponse
 from app.services.csv_import_batch_service._common import (
     CREATE_BATCH_INSERT_CHUNK_SIZE,
     MAX_CSV_IMPORT_ROWS,
@@ -23,7 +23,10 @@ from app.services.csv_import_batch_service._csv_io import (
     _clean_file_name,
     _row_from_parsed,
 )
-from app.services.csv_import_batch_service._queries import get_csv_import_batch
+from app.services.csv_import_batch_service._queries import (
+    build_csv_import_batch_response,
+    get_csv_import_batch,
+)
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.currency_common import home_currency_code
 from app.services.import_service import (
@@ -237,7 +240,7 @@ def list_csv_import_rows(
         db.scalars(query.order_by(CsvImportRow.line_number.asc()).offset((page - 1) * page_size).limit(page_size))
     )
     return CsvImportRowsResponse(
-        batch=CsvImportBatchResponse.model_validate(batch),
+        batch=build_csv_import_batch_response(db, batch=batch),
         items=rows,
         page=page,
         page_size=page_size,

@@ -232,3 +232,57 @@ selects no heavy lane. The directly affected `_queries`, `_csv_io`, `_lifecycle`
 `_idempotency` and `routes/imports.py` paths each select PostgreSQL/frozen backend. The
 existing Web route and both templates each select PostgreSQL/frozen backend/Desktop/Windows.
 These are actual classifier results, not executed integration results or a production fix.
+
+### Actual interruption RED and authorized correction
+
+The test-only commit `d4aaa346` was merged with the governance candidate and pushed as
+source `ee60e2d9143c5ecf08d094461d72d87b24076714`, tree
+`813ee06fc27b9d47ee54b0ca3600e396d5b96b60`. CI run `34045491208`, ordinary PostgreSQL
+job `101519724884`, executed checkout `57f6b39cc85cf24f51c06b866fe99675bcb052fe`
+against that source. It completed with **2 failed / 1856 passed / 3 skipped in 488.45s**.
+Both interruption cases reached the final `observed` assertion at native-form test line
+404: the applied result still returned API counts `[1, 0, 0, 0]` instead of
+`[1, 1, 0, 1]`, and the insert-failed result returned the same stale counts instead of
+`[1, 0, 1, 0]`. Both Web pages showed zero counts and an empty receipt; the real pending
+or error destination was hidden. Earlier assertions established the committed terminal
+row, canonical pending/error result and unchanged persisted cache/lease after GET.
+This is actual behavior RED, not fixture, collection or environment failure. The other
+ordinary job was still running when this sufficient two-case result was read; this is
+not an aggregate CI conclusion.
+
+Production is now authorized within the before-impact boundary. `_queries` will own
+one grouped row-count definition for remaining, applied and errors. Web progress will
+require that current count value; the existing cache writer and all five batch-response
+construction sites will consume it. API mapping creates a response value without writing
+the ORM batch. Parse `total_rows`/`valid_rows`, stored status/lease metadata, cumulative
+batch `inserted_count`, and the separate per-request apply `inserted_count` retain their
+meanings. Existing finalize/commit/identity/key order remains; both old cached Web count
+reads and the second applied/error aggregation are retired. All eight PG behavior cases
+remain unchanged and require the next exact candidate's cloud execution.
+
+### Interrupted-result implementation and impact closure
+
+| Actual consumer after correction | Shared owner and preserved boundary |
+| --- | --- |
+| `_queries.get_csv_import_batch_progress` and `list_csv_import_batches` | `_csv_import_row_counts` groups the selected ledger's requested batch IDs once, returning valid/applying, applied, and error/insert_failed counts. Empty batches produce zero counts. `CsvImportBatchProgress` requires this typed `row_counts` value; status and result actions do not fall back to cached batch counts. Existing ledger lookup and bounded page ordering are unchanged. |
+| Both Web templates | Hub/detail metrics, continuation, pending review and error-download visibility consume `progress.row_counts`. Original metadata and row pagination/filter controls retain their existing sources. Cached applied/error template reads are physically removed. |
+| API create, detail, nested rows, apply and idempotency responses | All five former direct `CsvImportBatchResponse.model_validate(batch)` sites call `build_csv_import_batch_response`. That owner copies current count fields into a response model, without modifying the ORM batch. Rows response counts remain whole-batch values independent of row pagination/status. `total_rows`, `valid_rows`, status, timestamps and lease metadata retain their existing values; top-level apply `inserted_count` remains the actual request's count, including zero for an idempotency hit. |
+| Existing `_csv_io._refresh_batch_counts` | This persisted consumer reads the same grouped count owner and performs the same applied/inserted/error assignments. Its old separate status-count query is deleted. `_apply_lease` still owns its call, finalization and lease/commit timing. `_remaining_importable_rows` keeps its existing callers/signature and reads the same count value's remainder. |
+| Existing native clients and direct tests | Android/Desktop native sources contain no CSV API DTO consumer. The native Desktop Web surface consumes the changed templates through its existing Windows/PG lanes. All original native-form tests, including eight continuation/interruption behavior cases, have unchanged AST; the five pure cases retain all assertions and migrate only their required progress fixture. |
+
+AST comparison against exact `ee60e2d9` verified that all changed function bodies in
+`_apply`, `_idempotency`, `_lifecycle` and `routes/imports.py` differ only by replacing the
+five batch-response construction calls. `_apply_lease`, `_row_claim` and the CSV schema
+are unchanged. This is source evidence for retained writer ordering, not execution of
+the persistence or concurrency gates.
+
+Actual local verification: the five existing no-database cases passed in **3.10s**; Ruff,
+changed-file AST syntax and `git diff --check` passed. The existing OpenAPI check reported
+**up to date** with `Engine.connect` forbidden; no generated snapshot needed a change.
+Each changed service module (`__init__`, `_queries`, `_csv_io`, `_lifecycle`, `_apply`,
+`_idempotency`) and `routes/imports.py` independently selected PostgreSQL/frozen backend.
+Both templates selected PostgreSQL/frozen backend/Desktop/Windows. Each of the two direct
+test files selected PostgreSQL; this contract selected no heavy lane. No selector changes,
+local database, build, application or long test run occurred. Production remains an
+uncommitted candidate on `ee60e2d9`; new-head cloud GREEN and independent review are still
+required. The two-case RED above does not qualify the corrected production code.
