@@ -111,6 +111,7 @@ def test_runtime_snapshot_is_authenticated_private_and_product_facing(
         "write_compatibility": "compatible",
         "legacy_write_compatibility": "compatible",
         "capabilities": {
+            "upload_original_receipt_version": 1,
             "currency": {
                 "home_currency_code": "CNY",
                 "minor_unit_exponent": 2,
@@ -128,7 +129,12 @@ def test_runtime_snapshot_is_authenticated_private_and_product_facing(
     serialized = response.text.lower()
     assert "c07" not in serialized
     assert "alembic" not in serialized
-    assert "receipt" not in serialized
+    # InstallationIdempotencyKey fields stay private at every public level.
+    # A product capability name containing "receipt" is not that maintenance data.
+    private_fields = {"receipt", "request_fingerprint"}
+    assert private_fields.isdisjoint(payload)
+    assert private_fields.isdisjoint(payload["capabilities"])
+    assert private_fields.isdisjoint(payload["capabilities"]["currency"])
 
 
 def test_runtime_snapshot_maps_non_ready_states_to_product_conclusions(
