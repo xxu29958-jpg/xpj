@@ -115,14 +115,16 @@ def get_advisor_status(
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> BudgetAdvisorStatusResponse:
-    status = advisor_status_for_tenant(db, tenant_id=auth.tenant_id)
+    status = advisor_status_for_tenant(db, tenant_id=auth.tenant_id, actor_role=auth.role)
     return BudgetAdvisorStatusResponse(
         provider=status.provider,
         model=status.model,
-        base_url=status.base_url,
         owner_confirmed=status.owner_confirmed,
         is_live=status.is_live,
         needs_confirmation=status.needs_confirmation,
+        configuration_valid=status.configuration_valid,
+        can_request=status.can_request,
+        unavailable_reason=status.unavailable_reason,
         last_called_at=status.last_called_at,
         last_success=status.last_success,
         last_error_code=status.last_error_code,

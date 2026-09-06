@@ -79,10 +79,12 @@ class BudgetAdvisorStatusResponse(BaseModel):
 
     provider: str
     model: str | None
-    base_url: str | None
     owner_confirmed: bool
     is_live: bool
     needs_confirmation: bool
+    configuration_valid: bool
+    can_request: bool
+    unavailable_reason: str | None
     last_called_at: str | None
     last_success: bool | None
     last_error_code: str | None

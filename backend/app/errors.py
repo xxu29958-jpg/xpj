@@ -185,6 +185,7 @@ ERROR_MESSAGES = {
     "idempotency_key_in_progress": "操作正在处理中，请稍后再试。",
     "idempotency_key_reused": "幂等键已被另一请求使用，请勿复用。",
     "ai_advisor_not_confirmed": "AI 预算助手尚未经过拥有者显式确认，已禁用。",
+    "ai_advisor_configuration_invalid": "AI 顾问配置不完整或无效，请联系服务拥有者检查配置。",
     "ai_advisor_owner_required": "只有账本拥有者可以调用外部 AI 预算建议。",
     "ai_advisor_rate_limited": "AI 预算助手调用过于频繁，请稍后再试。",
     "ai_advisor_daily_limit_exceeded": "AI 预算助手今日调用次数已达上限。",

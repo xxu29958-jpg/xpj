@@ -329,6 +329,7 @@ class BudgetAdviceViewModel(
         val TERMINAL_ADVISOR_ERROR_CODES = setOf(
             "ai_advisor_owner_required",
             "ai_advisor_not_confirmed",
+            "ai_advisor_configuration_invalid",
             // 24h-window quota cap (_audit.py:131-138): every attempt 429s until
             // the window slides, so retrying today can never succeed — terminal.
             // Deliberately excludes ai_advisor_rate_limited (short-window 429,

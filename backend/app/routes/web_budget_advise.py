@@ -8,7 +8,6 @@ from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
 from app.database import get_db
 from app.errors import AppError
 from app.routes.web_common import (
@@ -19,8 +18,7 @@ from app.routes.web_common import (
     _selected_option,
     templates,
 )
-from app.services.budget_advisor_service import run_budget_advisor
-from app.services.budget_advisor_service._provider_names import canonical_provider_name
+from app.services.budget_advisor_service import get_advisor_readiness, run_budget_advisor
 from app.services.budget_baseline_service import (
     compute_monthly_discretionary,
     total_confirmed_spent_cents,
@@ -99,8 +97,7 @@ def _render_budget_advise(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, ledger_id, options=options, request=request)
-    settings = get_settings()
-    provider_name = canonical_provider_name(settings.budget_advisor_provider)
+    readiness_ctx = _advisor_readiness_context(request, selected=selected, options=options)
 
     month_label = month or current_accounting_month()
     income = total_monthly_income_cents(
@@ -133,7 +130,7 @@ def _render_budget_advise(
         selected=selected,
         options=options,
         month_label=month_label,
-        provider_name=provider_name,
+        provider_name=readiness_ctx["provider_name"],
         run_advise=run_advise,
         allow_outbound=allow_outbound,
     )
@@ -145,10 +142,10 @@ def _render_budget_advise(
         selected_ledger_id=selected,
         page_title="AI 预算建议",
     )
+    ctx.update(readiness_ctx)
     ctx.update(
         month=month_label,
         provider_name=provider_name,
-        provider_enabled=provider_name != "empty",
         # Parsing and presentation use one explicit currency authority.
         income_yuan=minor_amount_value(breakdown.monthly_income_cents, home),
         fixed_yuan=minor_amount_value(breakdown.fixed_expenses_cents, home),
@@ -165,6 +162,20 @@ def _render_budget_advise(
         run_advise=run_advise,
     )
     return templates.TemplateResponse(request=request, name="budget_advise.html", context=ctx)
+
+
+def _advisor_readiness_context(request: Request, *, selected: str, options: list) -> dict[str, Any]:
+    readiness = get_advisor_readiness()
+    blocked_reason = readiness.blocked_reason(_actor_role(request, ledger_id=selected, options=options))
+    return {
+        "provider_name": readiness.provider,
+        "provider_enabled": readiness.provider != "empty",
+        "advisor_can_request": blocked_reason is None,
+        "advisor_blocked_message": (
+            AppError(blocked_reason).message
+            if blocked_reason not in {None, "ai_advisor_provider_empty"} else None
+        ),
+    }
 
 
 def _budget_advice_response(

@@ -4473,16 +4473,13 @@
       "BudgetAdvisorStatusResponse": {
         "description": "v1.1 Batch 2 owner-facing visibility surface.\n\nSurfaces the configured AI provider, the explicit owner-confirmation\nflag, and the most recent audit row so the Owner Console panel can\nanswer \"is this thing on?\" / \"did the last call succeed?\" without\nrunning a fresh call.",
         "properties": {
-          "base_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Base Url"
+          "can_request": {
+            "title": "Can Request",
+            "type": "boolean"
+          },
+          "configuration_valid": {
+            "title": "Configuration Valid",
+            "type": "boolean"
           },
           "is_live": {
             "title": "Is Live",
@@ -4565,15 +4562,28 @@
           "provider": {
             "title": "Provider",
             "type": "string"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
           }
         },
         "required": [
           "provider",
           "model",
-          "base_url",
           "owner_confirmed",
           "is_live",
           "needs_confirmation",
+          "configuration_valid",
+          "can_request",
+          "unavailable_reason",
           "last_called_at",
           "last_success",
           "last_error_code",

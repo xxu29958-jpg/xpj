@@ -13,14 +13,13 @@ from app.errors import AppError, DataIntegrityError
 from app.services.budget_advisor_service._audit import (
     complete_live_call_audit_row,
     compute_input_hash,
-    is_live_provider,
     reserve_live_call_budget,
 )
 from app.services.budget_advisor_service._inputs_builder import build_budget_inputs
 from app.services.budget_advisor_service._models import BudgetAdvice, BudgetInputs
 from app.services.budget_advisor_service._outbound_guard import to_outbound_dict
-from app.services.budget_advisor_service._provider_names import canonical_provider_name
 from app.services.budget_advisor_service._providers import get_budget_advisor
+from app.services.budget_advisor_service._readiness import get_advisor_readiness
 from app.services.currency_binding_service import require_runtime_home_currency_code
 
 logger = logging.getLogger(__name__)
@@ -45,12 +44,15 @@ def run_budget_advisor(
 ) -> AdvisorRunResult:
     """Run the configured provider with identical gates for API and /web."""
 
-    cfg = get_settings()
-    provider_name = canonical_provider_name(cfg.budget_advisor_provider)
-    provider_is_live = is_live_provider(provider_name)
-    if provider_is_live:
-        _assert_live_advisor_allowed(actor_role=actor_role)
+    readiness = get_advisor_readiness()
+    provider_name = readiness.provider
+    provider_is_live = readiness.is_live
+    blocked_reason = readiness.blocked_reason(actor_role)
+    if blocked_reason not in {None, "ai_advisor_provider_empty"}:
+        status = 503 if blocked_reason == "ai_advisor_configuration_invalid" else 403
+        raise AppError(blocked_reason, status_code=status)
 
+    advisor = get_budget_advisor()
     home = require_runtime_home_currency_code(db)
     inputs = build_budget_inputs(
         db,
@@ -59,7 +61,6 @@ def run_budget_advisor(
         home_currency=home,
         timezone_name=timezone_name,
     )
-    advisor = get_budget_advisor()
     audit_log_id: int | None = None
     if provider_is_live:
         # Fail-closed outbound-schema guard runs once, before reserving the
@@ -145,14 +146,6 @@ def _invoke_and_record(
         advice=advice,
         reason_code=reason_code,
     )
-
-
-def _assert_live_advisor_allowed(*, actor_role: str) -> None:
-    cfg = get_settings()
-    if not cfg.budget_advisor_owner_confirmed:
-        raise AppError("ai_advisor_not_confirmed", status_code=403)
-    if actor_role != "owner":
-        raise AppError("ai_advisor_owner_required", status_code=403)
 
 
 def _reserve_live_call(

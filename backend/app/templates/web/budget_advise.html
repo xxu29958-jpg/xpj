@@ -61,7 +61,7 @@
       </div>
       <div class="budget-actions">
         <button class="product-button" type="submit">重新计算</button>
-        {% if provider_enabled %}
+        {% if advisor_can_request %}
         <button class="product-button product-button--primary" type="submit" name="run_advise" value="true">获取智能建议</button>
         {% endif %}
       </div>
@@ -77,6 +77,11 @@
     <div class="product-state">
       <div class="product-state-title">智能建议未开启</div>
       <div class="product-state-body">本地计算不受影响，上方结果照常可用。开启后，建议也只会看到匿名化的分类聚合，不会看到商户名、姓名或票据图片。</div>
+    </div>
+    {% elif advisor_blocked_message %}
+    <div class="product-state">
+      <div class="product-state-title">智能建议暂不可用</div>
+      <div class="product-state-body">{{ advisor_blocked_message }} 本地计算仍可使用。</div>
     </div>
     {% elif advise_error %}
     <div class="product-feedback product-feedback--danger" role="alert">{{ advise_error }}</div>

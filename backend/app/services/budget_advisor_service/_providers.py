@@ -258,7 +258,7 @@ def get_budget_advisor(provider_name: str | None = None) -> BudgetAdvisorProvide
             timeout_seconds=settings.budget_advisor_timeout_seconds,
         )
     if name != EMPTY_PROVIDER_NAME or not is_known_provider(raw_name):
-        logger.warning("budget_advisor: unsupported provider configured: %s", raw_name)
+        logger.warning("budget_advisor: unsupported provider configured")
         raise AppError(
             "server_error",
             "BUDGET_ADVISOR_PROVIDER is not supported.",
@@ -358,8 +358,8 @@ def _parse_advice_json(content: str) -> BudgetAdvice:
 
 def _validate_base_url(value: str) -> str:
     cleaned = (value or "").strip().rstrip("/")
-    parsed = urlparse(cleaned)
     try:
+        parsed = urlparse(cleaned)
         _ = parsed.port
     except ValueError as exc:
         raise AppError(
