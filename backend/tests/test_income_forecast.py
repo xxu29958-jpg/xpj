@@ -42,6 +42,27 @@ def test_full_month_forecast_and_scheduled_to_date_are_distinct() -> None:
     assert last_day.scheduled_amount_cents == 100_00
 
 
+def test_income_list_preserves_the_legacy_scheduled_total_before_payday(monkeypatch) -> None:
+    from app.routes import income_plans
+    from app.services.income_plan_service._forecast import forecast_from_revisions
+
+    forecast = forecast_from_revisions(
+        [_revision(1, date(2026, 2, 1), pay_day=28)],
+        period=date(2026, 2, 1), today=date(2026, 2, 27),
+    )
+    monkeypatch.setattr(income_plans, "list_income_plans", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(income_plans, "income_forecast", lambda *_args, **_kwargs: forecast)
+
+    body = income_plans.list_plans(
+        status="active", month="2026-02", auth=SimpleNamespace(tenant_id="owner"), db=None,
+    ).model_dump()
+
+    # N-1 APKs use this field for "scheduled through today" and ignore additions.
+    assert body["total_active_amount_cents"] == 0
+    assert body["scheduled_amount_cents"] == 0
+    assert body["expected_amount_cents"] == 100_00
+
+
 def test_undated_baseline_cannot_fabricate_historical_income() -> None:
     from app.errors import AppError
     from app.services.income_plan_service._forecast import forecast_from_revisions
