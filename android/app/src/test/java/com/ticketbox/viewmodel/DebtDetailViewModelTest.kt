@@ -160,6 +160,8 @@ class DebtDetailViewModelTest {
     @Test
     fun openActionSetsActiveActionAndClearsInputs() = runTest(dispatcher) {
         val viewModel = DebtDetailViewModel(FakeDebtDetailActions(), FakeDebtAdjustmentActions())
+        viewModel.loadDebt("d1")
+        advanceUntilIdle()
         viewModel.updateActionInput(amount = "99")
         viewModel.openAction(DebtAction.Repayment)
 
@@ -290,26 +292,38 @@ class DebtDetailViewModelTest {
 
     @Test
     fun submitAdjustmentAppliesDecreaseSign() = runTest(dispatcher) {
-        val repo = FakeDebtDetailActions(getResult = Result.success(sampleDebt("d1", rowVersion = 2L)))
-        val adjustments = FakeDebtAdjustmentActions()
-        val viewModel = DebtDetailViewModel(repo, adjustments)
-        viewModel.loadDebt("d1")
-        advanceUntilIdle()
+        for ((amount, signedCents) in listOf("50" to -5_000L, "500" to -50_000L)) {
+            val canonical = sampleDebt("d1", rowVersion = 2L, remaining = 50_000L)
+            val repo = FakeDebtDetailActions(getResult = Result.success(canonical))
+            val adjustments = FakeDebtAdjustmentActions()
+            val viewModel = DebtDetailViewModel(repo, adjustments)
+            viewModel.loadDebt("d1")
+            advanceUntilIdle()
 
-        viewModel.openAction(DebtAction.Adjustment)
-        viewModel.updateActionInput(amount = "50")
-        viewModel.updateActionInput(reason = "减免")
-        viewModel.setAdjustmentSign(increase = false)
-        viewModel.submit()
-        advanceUntilIdle()
+            viewModel.openAction(DebtAction.Adjustment)
+            viewModel.updateActionInput(amount = "500.01", reason = "减免")
+            viewModel.setAdjustmentSign(increase = false)
+            viewModel.submit()
+            advanceUntilIdle()
+            assertTrue(viewModel.state.value.validationError != null)
+            assertEquals(DebtAction.Adjustment, viewModel.state.value.activeAction)
+            assertEquals("500.01", viewModel.state.value.amountInput)
+            assertEquals("减免", viewModel.state.value.reasonInput)
+            assertEquals(false, viewModel.state.value.adjustmentIncrease)
+            assertEquals(canonical, viewModel.state.value.debt)
+            assertTrue(adjustments.saveCalls.isEmpty())
 
-        val call = adjustments.saveCalls.single()
-        // Magnitude 50 with the decrease sign → a negative signed delta.
-        assertEquals(-5_000L, call.amountCents)
-        assertEquals("减免", call.reason)
-        assertEquals(2L, call.debt.rowVersion)
-        assertEquals("d1", call.debt.publicId)
-        assertEquals(adjustments.currentAccess()?.binding, call.binding)
+            viewModel.updateActionInput(amount = amount)
+            viewModel.submit()
+            advanceUntilIdle()
+
+            val call = adjustments.saveCalls.single()
+            assertEquals(signedCents, call.amountCents)
+            assertEquals("减免", call.reason)
+            assertEquals(2L, call.debt.rowVersion)
+            assertEquals("d1", call.debt.publicId)
+            assertEquals(adjustments.currentAccess()?.binding, call.binding)
+        }
     }
 
     @Test
@@ -405,7 +419,10 @@ class DebtDetailViewModelTest {
     @Test
     fun dismissActionClearsDialog() = runTest(dispatcher) {
         val viewModel = DebtDetailViewModel(FakeDebtDetailActions(), FakeDebtAdjustmentActions())
+        viewModel.loadDebt("d1")
+        advanceUntilIdle()
         viewModel.openAction(DebtAction.Adjustment)
+        assertEquals(DebtAction.Adjustment, viewModel.state.value.activeAction)
         viewModel.updateActionInput(amount = "5")
         viewModel.updateActionInput(reason = "x")
         viewModel.dismissAction()

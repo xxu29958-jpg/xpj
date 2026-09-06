@@ -164,22 +164,33 @@ class DebtAdjustmentRepositoryTest {
     }
 
     @Test
-    fun stateConflictRemainsConflictWithoutFreshOccOrAnotherSubmission() = runTest {
-        val fixture = DebtAdjustmentFixture()
-        fixture.api.refusal = 409 to "state_conflict"
-        val id = fixture.save().getOrThrow()
-        val original = fixture.dao.rows.getValue(id)
+    fun definiteConflictOrInvalidReductionCannotRetryWithFreshOccOrAnotherSubmission() = runTest {
+        for ((refusal, expectedStatus) in listOf(
+            (409 to "state_conflict") to PendingMutationStatus.Conflict,
+            (422 to "debt_adjustment_negative_remaining") to PendingMutationStatus.Failed,
+        )) {
+            val fixture = DebtAdjustmentFixture()
+            fixture.api.refusal = refusal
+            val id = fixture.save(amountCents = -5_000L).getOrThrow()
+            val original = fixture.dao.rows.getValue(id)
 
-        assertEquals(1, fixture.engine().drainOnce().conflicts)
-        val conflict = fixture.pending()
-        assertEquals(PendingMutationStatus.Conflict, conflict.row.status)
-        fixture.repository.recover(fixture.binding, conflict, drop = false)
+            val drained = fixture.engine().drainOnce()
+            assertEquals(1, if (expectedStatus == PendingMutationStatus.Conflict) drained.conflicts else drained.failures)
+            val pending = fixture.pending()
+            assertEquals(expectedStatus, pending.row.status)
+            assertTrue(pending.hasSupportedIntent)
+            val recovery = fixture.repository.recover(fixture.binding, pending, drop = false)
+            if (expectedStatus == PendingMutationStatus.Failed) assertTrue(recovery.isFailure)
 
-        assertEquals(PendingMutationStatus.Conflict.wireValue, fixture.dao.rows.getValue(id).status)
-        assertOriginalIntent(original, fixture.dao.rows.getValue(id))
-        assertEquals(0, fixture.engine().drainOnce().attempted)
-        assertEquals(1, fixture.api.calls.size)
-        assertTrue(fixture.api.facts.isEmpty())
+            assertEquals(expectedStatus.wireValue, fixture.dao.rows.getValue(id).status)
+            assertOriginalIntent(original, fixture.dao.rows.getValue(id))
+            assertEquals(listOf(1), fixture.queueDepthAtSchedule)
+            assertEquals(0, fixture.engine().drainOnce().attempted)
+            assertEquals(1, fixture.api.calls.size)
+            assertTrue(fixture.api.facts.isEmpty())
+            fixture.repository.recover(fixture.binding, pending, drop = true).getOrThrow()
+            assertTrue(fixture.dao.rows.isEmpty())
+        }
     }
 
     @Test
@@ -212,8 +223,9 @@ class DebtAdjustmentRepositoryTest {
 
     @Test
     fun invalidAmountOrReasonCannotPublishOrSend() = runTest {
-        for ((amountCents, reason) in listOf(0L to "  补记借款  ", 3_000L to "   ",
-            3_000L to "界".repeat(501), 3_000L to "🧾".repeat(501))) {
+        for ((amountCents, reason) in listOf(0L to "  补记借款  ", -50_001L to "超出原余额",
+            Long.MIN_VALUE to "超出原余额", 3_000L to "   ",
+            3_000L to "界".repeat(501), 3_000L to "🧾".repeat(501), 3_000L to "\u0085")) {
             val fixture = DebtAdjustmentFixture()
             val input = "amountCents=$amountCents, reason='$reason'"
 
@@ -225,13 +237,20 @@ class DebtAdjustmentRepositoryTest {
         }
         for (reason in listOf("界".repeat(500), "🧾".repeat(500))) {
             val fixture = DebtAdjustmentFixture()
-            fixture.save(reason = "  $reason  ").getOrThrow()
+            fixture.save(reason = " \u0085$reason\u0085 ").getOrThrow()
             assertEquals(reason, fixture.pending().intent?.request?.reason)
             assertEquals(listOf(1), fixture.queueDepthAtSchedule)
             assertTrue(fixture.api.calls.isEmpty())
             assertEquals(1, fixture.engine().drainOnce().done)
             assertEquals(reason, fixture.api.calls.single().request.reason)
         }
+        val cleared = DebtAdjustmentFixture()
+        cleared.save(amountCents = -50_000L, reason = "减至零").getOrThrow()
+        assertEquals(-50_000L, cleared.pending().intent?.request?.amountCents)
+        assertEquals(listOf(1), cleared.queueDepthAtSchedule)
+        assertTrue(cleared.api.calls.isEmpty())
+        assertEquals(1, cleared.engine().drainOnce().done)
+        assertEquals(0L, cleared.api.facts.values.single().second.remainingAmountCents)
     }
 
     @Test
