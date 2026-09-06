@@ -42,8 +42,8 @@ def test_original_edit_result_survives_a_later_edit_and_stale_commands_do_not_pu
     assert stale.status_code == 409
     august = client.get("/api/income-plans?month=2026-08", headers=identity.app_headers).json()
     september = client.get("/api/income-plans?month=2026-09", headers=identity.app_headers).json()
-    assert august["total_active_amount_cents"] == 10000
-    assert september["total_active_amount_cents"] == 13000
+    assert august["expected_amount_cents"] == 10000
+    assert september["expected_amount_cents"] == 13000
     assert september["items"][0]["row_version"] == later.json()["row_version"]
     with SessionLocal() as db:
         assert db.scalar(select(func.count()).select_from(IncomePlanRevision)) == 3

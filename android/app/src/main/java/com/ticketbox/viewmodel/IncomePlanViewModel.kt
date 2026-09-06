@@ -38,7 +38,6 @@ data class IncomePlanUiState(
     val canModify: Boolean = true,
     val activePlans: List<IncomePlan> = emptyList(),
     val archivedPlans: List<IncomePlan> = emptyList(),
-    val totalActiveAmountCents: Long = 0L,
     val scheduledAmountCents: Long = 0L,
     val forecastMonth: String? = null,
     val pendingEdits: List<PendingIncomePlanEdit> = emptyList(),
@@ -205,14 +204,13 @@ class IncomePlanViewModel(
                         canModify = activeCanModify,
                         activePlans = listing.plans,
                         archivedPlans = archived.getOrDefault(emptyList()),
-                        totalActiveAmountCents = listing.totalActiveAmountCents,
                         scheduledAmountCents = listing.scheduledAmountCents,
                         forecastMonth = listing.month,
                         addDraft = _state.value.addDraft.let { draft ->
                             if (draft.intentMonth.isEmpty()) draft.copy(intentMonth = listing.month,
                                 incomeMonthInput = draft.incomeMonthInput.ifEmpty { listing.month }) else draft
                         },
-                        currentMonthSummary = IncomePlanMonthSummary(listing.effectivePlanCount, listing.totalActiveAmountCents),
+                        currentMonthSummary = IncomePlanMonthSummary(listing.effectivePlanCount, listing.expectedAmountCents),
                         error = archivedError,
                     )
                 },

@@ -138,12 +138,10 @@ private fun appendLedgerId(requestBuilder: Request.Builder, ledgerId: String?) {
 internal class RuntimeNegotiationInterceptor : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
-        if (
-            request.method !in MUTATING_HTTP_METHODS ||
-            request.header("Authorization") == null ||
-            request.url.encodedPath.startsWith("/api/auth/") ||
-            request.header(TICKETBOX_API_VERSION_HEADER) != null
-        ) {
+        // Income forecasts require the declared month and separate expected/scheduled fields.
+        // Check their read protocol before Retrofit decodes a response from another epoch.
+        val incomeForecastRead = request.method == "GET" && request.url.encodedPath == "/api/income-plans"
+        if (!request.requiresRuntimeNegotiation(incomeForecastRead)) {
             return chain.proceed(request)
         }
         val compatibilityResponse = chain.proceed(compatibilityRequest(request))
@@ -157,6 +155,8 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
         if (compatibility != null && compatibility.apiVersion != CURRENT_TICKETBOX_API_VERSION) {
             return incompatibleProtocolResponse(request)
         }
+        // A readable forecast does not require writer permission or an activated currency binding.
+        if (incomeForecastRead) return chain.proceed(request)
         if (compatibility?.canWrite != true) {
             return chain.proceed(request)
         }
@@ -190,6 +190,11 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
         return builder.build()
     }
 }
+
+private fun Request.requiresRuntimeNegotiation(incomeForecastRead: Boolean): Boolean =
+    (incomeForecastRead || method in MUTATING_HTTP_METHODS) &&
+        header("Authorization") != null && !url.encodedPath.startsWith("/api/auth/") &&
+        header(TICKETBOX_API_VERSION_HEADER) == null
 
 private fun incompatibleProtocolResponse(request: Request): Response =
     Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(409)

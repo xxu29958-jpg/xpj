@@ -45,7 +45,7 @@ class IncomePlanViewModelTest {
         val repo = FakeRepository(
             active = IncomePlanListing(
                 plans = listOf(plan("p1", 100_000, status = IncomePlanStatus.ACTIVE)),
-                totalActiveAmountCents = 120_000,
+                expectedAmountCents = 120_000,
              month = "2026-09", scheduledAmountCents = 50_000, effectivePlanCount = 2),
             archived = listOf(plan("p2", 50_000, status = IncomePlanStatus.ARCHIVED)),
         )
@@ -55,7 +55,6 @@ class IncomePlanViewModelTest {
         assertFalse(state.isLoading)
         assertEquals(1, state.activePlans.size)
         assertEquals(1, state.archivedPlans.size)
-        assertEquals(120_000L, state.totalActiveAmountCents)
         assertEquals(120_000L, state.currentMonthSummary.expectedAmountCents)
         assertEquals(2, state.currentMonthSummary.effectivePlanCount)
         assertEquals("2026-09", state.addDraft.intentMonth)

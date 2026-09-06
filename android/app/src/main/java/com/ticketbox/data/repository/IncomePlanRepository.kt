@@ -32,7 +32,7 @@ interface IncomePlanActions {
 
 data class IncomePlanListing(
     val plans: List<IncomePlan>,
-    val totalActiveAmountCents: Long,
+    val expectedAmountCents: Long,
     val month: String,
     val scheduledAmountCents: Long,
     val effectivePlanCount: Int,
@@ -79,11 +79,11 @@ class IncomePlanRepository(
     override suspend fun listActive(expectedBinding: LogicalSessionBinding): Result<IncomePlanListing> = errors.safeCall {
         guard.bindExact(expectedBinding).call { api ->
             val response = api.listIncomePlans(status = "active")
-            IncomePlanListing(response.items.map { it.toDomain() }, response.totalActiveAmountCents,
+            IncomePlanListing(response.items.map { it.toDomain() }, response.expectedAmountCents,
                 response.month, response.scheduledAmountCents, response.effectivePlanCount)
         }
     }.onSuccess { listing ->
-        onActivePlansSnapshot("m=${listing.month};total=${listing.totalActiveAmountCents};" +
+        onActivePlansSnapshot("m=${listing.month};total=${listing.expectedAmountCents};" +
             "n=${listing.plans.size};rv=${listing.plans.maxOfOrNull(IncomePlan::rowVersion) ?: 0};" +
             "ua=${listing.plans.maxOfOrNull(IncomePlan::updatedAt).orEmpty()}")
     }

@@ -31,6 +31,7 @@ data class IncomePlanListResponseDto(
     val month: String,
     @param:Json(name = "scheduled_amount_cents") val scheduledAmountCents: Long,
     @param:Json(name = "effective_plan_count") val effectivePlanCount: Int,
+    @param:Json(name = "expected_amount_cents") val expectedAmountCents: Long,
 )
 
 data class IncomePlanCreateRequestDto(

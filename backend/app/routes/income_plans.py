@@ -75,7 +75,9 @@ def list_plans(
     return IncomePlanListResponse(
         items=[_to_response(p) for p in plans],
         month=month_label,
-        total_active_amount_cents=forecast.expected_amount_cents,
+        # Older APKs render this field as scheduled through today.
+        total_active_amount_cents=forecast.scheduled_amount_cents,
+        expected_amount_cents=forecast.expected_amount_cents,
         scheduled_amount_cents=forecast.scheduled_amount_cents,
         effective_plan_count=len(forecast.entries),
     )

@@ -86,7 +86,7 @@ internal class IncomeConnectedNetwork {
         override suspend fun listIncomePlans(status: String): IncomePlanListResponseDto {
             if (failReads) throw IOException("Synthetic unavailable management read")
             return IncomePlanListResponseDto(if (status == "active") listOf(current) else emptyList(),
-                current.amountCents, month, current.amountCents, 1)
+                current.amountCents, month, current.amountCents, 1, current.amountCents)
         }
 
         override suspend fun updateIncomePlan(publicId: String, request: IncomePlanUpdateRequestDto,

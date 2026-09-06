@@ -34,6 +34,8 @@ class ApiClientIncomeReadCompatibilityTest {
         val response = api.listIncomePlans("archived")
 
         assertEquals("2026-02", response.month)
+        assertEquals(10000L, response.expectedAmountCents)
+        assertEquals(0L, response.totalActiveAmountCents)
         assertEquals(0L, response.scheduledAmountCents)
         assertEquals(listOf("/api/system/runtime-compatibility", "/api/income-plans"), requests)
     }

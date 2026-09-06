@@ -10524,6 +10524,13 @@
             "title": "Effective Plan Count",
             "type": "integer"
           },
+          "expected_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
+            "title": "Expected Amount Cents",
+            "type": "integer"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/IncomePlanResponse"
@@ -10554,6 +10561,7 @@
           "items",
           "month",
           "total_active_amount_cents",
+          "expected_amount_cents",
           "scheduled_amount_cents",
           "effective_plan_count"
         ],

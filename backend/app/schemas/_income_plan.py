@@ -95,5 +95,6 @@ class IncomePlanListResponse(BaseModel):
     items: list[IncomePlanResponse]
     month: str
     total_active_amount_cents: NonNegativeMoneyAggregate
+    expected_amount_cents: NonNegativeMoneyAggregate
     scheduled_amount_cents: NonNegativeMoneyAggregate
     effective_plan_count: int
