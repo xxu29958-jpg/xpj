@@ -6,6 +6,7 @@ import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.Debt
+import com.ticketbox.domain.model.DebtRepayment
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -31,6 +32,92 @@ class DebtAdjustmentViewModelTest {
 
     @BeforeTest fun setup() { Dispatchers.setMain(dispatcher) }
     @AfterTest fun tearDown() { Dispatchers.resetMain() }
+
+    @Test
+    fun unresolvedOriginalAdjustmentBlocksEveryNewActionAndKindChange() = runTest(dispatcher) {
+        for (status in listOf(PendingMutationStatus.Pending, PendingMutationStatus.InFlight,
+            PendingMutationStatus.Failed, PendingMutationStatus.Conflict)) {
+            val repository = AdjustmentDetailActions()
+            val adjustments = FakeDebtAdjustmentActions().apply { rows.value = listOf(pendingAdjustment(status = status)) }
+            val viewModel = DebtDetailViewModel(repository, adjustments)
+            viewModel.loadDebt("debt-1")
+            advanceUntilIdle()
+
+            for (action in DebtAction.entries) {
+                viewModel.openAction(action, adjustmentRepayment())
+                assertNull(viewModel.state.value.activeAction, "$status must block $action")
+            }
+            viewModel.selectKind("installment")
+            advanceUntilIdle()
+            assertTrue(repository.mutations.isEmpty())
+            assertTrue(adjustments.saveCalls.isEmpty())
+            assertEquals(listOf(pendingAdjustment(status = status)), viewModel.state.value.pendingAdjustments)
+        }
+    }
+
+    @Test
+    fun originalAdjustmentArrivingAfterFormOpenedBlocksItsSubmission() = runTest(dispatcher) {
+        for (action in DebtAction.entries) {
+            val repository = AdjustmentDetailActions()
+            val adjustments = FakeDebtAdjustmentActions()
+            val viewModel = DebtDetailViewModel(repository, adjustments)
+            viewModel.loadDebt("debt-1")
+            advanceUntilIdle()
+            viewModel.openAction(action, adjustmentRepayment())
+            viewModel.updateActionInput(amount = "30", reason = "核对原记录")
+            assertEquals(action, viewModel.state.value.activeAction)
+            adjustments.rows.value = listOf(pendingAdjustment(status = PendingMutationStatus.InFlight))
+            advanceUntilIdle()
+
+            viewModel.submit()
+            advanceUntilIdle()
+
+            assertTrue(repository.mutations.isEmpty(), "$action must not send against the old fold")
+            assertTrue(adjustments.saveCalls.isEmpty())
+            assertEquals(7L, viewModel.state.value.debt?.rowVersion)
+            assertEquals(listOf(pendingAdjustment(status = PendingMutationStatus.InFlight)),
+                viewModel.state.value.pendingAdjustments)
+        }
+    }
+
+    @Test
+    fun deliveredAdjustmentBlocksStaleWritesUntilAuthoritativeRefreshSucceeds() = runTest(dispatcher) {
+        val repository = AdjustmentDetailActions()
+        val adjustments = FakeDebtAdjustmentActions().apply { rows.value = listOf(pendingAdjustment()) }
+        val viewModel = DebtDetailViewModel(repository, adjustments)
+        viewModel.loadDebt("debt-1")
+        advanceUntilIdle()
+        val original = viewModel.state.value.debt
+        repository.getResult = Result.failure(RepositoryException("Synthetic unavailable canonical refresh"))
+        repository.getGate = CompletableDeferred()
+        adjustments.rows.value = listOf(pendingAdjustment(status = PendingMutationStatus.Done))
+        runCurrent()
+        assertTrue(viewModel.state.value.isLoading)
+        viewModel.openAction(DebtAction.Repayment)
+        assertNull(viewModel.state.value.activeAction)
+        repository.getGate?.complete(Unit)
+        advanceUntilIdle()
+        assertNotNull(viewModel.state.value.error)
+        assertEquals(original, viewModel.state.value.debt)
+        for (action in DebtAction.entries) {
+            viewModel.openAction(action, adjustmentRepayment())
+            assertNull(viewModel.state.value.activeAction)
+        }
+        viewModel.selectKind("installment")
+        advanceUntilIdle()
+        assertTrue(repository.mutations.isEmpty())
+        assertEquals(PendingMutationStatus.Done, adjustments.rows.value.single().row.status)
+
+        repository.getGate = null
+        repository.getResult = Result.success(requireNotNull(original).copy(rowVersion = 8, remainingAmountCents = 45_000))
+        viewModel.refresh()
+        advanceUntilIdle()
+        assertEquals(8L, viewModel.state.value.debt?.rowVersion)
+        assertEquals(45_000L, viewModel.state.value.debt?.remainingAmountCents)
+        viewModel.openAction(DebtAction.Repayment)
+        assertEquals(DebtAction.Repayment, viewModel.state.value.activeAction)
+        assertTrue(adjustments.saveCalls.isEmpty())
+    }
 
     @Test
     fun acceptingLocalAdjustmentClosesDraftWithoutInventingCanonicalDebt() = runTest(dispatcher) {
@@ -216,6 +303,24 @@ class DebtAdjustmentViewModelTest {
 }
 
 private class AdjustmentDetailActions : DebtActions by FakeDebtActions() {
+    val mutations = mutableListOf<String>()
+    override suspend fun recordRepayment(publicId: String, expectedRowVersion: Long, amountCents: Long): Result<Debt> {
+        mutations += "repayment:$publicId:$expectedRowVersion:$amountCents"
+        return getResult
+    }
+    override suspend fun voidDebt(publicId: String, expectedRowVersion: Long, reason: String): Result<Debt> {
+        mutations += "void:$publicId:$expectedRowVersion:$reason"
+        return getResult
+    }
+    override suspend fun voidRepayment(publicId: String, repaymentPublicId: String,
+        expectedRowVersion: Long, reason: String): Result<Debt> {
+        mutations += "repaymentVoid:$publicId:$repaymentPublicId:$expectedRowVersion:$reason"
+        return getResult
+    }
+    override suspend fun setDebtKind(publicId: String, expectedRowVersion: Long, debtKind: String): Result<Debt> {
+        mutations += "kind:$publicId:$expectedRowVersion:$debtKind"
+        return getResult
+    }
     var getResult: Result<Debt> = Result.success(sampleDebt().copy(rowVersion = 7))
     var getGate: CompletableDeferred<Unit>? = null
     val getCalls = mutableListOf<String>()
@@ -227,3 +332,8 @@ private class AdjustmentDetailActions : DebtActions by FakeDebtActions() {
         return captured
     }
 }
+
+private fun adjustmentRepayment() = DebtRepayment(
+    publicId = "payment-original", amountCents = 20_000,
+    paidAt = "2026-09-01T09:00:00Z", createdAt = "2026-09-01T09:01:00Z", status = "active",
+)

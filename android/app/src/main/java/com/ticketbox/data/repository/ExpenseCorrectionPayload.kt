@@ -26,7 +26,7 @@ data class ExpenseCorrectionPayload(
 data class PendingExpenseCorrection(
     val row: OutboxRow,
     val intent: ExpenseCorrectionPayload?,
-    /** Old normalized input is display-only; its original OCC cannot be recovered. */
+    /** Original decoded but inadmissible input is display-only; never a source for replay or new OCC. */
     val legacyRequest: ExpenseCorrectionRequestDto? = null,
 ) {
     val hasSupportedIntent: Boolean get() = intent != null
@@ -44,10 +44,15 @@ data class ExpenseCorrectionObservation(
 )
 
 internal fun JsonAdapter<ExpenseCorrectionPayload>.readSupportedCorrection(row: OutboxRow): ExpenseCorrectionPayload? =
-    readCorrectionJson(row.payloadJson)?.takeIf { it.completeOrigin() && it.matchesOriginalRow(row) }
+    readCorrectionJson(row.payloadJson)?.takeIf {
+        it.completeOrigin() && it.matchesOriginalRow(row) && it.request.correctionAdmissionError() == null
+    }
+
+internal fun JsonAdapter<ExpenseCorrectionPayload>.readDisplayCorrection(row: OutboxRow): ExpenseCorrectionRequestDto? =
+    readCorrectionJson(row.payloadJson)?.takeIf { it.matchesOriginalRow(row) }?.request
 
 private fun ExpenseCorrectionPayload.completeOrigin(): Boolean =
-    revision == 1 && expenseId > 0 && request.expectedRowVersion > 0 && request.reason.isNotBlank() &&
+    revision == 1 && expenseId > 0 && request.expectedRowVersion > 0 &&
         ownerKey.isNotBlank() && ledgerId.isNotBlank() && originalCurrencyCode.isNotBlank() && homeCurrencyCode.isNotBlank() &&
         (originalAmountMinor == null || originalAmountMinor >= 0) &&
         originSessionGeneration.isNotBlank() && originBindingRevision.isNotBlank()

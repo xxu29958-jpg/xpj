@@ -4,6 +4,7 @@ import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
 import com.ticketbox.data.repository.DebtAdjustmentActions
+import com.ticketbox.data.repository.DebtAdjustmentRefresh
 import com.ticketbox.data.repository.DebtAdjustmentPayload
 import com.ticketbox.data.repository.DebtAdjustmentSubject
 import com.ticketbox.data.repository.LedgerAccessContext
@@ -14,6 +15,8 @@ import com.ticketbox.domain.model.Debt
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.combine
 
 internal data class AdjustmentSaveCall(
     val binding: LogicalSessionBinding,
@@ -28,8 +31,10 @@ internal data class AdjustmentRecoveryCall(
     val drop: Boolean,
 )
 
-internal class FakeDebtAdjustmentActions : DebtAdjustmentActions {
-    val access = MutableStateFlow<LedgerAccessContext?>(LedgerAccessContext(adjustmentBinding(), canModify = true))
+internal class FakeDebtAdjustmentActions(
+    val access: MutableStateFlow<LedgerAccessContext?> =
+        MutableStateFlow(LedgerAccessContext(adjustmentBinding(), canModify = true)),
+) : DebtAdjustmentActions {
     val rows = MutableStateFlow<List<PendingDebtAdjustment>>(emptyList())
     val saveCalls = mutableListOf<AdjustmentSaveCall>()
     val recoveryCalls = mutableListOf<AdjustmentRecoveryCall>()
@@ -38,6 +43,18 @@ internal class FakeDebtAdjustmentActions : DebtAdjustmentActions {
 
     override fun currentAccess() = access.value
     override fun observeActiveLedgerAccess() = access
+    override fun observeCompletionRefreshes() = flow {
+        var previous = access.value?.binding
+        var initial = true
+        val seen = mutableSetOf<Long>()
+        combine(access, rows) { current, pending -> current?.binding to pending }.collect { (binding, pending) ->
+            if (binding != previous) { previous = binding; initial = true; seen.clear() }
+            val done = pending.filter { it.row.status == PendingMutationStatus.Done }.map { it.row.id }
+            val changed = done.any { it !in seen }
+            seen += done
+            if (initial || changed) { emit(DebtAdjustmentRefresh(binding, initial)); initial = false }
+        }
+    }
     override fun observeAdjustments(binding: LogicalSessionBinding, publicId: String) = rows.map { pending ->
         pending.filter { it.row.serverUrl == binding.serverUrl && it.row.ledgerId == binding.ledgerId &&
             it.row.ownerKey == binding.ownerKey && it.row.targetId == "debt:$publicId" }

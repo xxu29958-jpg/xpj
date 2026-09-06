@@ -154,6 +154,7 @@ class DebtAdjustmentRepositoryTest {
 
         assertEquals(PendingMutationStatus.Pending.wireValue, fixture.dao.rows.getValue(id).status)
         assertOriginalIntent(original, fixture.dao.rows.getValue(id))
+        assertEquals(listOf(1, 1), fixture.queueDepthAtSchedule, "Retry must schedule the persisted original command")
         fixture.api.refusal = null
         assertEquals(1, fixture.engine().drainOnce().done)
         assertEquals(2, fixture.api.calls.size)
@@ -163,50 +164,76 @@ class DebtAdjustmentRepositoryTest {
     }
 
     @Test
-    fun stateConflictRemainsConflictWithoutFreshOccOrAnotherSubmission() = runTest {
-        val fixture = DebtAdjustmentFixture()
-        fixture.api.refusal = 409 to "state_conflict"
-        val id = fixture.save().getOrThrow()
-        val original = fixture.dao.rows.getValue(id)
+    fun definiteConflictOrInvalidReductionCannotRetryWithFreshOccOrAnotherSubmission() = runTest {
+        for ((refusal, expectedStatus) in listOf(
+            (409 to "state_conflict") to PendingMutationStatus.Conflict,
+            (422 to "debt_adjustment_negative_remaining") to PendingMutationStatus.Failed,
+        )) {
+            val fixture = DebtAdjustmentFixture()
+            fixture.api.refusal = 409 to "future_domain_refusal"
+            val id = fixture.save(amountCents = -5_000L).getOrThrow()
+            val original = fixture.dao.rows.getValue(id)
+            assertEquals(1, fixture.engine().drainOnce().failures)
+            val staleRetryable = fixture.pending()
+            assertTrue(staleRetryable.canRetry)
+            fixture.repository.recover(fixture.binding, staleRetryable, drop = false).getOrThrow()
+            fixture.api.refusal = refusal
 
-        assertEquals(1, fixture.engine().drainOnce().conflicts)
-        val conflict = fixture.pending()
-        assertEquals(PendingMutationStatus.Conflict, conflict.row.status)
-        fixture.repository.recover(fixture.binding, conflict, drop = false)
+            val drained = fixture.engine().drainOnce()
+            assertEquals(1, if (expectedStatus == PendingMutationStatus.Conflict) drained.conflicts else drained.failures)
+            val pending = fixture.pending()
+            assertEquals(expectedStatus, pending.row.status)
+            assertTrue(pending.hasSupportedIntent)
+            val recovery = fixture.repository.recover(fixture.binding, pending, drop = false)
+            if (expectedStatus == PendingMutationStatus.Failed) assertTrue(recovery.isFailure)
+            assertTrue(fixture.repository.recover(fixture.binding, staleRetryable, drop = false).isFailure,
+                "An old unknown-result callback cannot override the current definite refusal")
 
-        assertEquals(PendingMutationStatus.Conflict.wireValue, fixture.dao.rows.getValue(id).status)
-        assertOriginalIntent(original, fixture.dao.rows.getValue(id))
-        assertEquals(0, fixture.engine().drainOnce().attempted)
-        assertEquals(1, fixture.api.calls.size)
-        assertTrue(fixture.api.facts.isEmpty())
+            assertEquals(expectedStatus.wireValue, fixture.dao.rows.getValue(id).status)
+            assertOriginalIntent(original, fixture.dao.rows.getValue(id))
+            assertEquals(listOf(1, 1), fixture.queueDepthAtSchedule)
+            assertEquals(0, fixture.engine().drainOnce().attempted)
+            assertEquals(2, fixture.api.calls.size)
+            assertEquals(fixture.api.calls.first(), fixture.api.calls.last())
+            assertTrue(fixture.api.facts.isEmpty())
+            fixture.repository.recover(fixture.binding, pending, drop = true).getOrThrow()
+            assertTrue(fixture.dao.rows.isEmpty())
+        }
     }
 
     @Test
     fun unsupportedPayloadCannotRetryOrSendAndRemainsUntilExplicitDrop() = runTest {
-        val fixture = DebtAdjustmentFixture()
-        val id = fixture.save().getOrThrow()
-        val row = fixture.dao.rows.getValue(id)
-        val payload = requireNotNull(fixture.adapters.debtAdjustmentAdapter.fromJson(row.payload))
-        val unsupported = row.copy(payload = fixture.adapters.debtAdjustmentAdapter.toJson(payload.copy(revision = 99)))
-        fixture.dao.rows[id] = unsupported
+        for (reason in listOf<String?>(null, "界".repeat(501), "🧾".repeat(501), "界".repeat(500) + " ")) {
+            val fixture = DebtAdjustmentFixture()
+            val id = fixture.save().getOrThrow()
+            val row = fixture.dao.rows.getValue(id)
+            val payload = requireNotNull(fixture.adapters.debtAdjustmentAdapter.fromJson(row.payload))
+            val invalid = if (reason == null) payload.copy(revision = 99)
+                else payload.copy(request = payload.request.copy(reason = reason))
+            val unsupported = row.copy(payload = fixture.adapters.debtAdjustmentAdapter.toJson(invalid))
+            fixture.dao.rows[id] = unsupported
 
-        assertEquals(1, fixture.engine().drainOnce().failures)
-        val pending = fixture.pending()
-        assertFalse(pending.hasSupportedIntent)
-        assertTrue(fixture.repository.recover(fixture.binding, pending, drop = false).isFailure)
-        assertEquals(PendingMutationStatus.Failed.wireValue, fixture.dao.rows.getValue(id).status)
-        assertOriginalIntent(unsupported, fixture.dao.rows.getValue(id))
-        assertEquals(0, fixture.engine().drainOnce().attempted)
-        assertTrue(fixture.api.calls.isEmpty())
+            assertEquals(1, fixture.engine().drainOnce().failures)
+            val pending = fixture.pending()
+            assertFalse(pending.hasSupportedIntent)
+            assertTrue(fixture.repository.recover(fixture.binding, pending, drop = false).isFailure)
+            assertEquals(PendingMutationStatus.Failed.wireValue, fixture.dao.rows.getValue(id).status)
+            assertOriginalIntent(unsupported, fixture.dao.rows.getValue(id))
+            assertEquals(0, fixture.engine().drainOnce().attempted)
+            assertEquals(listOf(1), fixture.queueDepthAtSchedule)
+            assertTrue(fixture.api.calls.isEmpty())
 
-        fixture.repository.recover(fixture.binding, pending, drop = true).getOrThrow()
-        assertTrue(fixture.dao.rows.isEmpty())
-        assertTrue(fixture.api.calls.isEmpty())
+            fixture.repository.recover(fixture.binding, pending, drop = true).getOrThrow()
+            assertTrue(fixture.dao.rows.isEmpty())
+            assertTrue(fixture.api.calls.isEmpty())
+        }
     }
 
     @Test
-    fun zeroAmountOrBlankReasonCannotPublishOrSend() = runTest {
-        for ((amountCents, reason) in listOf(0L to "  补记借款  ", 3_000L to "   ")) {
+    fun invalidAmountOrReasonCannotPublishOrSend() = runTest {
+        for ((amountCents, reason) in listOf(0L to "  补记借款  ", -50_001L to "超出原余额",
+            Long.MIN_VALUE to "超出原余额", 3_000L to "   ",
+            3_000L to "界".repeat(501), 3_000L to "🧾".repeat(501), 3_000L to "\u0085")) {
             val fixture = DebtAdjustmentFixture()
             val input = "amountCents=$amountCents, reason='$reason'"
 
@@ -216,6 +243,22 @@ class DebtAdjustmentRepositoryTest {
             assertTrue(fixture.queueDepthAtSchedule.isEmpty(), input)
             assertTrue(fixture.api.calls.isEmpty(), input)
         }
+        for (reason in listOf("界".repeat(500), "🧾".repeat(500))) {
+            val fixture = DebtAdjustmentFixture()
+            fixture.save(reason = " \u0085$reason\u0085 ").getOrThrow()
+            assertEquals(reason, fixture.pending().intent?.request?.reason)
+            assertEquals(listOf(1), fixture.queueDepthAtSchedule)
+            assertTrue(fixture.api.calls.isEmpty())
+            assertEquals(1, fixture.engine().drainOnce().done)
+            assertEquals(reason, fixture.api.calls.single().request.reason)
+        }
+        val cleared = DebtAdjustmentFixture()
+        cleared.save(amountCents = -50_000L, reason = "减至零").getOrThrow()
+        assertEquals(-50_000L, cleared.pending().intent?.request?.amountCents)
+        assertEquals(listOf(1), cleared.queueDepthAtSchedule)
+        assertTrue(cleared.api.calls.isEmpty())
+        assertEquals(1, cleared.engine().drainOnce().done)
+        assertEquals(0L, cleared.api.facts.values.single().second.remainingAmountCents)
     }
 
     @Test

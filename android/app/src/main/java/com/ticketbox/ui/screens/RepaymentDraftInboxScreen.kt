@@ -118,7 +118,7 @@ fun RepaymentDraftInboxScreen(
         )
     }
     val activeDraftId = pickerDraftId
-    if (activeDraftId != null) {
+    if (activeDraftId != null && !state.isLoading && state.error == null) {
         DebtPickerSheet(
             model = DebtPickerModel(
                 debts = state.targetDebts,
@@ -180,7 +180,7 @@ private class RepaymentDraftCardCallbacks(
 
 private fun draftRowAction(state: RepaymentDraftInboxUiState, draftPublicId: String): DraftRowAction = when {
     state.pendingActionDraftId == draftPublicId -> DraftRowAction.Busy
-    !state.canModify || state.pendingActionDraftId != null -> DraftRowAction.Disabled
+    !state.canModify || state.isLoading || state.pendingActionDraftId != null -> DraftRowAction.Disabled
     else -> DraftRowAction.Idle
 }
 

@@ -6,6 +6,7 @@ import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto
 import com.ticketbox.data.remote.dto.ExpenseCorrectionResponseDto
+import com.ticketbox.data.remote.dto.ExpenseItemRequestDto
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import com.ticketbox.domain.model.CurrencyCode
@@ -26,6 +27,59 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxTestBase() {
+    @Test
+    fun `request storage boundaries refuse before enqueue and preserve every legal boundary`() = runTest {
+        for ((label, draft, accepted) in correctionAdmissionBoundaryCases()) {
+            val queue = FakePendingMutationDao()
+            val repo = buildCorrectionRepository(FakeApiService(mutableListOf(), 0), outbox = testOutboxRepository(queue))
+            val result = submit(repo, baselineExpense().copy(status = "confirmed", rowVersion = 7), draft)
+
+            assertEquals(accepted, result.isSuccess, label)
+            if (!accepted) {
+                assertTrue(queue.rows.isEmpty(), "$label must not publish an impossible command")
+            } else {
+                val pending = repo.observeCorrections().first().corrections.single()
+                val request = assertNotNull(pending.intent, label).request
+                assertEquals(draft.reason, request.reason, label)
+                assertEquals(draft.merchant, request.merchant, label)
+                assertEquals(draft.category, request.category, label)
+                assertEquals(draft.tags, request.tags, "$label must leave normalization to the backend")
+                assertEquals(draft.items?.map { it.name }, request.items?.map { it.name }, label)
+                assertEquals(7L, pending.row.expectedRowVersion)
+                assertNotNull(pending.row.idempotencyKey)
+            }
+        }
+    }
+
+    @Test
+    fun `stored overlong original reason remains visible but cannot retry or change its command`() = runTest {
+        for (character in listOf("改", "\uD83D\uDE42")) {
+            val queue = FakePendingMutationDao()
+            val outbox = testOutboxRepository(queue)
+            val repo = buildCorrectionRepository(FakeApiService(mutableListOf(), 0), outbox = outbox)
+            val binding = assertNotNull(repo.observeCorrections().first().access).binding
+            val payload = ExpenseCorrectionPayload(1, 42L, "原商家", "CNY", 1200L, "CNY",
+                binding.ownerKey, binding.ledgerId, binding.sessionGeneration, binding.bindingRevision,
+                ExpenseCorrectionRequestDto(7L, character.repeat(501), merchant = "原录入商家", note = "原命令内容",
+                    items = listOf(ExpenseItemRequestDto(name = "原明细"))))
+            val json = OutboxAdapterGraph().correctionAdapter.toJson(payload)
+            val id = outbox.enqueue(PendingMutationType.CorrectExpense, "expense:42", json, 7L, "original-invalid-key")
+            outbox.markFailed(id, "validation_error")
+            val original = queue.rows.getValue(id)
+            val pending = repo.observeCorrections().first().corrections.single()
+
+            assertFalse(pending.hasSupportedIntent, "A known format with an impossible reason is not replayable")
+            assertFalse(pending.canRetry)
+            assertTrue(pending.canDiscard)
+            assertEquals(json, pending.row.payloadJson)
+            assertEquals(payload.request, pending.legacyRequest, "The matched original reason, merchant and items remain display-only")
+            assertTrue(repo.recoverCorrection(binding, id, drop = false).isFailure)
+            assertEquals(original, queue.rows.getValue(id), "Refusal preserves original key, OCC, binding and payload")
+            repo.recoverCorrection(binding, id, drop = true).getOrThrow()
+            assertTrue(queue.rows.isEmpty())
+        }
+    }
+
     @Test
     fun `composite correction is persisted before scheduling without waiting for a direct request`() = runTest {
         val mutationDao = FakePendingMutationDao()
@@ -216,4 +270,36 @@ internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxT
         binding = testServerSessionBinding(apiClient = TestApiServiceFactory(api), settingsStore = seededSettingsStore(),
             tokenStore = seededTokenStore()),
         deviceNameProvider = { "Android Test" }, offlineMutations = testExpenseOfflineMutationWiring(outbox))
+}
+
+/** Literal API/storage boundary vectors; no client validation or tag normalization is reproduced here. */
+private fun correctionAdmissionBoundaryCases(): List<Triple<String, ExpenseCorrectionDraft, Boolean>> {
+    val base = ExpenseCorrectionDraft("核对后的原因", merchant = "核对后的商家")
+    val item = ExpenseItemDraft("明细", null, null, null, null, null, null)
+    val tags500 = ('a'..'g').joinToString(",") { it.toString().repeat(64) } + "," + "h".repeat(45)
+    return buildList {
+        for (character in listOf("改", "\uD83D\uDE42")) {
+            add(Triple("merchant 256 $character", base.copy(merchant = character.repeat(256)), false))
+            add(Triple("merchant 255 $character", base.copy(merchant = character.repeat(255)), true))
+            add(Triple("reason 501 $character", base.copy(reason = character.repeat(501)), false))
+            add(Triple("reason 500 $character", base.copy(reason = character.repeat(500)), true))
+            add(Triple("category 65 $character", base.copy(category = character.repeat(65)), false))
+            add(Triple("category 64 $character", base.copy(category = character.repeat(64)), true))
+            add(Triple("tag name 65 $character", base.copy(tags = character.repeat(65)), false))
+            add(Triple("tag name 64 $character", base.copy(tags = character.repeat(64)), true))
+            add(Triple("item name 256 $character", base.copy(items = listOf(item.copy(name = character.repeat(256)))), false))
+            add(Triple("item name 255 $character", base.copy(items = listOf(item.copy(name = character.repeat(255)))), true))
+        }
+        add(Triple("tags total 501", base.copy(tags = tags500 + "h"), false))
+        add(Triple("tags total 500", base.copy(tags = tags500), true))
+        for (character in listOf("ß", "ẞ")) {
+            add(Triple("casefold key 66 $character", base.copy(tags = character.repeat(33)), false))
+            add(Triple("casefold key 64 $character", base.copy(tags = character.repeat(32)), true))
+        }
+        add(Triple("U0085 collapsed name 65", base.copy(tags = "a".repeat(32) + "\u0085".repeat(5) + "b".repeat(32)), false))
+        add(Triple("U0085 collapsed name 64", base.copy(tags = "a".repeat(31) + "\u0085".repeat(5) + "b".repeat(32)), true))
+        add(Triple("U0085 stripped name 64", base.copy(tags = "\u0085".repeat(5) + "a".repeat(64) + "\u0085".repeat(5)), true))
+        add(Triple("201 nonempty items", base.copy(items = List(201) { item.copy(name = "明细$it") }), false))
+        add(Triple("200 nonempty items", base.copy(items = List(200) { item.copy(name = "明细$it") }), true))
+    }
 }

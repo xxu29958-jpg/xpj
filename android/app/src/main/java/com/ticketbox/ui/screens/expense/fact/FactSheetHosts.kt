@@ -21,6 +21,10 @@ import com.ticketbox.viewmodel.adoptCorrectionItems
 import com.ticketbox.viewmodel.adoptCorrectionSplits
 import com.ticketbox.viewmodel.addCorrectionItemRow
 import com.ticketbox.viewmodel.canSubmitCorrection
+import com.ticketbox.viewmodel.canEditCorrectionItems
+import com.ticketbox.viewmodel.canEditCorrectionSplits
+import com.ticketbox.viewmodel.correctionContextError
+import com.ticketbox.viewmodel.refreshCorrectionFact
 import com.ticketbox.viewmodel.cancelBillSplitInvitation
 import com.ticketbox.viewmodel.closeBillSplitInviteSheet
 import com.ticketbox.viewmodel.closeCorrectionSheet
@@ -97,6 +101,9 @@ private fun FactCorrectionHost(
     ExpenseCorrectionSheet(
         state = state,
         canSubmit = viewModel.canSubmitCorrection(),
+        canEditItems = viewModel.canEditCorrectionItems(),
+        canEditSplits = viewModel.canEditCorrectionSplits(),
+        contextError = viewModel.correctionContextError(),
         actions = ExpenseCorrectionSheetActions(
             onReasonChange = { viewModel.updateCorrectionField(CorrectionScalarField.Reason, it) },
             onMerchantChange = { viewModel.updateCorrectionField(CorrectionScalarField.Merchant, it) },
@@ -109,6 +116,7 @@ private fun FactCorrectionHost(
             onScoreChange = viewModel::updateCorrectionScore,
             onOpenItems = viewModel::openCorrectionItemsEditor,
             onOpenSplits = viewModel::openCorrectionSplitsEditor,
+            onRefreshFact = viewModel::refreshCorrectionFact,
             onSubmit = viewModel::submitCorrection,
             onDismiss = viewModel::closeCorrectionSheet,
         ),
@@ -120,7 +128,7 @@ private fun FactCorrectionLinesHosts(
     state: ExpenseFactUiState,
     viewModel: ExpenseFactViewModel,
 ) {
-    val expense = state.expense ?: return
+    val expense = viewModel.correctionBaseline ?: return
     if (state.correction.itemsEditorOpen) {
         ItemsEditorSheet(
             state = ItemsEditorSheetState(

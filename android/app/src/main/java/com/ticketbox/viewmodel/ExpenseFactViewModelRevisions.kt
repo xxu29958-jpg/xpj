@@ -133,10 +133,13 @@ fun ExpenseFactViewModel.loadOlderExpenseRevisions() {
 }
 
 fun ExpenseFactViewModel.loadRevisionMemberNames() {
+    val binding = _uiState.value.correctionAccess?.binding ?: return
     viewModelScope.launch {
+        if (binding != _uiState.value.correctionAccess?.binding) return@launch
         repository.fetchSplitMembers()
             .onSuccess { members ->
                 _uiState.update { state ->
+                    if (binding != state.correctionAccess?.binding) return@update state
                     state.copy(
                         revisionMemberNames = members.associate { it.memberId to it.displayName },
                     )

@@ -7,10 +7,12 @@ import com.ticketbox.domain.model.ExpenseOffsetFact
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.StreamOffsetKind
 import com.ticketbox.domain.model.UiText
+import com.ticketbox.domain.model.canInitiateBillSplit
 import com.ticketbox.ui.components.formatAmountInput
 import java.time.LocalDate
 import java.time.ZoneId
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
 
 /**
@@ -101,7 +103,7 @@ internal fun ExpenseFactViewModel.applyFactBundle(bundle: ExpenseFactBundle) {
  * 保留当前 root + 当前 factBundle；首读即旧包才给可重试出口。
  */
 private fun ExpenseFactViewModel.adoptFactBundle(bundle: ExpenseFactBundle) {
-    _uiState.update {
+    val adopted = _uiState.updateAndGet {
         val current = it.expense
         val rootStale = current != null && current.id == bundle.root.id &&
             bundle.root.rowVersion < current.rowVersion
@@ -125,6 +127,12 @@ private fun ExpenseFactViewModel.adoptFactBundle(bundle: ExpenseFactBundle) {
                 voidOffsetForm = it.voidOffsetForm.copy(refreshingAfterConflict = false),
             )
         }
+    }
+    if (
+        adopted.factBundle === bundle && adopted.expense === bundle.root &&
+        bundle.root.canInitiateBillSplit(adopted.readOnly)
+    ) {
+        loadBillSplitSent(onlyIfUnknown = true)
     }
 }
 

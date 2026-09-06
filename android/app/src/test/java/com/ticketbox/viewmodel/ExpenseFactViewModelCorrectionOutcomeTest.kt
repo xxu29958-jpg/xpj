@@ -2,8 +2,13 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.data.repository.ExpenseFactActions
+import com.ticketbox.data.repository.expenseFactBundleDtoFixture
+import com.ticketbox.data.repository.toDomain
+import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import com.ticketbox.domain.model.ExpenseItem
 import com.ticketbox.domain.model.ExpenseItems
+import com.ticketbox.domain.model.ExpenseRevisionPage
 import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.ItemsSumStatus
 import com.ticketbox.domain.model.MessageTone
@@ -11,7 +16,10 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.advanceUntilIdle
 
 /** A1: 更正结果忠实呈现同步、离线排队和 OCC 冲突的权威状态。 */
@@ -57,6 +65,82 @@ internal class ExpenseFactViewModelCorrectionOutcomeTest : ExpenseFactViewModelT
     }
 
     @Test
+    fun `historical supported DONE on reopen does not report another edit or repeat completion reads`() = edit { fake ->
+        val original = expenseFactBundleDtoFixture().toDomain()
+        fake.submitCorrection(fake.correctionBinding, original.root,
+            ExpenseCorrectionDraft("历史分类更正", category = "居家")).getOrThrow()
+        fake.settleCorrection(PendingMutationStatus.Done)
+        val stored = fake.correctionObservations.value.corrections.single()
+        val published = original.copy(root = original.root.copy(category = "居家",
+            rowVersion = original.root.rowVersion + 1, factRevision = 2))
+        val timeline = fake.categoryCorrectionTimeline()
+        fake.baseExpense = published.root
+        fake.factBundleResult = { Result.success(published) }
+        fake.revisionsResult = { _, _ -> Result.success(timeline) }
+
+        val vm = ExpenseFactViewModel(published.root.id, fake, initialExpense = published.root)
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.corrections.single().delivered)
+        assertEquals("居家", vm.uiState.value.expense?.category)
+        assertEquals(listOf("rev-correction", "rev-1"), vm.uiState.value.revisions.map { it.publicId })
+        assertFalse(vm.consumeDoneAdviceInputsChanged(), "Viewing a historical correction cannot invalidate advice on Back")
+        assertEquals(0, fake.fetchExpenseCalls, "The initial authoritative fact must not be reloaded as a new completion")
+        assertEquals(1, fake.fetchFactBundleCalls, "Only the normal initial fact-bundle read is needed")
+        assertEquals(1, fake.fetchRevisionsCalls)
+        assertEquals(stored, vm.uiState.value.corrections.single(), "Reading delivery cannot consume or rewrite its Room row")
+        assertEquals(1, fake.correctCalls, "Opening detail cannot publish the historical command again")
+    }
+
+    @Test
+    fun `delayed first DONE observation still refreshes an earlier fact snapshot and timeline`() = edit { fake ->
+        val original = expenseFactBundleDtoFixture().toDomain()
+        fake.baseExpense = original.root
+        fake.factBundleResult = { Result.success(original) }
+        fake.submitCorrection(fake.correctionBinding, original.root,
+            ExpenseCorrectionDraft("后台完成分类更正", category = "居家")).getOrThrow()
+        val stored = fake.correctionObservations.value.corrections.single()
+        val firstObservation = CompletableDeferred<Unit>()
+        val delayedRepository = object : ExpenseFactActions by fake {
+            override fun observeCorrections() = flow {
+                firstObservation.await()
+                emitAll(fake.observeCorrections())
+            }
+        }
+        val vm = ExpenseFactViewModel(original.root.id, delayedRepository, initialExpense = original.root)
+        // Existing initial reads may finish with the old snapshot. A fix may also
+        // wait for the first Room snapshot before starting them; both are valid.
+        advanceUntilIdle()
+        assertEquals(original.root, vm.uiState.value.expense)
+        assertTrue(vm.uiState.value.corrections.isEmpty())
+
+        val published = original.copy(root = original.root.copy(category = "居家",
+            rowVersion = original.root.rowVersion + 1, factRevision = 2))
+        val timeline = fake.categoryCorrectionTimeline()
+        fake.baseExpense = published.root
+        fake.factBundleResult = { Result.success(published) }
+        fake.revisionsResult = { _, _ -> Result.success(timeline) }
+        fake.settleCorrection(PendingMutationStatus.Done)
+        firstObservation.complete(Unit)
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertTrue(state.corrections.single().delivered)
+        assertEquals(published.root, state.expense, "First DONE may be newer than the initial fact GET or local fallback")
+        assertEquals(published, state.factBundle)
+        assertEquals(listOf("rev-correction", "rev-1"), state.revisions.map { it.publicId })
+        assertEquals(2L, state.revisionsSnapshotRevision)
+        assertEquals(ExpenseDetailDataLoadState.Loaded, state.factBundleLoadState)
+        assertEquals(ExpenseDetailDataLoadState.Loaded, state.revisionsLoadState)
+        assertEquals(stored.intent, state.corrections.single().intent)
+        assertEquals(stored.row.idempotencyKey, state.corrections.single().row.idempotencyKey)
+        assertEquals(stored.row.expectedRowVersion, state.corrections.single().row.expectedRowVersion)
+        assertEquals(stored.row.ownerKey, state.corrections.single().row.ownerKey)
+        assertEquals(stored.row.ledgerId, state.corrections.single().row.ledgerId)
+        assertEquals(1, fake.correctCalls, "Recovery reads must not create another correction")
+    }
+
+    @Test
     fun `category correction invalidates advice inputs`() = edit { fake ->
         val vm = viewModel(fake)
         vm.openCorrectionSheet()
@@ -91,6 +175,7 @@ internal class ExpenseFactViewModelCorrectionOutcomeTest : ExpenseFactViewModelT
         fake.splitsResult = Result.success(
             ExpenseSplits(
                 expenseId = fake.baseExpense.id,
+                parentRowVersion = fake.baseExpense.rowVersion,
                 parentAmountCents = 1_000L,
                 splitsTotalAmountCents = 1_000L,
                 mismatchCents = 0L,
@@ -117,6 +202,7 @@ internal class ExpenseFactViewModelCorrectionOutcomeTest : ExpenseFactViewModelT
         fake.itemsResult = Result.success(
             ExpenseItems(
                 expenseId = fake.baseExpense.id,
+                parentRowVersion = fake.baseExpense.rowVersion,
                 parentAmountCents = 1_000L,
                 itemsTotalAmountCents = 1_000L,
                 mismatchCents = 0L,
@@ -200,5 +286,16 @@ internal class ExpenseFactViewModelCorrectionOutcomeTest : ExpenseFactViewModelT
         assertEquals(1_200L, reopened.uiState.value.expense?.amountCents)
         assertTrue(reopened.uiState.value.corrections.single().delivered)
         assertEquals(1, fake.correctCalls, "read recovery cannot resubmit")
+    }
+
+    private suspend fun FakeExpenseFactActions.categoryCorrectionTimeline(): ExpenseRevisionPage {
+        val original = revisionsResult(1, 50).getOrThrow()
+        val correction = original.items.single().copy(
+            publicId = "rev-correction", revisionNumber = 2, changeKind = "correction",
+            reason = "分类更正", changedFields = listOf("category"),
+            before = mapOf("category" to "交通"), after = mapOf("category" to "居家"),
+            createdAt = "2026-09-07T00:00:00Z",
+        )
+        return original.copy(items = listOf(correction) + original.items, total = 2, snapshotRevision = 2)
     }
 }

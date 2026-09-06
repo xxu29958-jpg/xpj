@@ -1,17 +1,108 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.RepositoryException
+import com.ticketbox.data.repository.ExpenseFactActions
+import com.ticketbox.data.repository.ExpenseCorrectionObservation
+import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.expenseFactBundleDtoFixture
 import com.ticketbox.data.repository.toDomain
 import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.domain.model.BillSplitSent
+import com.ticketbox.domain.model.FamilyMember
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class ExpenseFactCorrectionBundleTest : ExpenseFactViewModelTestBase() {
+    @Test
+    fun `bundle root restores the first sent list when root GET fails without duplicate reads`() = edit { fake ->
+        val current = expenseFactBundleDtoFixture().toDomain()
+        val stale = current.copy(root = current.root.copy(amountCents = null, rowVersion = current.root.rowVersion - 1))
+        fake.baseExpense = stale.root
+        fake.fetchExpenseFailure = RepositoryException(errorCode = "server_unavailable", message = "offline")
+        fake.factBundleResult = { Result.success(current) }
+        fake.billSplitSentResult = { Result.success(listOf(
+            fake.sentInvite(publicId = "this-fact", senderExpenseId = current.root.id),
+            fake.sentInvite(publicId = "other-fact", senderExpenseId = current.root.id + 1),
+        )) }
+        val vm = ExpenseFactViewModel(expenseId = current.root.id, repository = fake)
+        advanceUntilIdle()
+
+        assertEquals(current.root, vm.uiState.value.expense)
+        assertEquals(listOf("this-fact"), vm.uiState.value.billSplitSent.map { it.publicId })
+        assertEquals(BillSplitSentLoadState.Loaded, vm.uiState.value.billSplitSentLoadState)
+        assertEquals(1, fake.fetchBillSplitSentCalls)
+        vm.loadExpenseFactBundle()
+        advanceUntilIdle()
+        fake.factBundleResult = { Result.success(stale) }
+        vm.loadExpenseFactBundle()
+        advanceUntilIdle()
+
+        assertEquals(current, vm.uiState.value.factBundle)
+        assertEquals(current.root, vm.uiState.value.expense)
+        assertEquals(1, fake.fetchBillSplitSentCalls, "Repeated or rejected bundles must not restart the initial list read")
+        assertFalse(vm.consumeDoneAdviceInputsChanged())
+    }
+
+    @Test
+    fun `binding initialization restores metadata and ignores old auxiliary replies`() = edit { fake ->
+        val first = fake.correctionBinding
+        val second = first.copy(ownerKey = "another-owner", sessionGeneration = "next-session", bindingRevision = "next-binding")
+        val observations = MutableStateFlow(ExpenseCorrectionObservation(LedgerAccessContext(first, true), emptyList()))
+        val oldCategories = CompletableDeferred<Result<List<String>>>()
+        val oldMembers = CompletableDeferred<Result<List<FamilyMember>>>()
+        val oldSent = CompletableDeferred<Result<List<BillSplitSent>>>()
+        val reads = mutableListOf<String>()
+        val repository = object : ExpenseFactActions by fake {
+            override fun observeCorrections() = observations
+            override suspend fun categories(): Result<List<String>> {
+                val old = observations.value.access?.binding == first
+                reads += "categories:$old"
+                return if (old) oldCategories.await() else Result.success(listOf("新家庭自定义"))
+            }
+            override suspend fun fetchSplitMembers(): Result<List<FamilyMember>> {
+                val old = observations.value.access?.binding == first
+                reads += "members:$old"
+                return if (old) oldMembers.await() else Result.success(listOf(fake.member(3L, displayName = "新家庭成员")))
+            }
+            override suspend fun fetchBillSplitSent(): Result<List<BillSplitSent>> {
+                val old = observations.value.access?.binding == first
+                reads += "sent:$old"
+                return if (old) oldSent.await() else Result.success(listOf(fake.sentInvite(publicId = "new-family")))
+            }
+        }
+        val vm = ExpenseFactViewModel(expenseId = fake.baseExpense.id, repository = repository)
+        advanceUntilIdle()
+        assertEquals(setOf("categories:true", "members:true", "sent:true"), reads.toSet())
+        fake.baseExpense = fake.baseExpense.copy(merchant = "新家庭事实")
+        observations.value = ExpenseCorrectionObservation(LedgerAccessContext(second, true), emptyList())
+        advanceUntilIdle()
+
+        assertEquals(listOf("新家庭自定义"), vm.uiState.value.categories)
+        assertEquals(mapOf(3L to "新家庭成员"), vm.uiState.value.revisionMemberNames)
+        assertEquals(listOf("new-family"), vm.uiState.value.billSplitSent.map { it.publicId })
+        oldCategories.complete(Result.success(listOf("旧家庭自定义")))
+        oldMembers.complete(Result.success(listOf(fake.member(3L, displayName = "旧家庭成员"))))
+        oldSent.complete(Result.failure(RepositoryException(errorCode = "binding_changed", message = "old binding")))
+        advanceUntilIdle()
+
+        assertEquals(second, vm.uiState.value.correctionAccess?.binding)
+        assertEquals("新家庭事实", vm.uiState.value.expense?.merchant)
+        assertEquals(listOf("新家庭自定义"), vm.uiState.value.categories)
+        assertEquals(mapOf(3L to "新家庭成员"), vm.uiState.value.revisionMemberNames)
+        assertEquals(listOf("new-family"), vm.uiState.value.billSplitSent.map { it.publicId })
+        assertEquals(BillSplitSentLoadState.Loaded, vm.uiState.value.billSplitSentLoadState)
+        assertNull(vm.uiState.value.billSplitMessage)
+        assertEquals(6, reads.size, "Each binding initializes each auxiliary owner once")
+        assertFalse(vm.consumeDoneAdviceInputsChanged())
+    }
+
     @Test
     fun `synced correction retires the old refund summary even when its refresh fails`() = edit { fake ->
         val original = expenseFactBundleDtoFixture().toDomain()

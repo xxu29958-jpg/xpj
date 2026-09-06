@@ -123,7 +123,7 @@ private fun LazyListScope.debtDetailBodyItems(
             } else {
                 debtDetailExternalItems(
                     debt = loaded,
-                    canModify = state.canModify,
+                    canModify = state.canWriteActions,
                     callbacks = callbacks,
                 )
             }
@@ -132,7 +132,7 @@ private fun LazyListScope.debtDetailBodyItems(
             item {
                 DebtRepaymentHistorySection(
                     debt = loaded,
-                    canModify = state.canModify,
+                    canModify = state.canWriteActions,
                     history = panels.historyState,
                     callbacks = panels.historyCallbacks,
                 )
@@ -159,6 +159,7 @@ private fun LazyListScope.debtDetailStatusItems(
     proposalState: MemberProposalUiState,
     bodyState: DebtDetailBodyState,
 ) {
+    state.adjustmentWriteMessage?.let { message -> item { AppStatusBanner(message = message, tone = MessageTone.Info) } }
     state.flashMessage?.let { msg -> item { AppStatusBanner(message = msg, tone = MessageTone.Success) } }
     proposalState.flashMessage?.let { msg -> item { AppStatusBanner(message = msg, tone = MessageTone.Success) } }
     debtDetailInlineMessage(bodyState = bodyState, message = state.error)?.let { err ->
