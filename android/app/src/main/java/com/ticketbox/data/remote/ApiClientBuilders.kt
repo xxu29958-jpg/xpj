@@ -11,10 +11,12 @@ import com.ticketbox.BuildConfig
 import com.ticketbox.security.RequestAuthSnapshot
 import com.ticketbox.security.SessionCredentialRotator
 import okhttp3.Interceptor
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
@@ -29,7 +31,7 @@ private const val GET_IO_RETRY_DELAY_MS = 350L
 internal const val LEDGER_ID_HEADER = "X-Ticketbox-Ledger-ID"
 internal const val TICKETBOX_API_VERSION_HEADER = "Ticketbox-Api-Version"
 internal const val TICKETBOX_CURRENCY_BINDING_HEADER = "Ticketbox-Currency-Binding"
-internal const val CURRENT_TICKETBOX_API_VERSION = "2026-08-02"
+internal const val CURRENT_TICKETBOX_API_VERSION = "2026-09-06"
 private val MUTATING_HTTP_METHODS = setOf("POST", "PUT", "PATCH", "DELETE")
 private val runtimeMoshi = Moshi.Builder()
     .add(KotlinJsonAdapterFactory())
@@ -152,6 +154,9 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
         val compatibility = compatibilityResponse.use { response ->
             response.body.string().let(runtimeCompatibilityAdapter::fromJson)?.toWriteCompatibility()
         }
+        if (compatibility != null && compatibility.apiVersion != CURRENT_TICKETBOX_API_VERSION) {
+            return incompatibleProtocolResponse(request)
+        }
         if (compatibility?.canWrite != true) {
             return chain.proceed(request)
         }
@@ -185,6 +190,14 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
         return builder.build()
     }
 }
+
+private fun incompatibleProtocolResponse(request: Request): Response =
+    Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(409)
+        .message("Runtime protocol mismatch")
+        .body(runtimeErrorAdapter.toJson(ErrorDto(
+            error = "runtime_version_mismatch",
+            message = "客户端与此服务器的协议版本不匹配，请更新为配套版本后继续。",
+        )).toResponseBody("application/json".toMediaType())).build()
 
 private fun retryableGetStatusInterceptor(): Interceptor =
     Interceptor { chain ->

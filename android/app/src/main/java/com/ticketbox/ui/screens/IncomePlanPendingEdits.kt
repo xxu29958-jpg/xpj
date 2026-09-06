@@ -53,7 +53,7 @@ private fun IncomePlanPendingEdit(pending: PendingIncomePlanEdit, recover: (Pend
     val expired = isExpiredFailure(pending.row.lastError)
     if (expired) Text(stringResource(R.string.income_plan_edit_expired))
     if (pending.row.status == PendingMutationStatus.Failed && !expired) {
-        TextButton(onClick = { recover(pending, false) }, enabled = pending.intent != null) {
+        TextButton(onClick = { recover(pending, false) }, enabled = pending.hasSupportedIntent) {
             Text(stringResource(R.string.income_plan_edit_retry))
         }
     }

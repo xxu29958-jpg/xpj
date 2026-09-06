@@ -235,6 +235,7 @@ internal fun NavGraphBuilder.addObligationRoutes(
                 factory = outboxStatusViewModelFactory(
                     screenFactory.outboxRepository, screenFactory.repository, screenFactory.debtCreationRepository,
                     screenFactory.recurringRepository.occurrences,
+                    screenFactory.incomePlanRepository,
                 ),
             )
             SyncStatusScreen(viewModel = vm, onBack = onBack)

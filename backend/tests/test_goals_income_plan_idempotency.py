@@ -32,6 +32,7 @@ from app.services.idempotency import (
     fingerprint_request,
 )
 from app.services.time_service import now_utc
+from tests._runtime_protocol import negotiated_headers
 
 if TYPE_CHECKING:
     from tests._infra.identity import TestIdentity
@@ -64,7 +65,7 @@ def _create_plan(
 ) -> dict:
     resp = client.post(
         "/api/income-plans",
-        headers=identity.app_headers,
+        headers=negotiated_headers(client, identity.app_headers),
         json={"intent_month": "2026-05",
             "label": label,
             "source_type": "salary",
@@ -113,7 +114,7 @@ def test_mutation_requires_idempotency_key(
     the missing-key guard runs before the OCC claim, so a valid body (fresh
     token) still 422s ``idempotency_key_required``."""
     method, url, body = _REQUEST_BUILDERS[operation](client, identity=identity)
-    resp = client.request(method, url, headers=identity.app_headers, json=body)
+    resp = client.request(method, url, headers=negotiated_headers(client, identity.app_headers), json=body)
     assert resp.status_code == 422, resp.text
     assert resp.json()["error"] == "idempotency_key_required"
 
@@ -161,7 +162,7 @@ def test_update_income_plan_replay_same_key_returns_canonical_not_409(
     body = {"intent_month": "2026-05", "amount_cents": 1_200_000, "expected_row_version": v0}
 
     first = client.patch(
-        f"/api/income-plans/{plan['public_id']}", headers=headers, json=body
+        f"/api/income-plans/{plan['public_id']}", headers=negotiated_headers(client, headers), json=body
     )
     assert first.status_code == 200, first.text
     assert first.json()["amount_cents"] == 1_200_000
@@ -169,7 +170,7 @@ def test_update_income_plan_replay_same_key_returns_canonical_not_409(
     assert v1 != v0
 
     replay = client.patch(
-        f"/api/income-plans/{plan['public_id']}", headers=headers, json=body
+        f"/api/income-plans/{plan['public_id']}", headers=negotiated_headers(client, headers), json=body
     )
     assert replay.status_code == 200, replay.text  # HIT via get_income_plan, not 409
     assert replay.json()["amount_cents"] == 1_200_000
@@ -216,14 +217,14 @@ def test_update_income_plan_stale_token_with_different_key_still_409s(
 
     first = client.patch(
         f"/api/income-plans/{plan['public_id']}",
-        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        headers=negotiated_headers(client, {**identity.app_headers, "Idempotency-Key": str(uuid4())}),
         json=body,
     )
     assert first.status_code == 200, first.text
 
     stale = client.patch(
         f"/api/income-plans/{plan['public_id']}",
-        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        headers=negotiated_headers(client, {**identity.app_headers, "Idempotency-Key": str(uuid4())}),
         json=body,
     )
     assert stale.status_code == 409, stale.text
@@ -316,7 +317,7 @@ def test_update_income_plan_in_progress_returns_409(
 
     resp = client.patch(
         f"/api/income-plans/{plan['public_id']}",
-        headers={**identity.app_headers, "Idempotency-Key": key},
+        headers=negotiated_headers(client, {**identity.app_headers, "Idempotency-Key": key}),
         json={"intent_month": "2026-05", "amount_cents": 1_200_000, "expected_row_version": v0},
     )
     assert resp.status_code == 409, resp.text
@@ -366,14 +367,14 @@ def test_update_income_plan_same_key_different_body_is_reused_422(
 
     first = client.patch(
         f"/api/income-plans/{plan['public_id']}",
-        headers=headers,
+        headers=negotiated_headers(client, headers),
         json={"intent_month": "2026-05", "amount_cents": 1_200_000, "expected_row_version": v0},
     )
     assert first.status_code == 200, first.text
 
     reused = client.patch(
         f"/api/income-plans/{plan['public_id']}",
-        headers=headers,
+        headers=negotiated_headers(client, headers),
         json={"intent_month": "2026-05", "amount_cents": 1_300_000, "expected_row_version": v0},  # different intent
     )
     assert reused.status_code == 422, reused.text

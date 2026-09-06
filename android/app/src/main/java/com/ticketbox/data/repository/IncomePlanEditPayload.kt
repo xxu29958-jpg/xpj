@@ -22,7 +22,9 @@ data class IncomePlanEditPayload(
     val request: IncomePlanUpdateRequestDto,
 )
 
-data class PendingIncomePlanEdit(val row: OutboxRow, val intent: IncomePlanEditPayload?)
+data class PendingIncomePlanEdit(val row: OutboxRow, val intent: IncomePlanEditPayload?) {
+    val hasSupportedIntent: Boolean get() = intent != null
+}
 
 internal fun incomePlanTarget(publicId: String): String = "income_plan:$publicId"
 

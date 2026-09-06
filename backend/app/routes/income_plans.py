@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_app_context, get_current_writer_context
+from app.auth import get_current_app_context, get_current_protocol_writer_context
 from app.database import get_db
 from app.schemas import (
     IncomePlanCreateRequest,
@@ -84,7 +84,7 @@ def list_plans(
 @router.post("", response_model=IncomePlanResponse, status_code=201)
 def create_plan(
     payload: IncomePlanCreateRequest,
-    auth: AuthContext = Depends(get_current_writer_context),
+    auth: AuthContext = Depends(get_current_protocol_writer_context),
     db: Session = Depends(get_db),
 ) -> IncomePlanResponse:
     plan = create_income_plan(
@@ -107,7 +107,7 @@ def update_plan(
     public_id: str,
     payload: IncomePlanUpdateRequest,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    auth: AuthContext = Depends(get_current_writer_context),
+    auth: AuthContext = Depends(get_current_protocol_writer_context),
     db: Session = Depends(get_db),
 ) -> IncomePlanResponse:
     return update_income_plan_idempotently(
@@ -120,7 +120,7 @@ def update_plan(
 def archive_plan(
     public_id: str,
     payload: IncomePlanTokenRequest,
-    auth: AuthContext = Depends(get_current_writer_context),
+    auth: AuthContext = Depends(get_current_protocol_writer_context),
     db: Session = Depends(get_db),
 ) -> IncomePlanResponse:
     # ADR-0038 PR-B: token-gated archive (atomic UPDATE WHERE). Stale → 409.
@@ -139,7 +139,7 @@ def archive_plan(
 def restore_plan(
     public_id: str,
     payload: IncomePlanTokenRequest,
-    auth: AuthContext = Depends(get_current_writer_context),
+    auth: AuthContext = Depends(get_current_protocol_writer_context),
     db: Session = Depends(get_db),
 ) -> IncomePlanResponse:
     plan = restore_income_plan(

@@ -165,6 +165,8 @@ private fun SyncStatusPageBody(
                 FailedCard(
                     row = row,
                     debtCreation = state.failedDebtCreations[row.id],
+                    supportedIntent = row.type != PendingMutationType.UpdateIncomePlan ||
+                        state.incomeEdits[row.id]?.hasSupportedIntent == true,
                     busy = state.busyRowId == row.id,
                     onRetry = { actions.onRetry(row) },
                     onDrop = { actions.onDropFailed(row) },
@@ -258,6 +260,7 @@ private fun ConflictCard(
 private fun FailedCard(
     row: OutboxRow,
     debtCreation: PendingDebtCreation?,
+    supportedIntent: Boolean,
     busy: Boolean,
     onRetry: () -> Unit,
     onDrop: () -> Unit,
@@ -285,7 +288,7 @@ private fun FailedCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             SyncStatusRecoveryActions(
-                primary = if (expired) {
+                primary = if (expired || !supportedIntent) {
                     null
                 } else {
                     SyncStatusActionButton(

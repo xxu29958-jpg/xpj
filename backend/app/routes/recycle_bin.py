@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_app_context, get_current_writer_context
+from app.auth import get_current_app_context, get_current_writer_context, require_current_api_version
 from app.database import get_db
+from app.runtime_compatibility_contract import TICKETBOX_API_VERSION_HEADER
 from app.schemas import (
     RecycleBinItemResponse,
     RecycleBinListResponse,
@@ -54,7 +55,10 @@ def restore_recycle_bin(
     payload: RecycleBinRestoreRequest,
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
+    api_version: str | None = Header(default=None, alias=TICKETBOX_API_VERSION_HEADER),
 ) -> RecycleBinRestoreResponse:
+    if payload.kind == "income_plan":
+        require_current_api_version(api_version)
     message = restore_recycle_bin_item(
         db,
         tenant_id=auth.tenant_id,

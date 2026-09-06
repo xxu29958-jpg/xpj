@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
+from app.runtime_compatibility_contract import CURRENT_API_VERSION, TICKETBOX_API_VERSION_HEADER
 from app.services.identity_service import (
     authenticate_session_principal,
     authenticate_session_token,
@@ -158,6 +159,21 @@ def get_current_writer_context(
     from app.services import permission_service
 
     permission_service.require_write_expense(auth)
+    return auth
+
+
+def require_current_api_version(api_version: str | None) -> None:
+    """Reject an unsupported command protocol without claiming any write state."""
+    if api_version != CURRENT_API_VERSION:
+        raise AppError("client_upgrade_required", status_code=409)
+
+
+def get_current_protocol_writer_context(
+    auth: AuthContext = Depends(get_current_writer_context),
+    api_version: str | None = Header(default=None, alias=TICKETBOX_API_VERSION_HEADER),
+) -> AuthContext:
+    """Authenticate and negotiate before validating a new command body."""
+    require_current_api_version(api_version)
     return auth
 
 

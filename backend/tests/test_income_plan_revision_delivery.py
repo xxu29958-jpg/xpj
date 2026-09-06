@@ -9,6 +9,7 @@ from sqlalchemy.exc import DBAPIError
 
 from app.database import SessionLocal
 from app.models import IncomePlanRevision
+from tests._runtime_protocol import negotiated_headers
 
 
 @pytest.mark.real_db
@@ -17,7 +18,7 @@ def test_original_edit_result_survives_a_later_edit_and_stale_commands_do_not_pu
 
     server_now = datetime(2026, 9, 30, 15, 30, tzinfo=UTC)
     monkeypatch.setattr(income_plan_service, "now_utc", lambda: server_now)
-    created = client.post("/api/income-plans", headers=identity.app_headers, json={
+    created = client.post("/api/income-plans", headers=negotiated_headers(client, identity.app_headers), json={
         "intent_month": "2026-08", "label": "原计划", "amount_cents": 10000, "pay_day": 31,
     })
     assert created.status_code == 201
@@ -26,18 +27,18 @@ def test_original_edit_result_survives_a_later_edit_and_stale_commands_do_not_pu
     key = str(uuid4())
     headers = {**identity.app_headers, "Idempotency-Key": key}
     original = {"intent_month": "2026-09", "expected_row_version": plan["row_version"], "amount_cents": 12000}
-    first = client.patch(path, headers=headers, json=original)
+    first = client.patch(path, headers=negotiated_headers(client, headers), json=original)
     assert first.status_code == 200
-    later = client.patch(path, headers={**identity.app_headers, "Idempotency-Key": str(uuid4())}, json={
+    later = client.patch(path, headers=negotiated_headers(client, {**identity.app_headers, "Idempotency-Key": str(uuid4())}), json={
         **original, "expected_row_version": first.json()["row_version"], "amount_cents": 13000,
     })
     assert later.status_code == 200
-    replay = client.patch(path, headers=headers, json=original)
+    replay = client.patch(path, headers=negotiated_headers(client, headers), json=original)
     assert replay.status_code == 200
     assert replay.json() == first.json()
-    reused_month = client.patch(path, headers=headers, json={**original, "intent_month": "2026-08"})
+    reused_month = client.patch(path, headers=negotiated_headers(client, headers), json={**original, "intent_month": "2026-08"})
     assert reused_month.status_code == 422
-    stale = client.patch(path, headers={**identity.app_headers, "Idempotency-Key": str(uuid4())}, json=original)
+    stale = client.patch(path, headers=negotiated_headers(client, {**identity.app_headers, "Idempotency-Key": str(uuid4())}), json=original)
     assert stale.status_code == 409
     august = client.get("/api/income-plans?month=2026-08", headers=identity.app_headers).json()
     september = client.get("/api/income-plans?month=2026-09", headers=identity.app_headers).json()

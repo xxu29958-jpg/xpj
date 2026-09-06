@@ -67,6 +67,7 @@ class IncomePlanRepository(
 
     override suspend fun recoverEdit(expectedBinding: LogicalSessionBinding, pending: PendingIncomePlanEdit, drop: Boolean): Result<Unit> = errors.safeCall {
         guard.bindExact(expectedBinding).requireStillActive()
+        check(drop || pending.hasSupportedIntent) { "无法确认原收入修改的格式，请核对当前计划后再操作。" }
         when (pending.row.status) {
             PendingMutationStatus.Conflict -> if (drop) outbox.resolveConflict(pending.row.id, ConflictResolution.DropMine)
             PendingMutationStatus.Failed -> outbox.resolveFailed(pending.row.id,

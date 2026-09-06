@@ -21,6 +21,7 @@ from app.services.income_plan_service import (
     archive_income_plan,
     update_income_plan,
 )
+from tests._runtime_protocol import negotiated_headers
 
 
 def _idem_headers(identity) -> dict[str, str]:
@@ -33,7 +34,7 @@ def _idem_headers(identity) -> dict[str, str]:
 def _create_plan(client: TestClient, *, identity, label: str = "工资 A") -> dict:
     response = client.post(
         "/api/income-plans",
-        headers=identity.app_headers,
+        headers=negotiated_headers(client, identity.app_headers),
         json={"intent_month": "2026-05",
             "label": label,
             "source_type": "salary",
@@ -51,7 +52,7 @@ def test_income_plan_patch_without_token_returns_422(
     plan = _create_plan(client, identity=identity)
     response = client.patch(
         f"/api/income-plans/{plan['public_id']}",
-        headers=identity.app_headers,
+        headers=negotiated_headers(client, identity.app_headers),
         json={"intent_month": "2026-05", "amount_cents": 1_200_000},
     )
     assert response.status_code == 422, response.text
@@ -63,7 +64,7 @@ def test_income_plan_patch_with_stale_token_returns_409(
     plan = _create_plan(client, identity=identity)
     bump = client.patch(
         f"/api/income-plans/{plan['public_id']}",
-        headers=_idem_headers(identity),
+        headers=negotiated_headers(client, _idem_headers(identity)),
         json={"intent_month": "2026-05",
             "expected_row_version": plan["row_version"],
             "amount_cents": 1_100_000,
@@ -73,7 +74,7 @@ def test_income_plan_patch_with_stale_token_returns_409(
 
     stale = client.patch(
         f"/api/income-plans/{plan['public_id']}",
-        headers=_idem_headers(identity),
+        headers=negotiated_headers(client, _idem_headers(identity)),
         json={"intent_month": "2026-05",
             "expected_row_version": plan["row_version"],
             "amount_cents": 1_200_000,
@@ -90,7 +91,7 @@ def test_income_plan_patch_unknown_returns_404(
     # 404 (a keyless request would 422 idempotency_key_required first).
     response = client.patch(
         "/api/income-plans/no-such-public-id",
-        headers=_idem_headers(identity),
+        headers=negotiated_headers(client, _idem_headers(identity)),
         json={"intent_month": "2026-05",
             "expected_row_version": 999999,
             "label": "Bogus",
@@ -174,7 +175,7 @@ def test_archived_plan_patch_preserves_existing_409(
 
     response = client.patch(
         f"/api/income-plans/{plan['public_id']}",
-        headers=_idem_headers(identity),
+        headers=negotiated_headers(client, _idem_headers(identity)),
         json={"intent_month": "2026-05",
             "expected_row_version": plan["row_version"],
             "amount_cents": 999,
@@ -191,7 +192,7 @@ def test_income_plan_archive_without_token_returns_422(
     response = client.request(
         "DELETE",
         f"/api/income-plans/{plan['public_id']}",
-        headers=identity.app_headers,
+        headers=negotiated_headers(client, identity.app_headers),
         json={"intent_month": "2026-05", },
     )
     assert response.status_code == 422, response.text
@@ -205,14 +206,14 @@ def test_income_plan_archive_with_stale_token_returns_409(
     # plan is still active — the archive must then 409 rather than flip it.
     bump = client.patch(
         f"/api/income-plans/{plan['public_id']}",
-        headers=_idem_headers(identity),
+        headers=negotiated_headers(client, _idem_headers(identity)),
         json={"intent_month": "2026-05", "expected_row_version": plan["row_version"], "amount_cents": 1_100_000},
     )
     assert bump.status_code == 200, bump.text
     stale = client.request(
         "DELETE",
         f"/api/income-plans/{plan['public_id']}",
-        headers=identity.app_headers,
+        headers=negotiated_headers(client, identity.app_headers),
         json={"intent_month": "2026-05", "expected_row_version": plan["row_version"]},
     )
     assert stale.status_code == 409, stale.text
@@ -226,14 +227,14 @@ def test_income_plan_restore_with_stale_token_returns_409(
     archived = client.request(
         "DELETE",
         f"/api/income-plans/{plan['public_id']}",
-        headers=identity.app_headers,
+        headers=negotiated_headers(client, identity.app_headers),
         json={"intent_month": "2026-05", "expected_row_version": plan["row_version"]},
     )
     assert archived.status_code == 200, archived.text
     # Pre-archive token is stale for the now-archived row → restore 409.
     stale = client.post(
         f"/api/income-plans/{plan['public_id']}/restore",
-        headers=identity.app_headers,
+        headers=negotiated_headers(client, identity.app_headers),
         json={"intent_month": "2026-05", "expected_row_version": plan["row_version"]},
     )
     assert stale.status_code == 409, stale.text
@@ -295,7 +296,7 @@ def test_income_plan_restore_without_token_returns_422(
     plan = _create_plan(client, identity=identity)
     response = client.post(
         f"/api/income-plans/{plan['public_id']}/restore",
-        headers=identity.app_headers,
+        headers=negotiated_headers(client, identity.app_headers),
         json={"intent_month": "2026-05", },
     )
     assert response.status_code == 422, response.text
@@ -307,7 +308,7 @@ def test_income_plan_archive_unknown_returns_404(
     response = client.request(
         "DELETE",
         "/api/income-plans/no-such-public-id",
-        headers=identity.app_headers,
+        headers=negotiated_headers(client, identity.app_headers),
         json={"intent_month": "2026-05", "expected_row_version": 999999},
     )
     assert response.status_code == 404, response.text
@@ -318,7 +319,7 @@ def test_income_plan_restore_unknown_returns_404(
 ) -> None:
     response = client.post(
         "/api/income-plans/no-such-public-id/restore",
-        headers=identity.app_headers,
+        headers=negotiated_headers(client, identity.app_headers),
         json={"intent_month": "2026-05", "expected_row_version": 999999},
     )
     assert response.status_code == 404, response.text

@@ -1,7 +1,10 @@
 package com.ticketbox.ui.screens
 
+import android.view.View
 import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -9,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.lifecycle.viewModelScope
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
@@ -67,8 +71,10 @@ class DebtCreateSheetContinuityTest {
         compose.onNodeWithText(context.getString(R.string.debt_list_add)).performClick()
         compose.onAllNodes(hasSetTextAction())[0].performTextInput("小王")
         compose.onAllNodes(hasSetTextAction())[1].performScrollTo().performClick().performTextInput("123.45")
-        compose.onNodeWithText(context.getString(R.string.debt_create_save)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.debt_create_save))
+            .performScrollTo().assertIsDisplayed().assertIsEnabled()
         capture("debt-create-editing")
+        val touchBefore = saveObservation()
         compose.onNodeWithText(context.getString(R.string.debt_create_save)).performClick()
         runCatching { compose.waitUntil(5_000) { viewModel.state.value.isSubmitting } }.getOrElse { error ->
             val observed = viewModel.state.value
@@ -76,7 +82,8 @@ class DebtCreateSheetContinuityTest {
                 "currencyReady=${observed.homeCurrencyResolved}, parsing=${observed.isParsingBill}, " +
                 "amountValid=${observed.addDraft.parsedAmountCents() != null}, " +
                 "labelPresent=${observed.addDraft.counterpartyLabel.isNotBlank()}, " +
-                "validation=${observed.addDraft.validationError}, calls=${creation.submitted.size}", error)
+                "validation=${observed.addDraft.validationError}, calls=${creation.submitted.size}; " +
+                "before=[$touchBefore]; after=[${saveObservation()}]", error)
         }
 
         compose.onNodeWithText("小王").assertIsNotEnabled()
@@ -91,6 +98,20 @@ class DebtCreateSheetContinuityTest {
             assertEquals(1, creation.submitted.size)
             assertEquals(12_345L, creation.submitted.single().principalAmountCents)
             assertTrue(viewModel.state.value.debts.isEmpty())
+        }
+    }
+
+    private fun saveObservation(): String {
+        val node = compose.onNodeWithText(context.getString(R.string.debt_create_save)).fetchSemanticsNode()
+        val root = requireNotNull(node.root) as ViewRootForTest
+        return compose.runOnIdle {
+            val view = root.view
+            val window = generateSequence(view) { it.parent as? View }
+                .filterIsInstance<DialogWindowProvider>().first().window
+            "attached=${view.isAttachedToWindow}, focus=${view.hasWindowFocus()}, " +
+                "decorFocus=${window.decorView.hasWindowFocus()}, resumed=${root.isLifecycleInResumedState}, " +
+                "pendingLayout=${root.hasPendingMeasureOrLayout}, bounds=${node.boundsInRoot}, " +
+                "touch=${node.touchBoundsInRoot}, windowBounds=${node.boundsInWindow}"
         }
     }
 

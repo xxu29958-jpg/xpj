@@ -12,6 +12,7 @@ import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -60,6 +61,12 @@ class IncomePlanIntentContinuityTest {
             assertEquals(PendingMutationStatus.Failed.wireValue, fixture.dao.rows.getValue(id).status)
             assertEquals(payload, fixture.dao.rows.getValue(id).payload)
             assertEquals(original.idempotencyKey, fixture.dao.rows.getValue(id).idempotencyKey)
+            val failed = fixture.outbox.observeStatus().first().failed.single()
+            val pending = assertNotNull(fixture.repository.describeEdit(failed))
+            assertTrue(!pending.hasSupportedIntent)
+            assertTrue(fixture.repository.recoverEdit(fixture.binding, pending, drop = false).isFailure)
+            assertEquals(PendingMutationStatus.Failed.wireValue, fixture.dao.rows.getValue(id).status)
+            assertEquals(payload, fixture.dao.rows.getValue(id).payload)
         }
     }
 

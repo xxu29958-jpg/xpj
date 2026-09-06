@@ -26703,6 +26703,22 @@
         "parameters": [
           {
             "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
+            "in": "header",
             "name": "authorization",
             "required": false,
             "schema": {
@@ -26799,6 +26815,22 @@
             "schema": {
               "title": "Public Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ticketbox-Api-Version"
             }
           },
           {
@@ -26917,6 +26949,22 @@
           },
           {
             "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
+            "in": "header",
             "name": "authorization",
             "required": false,
             "schema": {
@@ -27013,6 +27061,22 @@
             "schema": {
               "title": "Public Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ticketbox-Api-Version"
             }
           },
           {
@@ -31484,6 +31548,22 @@
       "post": {
         "operationId": "restore_recycle_bin_api_recycle_bin_restore_post",
         "parameters": [
+          {
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ticketbox-Api-Version"
+            }
+          },
           {
             "in": "header",
             "name": "authorization",

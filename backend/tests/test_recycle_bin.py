@@ -34,6 +34,7 @@ from app.services.soft_delete_policy import recycle_bin_retention_delta
 from app.services.spending_contract_service import current_accounting_month
 from app.services.time_service import now_utc
 from tests._infra.currency import activate_test_currency_authority
+from tests._runtime_protocol import negotiated_headers
 
 
 def _seed_archived_income(
@@ -197,7 +198,7 @@ def test_recycle_bin_api_restores_archived_income(
 
     response = client.post(
         "/api/recycle-bin/restore",
-        headers=identity.app_headers,
+        headers=negotiated_headers(client, identity.app_headers),
         json={
             "kind": "income_plan", "intent_month": current_accounting_month(),
             "resource_id": public_id,
@@ -336,7 +337,6 @@ def test_web_recycle_bin_workbench_structure_owner(
     body = response.text
     # 五域 IA：回收站仍归流水域，但 section 父级已经收口到资料库 hub。
     assert re.search(r'<nav\b[^>]*aria-label="面包屑"[^>]*>\s*<a[^>]*href="/web/library\?ledger_id=owner">资料库</a>', body)
-    # 工作台面板 + 产品表格 (取代旧 dt-card KPI + dt-table)。
     assert 'aria-label="可恢复项目"' in body
     assert 'class="product-table"' in body
     # ≤720px 表头留在无障碍树 (PR#252 P2 钉)：th 文本由 rb-sr-only 视觉隐藏，
