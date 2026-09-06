@@ -33,6 +33,7 @@ def _to_response(item: RecycleBinItem) -> RecycleBinItemResponse:
         removed_at=item.removed_at,
         retention_label=item.retention_label,
         expected_row_version=item.expected_row_version,
+        restore_intent_month=item.restore_intent_month,
     )
 
 
@@ -61,5 +62,6 @@ def restore_recycle_bin(
         resource_id=payload.resource_id,
         expected_row_version=payload.expected_row_version,
         actor_account_id=auth.account_id,
+        intent_month=payload.intent_month,
     )
     return RecycleBinRestoreResponse(message=message)

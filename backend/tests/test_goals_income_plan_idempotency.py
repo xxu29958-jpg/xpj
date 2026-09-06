@@ -22,9 +22,10 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import ApiIdempotencyKey
+from app.models import ApiIdempotencyKey, Ledger
 from app.schemas import GoalUpdateRequest, IncomePlanUpdateRequest
 from app.services.idempotency import (
     IDEMPOTENCY_STATUS_IN_PROGRESS,
@@ -64,7 +65,7 @@ def _create_plan(
     resp = client.post(
         "/api/income-plans",
         headers=identity.app_headers,
-        json={
+        json={"intent_month": "2026-05",
             "label": label,
             "source_type": "salary",
             "amount_cents": 1_000_000,
@@ -90,7 +91,7 @@ def _update_income_plan_request(client: TestClient, *, identity: TestIdentity):
     return (
         "PATCH",
         f"/api/income-plans/{plan['public_id']}",
-        {"amount_cents": 1_200_000, "expected_row_version": plan["row_version"]},
+        {"intent_month": "2026-05", "amount_cents": 1_200_000, "expected_row_version": plan["row_version"]},
     )
 
 
@@ -157,7 +158,7 @@ def test_update_income_plan_replay_same_key_returns_canonical_not_409(
     v0 = plan["row_version"]
     key = str(uuid4())
     headers = {**identity.app_headers, "Idempotency-Key": key}
-    body = {"amount_cents": 1_200_000, "expected_row_version": v0}
+    body = {"intent_month": "2026-05", "amount_cents": 1_200_000, "expected_row_version": v0}
 
     first = client.patch(
         f"/api/income-plans/{plan['public_id']}", headers=headers, json=body
@@ -211,7 +212,7 @@ def test_update_income_plan_stale_token_with_different_key_still_409s(
     → genuine OCC 409."""
     plan = _create_plan(client, identity=identity)
     v0 = plan["row_version"]
-    body = {"amount_cents": 1_200_000, "expected_row_version": v0}
+    body = {"intent_month": "2026-05", "amount_cents": 1_200_000, "expected_row_version": v0}
 
     first = client.patch(
         f"/api/income-plans/{plan['public_id']}",
@@ -286,13 +287,15 @@ def test_update_income_plan_in_progress_returns_409(
     plan = _create_plan(client, identity=identity)
     v0 = plan["row_version"]
     key = str(uuid4())
-    payload = IncomePlanUpdateRequest(expected_row_version=v0, amount_cents=1_200_000)
+    payload = IncomePlanUpdateRequest(intent_month="2026-05", expected_row_version=v0, amount_cents=1_200_000)
+    with SessionLocal() as db:
+        actor_account_id = db.scalar(select(Ledger.owner_account_id).where(Ledger.ledger_id == "owner"))
     fingerprint = fingerprint_request(
         operation="update_income_plan",
         target_id=plan["public_id"],
-        body=payload.model_dump(
+        body={"actor_account_id": actor_account_id, "intent": payload.model_dump(
             mode="json", exclude_unset=True, exclude={"expected_row_version"}
-        ),
+        )},
         expected_row_version=v0,
     )
     with SessionLocal() as db:
@@ -314,7 +317,7 @@ def test_update_income_plan_in_progress_returns_409(
     resp = client.patch(
         f"/api/income-plans/{plan['public_id']}",
         headers={**identity.app_headers, "Idempotency-Key": key},
-        json={"amount_cents": 1_200_000, "expected_row_version": v0},
+        json={"intent_month": "2026-05", "amount_cents": 1_200_000, "expected_row_version": v0},
     )
     assert resp.status_code == 409, resp.text
     assert resp.json()["error"] == "idempotency_key_in_progress"
@@ -364,14 +367,14 @@ def test_update_income_plan_same_key_different_body_is_reused_422(
     first = client.patch(
         f"/api/income-plans/{plan['public_id']}",
         headers=headers,
-        json={"amount_cents": 1_200_000, "expected_row_version": v0},
+        json={"intent_month": "2026-05", "amount_cents": 1_200_000, "expected_row_version": v0},
     )
     assert first.status_code == 200, first.text
 
     reused = client.patch(
         f"/api/income-plans/{plan['public_id']}",
         headers=headers,
-        json={"amount_cents": 1_300_000, "expected_row_version": v0},  # different intent
+        json={"intent_month": "2026-05", "amount_cents": 1_300_000, "expected_row_version": v0},  # different intent
     )
     assert reused.status_code == 422, reused.text
     assert reused.json()["error"] == "idempotency_key_reused"

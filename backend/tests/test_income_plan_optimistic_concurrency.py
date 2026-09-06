@@ -34,7 +34,7 @@ def _create_plan(client: TestClient, *, identity, label: str = "工资 A") -> di
     response = client.post(
         "/api/income-plans",
         headers=identity.app_headers,
-        json={
+        json={"intent_month": "2026-05",
             "label": label,
             "source_type": "salary",
             "amount_cents": 1_000_000,
@@ -52,7 +52,7 @@ def test_income_plan_patch_without_token_returns_422(
     response = client.patch(
         f"/api/income-plans/{plan['public_id']}",
         headers=identity.app_headers,
-        json={"amount_cents": 1_200_000},
+        json={"intent_month": "2026-05", "amount_cents": 1_200_000},
     )
     assert response.status_code == 422, response.text
 
@@ -64,7 +64,7 @@ def test_income_plan_patch_with_stale_token_returns_409(
     bump = client.patch(
         f"/api/income-plans/{plan['public_id']}",
         headers=_idem_headers(identity),
-        json={
+        json={"intent_month": "2026-05",
             "expected_row_version": plan["row_version"],
             "amount_cents": 1_100_000,
         },
@@ -74,7 +74,7 @@ def test_income_plan_patch_with_stale_token_returns_409(
     stale = client.patch(
         f"/api/income-plans/{plan['public_id']}",
         headers=_idem_headers(identity),
-        json={
+        json={"intent_month": "2026-05",
             "expected_row_version": plan["row_version"],
             "amount_cents": 1_200_000,
         },
@@ -91,7 +91,7 @@ def test_income_plan_patch_unknown_returns_404(
     response = client.patch(
         "/api/income-plans/no-such-public-id",
         headers=_idem_headers(identity),
-        json={
+        json={"intent_month": "2026-05",
             "expected_row_version": 999999,
             "label": "Bogus",
         },
@@ -175,7 +175,7 @@ def test_archived_plan_patch_preserves_existing_409(
     response = client.patch(
         f"/api/income-plans/{plan['public_id']}",
         headers=_idem_headers(identity),
-        json={
+        json={"intent_month": "2026-05",
             "expected_row_version": plan["row_version"],
             "amount_cents": 999,
         },
@@ -192,7 +192,7 @@ def test_income_plan_archive_without_token_returns_422(
         "DELETE",
         f"/api/income-plans/{plan['public_id']}",
         headers=identity.app_headers,
-        json={},
+        json={"intent_month": "2026-05", },
     )
     assert response.status_code == 422, response.text
 
@@ -206,14 +206,14 @@ def test_income_plan_archive_with_stale_token_returns_409(
     bump = client.patch(
         f"/api/income-plans/{plan['public_id']}",
         headers=_idem_headers(identity),
-        json={"expected_row_version": plan["row_version"], "amount_cents": 1_100_000},
+        json={"intent_month": "2026-05", "expected_row_version": plan["row_version"], "amount_cents": 1_100_000},
     )
     assert bump.status_code == 200, bump.text
     stale = client.request(
         "DELETE",
         f"/api/income-plans/{plan['public_id']}",
         headers=identity.app_headers,
-        json={"expected_row_version": plan["row_version"]},
+        json={"intent_month": "2026-05", "expected_row_version": plan["row_version"]},
     )
     assert stale.status_code == 409, stale.text
     assert stale.json()["error"] == "state_conflict"
@@ -227,14 +227,14 @@ def test_income_plan_restore_with_stale_token_returns_409(
         "DELETE",
         f"/api/income-plans/{plan['public_id']}",
         headers=identity.app_headers,
-        json={"expected_row_version": plan["row_version"]},
+        json={"intent_month": "2026-05", "expected_row_version": plan["row_version"]},
     )
     assert archived.status_code == 200, archived.text
     # Pre-archive token is stale for the now-archived row → restore 409.
     stale = client.post(
         f"/api/income-plans/{plan['public_id']}/restore",
         headers=identity.app_headers,
-        json={"expected_row_version": plan["row_version"]},
+        json={"intent_month": "2026-05", "expected_row_version": plan["row_version"]},
     )
     assert stale.status_code == 409, stale.text
     assert stale.json()["error"] == "state_conflict"
@@ -296,7 +296,7 @@ def test_income_plan_restore_without_token_returns_422(
     response = client.post(
         f"/api/income-plans/{plan['public_id']}/restore",
         headers=identity.app_headers,
-        json={},
+        json={"intent_month": "2026-05", },
     )
     assert response.status_code == 422, response.text
 
@@ -308,7 +308,7 @@ def test_income_plan_archive_unknown_returns_404(
         "DELETE",
         "/api/income-plans/no-such-public-id",
         headers=identity.app_headers,
-        json={"expected_row_version": 999999},
+        json={"intent_month": "2026-05", "expected_row_version": 999999},
     )
     assert response.status_code == 404, response.text
 
@@ -319,6 +319,6 @@ def test_income_plan_restore_unknown_returns_404(
     response = client.post(
         "/api/income-plans/no-such-public-id/restore",
         headers=identity.app_headers,
-        json={"expected_row_version": 999999},
+        json={"intent_month": "2026-05", "expected_row_version": 999999},
     )
     assert response.status_code == 404, response.text

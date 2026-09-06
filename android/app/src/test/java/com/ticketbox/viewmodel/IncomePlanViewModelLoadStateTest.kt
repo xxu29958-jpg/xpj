@@ -80,9 +80,15 @@ class IncomePlanViewModelLoadStateTest {
 }
 
 private class LoadStateIncomePlanRepository(
-    private val activeResult: Result<IncomePlanListing> = Result.success(IncomePlanListing(emptyList(), 0L)),
+    private val activeResult: Result<IncomePlanListing> = Result.success(IncomePlanListing(emptyList(), 0L, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0)),
     private val archivedResult: Result<List<IncomePlan>> = Result.success(emptyList()),
 ) : IncomePlanActions {
+    override fun describeEdit(row: com.ticketbox.data.repository.OutboxRow): com.ticketbox.data.repository.PendingIncomePlanEdit? = null
+    override fun observeEdits(expectedBinding: LogicalSessionBinding) =
+        kotlinx.coroutines.flow.flowOf(emptyList<com.ticketbox.data.repository.PendingIncomePlanEdit>())
+    override suspend fun recoverEdit(expectedBinding: LogicalSessionBinding,
+        pending: com.ticketbox.data.repository.PendingIncomePlanEdit, drop: Boolean) = Result.success(Unit)
+
     override fun canModifyLedger(): Boolean = true
 
     override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> =
@@ -102,17 +108,15 @@ private class LoadStateIncomePlanRepository(
         draft: IncomePlanDraft,
     ): Result<IncomePlan> = Result.success(plan("created"))
 
-    override suspend fun update(
-        expectedBinding: LogicalSessionBinding,
-        publicId: String,
-        patch: IncomePlanPatch,
-    ): Result<IncomePlan> =
-        Result.success(plan(publicId))
+    override suspend fun enqueueUpdate(expectedBinding: LogicalSessionBinding, baseline: IncomePlan,
+        patch: com.ticketbox.data.repository.IncomePlanPatch,
+        currency: com.ticketbox.domain.model.CurrencyCode): Result<Long> = Result.success(1L)
 
     override suspend fun archive(
         expectedBinding: LogicalSessionBinding,
         publicId: String,
         expectedRowVersion: Long,
+        intentMonth: String,
     ): Result<IncomePlan> =
         Result.success(plan(publicId, status = IncomePlanStatus.ARCHIVED))
 
@@ -120,6 +124,7 @@ private class LoadStateIncomePlanRepository(
         expectedBinding: LogicalSessionBinding,
         publicId: String,
         expectedRowVersion: Long,
+        intentMonth: String,
     ): Result<IncomePlan> =
         Result.success(plan(publicId))
 }

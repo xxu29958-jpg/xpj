@@ -21,19 +21,14 @@ from app.schemas import (
     IncomePlanTokenRequest,
     IncomePlanUpdateRequest,
 )
-from app.services.idempotency import (
-    claim_idempotent_request,
-    mark_idempotency_succeeded,
-)
 from app.services.income_plan_service import (
     archive_income_plan,
     create_income_plan,
-    get_income_plan,
     income_forecast,
     list_income_plans,
     restore_income_plan,
-    update_income_plan,
 )
+from app.services.income_plan_service._delivery import update_income_plan_idempotently
 from app.services.spending_contract_service import current_accounting_month
 from app.tenants import AuthContext
 
@@ -82,6 +77,7 @@ def list_plans(
         month=month_label,
         total_active_amount_cents=forecast.expected_amount_cents,
         scheduled_amount_cents=forecast.scheduled_amount_cents,
+        effective_plan_count=len(forecast.entries),
     )
 
 
@@ -114,47 +110,10 @@ def update_plan(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> IncomePlanResponse:
-    # ADR-0038 PR-2j: token-gated PATCH (stale snapshot → 409). ADR-0042: claim
-    # the Idempotency-Key before that OCC claim so an offline-outbox replay of a
-    # committed-but-unseen edit re-serialises the plan instead of false-409ing.
-    claim = claim_idempotent_request(
-        db,
-        idempotency_key=idempotency_key,
-        tenant_id=auth.tenant_id,
-        operation="update_income_plan",
-        target_id=public_id,
-        body=payload.model_dump(
-            mode="json", exclude_unset=True, exclude={"expected_row_version"}
-        ),
-        expected_row_version=payload.expected_row_version,
-        target_type="income_plan",
+    return update_income_plan_idempotently(
+        db, tenant_id=auth.tenant_id, public_id=public_id, payload=payload,
+        actor_account_id=auth.account_id, idempotency_key=idempotency_key,
     )
-    if claim is None:  # §4.6 HIT — re-serialise the current plan
-        return _to_response(
-            get_income_plan(db, tenant_id=auth.tenant_id, public_id=public_id)
-        )
-
-    plan = update_income_plan(
-        db,
-        tenant_id=auth.tenant_id,
-        public_id=public_id,
-        expected_row_version=payload.expected_row_version,
-        label=payload.label,
-        source_type=payload.source_type,
-        frequency=payload.frequency,
-        income_month=payload.income_month,
-        income_month_provided="income_month" in payload.model_fields_set,
-        amount_cents=payload.amount_cents,
-        pay_day=payload.pay_day,
-        intent_month=payload.intent_month,
-        actor_account_id=auth.account_id,
-        commit=False,
-    )
-    mark_idempotency_succeeded(
-        db, claim, resource_type="income_plan", resource_id=public_id
-    )
-    db.commit()
-    return _to_response(plan)
 
 
 @router.delete("/{public_id}", response_model=IncomePlanResponse)

@@ -47,6 +47,7 @@ from app.services.soft_delete_policy import (
     is_within_recycle_bin_window,
     recycle_bin_retention_label,
 )
+from app.services.spending_contract_service import current_accounting_month
 from app.services.tag_undo_service import undo_tag_mutation
 
 
@@ -60,6 +61,7 @@ class RecycleBinItem:
     removed_at: datetime | None
     retention_label: str
     expected_row_version: int | None
+    restore_intent_month: str | None = None
 
 
 @dataclass(frozen=True)
@@ -94,14 +96,24 @@ def restore_recycle_bin_item(
     resource_id: str,
     expected_row_version: int | None,
     actor_account_id: int | None,
+    intent_month: str | None = None,
 ) -> str:
     clean_kind = (kind or "").strip()
     clean_resource_id = (resource_id or "").strip()
     if not clean_kind or not clean_resource_id:
         raise AppError("invalid_request", "恢复参数不完整。", status_code=422)
 
+    if clean_kind == "income_plan":
+        if not intent_month:
+            raise AppError("invalid_request", "请刷新后核对收入计划的恢复月份。", status_code=422)
+        restore_income_plan(
+            db, tenant_id=tenant_id, public_id=clean_resource_id,
+            expected_row_version=_require_token(expected_row_version),
+            intent_month=intent_month, actor_account_id=actor_account_id,
+        )
+        return "收入计划已恢复。"
+
     public_id_restore = {
-        "income_plan": (restore_income_plan, "收入记录已恢复。"),
         "category_preference": (restore_category_preference, "分类已恢复。"),
         "merchant_catalog": (restore_merchant_catalog, "商家已恢复。"),
         "recurring_item": (restore_recurring_item, "固定支出已恢复。"),
@@ -214,13 +226,14 @@ def _archived_income_rows(db: Session, tenant_id: str) -> list[RecycleBinItem]:
     return [
         RecycleBinItem(
             kind="income_plan",
-            kind_label="收入",
+            kind_label="收入计划",
             resource_id=item.public_id,
             title=item.label,
-            detail=_income_detail(item),
+            detail=_income_detail(item) + f" · 恢复从 {current_accounting_month()} 生效",
             removed_at=item.archived_at,
             retention_label="长期保留",
             expected_row_version=item.row_version,
+            restore_intent_month=current_accounting_month(),
         )
         for item in rows
     ]
@@ -433,7 +446,7 @@ def _tag_undo_rows(db: Session, tenant_id: str) -> list[RecycleBinItem]:
 
 
 def _income_detail(item: MonthlyIncomePlan) -> str:
-    frequency = "每月固定" if item.frequency == "monthly" else f"{item.income_month} 到账"
+    frequency = "每月固定" if item.frequency == "monthly" else f"{item.income_month} 预计"
     return f"{frequency} · {_money(item.amount_cents)} · {item.pay_day} 号"
 
 

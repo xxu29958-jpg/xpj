@@ -358,6 +358,7 @@ def test_total_monthly_income_counts_one_time_only_for_matching_month(identity) 
             db,
             tenant_id="owner",
             label="salary",
+            now=datetime(2026, 5, 1, tzinfo=UTC),
             source_type="salary",
             amount_cents=1_000_000,
             pay_day=10,
@@ -398,7 +399,7 @@ def test_total_monthly_income_counts_one_time_only_for_matching_month(identity) 
     assert {row.label for row in june_rows} == {"salary", "one-off June"}
 
 
-def test_current_month_income_waits_until_pay_day(identity) -> None:  # noqa: ARG001
+def test_whole_month_estimate_is_available_before_scheduled_day(identity) -> None:  # noqa: ARG001
     with SessionLocal() as db:
         create_income_plan(
             db,
@@ -417,7 +418,7 @@ def test_current_month_income_waits_until_pay_day(identity) -> None:  # noqa: AR
             db, tenant_id="owner", month="2026-06", as_of=datetime(2026, 6, 30, tzinfo=UTC)
         )
 
-    assert before_payday == 0
+    assert before_payday == 1_000_000
     assert on_payday == 1_000_000
 
 

@@ -80,6 +80,8 @@ internal fun IncomePlanDraftForm(
     choiceCallbacks: IncomePlanDraftChoiceCallbacks,
 ) {
     val draft = state.draft
+    Text(stringResource(R.string.income_plan_intent_month_hint, draft.intentMonth),
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     AppTextInput(
         state = AppTextInputState(
             label = stringResource(R.string.income_plan_sheet_label_name),
@@ -140,6 +142,7 @@ private fun IncomePlanDraftChoices(
         onSelect = choiceCallbacks.onFrequency,
     )
     if (draft.frequency == IncomeFrequency.ONE_TIME) {
+        Text(stringResource(R.string.income_plan_one_time_correction_hint), style = MaterialTheme.typography.bodySmall)
         AppFormFieldGroup(label = stringResource(R.string.income_plan_sheet_label_income_month)) {
             IncomeMonthPicker(
                 value = draft.incomeMonthInput,

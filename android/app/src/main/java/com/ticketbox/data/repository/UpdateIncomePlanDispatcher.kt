@@ -1,77 +1,44 @@
 package com.ticketbox.data.repository
 
 import com.squareup.moshi.JsonAdapter
-import com.squareup.moshi.JsonDataException
-import com.squareup.moshi.JsonEncodingException
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
-import com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
 
-/**
- * ADR-0042 Slice F: replay a queued ``PATCH /api/income-plans/{publicId}``
- * call. Companion to [UpdateGoalDispatcher] / [UpdateMerchantAliasDispatcher]
- * — same contract (PATCH with token-bearing body), different target.
- *
- * Target encoding: ``income_plan:<publicId>`` (mirrors
- * ``merchant_alias:<publicId>``).
- *
- * Payload: Moshi-serialised [IncomePlanUpdateRequestDto] with the token field
- * neutralised to 0L at enqueue time — the row's ``expectedRowVersion`` is the
- * single source of truth (round-8 P3#5).
- */
+/** Sole network writer for a durable, month-bearing income edit. */
 class UpdateIncomePlanDispatcher(
     private val apiProvider: (OutboxRow) -> ApiService,
-    private val payloadAdapter: JsonAdapter<IncomePlanUpdateRequestDto>,
+    private val payloadAdapter: JsonAdapter<IncomePlanEditPayload>,
 ) : OutboxMutationDispatcher {
     override val type: PendingMutationType = PendingMutationType.UpdateIncomePlan
 
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
-        val publicId = parsePlanPublicId(row.targetId)
-            ?: return DispatchResult.Discarded("invalid target id: ${row.targetId}")
-
-        // ADR-0042: an UpdateIncomePlan row MUST carry an idempotency key (every
-        // enqueue mints one). A null key means a malformed / pre-ADR-0042 row
-        // the server would 422 anyway — surface it as a visible FAILED row the
-        // user can drop, not a silent server round-trip + Discard.
-        val idempotencyKey = row.idempotencyKey
-            ?: return DispatchResult.Failure("UpdateIncomePlan row missing idempotency key")
-
-        // Payload deserialise errors are TERMINAL — see PatchExpenseDispatcher
-        // KDoc for the rationale.
-        val request = try {
-            val storedPayload = payloadAdapter.fromJson(row.payloadJson)
-                ?: return DispatchResult.Failure("payload deserialised to null")
-            // Row's expectedRowVersion is authoritative. Payload was serialised
-            // with a 0L placeholder for the token (DTO field is non-nullable
-            // Long; round-8 P3#5 single-source-of-truth rule).
-            storedPayload.copy(expectedRowVersion = row.expectedRowVersion)
-        } catch (e: JsonDataException) {
-            return DispatchResult.Failure(
-                "payload JSON shape changed: ${e.message ?: "JsonDataException"}",
-            )
-        } catch (e: JsonEncodingException) {
-            return DispatchResult.Failure(
-                "payload JSON malformed: ${e.message ?: "JsonEncodingException"}",
-            )
+        val idempotencyKey = row.idempotencyKey?.takeIf { it.isNotBlank() }
+            ?: return DispatchResult.Failure("原提交缺少标识，请保留记录并核对计划。")
+        val payload = payloadAdapter.readSupportedIncomeEdit(row.payloadJson)
+            ?: return DispatchResult.Failure("原提交的月份或格式无法确认，已保留记录，请核对后重新编辑。")
+        if (row.targetId != incomePlanTarget(payload.planPublicId) || row.expectedRowVersion <= 0) {
+            return DispatchResult.Failure("原提交与计划不匹配，请保留记录并核对。")
         }
+        val request = payload.request.copy(expectedRowVersion = row.expectedRowVersion)
+        val publicId = payload.planPublicId
 
         return try {
             // ADR-0042: replay carries the row's original intent-time key, so a
             // committed-but-unseen first attempt is deduped server-side (HIT →
-            // canonical row) instead of false-409ing on the stale row_version.
-            val updated = apiProvider(row).updateIncomePlan(publicId, request, idempotencyKey)
-            DispatchResult.Success(newRowVersion = updated.rowVersion)
+            // original stable result) instead of false-409ing on the stale row_version.
+            apiProvider(row).updateIncomePlan(publicId, request, idempotencyKey)
+            DispatchResult.Success()
         } catch (e: HttpException) {
             mapHttpException(e)
         } catch (e: IOException) {
-            DispatchResult.RetryableFailure(e.message ?: "network IO failure")
+            DispatchResult.RetryableFailure("连接中断，保留原提交等待重试。")
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            DispatchResult.Failure(e.message ?: "PATCH income plan threw")
+            DispatchResult.Failure("暂时无法确认修改结果，已保留原提交。")
         }
     }
 
@@ -105,13 +72,6 @@ class UpdateIncomePlanDispatcher(
             422 -> DispatchResult.Failure(message)
             else -> DispatchResult.Failure(message.ifEmpty { "HTTP ${e.code()}" })
         }
-    }
-
-    private fun parsePlanPublicId(targetId: String): String? {
-        val prefix = "income_plan:"
-        if (!targetId.startsWith(prefix)) return null
-        val publicId = targetId.removePrefix(prefix)
-        return publicId.takeIf { it.isNotBlank() }
     }
 
     private fun extractServerMessage(body: String): String? {

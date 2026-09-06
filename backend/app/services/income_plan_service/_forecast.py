@@ -5,7 +5,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -22,11 +22,20 @@ class IncomeForecast:
 
 def _applicable_revisions(revisions: Iterable[IncomePlanRevision], period: date) -> list[IncomePlanRevision]:
     chosen: dict[int, IncomePlanRevision] = {}
-    for revision in revisions:
-        if revision.effective_month is not None and revision.effective_month > period:
-            continue
-        previous = chosen.get(revision.plan_id)
-        if previous is None or revision.revision_number > previous.revision_number:
+    preceding: dict[int, IncomePlanRevision] = {}
+    month = period.strftime("%Y-%m")
+    for revision in sorted(revisions, key=lambda row: row.revision_number):
+        previous = preceding.get(revision.plan_id)
+        preceding[revision.plan_id] = revision
+        applies = revision.effective_month is None or revision.effective_month <= period
+        if previous is not None and revision.change_kind == "edit" and (
+            previous.frequency == revision.frequency == "one_time"
+        ):
+            # A single-month correction changes its old/new targets, not an
+            # unrelated monthly schedule that preceded the conversion.
+            assert revision.intent_month is not None  # Typed revision constraint excludes undated edits.
+            applies = month in {previous.income_month, revision.income_month} or period >= revision.intent_month
+        if applies:
             chosen[revision.plan_id] = revision
     return list(chosen.values())
 
@@ -56,6 +65,5 @@ def forecast_from_revisions(
 def query_income_forecast(db: Session, *, tenant_id: str, period: date, today: date) -> IncomeForecast:
     revisions = db.scalars(select(IncomePlanRevision).where(
         IncomePlanRevision.tenant_id == tenant_id,
-        or_(IncomePlanRevision.effective_month.is_(None), IncomePlanRevision.effective_month <= period),
     ))
     return forecast_from_revisions(revisions, period=period, today=today)

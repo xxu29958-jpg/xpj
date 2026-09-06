@@ -31,6 +31,7 @@ data class IncomePlanEditSession(
     val baselineRowVersion: Long,
     val binding: LogicalSessionBinding,
     val sourceAmountCents: Long,
+    val baseline: IncomePlan,
     val draft: IncomePlanDraftUi,
 )
 
@@ -46,13 +47,14 @@ data class IncomePlanEditUiState(
 
 /**
  * W2-C 收入编辑的伴随 ViewModel（与列表 VM 分离，同 DebtRepaymentHistoryViewModel 先例）：
- * 直连 [IncomePlanActions.update]（OCC baseline + origin binding，不假离线承诺）；
+ * 编辑先持久化原月份、金额、OCC 与身份，再由待同步队列发布；
  * 归档收进编辑器（archiveFromEdit），成功才关会话，失败留草稿。
  */
 class IncomePlanEditViewModel(
     private val repository: IncomePlanActions,
     private val debts: DebtActions,
     private val onDataChanged: () -> Unit = {},
+    private val currentMonth: () -> YearMonth = { YearMonth.now() },
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(IncomePlanEditUiState())
@@ -117,7 +119,9 @@ class IncomePlanEditViewModel(
                     baselineRowVersion = plan.rowVersion,
                     binding = binding,
                     sourceAmountCents = plan.amountCents,
+                    baseline = plan,
                     draft = IncomePlanDraftUi(
+                        intentMonth = currentMonth().toString(),
                         label = plan.label,
                         sourceType = plan.sourceType,
                         frequency = plan.frequency,
@@ -232,7 +236,7 @@ class IncomePlanEditViewModel(
         val binding = bindingGeneration
         _state.update { it.copy(isSubmitting = true) }
         viewModelScope.launch {
-            val result = repository.update(session.binding, session.publicId, patch)
+            val result = repository.enqueueUpdate(session.binding, session.baseline, patch, requireNotNull(session.draft.homeCurrency))
             if (binding != bindingGeneration) return@launch
             result.fold(
                 onSuccess = {
@@ -240,7 +244,7 @@ class IncomePlanEditViewModel(
                         it.copy(
                             isSubmitting = false,
                             succeeded = true,
-                            flashMessage = UiText.res(R.string.income_plan_updated),
+                            flashMessage = UiText.res(R.string.income_plan_edit_saved_locally),
                         )
                     }
                     onDataChanged()
@@ -262,7 +266,7 @@ class IncomePlanEditViewModel(
         val binding = bindingGeneration
         _state.update { it.copy(isSubmitting = true) }
         viewModelScope.launch {
-            val result = repository.archive(session.binding, session.publicId, session.baselineRowVersion)
+            val result = repository.archive(session.binding, session.publicId, session.baselineRowVersion, session.draft.intentMonth)
             if (binding != bindingGeneration) return@launch
             result.fold(
                 onSuccess = {

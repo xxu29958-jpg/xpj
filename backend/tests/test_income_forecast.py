@@ -9,6 +9,7 @@ import pytest
 def _revision(number, month, amount=100_00, *, status="active", pay_day=1):
     return SimpleNamespace(
         plan_id=1, revision_number=number, effective_month=month,
+        intent_month=month, change_kind="create" if number == 1 else "edit",
         amount_cents=amount, frequency="monthly", income_month=None,
         status=status, pay_day=pay_day,
     )
@@ -50,3 +51,18 @@ def test_undated_baseline_cannot_fabricate_historical_income() -> None:
         forecast_from_revisions(revisions, period=date(2026, 8, 1), today=date(2026, 9, 2))
     current = forecast_from_revisions(revisions, period=date(2026, 9, 1), today=date(2026, 9, 2))
     assert current.expected_amount_cents == 100_00
+
+
+def test_single_month_correction_does_not_erase_unrelated_monthly_history() -> None:
+    from app.services.income_plan_service._forecast import forecast_from_revisions
+
+    august = _revision(1, date(2026, 8, 1))
+    converted = _revision(2, date(2026, 9, 1), 120_00)
+    converted.frequency, converted.income_month = "one_time", "2026-11"
+    corrected = _revision(3, date(2026, 6, 1), 130_00)
+    corrected.frequency, corrected.income_month = "one_time", "2026-06"
+    corrected.intent_month = date(2026, 12, 1)
+    totals = [forecast_from_revisions(
+        [august, converted, corrected], period=date(2026, month, 1), today=date(2026, 12, 2),
+    ).expected_amount_cents for month in (6, 8, 9, 11, 12)]
+    assert totals == [130_00, 100_00, 0, 0, 0]

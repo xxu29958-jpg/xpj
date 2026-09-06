@@ -111,7 +111,7 @@ internal class RepositoryGraph(
 
     val incomePlanRepository = IncomePlanRepository(
         apiProvider = apiServiceProvider,
-        // ADR-0042 Slice F: outbox + adapter for updateAllowingOffline.
+        // The editor persists its month-bearing original intent before dispatch.
         outbox = outbox,
         incomePlanUpdateAdapter = outboxAdapters.incomePlanUpdateAdapter,
     )

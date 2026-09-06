@@ -5,7 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 
 from app.database import SessionLocal
-from app.models import Expense, MonthlyIncomePlan, RecurringItem
+from app.models import Expense, RecurringItem
+from app.services.income_plan_service import create_income_plan
 from app.services.spending_contract_service import current_accounting_month
 from app.services.time_service import now_utc
 
@@ -29,18 +30,8 @@ def seed_minimal_data() -> None:
         tzinfo=now.tzinfo,
     )
     with SessionLocal() as db:
-        db.add(
-            MonthlyIncomePlan(
-                tenant_id="owner",
-                label="工资",
-                source_type="salary",
-                amount_cents=1_000_000,
-                pay_day=10,
-                status="active",
-                created_at=now,
-                updated_at=now,
-            )
-        )
+        create_income_plan(db, tenant_id="owner", label="工资", source_type="salary",
+            amount_cents=1_000_000, pay_day=10, now=now)
         db.add(
             Expense(
                 tenant_id="owner",

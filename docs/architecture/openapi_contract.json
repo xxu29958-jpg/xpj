@@ -1352,6 +1352,10 @@
             "title": "Expected Row Version",
             "type": "string"
           },
+          "intent_month": {
+            "title": "Intent Month",
+            "type": "string"
+          },
           "ledger_id": {
             "anyOf": [
               {
@@ -1364,6 +1368,9 @@
             "title": "Ledger Id"
           }
         },
+        "required": [
+          "intent_month"
+        ],
         "title": "Body_post_archive_web_income_plans__public_id__archive_post",
         "type": "object"
       },
@@ -1412,6 +1419,10 @@
             ],
             "title": "Income Month Year"
           },
+          "intent_month": {
+            "title": "Intent Month",
+            "type": "string"
+          },
           "label": {
             "default": "",
             "title": "Label",
@@ -1439,6 +1450,9 @@
             "type": "string"
           }
         },
+        "required": [
+          "intent_month"
+        ],
         "title": "Body_post_create_web_income_plans_create_post",
         "type": "object"
       },
@@ -1477,6 +1491,17 @@
             "title": "Expected Row Version",
             "type": "string"
           },
+          "intent_month": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intent Month"
+          },
           "kind": {
             "default": "",
             "title": "Kind",
@@ -1509,6 +1534,10 @@
             "title": "Expected Row Version",
             "type": "string"
           },
+          "intent_month": {
+            "title": "Intent Month",
+            "type": "string"
+          },
           "ledger_id": {
             "anyOf": [
               {
@@ -1521,6 +1550,9 @@
             "title": "Ledger Id"
           }
         },
+        "required": [
+          "intent_month"
+        ],
         "title": "Body_post_restore_web_income_plans__public_id__restore_post",
         "type": "object"
       },
@@ -10452,6 +10484,11 @@
             ],
             "title": "Income Month"
           },
+          "intent_month": {
+            "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+            "title": "Intent Month",
+            "type": "string"
+          },
           "label": {
             "maxLength": 64,
             "minLength": 1,
@@ -10473,6 +10510,7 @@
           }
         },
         "required": [
+          "intent_month",
           "label",
           "amount_cents",
           "pay_day"
@@ -10482,12 +10520,27 @@
       },
       "IncomePlanListResponse": {
         "properties": {
+          "effective_plan_count": {
+            "title": "Effective Plan Count",
+            "type": "integer"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/IncomePlanResponse"
             },
             "title": "Items",
             "type": "array"
+          },
+          "month": {
+            "title": "Month",
+            "type": "string"
+          },
+          "scheduled_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
+            "title": "Scheduled Amount Cents",
+            "type": "integer"
           },
           "total_active_amount_cents": {
             "format": "int64",
@@ -10499,7 +10552,10 @@
         },
         "required": [
           "items",
-          "total_active_amount_cents"
+          "month",
+          "total_active_amount_cents",
+          "scheduled_amount_cents",
+          "effective_plan_count"
         ],
         "title": "IncomePlanListResponse",
         "type": "object"
@@ -10618,10 +10674,16 @@
           "expected_row_version": {
             "title": "Expected Row Version",
             "type": "integer"
+          },
+          "intent_month": {
+            "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+            "title": "Intent Month",
+            "type": "string"
           }
         },
         "required": [
-          "expected_row_version"
+          "expected_row_version",
+          "intent_month"
         ],
         "title": "IncomePlanTokenRequest",
         "type": "object"
@@ -10675,6 +10737,11 @@
             ],
             "title": "Income Month"
           },
+          "intent_month": {
+            "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+            "title": "Intent Month",
+            "type": "string"
+          },
           "label": {
             "anyOf": [
               {
@@ -10716,7 +10783,8 @@
           }
         },
         "required": [
-          "expected_row_version"
+          "expected_row_version",
+          "intent_month"
         ],
         "title": "IncomePlanUpdateRequest",
         "type": "object"
@@ -14170,6 +14238,17 @@
             "title": "Resource Id",
             "type": "string"
           },
+          "restore_intent_month": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Restore Intent Month"
+          },
           "retention_label": {
             "title": "Retention Label",
             "type": "string"
@@ -14226,6 +14305,18 @@
               }
             ],
             "title": "Expected Row Version"
+          },
+          "intent_month": {
+            "anyOf": [
+              {
+                "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intent Month"
           },
           "kind": {
             "maxLength": 32,
@@ -40213,7 +40304,8 @@
                 "$ref": "#/components/schemas/Body_post_create_web_income_plans_create_post"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -40262,7 +40354,8 @@
                 "$ref": "#/components/schemas/Body_post_archive_web_income_plans__public_id__archive_post"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -40311,7 +40404,8 @@
                 "$ref": "#/components/schemas/Body_post_restore_web_income_plans__public_id__restore_post"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {

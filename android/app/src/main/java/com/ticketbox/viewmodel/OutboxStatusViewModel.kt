@@ -42,6 +42,7 @@ class OutboxStatusViewModel(
     private val expenseRepository: ExpenseRepository,
     private val debtCreation: DebtCreationActions,
     private val recurringOccurrences: com.ticketbox.data.repository.RecurringOccurrenceActions? = null,
+    private val incomePlans: com.ticketbox.data.repository.IncomePlanActions? = null,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(OutboxStatusUiState())
     val uiState: StateFlow<OutboxStatusUiState> = _uiState.asStateFlow()
@@ -55,7 +56,11 @@ class OutboxStatusViewModel(
                 val occurrenceDescriptions = (status.failed + status.conflicts).mapNotNull { row ->
                     recurringOccurrences?.describe(row)?.let { row.id to it }
                 }.toMap()
-                _uiState.update { it.copy(status = status, failedDebtCreations = descriptions, recurringOccurrences = occurrenceDescriptions) }
+                val incomeDescriptions = (status.failed + status.conflicts).mapNotNull { row ->
+                    incomePlans?.describeEdit(row)?.let { row.id to it }
+                }.toMap()
+                _uiState.update { it.copy(status = status, failedDebtCreations = descriptions,
+                    recurringOccurrences = occurrenceDescriptions, incomeEdits = incomeDescriptions) }
             }
         }
     }
@@ -149,6 +154,7 @@ data class OutboxStatusUiState(
     val status: OutboxStatus = OutboxStatus(queueDepth = 0, conflicts = emptyList(), failed = emptyList()),
     val failedDebtCreations: Map<Long, PendingDebtCreation> = emptyMap(),
     val recurringOccurrences: Map<Long, com.ticketbox.data.repository.PendingOccurrencePayment> = emptyMap(),
+    val incomeEdits: Map<Long, com.ticketbox.data.repository.PendingIncomePlanEdit> = emptyMap(),
     val busyRowId: Long? = null,
     val isClearingQuarantine: Boolean = false,
     val message: UiText? = null,

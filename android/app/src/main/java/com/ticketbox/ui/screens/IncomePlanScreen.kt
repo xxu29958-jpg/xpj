@@ -228,12 +228,16 @@ private fun LazyListScope.incomePlanBody(
     if (incomePlanShowsSummary(bodyState)) {
         item {
             IncomeTotalSummary(
+                month = state.forecastMonth.orEmpty(),
                 expectedCents = state.currentMonthSummary.expectedAmountCents,
                 planCount = state.currentMonthSummary.effectivePlanCount,
-                arrivedCents = state.totalActiveAmountCents,
+                scheduledCents = state.scheduledAmountCents,
                 currency = currency,
             )
         }
+    }
+    if (state.pendingEdits.isNotEmpty()) {
+        item { IncomePlanPendingEdits(state.pendingEdits, viewModel::recoverEdit) }
     }
     when (bodyState) {
         IncomePlanBodyState.Loading,
@@ -276,7 +280,8 @@ private fun LazyListScope.incomePlanSections(
                     plan = plan,
                     currency = currency,
                     // 行本体即编辑入口；归档收进编辑器（W2-C）。
-                    onClick = if (state.canModify) ({ onEditPlan(plan) }) else null,
+                    onClick = if (state.canModify && state.pendingEdits.none { it.row.targetId == "income_plan:${plan.publicId}" })
+                        ({ onEditPlan(plan) }) else null,
                 )
             }
         }
@@ -342,20 +347,18 @@ private fun SectionEyebrow(text: String) {
     )
 }
 
-/**
- * W2-C hero 口径修正：主数字是「本月预计」（现有本月有效计划合计投影，不再冒称已到账）；
- * 服务端按计划公式的 aggregate 保留为「按计划截至今日」次要行（公式/owner 不动）。
- */
+/** Whole-month estimate and scheduled-through-today amount share the server forecast owner. */
 @Composable
 private fun IncomeTotalSummary(
+    month: String,
     expectedCents: Long,
     planCount: Int,
-    arrivedCents: Long,
+    scheduledCents: Long,
     currency: CurrencyDisplay,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
-            stringResource(R.string.income_plan_expected_label),
+            stringResource(R.string.income_plan_month_expected, month),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -375,7 +378,7 @@ private fun IncomeTotalSummary(
         Text(
             stringResource(
                 R.string.income_plan_arrived_caption,
-                formatDisplayAmount(arrivedCents, currency),
+                formatDisplayAmount(scheduledCents, currency),
             ),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

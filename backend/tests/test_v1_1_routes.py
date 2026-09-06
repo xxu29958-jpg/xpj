@@ -32,7 +32,7 @@ def test_create_income_plan_round_trip(client: TestClient, *, identity) -> None:
     create_resp = client.post(
         "/api/income-plans",
         headers=identity.app_headers,
-        json={
+        json={"intent_month": "2026-05",
             "label": "我的工资",
             "source_type": "salary",
             "amount_cents": 1_000_000,
@@ -61,7 +61,7 @@ def test_create_one_time_income_counts_only_for_requested_month(
     create_resp = client.post(
         "/api/income-plans",
         headers=identity.app_headers,
-        json={
+        json={"intent_month": "2026-05",
             "label": "项目奖金",
             "source_type": "bonus",
             "frequency": "one_time",
@@ -93,7 +93,7 @@ def test_create_one_time_income_rejects_missing_income_month(
     resp = client.post(
         "/api/income-plans",
         headers=identity.app_headers,
-        json={
+        json={"intent_month": "2026-05",
             "label": "项目奖金",
             "source_type": "bonus",
             "frequency": "one_time",
@@ -109,7 +109,7 @@ def test_create_income_plan_rejects_invalid_payload(client: TestClient, *, ident
     resp = client.post(
         "/api/income-plans",
         headers=identity.app_headers,
-        json={
+        json={"intent_month": "2026-05",
             "label": "x",
             "source_type": "salary",
             "amount_cents": 100,
@@ -123,7 +123,7 @@ def test_update_income_plan_partial(client: TestClient, *, identity) -> None:
     created = client.post(
         "/api/income-plans",
         headers=identity.app_headers,
-        json={"label": "x", "source_type": "salary", "amount_cents": 100, "pay_day": 1},
+        json={"intent_month": "2026-05", "label": "x", "source_type": "salary", "amount_cents": 100, "pay_day": 1},
     ).json()
     pid = created["public_id"]
 
@@ -132,7 +132,7 @@ def test_update_income_plan_partial(client: TestClient, *, identity) -> None:
     updated = client.patch(
         f"/api/income-plans/{pid}",
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
-        json={
+        json={"intent_month": "2026-05",
             "expected_row_version": created["row_version"],
             "amount_cents": 500_000,
         },
@@ -150,7 +150,7 @@ def test_update_unknown_income_plan_returns_404(client: TestClient, *, identity)
     resp = client.patch(
         "/api/income-plans/nonexistent",
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
-        json={
+        json={"intent_month": "2026-05",
             "expected_row_version": 999999,
             "label": "x",
         },
@@ -162,7 +162,7 @@ def test_delete_income_plan_archives(client: TestClient, *, identity) -> None:
     created = client.post(
         "/api/income-plans",
         headers=identity.app_headers,
-        json={"label": "tobearchived", "source_type": "salary", "amount_cents": 100, "pay_day": 1},
+        json={"intent_month": "2026-05", "label": "tobearchived", "source_type": "salary", "amount_cents": 100, "pay_day": 1},
     ).json()
     pid = created["public_id"]
 
@@ -170,7 +170,7 @@ def test_delete_income_plan_archives(client: TestClient, *, identity) -> None:
         "DELETE",
         f"/api/income-plans/{pid}",
         headers=identity.app_headers,
-        json={"expected_row_version": created["row_version"]},
+        json={"intent_month": "2026-05", "expected_row_version": created["row_version"]},
     )
     assert delete_resp.status_code == 200
     assert delete_resp.json()["status"] == "archived"
@@ -191,20 +191,20 @@ def test_restore_income_plan_reactivates(client: TestClient, *, identity) -> Non
     created = client.post(
         "/api/income-plans",
         headers=identity.app_headers,
-        json={"label": "torestore", "source_type": "salary", "amount_cents": 100, "pay_day": 1},
+        json={"intent_month": "2026-05", "label": "torestore", "source_type": "salary", "amount_cents": 100, "pay_day": 1},
     ).json()
     pid = created["public_id"]
     archive_resp = client.request(
         "DELETE",
         f"/api/income-plans/{pid}",
         headers=identity.app_headers,
-        json={"expected_row_version": created["row_version"]},
+        json={"intent_month": "2026-05", "expected_row_version": created["row_version"]},
     )
 
     restored = client.post(
         f"/api/income-plans/{pid}/restore",
         headers=identity.app_headers,
-        json={"expected_row_version": archive_resp.json()["row_version"]},
+        json={"intent_month": "2026-05", "expected_row_version": archive_resp.json()["row_version"]},
     )
     assert restored.status_code == 200
     assert restored.json()["status"] == "active"
@@ -215,7 +215,7 @@ def test_income_plan_writes_require_writer_role(client: TestClient, *, identity)
     # No auth at all → 401.
     no_auth = client.post(
         "/api/income-plans",
-        json={"label": "x", "source_type": "salary", "amount_cents": 100, "pay_day": 1},
+        json={"intent_month": "2026-05", "label": "x", "source_type": "salary", "amount_cents": 100, "pay_day": 1},
     )
     assert no_auth.status_code == 401
 
@@ -249,7 +249,7 @@ def test_discretionary_subtracts_income_minus_fixed_minus_user_params(
     client.post(
         "/api/income-plans",
         headers=identity.app_headers,
-        json={"label": "salary", "source_type": "salary", "amount_cents": 1_000_000, "pay_day": 1},
+        json={"intent_month": "2026-05", "label": "salary", "source_type": "salary", "amount_cents": 1_000_000, "pay_day": 1},
     )
     resp = client.get(
         "/api/budget/discretionary"
@@ -291,7 +291,7 @@ def test_discretionary_late_salary_backfill_offsets_existing_spend(
     income_resp = client.post(
         "/api/income-plans",
         headers=identity.app_headers,
-        json={
+        json={"intent_month": "2026-05",
             "label": "六月工资",
             "source_type": "salary",
             "frequency": "one_time",
@@ -319,7 +319,7 @@ def test_discretionary_includes_one_time_income_only_for_query_month(
     client.post(
         "/api/income-plans",
         headers=identity.app_headers,
-        json={
+        json={"intent_month": "2026-05",
             "label": "one-off",
             "source_type": "bonus",
             "frequency": "one_time",
@@ -348,7 +348,7 @@ def test_discretionary_floors_at_zero_when_underwater(
     client.post(
         "/api/income-plans",
         headers=identity.app_headers,
-        json={"label": "salary", "source_type": "salary", "amount_cents": 100_000, "pay_day": 1},
+        json={"intent_month": "2026-05", "label": "salary", "source_type": "salary", "amount_cents": 100_000, "pay_day": 1},
     )
     resp = client.get(
         "/api/budget/discretionary?savings_target_cents=500000",

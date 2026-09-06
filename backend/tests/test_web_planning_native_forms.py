@@ -65,7 +65,7 @@ def test_native_create_preserves_selected_ledger_and_money(
 def test_native_income_archive_and_restore_preserve_scope_and_occ(web_client, identity) -> None:
     created = web_client.post(
         "/api/income-plans", headers=identity.gray_app_headers,
-        json={"label": "生命周期收入", "source_type": "bonus", "amount_cents": 68000, "pay_day": 1},
+        json={"intent_month": "2026-05", "label": "生命周期收入", "source_type": "bonus", "amount_cents": 68000, "pay_day": 1},
     )
     assert created.status_code == 201, created.text
     public_id = created.json()["public_id"]

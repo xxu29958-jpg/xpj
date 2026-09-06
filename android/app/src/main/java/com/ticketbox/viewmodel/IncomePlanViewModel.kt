@@ -6,7 +6,8 @@ import com.ticketbox.R
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.IncomePlanActions
 import com.ticketbox.data.repository.IncomePlanDraft
-import com.ticketbox.data.repository.IncomePlanListing
+import com.ticketbox.data.repository.PendingIncomePlanEdit
+import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.IncomePlan
@@ -21,6 +22,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 import java.time.YearMonth
 
 /**
@@ -37,6 +39,9 @@ data class IncomePlanUiState(
     val activePlans: List<IncomePlan> = emptyList(),
     val archivedPlans: List<IncomePlan> = emptyList(),
     val totalActiveAmountCents: Long = 0L,
+    val scheduledAmountCents: Long = 0L,
+    val forecastMonth: String? = null,
+    val pendingEdits: List<PendingIncomePlanEdit> = emptyList(),
     val currentMonthSummary: IncomePlanMonthSummary = IncomePlanMonthSummary(),
     val error: UiText? = null,
     val addDraft: IncomePlanDraftUi = IncomePlanDraftUi(),
@@ -58,35 +63,14 @@ enum class IncomePlanLoadState {
     Failed,
 }
 
-/** 计划域概览用的本月收入汇总（218-B1 自 #218 摘取；完整收入计划重构属后续 slice）。 */
+/** Confirmed forecast values supplied by the IncomePlan query owner. */
 data class IncomePlanMonthSummary(
     val effectivePlanCount: Int = 0,
     val expectedAmountCents: Long = 0L,
-    val historicalRecordCount: Int = 0,
 )
 
-private fun incomePlanMonthSummary(
-    plans: List<IncomePlan>,
-    currentMonth: YearMonth,
-): IncomePlanMonthSummary {
-    val currentMonthLabel = currentMonth.toString()
-    val effectivePlans = plans.filter { plan ->
-        plan.frequency == IncomeFrequency.MONTHLY || plan.incomeMonth == currentMonthLabel
-    }
-    val historicalRecordCount = plans.count { plan ->
-        val incomeMonth = plan.incomeMonth?.let { value ->
-            runCatching { YearMonth.parse(value) }.getOrNull()
-        }
-        plan.frequency == IncomeFrequency.ONE_TIME && incomeMonth?.isBefore(currentMonth) == true
-    }
-    return IncomePlanMonthSummary(
-        effectivePlanCount = effectivePlans.size,
-        expectedAmountCents = effectivePlans.sumOf(IncomePlan::amountCents),
-        historicalRecordCount = historicalRecordCount,
-    )
-}
-
 data class IncomePlanDraftUi(
+    val intentMonth: String = YearMonth.now().toString(),
     val label: String = "",
     val sourceType: IncomeSourceType = IncomeSourceType.SALARY,
     val frequency: IncomeFrequency = IncomeFrequency.ONE_TIME,
@@ -132,6 +116,7 @@ private fun IncomePlanDraftUi.toRepositoryDraftOrNull(): IncomePlanDraft? {
         IncomeFrequency.ONE_TIME -> parsedIncomeMonth() ?: return null
     }
     return IncomePlanDraft(
+        intentMonth = intentMonth,
         label = cleanLabel,
         sourceType = sourceType,
         frequency = frequency,
@@ -153,6 +138,7 @@ class IncomePlanViewModel(
     private var refreshGeneration = 0
     private var activeBinding: LogicalSessionBinding? = null
     private var activeCanModify = false
+    private var queueJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -174,7 +160,20 @@ class IncomePlanViewModel(
                             it.copy(addDraft = it.addDraft.copy(homeCurrency = resolveLedgerCurrency(page)))
                         }
                     }
-                    if (access != null) refresh()
+                    queueJob?.cancel()
+                    if (access != null) {
+                        queueJob = viewModelScope.launch {
+                            var completed = emptySet<Long>()
+                            repository.observeEdits(access.binding).collect { rows ->
+                                if (activeBinding != access.binding) return@collect
+                                val done = rows.filter { it.row.status == PendingMutationStatus.Done }.map { it.row.id }.toSet()
+                                _state.update { it.copy(pendingEdits = rows.filter { row -> row.row.status != PendingMutationStatus.Done }) }
+                                if ((done - completed).isNotEmpty()) { onDataChanged(); refresh() }
+                                completed = done
+                            }
+                        }
+                        refresh()
+                    }
                 }
         }
     }
@@ -206,7 +205,9 @@ class IncomePlanViewModel(
                         activePlans = listing.plans,
                         archivedPlans = archived.getOrDefault(emptyList()),
                         totalActiveAmountCents = listing.totalActiveAmountCents,
-                        currentMonthSummary = incomePlanMonthSummary(listing.plans, YearMonth.now()),
+                        scheduledAmountCents = listing.scheduledAmountCents,
+                        forecastMonth = listing.month,
+                        currentMonthSummary = IncomePlanMonthSummary(listing.effectivePlanCount, listing.totalActiveAmountCents),
                         error = archivedError,
                     )
                 },
@@ -272,7 +273,8 @@ class IncomePlanViewModel(
     }
 
     fun resetDraft() {
-        _state.update { it.copy(addDraft = IncomePlanDraftUi(), isSubmitting = false, addSucceeded = false) }
+        _state.update { it.copy(addDraft = IncomePlanDraftUi(intentMonth = it.forecastMonth ?: YearMonth.now().toString()),
+            isSubmitting = false, addSucceeded = false) }
         // 草稿重建后重新注入账本币种（R12-D + R14-6 共享同源裁决；不清 homeCurrency 则新草稿永远 null 禁写）。
         viewModelScope.launch {
             val page = debts.listDebts().getOrNull()
@@ -338,24 +340,22 @@ class IncomePlanViewModel(
         }
     }
 
-    fun archive(publicId: String, expectedRowVersion: Long) {
-        val expectedBinding = activeBinding ?: return
-        val binding = bindingGeneration
+    fun recoverEdit(pending: PendingIncomePlanEdit, drop: Boolean) {
+        val binding = activeBinding ?: return
+        if (pending !in _state.value.pendingEdits) return
         viewModelScope.launch {
-            val result = repository.archive(expectedBinding, publicId, expectedRowVersion)
-            handleSimpleResult(
-                result,
-                success = UiText.res(R.string.income_plan_archived),
-                binding = binding,
-            )
+            repository.recoverEdit(binding, pending, drop).onFailure { error ->
+                if (activeBinding == binding) _state.update { it.copy(error = error.toUiText(R.string.error_generic)) }
+            }
         }
     }
 
     fun restore(publicId: String, expectedRowVersion: Long) {
         val expectedBinding = activeBinding ?: return
+        val intentMonth = _state.value.forecastMonth ?: return
         val binding = bindingGeneration
         viewModelScope.launch {
-            val result = repository.restore(expectedBinding, publicId, expectedRowVersion)
+            val result = repository.restore(expectedBinding, publicId, expectedRowVersion, intentMonth)
             handleSimpleResult(
                 result,
                 success = UiText.res(R.string.income_plan_restored),

@@ -9,6 +9,7 @@ data class RecycleBinItem(
     val removedAt: String?,
     val retentionLabel: String,
     val expectedRowVersion: Int?,
+    val restoreIntentMonth: String? = null,
 )
 
 data class RecycleBinSnapshot(

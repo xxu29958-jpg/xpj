@@ -96,3 +96,4 @@ class IncomePlanListResponse(BaseModel):
     month: str
     total_active_amount_cents: NonNegativeMoneyAggregate
     scheduled_amount_cents: NonNegativeMoneyAggregate
+    effective_plan_count: int

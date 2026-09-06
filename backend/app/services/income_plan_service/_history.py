@@ -38,7 +38,7 @@ def income_change_month(
 
 
 def require_forward_income_month(db: Session, plan: MonthlyIncomePlan, period: date) -> None:
-    latest = db.scalar(select(func.max(IncomePlanRevision.effective_month)).where(
+    latest = db.scalar(select(func.max(IncomePlanRevision.intent_month)).where(
         IncomePlanRevision.tenant_id == plan.tenant_id, IncomePlanRevision.plan_id == plan.id,
     ))
     if latest is not None and period < latest:

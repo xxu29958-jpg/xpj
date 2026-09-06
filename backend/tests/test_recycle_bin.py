@@ -31,6 +31,7 @@ from app.services.goal_service import archive_goal
 from app.services.income_plan_service import archive_income_plan, create_income_plan
 from app.services.recurring_service import archive_recurring_item
 from app.services.soft_delete_policy import recycle_bin_retention_delta
+from app.services.spending_contract_service import current_accounting_month
 from app.services.time_service import now_utc
 from tests._infra.currency import activate_test_currency_authority
 
@@ -198,14 +199,14 @@ def test_recycle_bin_api_restores_archived_income(
         "/api/recycle-bin/restore",
         headers=identity.app_headers,
         json={
-            "kind": "income_plan",
+            "kind": "income_plan", "intent_month": current_accounting_month(),
             "resource_id": public_id,
             "expected_row_version": row_version,
         },
     )
 
     assert response.status_code == 200
-    assert response.json()["message"] == "收入记录已恢复。"
+    assert response.json()["message"] == "收入计划已恢复。"
     with SessionLocal() as db:
         status = db.scalar(
             select(MonthlyIncomePlan.status).where(
@@ -257,7 +258,7 @@ def test_web_recycle_bin_lists_and_restores_income(
     restore_response = web_client.post(
         "/web/recycle-bin/restore",
         data={
-            "kind": "income_plan",
+            "kind": "income_plan", "intent_month": current_accounting_month(),
             "resource_id": public_id,
             "expected_row_version": str(row_version),
         },

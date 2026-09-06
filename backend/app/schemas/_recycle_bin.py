@@ -25,6 +25,7 @@ class RecycleBinItemResponse(BaseModel):
     removed_at: datetime | None
     retention_label: str
     expected_row_version: int | None
+    restore_intent_month: str | None = None
 
     @field_serializer("removed_at")
     def serialize_removed_at(self, value: datetime | None) -> str | None:
@@ -42,6 +43,7 @@ class RecycleBinRestoreRequest(BaseModel):
     kind: str = Field(min_length=1, max_length=32)
     resource_id: str = Field(min_length=1, max_length=64)
     expected_row_version: int | None = None
+    intent_month: str | None = Field(default=None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
 
 
 class RecycleBinRestoreResponse(BaseModel):
