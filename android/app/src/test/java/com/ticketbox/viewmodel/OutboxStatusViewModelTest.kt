@@ -7,6 +7,7 @@ import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.DebtCreationRepository
 import com.ticketbox.data.repository.DebtAdjustmentRepository
+import com.ticketbox.data.repository.DebtAdjustmentPayload
 import com.ticketbox.data.repository.FakeApiService
 import com.ticketbox.data.repository.FakeApiServiceFactory
 import com.ticketbox.data.repository.FakeExpenseDao
@@ -15,11 +16,13 @@ import com.ticketbox.data.repository.TestSessionFixture
 import com.ticketbox.data.repository.OutboxRepository
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.IncomePlanRepository
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.testOutboxRepository
 import com.ticketbox.data.repository.testApiServiceProvider
 import com.ticketbox.data.repository.testServerSessionBinding
 import com.ticketbox.data.repository.boundSettingsStore
 import com.ticketbox.domain.model.MessageTone
+import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -148,6 +151,21 @@ class OutboxStatusViewModelTest {
         assertNull(vm.uiState.value.debtAdjustments[id])
     }
 
+    private fun assertOriginalAdjustmentContext(
+        intent: DebtAdjustmentPayload,
+        debt: Debt,
+        binding: LogicalSessionBinding,
+    ) {
+        assertEquals(debt.publicId, intent.subject.publicId)
+        assertEquals(debt.counterpartyLabel, intent.subject.label)
+        assertEquals(debt.homeCurrencyCode, intent.subject.homeCurrencyCode)
+        assertEquals(-5_000L, intent.request.amountCents)
+        assertEquals("减免", intent.request.reason)
+        assertEquals(7L, intent.request.expectedRowVersion)
+        assertEquals(binding.sessionGeneration, intent.originSessionGeneration)
+        assertEquals(binding.bindingRevision, intent.originBindingRevision)
+    }
+
     @Test
     fun reopenedSyncStatusKeepsOriginalAdjustmentContextWhilePendingThenInFlight() = runTest(dispatcher) {
         val harness = harness()
@@ -170,14 +188,7 @@ class OutboxStatusViewModelTest {
         assertEquals(0, pending.row.retryCount)
         assertNotNull(pending.row.idempotencyKey)
         val intent = assertNotNull(pending.intent)
-        assertEquals(debt.publicId, intent.subject.publicId)
-        assertEquals(debt.counterpartyLabel, intent.subject.label)
-        assertEquals(debt.homeCurrencyCode, intent.subject.homeCurrencyCode)
-        assertEquals(-5_000L, intent.request.amountCents)
-        assertEquals("减免", intent.request.reason)
-        assertEquals(7L, intent.request.expectedRowVersion)
-        assertEquals(binding.sessionGeneration, intent.originSessionGeneration)
-        assertEquals(binding.bindingRevision, intent.originBindingRevision)
+        assertOriginalAdjustmentContext(intent, debt, binding)
         assertTrue(vm.uiState.value.status.failed.isEmpty())
         assertTrue(vm.uiState.value.status.conflicts.isEmpty())
 

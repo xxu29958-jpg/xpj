@@ -151,9 +151,7 @@ private fun SyncStatusPageBody(
     if (status.conflicts.isNotEmpty()) {
         SettingsSection(title = stringResource(R.string.sync_status_section_needs_action), icon = Icons.Filled.SyncProblem) {
             status.conflicts.forEach { row ->
-                state.recurringOccurrences[row.id]?.let { com.ticketbox.ui.screens.recurring.RecurringOccurrenceIntentSummary(it) }
-                state.incomeEdits[row.id]?.let { com.ticketbox.ui.screens.IncomePlanIntentSummary(it) }
-                state.debtAdjustments[row.id]?.let { com.ticketbox.ui.screens.DebtAdjustmentIntentSummary(it) }
+                SyncStatusOriginalIntentSummary(row, state)
                 ConflictCard(
                     row = row,
                     busy = state.busyRowId == row.id,
@@ -167,9 +165,7 @@ private fun SyncStatusPageBody(
     if (status.failed.isNotEmpty()) {
         SettingsSection(title = stringResource(R.string.sync_status_section_failed), icon = Icons.Filled.ErrorOutline) {
             status.failed.forEach { row ->
-                state.recurringOccurrences[row.id]?.let { com.ticketbox.ui.screens.recurring.RecurringOccurrenceIntentSummary(it) }
-                state.incomeEdits[row.id]?.let { com.ticketbox.ui.screens.IncomePlanIntentSummary(it) }
-                state.debtAdjustments[row.id]?.let { com.ticketbox.ui.screens.DebtAdjustmentIntentSummary(it) }
+                SyncStatusOriginalIntentSummary(row, state)
                 FailedCard(
                     row = row,
                     debtCreation = state.failedDebtCreations[row.id],
