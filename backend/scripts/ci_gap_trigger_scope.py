@@ -278,6 +278,11 @@ _DESKTOP_BACKEND_CONSUMER_FILES = {
 }
 _DESKTOP_PAIRING_PRODUCER_FILES = {
     "backend/app/routes/auth.py",
+    "backend/app/routes/devices.py",
+    "backend/app/routes/ledgers.py",
+    "backend/app/routes/desktop.py",
+    "backend/app/services/owner_device_service.py",
+    "backend/app/services/desktop_switch_service.py",
     "backend/app/schemas/_identity.py",
     "backend/app/services/desktop_activation_service.py",
     "backend/app/services/session_lifecycle_service.py",

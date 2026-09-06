@@ -273,6 +273,11 @@ def test_real_desktop_backend_consumers_require_the_native_postgres_lane() -> No
 def test_desktop_pairing_producers_require_the_real_desktop_consumer() -> None:
     for path in (
         "backend/app/routes/auth.py",
+        "backend/app/routes/devices.py",
+        "backend/app/routes/ledgers.py",
+        "backend/app/routes/desktop.py",
+        "backend/app/services/owner_device_service.py",
+        "backend/app/services/desktop_switch_service.py",
         "backend/app/schemas/_identity.py",
         "backend/app/services/desktop_activation_service.py",
         "backend/app/services/session_lifecycle_service.py",
