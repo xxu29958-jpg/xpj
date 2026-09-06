@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -18,13 +19,14 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
+import com.ticketbox.ui.components.AppActionRow
 import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppFilterChipOptions
+import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.ui.components.AppSheetAction
-import com.ticketbox.ui.components.AppSheetActionRow
 import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.AppTextInput
@@ -67,8 +69,16 @@ private fun DebtDraftForm(
     onSubmit: () -> Unit,
     onCancel: () -> Unit,
 ) {
+    Column(modifier = Modifier.imePadding()) {
+        DebtDraftFields(state, viewModel, modifier = Modifier.weight(1f, fill = false))
+        DebtDraftActions(state, onSubmit = onSubmit, onCancel = onCancel, onRetry = viewModel::refresh)
+    }
+}
+
+@Composable
+private fun DebtDraftFields(state: DebtListUiState, viewModel: DebtListViewModel, modifier: Modifier) {
     val draft = state.addDraft
-    AppSheetScaffold(title = stringResource(R.string.debt_create_sheet_title)) {
+    AppSheetScaffold(title = stringResource(R.string.debt_create_sheet_title), modifier = modifier) {
         DebtDirectionField(selected = draft.direction, enabled = !state.isSubmitting, onSelect = viewModel::updateDraftDirection)
         AppTextInput(
             state = AppTextInputState(
@@ -97,14 +107,26 @@ private fun DebtDraftForm(
         DebtContextField(draft = draft, enabled = !state.isSubmitting, onValueChange = viewModel::updateDraftNote)
         DebtInstallmentCountField(kind = draft.kind, countInput = draft.installmentCountInput, enabled = !state.isSubmitting, onValueChange = viewModel::updateDraftInstallmentCount)
         DebtInstallmentPeriodField(kind = draft.kind, periodInput = draft.installmentPeriodInput, enabled = !state.isSubmitting, onValueChange = viewModel::updateDraftInstallmentPeriod)
-        draft.validationError?.let { err ->
+    }
+}
+
+@Composable
+private fun DebtDraftActions(
+    state: DebtListUiState,
+    onSubmit: () -> Unit,
+    onCancel: () -> Unit,
+    onRetry: () -> Unit,
+) {
+    AppFloatingActionBar {
+        state.addDraft.validationError?.let { err ->
             AppStatusBanner(message = err, tone = MessageTone.Danger)
         }
         // 空账本 fail closed（PR#255 R4 P1）：列表加载完成但币种仍无 record 级权威依据
         // （空账本）时，说明创建为何禁用 —— 兜底 CNY 口径提交会放大零小数账本 100×。
         // R1 用户可见重试：加载失败同样走到这里，refresh 重试保留草稿、不碰提交门。
-        DebtCreateCurrencyStatus(state = state, onRetry = viewModel::refresh)
-        AppSheetActionRow(
+        DebtCreateCurrencyStatus(state = state, onRetry = onRetry)
+        AppActionRow(
+            showDivider = false,
             primary = AppSheetAction(
                 text = if (state.isSubmitting) {
                     stringResource(R.string.debt_create_submitting)
