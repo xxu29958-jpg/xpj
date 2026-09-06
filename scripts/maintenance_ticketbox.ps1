@@ -28,22 +28,28 @@ $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
-[Uri]$maintenanceUri = $null
-if (-not [Uri]::TryCreate($ServerUrl, [UriKind]::Absolute, [ref]$maintenanceUri) -or
-    $maintenanceUri.Scheme -notin @('http', 'https') -or
-    $maintenanceUri.UserInfo -ne '' -or $maintenanceUri.AbsolutePath -ne '/' -or
-    $maintenanceUri.Query -ne '' -or $maintenanceUri.Fragment -ne '') {
-    throw [ArgumentException]::new('ServerUrl 必须是无登录信息、路径、查询或片段的本机 HTTP(S) 环回根地址。', 'ServerUrl')
-}
-[System.Net.IPAddress]$maintenanceAddress = $null
-$isLoopback = $maintenanceUri.DnsSafeHost -eq 'localhost' -or (
-    [System.Net.IPAddress]::TryParse($maintenanceUri.DnsSafeHost, [ref]$maintenanceAddress) -and
-    [System.Net.IPAddress]::IsLoopback($maintenanceAddress)
-)
-if (-not $isLoopback) {
-    throw [ArgumentException]::new('ServerUrl 仅支持本机环回地址。', 'ServerUrl')
+function Resolve-MaintenanceUri {
+    param([string]$ServerUrl)
+
+    [Uri]$maintenanceUri = $null
+    if (-not [Uri]::TryCreate($ServerUrl, [UriKind]::Absolute, [ref]$maintenanceUri) -or
+        $maintenanceUri.Scheme -notin @('http', 'https') -or
+        $maintenanceUri.UserInfo -ne '' -or $maintenanceUri.AbsolutePath -ne '/' -or
+        $maintenanceUri.Query -ne '' -or $maintenanceUri.Fragment -ne '') {
+        throw [ArgumentException]::new('ServerUrl 必须是无登录信息、路径、查询或片段的本机 HTTP(S) 环回根地址。', 'ServerUrl')
+    }
+    [System.Net.IPAddress]$maintenanceAddress = $null
+    $isLoopback = $maintenanceUri.DnsSafeHost -eq 'localhost' -or (
+        [System.Net.IPAddress]::TryParse($maintenanceUri.DnsSafeHost, [ref]$maintenanceAddress) -and
+        [System.Net.IPAddress]::IsLoopback($maintenanceAddress)
+    )
+    if (-not $isLoopback) {
+        throw [ArgumentException]::new('ServerUrl 仅支持本机环回地址。', 'ServerUrl')
+    }
+    return $maintenanceUri
 }
 
+[Uri]$maintenanceUri = Resolve-MaintenanceUri -ServerUrl $ServerUrl
 $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $BackendRoot = Join-Path $ProjectRoot "backend"
 $BaseUrl = $maintenanceUri.OriginalString.TrimEnd('/')
