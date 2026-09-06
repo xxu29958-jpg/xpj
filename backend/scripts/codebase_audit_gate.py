@@ -131,7 +131,7 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # main. See ``_audit_pr_delta_metrics.py`` docstring for what each
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
-    "mutate_token_carriers": 106,
+    "mutate_token_carriers": 105,
     "mutate_token_exempted": 129,
     "mutate_token_reason_admin_single_writer": 10,
     "mutate_token_reason_append_only_fact": 4,
@@ -172,6 +172,14 @@ BASELINE_RATCHET_DOWN: frozenset[str] = frozenset(
         "mutate_token_exempted",
     }
 )
+_OWNER_RECYCLE_CARRIER_RETIREMENT = (
+    "5436e40dddf437614ec01bf5703a5d5ce8197be3",
+    106,
+    105,
+)
+# The separate Owner business restore route is physically removed. Its entry
+# uses the existing Web/API restore owner, whose OCC remains required. This
+# exact base/count hop cannot authorize another endpoint losing its token.
 _A3_MUTATE_TOKEN_EXEMPTION_GRANDFATHER = (
     "0a0d2be96e5786ffcaa65588f960dea291098abd",
     128,
@@ -331,7 +339,11 @@ def _compute_ratchet_findings(
                 _WINDOWS_VNEXT_CONTROL_PLANE_TEST_RETIREMENT_GRANDFATHER,
             )
         )
-        if key in BASELINE_RATCHET_UP and current_val < base_val and not test_retirement:
+        carrier_retirement = (
+            key == "mutate_token_carriers"
+            and (base_commit, base_val, current_val) == _OWNER_RECYCLE_CARRIER_RETIREMENT
+        )
+        if key in BASELINE_RATCHET_UP and current_val < base_val and not (test_retirement or carrier_retirement):
             movement_violations.append(
                 f"  - {key} (UP-only): base={base_val}, current={current_val} "
                 f"(dropped by {base_val - current_val}). Tests/coverage should "

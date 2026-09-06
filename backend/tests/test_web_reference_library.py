@@ -166,7 +166,7 @@ def test_custom_category_choice_can_be_removed_without_rewriting_history(
     recycle = web_client.get("/web/recycle-bin?ledger_id=owner")
     assert recycle.status_code == 200
     assert "咖啡" in recycle.text
-    assert "整个账本" in recycle.text
+    assert f'data-restore-key="category_preference:{preference.public_id}"' in recycle.text
 
 
 def test_stale_category_removal_keeps_the_current_owner_retryable(

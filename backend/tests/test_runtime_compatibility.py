@@ -198,11 +198,7 @@ def test_product_presentation_paths_do_not_fall_back_to_runtime_env() -> None:
     service_files = [
         _BACKEND_ROOT / "app" / "services" / "budget_advisor_service" / "_runner.py",
         _BACKEND_ROOT / "app" / "services" / "owner_console_service" / "_index.py",
-        _BACKEND_ROOT
-        / "app"
-        / "services"
-        / "owner_console_service"
-        / "_recycle_bin.py",
+        _BACKEND_ROOT / "app" / "services" / "recycle_bin_service.py",
         _BACKEND_ROOT / "app" / "services" / "reports_service" / "_api.py",
         _BACKEND_ROOT / "app" / "services" / "web_stats_service.py",
     ]
