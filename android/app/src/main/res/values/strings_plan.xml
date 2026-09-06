@@ -31,14 +31,14 @@
     <string name="plan_income_loading">正在读取收入安排</string>
     <string name="plan_income_error">收入计划暂时无法读取</string>
     <string name="plan_income_empty">还没有收入安排</string>
-    <string name="plan_income_summary">本月 %1$d 项有效 · 预计 %2$s · 历史 %3$d 条</string>
+    <string name="plan_income_summary">本月 %1$d 项有效 · 预计 %2$s</string>
     <!-- W2-C：入口行动词统一为 chevron（旧 设置/调整/查看/管理/打开/读取中 动词族退役）。 -->
     <string name="budget_advice_page_title">预算建议</string>
     <string name="budget_advice_page_subtitle">%1$s · 收支结构与分类额度</string>
     <string name="budget_advice_back_to_plan">返回计划</string>
     <string name="budget_advice_start_title">生成本月建议</string>
     <string name="budget_advice_start_body">根据收入计划、固定支出和已入账消费的汇总结构，给出可逐项审阅的分类额度建议。建议不会自动修改预算。</string>
-    <string name="budget_advice_privacy_note">仅发送汇总结构：收支与分类合计，以及每项收入计划的类型、金额和到账日；不发送商家名称或家庭成员明细。</string>
+    <string name="budget_advice_privacy_note">仅发送汇总结构：收支与分类合计，以及每项收入计划的类型、金额和预计日期；不发送商家名称或家庭成员明细。</string>
     <string name="budget_advice_generate">生成预算建议</string>
     <string name="budget_advice_loading_title">正在整理本月收支结构</string>
     <string name="budget_advice_loading_body">建议生成完成前，你可以离开此页，现有预算不会发生变化。</string>

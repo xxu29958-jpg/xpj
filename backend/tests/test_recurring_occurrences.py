@@ -8,8 +8,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import LedgerMember, MonthlyIncomePlan
+from app.models import LedgerMember
 from app.services.currency_binding_service import resolve_write_capability
+from app.services.income_plan_service import create_income_plan
 from tests.test_bill_split import _seed_receiver
 from tests.test_bill_split_security_regressions import _bearer_for_account_ledger
 
@@ -45,12 +46,8 @@ def test_recurring_payment_reconciles_reservation_and_replays_once(
 ) -> None:
     with SessionLocal() as db:
         resolve_write_capability(db)
-        db.add(MonthlyIncomePlan(
-            tenant_id="owner", label="计划工资", source_type="salary",
-            amount_cents=100_000, pay_day=1, status="active",
-            frequency="one_time", income_month="2026-09",
-        ))
-        db.commit()
+        create_income_plan(db, tenant_id="owner", label="计划工资", source_type="salary",
+            amount_cents=100_000, pay_day=1, frequency="one_time", income_month="2026-09")
     series = _create_series(client, identity)
     payment = _payment(client, identity)
     path = f"/api/recurring/items/{series['public_id']}/occurrences/2026-09"

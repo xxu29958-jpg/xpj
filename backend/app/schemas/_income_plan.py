@@ -22,6 +22,7 @@ __all__ = [
 class IncomePlanCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    intent_month: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
     label: str = Field(min_length=1, max_length=64)
     source_type: str = Field(default="salary", min_length=1, max_length=32)
     frequency: Literal["monthly", "one_time"] = "monthly"
@@ -45,6 +46,7 @@ class IncomePlanUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     expected_row_version: int
+    intent_month: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
     label: str | None = Field(default=None, min_length=1, max_length=64)
     source_type: str | None = Field(default=None, min_length=1, max_length=32)
     frequency: Literal["monthly", "one_time"] | None = None
@@ -67,6 +69,7 @@ class IncomePlanTokenRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     expected_row_version: int
+    intent_month: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
 
 
 class IncomePlanResponse(BaseModel):
@@ -90,4 +93,8 @@ class IncomePlanResponse(BaseModel):
 
 class IncomePlanListResponse(BaseModel):
     items: list[IncomePlanResponse]
+    month: str
     total_active_amount_cents: NonNegativeMoneyAggregate
+    expected_amount_cents: NonNegativeMoneyAggregate
+    scheduled_amount_cents: NonNegativeMoneyAggregate
+    effective_plan_count: int

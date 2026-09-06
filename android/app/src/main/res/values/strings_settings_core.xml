@@ -284,7 +284,7 @@
     <string name="sync_status_mutation_update_merchant_alias">修改商家别名</string>
     <string name="sync_status_mutation_delete_merchant_alias">删除商家别名</string>
     <string name="sync_status_mutation_update_goal">修改目标</string>
-    <string name="sync_status_mutation_update_income_plan">修改收入记录</string>
+    <string name="sync_status_mutation_update_income_plan">修改收入计划</string>
     <string name="sync_status_mutation_create_recurring_item">新建固定支出</string>
     <string name="sync_status_mutation_update_recurring_item">修改固定支出</string>
     <string name="sync_status_mutation_create_expense_offset">登记退回或冲销</string>
@@ -296,5 +296,6 @@
     <string name="sync_status_error_no_dispatcher">App 版本不支持此操作,请升级后再重试。</string>
     <string name="sync_status_error_expired">这笔改动太久没能同步,已过期,请重新操作。</string>
     <string name="sync_status_error_rule_category_deleted">目标分类已移入回收站。请先在资料库回收站恢复该分类，再重试。</string>
+    <string name="sync_status_error_protocol_mismatch">客户端与服务器版本不匹配。原提交已保留，请更新为配套版本后重试。</string>
 
 </resources>

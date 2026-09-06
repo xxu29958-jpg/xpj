@@ -80,7 +80,7 @@ class PatchExpenseDispatcher(
             val updated = apiProvider(row).updateExpense(expenseRef, request, idempotencyKey)
             DispatchResult.Success(newRowVersion = updated.rowVersion)
         } catch (e: HttpException) {
-            mapHttpException(e)
+            mapOutboxHttpException(e)
         } catch (e: IOException) {
             // Network blip / connection reset / read timeout — the
             // server probably never saw the request. Retry on the
@@ -94,57 +94,5 @@ class PatchExpenseDispatcher(
         } catch (e: Exception) {
             DispatchResult.Failure(e.message ?: "PATCH expense threw")
         }
-    }
-
-    private fun mapHttpException(e: HttpException): DispatchResult {
-        val body = e.response()?.errorBody()?.string().orEmpty()
-        val message = extractServerMessage(body) ?: e.message().orEmpty()
-        return when (e.code()) {
-            409 -> when {
-                // ADR-0038 contract: only ``state_conflict`` becomes a
-                // user-visible CONFLICT row.
-                "state_conflict" in body -> DispatchResult.Conflict(message)
-                // ADR-0042: a concurrent same-key request is still mid-flight
-                // (claimed, not yet committed). The committed-but-unseen replay
-                // will HIT once it lands — retry on the next tick, don't drop.
-                "idempotency_key_in_progress" in body ->
-                    DispatchResult.RetryableFailure(message.ifEmpty { "idempotency key in progress" })
-                // Other 409s (e.g. ``items_sum_not_in_mismatch``) are structural
-                // and belong in Discarded.
-                else -> DispatchResult.Discarded(message)
-            }
-            // [codex finding P1#3] fix: transient server errors are
-            // retryable, not terminal. The drain engine puts the
-            // row back to PENDING so the next tick gives it another
-            // chance.
-            in 500..599, 408, 429 -> DispatchResult.RetryableFailure(
-                message.ifEmpty { "server ${e.code()}" },
-            )
-            // 404: the target row is GONE (deleted / rejected / not-found),
-            // so the mutation is moot — silent discard is correct.
-            404 -> DispatchResult.Discarded(message)
-            // 422: a validation / payload-contract rejection (invalid_request,
-            // malformed body, constraint violation, idempotency_key_reused).
-            // It will never succeed on retry, but the user MUST see it —
-            // surface a visible FAILED row, not a silent Discard that drops
-            // their offline edit.
-            422 -> DispatchResult.Failure(message)
-            else -> DispatchResult.Failure(message.ifEmpty { "HTTP ${e.code()}" })
-        }
-    }
-
-    /**
-     * Pull the Chinese ``message`` out of the AppError JSON envelope
-     * ``{"error":"state_conflict","message":"账单已在其它端被修改"}``.
-     * Avoids a heavier Moshi adapter for a one-field probe.
-     */
-    private fun extractServerMessage(body: String): String? {
-        val key = "\"message\":\""
-        val start = body.indexOf(key)
-        if (start < 0) return null
-        val begin = start + key.length
-        val end = body.indexOf('"', begin)
-        if (end < 0) return null
-        return body.substring(begin, end)
     }
 }

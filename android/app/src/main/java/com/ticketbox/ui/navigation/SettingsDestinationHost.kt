@@ -122,6 +122,7 @@ internal data class SettingsRouteRepositories(
     val debtCreationRepository: DebtCreationActions,
     val activeLedgerId: String?,
     val recurringOccurrences: com.ticketbox.data.repository.RecurringOccurrenceActions? = null,
+    val incomePlans: com.ticketbox.data.repository.IncomePlanActions,
 )
 
 @Composable
@@ -375,6 +376,7 @@ internal fun SettingsDestinationHost(
                     repositories.expenseRepository,
                     repositories.debtCreationRepository,
                     repositories.recurringOccurrences,
+                    repositories.incomePlans,
                 ),
             )
             SyncStatusScreen(

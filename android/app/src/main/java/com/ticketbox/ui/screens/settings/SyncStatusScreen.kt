@@ -117,10 +117,10 @@ internal fun SyncStatusScreenContent(
             state = state,
             actions = actions.copy(
                 onDropMine = { confirmingDrop = SyncStatusDropSelection(it, failed = false, debtCreation = null,
-                    recurringOccurrence = state.recurringOccurrences[it.id]) },
+                    recurringOccurrence = state.recurringOccurrences[it.id], incomeEdit = state.incomeEdits[it.id]) },
                 onDropFailed = { row ->
                     confirmingDrop = SyncStatusDropSelection(row, failed = true, debtCreation = state.failedDebtCreations[row.id],
-                        recurringOccurrence = state.recurringOccurrences[row.id])
+                        recurringOccurrence = state.recurringOccurrences[row.id], incomeEdit = state.incomeEdits[row.id])
                 },
                 onClearQuarantined = { confirmingClearQuarantined = true },
             ),
@@ -136,40 +136,17 @@ private fun SyncStatusPageBody(
     val status = state.status
     SyncStatusOverviewSection(status)
 
-    if (status.quarantinedCount > 0) {
-        SettingsSection(
-            title = stringResource(R.string.sync_status_section_quarantined),
-            icon = Icons.Filled.SyncProblem,
-        ) {
-            SettingsOpenPanel {
-                Text(
-                    text = stringResource(
-                        R.string.sync_status_quarantined_body,
-                        status.quarantinedCount,
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                AppAdaptiveTrailingActionRow {
-                    AppOutlinedButton(
-                        modifier = it,
-                        onClick = actions.onClearQuarantined,
-                        options = AppOutlinedButtonOptions(
-                            enabled = !state.isClearingQuarantine && state.busyRowId == null,
-                            danger = true,
-                        ),
-                    ) {
-                        Text(stringResource(R.string.sync_status_quarantined_remove_button))
-                    }
-                }
-            }
-        }
-    }
+    SyncStatusQuarantineSection(
+        count = status.quarantinedCount,
+        clearEnabled = !state.isClearingQuarantine && state.busyRowId == null,
+        onClear = actions.onClearQuarantined,
+    )
 
     if (status.conflicts.isNotEmpty()) {
         SettingsSection(title = stringResource(R.string.sync_status_section_needs_action), icon = Icons.Filled.SyncProblem) {
             status.conflicts.forEach { row ->
                 state.recurringOccurrences[row.id]?.let { com.ticketbox.ui.screens.recurring.RecurringOccurrenceIntentSummary(it) }
+                state.incomeEdits[row.id]?.let { com.ticketbox.ui.screens.IncomePlanIntentSummary(it) }
                 ConflictCard(
                     row = row,
                     busy = state.busyRowId == row.id,
@@ -184,13 +161,49 @@ private fun SyncStatusPageBody(
         SettingsSection(title = stringResource(R.string.sync_status_section_failed), icon = Icons.Filled.ErrorOutline) {
             status.failed.forEach { row ->
                 state.recurringOccurrences[row.id]?.let { com.ticketbox.ui.screens.recurring.RecurringOccurrenceIntentSummary(it) }
+                state.incomeEdits[row.id]?.let { com.ticketbox.ui.screens.IncomePlanIntentSummary(it) }
                 FailedCard(
                     row = row,
                     debtCreation = state.failedDebtCreations[row.id],
                     busy = state.busyRowId == row.id,
-                    onRetry = { actions.onRetry(row) },
+                    onRetry = { actions.onRetry(row) }.takeIf {
+                        row.type != PendingMutationType.UpdateIncomePlan || state.incomeEdits[row.id]?.hasSupportedIntent == true
+                    },
                     onDrop = { actions.onDropFailed(row) },
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SyncStatusQuarantineSection(count: Int, clearEnabled: Boolean, onClear: () -> Unit) {
+    if (count > 0) {
+        SettingsSection(
+            title = stringResource(R.string.sync_status_section_quarantined),
+            icon = Icons.Filled.SyncProblem,
+        ) {
+            SettingsOpenPanel {
+                Text(
+                    text = stringResource(
+                        R.string.sync_status_quarantined_body,
+                        count,
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                AppAdaptiveTrailingActionRow {
+                    AppOutlinedButton(
+                        modifier = it,
+                        onClick = onClear,
+                        options = AppOutlinedButtonOptions(
+                            enabled = clearEnabled,
+                            danger = true,
+                        ),
+                    ) {
+                        Text(stringResource(R.string.sync_status_quarantined_remove_button))
+                    }
+                }
             }
         }
     }
@@ -248,7 +261,7 @@ private fun FailedCard(
     row: OutboxRow,
     debtCreation: PendingDebtCreation?,
     busy: Boolean,
-    onRetry: () -> Unit,
+    onRetry: (() -> Unit)?,
     onDrop: () -> Unit,
 ) {
     // Expired rows cannot be retried because the server-side idempotency key may be gone.
@@ -274,7 +287,7 @@ private fun FailedCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             SyncStatusRecoveryActions(
-                primary = if (expired) {
+                primary = if (expired || onRetry == null) {
                     null
                 } else {
                     SyncStatusActionButton(
@@ -412,6 +425,8 @@ private fun friendlyLastError(raw: String?, fallback: String): String {
 }
 
 internal val syncStatusExactErrorMessageResources = mapOf(
+    "runtime_version_mismatch" to R.string.sync_status_error_protocol_mismatch,
+    "client_upgrade_required" to R.string.sync_status_error_protocol_mismatch,
     "rule_category_deleted" to R.string.sync_status_error_rule_category_deleted,
     "debt_create_payload_unsupported" to R.string.debt_create_pending_unsupported,
     "debt_create_intent_invalid" to R.string.debt_create_sync_rejected,

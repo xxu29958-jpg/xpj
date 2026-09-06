@@ -353,8 +353,9 @@ fun outboxStatusViewModelFactory(
     expenseRepository: ExpenseRepository,
     debtCreation: DebtCreationActions,
     recurringOccurrences: com.ticketbox.data.repository.RecurringOccurrenceActions? = null,
+    incomePlans: com.ticketbox.data.repository.IncomePlanActions,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return OutboxStatusViewModel(outbox, expenseRepository, debtCreation, recurringOccurrences) as T
+        return OutboxStatusViewModel(outbox, expenseRepository, debtCreation, recurringOccurrences, incomePlans) as T
     }
 }

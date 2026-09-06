@@ -3,29 +3,29 @@
 <resources xmlns:tools="http://schemas.android.com/tools" tools:locale="zh">
 
     <!-- IncomePlanScreen：收入计划 -->
-    <string name="income_plan_topbar_title">收入记录</string>
+    <string name="income_plan_topbar_title">收入计划</string>
     <string name="income_plan_topbar_back">返回</string>
     <string name="income_plan_fab_add">添加收入</string>
     <string name="income_plan_intro_body">补录工资、奖金和接单到账；真正稳定的收入再设为每月固定。</string>
-    <string name="income_plan_section_active">已记录</string>
+    <string name="income_plan_section_active">在用计划</string>
     <string name="income_plan_card_archive_action">归档</string>
     <string name="income_plan_section_archived">已归档</string>
     <string name="income_plan_card_restore_action">恢复</string>
-    <string name="income_plan_card_payday">每月 %1$d 号</string>
-    <string name="income_plan_card_one_time_day">%1$s · %2$d 号</string>
-    <string name="income_plan_empty_title">还没有收入记录</string>
+    <string name="income_plan_card_payday">每月预计 %1$d 号</string>
+    <string name="income_plan_card_one_time_day">预计 %1$s · %2$d 号</string>
+    <string name="income_plan_empty_title">还没有收入计划</string>
     <string name="income_plan_empty_body">先补一笔本月工资或其它到账，「本月可自由支配」才会扣掉已有花销重新算。</string>
-    <string name="income_plan_sheet_title">添加收入</string>
+    <string name="income_plan_sheet_title">添加收入计划</string>
     <string name="income_plan_sheet_label_name">名称</string>
     <string name="income_plan_sheet_label_type">类型</string>
-    <string name="income_plan_sheet_label_frequency">入账方式</string>
-    <string name="income_plan_sheet_label_income_month">到账月份</string>
+    <string name="income_plan_sheet_label_frequency">预计频率</string>
+    <string name="income_plan_sheet_label_income_month">预计月份</string>
     <string name="income_plan_month_previous">上个月</string>
     <string name="income_plan_month_next">下个月</string>
-    <string name="income_plan_sheet_label_amount_monthly">金额（元 / 月）</string>
-    <string name="income_plan_sheet_label_amount_one_time">金额（元）</string>
-    <string name="income_plan_sheet_label_payday">发薪日 (1-31)</string>
-    <string name="income_plan_sheet_label_arrival_day">到账日 (1-31)</string>
+    <string name="income_plan_sheet_label_amount_monthly">预计金额（元 / 月）</string>
+    <string name="income_plan_sheet_label_amount_one_time">预计金额（元）</string>
+    <string name="income_plan_sheet_label_payday">每月预计日期 (1-31)</string>
+    <string name="income_plan_sheet_label_arrival_day">预计日期 (1-31)</string>
     <string name="income_plan_sheet_submitting">提交中…</string>
     <string name="income_plan_sheet_save">保存</string>
     <string name="income_plan_source_salary">工资</string>
@@ -115,18 +115,18 @@
     <string name="auth_header_app_label">小票夹</string>
 
     <!-- IncomePlanViewModel：收入计划 VM 状态/结果文案（ADR-0044 wave 2） -->
-    <string name="income_plan_load_failed">加载收入记录失败。</string>
-    <string name="income_plan_archived_load_failed">归档收入暂时打不开。</string>
-    <string name="income_plan_loading_title">正在读取收入记录</string>
-    <string name="income_plan_loading_body">会重新读取到账与固定收入。</string>
-    <string name="income_plan_load_failed_hint">刷新后再显示本月到账与收入记录。</string>
-    <string name="income_plan_validation_error">请填写名称、合法金额、日期；单笔收入还要填到账月份。</string>
-    <string name="income_plan_added">已添加收入</string>
+    <string name="income_plan_load_failed">加载收入计划失败。</string>
+    <string name="income_plan_archived_load_failed">已归档的收入计划暂时打不开。</string>
+    <string name="income_plan_loading_title">正在读取收入计划</string>
+    <string name="income_plan_loading_body">会重新读取每月计划与单次预计收入。</string>
+    <string name="income_plan_load_failed_hint">刷新后再显示收入计划与本月预计收入。</string>
+    <string name="income_plan_validation_error">请填写名称、合法预计金额和预计日期；单次计划还要选择预计月份。</string>
+    <string name="income_plan_added">已添加收入计划</string>
     <string name="income_plan_add_failed">添加失败，请稍后重试。</string>
     <string name="income_plan_updated">已更新收入</string>
     <string name="income_plan_update_failed">更新失败，请稍后重试。</string>
-    <string name="income_plan_archived">已归档</string>
-    <string name="income_plan_restored">已恢复</string>
+    <string name="income_plan_archived">已归档收入计划</string>
+    <string name="income_plan_restored">已恢复收入计划</string>
 
     <!-- GlobalSearchViewModel：全局搜索 VM 状态/命中字段标签（ADR-0044 wave 2） -->
     <string name="global_search_pending_load_failed">待确认账单暂时无法加载，已显示已确认账单。</string>
@@ -157,10 +157,10 @@
     <!-- IncomePlanScreen：二级页收口文案（短标签，避免说明书式段落） -->
     <string name="income_plan_header_subtitle_compact">每月固定与单笔预计</string>
     <string name="income_plan_add_action_short">添加</string>
-    <string name="income_plan_total_meta">已记录 %1$d 项</string>
+    <string name="income_plan_total_meta">收入计划 %1$d 项</string>
     <string name="income_plan_empty_body_compact">添加第一笔收入计划。</string>
     <!-- W2-C 收入编辑与 hero 口径：预计=现有本月计划合计投影；截至今日=服务端按计划公式 aggregate -->
-    <string name="income_plan_edit_sheet_title">编辑收入</string>
+    <string name="income_plan_edit_sheet_title">编辑收入计划</string>
     <string name="income_plan_edit_action">编辑</string>
     <string name="income_plan_edit_currency_preparing">正在准备金额…</string>
     <string name="income_plan_edit_currency_unavailable">金额币种暂时没确认，其它信息可以先改。</string>
@@ -169,4 +169,17 @@
     <string name="income_plan_sheet_name_placeholder">工资 / 奖金 / 接单</string>
     <string name="income_plan_sheet_day_placeholder">1-31</string>
 
+    <string name="income_plan_edit_saved_locally">修改已保存到本机，等待同步确认。</string>
+    <string name="income_plan_month_expected">%1$s 预计收入</string>
+    <string name="income_plan_intent_month_hint">本次操作月份：%1$s。每月计划从此月生效；不代表实际到账。</string>
+    <string name="income_plan_one_time_correction_hint">单次计划影响所选预计月份；修改月份会同时更正原月份和新月份的预测。</string>
+    <string name="income_plan_edit_unsupported">原提交的月份或格式无法确认，记录已保留。请核对计划后重新编辑。</string>
+    <string name="income_plan_edit_target_month">单次预计月份：%1$s</string>
+    <string name="income_plan_edit_waiting">修改已保存，等待同步确认</string>
+    <string name="income_plan_edit_attention">这次修改需要处理</string>
+    <string name="income_plan_edit_conflict">计划已发生变化。请刷新核对当前计划，放弃原提交后重新编辑。</string>
+    <string name="income_plan_edit_retry">重试原提交</string>
+    <string name="income_plan_edit_drop">放弃本机提交</string>
+    <string name="income_plan_edit_drop_explanation">这只移除本机保存的提交，不会撤销可能已在服务端完成的修改。请核对当前计划后再提交新操作。</string>
+    <string name="income_plan_edit_expired">这条修改已超过重试期限。请先刷新核对计划，再决定是否重新修改；本机记录仍然保留。</string>
 </resources>

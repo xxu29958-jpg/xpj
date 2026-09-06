@@ -96,12 +96,32 @@ class ApiClientSessionHeadersTest {
     }
 
     @Test
+    fun mismatchedProtocolNeverFallsBackToAnUnversionedIncomeMutation() {
+        var mutationSent = false
+        val client = buildApiHttpClient(null, { "tbx_session" }, { "owner" }, null, null)
+            .newBuilder().addInterceptor { chain ->
+                if (chain.request().method != "GET") mutationSent = true
+                val body = """{"api_version":"2026-08-02","write_compatibility":"compatible","capabilities":{"currency":{"request_binding":"1:1:CNY"}}}"""
+                Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1)
+                    .code(200).message("Response").body(body.toResponseBody("application/json".toMediaType())).build()
+            }.build()
+        val request = Request.Builder().url("https://example.test/api/income-plans")
+            .post("{}".toRequestBody()).build()
+
+        client.newCall(request).execute().use { response ->
+            assertEquals(409, response.code)
+            kotlin.test.assertTrue(response.body.string().contains("runtime_version_mismatch"))
+        }
+        assertFalse(mutationSent)
+    }
+
+    @Test
     fun bindingActivationRaceRemainsRetryableForTheOutbox() {
         val client = buildApiHttpClient(null, { "tbx_session" }, { "owner" }, null, null)
             .newBuilder().addInterceptor { chain ->
                 val isRead = chain.request().method == "GET"
                 val body = if (isRead) {
-                    """{"api_version":"2026-08-02","write_compatibility":"compatible","capabilities":{"currency":{"request_binding":"1:0:JPY"}}}"""
+                    """{"api_version":"$CURRENT_TICKETBOX_API_VERSION","write_compatibility":"compatible","capabilities":{"currency":{"request_binding":"1:0:JPY"}}}"""
                 } else {
                     """{"error":"currency_binding_revision_conflict","message":"Currency binding changed"}"""
                 }
@@ -132,7 +152,7 @@ private fun captureNegotiatedMutation(client: OkHttpClient): List<Pair<String, M
                             repeat(headers["content-length"]?.toIntOrNull() ?: 0) { reader.read() }
                             add(requestLine to headers)
                             val responseBody = if (index == 0) {
-                                """{"api_version":"2026-08-02","write_compatibility":"compatible","capabilities":{"currency":{"request_binding":"1:1:JPY"}}}"""
+                                """{"api_version":"$CURRENT_TICKETBOX_API_VERSION","write_compatibility":"compatible","capabilities":{"currency":{"request_binding":"1:1:JPY"}}}"""
                             } else {
                                 ""
                             }

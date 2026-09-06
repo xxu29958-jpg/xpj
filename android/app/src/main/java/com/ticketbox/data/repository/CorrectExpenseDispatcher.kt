@@ -47,7 +47,7 @@ class CorrectExpenseDispatcher(
             cacheAuthoritativeExpense(row.ledgerId, response.expense)
             DispatchResult.Success(newRowVersion = response.expense.rowVersion)
         } catch (e: HttpException) {
-            mapHttpException(e)
+            mapOutboxHttpException(e)
         } catch (e: IOException) {
             DispatchResult.RetryableFailure(e.message ?: "network or cache IO failure")
         } catch (e: CancellationException) {
@@ -55,34 +55,5 @@ class CorrectExpenseDispatcher(
         } catch (e: Exception) {
             DispatchResult.Failure(e.message ?: "POST expense correction threw")
         }
-    }
-
-    private fun mapHttpException(error: HttpException): DispatchResult {
-        val body = error.response()?.errorBody()?.string().orEmpty()
-        val message = extractServerMessage(body) ?: error.message().orEmpty()
-        return when (error.code()) {
-            409 -> when {
-                "state_conflict" in body -> DispatchResult.Conflict(message)
-                "idempotency_key_in_progress" in body ->
-                    DispatchResult.RetryableFailure(
-                        message.ifEmpty { "idempotency key in progress" },
-                    )
-                else -> DispatchResult.Discarded(message)
-            }
-            in 500..599, 408, 429 ->
-                DispatchResult.RetryableFailure(message.ifEmpty { "server ${error.code()}" })
-            404 -> DispatchResult.Discarded(message)
-            422 -> DispatchResult.Failure(message)
-            else -> DispatchResult.Failure(message.ifEmpty { "HTTP ${error.code()}" })
-        }
-    }
-
-    private fun extractServerMessage(body: String): String? {
-        val key = "\"message\":\""
-        val start = body.indexOf(key)
-        if (start < 0) return null
-        val begin = start + key.length
-        val end = body.indexOf('"', begin)
-        return end.takeIf { it >= 0 }?.let { body.substring(begin, it) }
     }
 }

@@ -338,6 +338,5 @@ private fun planIncomeSummary(state: IncomePlanUiState): String = when {
             state.currentMonthSummary.expectedAmountCents,
             LocalCurrencyDisplay.current,
         ),
-        state.currentMonthSummary.historicalRecordCount,
     )
 }
