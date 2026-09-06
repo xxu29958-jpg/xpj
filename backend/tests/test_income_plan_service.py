@@ -128,7 +128,7 @@ def test_create_income_plan_rejects_negative_amount(identity) -> None:  # noqa: 
 
 @pytest.mark.parametrize("bad_day", [0, -1, 32, 100])
 def test_create_income_plan_rejects_invalid_pay_day(identity, bad_day) -> None:  # noqa: ARG001
-    with SessionLocal() as db, pytest.raises(AppError, match="发薪日"):
+    with SessionLocal() as db, pytest.raises(AppError, match="预计收入日"):
         create_income_plan(
             db,
             tenant_id="owner",
@@ -170,7 +170,7 @@ def test_create_one_time_income_requires_and_stores_income_month(identity) -> No
 
 
 def test_create_one_time_income_rejects_missing_income_month(identity) -> None:  # noqa: ARG001
-    with SessionLocal() as db, pytest.raises(AppError, match="到账月份"):
+    with SessionLocal() as db, pytest.raises(AppError, match="预计月份"):
         create_income_plan(
             db,
             tenant_id="owner",
