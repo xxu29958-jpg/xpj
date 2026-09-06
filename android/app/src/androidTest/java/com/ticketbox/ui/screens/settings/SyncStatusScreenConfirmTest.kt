@@ -147,6 +147,20 @@ class SyncStatusScreenConfirmTest {
         composeRule.runOnIdle { assertEquals(1, clearCount) }
     }
 
+    @Test
+    fun protocolRefusalExplainsTheUpgradeAndKeepsOriginalRetry() {
+        var retried: OutboxRow? = null
+        val original = outboxRow(PendingMutationStatus.Failed, lastError = "runtime_version_mismatch")
+        setScreenContent(failed = listOf(original), actions = SyncStatusActions(
+            onKeepMine = {}, onDropMine = {}, onRetry = { retried = it }, onDropFailed = {}, onClearQuarantined = {},
+        ))
+        val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext
+        composeRule.onNodeWithText(context.getString(com.ticketbox.R.string.sync_status_error_protocol_mismatch))
+            .performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("重试").performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(original, retried) }
+    }
+
     private fun setScreenContent(
         conflicts: List<OutboxRow> = emptyList(),
         failed: List<OutboxRow> = emptyList(),

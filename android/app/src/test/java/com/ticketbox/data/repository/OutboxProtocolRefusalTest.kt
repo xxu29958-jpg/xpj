@@ -56,6 +56,7 @@ class OutboxProtocolRefusalTest(private val refusal: String) {
         assertEquals(PendingMutationStatus.Failed.wireValue, retained.status)
         assertNull(retained.completedAt)
         assertTrue(retained.lastError.orEmpty().isNotBlank())
+        if (refusal != "future_write_refusal") assertEquals(refusal, retained.lastError)
         assertEquals(original, retained.copy(status = original.status, retryCount = original.retryCount,
             attemptedAt = original.attemptedAt, lastError = original.lastError))
         assertEquals(if (refusal == "runtime_version_mismatch") 0 else 1, transport.mutations.size)
