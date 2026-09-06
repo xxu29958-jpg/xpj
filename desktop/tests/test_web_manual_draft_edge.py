@@ -106,7 +106,8 @@ def test_real_edge_manual_intent_survives_reload_and_unknown_response(tmp_path: 
     thread.start()
     try:
         result = evaluate_page(
-            edge, profile=tmp_path / "edge-manual-drafts", url=f"http://127.0.0.1:{server.server_port}/",
+            edge, profile=tmp_path / "edge-manual-drafts",
+            prepare_url=lambda _attempt: f"http://127.0.0.1:{server.server_port}/",
             width=360, height=800, expression="window.__manualDraftProbe || undefined",
         )
     finally:
