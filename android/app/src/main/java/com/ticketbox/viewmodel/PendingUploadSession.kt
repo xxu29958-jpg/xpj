@@ -103,21 +103,7 @@ internal class PendingUploadSession(
                     expectedBinding = accepted.binding,
                 ))
                 if (!isCurrent(accepted)) return
-                val error = result.exceptionOrNull()
-                if (error is CancellationException) throw error
-                if ((error as? RepositoryException)?.errorCode == "enrichment_capacity_full") {
-                    running = false
-                    onState(false, true, UiText.res(R.string.pending_msg_upload_capacity_full))
-                    return
-                }
-                if (result.isSuccess) {
-                    onReceipt(result.getOrThrow())
-                } else {
-                    accepted.failedCount += 1
-                    accepted.lastFailure = error?.toUiText(R.string.pending_msg_upload_failed)
-                }
-                accepted.preparedImage = null
-                accepted.cursor += 1
+                if (!recordResult(accepted, result)) return
             }
             if (isCurrent(accepted)) finish(accepted)
         } catch (error: CancellationException) {
@@ -126,6 +112,25 @@ internal class PendingUploadSession(
         } finally {
             if (batch === accepted) running = false
         }
+    }
+
+    private fun recordResult(accepted: PendingUploadBatch, result: Result<PendingUploadReceipt>): Boolean {
+        val error = result.exceptionOrNull()
+        if (error is CancellationException) throw error
+        if ((error as? RepositoryException)?.errorCode == "enrichment_capacity_full") {
+            running = false
+            onState(false, true, UiText.res(R.string.pending_msg_upload_capacity_full))
+            return false
+        }
+        if (result.isSuccess) {
+            onReceipt(result.getOrThrow())
+        } else {
+            accepted.failedCount += 1
+            accepted.lastFailure = error?.toUiText(R.string.pending_msg_upload_failed)
+        }
+        accepted.preparedImage = null
+        accepted.cursor += 1
+        return true
     }
 
     private suspend fun prepare(accepted: PendingUploadBatch): PreparedUploadImage? {
