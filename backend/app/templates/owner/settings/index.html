@@ -20,13 +20,9 @@
       {% endif %}
       <a href="/owner/settings/public-base-url" class="meta-inline">编辑</a>
     </dd>
-    <dt>Admin API 公网放行</dt>
+    <dt>本机管理接口</dt>
     <dd>
-      {% if security_view.allow_public_admin_api %}
-        <span class="badge badge-off">已放行（不建议）</span>
-      {% else %}
-        <span class="badge badge-ok">仅本机</span>
-      {% endif %}
+      <span class="badge badge-ok">仅本机</span>
       <a href="/owner/settings/security" class="meta-inline">查看</a>
     </dd>
     <dt>OpenAPI 文档</dt>

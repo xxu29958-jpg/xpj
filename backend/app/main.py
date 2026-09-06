@@ -147,39 +147,8 @@ _RUNTIME_WRITE_PARAMETER_REFS = (
 _logger = logging.getLogger(__name__)
 
 
-class UnsafeAdminApiConfigurationError(RuntimeError):
-    """Startup configuration would expose admin routes without the required edge gate."""
-
-
-def _assert_admin_api_gate_safe() -> None:
-    """v1.1 Batch 1: if the owner explicitly opted into a public admin API
-    (``ALLOW_PUBLIC_ADMIN_API=true``), refuse to boot unless Cloudflare
-    Access is also wired up. The admin API does mutating ops with the
-    admin token alone; without a real identity gate in front of it,
-    anyone who can reach the public hostname can DOS or probe it.
-
-    Loopback-only deployments (the default) skip this check.
-    """
-
-    cfg = get_settings()
-    if not cfg.allow_public_admin_api:
-        return
-    missing = []
-    if not cfg.cloudflare_access_required:
-        missing.append("CLOUDFLARE_ACCESS_REQUIRED=true")
-    if not cfg.cloudflare_access_team_domain:
-        missing.append("CLOUDFLARE_ACCESS_TEAM_DOMAIN")
-    if not cfg.cloudflare_access_aud:
-        missing.append("CLOUDFLARE_ACCESS_AUD")
-    if missing:
-        raise UnsafeAdminApiConfigurationError(
-            "ALLOW_PUBLIC_ADMIN_API=true requires Cloudflare Access to be configured. Missing: " + ", ".join(missing)
-        )
-
-
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    _assert_admin_api_gate_safe()
     # ADR-0047 §3: under the Windows-service model the SCM can mark the PostgreSQL
     # service RUNNING before it accepts connections, so block (bounded) until the
     # DB is reachable before init_db()'s first connection. No-op when the DB is

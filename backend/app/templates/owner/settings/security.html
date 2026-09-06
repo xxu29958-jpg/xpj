@@ -4,25 +4,19 @@
 <div class="card">
   <h2>安全 / 边界</h2>
   <p class="help-text">
-    本页只读，列出与公网攻击面相关的生命周期设置。它们涉及凭据或服务暴露面，
-    不会作为普通网页开关开放；需要改变时请从 Desktop Manager 的主机管理流程进入。
+    本页只读，说明当前访问边界。设备治理和维护入口仅在运行小票夹后端的电脑上可用，
+    不能通过公网域名开放。
   </p>
 
   <table class="route-table mt-3">
     <thead><tr><th>项</th><th>状态</th><th>说明</th></tr></thead>
     <tbody>
       <tr>
-        <td><code>ALLOW_PUBLIC_ADMIN_API</code></td>
+        <td>本机管理接口</td>
+        <td><span class="badge badge-ok">仅本机</span></td>
         <td>
-          {% if security_view.allow_public_admin_api %}
-            <span class="badge badge-off">已放行</span>
-          {% else %}
-            <span class="badge badge-ok">仅本机</span>
-          {% endif %}
-        </td>
-        <td>
-          放行后公网也能访问 <code>/api/admin/*</code>，仅靠 admin token 保护。
-          <strong>除非你完全清楚后果，否则保持关闭。</strong>
+          设备治理、上传链接管理、维护和管理配对码入口始终拒绝公网请求。
+          请在运行后端的电脑上使用本机管理入口。
         </td>
       </tr>
       <tr>

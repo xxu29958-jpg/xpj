@@ -1,4 +1,13 @@
-﻿param(
+﻿<#
+.SYNOPSIS
+源码/测试环境的本机维护入口。
+.PARAMETER ServerUrl
+运行此脚本的电脑上的后端环回地址；可指定本机端口。
+不支持公网域名或其他电脑的服务地址。管理会话不能放宽本机网络边界。
+.DESCRIPTION
+仅用于源码/测试环境，不拥有正式安装的数据、备份或恢复 authority。
+#>
+param(
     [string]$ServerUrl = "http://127.0.0.1:8000",
     [string]$AdminToken = "",
     [switch]$CleanupConfirmedImages,
@@ -49,7 +58,8 @@ if ([string]::IsNullOrWhiteSpace($AdminToken)) {
 
 $hasAction = $CleanupConfirmedImages -or $CleanupRejectedImages -or $CleanupOrphans -or $Vacuum
 if (-not $hasAction) {
-    Write-Host "小票夹维护脚本"
+    Write-Host "小票夹本机维护脚本（源码/测试环境）"
+    Write-Host "请在运行后端的电脑上执行，ServerUrl 仅支持本机环回地址。"
     Write-Host "常用："
     Write-Host "  -CleanupConfirmedImages"
     Write-Host "  -CleanupRejectedImages"
