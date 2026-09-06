@@ -19,6 +19,7 @@ COMMANDS = (
     ("DELETE", "/api/income-plans/plan", {"expected_row_version": 1}),
     ("POST", "/api/income-plans/plan/restore", {"expected_row_version": 1}),
     ("POST", "/api/recycle-bin/restore", {"kind": "income_plan", "resource_id": "plan", "expected_row_version": 1}),
+    ("POST", "/api/recycle-bin/restore", {"kind": " income_plan ", "resource_id": "plan", "expected_row_version": 1}),
 )
 
 

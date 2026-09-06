@@ -57,7 +57,7 @@ def restore_recycle_bin(
     db: Session = Depends(get_db),
     api_version: str | None = Header(default=None, alias=TICKETBOX_API_VERSION_HEADER),
 ) -> RecycleBinRestoreResponse:
-    if payload.kind == "income_plan":
+    if payload.kind.strip() == "income_plan":
         require_current_api_version(api_version)
     message = restore_recycle_bin_item(
         db,
