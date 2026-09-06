@@ -3,9 +3,12 @@ package com.ticketbox.ui.screens.settings
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
+import com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto
+import com.ticketbox.data.repository.ExpenseCorrectionPayload
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.OutboxStatus
 import com.ticketbox.data.repository.OutboxWriteBlock
+import com.ticketbox.data.repository.PendingExpenseCorrection
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertEquals
@@ -55,12 +58,14 @@ class SyncStatusFailureTest {
                 failed = listOf(row(id = 3)),
                 quarantinedCount = 4,
             ),
+            corrections = emptyList(),
         )
 
         assertEquals(3, overview.queuedCount)
         assertEquals(2, overview.conflictCount)
         assertEquals(1, overview.failedCount)
         assertEquals(4, overview.quarantinedCount)
+        assertEquals(0, overview.reviewRequiredCount)
         assertEquals(7, overview.needsActionCount)
         assertFalse(overview.isSettled)
     }
@@ -73,9 +78,11 @@ class SyncStatusFailureTest {
                 conflicts = emptyList(),
                 failed = emptyList(),
             ),
+            corrections = emptyList(),
         )
 
         assertEquals(0, overview.queuedCount)
+        assertEquals(0, overview.reviewRequiredCount)
         assertTrue(overview.isSettled)
     }
 
@@ -88,12 +95,78 @@ class SyncStatusFailureTest {
                 failed = emptyList(),
                 writeBlock = OutboxWriteBlock.CURRENCY_ADOPTION_REQUIRED,
             ),
+            corrections = emptyList(),
         )
 
         assertEquals(
             R.string.error_currency_adoption_required,
             overviewCaptionResource(overview),
         )
+    }
+
+    @Test
+    fun `unproven done requires review without changing the original command`() {
+        val original = row(id = 1).copy(
+            type = PendingMutationType.CorrectExpense,
+            status = PendingMutationStatus.Done,
+            payloadJson = "{\"expected_row_version\":0,\"reason\":\"old submission\"}",
+            idempotencyKey = "original-key",
+        )
+        val pending = PendingExpenseCorrection(original, intent = null)
+        val overview = syncStatusOverview(OutboxStatus(0, emptyList(), emptyList()), listOf(pending))
+
+        assertEquals(1, overview.reviewRequiredCount)
+        assertEquals(1, overview.needsActionCount)
+        assertEquals(0, overview.queuedCount)
+        assertFalse(overview.isSettled)
+        assertEquals(original, pending.row)
+    }
+
+    @Test
+    fun `review count excludes queued failures conflicts and verified done`() {
+        val active = listOf(
+            PendingMutationStatus.Pending, PendingMutationStatus.InFlight,
+            PendingMutationStatus.Conflict, PendingMutationStatus.Failed,
+        ).mapIndexed { index, status ->
+            PendingExpenseCorrection(
+                row(id = index + 1L).copy(type = PendingMutationType.CorrectExpense, status = status),
+                intent = null,
+            )
+        }
+        val verified = PendingExpenseCorrection(
+            row(id = 5).copy(
+                type = PendingMutationType.CorrectExpense,
+                status = PendingMutationStatus.Done,
+                ownerKey = "owner",
+                idempotencyKey = "confirmed-key",
+            ),
+            intent = ExpenseCorrectionPayload(
+                revision = 1,
+                expenseId = 5,
+                originalMerchant = "Merchant",
+                originalCurrencyCode = "CNY",
+                originalAmountMinor = 1000L,
+                homeCurrencyCode = "CNY",
+                ownerKey = "owner",
+                ledgerId = "ledger",
+                originSessionGeneration = "session",
+                originBindingRevision = "binding",
+                request = ExpenseCorrectionRequestDto(1L, "confirmed"),
+            ),
+        )
+        assertTrue(verified.delivered)
+        val overview = syncStatusOverview(
+            OutboxStatus(2, listOf(active[2].row), listOf(active[3].row)), active + verified,
+        )
+        assertEquals(0, overview.reviewRequiredCount)
+        assertEquals(2, overview.queuedCount)
+        assertEquals(1, overview.conflictCount)
+        assertEquals(1, overview.failedCount)
+        assertEquals(2, overview.needsActionCount)
+        assertFalse(overview.isSettled)
+        val doneOnly = syncStatusOverview(OutboxStatus(0, emptyList(), emptyList()), listOf(verified))
+        assertEquals(0, doneOnly.reviewRequiredCount)
+        assertTrue(doneOnly.isSettled)
     }
 
     @Test
