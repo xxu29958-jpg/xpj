@@ -25,12 +25,16 @@ def test_local_first_use_and_original_code_continuation(tmp_path: Path) -> None:
     )
     assert result == {
         "localCodeReachable": True, "localCodeCommand": True,
+        "unreadSessionClosed": True,
         "deviceCodeReachableWithoutPhoneUrl": True,
         "dataAndIdentityExplained": True, "invalidCodeRetained": True,
         "invalidCanGetNewCode": True, "originalCodeRetained": True,
         "pendingExplained": True, "pendingCannotMintNewCode": True,
+        "pendingClosesBothCodeEntries": True,
         "restartStillExplainsOriginalCode": True, "expiredCanGetNewCode": True,
         "pendingRebindExplained": True,
+        "liveOldLedgerStillOffersOriginalCode": True, "liveOldLedgerCannotMintNewCode": True,
         "readFailureClosed": True, "unavailableClosed": True,
+        "readFailureClosesBothCodeEntries": True,
         "horizontalOverflow": False,
     }

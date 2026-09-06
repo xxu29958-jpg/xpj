@@ -3,7 +3,9 @@
 import io
 import json
 import os
+import subprocess
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -11,6 +13,48 @@ from unittest.mock import Mock
 import pytest
 
 from tests import _real_backend
+
+
+def test_stalled_seed_wait_honors_its_deadline_and_reaps_the_helper(monkeypatch, tmp_path):
+    seed = {
+        "pairing_code": "test-code", "app_token": "test-token", "account_name": "test-owner",
+        "owner_ledger_id": "test-ledger", "other_ledger_id": "other-ledger",
+    }
+    helper = tmp_path / "delayed_seed.py"
+    helper.write_text(
+        "import time\ntime.sleep(1)\n"
+        f"print({'E2E_SEED ' + json.dumps(seed)!r}, flush=True)\n"
+        "time.sleep(30)\n",
+        encoding="utf-8",
+    )
+    processes = []
+    real_popen = subprocess.Popen
+
+    def launch(*args, **kwargs):
+        process = real_popen(*args, **kwargs, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        processes.append(process)
+        return process
+
+    monkeypatch.setattr(_real_backend.subprocess, "Popen", launch)
+    monkeypatch.setattr(_real_backend, "_HELPER", helper)
+    monkeypatch.setattr(_real_backend, "_backend_python", lambda: sys.executable)
+    monkeypatch.setattr(_real_backend, "_free_port", lambda: 12345)
+    monkeypatch.setattr(_real_backend, "_SEED_TIMEOUT_SECONDS", 0.15, raising=False)
+    health_check = Mock()
+    monkeypatch.setattr(_real_backend, "_wait_for_health", health_check)
+    fixture = _real_backend.real_backend.__wrapped__(SimpleNamespace(mktemp=lambda _name: tmp_path))
+    started = time.monotonic()
+    try:
+        with pytest.raises(RuntimeError, match="did not report its seed in time"):
+            next(fixture)
+    finally:
+        fixture.close()
+
+    assert time.monotonic() - started < 2.0
+    assert len(processes) == 1
+    assert processes[0].poll() is not None
+    assert processes[0].stdout.closed
+    health_check.assert_not_called()
 
 
 def test_backend_child_keeps_the_passfile_without_ambient_libpq_overrides(monkeypatch, tmp_path):

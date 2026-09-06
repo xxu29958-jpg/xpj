@@ -1583,6 +1583,9 @@ def test_pair_reuses_the_provisional_attempt_after_response_loss(has_previous_se
     controller = AppController(
         FakeRuntime(), _config(), product_session_pairer=pairer,
         product_session_activator=_activate_pending,
+        product_ledger_fetcher=lambda *_args, **_kwargs: [
+            {"ledger_id": "archived", "name": "原账本", "role": "owner", "is_default": True},
+        ],
         product_session_revoker=lambda *_args, **_kwargs: None, **store,
     )
     assert controller.product_principal() == {
@@ -1591,6 +1594,12 @@ def test_pair_reuses_the_provisional_attempt_after_response_loss(has_previous_se
     }
     if previous is not None:
         assert sessions[_INSTALLATION_ID] is previous
+        # Restored membership does not settle a possibly committed pairing attempt.
+        assert controller.product_ledgers() == [
+            {"ledger_id": "archived", "name": "原账本", "role": "owner", "is_default": True, "is_current": True},
+        ]
+        assert controller.product_principal()["pairing_recovery"] == "original_code_required"
+        assert _INSTALLATION_ID in recoveries
     assert calls["count"] == 1
     projection = controller.pair_product_principal("12345678")
 

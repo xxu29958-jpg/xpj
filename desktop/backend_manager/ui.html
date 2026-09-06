@@ -389,7 +389,7 @@
         <div class="task-title">连接设备</div>
         <div class="task-state" id="connectState">服务正常后可以生成一次性绑定码。</div>
         <div class="task-actions">
-          <button class="button manager-action owner-action" id="androidAction" type="button" onclick="act('open_pairing', this)">设备绑定</button>
+          <button class="button manager-action owner-action" id="androidAction" type="button" disabled onclick="act('open_pairing', this)">设备绑定</button>
           <button class="button manager-action owner-action" id="iphoneAction" type="button" onclick="act('open_upload_links', this)">iPhone 上传</button>
           <button class="button manager-action owner-action" type="button" title="查看已连接设备" onclick="act('open_devices', this)">设备</button>
         </div>
@@ -562,7 +562,6 @@
       $("importExportAction").disabled = actionInFlight
         || !productAvailable
         || !Boolean(productSession && productSession.configured);
-      $("androidAction").disabled = actionInFlight || !productAvailable;
       $("iphoneAction").disabled = actionInFlight || !productAvailable || s.iphone_upload_state !== "configured_unverified";
       $("diagnosticExportAction").disabled = actionInFlight;
       applyDesktopPairingAvailability();
@@ -733,10 +732,11 @@
     }
 
     function applyDesktopPairingAvailability() {
-      $("desktopPairingCodeAction").disabled = actionInFlight || productBusy
+      const disabled = actionInFlight || productBusy
         || !Boolean(latestStatus && latestStatus.product_available)
         || !productSession || productSessionReadFailed || productLedgersReadFailed
         || productSession.pairing_recovery === "original_code_required";
+      for (const id of ["desktopPairingCodeAction", "androidAction"]) $(id).disabled = disabled;
     }
 
     function renderProduct() {
@@ -747,7 +747,8 @@
         ? productLedgers.find((row) => row.ledger_id === productSession.ledger_id)
         : null;
       const membershipLost = configured && productLedgers.length > 0 && !liveRow;
-      const showManage = configured && !membershipLost;
+      const pending = productSession && productSession.pairing_recovery === "original_code_required";
+      const showManage = configured && !membershipLost && !pending;
       applyDesktopPairingAvailability();
       $("productFirstUseHelp").hidden = showManage || productReadFailed;
       if (productReadFailed) {
@@ -769,8 +770,7 @@
       // The import/export entry opens the bound ledger's product page; without a
       // live binding it stays disabled so the card never offers a dead click.
       $("importExportAction").disabled = productBusy || !available || !showManage;
-      if (!configured || membershipLost) {
-        const pending = productSession && productSession.pairing_recovery === "original_code_required";
+      if (!showManage) {
         $("productState").textContent = pending
           ? "上次绑定结果尚未确认，请输入原绑定码继续。若原码已丢失，请等待几分钟，状态更新后再获取新码。"
           : membershipLost ? "原绑定已失效，请使用新的绑定码重新连接。"

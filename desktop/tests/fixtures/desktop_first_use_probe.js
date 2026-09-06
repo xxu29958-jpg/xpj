@@ -3,6 +3,9 @@
   let session = {configured: false};
   let pairingResult = "invalid";
   let readFails = false;
+  let ledgers = [
+    {ledger_id: "family", name: "家庭账本", role: "member", is_default: true, is_current: false},
+  ];
   const commands = [];
   window.CONTROL_TOKEN = "synthetic-control";
   window.fetch = async (path, options = {}) => {
@@ -11,9 +14,7 @@
       if (readFails) throw new Error("synthetic unavailable");
       return {ok: true, json: async () => session};
     }
-    if (path === "/api/product/ledgers") return {ok: true, json: async () => ({ledgers: [
-      {ledger_id: "family", name: "家庭账本", role: "member", is_default: true, is_current: false},
-    ]})};
+    if (path === "/api/product/ledgers") return {ok: true, json: async () => ({ledgers})};
     if (path === "/api/open_pairing") {
       commands.push({path, method: options.method});
       return {ok: true, json: async () => status};
@@ -29,8 +30,17 @@
   };
   const codeEntry = () => document.getElementById("desktopPairingCodeAction");
   const entryAvailable = () => Boolean(codeEntry() && !codeEntry().disabled && !codeEntry().hidden);
+  const codeEntries = () => [codeEntry(), document.getElementById("androidAction")];
+  const cannotGenerateCode = async () => {
+    const before = commands.length;
+    codeEntries().forEach((button) => button.click());
+    while (actionInFlight) await new Promise(requestAnimationFrame);
+    return codeEntries().every((button) => button.disabled) && commands.length === before;
+  };
+  const unreadSessionClosed = await cannotGenerateCode();
   await refresh();
   const result = {localCodeReachable: entryAvailable(),
+    unreadSessionClosed,
     deviceCodeReachableWithoutPhoneUrl: !document.getElementById("androidAction").disabled};
   if (codeEntry()) {
     codeEntry().click();
@@ -49,6 +59,7 @@
   result.originalCodeRetained = document.getElementById("pairingCodeInput").value === "12345678";
   result.pendingExplained = document.getElementById("productState").textContent.includes("原绑定码");
   result.pendingCannotMintNewCode = Boolean(codeEntry() && codeEntry().disabled);
+  result.pendingClosesBothCodeEntries = await cannotGenerateCode();
   document.getElementById("pairingCodeInput").value = "";
   productSession = null;
   await loadProductSession();
@@ -62,11 +73,21 @@
   await loadProductLedgers();
   result.pendingRebindExplained = !document.getElementById("productPairGroup").hidden &&
     document.getElementById("productState").textContent.includes("原绑定码") && codeEntry().disabled;
+  ledgers = [{ledger_id: "archived", name: "原账本", role: "owner", is_default: false, is_current: true}, ...ledgers];
+  document.getElementById("pairingCodeInput").value = "12345678";
+  await loadProductLedgers();
+  result.liveOldLedgerStillOffersOriginalCode = !document.getElementById("productPairGroup").hidden &&
+    document.getElementById("productManageGroup").hidden &&
+    !document.getElementById("pairingCodeInput").disabled && !document.getElementById("pairAction").disabled &&
+    document.getElementById("pairingCodeInput").value === "12345678" &&
+    document.getElementById("productState").textContent.includes("原绑定码");
+  result.liveOldLedgerCannotMintNewCode = await cannotGenerateCode();
   result.horizontalOverflow = document.documentElement.scrollWidth > document.documentElement.clientWidth + 1;
   readFails = true;
   await loadProductSession();
   result.readFailureClosed = document.getElementById("productPairGroup").hidden &&
     Boolean(codeEntry() && codeEntry().disabled);
+  result.readFailureClosesBothCodeEntries = await cannotGenerateCode();
   readFails = false;
   status.product_available = false;
   status.health = false;
