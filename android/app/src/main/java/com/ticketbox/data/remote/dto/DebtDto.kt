@@ -187,6 +187,7 @@ data class RepaymentCreateRequestDto(
  * `remaining`, never below 0); [reason] is required. [expectedRowVersion] is the §2.1 stale-intent
  * token + §3.6 fingerprint component.
  */
+@JsonClass(generateAdapter = true)
 data class DebtAdjustmentCreateRequestDto(
     @param:Json(name = "amount_cents")
     val amountCents: Long,

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
+from app.routes._web_session_common import resolve_web_actor_account_id
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -27,9 +28,9 @@ from app.services.currency_common import (
 from app.services.income_plan_service import (
     archive_income_plan,
     create_income_plan,
+    income_forecast,
     list_income_plans,
     restore_income_plan,
-    total_monthly_income_cents,
 )
 from app.services.spending_contract_service import current_accounting_month
 
@@ -55,13 +56,13 @@ def _parse_yuan(raw: str, *, currency_code: str, label: str) -> int:
 def _parse_pay_day(raw: str) -> int:
     text = (raw or "").strip()
     if not text:
-        raise AppError("invalid_request", "请选择发薪日。", status_code=422)
+        raise AppError("invalid_request", "请选择预计收入日。", status_code=422)
     try:
         day = int(text)
     except ValueError as exc:
-        raise AppError("invalid_request", "发薪日需为 1-31 的整数。", status_code=422) from exc
+        raise AppError("invalid_request", "预计收入日需为 1-31 的整数。", status_code=422) from exc
     if not 1 <= day <= 31:
-        raise AppError("invalid_request", "发薪日需为 1-31 的整数。", status_code=422)
+        raise AppError("invalid_request", "预计收入日需为 1-31 的整数。", status_code=422)
     return day
 
 
@@ -91,7 +92,7 @@ def _income_month_from_form(
     try:
         return f"{int(clean_year):04d}-{int(clean_month):02d}"
     except ValueError as exc:
-        raise AppError("invalid_request", "请选择正确的到账月份。", status_code=422) from exc
+        raise AppError("invalid_request", "请选择正确的预计月份。", status_code=422) from exc
 
 
 def _income_month_options() -> tuple[list[int], str, str]:
@@ -114,10 +115,11 @@ def page_income_plans(
     selected = _resolve_selected_ledger_id(db, ledger_id, options=options, request=request)
     plans_active = list_income_plans(db, tenant_id=selected, status="active")
     plans_archived = list_income_plans(db, tenant_id=selected, status="archived")
-    total_cents = total_monthly_income_cents(
+    intent_month = current_accounting_month()
+    forecast = income_forecast(
         db,
         tenant_id=selected,
-        month=current_accounting_month(),
+        month=intent_month,
     )
     can_write = True
     try:
@@ -130,14 +132,16 @@ def page_income_plans(
         db=db,
         options=options,
         selected_ledger_id=selected,
-        page_title="收入记录",
+        page_title="收入计划",
     )
     # Keep one configured currency explicit across every amount in this view.
     home = ctx["home_currency_code"]
     ctx.update(
         plans_active=plans_active,
         plans_archived=plans_archived,
-        total_yuan=minor_amount_value(total_cents, home),
+        total_yuan=minor_amount_value(forecast.expected_amount_cents, home),
+        scheduled_yuan=minor_amount_value(forecast.scheduled_amount_cents, home),
+        intent_month=intent_month,
         minor_label=lambda cents: minor_amount_value(cents, home),
         currency_input=_currency_input_view(home),
         can_write=can_write,
@@ -163,6 +167,7 @@ def post_create(
     income_month_number: str | None = Form(default=None),
     amount_yuan: str = Form(default=""),
     pay_day: str = Form(default=""),
+    intent_month: str = Form(...),
     db: Session = Depends(get_db),
     _local: None = LocalOnly,
 ) -> RedirectResponse:
@@ -173,7 +178,7 @@ def post_create(
     amount_cents = _parse_yuan(
         amount_yuan,
         currency_code=presentation_currency,
-        label="收入金额",
+        label="预计收入金额",
     )
     day = _parse_pay_day(pay_day)
     create_income_plan(
@@ -189,8 +194,10 @@ def post_create(
         ),
         amount_cents=amount_cents,
         pay_day=day,
+        intent_month=intent_month,
+        actor_account_id=resolve_web_actor_account_id(db, request, selected),
     )
-    return _web_redirect("/web/income-plans", selected, message="已添加收入")
+    return _web_redirect("/web/income-plans", selected, message="已添加收入计划")
 
 
 @router.post("/{public_id}/archive")
@@ -199,6 +206,7 @@ def post_archive(
     public_id: str,
     ledger_id: str | None = Form(default=None),
     expected_row_version: str = Form(default=""),
+    intent_month: str = Form(...),
     db: Session = Depends(get_db),
     _local: None = LocalOnly,
 ) -> RedirectResponse:
@@ -215,7 +223,8 @@ def post_archive(
         )
     try:
         archive_income_plan(
-            db, tenant_id=selected, public_id=public_id, expected_row_version=parsed
+            db, tenant_id=selected, public_id=public_id, expected_row_version=parsed,
+            intent_month=intent_month, actor_account_id=resolve_web_actor_account_id(db, request, selected),
         )
     except AppError as exc:
         if exc.error == "state_conflict":
@@ -223,7 +232,7 @@ def post_archive(
                 "/web/income-plans", selected, error="页面已过期，请刷新后重新操作。"
             )
         raise
-    return _web_redirect("/web/income-plans", selected, message="已归档收入")
+    return _web_redirect("/web/income-plans", selected, message="已归档收入计划")
 
 
 @router.post("/{public_id}/restore")
@@ -232,6 +241,7 @@ def post_restore(
     public_id: str,
     ledger_id: str | None = Form(default=None),
     expected_row_version: str = Form(default=""),
+    intent_month: str = Form(...),
     db: Session = Depends(get_db),
     _local: None = LocalOnly,
 ) -> RedirectResponse:
@@ -245,7 +255,8 @@ def post_restore(
         )
     try:
         restore_income_plan(
-            db, tenant_id=selected, public_id=public_id, expected_row_version=parsed
+            db, tenant_id=selected, public_id=public_id, expected_row_version=parsed,
+            intent_month=intent_month, actor_account_id=resolve_web_actor_account_id(db, request, selected),
         )
     except AppError as exc:
         if exc.error == "state_conflict":
@@ -253,4 +264,4 @@ def post_restore(
                 "/web/income-plans", selected, error="页面已过期，请刷新后重新操作。"
             )
         raise
-    return _web_redirect("/web/income-plans", selected, message="已恢复收入")
+    return _web_redirect("/web/income-plans", selected, message="已恢复收入计划")

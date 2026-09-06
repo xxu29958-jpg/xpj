@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
+from app.routes._web_expense_return_context import flow_href
 from app.routes._web_report_money_views import (
     category_comparison_view as _category_comparison_view,
 )
@@ -253,6 +254,10 @@ def _top_expenses_view(
         rows.append(
             {
                 "merchant": e.merchant or "未填写商家",
+                "edit_href": flow_href(
+                    f"/web/expenses/{e.id}/edit", ledger_id=tenant_id,
+                    return_to="reports", return_month=month,
+                ),
                 # The record's frozen unit wins; presentation authority only
                 # covers legacy rows that predate the carrier.
                 "amount_yuan": _amount_yuan(
@@ -329,6 +334,17 @@ def _report_export_query(
     )
 
 
+def _six_month_history_view(rows: list[dict], *, currency_code: str) -> dict:
+    """Keep the history chart, accessible table, and average on the same series."""
+    return {
+        "six_month_trend": rows,
+        "six_month_average_amount_yuan": _six_month_average_amount_yuan(
+            rows,
+            currency_code=currency_code,
+        ),
+    }
+
+
 @router.get("", response_class=HTMLResponse)
 def web_reports(
     request: Request,
@@ -337,6 +353,8 @@ def web_reports(
     ranking_metric: str | None = None,
     merchant_category: str | None = Query(default=None, max_length=64),
     ledger_id: str | None = None,
+    msg: str | None = None,
+    flash_type: str | None = None,
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -382,6 +400,8 @@ def web_reports(
     )
     ctx.update(
         {
+            "flash_message": msg or "",
+            "flash_type": flash_type if flash_type in ("success", "error") else "",
             "report": _view_model(payload, currency_code=home),
             "monthly_report": monthly_report_vm,
             "budget_explanations": budget_explanations,
@@ -402,11 +422,7 @@ def web_reports(
                 timezone_name=timezone_name,
                 presentation_currency_code=home,
             ),
-            "six_month_trend": six_month_trend,
-            "six_month_average_amount_yuan": _six_month_average_amount_yuan(
-                six_month_trend,
-                currency_code=home,
-            ),
+            **_six_month_history_view(six_month_trend, currency_code=home),
         }
     )
     return templates.TemplateResponse(request=request, name="reports.html", context=ctx)

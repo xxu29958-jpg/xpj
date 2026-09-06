@@ -69,6 +69,7 @@ internal fun NavGraphBuilder.addWorkspaceRoute(
     with(dependencies) {
         composable(WORKSPACE_ROUTE) {
             SettingsRoute(
+                onOpenExpense = navController::openExpense,
                 screenFactory = screenFactory,
                 preferenceControls = workspaceControls.preferences,
                 onBindingCleared = workspaceControls.onBindingCleared,
@@ -233,11 +234,13 @@ internal fun NavGraphBuilder.addObligationRoutes(
         composable(ProductSecondaryPage.ObligationSync.route) {
             val vm: OutboxStatusViewModel = viewModel(
                 factory = outboxStatusViewModelFactory(
-                    screenFactory.outboxRepository, screenFactory.repository, screenFactory.debtCreationRepository,
-                    screenFactory.recurringRepository.occurrences,
+                    screenFactory.outboxRepository, screenFactory.repository,
+                    com.ticketbox.viewmodel.OutboxRecoveryRepositories(screenFactory.debtCreationRepository,
+                        screenFactory.recurringRepository.occurrences, screenFactory.incomePlanRepository,
+                        screenFactory.debtAdjustmentRepository),
                 ),
             )
-            SyncStatusScreen(viewModel = vm, onBack = onBack)
+            SyncStatusScreen(viewModel = vm, onBack = onBack, onOpenExpense = navController::openExpense)
         }
         composable(
             route = REPAYMENT_DRAFT_ROUTE,

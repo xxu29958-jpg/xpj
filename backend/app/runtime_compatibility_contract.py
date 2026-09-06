@@ -13,7 +13,8 @@ from dataclasses import dataclass
 from typing import Literal
 
 RUNTIME_COMPATIBILITY_CONTRACT = "ticketbox-runtime-compatibility-v1"
-CURRENT_API_VERSION = "2026-08-02"
+# Income commands now carry their original accounting month explicitly.
+CURRENT_API_VERSION = "2026-09-06"
 
 # RFC 6648 discourages new ``X-`` names.  The application prefix keeps these
 # limited-use fields unambiguous, as recommended for new HTTP fields by RFC

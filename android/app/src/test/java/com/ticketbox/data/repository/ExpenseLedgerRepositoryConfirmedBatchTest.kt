@@ -232,7 +232,7 @@ internal class ExpenseLedgerRepositoryConfirmedBatchTest : ExpensePendingReposit
             response = ConfirmedExpenseBatchUpdateResponseDto(1, 1, 0, 0),
             failure = IOException("response lost after commit"),
         )
-        val repo = ExpenseRepository(
+        val repo = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = FakeExpenseDao(),
             binding = testServerSessionBinding(
                 apiClient = TestApiServiceFactory(api),
@@ -263,14 +263,14 @@ internal class ExpenseLedgerRepositoryConfirmedBatchTest : ExpensePendingReposit
                 response = ConfirmedExpenseBatchUpdateResponseDto(1, 1, 0, 0),
                 failure = IOException("response lost after commit"),
             )
-            val repo = ExpenseRepository(
+            val repo = com.ticketbox.data.repository.expenseRepositoryFixture(
                 expenseDao = FakeExpenseDao(),
                 binding = testServerSessionBinding(
                     apiClient = TestApiServiceFactory(api),
                     settingsStore = seededSettingsStore(),
                     tokenStore = tokens,
                 ),
-            )
+        )
             val expense = baselineExpense().copy(id = 7L, status = "confirmed", rowVersion = 4L)
 
             assertTrue(repo.applyConfirmedBatch(listOf(expense), null, "差旅", "补上出差标签").isFailure)

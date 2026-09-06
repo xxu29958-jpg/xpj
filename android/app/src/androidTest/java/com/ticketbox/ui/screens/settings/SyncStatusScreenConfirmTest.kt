@@ -9,6 +9,7 @@ import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.OutboxStatus
+import com.ticketbox.data.repository.PendingIncomePlanEdit
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.OutboxStatusUiState
@@ -34,6 +35,7 @@ class SyncStatusScreenConfirmTest {
         setScreenContent(
             conflicts = listOf(row),
             actions = SyncStatusActions(
+        onOpenExpense = {},
                 onKeepMine = {},
                 onDropMine = { dropped = it },
                 onRetry = {},
@@ -61,6 +63,7 @@ class SyncStatusScreenConfirmTest {
         setScreenContent(
             failed = listOf(row),
             actions = SyncStatusActions(
+        onOpenExpense = {},
                 onKeepMine = {},
                 onDropMine = {},
                 onRetry = {},
@@ -90,6 +93,7 @@ class SyncStatusScreenConfirmTest {
         setScreenContent(
             failed = listOf(row),
             actions = SyncStatusActions(
+        onOpenExpense = {},
                 onKeepMine = {},
                 onDropMine = {},
                 onRetry = {},
@@ -107,11 +111,26 @@ class SyncStatusScreenConfirmTest {
     }
 
     @Test
+    fun unsupportedIncomeKeepsItsExplanationAndDropWithoutRetry() {
+        val row = outboxRow(status = PendingMutationStatus.Failed).copy(
+            type = PendingMutationType.UpdateIncomePlan, targetId = "income_plan:old",
+        )
+        setScreenContent(failed = listOf(row), incomeEdits = mapOf(row.id to PendingIncomePlanEdit(row, null)),
+            actions = SyncStatusActions(onOpenExpense = {}, onKeepMine = {}, onDropMine = {}, onRetry = { error("Unsupported retry") },
+                onDropFailed = {}, onClearQuarantined = {}))
+        val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext
+        composeRule.onNodeWithText(context.getString(com.ticketbox.R.string.income_plan_edit_unsupported)).assertIsDisplayed()
+        composeRule.onNodeWithText("重试").assertDoesNotExist()
+        composeRule.onNodeWithText("放弃").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
     fun quarantinedRowsRequireExplicitConfirmationBeforeClearing() {
         var clearCount = 0
         setScreenContent(
             quarantinedCount = 2,
             actions = SyncStatusActions(
+        onOpenExpense = {},
                 onKeepMine = {},
                 onDropMine = {},
                 onRetry = {},
@@ -132,16 +151,33 @@ class SyncStatusScreenConfirmTest {
         composeRule.runOnIdle { assertEquals(1, clearCount) }
     }
 
+    @Test
+    fun protocolRefusalExplainsTheUpgradeAndKeepsOriginalRetry() {
+        var retried: OutboxRow? = null
+        val original = outboxRow(PendingMutationStatus.Failed, lastError = "runtime_version_mismatch")
+        setScreenContent(failed = listOf(original), actions = SyncStatusActions(
+        onOpenExpense = {},
+            onKeepMine = {}, onDropMine = {}, onRetry = { retried = it }, onDropFailed = {}, onClearQuarantined = {},
+        ))
+        val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext
+        composeRule.onNodeWithText(context.getString(com.ticketbox.R.string.sync_status_error_protocol_mismatch))
+            .performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("重试").performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(original, retried) }
+    }
+
     private fun setScreenContent(
         conflicts: List<OutboxRow> = emptyList(),
         failed: List<OutboxRow> = emptyList(),
         quarantinedCount: Int = 0,
+        incomeEdits: Map<Long, PendingIncomePlanEdit> = emptyMap(),
         actions: SyncStatusActions,
     ) {
         composeRule.setContent {
             TicketboxTheme(skin = AppSkin.Default) {
                 SyncStatusScreenContent(
                     state = OutboxStatusUiState(
+                        incomeEdits = incomeEdits,
                         status = OutboxStatus(
                             queueDepth = 0,
                             conflicts = conflicts,

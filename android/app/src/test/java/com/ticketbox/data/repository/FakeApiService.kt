@@ -1,5 +1,7 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.data.remote.CURRENT_TICKETBOX_API_VERSION
+
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.AuthCheckDto
@@ -211,7 +213,7 @@ internal class FakeApiService(
 
     override suspend fun runtimeCompatibility(): RuntimeCompatibilityDto =
         RuntimeCompatibilityDto(
-            apiVersion = "2026-08-02",
+            apiVersion = CURRENT_TICKETBOX_API_VERSION,
             writeCompatibility = "compatible",
             capabilities = com.ticketbox.data.remote.dto.RuntimeProductCapabilitiesDto(
                 currency = com.ticketbox.data.remote.dto.RuntimeCurrencyCapabilityDto(

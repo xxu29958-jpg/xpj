@@ -34,14 +34,14 @@ def test_income_plans_page_renders_empty(web_client: TestClient, *, identity) ->
     resp = web_client.get("/web/income-plans")
     assert resp.status_code == 200
     body = resp.text
-    assert "收入记录" in body
-    assert "还没有收入记录" in body
+    assert "收入计划" in body
+    assert "还没有收入计划" in body
 
 
 def test_income_plans_create_and_list(web_client: TestClient, *, identity) -> None:  # noqa: ARG001
     create_resp = web_client.post(
         "/web/income-plans/create",
-        data={
+        data={"intent_month": "2026-05",
             "label": "我的工资",
             "source_type": "salary",
             "amount_yuan": "10000",
@@ -55,7 +55,7 @@ def test_income_plans_create_and_list(web_client: TestClient, *, identity) -> No
     assert list_resp.status_code == 200
     body = list_resp.text
     assert "我的工资" in body
-    assert "实际到账" in body
+    assert "不代表实际到账或账户余额" in body
     # 10000 元 should render somewhere
     assert "10000.00" in body or "10,000.00" in body or "10000" in body
 
@@ -65,7 +65,7 @@ def test_income_plans_one_time_month_is_user_facing(
 ) -> None:  # noqa: ARG001
     create_resp = web_client.post(
         "/web/income-plans/create",
-        data={
+        data={"intent_month": "2026-05",
             "label": "项目尾款",
             "source_type": "freelance",
             "frequency": "one_time",
@@ -88,7 +88,7 @@ def test_income_plans_one_time_month_is_user_facing(
 def test_income_plans_archive_and_restore(web_client: TestClient, *, identity) -> None:  # noqa: ARG001
     create_resp = web_client.post(
         "/web/income-plans/create",
-        data={
+        data={"intent_month": "2026-05",
             "label": "副业",
             "source_type": "freelance",
             "amount_yuan": "3000",
@@ -114,7 +114,7 @@ def test_income_plans_archive_and_restore(web_client: TestClient, *, identity) -
 
     archive_resp = web_client.post(
         f"/web/income-plans/{pid}/archive",
-        data={"expected_row_version": archive_token},
+        data={"intent_month": "2026-05", "expected_row_version": archive_token},
         follow_redirects=False,
     )
     assert archive_resp.status_code == 303
@@ -135,7 +135,7 @@ def test_income_plans_archive_and_restore(web_client: TestClient, *, identity) -
 
     restore_resp = web_client.post(
         f"/web/income-plans/{pid}/restore",
-        data={"expected_row_version": restore_token},
+        data={"intent_month": "2026-05", "expected_row_version": restore_token},
         follow_redirects=False,
     )
     assert restore_resp.status_code == 303
@@ -154,7 +154,7 @@ def test_income_plans_archive_and_restore(web_client: TestClient, *, identity) -
 def test_income_plans_rejects_bad_pay_day(web_client: TestClient, *, identity) -> None:  # noqa: ARG001
     resp = web_client.post(
         "/web/income-plans/create",
-        data={
+        data={"intent_month": "2026-05",
             "label": "x",
             "source_type": "salary",
             "amount_yuan": "100",

@@ -24,6 +24,8 @@ internal data class SyncStatusDropSelection(
     val failed: Boolean,
     val debtCreation: PendingDebtCreation?,
     val recurringOccurrence: com.ticketbox.data.repository.PendingOccurrencePayment? = null,
+    val incomeEdit: com.ticketbox.data.repository.PendingIncomePlanEdit? = null,
+    val debtAdjustment: com.ticketbox.data.repository.PendingDebtAdjustment? = null,
 )
 
 private data class DropConfirmationText(val title: String, val text: String, val confirmWord: String)
@@ -46,6 +48,8 @@ internal fun SyncStatusDropDialog(
             ) {
                 selection.debtCreation?.let { DebtCreationIntentSummary(it) }
                 selection.recurringOccurrence?.let { com.ticketbox.ui.screens.recurring.RecurringOccurrenceIntentSummary(it) }
+                selection.incomeEdit?.let { com.ticketbox.ui.screens.IncomePlanIntentSummary(it) }
+                selection.debtAdjustment?.let { com.ticketbox.ui.screens.DebtAdjustmentIntentSummary(it) }
                 Text(copy.text)
             }
         },
@@ -67,6 +71,15 @@ private fun dropConfirmationText(selection: SyncStatusDropSelection): DropConfir
     val debtCreation = row.type == PendingMutationType.CreateDebt
     val label = stringResource(syncStatusMutationLabelRes(row.type))
     return when {
+        row.type == PendingMutationType.RecordDebtAdjustment -> DropConfirmationText(
+            stringResource(R.string.debt_adjustment_drop), stringResource(R.string.debt_adjustment_drop_explanation),
+            stringResource(R.string.debt_adjustment_drop),
+        )
+        row.type == PendingMutationType.UpdateIncomePlan -> DropConfirmationText(
+            stringResource(R.string.income_plan_edit_drop),
+            stringResource(R.string.income_plan_edit_drop_explanation),
+            stringResource(R.string.income_plan_edit_drop),
+        )
         row.type == PendingMutationType.SetRecurringOccurrencePayment -> DropConfirmationText(
             stringResource(R.string.occurrence_drop),
             stringResource(R.string.occurrence_drop_explanation),

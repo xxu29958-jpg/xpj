@@ -55,7 +55,7 @@ class IncomePlanMappersTest {
 
     @Test
     fun draftSerialisesToCreateRequestUsingWireValues() {
-        val draft = IncomePlanDraft(
+        val draft = IncomePlanDraft(intentMonth = "2026-09",
             label = "  我的副业  ",
             sourceType = IncomeSourceType.FREELANCE,
             frequency = IncomeFrequency.ONE_TIME,
@@ -74,7 +74,7 @@ class IncomePlanMappersTest {
 
     @Test
     fun patchSerialisesOnlyProvidedFields() {
-        val patch = IncomePlanPatch(
+        val patch = IncomePlanPatch(intentMonth = "2026-09",
             expectedRowVersion = 1L,
             frequency = IncomeFrequency.ONE_TIME,
             incomeMonth = "2026-06",
@@ -93,7 +93,7 @@ class IncomePlanMappersTest {
 
     @Test
     fun patchTrimsLabelWhenProvided() {
-        val patch = IncomePlanPatch(
+        val patch = IncomePlanPatch(intentMonth = "2026-09",
             expectedRowVersion = 1L,
             label = "  重命名  ",
         )

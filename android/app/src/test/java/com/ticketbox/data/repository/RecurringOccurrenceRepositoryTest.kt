@@ -13,6 +13,10 @@ import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
 import kotlinx.coroutines.test.runTest
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.ResponseBody.Companion.toResponseBody
+import retrofit2.HttpException
+import retrofit2.Response
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -72,6 +76,26 @@ class RecurringOccurrenceRepositoryTest {
         assertTrue(changed.repository.enqueue(changed.binding, changed.draft).isFailure)
         assertTrue(changed.dao.rows.isEmpty())
     }
+
+    @Test
+    fun protocolAndUnknownRefusalsCanResumeTheOriginalAssociation() = runTest {
+        for (code in listOf("runtime_version_mismatch", "client_upgrade_required", "future_write_refusal")) {
+            val fixture = OccurrenceFixture()
+            val id = fixture.repository.enqueue(fixture.binding, fixture.draft).getOrThrow()
+            val original = fixture.dao.rows.getValue(id)
+            fixture.api.refusalCode = code
+            assertEquals(1, fixture.engine(fixture.outbox, fixture.clock).drainOnce().failures)
+            val retained = fixture.dao.rows.getValue(id)
+            assertEquals(PendingMutationStatus.Failed.wireValue, retained.status)
+            assertEquals(original.payload, retained.payload)
+            assertEquals(original.idempotencyKey, retained.idempotencyKey)
+            fixture.api.refusalCode = null
+            fixture.api.loseResponse = false
+            assertTrue(fixture.outbox.resolveFailed(id, FailedResolution.Retry()))
+            assertEquals(1, fixture.engine(fixture.outbox, fixture.clock).drainOnce().done)
+            assertEquals(fixture.api.calls.first(), fixture.api.calls.last())
+        }
+    }
 }
 
 private class OccurrenceFixture(role: String = "owner") {
@@ -105,6 +129,7 @@ private class OccurrenceApiProbe : ApiService by FakeApiService(mutableListOf(),
     val calls = mutableListOf<Pair<RecurringOccurrencePaymentRequestDto, String>>()
     val results = mutableMapOf<String, RecurringOccurrenceDto>()
     var loseResponse = true
+    var refusalCode: String? = null
 
     override suspend fun setRecurringOccurrencePayment(
         publicId: String, month: String, request: RecurringOccurrencePaymentRequestDto, idempotencyKey: String,
@@ -112,6 +137,10 @@ private class OccurrenceApiProbe : ApiService by FakeApiService(mutableListOf(),
         assertEquals("recurring-1", publicId)
         assertEquals("2026-09", month)
         calls += request to idempotencyKey
+        refusalCode?.let { code ->
+            throw HttpException(Response.error<Any>(409,
+                """{"error":"$code","message":"请更新配套版本后重试。"}""".toResponseBody("application/json".toMediaType())))
+        }
         val result = results.getOrPut(idempotencyKey) {
             occurrenceFixture().copy(rowVersion = 1, state = "fulfilled", reservedAmountCents = 0,
                 expensePublicId = request.expensePublicId, paidAmountCents = 10_000, nextDueDate = "2026-10-05")

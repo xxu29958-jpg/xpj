@@ -12,7 +12,7 @@ Locks in:
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -165,8 +165,6 @@ def test_builder_sends_generalized_income_plan(identity) -> None:  # noqa: ARG00
             label="Acme Corp 工资",
             source_type="工资",
             amount_cents=1_500_000,
-            # Current-month income is filtered by pay day; keep this line
-            # applicable no matter which day the test suite runs.
             pay_day=1,
         )
         db.commit()
@@ -190,7 +188,11 @@ def test_builder_sends_generalized_income_plan(identity) -> None:  # noqa: ARG00
     to_outbound_dict(inputs)
 
 
-def test_builder_sends_only_income_applicable_to_advice_month(identity) -> None:  # noqa: ARG001
+def test_builder_sends_only_income_applicable_to_advice_month(identity, monkeypatch) -> None:  # noqa: ARG001
+    from app.services import income_plan_service
+
+    server_now = datetime(2026, 6, 1, tzinfo=UTC)
+    monkeypatch.setattr(income_plan_service, "now_utc", lambda: server_now)
     with SessionLocal() as db:
         create_income_plan(
             db,

@@ -1,107 +1,79 @@
 package com.ticketbox.data.repository
 
 import com.squareup.moshi.JsonAdapter
+import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto
-import com.ticketbox.data.remote.dto.ExpenseCorrectionResponseDto
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
-import com.ticketbox.domain.model.ExpenseCorrectionOutcome
 import com.ticketbox.domain.model.ExpenseRevisionPage
-import kotlinx.coroutines.CancellationException
-import java.io.IOException
 import java.util.UUID
-
-private data class QueuedExpenseCorrection(
-    val bound: BoundLedgerRequest,
-    val outbox: OutboxRepository,
-    val adapter: JsonAdapter<ExpenseCorrectionRequestDto>,
-    val expense: Expense,
-    val request: ExpenseCorrectionRequestDto,
-    val idempotencyKey: String,
-)
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 
 internal class ExpenseCorrectionRepository(
     private val core: ExpenseRepositoryCore,
+    private val outbox: OutboxRepository,
+    private val adapter: JsonAdapter<ExpenseCorrectionPayload>,
+    private val legacyAdapter: JsonAdapter<ExpenseCorrectionRequestDto>,
 ) {
-    suspend fun fetchRevisions(
-        id: Long,
-        page: Int,
-        pageSize: Int,
-        snapshotRevision: Long? = null,
-    ): Result<ExpenseRevisionPage> = core.errorHandler.safeCall {
-        val bound = core.ledgerRequestGuard.bind()
-        bound.call { it.expenseRevisions(id, page, pageSize, snapshotRevision) }.toDomain()
+    suspend fun fetchRevisions(id: Long, page: Int, pageSize: Int, snapshotRevision: Long? = null): Result<ExpenseRevisionPage> =
+        core.errorHandler.safeCall {
+            core.ledgerRequestGuard.bind().call { it.expenseRevisions(id, page, pageSize, snapshotRevision) }.toDomain()
+        }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun observe(): Flow<ExpenseCorrectionObservation> = core.apiProvider.observeActiveLedgerAccess().flatMapLatest { access ->
+        if (access == null) flowOf(ExpenseCorrectionObservation(null, emptyList()))
+        else outbox.observeActiveByTypes(setOf(PendingMutationType.CorrectExpense), includeCompleted = true).map { rows ->
+            if (core.ledgerRequestGuard.captureLogicalBinding() != access.binding) ExpenseCorrectionObservation(null, emptyList())
+            else ExpenseCorrectionObservation(access, rows.map { row ->
+                val intent = adapter.readSupportedCorrection(row)
+                PendingExpenseCorrection(row, intent, if (intent == null) legacyAdapter.readCorrectionJson(row.payloadJson) else null)
+            })
+        }
     }
 
-    suspend fun correctAllowingOffline(
-        expense: Expense,
-        correction: ExpenseCorrectionDraft,
-    ): Result<ExpenseCorrectionOutcome> = core.errorHandler.safeCall {
-        if (!core.canModifyLedger()) {
-            throw RepositoryException("当前角色为只读，无法更正账本。")
-        }
-        if (expense.status != "confirmed" || expense.pendingSync || expense.id <= 0L) {
-            throw RepositoryException("这笔账单还不能更正。")
-        }
-        val bound = core.ledgerRequestGuard.bind()
-        val request = correction.toRequest(expense.rowVersion)
-        val idempotencyKey = UUID.randomUUID().toString()
-        val outbox = core.outbox
-        val adapter = core.correctionAdapter
-        if (outbox == null || adapter == null || expense.rowVersion == 0L) {
-            val response = bound.call {
-                it.correctExpense(expense.id.toString(), request, idempotencyKey)
+    suspend fun submit(expectedBinding: LogicalSessionBinding, expense: Expense, correction: ExpenseCorrectionDraft): Result<Long> =
+        core.errorHandler.safeCall {
+            if (!core.canModifyLedger()) throw RepositoryException("当前角色为只读，无法更正账本。")
+            if (expense.status != "confirmed" || expense.pendingSync || expense.id <= 0 || expense.rowVersion <= 0) {
+                throw RepositoryException("请先读取当前已确认账单，再核对更正。")
             }
-            return@safeCall syncedOutcome(response, bound)
+            val bound = core.ledgerRequestGuard.bindExact(expectedBinding)
+            val target = "expense:${expense.id}"
+            if (outbox.activeForTarget(bound, target).isNotEmpty() || observe().first().corrections.any {
+                    it.row.targetId == target && !it.hasSupportedIntent
+                }) throw RepositoryException("这笔账单有待处理的提交，请先查看原提交。")
+            val payload = ExpenseCorrectionPayload(1, expense.id, expense.merchant,
+                expense.originalCurrencyCodeRaw ?: expense.originalCurrencyCode.storageKey, expense.originalAmountMinor, expense.homeCurrencyCode ?: expense.homeCurrency.storageKey,
+                expectedBinding.ownerKey, expectedBinding.ledgerId, expectedBinding.sessionGeneration, expectedBinding.bindingRevision,
+                correction.toRequest(expense.rowVersion))
+            outbox.enqueue(boundRequest = bound, intent = PendingMutationIntent(
+                type = PendingMutationType.CorrectExpense, targetId = target, payloadJson = adapter.toJson(payload),
+                expectedRowVersion = expense.rowVersion, idempotencyKey = UUID.randomUUID().toString()))
         }
 
-        if (core.hasUnresolvedQueuedMutationsFor(bound, expenseOutboxTargetId(expense))) {
-            enqueue(QueuedExpenseCorrection(bound, outbox, adapter, expense, request, idempotencyKey))
-            return@safeCall ExpenseCorrectionOutcome.Queued(expense.projectCorrection(correction))
-        }
-        val response = try {
-            bound.call {
-                it.correctExpense(expense.id.toString(), request, idempotencyKey)
+    suspend fun recover(expectedBinding: LogicalSessionBinding, rowId: Long, drop: Boolean): Result<Unit> = core.errorHandler.safeCall {
+        val bound = core.ledgerRequestGuard.bindExact(expectedBinding)
+        val current = observe().first()
+        if (current.access?.binding != expectedBinding) throw RepositoryException("账本连接已变化，请重新打开账单。")
+        val pending = current.corrections.singleOrNull { it.row.id == rowId } ?: throw RepositoryException("原提交状态已变化，请重新查看。")
+        bound.requireStillActive()
+        val changed = when {
+            drop && pending.canDiscard -> when (pending.row.status) {
+                PendingMutationStatus.Conflict -> outbox.resolveConflict(rowId, ConflictResolution.DropMine)
+                PendingMutationStatus.Done, PendingMutationStatus.Pending -> outbox.discardUnprovenCorrection(rowId, pending.row.status)
+                else -> outbox.resolveFailed(rowId, FailedResolution.Drop)
             }
-        } catch (networkError: IOException) {
-            enqueue(QueuedExpenseCorrection(bound, outbox, adapter, expense, request, idempotencyKey))
-            return@safeCall ExpenseCorrectionOutcome.Queued(expense.projectCorrection(correction))
+            !drop && current.access?.canModify == true && pending.canRetry -> outbox.resolveFailed(rowId, FailedResolution.Retry())
+            else -> throw RepositoryException("请核对当前事实后明确重新提交；原提交不能直接重试或覆盖。")
         }
-        syncedOutcome(response, bound)
-    }
-
-    private suspend fun enqueue(command: QueuedExpenseCorrection) {
-        command.outbox.enqueue(
-            boundRequest = command.bound,
-            intent = PendingMutationIntent(
-                type = PendingMutationType.CorrectExpense,
-                targetId = expenseOutboxTargetId(command.expense),
-                payloadJson = command.adapter.toJson(command.request.copy(expectedRowVersion = 0L)),
-                expectedRowVersion = command.expense.rowVersion,
-                idempotencyKey = command.idempotencyKey,
-            ),
-        )
-    }
-
-    private suspend fun syncedOutcome(
-        response: ExpenseCorrectionResponseDto,
-        bound: BoundLedgerRequest,
-    ): ExpenseCorrectionOutcome.Synced {
-        val refreshPending = try {
-            core.cacheIfConfirmed(response.expense, bound)
-            false
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (bindingError: RepositoryException) {
-            throw bindingError
-        } catch (_: Exception) {
-            true
-        }
-        return ExpenseCorrectionOutcome.Synced(
-            expense = response.expense.toDomain(),
-            revision = response.revision.toDomain(),
-            refreshPending = refreshPending,
-        )
+        if (!changed) throw RepositoryException("原提交状态已变化，请重新查看。")
+        if (!drop) outbox.schedulePending()
     }
 }

@@ -377,6 +377,7 @@ class LedgerRepository(
                     kind = item.kind,
                     resourceId = item.resourceId,
                     expectedRowVersion = item.expectedRowVersion,
+                    intentMonth = item.restoreIntentMonth,
                 ),
             ).message
         }
@@ -617,6 +618,7 @@ private fun RecycleBinItemDto.toRecycleBinItem(): RecycleBinItem = RecycleBinIte
     removedAt = removedAt,
     retentionLabel = retentionLabel,
     expectedRowVersion = expectedRowVersion,
+    restoreIntentMonth = restoreIntentMonth,
 )
 
 private fun InvitationPreviewResponseDto.toInvitationPreview(): InvitationPreview = InvitationPreview(

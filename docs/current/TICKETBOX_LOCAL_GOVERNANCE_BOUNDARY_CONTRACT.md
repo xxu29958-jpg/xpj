@@ -59,7 +59,7 @@ Authority：用户完整 Goal 与本片 FIX 裁决 → 2026-08-26 最终产品�
 - 本机 Owner：`_devices.py`、`_upload_links.py`、`_pairing.py` → `owner_console_service` 保留。Android：`MyDevicesViewModel` → `LedgerRepository` → `LedgerDeviceApi` 保留。Desktop：`web_bff.allowed_target`、`public_connectivity_provider` → `public_endpoint_probe` 保留。
 - 当前环境样例、设置页、接口页、THREAT_MODEL、CLOUDFLARE_TUNNEL、DATA_RETENTION 和维护脚本帮助已同步。Atlas 仅更新原 Public-admin 单行与原 Backstage 交付包，没有改变其他 PR 的状态。
 
-PG/完整集成仍由现有生产者承担：`test_public_host_surface_regression.py`、`test_admin_devices.py`、`test_admin_upload_links.py`、`test_maintenance.py`、`test_auth_bootstrap.py`、`test_owner_console.py` 及现有 ledger/device、Desktop BFF 云用例。它们在本机未执行。本候选未提交；exact-candidate 云 CI/CodeQL/打包资格由 root 后续执行，此合同不替代全系统 RC 完成结论。
+PG/完整集成由现有生产者承担：`test_public_host_surface_regression.py`、`test_admin_devices.py`、`test_admin_upload_links.py`、`test_maintenance.py`、`test_auth_bootstrap.py`、`test_owner_console.py` 及现有 ledger/device、Desktop BFF 云用例。本机未执行这些完整集成。原独立 source `401a9cd3` 后续实际通过 CI `34039757907`、CodeQL `34039757920`、Connected `34039758001`；后者 execution `101504272046` 执行 111 例。新的组合候选仍须独立资格化，此合同不替代全系统 RC 完成结论。
 
 ### 正式 P2：自定义维护端口的后端配置前提
 
@@ -75,3 +75,11 @@ PG/完整集成仍由现有生产者承担：`test_public_host_surface_regressio
 施工前实际证据：参数帮助缺少配置前提；真实 guard 在默认环境拒绝 8765，在精确 extra Host 下通过网络 gate，但继续拒绝未列出的别名、公网 Host 和非环回 peer。既有 `test_network_boundary_extra_hosts.py` 全部 9 例通过（0.11 秒）；执行时 `Engine.connect` 被封为立即失败，无服务或数据库启动。测试仅有既有 pytest 模块预导入警告。
 
 施工后：实际 `Get-Help -Parameter ServerUrl` 显示后端启动窗口、精确 Host、重启继承和客户端环境无效等完整前提；脚本及操作文档 PowerShell 示例均通过原 parser。与 401 比较，脚本参数块及三个函数体完全相同，仅增加帮助和一行无操作时的提示；guard/router/auth/维护服务未改，`git diff --check` 通过。比较原始 Git 字符串时首次 `ParseInput` 未剥离文件 BOM 而失败，按 `ParseFile` 同样处理 BOM 后两版解析与比较通过，不是脚本运行失败。没有执行维护、启动／重启后端、烟测、PG 或 Windows action；没有新增测试文件、触碰 tmp、commit/push 或 resolve formal thread。新候选云端资格仍由 root 完成。
+
+### 与核心能力候选的前后整合复核
+
+施工前冻结 Gov help correction `18984f42` 与 Facts `4bc14c98`；后者包含 Income `ff060dc3`、Web `93e8485b`、Debt `5b5adf34` 和已资格化 Capture main `6376bde3`。两个实际 Atlas 冲突须同时保留已闭合的 Recycle/Advisor/FX 与 Gov 退休进度，不能择一覆盖。唯一交叉生产文件 main.py 须同时保留 Gov 启动 opt-in 退役和 Income 的真实 OpenAPI 必填 header 投影；各治理 guard、鉴权、维护 writer 及跨端产品 API 的原责任不变。
+
+施工后，main.py 相对 Facts 仅有原 Gov 启动 opt-in 退役差异；相对 Gov 则保留原 Income header helper。18 个 Gov 自有路径与预期集合一致，没有额外生产冲突。Atlas 刷新已闭合 Desktop/Capture、当前核心候选与 CSV 的真实反例，保持全部八个完整 Goal 交付包和 Windows HOLD。组合上的实际 API 合同生成器为 up to date，main.py Ruff、合并 diff 和冲突标记检查通过。
+
+本机组合窄执行实际得到 25 passed（治理及精确 Host 原用例），并有 3 个 Access 用例在 setup 阶段因 `--noconftest` 未提供原 client fixture 而报错；这不是产品行为失败，也不称这三例通过。执行阶段数据库连接被封锁且无调用。原 Access 用例保留给正常云端 fixture 与全候选验证，没有为得到本机绿色另造身份 fixture 或更改原断言。Gov 原独立 source 的成功云证据不替本组合背书；Facts 的 legacy-DONE 概览反例及后续修正仍属活动候选，必须整合最终版本再冻结发布候选。

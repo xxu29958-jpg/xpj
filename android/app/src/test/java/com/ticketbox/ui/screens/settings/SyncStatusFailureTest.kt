@@ -14,8 +14,8 @@ import kotlin.test.assertTrue
 /**
  * ADR-0042 §4.10: a reaper age-cap expiry is terminal — the FailedCard hides
  * Retry for it (replaying would hit a server-purged idempotency key, and the
- * next drain would just re-reap the row). Every other failure marker stays
- * retryable.
+ * next drain would just re-reap the row). Other reasons are not age expiry;
+ * payload support and protocol recovery are separate decisions.
  */
 class SyncStatusFailureTest {
 
@@ -37,6 +37,13 @@ class SyncStatusFailureTest {
             R.string.sync_status_error_rule_category_deleted,
             syncStatusExactErrorMessageResources["rule_category_deleted"],
         )
+    }
+
+    @Test
+    fun `protocol refusals explain compatible version recovery`() {
+        for (code in listOf("runtime_version_mismatch", "client_upgrade_required")) {
+            assertEquals(R.string.sync_status_error_protocol_mismatch, syncStatusExactErrorMessageResources[code])
+        }
     }
 
     @Test

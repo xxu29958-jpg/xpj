@@ -29,6 +29,14 @@ from app.services.income_plan_service import (
 from app.services.time_service import now_utc
 
 
+@pytest.fixture(autouse=True)
+def income_command_clock(monkeypatch):
+    """Fixture dates never inherit the runner's calendar."""
+    from app.services import income_plan_service
+
+    monkeypatch.setattr(income_plan_service, "now_utc", lambda: datetime(2026, 5, 1, tzinfo=UTC))
+
+
 def _make_extra_ledger(label: str) -> str:
     """Spin up a second ledger for tenant-isolation tests."""
     with SessionLocal() as db:
@@ -120,7 +128,7 @@ def test_create_income_plan_rejects_negative_amount(identity) -> None:  # noqa: 
 
 @pytest.mark.parametrize("bad_day", [0, -1, 32, 100])
 def test_create_income_plan_rejects_invalid_pay_day(identity, bad_day) -> None:  # noqa: ARG001
-    with SessionLocal() as db, pytest.raises(AppError, match="发薪日"):
+    with SessionLocal() as db, pytest.raises(AppError, match="预计收入日"):
         create_income_plan(
             db,
             tenant_id="owner",
@@ -162,7 +170,7 @@ def test_create_one_time_income_requires_and_stores_income_month(identity) -> No
 
 
 def test_create_one_time_income_rejects_missing_income_month(identity) -> None:  # noqa: ARG001
-    with SessionLocal() as db, pytest.raises(AppError, match="到账月份"):
+    with SessionLocal() as db, pytest.raises(AppError, match="预计月份"):
         create_income_plan(
             db,
             tenant_id="owner",
@@ -358,6 +366,7 @@ def test_total_monthly_income_counts_one_time_only_for_matching_month(identity) 
             db,
             tenant_id="owner",
             label="salary",
+            now=datetime(2026, 5, 1, tzinfo=UTC),
             source_type="salary",
             amount_cents=1_000_000,
             pay_day=10,
@@ -398,7 +407,7 @@ def test_total_monthly_income_counts_one_time_only_for_matching_month(identity) 
     assert {row.label for row in june_rows} == {"salary", "one-off June"}
 
 
-def test_current_month_income_waits_until_pay_day(identity) -> None:  # noqa: ARG001
+def test_whole_month_estimate_is_available_before_scheduled_day(identity) -> None:  # noqa: ARG001
     with SessionLocal() as db:
         create_income_plan(
             db,
@@ -417,7 +426,7 @@ def test_current_month_income_waits_until_pay_day(identity) -> None:  # noqa: AR
             db, tenant_id="owner", month="2026-06", as_of=datetime(2026, 6, 30, tzinfo=UTC)
         )
 
-    assert before_payday == 0
+    assert before_payday == 1_000_000
     assert on_payday == 1_000_000
 
 

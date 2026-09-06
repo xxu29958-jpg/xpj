@@ -270,13 +270,6 @@ private class FakeCreateDebtActions(
         amountCents: Long,
     ): Result<Debt> = Result.failure(UnsupportedOperationException())
 
-    override suspend fun recordAdjustment(
-        publicId: String,
-        expectedRowVersion: Long,
-        amountCents: Long,
-        reason: String,
-    ): Result<Debt> = Result.failure(UnsupportedOperationException())
-
     override suspend fun voidRepayment(
         publicId: String,
         repaymentPublicId: String,

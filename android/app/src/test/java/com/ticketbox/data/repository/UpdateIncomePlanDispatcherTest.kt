@@ -52,8 +52,9 @@ class UpdateIncomePlanDispatcherTest {
         ledgerId = "owner",
         type = PendingMutationType.UpdateIncomePlan,
         targetId = "income_plan:plan-1",
-        payloadJson = moshi().adapter(IncomePlanUpdateRequestDto::class.java)
-            .toJson(IncomePlanUpdateRequestDto(expectedRowVersion = 0L, amountCents = 1500000)),
+        payloadJson = moshi().adapter(IncomePlanEditPayload::class.java)
+            .toJson(IncomePlanEditPayload(1, "plan-1", "工资", 1400000, "CNY", "test-session", "test-binding",
+                IncomePlanUpdateRequestDto(intentMonth = "2026-09", expectedRowVersion = 0L, amountCents = 1500000))),
         expectedRowVersion = 1L,
         status = PendingMutationStatus.InFlight,
         retryCount = 0,
@@ -86,17 +87,17 @@ class UpdateIncomePlanDispatcherTest {
 
     private fun dispatcherFor(stub: ApiService) = UpdateIncomePlanDispatcher(
         apiProvider = { stub },
-        payloadAdapter = moshi().adapter(IncomePlanUpdateRequestDto::class.java),
+        payloadAdapter = moshi().adapter(IncomePlanEditPayload::class.java),
     )
 
     @Test
-    fun `dispatch replays the row's idempotency key and returns the new row_version`() = runTest {
+    fun `dispatch replays the row's idempotency key without rebasing another original command`() = runTest {
         val stub = Stub(Result.success(updatedPlanDto()))
 
         val result = dispatcherFor(stub).dispatch(planRow(idempotencyKey = "key-abc"))
 
         assertEquals("key-abc", stub.lastIdempotencyKey, "dispatcher must send the row's key")
-        assertEquals(DispatchResult.Success(newRowVersion = 2L), result)
+        assertEquals(DispatchResult.Success(), result)
     }
 
     @Test

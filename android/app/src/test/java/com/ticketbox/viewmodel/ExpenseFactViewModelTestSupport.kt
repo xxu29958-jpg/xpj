@@ -1,13 +1,23 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.ExpenseFactActions
+import com.ticketbox.data.repository.ExpenseCorrectionObservation
+import com.ticketbox.data.repository.ExpenseCorrectionPayload
+import com.ticketbox.data.repository.PendingExpenseCorrection
+import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.LedgerAccessContext
+import com.ticketbox.data.repository.OutboxRow
+import com.ticketbox.data.repository.toRequest
+import com.ticketbox.data.local.PendingMutationType
+import com.ticketbox.data.local.PendingMutationStatus
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.Flow
 import com.ticketbox.data.repository.ItemsAckOutcome
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.BillSplitSent
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
-import com.ticketbox.domain.model.ExpenseCorrectionOutcome
 import com.ticketbox.domain.model.ExpenseFactBundle
 import com.ticketbox.domain.model.ExpenseItems
 import com.ticketbox.domain.model.ExpenseOffsetDraft
@@ -104,58 +114,16 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
             splits = emptyList(),
         ),
     )
-    var correctResult: (Expense, ExpenseCorrectionDraft) -> Result<ExpenseCorrectionOutcome> =
-        { expense, draft ->
-            Result.success(
-                ExpenseCorrectionOutcome.Synced(
-                    expense = expense.copy(
-                        originalCurrency = draft.originalCurrencyCode ?: expense.originalCurrency,
-                        originalCurrencyCode = draft.originalCurrencyCode ?: expense.originalCurrencyCode,
-                        originalCurrencyCodeRaw = draft.originalCurrencyCode?.storageKey
-                            ?: expense.originalCurrencyCodeRaw,
-                        originalAmountMinor = draft.originalAmountMinor ?: expense.originalAmountMinor,
-                        merchant = draft.merchant ?: expense.merchant,
-                        category = draft.category ?: expense.category,
-                        tags = draft.tags ?: expense.tags,
-                        note = draft.note ?: expense.note,
-                        expenseTime = if (draft.expenseTimeChanged) {
-                            draft.expenseTime
-                        } else {
-                            expense.expenseTime
-                        },
-                        valueScore = if (draft.valueScoreChanged) {
-                            draft.valueScore
-                        } else {
-                            expense.valueScore
-                        },
-                        regretScore = if (draft.regretScoreChanged) {
-                            draft.regretScore
-                        } else {
-                            expense.regretScore
-                        },
-                        rowVersion = expense.rowVersion + 1,
-                        factRevision = expense.factRevision + 1,
-                    ),
-                    revision = ExpenseRevision(
-                        publicId = "rev-2",
-                        revisionNumber = 2L,
-                        changeKind = "correction",
-                        reason = draft.reason,
-                        changedFields = listOfNotNull(
-                            draft.merchant?.let { "merchant" },
-                            draft.category?.let { "category" },
-                            draft.items?.let { "items" },
-                            draft.splits?.let { "splits" },
-                        ),
-                        before = null,
-                        after = emptyMap(),
-                        actorAccountName = "我",
-                        actorDeviceName = "这台手机",
-                        createdAt = "2026-08-28T20:12:00Z",
-                    ),
-                ),
-            )
-        }
+    val correctionBinding = LogicalSessionBinding("https://example.test", "owner", "fixture-owner", "session", "binding")
+    val correctionObservations = MutableStateFlow(ExpenseCorrectionObservation(null, emptyList()))
+    var correctResult: (Expense, ExpenseCorrectionDraft) -> Result<Long> = { _, _ -> Result.success(1L) }
+    var fetchExpenseFailure: Throwable? = null
+    var recoveryCalls = 0
+
+    fun settleCorrection(status: PendingMutationStatus) {
+        correctionObservations.value = correctionObservations.value.copy(corrections =
+            correctionObservations.value.corrections.map { it.copy(row = it.row.copy(status = status)) })
+    }
 
     var correctCalls = 0
     var lastCorrectionDraft: ExpenseCorrectionDraft? = null
@@ -297,6 +265,7 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
 
     override suspend fun fetchExpense(id: Long): Result<Expense> {
         fetchExpenseCalls++
+        fetchExpenseFailure?.let { return Result.failure(it) }
         return Result.success(baseExpense)
     }
 
@@ -329,13 +298,32 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
         return revisionsResult(page, pageSize)
     }
 
-    override suspend fun correctExpenseAllowingOffline(
-        expense: Expense,
-        correction: ExpenseCorrectionDraft,
-    ): Result<ExpenseCorrectionOutcome> {
+    override fun observeCorrections(): Flow<ExpenseCorrectionObservation> {
+        correctionObservations.value = correctionObservations.value.copy(access = LedgerAccessContext(correctionBinding, canModifyLedgerFlag))
+        return correctionObservations
+    }
+
+    override suspend fun submitCorrection(expectedBinding: LogicalSessionBinding, expense: Expense,
+        correction: ExpenseCorrectionDraft): Result<Long> {
         correctCalls++
         lastCorrectionDraft = correction
-        return correctResult(expense, correction)
+        return correctResult(expense, correction).onSuccess { id ->
+            val intent = ExpenseCorrectionPayload(1, expense.id, expense.merchant,
+                expense.originalCurrencyCodeRaw ?: expense.originalCurrencyCode.storageKey, expense.originalAmountMinor,
+                expense.homeCurrencyCode ?: expense.homeCurrency.storageKey, expectedBinding.ownerKey, expectedBinding.ledgerId,
+                expectedBinding.sessionGeneration, expectedBinding.bindingRevision, correction.toRequest(expense.rowVersion))
+            val row = OutboxRow(id, expectedBinding.serverUrl, expectedBinding.ledgerId, expectedBinding.ownerKey,
+                PendingMutationType.CorrectExpense, "expense:${expense.id}", "fixture-only", expense.rowVersion,
+                PendingMutationStatus.Pending, 0, null, "2026-09-06T00:00:00Z", null, null, "original-key")
+            correctionObservations.value = correctionObservations.value.copy(corrections = listOf(PendingExpenseCorrection(row, intent)))
+        }
+    }
+
+    override suspend fun recoverCorrection(expectedBinding: LogicalSessionBinding, rowId: Long, drop: Boolean): Result<Unit> {
+        recoveryCalls++
+        correctionObservations.value = correctionObservations.value.copy(corrections =
+            if (drop) emptyList() else correctionObservations.value.corrections.map { it.copy(row = it.row.copy(status = PendingMutationStatus.Pending)) })
+        return Result.success(Unit)
     }
 
     override suspend fun acknowledgeItemsMismatchAllowingOffline(

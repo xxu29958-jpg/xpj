@@ -11,10 +11,12 @@ import com.ticketbox.BuildConfig
 import com.ticketbox.security.RequestAuthSnapshot
 import com.ticketbox.security.SessionCredentialRotator
 import okhttp3.Interceptor
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
@@ -29,7 +31,7 @@ private const val GET_IO_RETRY_DELAY_MS = 350L
 internal const val LEDGER_ID_HEADER = "X-Ticketbox-Ledger-ID"
 internal const val TICKETBOX_API_VERSION_HEADER = "Ticketbox-Api-Version"
 internal const val TICKETBOX_CURRENCY_BINDING_HEADER = "Ticketbox-Currency-Binding"
-internal const val CURRENT_TICKETBOX_API_VERSION = "2026-08-02"
+internal const val CURRENT_TICKETBOX_API_VERSION = "2026-09-06"
 private val MUTATING_HTTP_METHODS = setOf("POST", "PUT", "PATCH", "DELETE")
 private val runtimeMoshi = Moshi.Builder()
     .add(KotlinJsonAdapterFactory())
@@ -136,12 +138,10 @@ private fun appendLedgerId(requestBuilder: Request.Builder, ledgerId: String?) {
 internal class RuntimeNegotiationInterceptor : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
-        if (
-            request.method !in MUTATING_HTTP_METHODS ||
-            request.header("Authorization") == null ||
-            request.url.encodedPath.startsWith("/api/auth/") ||
-            request.header(TICKETBOX_API_VERSION_HEADER) != null
-        ) {
+        // Income forecasts require the declared month and separate expected/scheduled fields.
+        // Check their read protocol before Retrofit decodes a response from another epoch.
+        val incomeForecastRead = request.method == "GET" && request.url.encodedPath == "/api/income-plans"
+        if (!request.requiresRuntimeNegotiation(incomeForecastRead)) {
             return chain.proceed(request)
         }
         val compatibilityResponse = chain.proceed(compatibilityRequest(request))
@@ -152,15 +152,18 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
         val compatibility = compatibilityResponse.use { response ->
             response.body.string().let(runtimeCompatibilityAdapter::fromJson)?.toWriteCompatibility()
         }
-        if (compatibility?.canWrite != true) {
-            return chain.proceed(request)
+        if (compatibility != null && compatibility.apiVersion != CURRENT_TICKETBOX_API_VERSION) {
+            return incompatibleProtocolResponse(request)
         }
-        val response = chain.proceed(
-            request.newBuilder()
-                .header(TICKETBOX_API_VERSION_HEADER, CURRENT_TICKETBOX_API_VERSION)
-                .header(TICKETBOX_CURRENCY_BINDING_HEADER, checkNotNull(compatibility.requestBinding))
-                .build(),
-        )
+        // A readable forecast does not require writer permission or an activated currency binding.
+        if (incomeForecastRead || compatibility == null) return chain.proceed(request)
+        // Negotiated evidence identifies this request; the backend still authorizes the write.
+        // A blocked capability may have a real binding (configuration drift) or none (adoption).
+        val negotiatedRequest = request.newBuilder()
+            .header(TICKETBOX_API_VERSION_HEADER, checkNotNull(compatibility.apiVersion))
+            .removeHeader(TICKETBOX_CURRENCY_BINDING_HEADER)
+        compatibility.requestBinding?.let { negotiatedRequest.header(TICKETBOX_CURRENCY_BINDING_HEADER, it) }
+        val response = chain.proceed(negotiatedRequest.build())
         if (response.code == 409 && runCatching {
                 runtimeErrorAdapter.fromJson(response.peekBody(64 * 1024).string())?.error
             }.getOrNull() == "currency_binding_revision_conflict"
@@ -172,6 +175,11 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
         }
         return response
     }
+
+    private fun Request.requiresRuntimeNegotiation(incomeForecastRead: Boolean): Boolean =
+        (incomeForecastRead || method in MUTATING_HTTP_METHODS) &&
+            header("Authorization") != null && !url.encodedPath.startsWith("/api/auth/") &&
+            header(TICKETBOX_API_VERSION_HEADER) == null
 
     private fun compatibilityRequest(request: Request): Request {
         val url = request.url.newBuilder()
@@ -185,6 +193,14 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
         return builder.build()
     }
 }
+
+private fun incompatibleProtocolResponse(request: Request): Response =
+    Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(409)
+        .message("Runtime protocol mismatch")
+        .body(runtimeErrorAdapter.toJson(ErrorDto(
+            error = "runtime_version_mismatch",
+            message = "客户端与此服务器的协议版本不匹配，请更新为配套版本后继续。",
+        )).toResponseBody("application/json".toMediaType())).build()
 
 private fun retryableGetStatusInterceptor(): Interceptor =
     Interceptor { chain ->

@@ -78,6 +78,7 @@ internal class RepositoryGraph(
             outbox = outbox,
             patchExpenseAdapter = outboxAdapters.patchExpenseAdapter,
             correctionAdapter = outboxAdapters.correctionAdapter,
+            legacyCorrectionAdapter = outboxAdapters.legacyCorrectionAdapter,
             expenseStateTokenAdapter = outboxAdapters.expenseStateTokenAdapter,
             replaceItemsAdapter = outboxAdapters.replaceItemsAdapter,
             replaceSplitsAdapter = outboxAdapters.replaceSplitsAdapter,
@@ -111,13 +112,17 @@ internal class RepositoryGraph(
 
     val incomePlanRepository = IncomePlanRepository(
         apiProvider = apiServiceProvider,
-        // ADR-0042 Slice F: outbox + adapter for updateAllowingOffline.
+        // The editor persists its month-bearing original intent before dispatch.
         outbox = outbox,
         incomePlanUpdateAdapter = outboxAdapters.incomePlanUpdateAdapter,
     )
 
     val debtRepository = DebtRepository(
         apiProvider = apiServiceProvider,
+    )
+
+    val debtAdjustmentRepository = com.ticketbox.data.repository.DebtAdjustmentRepository(
+        apiServiceProvider, outbox, outboxAdapters.debtAdjustmentAdapter,
     )
 
     val debtCreationRepository = DebtCreationRepository(

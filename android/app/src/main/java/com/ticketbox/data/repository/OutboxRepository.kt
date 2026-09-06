@@ -39,10 +39,9 @@ internal data class PendingMutationIntent(
  * device rebinds do not replay old rows under the new binding.
  *
  * Concurrency contract enforced here:
- * 1. [enqueue] takes a snapshot of the mutation; the call site
- *    must already have applied the optimistic UI update before
- *    calling — the outbox is durable storage, not the UI source
- *    of truth.
+ * 1. [enqueue] publishes the original bound intent. Each mutation owner
+ *    decides its local presentation; a queued correction is never a fact.
+ *    Room acceptance precedes the scheduler notification.
  * 2. Drain happens in [dequeueNextRunnable] which respects "same
  *    target_id serial": a row is skipped if another row for the
  *    same target is currently IN_FLIGHT / CONFLICT / FAILED. The
@@ -397,15 +396,17 @@ class OutboxRepository private constructor(
             afterPersisted()
             insertedId
         }
+        schedulePending()
+        return id
+    }
+
+    /** Reuses the existing scheduler after a durable insertion or explicit original retry. */
+    internal fun schedulePending() {
         try {
             onEnqueued()
         } catch (_: Exception) {
-            // Best-effort scheduler kick; the row is already in the
-            // DAO and the periodic worker (15-min tick) will drain
-            // it. JVM-level Errors (OOM / StackOverflow / Linkage)
-            // propagate up by design.
+            // The durable row remains; the existing periodic worker will drain it.
         }
-        return id
     }
 
     suspend fun pauseForBindingTransition() {
@@ -540,6 +541,12 @@ class OutboxRepository private constructor(
         return rowcount > 0
     }
 
+    internal suspend fun discardUnprovenCorrection(id: Long, status: PendingMutationStatus): Boolean = bindingTransitionLease.withLock {
+        val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
+        check(status == PendingMutationStatus.Done || status == PendingMutationStatus.Pending)
+        dao.deleteIfStatus(id, binding.ownerStorageKey, binding.ledgerId, status.wireValue) > 0
+    }
+
     suspend fun markDone(id: Long) {
         dao.markDone(
             id = id,
@@ -561,7 +568,7 @@ class OutboxRepository private constructor(
                 ownerKey = binding.ownerStorageKey,
                 ledgerId = binding.ledgerId,
                 targetId = targetId,
-                preservedTokenType = PendingMutationType.VoidExpenseOffset.wireValue,
+                preservedTokenTypes = listOf(PendingMutationType.VoidExpenseOffset.wireValue, PendingMutationType.CorrectExpense.wireValue),
                 freshToken = newToken,
             )
         }

@@ -22,9 +22,8 @@ import retrofit2.HttpException
  * PENDING row (e.g. offline ack→confirm), avoiding a spurious 409
  * (ADR-0041 P1).
  *
- * Non-conflict 409s (e.g. ``items_sum_not_in_mismatch`` — the row left
- * the mismatch state before replay) map to [DispatchResult.Discarded]:
- * the intent is moot, nothing for the user to keep/drop.
+ * A refusal such as ``items_sum_not_in_mismatch`` does not prove that the
+ * original difference was acknowledged. Keep it as a visible failure.
  */
 class AcknowledgeItemsMismatchDispatcher(
     private val apiProvider: (OutboxRow) -> ApiService,
@@ -64,7 +63,7 @@ class AcknowledgeItemsMismatchDispatcher(
             val response = apiProvider(row).acknowledgeExpenseItemsMismatch(expenseRef, request, idempotencyKey)
             DispatchResult.Success(newRowVersion = response.rowVersion)
         } catch (e: HttpException) {
-            mapHttpException(e)
+            mapOutboxHttpException(e)
         } catch (e: IOException) {
             DispatchResult.RetryableFailure(e.message ?: "network IO failure")
         } catch (e: CancellationException) {
@@ -72,48 +71,5 @@ class AcknowledgeItemsMismatchDispatcher(
         } catch (e: Exception) {
             DispatchResult.Failure(e.message ?: "POST acknowledge-mismatch threw")
         }
-    }
-
-    private fun mapHttpException(e: HttpException): DispatchResult {
-        val body = e.response()?.errorBody()?.string().orEmpty()
-        val message = extractServerMessage(body) ?: e.message().orEmpty()
-        return when (e.code()) {
-            409 -> when {
-                // ADR-0038 contract: only ``state_conflict`` becomes a
-                // user-visible CONFLICT row.
-                "state_conflict" in body -> DispatchResult.Conflict(message)
-                // ADR-0042: a concurrent same-key request is still mid-flight
-                // (claimed, not yet committed). The replay will HIT once it
-                // lands — retry on the next tick, don't drop.
-                "idempotency_key_in_progress" in body ->
-                    DispatchResult.RetryableFailure(message.ifEmpty { "idempotency key in progress" })
-                // Other 409s (e.g. ``items_sum_not_in_mismatch``) are structural
-                // and belong in Discarded.
-                else -> DispatchResult.Discarded(message)
-            }
-            in 500..599, 408, 429 -> DispatchResult.RetryableFailure(
-                message.ifEmpty { "server ${e.code()}" },
-            )
-            // 404: the target row is GONE (deleted / rejected / not-found),
-            // so the mutation is moot — silent discard is correct.
-            404 -> DispatchResult.Discarded(message)
-            // 422: a validation / payload-contract rejection (invalid_request,
-            // malformed body, constraint violation, idempotency_key_reused).
-            // It will never succeed on retry, but the user MUST see it —
-            // surface a visible FAILED row, not a silent Discard that drops
-            // their offline edit.
-            422 -> DispatchResult.Failure(message)
-            else -> DispatchResult.Failure(message.ifEmpty { "HTTP ${e.code()}" })
-        }
-    }
-
-    private fun extractServerMessage(body: String): String? {
-        val key = "\"message\":\""
-        val start = body.indexOf(key)
-        if (start < 0) return null
-        val begin = start + key.length
-        val end = body.indexOf('"', begin)
-        if (end < 0) return null
-        return body.substring(begin, end)
     }
 }

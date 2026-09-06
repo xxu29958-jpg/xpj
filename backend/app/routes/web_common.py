@@ -166,12 +166,12 @@ def _base_ctx(
 
 
 def _ledger_switch_next_url(request: Request) -> str:
-    """Keep the current page filters while dropping its old ledger binding."""
+    """Keep page filters while leaving the old ledger and its operation feedback."""
 
     pairs = [
         (key, value)
         for key, value in request.query_params.multi_items()
-        if key != "ledger_id"
+        if key not in {"ledger_id", "msg", "flash_type"}
     ]
     query = urlencode(pairs)
     return f"{request.url.path}?{query}" if query else request.url.path

@@ -41,12 +41,12 @@ class IncomePlanViewModelTest {
     @AfterTest fun tearDown() { Dispatchers.resetMain() }
 
     @Test
-    fun initRefreshLoadsActiveAndArchivedAndTotal() = runTest(dispatcher) {
+    fun serverForecastWinsOverTheCurrentManagementHeads() = runTest(dispatcher) {
         val repo = FakeRepository(
             active = IncomePlanListing(
                 plans = listOf(plan("p1", 100_000, status = IncomePlanStatus.ACTIVE)),
-                totalActiveAmountCents = 100_000,
-            ),
+                expectedAmountCents = 120_000,
+             month = "2026-09", scheduledAmountCents = 50_000, effectivePlanCount = 2),
             archived = listOf(plan("p2", 50_000, status = IncomePlanStatus.ARCHIVED)),
         )
         val viewModel = IncomePlanViewModel(repo, CapabilityDebtActions())
@@ -55,26 +55,31 @@ class IncomePlanViewModelTest {
         assertFalse(state.isLoading)
         assertEquals(1, state.activePlans.size)
         assertEquals(1, state.archivedPlans.size)
-        assertEquals(100_000L, state.totalActiveAmountCents)
+        assertEquals(120_000L, state.currentMonthSummary.expectedAmountCents)
+        assertEquals(2, state.currentMonthSummary.effectivePlanCount)
+        assertEquals("2026-09", state.addDraft.intentMonth)
+        assertEquals("2026-09", state.addDraft.incomeMonthInput)
+        assertEquals(50_000L, state.scheduledAmountCents)
+        assertEquals("2026-09", state.forecastMonth)
     }
 
     @Test
     fun stableAuthorityRoundTripClearsDraftAndReloadsTheExistingViewModel() = runTest(dispatcher) {
         val repo = FakeRepository(
-            active = IncomePlanListing(listOf(plan("owner-a", 100_000)), 100_000),
+            active = IncomePlanListing(listOf(plan("owner-a", 100_000)), 100_000, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0),
         )
         val viewModel = IncomePlanViewModel(repo, CapabilityDebtActions())
         advanceUntilIdle()
         viewModel.updateDraftLabel("owner draft")
 
-        repo.active = IncomePlanListing(listOf(plan("family", 200_000)), 200_000)
+        repo.active = IncomePlanListing(listOf(plan("family", 200_000)), 200_000, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0)
         repo.activeAccessFlow.value = incomePlanAccess(ownerKey = "owner-b")
         advanceUntilIdle()
 
         assertEquals(listOf("family"), viewModel.state.value.activePlans.map(IncomePlan::publicId))
         assertEquals("", viewModel.state.value.addDraft.label)
 
-        repo.active = IncomePlanListing(listOf(plan("owner-b", 300_000)), 300_000)
+        repo.active = IncomePlanListing(listOf(plan("owner-b", 300_000)), 300_000, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0)
         repo.activeAccessFlow.value = incomePlanAccess(ownerKey = "owner-a-restored")
         advanceUntilIdle()
 
@@ -85,7 +90,7 @@ class IncomePlanViewModelTest {
     @Test
     fun stalePreviousLedgerRefreshCannotOverwriteCurrentLedger() = runTest(dispatcher) {
         val staleOwnerResult = CompletableDeferred<Result<IncomePlanListing>>()
-        val familyListing = IncomePlanListing(listOf(plan("family", 200_000)), 200_000)
+        val familyListing = IncomePlanListing(listOf(plan("family", 200_000)), 200_000, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0)
         val repo = FakeRepository(active = familyListing)
         repo.activeResponder = { call ->
             if (call == 1) staleOwnerResult.await() else Result.success(familyListing)
@@ -98,7 +103,7 @@ class IncomePlanViewModelTest {
         assertEquals(listOf("family"), viewModel.state.value.activePlans.map(IncomePlan::publicId))
 
         staleOwnerResult.complete(
-            Result.success(IncomePlanListing(listOf(plan("owner", 100_000)), 100_000)),
+            Result.success(IncomePlanListing(listOf(plan("owner", 100_000)), 100_000, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0)),
         )
         advanceUntilIdle()
 
@@ -122,11 +127,11 @@ class IncomePlanViewModelTest {
         viewModel.refresh()
         advanceUntilIdle()
         latest.complete(
-            Result.success(IncomePlanListing(listOf(plan("latest", 200_000)), 200_000)),
+            Result.success(IncomePlanListing(listOf(plan("latest", 200_000)), 200_000, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0)),
         )
         advanceUntilIdle()
         stale.complete(
-            Result.success(IncomePlanListing(listOf(plan("stale", 100_000)), 100_000)),
+            Result.success(IncomePlanListing(listOf(plan("stale", 100_000)), 100_000, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0)),
         )
         advanceUntilIdle()
 
@@ -135,20 +140,20 @@ class IncomePlanViewModelTest {
 
     @Test
     fun previousLedgerMutationCompletionCannotRefreshCurrentLedger() = runTest(dispatcher) {
-        val archiveResult = CompletableDeferred<Result<IncomePlan>>()
+        val restoreResult = CompletableDeferred<Result<IncomePlan>>()
         val repo = FakeRepository()
-        repo.archiveResponder = { archiveResult.await() }
+        repo.restoreResponder = { restoreResult.await() }
         var dataChangedCalls = 0
         val viewModel = IncomePlanViewModel(repo, CapabilityDebtActions()) { dataChangedCalls += 1 }
         advanceUntilIdle()
 
-        viewModel.archive("owner-plan", 1L)
+        viewModel.restore("owner-plan", 1L)
         advanceUntilIdle()
         repo.activeAccessFlow.value = incomePlanAccess(ledgerId = "family", ownerKey = "family-owner")
         advanceUntilIdle()
 
-        archiveResult.complete(
-            Result.success(plan("owner-plan", 100, status = IncomePlanStatus.ARCHIVED)),
+        restoreResult.complete(
+            Result.success(plan("owner-plan", 100, status = IncomePlanStatus.ACTIVE)),
         )
         advanceUntilIdle()
 
@@ -342,17 +347,6 @@ class IncomePlanViewModelTest {
     }
 
     @Test
-    fun archiveTriggersRepositoryAndFlashMessage() = runTest(dispatcher) {
-        val repo = FakeRepository()
-        val viewModel = IncomePlanViewModel(repo, CapabilityDebtActions())
-        advanceUntilIdle()
-        viewModel.archive("some-id", 1L)
-        advanceUntilIdle()
-        assertEquals("some-id", repo.lastArchiveId)
-        assertEquals(UiText.res(R.string.income_plan_archived), viewModel.state.value.flashMessage)
-    }
-
-    @Test
     fun restoreTriggersRepositoryAndFlashMessage() = runTest(dispatcher) {
         val repo = FakeRepository()
         val viewModel = IncomePlanViewModel(repo, CapabilityDebtActions())
@@ -368,7 +362,7 @@ class IncomePlanViewModelTest {
         val repo = FakeRepository()
         val viewModel = IncomePlanViewModel(repo, CapabilityDebtActions())
         advanceUntilIdle()
-        viewModel.archive("x", 1L)
+        viewModel.restore("x", 1L)
         advanceUntilIdle()
         viewModel.dismissFlash()
         assertNull(viewModel.state.value.flashMessage)
@@ -479,7 +473,7 @@ class IncomePlanViewModelTest {
     )
 
     private class FakeRepository(
-        var active: IncomePlanListing = IncomePlanListing(emptyList(), 0L),
+        var active: IncomePlanListing = IncomePlanListing(emptyList(), 0L, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0),
         private val archived: List<IncomePlan> = emptyList(),
         private val canModify: Boolean = true,
         private val createResult: Result<IncomePlan>? = null,
@@ -490,10 +484,15 @@ class IncomePlanViewModelTest {
         var createCalls = 0
         var listActiveCalls = 0
         var lastDraft: IncomePlanDraft? = null
-        var lastArchiveId: String? = null
         var lastRestoreId: String? = null
         var activeResponder: (suspend (Int) -> Result<IncomePlanListing>)? = null
-        var archiveResponder: (suspend () -> Result<IncomePlan>)? = null
+        var restoreResponder: (suspend () -> Result<IncomePlan>)? = null
+
+        override fun describeEdit(row: com.ticketbox.data.repository.OutboxRow): com.ticketbox.data.repository.PendingIncomePlanEdit? = null
+        override fun observeEdits(expectedBinding: LogicalSessionBinding) =
+            kotlinx.coroutines.flow.flowOf(emptyList<com.ticketbox.data.repository.PendingIncomePlanEdit>())
+        override suspend fun recoverEdit(expectedBinding: LogicalSessionBinding,
+            pending: com.ticketbox.data.repository.PendingIncomePlanEdit, drop: Boolean) = Result.success(Unit)
 
         override fun canModifyLedger(): Boolean = canModify
 
@@ -518,49 +517,31 @@ class IncomePlanViewModelTest {
         ): Result<IncomePlan> {
             createCalls += 1
             lastDraft = draft
-            return createResult ?: Result.success(stub(draft.label))
+            return createResult ?: Result.success(incomeViewModelStub(draft.label))
         }
 
-        override suspend fun update(
-            expectedBinding: LogicalSessionBinding,
-            publicId: String,
+        override suspend fun enqueueUpdate(expectedBinding: LogicalSessionBinding, baseline: IncomePlan,
             patch: com.ticketbox.data.repository.IncomePlanPatch,
-        ) =
-            Result.success(stub(publicId))
+            currency: com.ticketbox.domain.model.CurrencyCode): Result<Long> = Result.success(1L)
 
         override suspend fun archive(
             expectedBinding: LogicalSessionBinding,
             publicId: String,
             expectedRowVersion: Long,
-        ): Result<IncomePlan> {
-            lastArchiveId = publicId
-            return archiveResponder?.invoke()
-                ?: Result.success(stub(publicId, IncomePlanStatus.ARCHIVED))
-        }
+            intentMonth: String,
+        ): Result<IncomePlan> = throw UnsupportedOperationException("Archive belongs to the actual editor")
 
         override suspend fun restore(
             expectedBinding: LogicalSessionBinding,
             publicId: String,
             expectedRowVersion: Long,
+            intentMonth: String,
         ): Result<IncomePlan> {
             lastRestoreId = publicId
-            return Result.success(stub(publicId, IncomePlanStatus.ACTIVE))
+            return restoreResponder?.invoke() ?: Result.success(incomeViewModelStub(publicId, IncomePlanStatus.ACTIVE))
         }
 
-        private fun stub(id: String, status: IncomePlanStatus = IncomePlanStatus.ACTIVE) = IncomePlan(
-            publicId = id,
-            label = id,
-            sourceType = IncomeSourceType.SALARY,
-            frequency = IncomeFrequency.MONTHLY,
-            incomeMonth = null,
-            amountCents = 100,
-            payDay = 1,
-            status = status,
-            createdAt = "2026-05-01T00:00:00Z",
-            updatedAt = "2026-05-01T00:00:00Z",
-            rowVersion = 1L,
-            archivedAt = if (status == IncomePlanStatus.ARCHIVED) "2026-05-15T00:00:00Z" else null,
-        )
+
     }
 }
 

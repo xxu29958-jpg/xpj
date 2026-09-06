@@ -21,6 +21,7 @@ from app.models import CategoryRule, LedgerMember, MonthlyIncomePlan
 from app.services.classify_service import create_rule, delete_rule
 from app.services.income_plan_service import archive_income_plan, create_income_plan
 from app.services.soft_delete_policy import recycle_bin_retention_days
+from app.services.spending_contract_service import current_accounting_month
 from app.services.time_service import now_utc
 
 GONE_MESSAGE = "这条项目已不在回收站，可能已恢复或超过保留期，请刷新查看最新状态。"
@@ -101,7 +102,7 @@ def test_restore_occ_conflict_rerenders_422_anchored_to_row(web_client: TestClie
     response = web_client.post(
         "/web/recycle-bin/restore",
         data={
-            "kind": "income_plan",
+            "kind": "income_plan", "intent_month": current_accounting_month(),
             "resource_id": public_id,
             "expected_row_version": str(row_version + 1),  # 过期 OCC token
         },
@@ -128,7 +129,7 @@ def test_restore_missing_token_rerenders_422_anchored_to_row(web_client: TestCli
 
     response = web_client.post(
         "/web/recycle-bin/restore",
-        data={"kind": "income_plan", "resource_id": public_id},
+        data={"kind": "income_plan", "intent_month": current_accounting_month(), "resource_id": public_id},
         follow_redirects=False,
     )
 
@@ -148,7 +149,7 @@ def test_restore_success_still_303(web_client: TestClient, *, identity) -> None:
     response = web_client.post(
         "/web/recycle-bin/restore",
         data={
-            "kind": "income_plan",
+            "kind": "income_plan", "intent_month": current_accounting_month(),
             "resource_id": public_id,
             "expected_row_version": str(row_version),
         },
@@ -165,7 +166,7 @@ def test_restore_retry_same_submission_stays_idempotent_303(web_client: TestClie
     """幂等语义不破：同一提交重试不旋转、不写两遍 —— 服务层对已成功行 early-return。"""
     public_id, row_version = _seed_archived_income(label="幂等收入")
     payload = {
-        "kind": "income_plan",
+        "kind": "income_plan", "intent_month": current_accounting_month(),
         "resource_id": public_id,
         "expected_row_version": str(row_version),
     }
@@ -186,7 +187,7 @@ def test_restore_viewer_direct_post_still_403(web_client: TestClient, *, identit
         "/web/recycle-bin/restore",
         data={
             "ledger_id": ledger_id,
-            "kind": "income_plan",
+            "kind": "income_plan", "intent_month": current_accounting_month(),
             "resource_id": "whatever",
             "expected_row_version": "1",
         },
@@ -211,7 +212,7 @@ def test_restore_other_ledger_row_invisible_and_inoperable(web_client: TestClien
     response = web_client.post(
         "/web/recycle-bin/restore",
         data={
-            "kind": "income_plan",
+            "kind": "income_plan", "intent_month": current_accounting_month(),
             "resource_id": public_id,
             "expected_row_version": str(row_version),
         },

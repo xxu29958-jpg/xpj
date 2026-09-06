@@ -18,7 +18,6 @@ import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
-import com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto
 import com.ticketbox.data.remote.dto.MerchantAliasDeleteRequest
 import com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest
 import com.ticketbox.data.remote.dto.RecurringItemCreateRequestDto
@@ -52,8 +51,12 @@ internal class OutboxAdapterGraph {
         moshi.adapter(ExpenseUpdateRequest::class.java)
     }
 
-    val correctionAdapter: JsonAdapter<ExpenseCorrectionRequestDto> = lazyJsonAdapter {
+    val legacyCorrectionAdapter: JsonAdapter<ExpenseCorrectionRequestDto> = lazyJsonAdapter {
         moshi.adapter(ExpenseCorrectionRequestDto::class.java)
+    }
+
+    val correctionAdapter: JsonAdapter<com.ticketbox.data.repository.ExpenseCorrectionPayload> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.repository.ExpenseCorrectionPayload::class.java)
     }
 
     // PR-2g.4: shared between UpdateCategoryRuleDispatcher
@@ -130,9 +133,9 @@ internal class OutboxAdapterGraph {
     }
 
     // ADR-0042 Slice F: PATCH /api/income-plans/{publicId} adapter. Shared
-    // between UpdateIncomePlanDispatcher and IncomePlanRepository.updateAllowingOffline.
-    val incomePlanUpdateAdapter: JsonAdapter<IncomePlanUpdateRequestDto> = lazyJsonAdapter {
-        moshi.adapter(IncomePlanUpdateRequestDto::class.java)
+    // between UpdateIncomePlanDispatcher and IncomePlanRepository.enqueueUpdate.
+    val incomePlanUpdateAdapter: JsonAdapter<com.ticketbox.data.repository.IncomePlanEditPayload> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.repository.IncomePlanEditPayload::class.java)
     }
 
     val recurringCreateAdapter: JsonAdapter<RecurringItemCreateRequestDto> = lazyJsonAdapter {
@@ -141,6 +144,10 @@ internal class OutboxAdapterGraph {
 
     val recurringUpdateAdapter: JsonAdapter<RecurringItemUpdateRequestDto> = lazyJsonAdapter {
         moshi.adapter(RecurringItemUpdateRequestDto::class.java)
+    }
+
+    val debtAdjustmentAdapter: JsonAdapter<com.ticketbox.data.repository.DebtAdjustmentPayload> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.repository.DebtAdjustmentPayload::class.java)
     }
 
     val debtCreateAdapter: JsonAdapter<DebtCreateOutboxPayload> = lazyJsonAdapter {

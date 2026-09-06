@@ -29,6 +29,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -45,6 +46,7 @@ class MonthlyIncomePlan(Base):
 
     __tablename__ = "monthly_income_plans"
     __table_args__ = (
+        UniqueConstraint("id", "tenant_id", name="uq_income_plan_id_tenant"),
         *money_check_constraints_for_table("monthly_income_plans"),
         CheckConstraint(
             "status IN ('active', 'archived')",
