@@ -96,7 +96,7 @@ def _local_confirmation(
     csrf = re.search(r'name="csrf_token" value="([^"]+)"', preview.text)
     assert csrf is not None, preview.text
     attempt = preview.cookies.get(PAIRING_ATTEMPT_COOKIE_NAME)
-    csrf_seed = preview.cookies.get(CSRF_COOKIE_NAME)
+    csrf_seed = installed_web.browser.cookies.get(CSRF_COOKIE_NAME)
     assert attempt is not None
     assert csrf_seed is not None
     return preview, csrf.group(1), (

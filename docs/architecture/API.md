@@ -1709,7 +1709,7 @@ Idempotency-Key: <uuid-v4>
 
 ## 回收站
 
-ADR-0051 当前账本回收站。普通 API 只看当前 session token 对应的账本，不列已归档账本本身；归档账本恢复仍由本机 Owner Console `/owner/recycle-bin` 处理。
+当前账本回收站只看当前 session token 对应的账本，不列已归档账本本身。Owner 导航进入 `/web/recycle-bin`，沿用真实 Web 身份和当前账本权限；业务列表与恢复统一复用 `recycle_bin_service`。归档账本恢复位于本机 `/owner/ledgers`，提交至已有 `/owner/ledgers/{ledger_id}/unarchive`。旧 Owner 业务回收站 GET/POST 路由及其投影、分发实现已退役。
 
 当前纳入：
 

@@ -30,6 +30,7 @@ from adr_contract_git import has_auditable_ci_context, select_ratchet_base
 from pr_delta_baselines import (
     TEST_COUNT_BASELINES,
     baseline_policy_mismatches,
+    baseline_retirement_allowed,
     git_show_text,
     load_current_test_count_baselines,
     parse_count_baseline,
@@ -131,7 +132,7 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # main. See ``_audit_pr_delta_metrics.py`` docstring for what each
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
-    "mutate_token_carriers": 106,
+    "mutate_token_carriers": 105,
     "mutate_token_exempted": 129,
     "mutate_token_reason_admin_single_writer": 10,
     "mutate_token_reason_append_only_fact": 4,
@@ -177,30 +178,6 @@ _A3_MUTATE_TOKEN_EXEMPTION_GRANDFATHER = (
     128,
     130,
 )  # A3 adds the API/Web twins of one manual fixed-expense create capability. Both insert a new recurring_items row and require one durable Idempotency-Key; neither has a predecessor row_version to carry. The exact base binding makes this single topology hop non-replayable.
-_PORTABLE_INSTALLER_TEST_RETIREMENT_GRANDFATHER = (
-    "051464999fc1f71d9072bb5c9cfc012b521181cd",
-    387,
-    379,
-)  # The portable installer owner and its dedicated security harness were physically retired together. The active Inno installer retains its release-critical suite, and the portable surface has a negative retirement oracle. The canonical base binding prevents a future 387-to-379 count cycle from replaying this exception.
-_GENERATION_OWNER_TEST_RETIREMENT_GRANDFATHER = (
-    "9d74b04f318362d5e222d897787db074bb5ca8ab",
-    379,
-    282,
-)  # R025 physically retires the C07 lifecycle/recovery/current producers and their stage-specific scenario palaces. The remaining suite retains generic lock, CAS, restore, failure, shipment, and real Generation Owner contracts. Exact base and hop binding make this exception self-extinguishing.
-_SUPERUSER_CAPABILITY_TEST_RETIREMENT_GRANDFATHER = (
-    "ce9a5aa413f20e5455fe0572d9416187038135b0",
-    283,
-    260,
-)  # The HBA/IDENT cluster-admin recovery owner and its 31 collected dedicated scenarios were physically retired; eight bounded Generation Owner and pinned-PG lifecycle oracles were added, for a net reduction of 23. Generation Owner now consumes the initdb bootstrap authority once, while generic credential, host, source, target, projection, cleanup, and real-PG contracts remain. Exact base and hop binding make this exception self-extinguishing.
-_WINDOWS_VNEXT_CONTROL_PLANE_TEST_RETIREMENT_GRANDFATHER = (
-    "6557125826d7c76a06568164814b4e5cb9e08f88",
-    369,
-    76,
-)
-# Windows vNext physically replaces the old Generation/receipt/restore harness.
-# The retained 76 tests cover the shipped build, runtime authority, service
-# identity, atomic settings, and resource-serial PostgreSQL lifecycle behavior.
-# Exact base and hop binding make this exception self-extinguishing.
 
 # ``mutate_token_reason_<code>`` counters are NOT in either ratchet set:
 # they're distribution-shift indicators (PR-D's ``terminal_flag_flip``
@@ -320,18 +297,8 @@ def _compute_ratchet_findings(
             and base_commit == a3_base_commit
             and (base_val, current_val) == (a3_base_count, a3_current_count)
         )
-        test_retirement = key == "installer_pytest_count" and any(
-            base_commit == candidate_commit
-            and base_val == candidate_base
-            and current_val >= candidate_floor
-            for candidate_commit, candidate_base, candidate_floor in (
-                _PORTABLE_INSTALLER_TEST_RETIREMENT_GRANDFATHER,
-                _GENERATION_OWNER_TEST_RETIREMENT_GRANDFATHER,
-                _SUPERUSER_CAPABILITY_TEST_RETIREMENT_GRANDFATHER,
-                _WINDOWS_VNEXT_CONTROL_PLANE_TEST_RETIREMENT_GRANDFATHER,
-            )
-        )
-        if key in BASELINE_RATCHET_UP and current_val < base_val and not test_retirement:
+        retirement = baseline_retirement_allowed(key, base_commit, base_val, current_val)
+        if key in BASELINE_RATCHET_UP and current_val < base_val and not retirement:
             movement_violations.append(
                 f"  - {key} (UP-only): base={base_val}, current={current_val} "
                 f"(dropped by {base_val - current_val}). Tests/coverage should "

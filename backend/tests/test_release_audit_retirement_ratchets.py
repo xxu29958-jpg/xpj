@@ -138,3 +138,11 @@ def test_pr_delta_allows_only_exact_installer_test_retirement_floors(
         assert len(violations) == 1
         assert "mutate_token_carriers" in violations[0]
         assert f"base={base_count}, current={current_count}" in violations[0]
+
+
+def test_owner_recycle_route_retirement_allows_only_its_exact_count_hop(monkeypatch: pytest.MonkeyPatch) -> None:
+    mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
+    base_commit = "5436e40dddf437614ec01bf5703a5d5ce8197be3"
+    assert _violations_for(mod, monkeypatch, "mutate_token_carriers", 106, 105, base_commit) == []
+    for before, after, source in ((106, 104, base_commit), (107, 105, base_commit), (105, 104, base_commit), (106, 105, "f" * 40)):
+        assert len(_violations_for(mod, monkeypatch, "mutate_token_carriers", before, after, source)) == 1

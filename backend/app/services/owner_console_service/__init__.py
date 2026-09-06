@@ -12,7 +12,6 @@ shows:
                         formatting, owner account lookups)
 - ``_ledger_console`` — ledger discovery + management VMs
 - ``_recurring_ops``  — recurring summary VM consumed by the index card
-- ``_recycle_bin``    — unified archived/deleted restore surface
 - ``_devices``        — device CRUD wrappers scoped to managed ledgers
 - ``_upload_links``   — upload-link CRUD wrappers + public URL composer
 - ``_pairing``        — pairing code creation
@@ -74,12 +73,6 @@ from app.services.owner_console_service._recurring_ops import (
     RecurringOpsVM,
     get_recurring_ops,
 )
-from app.services.owner_console_service._recycle_bin import (
-    RecycleBinItemVM,
-    RecycleBinVM,
-    get_recycle_bin_vm,
-    restore_recycle_bin_item,
-)
 from app.services.owner_console_service._rule_audit import (
     RuleApplicationAuditRow,
     RuleApplicationAuditVM,
@@ -110,8 +103,6 @@ __all__ = [
     "PairingCodeResult",
     "RecoveryDeviceChoice",
     "RecurringOpsVM",
-    "RecycleBinItemVM",
-    "RecycleBinVM",
     "RuleApplicationAuditRow",
     "RuleApplicationAuditVM",
     "UploadLinkSecret",
@@ -136,7 +127,6 @@ __all__ = [
     "get_index_vm",
     "get_owner_account_id",
     "get_recurring_ops",
-    "get_recycle_bin_vm",
     "get_rule_application_audit",
     "get_upload_links",
     "list_archived_console_ledgers",
@@ -145,5 +135,4 @@ __all__ = [
     "list_ledger_health",
     "list_manageable_console_ledgers",
     "list_recovery_device_choices",
-    "restore_recycle_bin_item",
 ]
