@@ -170,6 +170,18 @@ internal class StubApi(
     val recycleBinRefreshCount = mutableListOf<Unit>()
     val recycleBinRestoreRequests: MutableList<com.ticketbox.data.remote.dto.RecycleBinRestoreRequestDto> = mutableListOf()
 
+    override suspend fun recurringOccurrence(
+        publicId: String,
+        month: String,
+    ): com.ticketbox.data.remote.dto.RecurringOccurrenceDto = error("Unexpected recurring occurrence read")
+
+    override suspend fun setRecurringOccurrencePayment(
+        publicId: String,
+        month: String,
+        request: com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto,
+        idempotencyKey: String,
+    ): com.ticketbox.data.remote.dto.RecurringOccurrenceDto = error("Unexpected recurring occurrence write")
+
     override suspend fun createRecurringItem(
         request: com.ticketbox.data.remote.dto.RecurringItemCreateRequestDto,
         idempotencyKey: String,

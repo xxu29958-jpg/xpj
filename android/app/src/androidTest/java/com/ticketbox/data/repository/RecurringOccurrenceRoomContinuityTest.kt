@@ -113,7 +113,7 @@ class RecurringOccurrenceRoomContinuityTest {
                 com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto("link", 0, 7, "payment-august", 2),
                 "八月完整付款", 9_800, CurrencyCode.CNY)).getOrThrow()
         }
-        assertEquals(1, runBlocking { fixture.drain(maxAttempts = 1) }.failed)
+        assertEquals(1, runBlocking { fixture.drain(maxAttempts = 1) }.failures)
         val originalKey = fixture.stored().single()["idempotencyKey"]
         fixture.network.failReads = true
         installModel()
