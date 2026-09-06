@@ -284,7 +284,7 @@
     <string name="sync_status_mutation_update_merchant_alias">修改商家别名</string>
     <string name="sync_status_mutation_delete_merchant_alias">删除商家别名</string>
     <string name="sync_status_mutation_update_goal">修改目标</string>
-    <string name="sync_status_mutation_update_income_plan">修改收入记录</string>
+    <string name="sync_status_mutation_update_income_plan">修改收入计划</string>
     <string name="sync_status_mutation_create_recurring_item">新建固定支出</string>
     <string name="sync_status_mutation_update_recurring_item">修改固定支出</string>
     <string name="sync_status_mutation_create_expense_offset">登记退回或冲销</string>
