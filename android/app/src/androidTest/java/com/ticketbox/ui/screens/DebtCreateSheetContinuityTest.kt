@@ -3,6 +3,7 @@ package com.ticketbox.ui.screens
 import android.view.View
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.ViewRootForTest
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -77,10 +78,12 @@ class DebtCreateSheetContinuityTest {
         compose.onAllNodes(hasSetTextAction())[1].performScrollTo().performClick().performTextInput("123.45")
         compose.onNodeWithText(context.getString(R.string.debt_create_save))
             .performScrollTo().assertIsDisplayed().assertIsEnabled()
+        val beforeCapture = saveObservation()
         capture("debt-create-editing")
         val touchBefore = saveObservation()
         compose.onNode(hasText(context.getString(R.string.debt_create_save)) and hasClickAction()).performTouchInput {
-            assertTrue("Save injection visibleSize=$visibleSize; before=[$touchBefore]", width > 0 && height > 0)
+            assertTrue("Save injection visibleSize=$visibleSize; beforeCapture=[$beforeCapture]; " +
+                "before=[$touchBefore]", width > 0 && height > 0)
             click()
         }
         runCatching { compose.waitUntil(5_000) { viewModel.state.value.isSubmitting } }.getOrElse { error ->
@@ -123,8 +126,21 @@ class DebtCreateSheetContinuityTest {
                 "touch=${node.touchBoundsInRoot}, windowBounds=${node.boundsInWindow}, " +
                 "buttonId=${node.id}, buttonSize=${node.size}, buttonPosition=${node.positionInRoot}, " +
                 "labelId=${label.id}, labelSize=${label.size}, labelPosition=${label.positionInRoot}, " +
-                "labelBounds=${label.boundsInRoot}"
+                "labelBounds=${label.boundsInRoot}, firstEmptyAncestor=${firstEmptyAncestor(node)}"
         }
+    }
+
+    private fun firstEmptyAncestor(node: SemanticsNode): String {
+        val source = node.layoutInfo.coordinates
+        var previous = "source size=${source.size}"
+        generateSequence(source) { it.parentCoordinates }.forEachIndexed { index, ancestor ->
+            val clipped = ancestor.localBoundingBoxOf(source, clipBounds = true)
+            val raw = ancestor.localBoundingBoxOf(source, clipBounds = false)
+            val current = "$index size=${ancestor.size} clipped=$clipped raw=$raw"
+            if (clipped.isEmpty || raw.isEmpty) return "$previous -> $current"
+            previous = current
+        }
+        return "none; root=$previous"
     }
 
     private fun capture(name: String) {
