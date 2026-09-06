@@ -87,7 +87,7 @@ def _evaluate_fixture(
     value = _edge_cdp().evaluate_page(
         _discover_edge(),
         profile=tmp_path / profile_name,
-        url=page.as_uri(),
+        prepare_url=lambda _attempt: page.as_uri(),
         width=width,
         height=height,
         expression="window.__webConsumerProbe || undefined",

@@ -24,7 +24,7 @@ def test_local_first_use_and_original_code_continuation(tmp_path: Path) -> None:
     page = tmp_path / "first-use.html"
     page.write_text(source.replace(_STARTUP_SCRIPT, f"window.firstUseStatus = {json.dumps(status)};\n{script}"), encoding="utf-8")
     result = evaluate_page(
-        edge, profile=tmp_path / "edge", url=page.as_uri(), width=390, height=844,
+        edge, profile=tmp_path / "edge", prepare_url=lambda _attempt: page.as_uri(), width=390, height=844,
         expression="window.firstUseProbe",
     )
     assert result == {

@@ -104,3 +104,89 @@ Root 集成复核：从仓库根误调用纯测试得到 `scripts.check_api_cont
 施工后仅改 `web_reports.py` 与本合同：route 中原五行历史字段被同一文件的 `_six_month_history_view` 替代，传递原数组并调用原均值 owner。AST 实测 route 为 80 行（349–428），新纯视图组为 9 行；主控明确接受现有上限，不再为额外余量扩大上下文 owner。将新纯组按实际参数内联后，整个 route 的 AST 与 `1a3bbf9a` 完全相同（忽略位置属性），包括所有查询、其它投影与异常求值顺序；该静态等价证据不等于编译或云端 weight 通过。
 
 同一原短组实际 23 PASS（3.37 秒）；OpenAPI 检查 up to date、Ruff 与 diff 检查通过。未改快照、测试断言、Desktop、金额/预算服务或任何模板/JS 消费者。未安装本机 Lizard、未重跑全仓 weight、PG 或长测；最终 repository-weight 与其余云门禁由 root 提交后的 exact candidate 重新核准。
+
+### Windows served-Web 验证入口：单用 bootstrap 与 fresh-profile 重试（test-first）
+
+本次固定 source `3eb75aed8d02f7177978978cd7427f7171ea6567`，施工前 clean。主控已核该候选只有 Windows 门禁失败，其余门禁完成；1180×760 served-Web 用例最后一次 `Runtime.evaluate` socket 读取超时，原始超时根因仍 unknown，probe 本身不 fetch。此处不把独立发现的恢复入口缺口冒充该超时根因，也不新增产品或 Windows lifecycle FIX。
+
+当前 `_edge_cdp.evaluate_page` 为两次尝试分别建立 fresh profile，却复用调用前准备的同一个 URL。`ControlServer.prepare_web_bootstrap` 是既有单用 grant/material owner；真实 POST 成功后 `consume_web_bootstrap` 删除 material，再由原 handler 发放受约束 session cookie。第一 profile 已消费 grant 后再丢失 CDP 响应，第二 profile 既无第一 profile 的 cookie，也不能重用已删除 material。旧成功出口是“一次 DOM 成功”；必须补证受控传输失败之后，第二次真实浏览器仍能通过相同身份、账本和布局断言。
+
+施工前全部直接消费者如下（行号固定为 `3eb75aed`）。Desktop 是 15 个调用，其中两个是纯 helper 测试；此外 Backend 动态导入同一 helper 的一个调用也必须在后续 required 签名迁移中处理，不能漏掉。
+
+| 入口 / 行 | 当前 URL 与原验证责任 | RED 后需保留的准备责任 |
+| --- | --- | --- |
+| `test_desktop_first_use_edge.py:26` | 可复用 file URI；本机入口和原 code 继续 | 返回原 fixture URI |
+| `test_ui_browser_layout.py:156` `_render_with_edge` | 可复用 file URI；Manager 各尺寸布局 | 返回原 fixture URI |
+| 同文件 `:327` `_render_behavior_probe` | 可复用 file URI；实际页面状态与操作探针 | 返回原 fixture URI |
+| 同文件 `:476` transport timeout 回归 | 纯 helper；两次不同 profile 后恢复 | 保留两次预算及原断言，URL 可复用 |
+| 同文件 `:505` semantic assertion 回归 | 纯 helper；语义失败只执行一次 | 保留语义错误不重试，URL 可复用 |
+| 同文件 `:716` served-Web 布局 | 单用 bootstrap；1180×760、820×660 两实例，真实 backend/pair/BFF/DOM | 仅原 Manager 每次独立创建 grant；本轮在原两个实例之外加一个响应丢失反例 |
+| 同文件 `:814` product card matrix | 可复用 file URI；hidden authority 与尺寸 | 返回原 fixture URI |
+| 同文件 `:971` prompt failures | 可复用 file URI；旧 DOM 退役与公网状态保留 | 返回原 fixture URI |
+| 同文件 `:1071` dirty ledger selection | 可复用 file URI；成功前保留选择 | 返回原 fixture URI |
+| 同文件 `:1131` ledger refresh cadence | 可复用 file URI；刷新不覆盖未提交选择 | 返回原 fixture URI |
+| 同文件 `:1203` role / vanished ledger | 可复用 file URI；实时成员与账本消失 | 返回原 fixture URI |
+| `test_web_bff_edge_e2e.py:328` | 单用 bootstrap；真实 BFF identity/header/请求与 DOM | 仅原 Manager 每次独立创建 grant |
+| 同文件 `:381` theme | 单用 bootstrap；原 theme 静态脚本与本地外观 | 同上；不增加 API 外观 owner |
+| 同文件 `:468` real backend render | 单用 bootstrap；两尺寸实例，pair/role/foreign-ledger 403/秘密不外露 | 同上；全部原断言保留 |
+| `test_web_manual_draft_edge.py:108` | 可复用本机 HTTP URL；真实草稿重载和 unknown-response 继续 | 返回同一仍在 serving 的 URI |
+| `backend/tests/test_web_edge_runtime_contract.py:87` | 动态加载 Desktop helper，可复用 file URI；实际 Web runtime consumers | required 签名迁移必须同步这个第 16 个调用 |
+
+四个单用函数在基线共六个参数化实例；其余 Desktop 十一个 URL 可复用。预计最小责任修正是 `evaluate_page` 必填 `prepare_url(attempt)`，在每个 fresh profile 之前向原 caller 请求入口；内部 `_evaluate_page_once` 继续只读 URL。把 URL 识别、cookie 注入或 grant 生成塞进 CDP helper 会复制 Manager 的身份责任；复用同一个 profile 又不满足现有传输故障隔离。本轮不实施该 helper/调用者迁移，等实际 RED 后一次迁移全部 16 处，保持两次/10 秒和最后错误原义。
+
+新反例只包装真实 `_WebSocket.request`：首次真实 `Runtime.evaluate` 已返回完整 served-Web DOM、同一布局/Owner 账本断言通过、单用文件已被真实消费，且仍是 attempt-1，才丢弃这一响应并抛一次 TimeoutError。JUnit 只记录无敏感值的前置成立属性。随后仍由原 helper cleanup 和第二 fresh profile 执行实际页面；最终原布局/身份/账本断言必须成立。JS 异常和布局断言不转换为 transport retry；不修改 bootstrap、cookie、pairing、服务端或 timeout。
+
+直接云生产者是现有 `.github/workflows/ci.yml:349` 的 native Windows pytest 命令，它显式选择原 served-Web 函数，因此会收集新增参数实例；原 BFF/身份和其余消费者继续保留。当前只有测试源与本合同改变；本机不运行 Edge、PG 或长测，不声称已观察新 RED，主控负责 test-only candidate 的实际执行。
+
+本轮短检查：原两个纯 helper 回归实际 2 PASS（0.13 秒；仅既有 `tests._real_backend` 预导入 rewrite warning），Ruff、Python AST 和 diff 检查通过。抽出的七行布局断言与原函数对应 AST 完全相同，原 `_SERVED_WEB_PROBE` 及其余函数 AST 未变；新增故障注入 helper 为 28 行、原 served-Web 函数现为 45 行。该测试路径独立选择 Desktop/Windows=true，其余重范围 false。原两个尺寸的参数 ID 保持，只有一个额外响应丢失实例；`_edge_cdp.py` 与所有产品、grant、会话和其余调用者源码未改。以上不证明新反例已 RED/GREEN，且未 commit/push。
+
+### Native JUnit 证据出口补齐（仍未核准目标 RED）
+
+Exact test-only `47822dbca71b1f14d592cc1469c46f006a46e49f` 的 CI `34046290437` 中，实际 native producer 是 **Windows installer build** job `101521833932`，不是已成功的 coordinator job `101521833967`。其真实 pytest 日志得到 11 PASS / 1 FAIL（57.45 秒），唯一失败为新增 `[1180x760-cdp-response-loss]`，最终 `AssertionError: layout probe did not become available`。但是 `RUNNER_TEMP/desktop-backend-results.xml` 未上传：原步骤在 pytest 非零后立即退出，当前 artifact 清单只有 APK/Room，没有 native XML。故不能核 `cdp_response_loss_after_consumed_bootstrap_dom=attempt-1`，不能把相符的错误形状认作已取得目标 RED。
+
+| 直接生产者 / 消费者 | 最小补齐与保持边界 |
+| --- | --- |
+| 原 Windows native pytest → 唯一现成 JUnit XML → 主控核前置属性 | 在同 job 增加一个 `always()` artifact 上传步骤，原样上传已生成的 XML；复用该 job 已有的完整 SHA 固定 `upload-artifact` action。不复制报告、不另造断言或验收框架。 |
+| 原退出 / no-skip / 清理 / 后续 Windows gate | pytest 命令、非零即退出和零用例/skip 拒绝原样保留；上传位于原 PG cleanup 之后。缺文件令上传失败，不能因此声明任何前置成立，也不改变或重跑 native 用例。 |
+| 原请求与后续 helper 修正 | 响应丢失测试、record_property、单用 grant、产品会话及 CDP helper 全部保持。等新 exact candidate 的实际 XML 核准前置，再决定是否进入全部 16 消费者的 required prepare_url 施工。原 `3eb75aed` socket timeout 与 Facts `f614ceef` 的 820×660 probe-unavailable 仍是不同的 unknown 根因，不宣称由此修复。 |
+
+本次只改必要 workflow 上传步骤和本合同。没有本机 Edge/PG/长测、commit/push；这次报告缺口补齐本身不是目标行为 RED 或 GREEN。
+
+短检查通过：仓库实际 GitHub workflow contract audit 为 OK（4.65 秒）；现有 YAML loader 解析后，移除唯一新增上传步骤即与 `47822dbc` 的完整 workflow 数据相同，因此所有原命令、退出、no-skip、cleanup 和条件不变。上传复用原 job 已有 pinned v4 action，位于 PG cleanup 后，artifact 名为 `desktop-backend-test-results`，缺文件设为 error。现有 classifier 对 workflow 路径选中全部五个重范围；未改变路由规则。diff 检查通过，helper 和真实反例保持原样，等待新 candidate 的 actual XML。
+
+后续 required 回调迁移还须保留准备失败的原出口：`ControlServer.prepare_web_bootstrap` 的目录/ACL/文件签发可以原样抛出 OSError；其写入清理分支也会重新抛出异常，没有统一转换成另一错误类型。旧调用在 `evaluate_page` 之前暴露这些错误，因此 `prepare_url(attempt)` 必须在每轮 transport try/catch **之外**执行，只有 `_evaluate_page_once` 的既有传输异常接受原两次处理。不得把签发、文件权限或 caller 准备错误包装为可重试的 CDP 故障；此边界进入 RED 后的前后 closure。
+
+### 单用入口重试：实际 RED 与施工前闭合
+
+Exact `1f7d05b728c81631cd761ee39c365a8e7c26547c`（tree `31b97b35e697418746d8fdb0962b840291b1c461`）的 CI `34046902646`、Windows installer build job `101523483717` 已实际失败。新上传的 `desktop-backend-test-results` artifact `9993408096` 核对 head 一致；原 JUnit 为 12 cases / 1 failure / 0 errors / 0 skips（54.812 秒）。唯一失败 `[1180x760-cdp-response-loss]` 明确包含 `cdp_response_loss_after_consumed_bootstrap_dom=attempt-1`，最后为 `AssertionError: layout probe did not become available`。这次证据证明首次真实 DOM/Owner 账本/布局断言和单用 material 消费均已完成，受控丢响应后第二 fresh profile 无法通过原最终断言，准予进入 helper 修正；未把自然 socket/probe stall 原因推定为已知。
+
+施工前重查上述 16 个直接调用，仍为 Desktop 15 / Backend 1。唯一改动责任是测试内 `_edge_cdp.evaluate_page` 的必填入口准备协议；四个单用调用者每次只向原 `ControlServer.prepare_web_bootstrap` 请求独立 material，其他调用者返回原可复用 URI。`_evaluate_page_once`、10 秒、两次预算、JS/语义错误、最后 transport 错误与 Edge cleanup 保持；准备失败仍直接退出。每次 material 使用独立路径，避免前次未消费 grant 的到期/清理删掉下一次文件；原 Manager `consume_web_bootstrap`/`server_close` 仍负责消费及剩余 material 清理，不新增身份、会话或授权 owner。原布局、identity/header、role、foreign-ledger 拒绝、草稿和请求序列断言均保留，当前断言不得为重试放宽。
+
+### 单用入口重试：施工后闭合与验证边界
+
+| owner / 全部直接消费者 | 施工结果、旧出口与验证 |
+| --- | --- |
+| `_edge_cdp.evaluate_page` → `_evaluate_page_once` | 外层必填 `prepare_url: Callable[[int], str]`，每轮先准备 URI 再进入原 transport try/catch；物理退役外层固定 `url` 参数，无默认、兼容 fallback 或 URL 类型猜测。内层仍接收普通 URL。AST 比较证明其余 CDP 定义、两次常量、10 秒、JS 错误位置、最后 transport error/cause 和清理完全未变。 |
+| 四个单用函数（前表 served-Web、BFF consumer、theme、real-backend render） | 每个 attempt 使用不同 material 路径，签发仍唯一调用原 Manager。serving 作用域包含准备与两次浏览器尝试；原 Manager 消费删除与 server_close 剩余清理保留。原三个文件删除断言现覆盖实际准备的所有路径，并断言列表非空；秘密不外露断言移入每次准备回调。theme 原 DOM/静态请求序列不改。真实响应丢失反例的前置 helper 和 probe AST 原样保留，并额外要求实际准备 attempt-1/2 两个路径；不降低原身份、账本、viewport、header、403、最终 DOM 或请求序列断言。 |
+| 其余 12 个原调用（Desktop 11、Backend 动态调用 1） | 全部迁为返回原 fixture/file/HTTP URI 的准备回调；原状态、原 code、权限、dirty selection、刷新、草稿重载/unknown-response 的 probe 和最终断言不改。纯 transport 例仍断言两个 fresh profile，并新增各自收到对应 URI；原 semantic 例仍断言一次即失败。Backend `_evaluate_fixture` 的动态导入和返回类型检查保留；`wait_for_app_window_close` 及直接调用 `_evaluate_page_once` 的测试不迁移，因为其原 URL 协议未变。 |
+| 准备失败旧出口 | 新增一个短纯例：真实外层收到准备回调的 OSError，必须返回同一异常实例、只准备一次且不调用内层启动 Edge；没有把签发/ACL/文件异常纳入可重试 CDP 故障。该新增纯例使当前调用数为 17，原 16 个全部接通，无残存旧外层 `url=`。 |
+| 直接 CI 生产者与证据出口 | 原 `Desktop manager` job 是 windows-latest，继续运行 Desktop 测试；需要真实 backend 的三个单用函数仍由 native Windows 的既有显式 pytest 命令及唯一 JUnit artifact 核准。新反例仍使用原 native no-skip/非零退出。Backend 动态调用的单路径 classifier 仅选 PostgreSQL，实际 `_discover_edge` 在非 Windows 跳过；本轮未发现 CI 显式 Windows 运行该文件的命令，因此其迁移目前只有 source/编译核查，不宣称该第 16 个消费者已取得真实 Edge 资格。此既有 producer 限制交主控，未擅自扩改 workflow。 |
+
+本轮只改 helper、五个直接测试文件和本合同，产品 Manager/会话/grant、任何财务模型、schema、持久化或恢复 owner 未改。短组执行三个指定纯 helper 用例实际 **3 PASS（0.14 秒）**，仅既有 `_real_backend` 预导入 rewrite warning；六个 Python 文件 Ruff、内存 compile、全 tracked Python 的调用签名 AST 扫描和 diff 检查通过。原 DOM/assert AST 对比仅出现上述三处文件清理断言的范围迁移，其余原断言全部保留；现存超过 80 行的函数长度未增，也无本次新增跨 80 行函数。单路径/本轮 aggregate classifier 为 PostgreSQL/Desktop/Windows=true、Android/frozen backend=false；未修改分类器。
+
+这些短检查不等于修后真实 Edge GREEN。未在本机运行 Edge、PG、Gradle、全仓 weight 或长测；源码冻结交主控，未 commit/push。后续必须以新 exact candidate 的 native XML 中同一前置 property、第二 fresh profile 和原最终断言核准恢复；原 `3eb75aed` Runtime socket 超时与 Facts `f614ceef` probe-unavailable 的自然原因仍 unknown。
+
+### 第 16 个消费者的直接 Windows producer 闭合（施工前）
+
+主控不接受把本次 required 接口改变的直接消费者留成长期未验证 HOLD，授权在同片补齐。重查 `test_web_edge_runtime_contract.py`：三个测试只依赖 tmp_path、stdlib/pytest 及动态加载的 dependency-free CDP，不需要 Backend conftest、数据库或服务。现有 Windows `Desktop manager` job 已安装 Python/pytest，但只运行 Desktop 目录且没有自己的 JUnit 上传步骤；故最小改动是在此 job 单独 `--noconftest` 执行该既有文件，复用同一 `.ci-venv`、仓库已有 XML 非空/no-skip 核法和 pinned artifact 上传模式，不另建 job、数据库或验收框架。
+
+| 原入口 / 直接输入 / 旧出口 | 本次修正与保留边界 |
+| --- | --- |
+| 三个既有真实 Edge 测试 → `_evaluate_fixture` → required CDP | 现有 Desktop Windows job 增加一个明确文件命令，原完整 DOM/键盘/权限/批量反馈/OCC 断言不改。单独 pytest 进程与 `--noconftest` 避免加载两套 tests/conftest；不注入 cookie、不跳过 Windows 缺 Edge。 |
+| 该测试文件及五个直接 HTML fixture | 当前逐文件 classifier 全部仅 PostgreSQL，非 Windows 测试可 skip 而没有真实消费者结果。仅对六个 exact 路径增加 Desktop，保留原 PostgreSQL 路由；不扩至其他 Backend tests/fixtures。先在现有 `test_ci_scope.py` 写实际路径反例取 RED。 |
+| 四个实际 JS：bulk-bar、drawer、review-keyboard、shell-keyboard | 逐文件核准现有共享 Web static 规则已经选择 PostgreSQL/frozen backend/Desktop/Windows；原规则及 JS 不改。CDP helper 原 exact 规则也已选 Desktop/Windows。 |
+| 新直接执行 → XML → 主控 qualification | pytest 非零原样失败；实际 XML 必须非空且无 skip，缺 Edge 因 skip 而不能资格通过；`always()` 上传同一报告，缺文件失败。原 Desktop 全套测试、scope 汇总、原 native BFF producer 和其 XML 不变。新增证据仍必须由新 exact candidate 云端执行取得。 |
+
+施工后：既有 scope 测试新增反例实际 **1 RED（0.55 秒）**，准确差异为该文件 `desktop=false`；加入六个 exact 路径后整份原 scope 组 **22 PASS（0.83 秒）**。对当前 3,036 个 tracked 路径逐一比较前后 classifier，仅上表六个路径增加 Desktop，其余 scope 完全不变；四个实际 JS 的原 Desktop 触发保持。workflow 实际 parser 去掉新增执行/上传两步后，完整 YAML 数据与 `1f7d05b7` 相同；新步骤使用 `.ci-venv` 当前 Python、单文件 `--noconftest`，报告名 `web-edge-runtime-test-results`，非零/空报告/skip/缺 XML 均不能通过。三个实际用例和 tmp_path 唯一 fixture 经 AST 核对，未修改任何测试行为或产品素材。
+
+仓库实际 GitHub workflow contract audit **OK（4.65 秒）**，Ruff、源码 compile 与 diff 检查通过。本轮在原七文件之外仅增加修改 workflow、classifier 和既有 scope 测试，合同追加本项前后证据；没有新增框架、host 操作或数据库启动。第 16 个消费者已接入与接口变更同候选的真实 Windows producer，不再以长期 HOLD 跳过；其实际三例/no-skip/XML 结果仍等待主控提交后的 exact cloud，未在本机运行 Edge、PG、Gradle或长测，未 commit/push。

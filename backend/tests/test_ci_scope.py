@@ -291,6 +291,21 @@ def test_real_desktop_backend_consumers_require_the_native_postgres_lane() -> No
         _assert_path_scopes((path,), "desktop", "windows")
 
 
+def test_web_edge_runtime_consumer_and_fixtures_select_windows_desktop_job() -> None:
+    _assert_path_scopes(
+        (
+            "backend/tests/test_web_edge_runtime_contract.py",
+            "backend/tests/fixtures/bulk_bar_announcement_contract.html",
+            "backend/tests/fixtures/bulk_bar_empty_reload_contract.html",
+            "backend/tests/fixtures/drawer_bulk_occ_contract.html",
+            "backend/tests/fixtures/review_keyboard_contract.html",
+            "backend/tests/fixtures/shell_keyboard_contract.html",
+        ),
+        "postgres",
+        "desktop",
+    )
+
+
 def test_desktop_pairing_producers_require_the_real_desktop_consumer() -> None:
     for path in (
         "backend/app/auth.py",
