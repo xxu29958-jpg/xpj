@@ -56,6 +56,27 @@ class ApiClientIncomeAdoptionTest {
     }
 
     @Test
+    fun configurationRefusalKeepsTheRealBindingForEveryIncomeCommand() = runTest {
+        for (command in incomeAdoptionCommands) {
+            val transport = AdoptionTransport(conclusion = "configuration_required", requestBinding = "1:7:JPY",
+                ownerRefusal = "currency_binding_configuration_drift")
+            val errors = NetworkErrorHandler({ null }, "IncomePlan")
+
+            val result = errors.safeCall { command.execute(transport.api) }
+
+            val error = assertIs<RepositoryException>(result.exceptionOrNull(), command.name)
+            assertEquals("currency_binding_configuration_drift", error.errorCode, command.name)
+            assertEquals(DRIFT_GUIDANCE, error.message, command.name)
+            assertEquals(1, transport.mutations.size, command.name)
+            val request = transport.mutations.single()
+            assertEquals(CURRENT_TICKETBOX_API_VERSION, request.header(TICKETBOX_API_VERSION_HEADER), command.name)
+            assertEquals("1:7:JPY", request.header(TICKETBOX_CURRENCY_BINDING_HEADER), command.name)
+            assertEquals("Bearer test-session", request.header("Authorization"), command.name)
+            assertEquals("owner", request.header(LEDGER_ID_HEADER), command.name)
+        }
+    }
+
+    @Test
     fun adoptionDoesNotReplaceIndependentSessionAndRecycleOwnerResults() = runTest {
         val sessionTransport = AdoptionTransport(responseCode = 200, responseBody = LEDGER_SWITCH_RESPONSE)
 
@@ -108,6 +129,9 @@ private class AdoptionTransport(
     private val version: String = CURRENT_TICKETBOX_API_VERSION,
     private val responseCode: Int = 409,
     private val responseBody: String = """{"error":"client_upgrade_required","message":"upgrade required"}""",
+    private val conclusion: String = "owner_action_required",
+    private val requestBinding: String? = null,
+    private val ownerRefusal: String = "currency_adoption_required",
 ) {
     val requests = mutableListOf<Request>()
     val mutations: List<Request> get() = requests.filter { it.method != "GET" }
@@ -120,11 +144,15 @@ private class AdoptionTransport(
         requests += request
         val negotiating = request.url.encodedPath == "/api/system/runtime-compatibility"
         val body = if (negotiating) {
-            """{"api_version":"$version","write_compatibility":"owner_action_required","capabilities":{"currency":{"request_binding":null}}}"""
-        } else if (responseCode == 409 && request.header(TICKETBOX_API_VERSION_HEADER) == CURRENT_TICKETBOX_API_VERSION) {
+            val bindingJson = requestBinding?.let { "\"$it\"" } ?: "null"
+            """{"api_version":"$version","write_compatibility":"$conclusion","capabilities":{"currency":{"request_binding":$bindingJson}}}"""
+        } else if (responseCode == 409 && request.header(TICKETBOX_API_VERSION_HEADER) == CURRENT_TICKETBOX_API_VERSION &&
+            request.header(TICKETBOX_CURRENCY_BINDING_HEADER) == requestBinding
+        ) {
             // This is the required currency-owner precedence, separately exercised
             // against real backend code in test_income_protocol_boundary.py.
-            """{"error":"currency_adoption_required","message":"Owner confirmation required."}"""
+            val message = if (ownerRefusal == "currency_binding_configuration_drift") DRIFT_GUIDANCE else "Owner confirmation required."
+            """{"error":"$ownerRefusal","message":"$message"}"""
         } else {
             // The current Income epoch guard rejects headerless commands.
             responseBody
@@ -137,5 +165,6 @@ private class AdoptionTransport(
 
 private const val ADOPTION_GUIDANCE =
     "这台小票夹正在等待安装拥有者在电脑端确认本位币。你的草稿和待同步操作会保留，确认后请重试。"
+private const val DRIFT_GUIDANCE = "服务端币种配置与已持久化的本位币绑定不一致，已停止写入。"
 private const val LEDGER_SWITCH_RESPONSE =
     """{"session_token":"test-session","ledger":{"ledger_id":"family","name":"家庭","role":"owner","is_default":false,"created_at":null,"archived_at":null},"account_name":"我","device_name":"手机"}"""

@@ -105,6 +105,7 @@ def test_income_protocol_rejection_precedes_month_validation(version, method, pa
     ("ADOPTION_REQUIRED", CURRENT_API_VERSION, None, "http_client", 0, "client_upgrade_required"),
     ("ADOPTION_REQUIRED", CURRENT_API_VERSION, "invalid", "http_client", None, "client_upgrade_required"),
     ("ADOPTION_REQUIRED", CURRENT_API_VERSION, "1:0:CNY", "http_client", None, "currency_adoption_required"),
+    ("ACTIVE", CURRENT_API_VERSION, "1:7:JPY", "http_client", None, "currency_binding_configuration_drift"),
 ])
 def test_currency_owner_keeps_adoption_refusal_without_inventing_proof(
     monkeypatch, case,
@@ -114,7 +115,8 @@ def test_currency_owner_keeps_adoption_refusal_without_inventing_proof(
     state, version, binding, origin, revision, error = case
     db = Mock(info={RUNTIME_COMPATIBILITY_SESSION_KEY: RuntimeCompatibilityRequest(version, binding, origin)})
     monkeypatch.setattr(currency_owner, "home_currency_code", lambda: "CNY")
-    monkeypatch.setattr(currency_owner, "_load_binding", lambda _db, **_: SimpleNamespace(state=state))
+    stored_binding = SimpleNamespace(state=state, home_currency_code="JPY", currency_contract_version=1, binding_revision=7)
+    monkeypatch.setattr(currency_owner, "_load_binding", lambda _db, **_: stored_binding)
     claim = Mock(side_effect=AssertionError("Refused command must not claim an EMPTY binding"))
     proof = Mock(side_effect=AssertionError("Refused command must not gain writer proof"))
     monkeypatch.setattr(currency_owner, "_claim_initial_binding", claim)
