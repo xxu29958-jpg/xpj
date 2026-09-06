@@ -167,6 +167,7 @@ class OutboxStatusViewModelTest {
         assertEquals(original, pending.row)
         assertEquals(id, pending.row.id)
         assertEquals(PendingMutationStatus.Pending, pending.row.status)
+        assertEquals(0, pending.row.retryCount)
         assertNotNull(pending.row.idempotencyKey)
         val intent = assertNotNull(pending.intent)
         assertEquals(debt.publicId, intent.subject.publicId)
@@ -186,9 +187,11 @@ class OutboxStatusViewModelTest {
         val inFlight = vm.uiState.value.waitingDebtAdjustments.single()
         assertEquals(intent, inFlight.intent)
         assertNotNull(inFlight.row.attemptedAt)
-        assertEquals(original.copy(status = PendingMutationStatus.InFlight, attemptedAt = inFlight.row.attemptedAt), inFlight.row)
+        // retryCount counts claimed attempts: the first Pending-to-InFlight claim is 1.
+        assertEquals(original.copy(status = PendingMutationStatus.InFlight, retryCount = 1,
+            attemptedAt = inFlight.row.attemptedAt), inFlight.row)
         assertEquals(inFlight.row, harness.outbox.observeActiveByTypes(types).first().single())
-        assertEquals(0, inFlight.row.retryCount)
+        assertEquals(1, inFlight.row.retryCount)
         assertTrue(vm.uiState.value.status.failed.isEmpty())
         assertTrue(vm.uiState.value.status.conflicts.isEmpty())
         assertNull(vm.uiState.value.busyRowId)

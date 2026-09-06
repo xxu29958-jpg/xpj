@@ -82,7 +82,7 @@ class DebtAdjustmentRoomContinuityTest {
     private fun installModels() {
         val graph = fixture.reopen()
         compose.runOnIdle {
-            proposals = MemberRepaymentProposalViewModel(graph.debtRepository)
+            proposals = MemberRepaymentProposalViewModel(graph.debtRepository.proposals)
             history = DebtRepaymentHistoryViewModel(graph.debtRepository.repayments)
             detail.value = DebtDetailViewModel(graph.debtRepository, graph.debtAdjustmentRepository)
                 .also { it.loadDebt(fixture.network.current.publicId) }
