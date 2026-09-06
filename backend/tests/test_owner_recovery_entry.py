@@ -10,6 +10,8 @@ from types import SimpleNamespace
 import pytest
 from jinja2 import Environment, FileSystemLoader
 
+from app.middleware.csrf import CSRF_COOKIE_NAME
+from app.routes.web_auth import SESSION_COOKIE_NAME
 from tests._infra.merchant_catalog import create_catalog
 from tests._local_web_identity_support import (
     _connect_local_session,
@@ -57,7 +59,12 @@ def test_owner_entry_restores_merchant_through_real_web_identity(installed_web: 
         json={"expected_row_version": merchant["row_version"]},
     )
     assert deleted.status_code == 200
-    page = browser.get(recovery_url)
+    # HTTPX does not send Secure cookies over this loopback HTTP test transport.
+    # Carry the real issued session, as the existing local-identity tests do.
+    session_headers = {"Cookie": (
+        f"{CSRF_COOKIE_NAME}={browser.cookies.get(CSRF_COOKIE_NAME)}; {SESSION_COOKIE_NAME}={token}"
+    )}
+    page = browser.get(recovery_url, headers=session_headers, follow_redirects=False)
     assert page.status_code == 200
     assert "恢复入口商家" in page.text
     form = re.search(r'<form[^>]*action="/web/recycle-bin/restore"[^>]*>(.*?)</form>', page.text, re.DOTALL)
@@ -66,7 +73,7 @@ def test_owner_entry_restores_merchant_through_real_web_identity(installed_web: 
     assert fields["kind"] == "merchant_catalog"
     assert fields["ledger_id"] == installed_web.shared_ledger_id
     assert fields["resource_id"] == merchant["public_id"]
-    origin = {"Origin": "http://127.0.0.1:8000"}
+    origin = {**session_headers, "Origin": "http://127.0.0.1:8000"}
     assert browser.get("/owner/recycle-bin").status_code == 404
     assert browser.post("/owner/recycle-bin/restore", data=fields, headers=origin).status_code == 404
     stale = {**fields, "expected_row_version": str(int(fields["expected_row_version"]) + 1)}
