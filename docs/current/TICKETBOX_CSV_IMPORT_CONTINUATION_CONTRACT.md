@@ -283,6 +283,26 @@ Each changed service module (`__init__`, `_queries`, `_csv_io`, `_lifecycle`, `_
 `_idempotency`) and `routes/imports.py` independently selected PostgreSQL/frozen backend.
 Both templates selected PostgreSQL/frozen backend/Desktop/Windows. Each of the two direct
 test files selected PostgreSQL; this contract selected no heavy lane. No selector changes,
-local database, build, application or long test run occurred. Production remains an
-uncommitted candidate on `ee60e2d9`; new-head cloud GREEN and independent review are still
-required. The two-case RED above does not qualify the corrected production code.
+local database, build, application or long test run occurred. Production is the
+candidate recorded below; the two-case RED above does not itself qualify the correction.
+
+### Executed original CSV behavior GREEN
+
+Reviewed production `adc62d2a` was integrated as source
+`cd05cda0574812fc4fa134918f9b9529bf547281`, tree
+`73c9b917ef72ea3379e9efd58a97717956cade11`. CI `34048522310` ordinary PostgreSQL
+jobs `101527997167` and `101527997110` both passed: respectively 1,858 passed / 3 skipped
+in 499.89 seconds and 1,862 passed / 3 skipped in 458.33 seconds. Actual checkout
+`ea3e53d4c8af1ef682bdeb87e166d29e31960e79` has the identical tree. The six skips are
+Windows Edge/NTFS cases; no CSV case was skipped. The original eight-case CSV file
+and ordinary runner are byte-identical to test-first `ee60e2d9`, so the full executed
+jobs establish the original behavior group, including both interrupted-finalization
+counterexamples. Ordinary jobs publish no per-case XML; this is complete-task/log
+evidence, not an independently parsed eight-case XML result.
+
+Independent later readback confirmed CI `34048522310`, CodeQL `34048522260` and
+Connected `34048522276` all completed successfully at `cd05cda0`. This closes the CSV
+behavior correction and that candidate's cloud gates; it does not resolve the newer
+Debt/Facts/governance findings inherited in its parent tree, qualify later integration,
+protected merge-main or the full household/RC journey. The final integrated CSV source
+still needs its own applicable cloud qualification.
