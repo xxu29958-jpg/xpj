@@ -1,5 +1,6 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.data.local.PendingMutationEntity
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto
@@ -8,7 +9,13 @@ import com.ticketbox.data.remote.dto.ExpenseRevisionDto
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import com.ticketbox.domain.model.ExpenseCorrectionOutcome
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.ExpenseItemDraft
 import com.ticketbox.domain.model.ExpenseSplitDraft
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.test.runTest
 import java.io.IOException
 import kotlin.test.Test
@@ -18,6 +25,68 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxTestBase() {
+
+    @Test
+    fun `composite correction is persisted before scheduling without waiting for a direct request`() = runTest {
+        val mutationDao = FakePendingMutationDao()
+        var scheduledRow: PendingMutationEntity? = null
+        val outbox = testOutboxRepository(
+            dao = mutationDao,
+            onEnqueued = { scheduledRow = mutationDao.rows.values.singleOrNull() },
+        )
+        var directRequests = 0
+        val transportEntered = CompletableDeferred<Unit>()
+        val api = object : ApiService by FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0) {
+            override suspend fun correctExpense(
+                id: String,
+                request: ExpenseCorrectionRequestDto,
+                idempotencyKey: String?,
+            ): ExpenseCorrectionResponseDto {
+                directRequests++
+                transportEntered.complete(Unit)
+                awaitCancellation()
+            }
+        }
+        val repo = buildCorrectionRepository(api = api, outbox = outbox)
+        val baseline = baselineExpense().copy(
+            status = "confirmed", confirmedAt = "2026-05-20T12:30:00Z", rowVersion = 7L, factRevision = 3L,
+        )
+        val correction = ExpenseCorrectionDraft(
+            reason = "校正金额、明细与分摊",
+            originalCurrencyCode = CurrencyCode.CNY,
+            originalAmountMinor = 1_200L,
+            category = "餐饮",
+            note = "家庭午餐",
+            expenseTimeChanged = true,
+            valueScore = 4,
+            valueScoreChanged = true,
+            regretScoreChanged = true,
+            items = listOf(ExpenseItemDraft("午餐", "1", 1_200L, 1_200L, "餐饮", null, null)),
+            splits = listOf(ExpenseSplitDraft(memberId = 7L, amountCents = 1_200L, note = "共同用餐")),
+        )
+        val submission = async { repo.correctExpenseAllowingOffline(baseline, correction) }
+
+        try {
+            select {
+                submission.onAwait { }
+                transportEntered.onAwait { }
+            }
+            if (submission.isCompleted) submission.await().getOrThrow()
+
+            assertEquals(1, mutationDao.rows.size, "a suspended first request must not leave the submitted intent only in memory")
+            val original = mutationDao.rows.values.single()
+            assertEquals(original, scheduledRow, "the scheduler must observe the complete already-persisted row")
+            assertEquals(PendingMutationType.CorrectExpense.wireValue, original.type)
+            assertEquals("expense:42", original.targetId)
+            assertEquals(7L, original.expectedRowVersion)
+            assertNotNull(original.idempotencyKey)
+            assertEquals(0, directRequests, "only the Outbox dispatcher may send the saved command")
+            assertTrue(submission.isCompleted, "local acceptance cannot wait for a network response")
+            assertTrue(submission.await().isSuccess)
+        } finally {
+            submission.cancelAndJoin()
+        }
+    }
 
     @Test
     fun `queued correction projects home amount only when the edited currency is the known home currency`() {
