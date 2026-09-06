@@ -21,3 +21,19 @@
 末页反例：51 条未分类记录的第 2 页更正唯一一条后，原 page=2 返回空列表、total=50 且隐藏分页。实际纯 owner 反例失败（只查询 page=2，未继续到有效页），新规范页码必须同时喂列表、分页、详情返回和批量 hidden page，不得丢草稿或筛选。真实 PG 批量三态将核对 51→50。
 
 施工后：该 Web owner 现在查询有效末页，并把规范页码交给唯一 render 消费者，后者统一生成 pager、详情 query 和 batch hidden page。原 batch 的 422/409 草稿与键仍在同一次渲染传递，无跳转丢草稿。定向纯反例 RED 后全组 8 PASS（2.71 秒）；四个真实 PG 任务用例待云端。实际 changed-path classifier 输出 `postgres/backend_frozen/desktop=true`、`android/windows=false`；本片未改 Android 消费协议、APK 路径或 Windows 生命周期，API 的原 list 调用及统计 stream 默认分支未改。OpenAPI 已真实生成并复核，仅两个可选 Web filter 字段。
+
+## 本轮云端失败后的定向修正
+
+本轮在修改前列出下表涉及的生产者、消费者和旧出口，再核对模型与 fixture；不是事后追认前置核查。固定 source 为 `f7de69761bf92aab3e5d0e32f5c5549d08094ef5`，CI run `34032620672`。实际失败来自 job 日志；artifact 快照只有 repository-weight 报告，本轮没有取得逐例 JUnit。
+
+| 失败生产者 / 受影响路径 | 修改前实际证据 | 最小修改与保留的后置条件 |
+| --- | --- | --- |
+| PG real-db 1/3，job `101484901362`；health → 跨月未分类 root 列表/分页，以及 viewer 只读任务 | `test_missing_category_matches_all_month_health_roots_and_pagination` 和 `test_missing_category_viewer_can_read_but_cannot_batch_correct` 均在 `_mark_uncategorized` 执行 `UPDATE category=NULL` 时被 NOT NULL 拒绝，尚未进入页面断言。`Expense.category` 既有模型为 `nullable=False, default="其他"`。 | `_mark_uncategorized` 的三个直接任务消费者统一用明确空串表示既有未分类事实；viewer 最后仍精确断言存储值未改变。未改模型/分类规则/权限/SQL predicate，不以“其他”冒充未分类。跨月、root-only、Unicode token、不同账本、分页无重漏、viewer 403 均保留。 |
+| PG real-db 2/3，job `101484901330`；批量 422/409/成功及 51→50 末页恢复 | `test_missing_category_batch_keeps_context_through_errors_and_reduces_health` 在同一 fixture 写 NULL 失败。另三个 `_seed_categories([None])` 调用分别生成 pending、另一账本、剩余 50 行；INSERT 的 None 会采用“其他”默认值，无法证明未分类任务。 | 这三个 seed 消费点全部改为明确空串，参数类型收窄为 `list[str]`。保留原 OCC/idempotency 提交、422 草稿、409 原页、成功 redirect、规范 page=1、余下 50 个原 ID、health 恰减 1、实际分类写入断言。旧“成功返回但剩余工作不可见”出口仍由原强断言拒绝。Python helper 对 None 的既有纯口径样本不改。 |
+| Backend contracts，job `101484901310` 的 repository-weight；全部返回上下文消费者 | artifact `9989198917`（qualification checkout `d9f8e1f9e928a058b7b78a7a5df78bb27ae02729`）唯一失败为 Python Backend production complexity excess `145→148`；`return_context_params` 的 Lizard CCN `17→20`。 | 将 confirmed/reports 参数策略原样提到同文件 `_confirmed_report_return_params`；公开 owner、签名、allowlist、month/filter/page/tag/query 边界及旧返回出口保持。直接消费者仍包括 Web app、bill split、详情、单笔更正、items、splits、offsets、lifecycle、correction page/form、expense helpers/fact 和月报；GET、错误页与成功 redirect 继续经过同一校验。未建立新导航 owner 或 fallback。 |
+
+修后静态核对：移动分支的 AST 与原分支完全一致；执行两个实际源码版本的返回策略，在 2,187 个 allowlist/非法 origin 与边界输入组合上输出相同。真实任务文件的 70 个 assert 均保留，唯一预期存储值变化是将不可存储的 NULL fixture 换成语义明确的空串。生产模型、分类 token/trim 常量、Python/SQL predicate、财务 writer、OpenAPI 和持久化协议均无本轮改动。
+
+短验证：8 个原纯导航用例在改前 `3.10s`、改后 `2.76s` 均通过；两修改 Python 文件的 Ruff 和 diff 检查通过。另行尝试收集既有 `test_uncategorized_token_shared_samples` 时，其模块引入 PG 环境并因本机测试集群标记不存在失败（1 collection error），没有执行该用例，也没有启动数据库或修改基础设施。Lizard 和真实 PG 三个失败任务未在本机重跑；修正后的 exact head 必须由原 repository-weight、PG shards 和完整 CI 重新核准，不用纯测试或旧 head 代替。
+
+Root 集成复核：从仓库根误调用纯测试得到 `scripts.check_api_contract` 导入错误（1 PASS / 7 setup errors）；改用该入口要求的 `backend` 工作目录后，原 8 例实际通过（2.87 秒），Ruff 与 diff 检查通过。未改导入路径或生产代码来迎合错误启动方式。

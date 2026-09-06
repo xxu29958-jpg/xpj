@@ -130,27 +130,42 @@ def return_context_params(
         clean_filter = (return_filter or "").strip()
         return {"filter": clean_filter} if clean_filter in _PENDING_FILTERS else {}
     if token in {"confirmed", "reports"}:
-        params: dict[str, str] = {}
-        clean_month = (return_month or "").strip()
-        if _MONTH_RE.fullmatch(clean_month):
-            params["month"] = clean_month
-        if token == "reports":
-            return params
-        if (return_filter or "").strip() == "missing_category":
-            params.pop("month", None)
-            params["filter"] = "missing_category"
-        clean_page = (return_page or "").strip()
-        if clean_page.isdigit() and 1 <= int(clean_page) <= 100_000:
-            params["page"] = clean_page
-        clean_tag = (return_tag or "").strip()
-        if clean_tag and len(clean_tag) <= 64:
-            params["tag"] = clean_tag
-        return params
+        return _confirmed_report_return_params(
+            token, return_month=return_month, return_filter=return_filter,
+            return_page=return_page, return_tag=return_tag,
+        )
     if token == "search":
         query = (return_query or "").strip()
         if query and len(query) <= MAX_QUERY_LENGTH:
             return {"q": query}
     return {}
+
+
+def _confirmed_report_return_params(
+    token: str,
+    *,
+    return_month: str,
+    return_filter: str,
+    return_page: str,
+    return_tag: str,
+) -> dict[str, str]:
+    """Preserve only the selected confirmed-list or report origin's fields."""
+    params: dict[str, str] = {}
+    clean_month = (return_month or "").strip()
+    if _MONTH_RE.fullmatch(clean_month):
+        params["month"] = clean_month
+    if token == "reports":
+        return params
+    if (return_filter or "").strip() == "missing_category":
+        params.pop("month", None)
+        params["filter"] = "missing_category"
+    clean_page = (return_page or "").strip()
+    if clean_page.isdigit() and 1 <= int(clean_page) <= 100_000:
+        params["page"] = clean_page
+    clean_tag = (return_tag or "").strip()
+    if clean_tag and len(clean_tag) <= 64:
+        params["tag"] = clean_tag
+    return params
 
 
 def edit_context_params(

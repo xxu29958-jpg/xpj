@@ -54,7 +54,7 @@ def _assert_query(href: str, path: str, **expected: str) -> None:
 
 
 def _seed_categories(
-    categories: list[str | None], *, ledger_id: str = "owner", status: str = "confirmed", month: int | None = None,
+    categories: list[str], *, ledger_id: str = "owner", status: str = "confirmed", month: int | None = None,
 ) -> list[int]:
     # Current commands normalize these tokens. Seed existing dirty facts with
     # the real writer proof, as the data-quality fixtures do; no trigger bypass.
@@ -80,7 +80,9 @@ def _mark_uncategorized(expense_ids: list[int]) -> None:
         for expense_id in expense_ids:
             row = db.get(Expense, expense_id)
             assert row is not None
-            row.category = None
+            # Expense.category is NOT NULL; an empty string is a stored
+            # uncategorized fact, while inserting None would default to "其他".
+            row.category = ""
         db.commit()
 
 
@@ -122,8 +124,8 @@ def test_missing_category_matches_all_month_health_roots_and_pagination(
         "", "\t\u3000", " 未分类 ", "\u00a0未分類\u3000", " NoNe ", "\u202fNuLl\u205f",
     ])}
     _seed_categories(["餐饮", "其他", "\u0085none\u0085", "none food"])
-    _seed_categories([None], status="pending")
-    foreign_ids = _seed_categories([None], ledger_id="tester_1")
+    _seed_categories([""], status="pending")
+    foreign_ids = _seed_categories([""], ledger_id="tester_1")
     health = _quality(web_client, identity)
     assert health["missing_category_confirmed"] == len(expected_ids)
     assert health["missing_category_pending"] == 1
@@ -163,7 +165,7 @@ def test_missing_category_batch_keeps_context_through_errors_and_reduces_health(
 ) -> None:
     expense_ids = [create_confirmed(web_client, identity=identity, merchant="末页待分类")]
     _mark_uncategorized(expense_ids)
-    remaining_ids = set(_seed_categories([None] * 50, month=6))
+    remaining_ids = set(_seed_categories([""] * 50, month=6))
     page = web_client.get("/web/confirmed?ledger_id=owner&filter=missing_category&page=2")
     assert page.status_code == 200, page.text
     assert [int(urlsplit(href).path.split("/")[3]) for href in _row_hrefs(page.text)] == expense_ids
@@ -299,4 +301,4 @@ def test_missing_category_viewer_can_read_but_cannot_batch_correct(web_client: T
     assert _quality(web_client, identity)["missing_category_confirmed"] == 1
     with SessionLocal() as db:
         stored = db.get(Expense, expense_id)
-        assert stored is not None and stored.category is None
+        assert stored is not None and stored.category == ""
