@@ -262,3 +262,49 @@ def test_web_live_provider_records_audit_with_owner_confirm(
     assert row.model == "test-model"
     assert row.month == "2026-05"
     assert row.success == 1
+
+
+def test_invalid_configuration_and_correction_share_api_web_readiness(
+    client: TestClient, web_client: TestClient, *, identity, live_provider_env, monkeypatch
+) -> None:
+    from unittest.mock import Mock
+
+    call = Mock(return_value={"choices": [{"message": {"content": '{"summary":"ready now","suggestions":[]}'}}]})
+    monkeypatch.setattr(providers_module.OpenAiCompatBudgetAdvisor, "_post_chat_completion", call)
+    live_provider_env.setenv("BUDGET_ADVISOR_OWNER_CONFIRMED", "true")
+    live_provider_env.setenv("BUDGET_ADVISOR_MODEL", "")
+    reset_settings_cache()
+    before_count = _audit_count()
+    status = client.get("/api/budget/advisor/status", headers=identity.app_headers).json()
+    assert status["configuration_valid"] is False
+    assert status["can_request"] is False
+    assert "base_url" not in status
+    page = web_client.get("/web/budget-advise?ledger_id=owner&month=2026-05")
+    assert page.status_code == 200
+    assert "配置不完整或无效" in page.text
+    assert 'name="run_advise"' not in page.text
+    assert "本月预计可安排" in page.text
+    refused = client.post(
+        "/api/budget/advise", headers=identity.app_headers, json={"month": "2026-05"},
+    )
+    assert refused.status_code == 503
+    assert refused.json()["error"] == "ai_advisor_configuration_invalid"
+    forged = web_client.post(
+        "/web/budget-advise", data={"ledger_id": "owner", "month": "2026-05", "run_advise": "true"},
+    )
+    assert forged.status_code == 200
+    assert "配置不完整或无效" in forged.text
+    call.assert_not_called()
+    assert _audit_count() == before_count
+    live_provider_env.setenv("BUDGET_ADVISOR_MODEL", "test-model")
+    reset_settings_cache()
+    ready = client.get("/api/budget/advisor/status", headers=identity.app_headers).json()
+    assert ready["configuration_valid"] is True
+    assert ready["can_request"] is True
+    result = web_client.post(
+        "/web/budget-advise", data={"ledger_id": "owner", "month": "2026-05", "run_advise": "true"},
+    )
+    assert result.status_code == 200
+    assert "ready now" in result.text
+    assert call.call_count == 1
+    assert _audit_count() == before_count + 1
