@@ -55,7 +55,7 @@
     <button type="submit" class="btn btn-primary">立即拉取一次</button>
   </form>
   {% if fx_scheduler_running and fx_last_error %}
-  <p class="text-meta">自动任务会在下一次计划时间重试，也可现在手动拉取。</p>
+  <p class="text-meta">自动任务会在后续计划时间继续尝试，也可现在手动拉取。</p>
   {% endif %}
   <p class="text-meta mt-3">
     汇率取欧央行每日参考中间价（经 Frankfurter 转发）。周末 / 节假日无新价时，记账会自动沿用最近一个工作日的价格，不再卡成「待汇率」。
