@@ -1,0 +1,42 @@
+# 已接受上传意图的跨实例恢复
+
+- Goal：完成总 Goal / 最终产品合同已要求的 Capture 离线、草稿与恢复任务。原 A/B/C 分享在 A 已保存、B 容量拒绝、C 未发送后，即使原 VM / graph 不再存在且来源 URI 不可再读，用户仍能找到并继续原 B/C，A 不重发。此处是 [Atlas 唯一已登记缺口](TICKETBOX_CURRENT_PRODUCT_ATLAS.md) 的下一纵向片；#381 的 VM 内容量续传仍保持 CLOSED。
+- Authority：总 Goal 与最新用户裁决 → 2026-08-26 最终产品合同 Capture 责任及离线意图条款（225–229、372–400），G2 后合同 Inbox 条款（242–249）→ exact source / 实际执行证据。旧代码的 online-only 注释不决定产品范围。
+- Allowed Changes：当前阶段只新增两个直接行为反例、必要的真实仓储 fixture、本合同和 Atlas 原 gap 链接。后续生产须复用现有上传、Room Outbox、幂等、身份与恢复 owner；本阶段没有生产实现授权。
+- Forbidden Surface：不新增 queue / status ledger / bus；不把图片相同当作命令幂等；不把本地保存冒充服务端 receipt；不清除未完成原意图来满足回归；不修改鉴权、金额 writer、容量政策或其它领域；不扩展任何 Windows 生命周期 HOLD。无本机 Gradle / PG / 长测，无 stage / commit / push。
+- Done Checks：来源失效后重开的真实 Room / repository / VM 可读原恢复，原 Retry 最终只发送 A/B/B/C；同一原 key、文件及 timezone 重放返回同一 receipt，账单、任务、文件和执行器提交不增加；不同 key 同图仍新增 Pending 并进入重复核查；容量准入失败仍回滚 Expense / task / file。绑定、权限、未知 payload、协议拒绝与过期不得改绑、换 key 或静默结算；全部直接消费者和旧出口在生产施工后按下表重新闭合。
+- Evidence：基线 `61aa4f7e94667778e82584a3ba878e30eef9d38a`，隔离树 `codex/upload-intent-continuity-20260907`。当前仅 test-first 准备，不是已执行 RED / GREEN，也不代表该基线或全 Goal 已资格化。主控先整合当前 Facts / main，再发布真正反例候选。
+
+## 施工前 impact closure
+
+| 当前入口 / owner / 直接消费者 | 已核实源行为与本片边界 | 直接验证生产者与保留控制 |
+| --- | --- | --- |
+| 冷 / 热分享 → Activity / Shell | `MainActivity`、`LaunchIntents`、`TicketboxApp`、`LaunchActionState` 保序合并未交接分享。Activity 在 shell 内存接收后清 ACTION_MAIN；`PendingLaunchActionEffect` 在 VM 同步接收后 consume。没有持久接受回执。后续要让全部已接受 URI / 顺序在原绑定下落盘后才确认移交；保留双 post / 消费前缀，准备失败不能静默消费。 | `LaunchShareHandoffTest`；本片新增 `PendingLaunchActionEffectTest.reopenedRoomAndNewOwnerRecoverConsumedBatchAfterTheSourceUrisAreGone` 直接使用既有 effect，而非重写分享循环。 |
+| Picker / shortcut / 页面重入 | `PendingRoute.rememberSingleImageUploadLauncher` 的非空 PickVisualMedia 结果也 post UploadSharedImages；普通与空态上传按钮及 UploadReceipt shortcut 共用它。取消没有上传意图；暂停后 picker 等待，share 可在原 binding 下追加且不自动重试 B。 | 同一 Connected 文件保留原 picker、shortcut、页面移除 / 重入实际 Retry 三例；保留 `PendingViewModelUploadContinuationTest` 的暂停追加 D/E、明确停止与旧 callback。 |
+| URI → 准备字节 | `PendingUploadSource` 只保留 applicationContext 并在 IO 调 `ScreenshotUploadPreprocessor`，没有持久文件或持久 URI 授权；尾部 C 到发送前才读。准备器原图回退上限为 10 MiB。另一实际调用者 `StatsRoutes.rememberDebtBillImageLauncher` 用同一准备器给 Debt bill parse；这不是 Pending 上传入口，本片不能改变其输出/限额。 | 新 Connected 通过真实 MediaStore、真实 ContentResolver 和准备器读三张不同的测试 PNG，撤回这三条源 URI 后不得借测试字节数组恢复。原准备/异常/容量累计控制保持；若后续改共享准备器，Debt 这个直接消费者必须验证，不能默认跳过。 |
+| VM 上传 owner / 旧成功与失败出口 | `PendingUploadSession` 仅用内存保存 batch、cursor、binding/generation、B preparedImage；容量暂停保留 B/C，普通失败却推进 cursor 并释放字节。VM onCleared / invalidate 释放 batch。后续持久上传 owner 接管原状态推进，VM 留投影及动作，不能保留第二套内存发送循环。 | `PendingViewModelShareUploadTest` 的 A/B/B/C、`secondImageStillUploadsAfterFirstFails`；`PendingViewModelUploadFailureTest` 的不可读、反复容量、取消、换账本。新反例不改这些原断言。 |
+| Repository → API → receipt 消费者 | `PendingReviewActions` → `ExpenseRepository` → `ExpensePendingRepository.uploadScreenshot` 直接 multipart；真实 `bindExact` 冻结/核准 logical binding。当前请求没有幂等 key，timezone 在每次调用取设备当前值。成功才写 lastUploadAt，VM onDataChanged → refresh → receipt enrichment observer；该链不是本地接受出口。 | `ExpenseUploadBindingTest` / `PendingViewModelEnrichmentTest` / `PendingAdviceInvalidationTest`；新增真实 graph fixture 提供全部当前 DTO，保留 pending 缓存与 category/enrichment 查询；本地意图不触发 confirmed/advisor writer。 |
+| 已有唯一持久与发送通道 | `AppDatabase` / `PendingMutationDao`、`OutboxRepository`、`OutboxAdapterGraph`、`AppContainer` dispatcher 注册、`OutboxDrainEngine`、`OutboxDrainWorker` / `OutboxScheduler` 已拥有绑定、原 payload/key、串行发送与恢复；当前没有 upload 类型、adapter、dispatcher 或待上传文件 owner。最小方向是在此既有通道增加具体上传意图与受控文件引用，不建立另一队列。 | 新 Connected 的持久 authority 是磁盘 Room + 实际 RepositoryGraph；fake HTTP 只拥有已接受的远程 A，不保存或重建 B/C。它未驱动 WorkManager，不证明 OS 调度或进程死亡；生产接入 worker 后仍须用同通道直接生产者验证。 |
+| 顺序 / 普通失败的横向限制 | 当前 DAO 同 target 排除未解 InFlight / Conflict / Failed。把每个图片意图机械设成同一个 batch target，会让普通 Failed 也永久堵住 C，破坏既有“普通失败继续尾部”。批次序号、原单项 key 和继续裁决必须由一个上传 payload/dispatch owner 统一承担：容量暂停挡尾部，普通未确认失败保留可见原件且按既有任务继续其余项。不能以改为 Done / 丢弃原件解除阻塞。 | 保留 `secondImageStillUploadsAfterFirstFails` 和 `repeatedCapacityRetryKeepsEarlierAndUnreadableTailFailuresThenContinues`；这两个既有行为约束须与新磁盘恢复一起通过。当前只记录模型限制，尚未实施通用队列改动。 |
+| 身份 / 撤销 / 文件清理 | 完整 LogicalSessionBinding / `bindExact` 已区分 origin、server/data generation、account/device、ledger。token 轮换不应创造新意图；换账本、换身份、降权与旧 callback 不能发送或采用旧结果。`OutboxStatusViewModel` 与两处 SyncStatus、显式 Drop / clearQuarantined，`OutboxRepository.clearAll` / `gcCompleted` / 超龄 reaper 都是持久文件的新直接清理消费者。 | 原 binding / viewer / quarantine / expiry 控制复用；后续逐个接上原文件释放，不准在 VM dispose、失败、刷新或身份变化时删除仍未解决的原件。两个最小反例不声称已覆盖全部清理与权限恢复。 |
+| 后端提交 / 共享上传调用者 | `uploads.app_upload_screenshot` → `_upload_request.handle_upload` 保存文件 → `stage_pending_expense` → `prepare_pending_expense_enrichment` → 一个 commit → task submit / receipt。容量异常在 commit 前 rollback 并补偿文件。同 helper 还服务 UploadLink 与 `web_inbox_capture`；其权限、来源、字节保留及拒绝 flash 不能受新 Android 命令协议破坏。 | 本片 `test_uploads.py` 新 real_db 用例；原 `test_upload_enrichment_admission.py` 的 Android / UploadLink / Web 容量拒绝、行与文件回滚、UploadLink 字节预约补偿、并发容量控制保持。 |
+| 幂等 / 协议门限 | `stage_pending_expense` 先新增行再标 suspected duplicate，不能作重放 owner。既有 `services/idempotency.py` 能把原 key/fingerprint/首次稳定响应与业务事务合并。新可靠 replay 必须由 API/runtime protocol owner 声明支持并在发送前核准；旧后端忽略 Idempotency-Key 不得被当作支持。不能只改客户端常量或把一般 HTTP 拒绝结算 Done。 | 新 PG 用例当前给真实路由发送既有 headers / multipart，不引入未来 API。协议门限、旧客户端/旧服务端拒绝及原 key/file/timezone 保留的直接测试在生产设计明确后补齐；本轮不声称此门已成立。 |
+
+## 文件、有效期与原文保留的施工约束
+
+接受前必须把尚未发送的可读原件/准备结果写入应用控制的目录并完成有界校验，Room 只引用该 owner 下的文件。除了既有单图读取上限，生产开始前须明确批次数量和累计暂存字节上限；空间不足/源不可读要保留可理解的未接受结果，不能先 consume 后丢尾部。不能把未限制的图片 bytes 填入 Room JSON，不能扫描或复制其它图库内容。
+
+原 filename、content type、bytes/fingerprint、timezone、创建/到期时间、顺序、单项 key、payload revision 与 logical binding 一次冻结；新 token、时区变化或重开不能重造。现有 Outbox 七天 age cap 保留 `outbox_row_expired` 原行并去掉无效 Retry，不能旋转 key 绕过可能已经失效的服务端幂等窗口。到期/unsupported/quarantine/拒绝仍要展示原文上下文；未完成文件保留到用户明确处理，空间总量通过接受前限额约束，不以后台过期删除原件来释放容量。明确 Drop、已安全完成后的保留期及 clearAll/quarantine 清理须共同验证文件生命周期，不能建立第二份清理状态账。
+
+## 两个 test-first 反例与证据层
+
+1. `PendingLaunchActionEffectTest.reopenedRoomAndNewOwnerRecoverConsumedBatchAfterTheSourceUrisAreGone`：先实际创建三个 MediaStore PNG，原 effect → 实际 repositoryViewModelFactory / VM → RepositoryGraph 发 A/B，断言容量暂停、A 的 Room 缓存/lastUploadAt 成立、分享已消费。移除页面后真正清空旧 ViewModelStore、等待旧 VM 子任务结束，撤回源 URI，关闭/重开同一磁盘 Room；建立全新 VM 与空 shell。恢复状态最终应可达，点真实“重试上传”后应有 A/B/B/C，B/C 内容与原图相同且三个 Pending 经原 refresh 可见。当前源预计在新 VM 等待恢复状态处失败；先决条件失败必须单独标为 fixture/接线问题，不能归作此缺口 RED。测试保留源 bytes 仅供断言，生产 owner 无法访问它；不注入 fake PendingReviewActions、不手动重放 refs、不写恢复 loop、不声明 OS 死亡或真实 WorkManager 资格化。
+2. `test_android_upload_same_intent_returns_the_original_receipt_without_another_expense_or_task`：真实 authenticated app 路由 + PostgreSQL + 文件存储，首次提交先验证一条 Expense、一条 task、文件与 timezone/execution submission。完全相同 key/file/timezone 再提交，要求 expense/public/task/status/message receipt 不变，行数、文件集合和执行器提交不增加。只替换原 executor submit，仍使用真实 file-save/准入/claim候选/事务 owner，不调用 OCR/网络。当前源预计在 receipt 标识比较处失败。最后不同 key 同图须新增 Pending/task 并保持 suspected duplicate；该后续正控可能被首次 RED 遮住，不能提前声称执行。
+
+现有两个 workflow 共用 `classify_ci_paths`：两个 Android 测试路径直接触发 Android fast / actual Connected，PG 文件走既有 PostgreSQL lane；没有新增 workflow 或改阈值。当前实际纯 classifier 逐路径结果为：两个 Android 路径仅 `android=true`，`test_uploads.py` 仅 `postgres=true`，两份文档不触发 heavy scope。新增 PG 例带 `real_db`，由 `tests/conftest.py` 的现有 collection/lane 约束送入 CI 的 real-db lane，不是 ordinary 的事务回滚替代。Connected 现有 producer 使用 API 36；MediaStore fixture 的 `RequiresApi(29)` 是 API 使用声明，没有新增 skip/filter。
+
+本地实际检查：Python AST 有效、31 个原上传测试函数体不变；三个原 Connected 方法正文不变；Ruff / `git diff --check` 通过，逐项复核当前 factory、RepositoryGraph、DTO 和 API 参数。未运行 pytest、PG、Gradle、Connected 或设备；没有 Kotlin 编译通过的声明。预计的恢复缺失和重复 receipt 仍须主控发布 exact head 后用真实 XML/log 裁为 RED；不能用源可读性或先前 #381 GREEN 代替。
+
+施工后须在本合同同表补每条实际迁移与验证结果，再更新 Atlas 这一原 gap；当前不得填写完整闭合或 RC 完成。
+
+Root 已完整读取五文件及真实上传准备/仓储/事务入口；独立 bounded review 未发现当前 P1/P2 或会先于目标行为失败的具体接线问题。31 个原 PG 测试 AST 与三个原 Connected 方法正文保持不变。既有 pinned Lizard 1.24.0 producer 对三个代码路径定向解析（0.31 秒）没有 over-80 或 over-15 项；该测量不代表 Kotlin 编译、完整 Detekt 或运行结果。主控获准按原计划提交 test-first 并正常整合最新 Facts/Gov/CSV 父候选，再发布 exact 云端反例；维护当前旧失败与新反例归因边界。
