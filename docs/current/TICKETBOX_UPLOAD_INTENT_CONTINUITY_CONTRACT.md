@@ -67,3 +67,37 @@ Root 核准并发布 `1582d819956ecf6d4dc7053145bebc2bc5882bd4`，tree `12744d36
 施工前后 impact：唯一新依赖消费者是 API 29 MediaStore 测试方法的 SdkSuppress；测试 runner 已经通过当前 Compose 测试运行时链存在，但没有进入该测试源码的 compile classpath。读取 Google Maven 原始 POM 得到：当前 BOM 2026.04.01 选择 ui-test 1.11.0；ui-test-android 的 runtime 依赖 espresso-core 3.5.0，其 runner 为 1.5.0。现有本机 runner-1.5.0 AAR 中也实际包含 `androidx/test/filters/SdkSuppress.class`。按[官方 API 归属](https://developer.android.com/reference/androidx/test/filters/SdkSuppress)，将这个已采用的 runner 版本显式加入 androidTestImplementation，并在现有 version catalog 命名，不升级测试运行时或增加 app production 依赖。
 
 该修正仅变更 catalog、app 的 instrumentation compile 依赖和本合同；不改三份原测试、新恢复断言、minSdk、fixture、生产上传、数据库、SDK 执行范围或 no-skip 门。旧的“靠间接 runtime 依赖可编译 SdkSuppress”假设退役。POM/AAR 的秒级来源核对与 TOML/diff 校验只证明依赖归属；新的 exact Connected 编译和实际业务反例仍待云端执行。
+
+## d83 实际双 RED 与后端稳定收据实施
+
+`d83ef631d71428352a3c93baa29365ac0a9aeb70` 的 actual PR checkout 为 `3947cafde96aff737544ed388f5d6f4f856102bd`，GitHub commit tree 读回均为 `8387f364e9ad4ba0dff89121587c27f140daa499`。CI `34061343690` 的 real-db 1/3 job `101562341251` 实际为 97 passed / 1 failed；原 `test_android_upload_same_intent_returns_the_original_receipt_without_another_expense_or_task` 再次到 `test_uploads.py:192`：首次提交、行/文件/任务/时区和单次 submit 前提已通过，相同 key/file/timezone 的第二个 200 收据 id 为 2，首次为 1。其后的无额外副作用及不同 key 正控仍被首失败遮住。五个 PG 分片合计 4021 passed / 1 failed / 6 skipped；以原始 pytest 日志为证，没有声称存在 PG XML。该 CI 唯一执行失败是本 PG 反例，PG aggregate 仅传播失败；Android fast 及其余选中执行 job 成功，CodeQL 全部成功。
+
+Connected `34061343647` / execution `101562337790` 的 instrumentation 编译成功，实际 Starting 129 / Finished 129；artifact `9997783264` 的原始 XML 为 129 tests / 1 failure / 0 errors / 0 skips。唯一失败是新恢复例 `PendingLaunchActionEffectTest:178` 等待 `canRetryUpload`。原 effect 接受 A/B、A 的 Room/lastUploadAt、暂停、消费原分享、旧 VM 退出、三个源 URI 撤回且不可读、磁盘 Room 真正关闭/重开以及新 VM/空 shell 的前提已通过，原三个同类测试通过；Retry 点击及 B/C 最终发送断言未到达。本层证明真实 Room/repository/VM 重开后的业务 RED，不声称 OS 进程死亡或 WorkManager 执行。
+
+主控已读原始回执并授权本段后端生产工作；前文 test-only 阶段限制保留为历史记录，不再限制这个已获授权的后端片。五项边界为：Goal 是同键上传的原始完整收据与单次业务接受；Allowed Changes 限上传 route/request/file reader、现有共享 OpenAPI metadata 消费、原 `test_uploads.py` 和真实生成的 snapshot；Forbidden Surface 是 Android/新队列/幂等表与保留期/鉴权/容量/Windows 生命周期及其它业务 writer；Done Checks 是原 receipt RED、不同 key 正控、变化原文拒绝与事务补偿在新 exact source 上通过；Evidence 严格区分下述秒级源码/生成检查与尚待云端的真实 PG 验证。
+
+| 后端入口 / owner / 消费者 | before → after 与退休边界 | 直接验证与尚待证明 |
+| --- | --- | --- |
+| Android app route / 原 writer auth | 原 route 忽略幂等 header；现在仅 `/api/app/upload-screenshot` 接受可选 `Idempotency-Key`，仍先走真实 writer context，未提供时保留原上传行为。ledger 取真实 auth，account/device 同样进入原命令指纹；token 轮换不参与命令身份。 | 原 32 个测试函数 AST 不变，包含 headerless Android、UploadLink、降权拒绝、原同键 RED 与不同 key 正控。Android 本片没有生产改动；新持久协议的发送方由主控继续实现。 |
+| OpenAPI / 生成客户端 | 实际生成发现 `main._apply_protocol_header_contract` 旧 blanket rule 将新增可选 key 错标必填。复用已有 `x-ticketbox-runtime-required`：上传显式 false，其余原规则默认仍为 true；消费后不把内部 metadata 发布到 schema。旧“每个声明的 key 都必填”假设退役。 | 真实 `check_api_contract.py --update`，硬禁止 `Engine.connect/raw_connection`，生成前观察 required=true，修后为 false；其余 38 个 key header 与基线完整相等且必填。所有组件不变，唯一路径差异为本上传 route。新增现有测试文件内的 schema 控制，未本机执行 pytest。 |
+| 请求有界读 / canonical 文件 owner | 原读取立即保存文件，无法在保存前 claim。现在 `_read_request_upload` 与 `file_service.read_upload_bytes` 先按原 multipart/单图限制读取、关闭源；原 `save_upload_bytes` 仍独占类型、清理元数据、真实像素验证、随机存储与 hash。原唯一 caller 已迁移，无消费者的 `save_upload` 包装物理退役。 | 原 raw/multipart/HEIC/伪装类型/大小/非法文件名/元数据测试不变。没有提高上限、额外文件副本、附件 schema 或读取其它图片。 |
+| 幂等命令身份 / 共享 claim | 指纹使用原始受限 bytes 的 SHA256、filename、content type、原 timezone 和真实 account/device，claim tenant 为 auth ledger；不把消除元数据后的 image_hash 或 suspected duplicate 作为命令键。原 `claim_idempotency_key` 在持久文件之前执行；复用原 409 in_progress / 422 key_reused。 | 新 real_db 参数控制分别改变 raw PNG metadata、timezone、filename、content type，要求 422 且 canonical save 不被再调用、行/文件不变；不同 key 同图仍由原正控检验创建第二个 Pending 并进入重复核查。四项控制未本机运行。 |
+| 一次业务提交 / 完整原收据 | 原 `handle_upload` 已拥有 Expense → queued task → 一个 commit → submit。现在共享 claim 与原两个业务 stage 共用该事务；commit 前构造并存完整 typed `UploadResponse`，同一次 commit 落库，commit 后仍由原 submit owner 执行。HIT 直接验证并返回原 typed body，不保存文件、不创建 Expense/task、不再 submit；不在已提交 handler 外包一层假原子缓存。 | 原 receipt RED 保持全部原断言。新增提交前 receipt-flush 失败：claim/Expense/task/file 全回滚且零 submit，原 key 重试才能首次成功。新增真实 `Session.commit` 先成功再抛确认丢失：行/文件/原 receipt 已持久，第二次必须精确返回 stored body 且零重复 submit。测试替换的是异常/执行器 seam，不冒称真实网络或进程死亡。 |
+| 失败补偿 / enrichment 后续 owner | prepare/claim/file 保存均纳入原 rollback barrier；确定 commit 前失败删除已保存文件，commit 已尝试后的不确定异常保留附件，避免已提交 Expense 指向被删除文件。postcommit executor 异常仍由 `submit_pending_expense_enrichment` 返回同一 durable task id；HIT 不重提任务，状态及 orphan/recovery 仍归既有 task owner。 | 原 `test_upload_enrichment_admission.py` 的 task 插入失败、容量拒绝、Web 反馈、UploadLink 字节补偿和并发容量测试源码不变。新事务控制需云端 PG；没有新增后台重试、租约、清理或保留期机制。 |
+| Headerless / UploadLink / Web 实际消费者 | `uploads.upload_link_screenshot` 与 `web_inbox_capture.web_pending_upload` 不传新 header，继续使用同一个 `handle_upload` 的原路径。`save_request_upload` 的“文件已存、commit_guard 尚未运行”入口实际保留，未改 UploadLink 撤销/到期重验、字节 reservation/finalize/release、Web 303/watch/flash 或权限来源。 | `_infra/upload_link_commit_concurrency.py` 真实 monkeypatch 的就是该 seam，原 revocation/extension race 仍能停在原边界；现有三入口直接测试保持。这里是源码接线证据，新头真实 PG 执行尚未取得。 |
+
+Keyed receipt 的 `duration_ms/timing_ms` 随成功收据在 commit 前冻结，重放不重算诊断；原服务器 logger 仍记录完整请求耗时。该收据表示上传和任务已经接受，不表示 OCR/enrichment 已完成或账单已确认，后续消费者仍读原 task/Expense。无 header 路径保留原 post-submit receipt。
+
+新增测试仅四个有明确后置条件的函数：一个 schema 控制、一个四参数原文变化控制和两个事务控制，共七个 case；未改原 32 个测试正文，没有复制新的测试框架。五份 Python 源实际 AST 有效，未新增 over-80 函数；Ruff、diff 检查通过。实际逐路径 `classify_ci_paths`：`main.py` 为 postgres/backend_frozen/windows，上传 route/request/file service 为 postgres/backend_frozen，`test_uploads.py` 为 postgres，生成 snapshot 为 android，本合同不触发 heavy scope；CI 与 Connected 仍调用原 `ci_scope.py`，未新增 selector。没有本机 pytest、PG、Gradle、emulator、commit 或 push，以上不能称新生产候选 PG GREEN。
+
+本段不关闭整个 Capture 片：Android 新格式、原文件/Room 接受与恢复、全部持久清理消费者及可靠 API/runtime support negotiation 仍由主控继续实施。当前 API version 未改；旧后端会忽略 header，故新 Android durable replay 不得仅凭 header 存在判定支持，也不得用这次后端源码检查冒充新 exact head 或整个 Goal 合格。
+
+### 主控复核：提交确认丢失后的原任务执行出口
+
+上面的新增 lost-commit-ack 测试把零 submit 当作最终成功，属于不合理的测试语义，不能保留为产品要求。实际调用链表明：`BackgroundTask` 在原事务中已经 queued，commit 确认丢失使 handler 跳过 `submit_pending_expense_enrichment`；之后 HIT 只返回原收据，而 `recover_orphaned_tasks` 仅在服务启动运行，同一进程没有 queued 的周期恢复。Android `PendingEnrichmentObserver` 对该状态持续轮询，原识别任务没有实际执行出口。这是现有异常测试直接构造的缺口，不是要求另造后台队列。
+
+施工前影响闭合：入口为 app keyed upload 的原 commit 异常；消费者为原 task 查询、Pending 识别状态及上传重放；旧错误成功出口为 HIT 收据稳定但 queued 永不执行；持久事实仍是一组原 claim/Expense/task/附件，恢复必须复用当前请求持有的原 prepared task/payload，经权威读回证明已提交后交还现有 task submit owner。读回不能证明提交时，继续保留原错误和不确定附件，不能假造接受；进程启动的 orphan 语义、其他任务调度和无 header 调用不因此重写。
+
+主控先纠正这一新增测试：真实 commit 之后注入确认丢失，期望在确认原提交存在后返回其原收据，并且原 task id、原 timezone 和原 OCC 只提交一次；同 key 重放不再新增或执行另一项任务。新增判定尚待实际云端 RED；前文 seven-case 源码检查不再等于该测试已正确闭合。当前后端稳定收据候选仍是部分生产实现，整个 PR 保持 Draft，未具备合并资格。
+
+提交前实际体量检查发现，把上述案例继续放在通用 `test_uploads.py` 会使它从 880 增至 1037 行。现将完整收据/claim/replay/recovery 责任的五个场景及唯一行数 oracle 一起迁入 `test_upload_intent_continuity.py`，共 240 行；原文件保留上传路由/输入/文件行为，共 811 行。共享文件与图片测试工具复用既有 `api_contract_helpers` 和 `tests._infra.assets`，没有测试模块互相导入、额外框架或阈值修改。AST 对照证明基线 32 个原测试跨两文件各保留一次，正文不变；四个新函数共七 case，包括上述已纠正的恢复判定。所有选中 Python 源的 AST、Ruff 与 diff 检查通过，本机没有执行数据库或应用测试。

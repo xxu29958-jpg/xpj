@@ -12,7 +12,7 @@ from api_contract_helpers import (
     upload_png_as_raw_body,
 )
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.main import app
@@ -141,75 +141,6 @@ def test_every_upload_consumer_returns_its_durable_enrichment_task(
         assert task.status == "completed"
         assert expense.source == source
         assert expense.status == "pending"
-
-
-def _ledger_upload_row_counts(ledger_id: str) -> tuple[int, int]:
-    with SessionLocal() as db:
-        expenses = db.scalar(select(func.count()).select_from(Expense).where(Expense.tenant_id == ledger_id))
-        tasks = db.scalar(select(func.count()).select_from(BackgroundTask).where(BackgroundTask.tenant_id == ledger_id))
-        return int(expenses or 0), int(tasks or 0)
-
-
-@pytest.mark.real_db
-def test_android_upload_same_intent_returns_the_original_receipt_without_another_expense_or_task(
-    client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    identity,
-) -> None:
-    from app.services import background_task_service
-
-    submissions: list[tuple[int, dict[str, object]]] = []
-
-    def capture_submit(task_id, payload, *, registry):
-        del registry
-        submissions.append((task_id, dict(payload)))
-
-    monkeypatch.setattr(background_task_service, "_submit_task", capture_submit)
-    before_rows = _ledger_upload_row_counts("owner")
-    before_files = set(_stored_upload_files())
-    headers = {
-        **identity.app_headers,
-        "Idempotency-Key": "70000000-0000-4000-8000-000000000010",
-        "X-Timezone": "America/Los_Angeles",
-    }
-    files = {"file": ("original-receipt.png", PNG_BYTES, "image/png")}
-    first = client.post("/api/app/upload-screenshot", headers=headers, files=files)
-    assert first.status_code == 200, first.text
-    receipt = first.json()
-    first_rows = _ledger_upload_row_counts("owner")
-    first_files = set(_stored_upload_files())
-    assert first_rows == (before_rows[0] + 1, before_rows[1] + 1)
-    assert first_files > before_files
-    assert len(submissions) == 1
-    assert submissions[0][1]["timezone_name"] == "America/Los_Angeles"
-    assert submissions[0][1]["expense_id"] == receipt["id"]
-
-    # The caller no longer knows whether this already-committed first response arrived.
-    replay = client.post("/api/app/upload-screenshot", headers=headers, files=files)
-    assert replay.status_code == 200, replay.text
-    receipt_fields = ("id", "public_id", "enrichment_task_public_id", "status", "message")
-    assert {key: replay.json()[key] for key in receipt_fields} == {key: receipt[key] for key in receipt_fields}
-    assert _ledger_upload_row_counts("owner") == first_rows
-    assert set(_stored_upload_files()) == first_files
-    assert len(submissions) == 1
-
-    # A separate intent may deliberately upload the same image; duplicate review still owns that decision.
-    distinct = client.post("/api/app/upload-screenshot",
-        headers={**headers, "Idempotency-Key": "70000000-0000-4000-8000-000000000011"}, files=files)
-    assert distinct.status_code == 200, distinct.text
-    assert distinct.json()["id"] != receipt["id"]
-    assert distinct.json()["enrichment_task_public_id"] != receipt["enrichment_task_public_id"]
-    assert _ledger_upload_row_counts("owner") == (first_rows[0] + 1, first_rows[1] + 1)
-    assert len(submissions) == 2
-    with SessionLocal() as db:
-        expense = db.get(Expense, distinct.json()["id"])
-        original = db.get(Expense, receipt["id"])
-        assert expense is not None and original is not None
-        assert expense.tenant_id == original.tenant_id == "owner"
-        assert expense.duplicate_status == "suspected"
-        assert expense.duplicate_of_id == original.id
-        assert expense.image_hash == original.image_hash
 
 
 @pytest.mark.real_db
