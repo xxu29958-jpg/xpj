@@ -18,6 +18,12 @@ from app.fx_constants import FX_SOURCE_ECB
 from app.models import FxRate
 from app.services.fx_rate_scheduler import fx_rate_sync_status
 
+_SYNC_FAILURE_MESSAGES = {
+    "provider_unavailable": "暂时无法取得参考汇率，已保留上次汇率。",
+    "storage_unavailable": "本次任务暂时无法访问数据库，已保留上次汇率。",
+    "sync_failed": "本次同步未完成，已保留上次汇率。",
+}
+
 
 @dataclass
 class FxRowVM:
@@ -31,8 +37,9 @@ class FxRowVM:
 @dataclass
 class FxPanelVM:
     source: str
-    source_url: str
     auto_enabled: bool
+    scheduler_running: bool
+    scheduler_config_error: bool
     sync_times: str
     sync_timezone: str
     success_count: int
@@ -57,13 +64,18 @@ def get_fx_panel_vm(db: Session, *, home_currency_code: str) -> FxPanelVM:
     source = (cfg.fx_rate_source or "frankfurter").strip().lower()
     return FxPanelVM(
         source=source,
-        source_url=cfg.fx_rate_ecb_url if source == "ecb" else cfg.fx_rate_frankfurter_url,
         auto_enabled=cfg.fx_rate_auto_sync_enabled,
+        scheduler_running=status.scheduler_running,
+        scheduler_config_error=status.scheduler_config_error,
         sync_times=cfg.fx_rate_sync_times,
         sync_timezone=cfg.fx_rate_sync_timezone,
         success_count=status.success_count,
         failed_count=status.failed_count,
-        last_error=status.last_error,
+        last_error=(
+            _SYNC_FAILURE_MESSAGES.get(status.last_error, _SYNC_FAILURE_MESSAGES["sync_failed"])
+            if status.last_error
+            else None
+        ),
         last_success_at=status.last_success_at,
         rows=[
             FxRowVM(

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -189,11 +190,13 @@ def test_run_fx_sync_once_success_updates_counters(monkeypatch: pytest.MonkeyPat
     assert after.last_success_at is not None
 
 
-def test_run_fx_sync_once_network_drop_keeps_last_known(monkeypatch: pytest.MonkeyPatch, *, identity) -> None:
+def test_run_fx_sync_once_network_drop_keeps_last_known(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, *, identity
+) -> None:
     from app.database import SessionLocal
 
     def boom(_db, *, home_currency_code):  # noqa: ANN001, ARG001 - test stub
-        raise FxFetchError("[SSL: UNEXPECTED_EOF_WHILE_READING] simulated drop")
+        raise FxFetchError("fx-private-sentinel: simulated network drop")
 
     monkeypatch.setattr(scheduler, "refresh_ecb_fx_rates", boom)
     before = scheduler.fx_rate_sync_status()
@@ -202,14 +205,17 @@ def test_run_fx_sync_once_network_drop_keeps_last_known(monkeypatch: pytest.Monk
     after = scheduler.fx_rate_sync_status()
     assert ok is False
     assert after.failed_count == before.failed_count + 1
-    assert "UNEXPECTED_EOF" in (after.last_error or "")
+    assert after.last_error == "provider_unavailable"
+    assert "fx-private-sentinel" not in caplog.text
 
 
-def test_run_fx_sync_once_unexpected_error_recorded(monkeypatch: pytest.MonkeyPatch, *, identity) -> None:
+def test_run_fx_sync_once_unexpected_error_recorded(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, *, identity
+) -> None:
     from app.database import SessionLocal
 
     def boom(_db, *, home_currency_code):  # noqa: ANN001, ARG001 - test stub
-        raise ValueError("provider schema changed")
+        raise ValueError("fx-private-sentinel: provider schema changed")
 
     monkeypatch.setattr(scheduler, "refresh_ecb_fx_rates", boom)
     before = scheduler.fx_rate_sync_status()
@@ -218,7 +224,8 @@ def test_run_fx_sync_once_unexpected_error_recorded(monkeypatch: pytest.MonkeyPa
     after = scheduler.fx_rate_sync_status()
     assert ok is False
     assert after.failed_count == before.failed_count + 1
-    assert "ValueError" in (after.last_error or "")
+    assert after.last_error == "sync_failed"
+    assert "fx-private-sentinel" not in caplog.text
 
 
 # ─────────────────────────── owner FX panel ────────────────────────────────
@@ -238,3 +245,28 @@ def test_owner_fx_manual_refresh_fetches_and_renders(local_client: TestClient) -
     page = local_client.get("/owner/fx")
     assert page.status_code == 200
     assert "USD" in page.text
+
+
+@pytest.mark.parametrize(
+    ("running", "config_error", "expected"),
+    [(True, False, "运行中"), (False, True, "启动配置无效"), (False, False, "任务未运行")],
+)
+def test_owner_fx_distinguishes_enabled_configuration_from_running_task(
+    local_client: TestClient, monkeypatch: pytest.MonkeyPatch, running: bool, config_error: bool, expected: str
+) -> None:
+    from app.services.owner_console_service import _fx as panel
+
+    monkeypatch.setattr(panel, "get_settings", lambda: SimpleNamespace(
+        fx_rate_source="frankfurter", fx_rate_auto_sync_enabled=True,
+        fx_rate_sync_times="09:10", fx_rate_sync_timezone="UTC",
+        fx_rate_frankfurter_url="https://fx-private-sentinel.invalid/endpoint",
+    ))
+    monkeypatch.setattr(panel, "fx_rate_sync_status", lambda: scheduler.FxRateSyncStatus(
+        scheduler_running=running, scheduler_config_error=config_error, last_error="fx-private-sentinel",
+    ))
+    page = local_client.get("/owner/fx")
+    assert page.status_code == 200
+    assert "自动同步配置" in page.text
+    assert expected in page.text
+    assert "本次同步未完成，已保留上次汇率。" in page.text
+    assert "fx-private-sentinel" not in page.text

@@ -4,7 +4,7 @@
 <h1>汇率同步</h1>
 <details class="page-help">
   <summary>这是什么</summary>
-  <p>记外币账单时用到的汇率从这里同步。默认每天自动拉一次，一般不用手动操作；只有出国前后想确认汇率是不是最新、或自动同步失败时进来点一下「立即拉取一次」。</p>
+  <p>这里同步记外币账单所需的参考汇率。自动任务运行时按计划拉取；想立即更新，或上次同步失败时，可以点击「立即拉取一次」。</p>
 </details>
 
 {% if refreshed == 'ok' %}
@@ -23,9 +23,8 @@
     <span class="kv-key">数据源</span>
     <span class="kv-val">
       欧洲央行参考汇率{% if fx_source == 'ecb' %}（ECB 直连）{% else %}（经 Frankfurter 镜像，国内可达、免 key）{% endif %}
-      <br><span class="path-mono">{{ fx_source_url }}</span>
     </span>
-    <span class="kv-key">自动同步</span>
+    <span class="kv-key">自动同步配置</span>
     <span class="kv-val">
       {% if fx_auto_enabled %}
       <span class="badge badge-ok">开</span> 每日 {{ fx_sync_times }}（{{ fx_sync_timezone }}）
@@ -33,8 +32,20 @@
       <span class="badge badge-warn">关</span>
       {% endif %}
     </span>
-    <span class="kv-key">上次成功</span>
-    <span class="kv-val">{{ fx_last_success_at | owner_datetime }} · 成功 {{ fx_success_count }} 次 / 失败 {{ fx_failed_count }} 次</span>
+    <span class="kv-key">任务运行</span>
+    <span class="kv-val" data-testid="fx-scheduler-state">
+      {% if fx_scheduler_running %}
+      <span class="badge badge-ok">运行中</span> 等待计划时间或正在同步
+      {% elif fx_scheduler_config_error %}
+      <span class="badge badge-err">启动配置无效</span> 请核对同步时间和时区，修正后重启后端。
+      {% elif fx_auto_enabled %}
+      <span class="badge badge-err">任务未运行</span> 请通过桌面管理器查看后端状态；仍可尝试手动拉取。
+      {% else %}
+      <span class="badge badge-warn">未启用</span> 可手动拉取
+      {% endif %}
+    </span>
+    <span class="kv-key">本次启动后</span>
+    <span class="kv-val">最近成功 {{ fx_last_success_at | owner_datetime }} · 成功 {{ fx_success_count }} 次 / 失败 {{ fx_failed_count }} 次</span>
     {% if fx_last_error %}
     <span class="kv-key">最近错误</span>
     <span class="kv-val"><span class="badge badge-err">!</span> {{ fx_last_error }}</span>
@@ -43,6 +54,9 @@
   <form method="post" action="/owner/fx/refresh" class="form-row" data-show-loading="正在拉取最新汇率，请稍候…">
     <button type="submit" class="btn btn-primary">立即拉取一次</button>
   </form>
+  {% if fx_scheduler_running and fx_last_error %}
+  <p class="text-meta">自动任务会在下一次计划时间重试，也可现在手动拉取。</p>
+  {% endif %}
   <p class="text-meta mt-3">
     汇率取欧央行每日参考中间价（经 Frankfurter 转发）。周末 / 节假日无新价时，记账会自动沿用最近一个工作日的价格，不再卡成「待汇率」。
   </p>
