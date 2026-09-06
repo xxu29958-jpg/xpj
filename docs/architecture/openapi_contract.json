@@ -1862,6 +1862,11 @@
             "title": "Expense Snapshot",
             "type": "array"
           },
+          "filter": {
+            "default": "",
+            "title": "Filter",
+            "type": "string"
+          },
           "idempotency_key": {
             "default": "",
             "title": "Idempotency Key",
@@ -36835,6 +36840,16 @@
               ],
               "title": "Msg"
             }
+          },
+          {
+            "in": "query",
+            "name": "filter",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Filter",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -42450,6 +42465,38 @@
                 }
               ],
               "title": "Ledger Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "msg",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Msg"
+            }
+          },
+          {
+            "in": "query",
+            "name": "flash_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Flash Type"
             }
           }
         ],

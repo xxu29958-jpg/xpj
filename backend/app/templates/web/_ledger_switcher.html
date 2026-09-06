@@ -39,7 +39,7 @@
     </form>
     {% else %}
     <a class="row {% if opt.ledger_id == selected_ledger_id %}on{% endif %}"
-       href="{{ request.url.path }}?ledger_id={{ opt.ledger_id }}{% for k, v in request.query_params.multi_items() %}{% if k != 'ledger_id' %}&{{ k }}={{ v }}{% endif %}{% endfor %}">
+       href="{{ ledger_switch_next_url }}{{ '&' if '?' in ledger_switch_next_url else '?' }}ledger_id={{ opt.ledger_id|urlencode }}">
       {{ ledger_option_content(opt) }}
     </a>
     {% endif %}

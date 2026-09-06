@@ -155,6 +155,7 @@ def web_confirmed_batch_update(
     month: str = Form(default=""),
     tag: str = Form(default=""),
     page: int = Form(default=1),
+    filter: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> Response:
@@ -190,6 +191,7 @@ def web_confirmed_batch_update(
             month=month or None,
             tag=tag or None,
             msg=outcome.error_message,
+            filter=filter,
             status_code=outcome.error_status,
             flash_type="error",
             batch_category_input=category,
@@ -206,4 +208,5 @@ def web_confirmed_batch_update(
         tag=tag,
         page=page,
         msg=_confirmed_batch_result_message(outcome.result),
+        filter=filter,
     )
