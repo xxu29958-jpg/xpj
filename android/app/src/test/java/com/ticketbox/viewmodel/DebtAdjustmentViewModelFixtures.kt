@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
+import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtAdjustmentActions
 import com.ticketbox.data.repository.DebtAdjustmentRefresh
 import com.ticketbox.data.repository.DebtAdjustmentPayload
@@ -107,4 +108,36 @@ internal fun pendingAdjustment(
         ),
         intent = payload,
     )
+}
+
+internal class AdjustmentDetailActions : DebtActions by FakeDebtActions() {
+    val mutations = mutableListOf<String>()
+    override suspend fun recordRepayment(publicId: String, expectedRowVersion: Long, amountCents: Long): Result<Debt> {
+        mutations += "repayment:$publicId:$expectedRowVersion:$amountCents"
+        return writeResult ?: getResult
+    }
+    override suspend fun voidDebt(publicId: String, expectedRowVersion: Long, reason: String): Result<Debt> {
+        mutations += "void:$publicId:$expectedRowVersion:$reason"
+        return getResult
+    }
+    override suspend fun voidRepayment(publicId: String, repaymentPublicId: String,
+        expectedRowVersion: Long, reason: String): Result<Debt> {
+        mutations += "repaymentVoid:$publicId:$repaymentPublicId:$expectedRowVersion:$reason"
+        return getResult
+    }
+    override suspend fun setDebtKind(publicId: String, expectedRowVersion: Long, debtKind: String): Result<Debt> {
+        mutations += "kind:$publicId:$expectedRowVersion:$debtKind"
+        return getResult
+    }
+    var getResult: Result<Debt> = Result.success(sampleDebt().copy(rowVersion = 7))
+    var writeResult: Result<Debt>? = null
+    var getGate: CompletableDeferred<Unit>? = null
+    val getCalls = mutableListOf<String>()
+
+    override suspend fun getDebt(publicId: String): Result<Debt> {
+        getCalls += publicId
+        val captured = getResult
+        getGate?.await()
+        return captured
+    }
 }

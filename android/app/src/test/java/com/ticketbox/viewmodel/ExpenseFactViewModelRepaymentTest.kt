@@ -66,7 +66,8 @@ internal class ExpenseFactViewModelRepaymentTest : ExpenseFactViewModelTestBase(
             observed[status] = (fake.repaymentDraftCalls - before) to vm.consumeOpenRepaymentDraftPublicId()
         }
 
-        assertEquals(statuses.associateWith { 0 to null }, observed)
+        val expected: Map<PendingMutationStatus, Pair<Int, String?>> = statuses.associateWith { 0 to null }
+        assertEquals(expected, observed)
         assertEquals(1_000L, vm.uiState.value.expense?.amountCents)
         assertEquals(original.intent, vm.uiState.value.corrections.single().intent)
         assertEquals(original.row.idempotencyKey, vm.uiState.value.corrections.single().row.idempotencyKey)

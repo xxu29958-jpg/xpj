@@ -20,7 +20,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
@@ -38,9 +37,9 @@ import androidx.lifecycle.viewModelScope
 
 /** Real facade, recovery factory and one shared Outbox; only HTTP and storage adapters are fakes. */
 @OptIn(ExperimentalCoroutinesApi::class)
-internal class ExpenseCorrectionGlobalRecoveryTest : ExpensePendingRepositoryOutboxTestBase() {
+internal class ExpenseCorrectionGlobalRecoveryTest {
     private val dispatcher = StandardTestDispatcher()
-    private val recoveryModels = mutableListOf<OutboxStatusViewModel>()
+    private val harness = CorrectionRecoveryHarness()
 
     @BeforeTest
     fun setUp() {
@@ -49,19 +48,15 @@ internal class ExpenseCorrectionGlobalRecoveryTest : ExpensePendingRepositoryOut
 
     @AfterTest
     fun tearDown() {
-        recoveryModels.forEach { it.viewModelScope.cancel() }
+        harness.close()
         Dispatchers.resetMain()
     }
 
     @Test
     fun conflictDropWaitsForTheCurrentFactAndCachesItBeforeRemovingTheIntent() = runTest(dispatcher) {
-        assertDelayedConflictDrop()
-    }
-
-    private suspend fun TestScope.assertDelayedConflictDrop() {
-        val api = RecoveryApi(confirmedDto())
-        val fixture = fixture(api)
-        val row = seedCorrection(fixture, PendingMutationStatus.Conflict)
+        val api = RecoveryApi(harness.confirmedDto())
+        val fixture = harness.fixture(api)
+        val row = harness.seedCorrection(fixture, PendingMutationStatus.Conflict)
         advanceUntilIdle()
         val original = fixture.queue.rows.getValue(row.id)
         val response = CompletableDeferred<ExpenseDto>()
@@ -74,7 +69,7 @@ internal class ExpenseCorrectionGlobalRecoveryTest : ExpensePendingRepositoryOut
         assertEquals(original, fixture.queue.rows[row.id], "A pending current-fact GET must retain the original intent")
         assertEquals(listOf(42L), api.reads)
         assertEquals(row.id, fixture.vm.uiState.value.busyRowId)
-        val current = confirmedDto().copy(merchant = "Server correction", rowVersion = 8L)
+        val current = harness.confirmedDto().copy(merchant = "Server correction", rowVersion = 8L)
         response.complete(current)
         advanceUntilIdle()
 
@@ -90,13 +85,9 @@ internal class ExpenseCorrectionGlobalRecoveryTest : ExpensePendingRepositoryOut
 
     @Test
     fun unknownResultDropCanRecoverAfterAReadFailureWithoutDemandingANewerVersion() = runTest(dispatcher) {
-        assertFailedReadCanContinueWithSameVersion()
-    }
-
-    private suspend fun TestScope.assertFailedReadCanContinueWithSameVersion() {
-        val api = RecoveryApi(confirmedDto())
-        val fixture = fixture(api)
-        val row = seedCorrection(fixture, PendingMutationStatus.Failed)
+        val api = RecoveryApi(harness.confirmedDto())
+        val fixture = harness.fixture(api)
+        val row = harness.seedCorrection(fixture, PendingMutationStatus.Failed)
         advanceUntilIdle()
         val original = fixture.queue.rows.getValue(row.id)
         api.reads.clear()
@@ -110,7 +101,7 @@ internal class ExpenseCorrectionGlobalRecoveryTest : ExpensePendingRepositoryOut
         assertNotNull(fixture.vm.uiState.value.message)
         assertEquals(MessageTone.Danger, fixture.vm.uiState.value.messageTone)
         assertNull(fixture.vm.uiState.value.busyRowId)
-        api.read = { confirmedDto() }
+        api.read = { harness.confirmedDto() }
         fixture.vm.dropFailed(row)
         advanceUntilIdle()
 
@@ -122,10 +113,6 @@ internal class ExpenseCorrectionGlobalRecoveryTest : ExpensePendingRepositoryOut
 
     @Test
     fun cacheFailureKeepsTheOriginalRowUntilTheSameDropCanComplete() = runTest(dispatcher) {
-        assertCacheMustCommitBeforeDiscard()
-    }
-
-    private suspend fun TestScope.assertCacheMustCommitBeforeDiscard() {
         val stored = FakeExpenseDao()
         var rejectCache = false
         val cache = object : ExpenseDao by stored {
@@ -134,12 +121,12 @@ internal class ExpenseCorrectionGlobalRecoveryTest : ExpensePendingRepositoryOut
                 return stored.upsertByServerIdForLedger(ledgerId, expense)
             }
         }
-        val api = RecoveryApi(confirmedDto())
-        val fixture = fixture(api, cache)
-        val row = seedCorrection(fixture, PendingMutationStatus.Conflict)
+        val api = RecoveryApi(harness.confirmedDto())
+        val fixture = harness.fixture(api, cache)
+        val row = harness.seedCorrection(fixture, PendingMutationStatus.Conflict)
         advanceUntilIdle()
         val original = fixture.queue.rows.getValue(row.id)
-        val current = confirmedDto().copy(merchant = "Refreshed", rowVersion = 8L)
+        val current = harness.confirmedDto().copy(merchant = "Refreshed", rowVersion = 8L)
         api.read = { current }
         rejectCache = true
         fixture.vm.dropMine(row)
@@ -160,22 +147,18 @@ internal class ExpenseCorrectionGlobalRecoveryTest : ExpensePendingRepositoryOut
 
     @Test
     fun aNowPendingRootRetiresOnlyItsConfirmedCacheAndOffsetsBeforeLocalDiscard() = runTest(dispatcher) {
-        assertNonConfirmedReadRetiresItsOldProjection()
-    }
-
-    private suspend fun TestScope.assertNonConfirmedReadRetiresItsOldProjection() {
-        val api = RecoveryApi(confirmedDto())
-        val fixture = fixture(api)
-        val row = seedCorrection(fixture, PendingMutationStatus.Conflict)
+        val api = RecoveryApi(harness.confirmedDto())
+        val fixture = harness.fixture(api)
+        val row = harness.seedCorrection(fixture, PendingMutationStatus.Conflict)
         val offset = expenseFactBundleDtoFixture().toCacheProjection("owner").activeOffsets.single()
             .copy(publicId = "target-offset", rootServerId = 42L)
-        fixture.cache.insert(confirmedDto().copy(id = 99L, publicId = "other-root").toEntity("owner"))
-        fixture.cache.insert(confirmedDto().toEntity("other-ledger"))
+        fixture.cache.insert(harness.confirmedDto().copy(id = 99L, publicId = "other-root").toEntity("owner"))
+        fixture.cache.insert(harness.confirmedDto().toEntity("other-ledger"))
         fixture.cache.upsertConfirmedStreamOffsets(listOf(offset,
             offset.copy(publicId = "other-root-offset", rootServerId = 99L),
             offset.copy(ledgerId = "other-ledger")))
         advanceUntilIdle()
-        api.read = { confirmedDto().copy(status = "pending", rowVersion = 8L, confirmedAt = null) }
+        api.read = { harness.confirmedDto().copy(status = "pending", rowVersion = 8L, confirmedAt = null) }
 
         fixture.vm.dropMine(row)
         advanceUntilIdle()
@@ -190,14 +173,10 @@ internal class ExpenseCorrectionGlobalRecoveryTest : ExpensePendingRepositoryOut
 
     @Test
     fun bindingChangeDuringGlobalDropKeepsTheOriginalIntentAndCache() = runTest(dispatcher) {
-        assertRecoveryReadCannotCrossItsBinding()
-    }
-
-    private suspend fun TestScope.assertRecoveryReadCannotCrossItsBinding() {
-        val api = RecoveryApi(confirmedDto())
-        val token = seededTokenStore()
-        val fixture = fixture(api, token = token)
-        val row = seedCorrection(fixture, PendingMutationStatus.Conflict)
+        val api = RecoveryApi(harness.confirmedDto())
+        val token = harness.token()
+        val fixture = harness.fixture(api, token = token)
+        val row = harness.seedCorrection(fixture, PendingMutationStatus.Conflict)
         advanceUntilIdle()
         val original = fixture.queue.rows.getValue(row.id)
         val response = CompletableDeferred<ExpenseDto>()
@@ -206,7 +185,7 @@ internal class ExpenseCorrectionGlobalRecoveryTest : ExpensePendingRepositoryOut
         runCurrent()
         assertEquals(original, fixture.queue.rows[row.id])
         token.switchLedgerForFixture("other-ledger", "Another family", role = "member")
-        response.complete(confirmedDto().copy(merchant = "Old binding reply", rowVersion = 8L))
+        response.complete(harness.confirmedDto().copy(merchant = "Old binding reply", rowVersion = 8L))
         advanceUntilIdle()
 
         assertEquals(original, fixture.queue.rows[row.id])
@@ -218,9 +197,9 @@ internal class ExpenseCorrectionGlobalRecoveryTest : ExpensePendingRepositoryOut
 
     @Test
     fun knownTargetRefusalAllowsExplicitLocalDiscardWithoutInventingNewServerFacts() = runTest(dispatcher) {
-        val api = RecoveryApi(confirmedDto())
-        val fixture = fixture(api)
-        val row = seedCorrection(fixture, PendingMutationStatus.Failed)
+        val api = RecoveryApi(harness.confirmedDto())
+        val fixture = harness.fixture(api)
+        val row = harness.seedCorrection(fixture, PendingMutationStatus.Failed)
         fixture.outbox.markFailed(row.id, "correction_target_unavailable")
         advanceUntilIdle()
         val current = fixture.vm.uiState.value.status.failed.single()
@@ -236,9 +215,62 @@ internal class ExpenseCorrectionGlobalRecoveryTest : ExpensePendingRepositoryOut
     }
 
     @Test
+    fun aConcurrentRetryCannotBeDeletedByAnOlderDropRead() = runTest(dispatcher) {
+        val api = RecoveryApi(harness.confirmedDto())
+        val fixture = harness.fixture(api)
+        val row = harness.seedCorrection(fixture, PendingMutationStatus.Failed)
+        advanceUntilIdle()
+        val response = CompletableDeferred<ExpenseDto>()
+        api.reads.clear()
+        api.read = { response.await() }
+        fixture.vm.dropFailed(row)
+        runCurrent()
+        assertEquals(listOf(42L), api.reads)
+
+        assertTrue(fixture.outbox.resolveFailed(row.id, FailedResolution.Retry()))
+        val retried = fixture.queue.rows.getValue(row.id)
+        assertEquals(PendingMutationStatus.Pending.wireValue, retried.status)
+        response.complete(harness.confirmedDto())
+        advanceUntilIdle()
+
+        assertEquals(retried, fixture.queue.rows[row.id])
+        assertNotNull(fixture.vm.uiState.value.message)
+        assertEquals(MessageTone.Danger, fixture.vm.uiState.value.messageTone)
+        assertNull(fixture.vm.uiState.value.busyRowId)
+    }
+
+    @Test
+    fun aDelayedPendingReadCannotEraseANewerConfirmedProjection() = runTest(dispatcher) {
+        val api = RecoveryApi(harness.confirmedDto())
+        val fixture = harness.fixture(api)
+        val row = harness.seedCorrection(fixture, PendingMutationStatus.Conflict)
+        advanceUntilIdle()
+        val response = CompletableDeferred<ExpenseDto>()
+        api.reads.clear()
+        api.read = { response.await() }
+        fixture.vm.dropMine(row)
+        runCurrent()
+        assertEquals(listOf(42L), api.reads)
+
+        val newer = harness.confirmedDto().copy(merchant = "A newer confirmed fact", rowVersion = 9L)
+        fixture.cache.upsertByServerIdForLedger("owner", newer.toEntity("owner"))
+        val offset = expenseFactBundleDtoFixture().toCacheProjection("owner").activeOffsets.single()
+            .copy(publicId = "newer-offset", rootServerId = 42L)
+        fixture.cache.upsertConfirmedStreamOffsets(listOf(offset))
+        response.complete(harness.confirmedDto().copy(status = "pending", rowVersion = 8L, confirmedAt = null))
+        advanceUntilIdle()
+
+        assertEquals(newer.merchant, fixture.repository.fetchExpenseFromLocalCache(42L).getOrThrow().merchant)
+        assertEquals(9L, fixture.cache.getConfirmed("owner").single().rowVersion)
+        assertEquals(listOf(offset), fixture.cache.getConfirmedStreamOffsets("owner"))
+        assertTrue(fixture.queue.rows.isEmpty())
+        assertNull(fixture.vm.uiState.value.message)
+    }
+
+    @Test
     fun unsupportedOriginalInputStillHasAnExplicitLocalDiscardWithoutAGet() = runTest(dispatcher) {
-        val api = RecoveryApi(confirmedDto())
-        val fixture = fixture(api)
+        val api = RecoveryApi(harness.confirmedDto())
+        val fixture = harness.fixture(api)
         val original = ExpenseCorrectionRequestDto(7L, "Old original reason", merchant = "Original input")
         val payload = OutboxAdapterGraph().legacyCorrectionAdapter.toJson(original)
         val id = fixture.outbox.enqueue(PendingMutationType.CorrectExpense, "expense:42", payload, 7L, "legacy-key")
@@ -255,7 +287,15 @@ internal class ExpenseCorrectionGlobalRecoveryTest : ExpensePendingRepositoryOut
         assertTrue(api.reads.isEmpty())
     }
 
-    private fun fixture(
+}
+
+private class CorrectionRecoveryHarness : ExpensePendingRepositoryOutboxTestBase() {
+    private val recoveryModels = mutableListOf<OutboxStatusViewModel>()
+
+    fun close() = recoveryModels.forEach { it.viewModelScope.cancel() }
+    fun token(): TestSessionFixture = seededTokenStore()
+
+    fun fixture(
         api: ApiService,
         cache: ExpenseDao = FakeExpenseDao(),
         token: TestSessionFixture = seededTokenStore(),
@@ -277,7 +317,7 @@ internal class ExpenseCorrectionGlobalRecoveryTest : ExpensePendingRepositoryOut
         return RecoveryFixture(repository, outbox, queue, cache, vm)
     }
 
-    private suspend fun seedCorrection(fixture: RecoveryFixture, status: PendingMutationStatus): OutboxRow {
+    suspend fun seedCorrection(fixture: RecoveryFixture, status: PendingMutationStatus): OutboxRow {
         val expense = fixture.repository.fetchExpense(42L).getOrThrow()
         val access = assertNotNull(fixture.repository.observeCorrections().first().access)
         val id = fixture.repository.submitCorrection(access.binding, expense,
@@ -291,26 +331,27 @@ internal class ExpenseCorrectionGlobalRecoveryTest : ExpensePendingRepositoryOut
         return pending.row
     }
 
-    private fun confirmedDto(): ExpenseDto = successExpenseDto().copy(
+    fun confirmedDto(): ExpenseDto = successExpenseDto().copy(
         status = "confirmed", merchant = "Original confirmed merchant", rowVersion = 7L,
         confirmedAt = "2026-05-20T12:00:05.000Z",
     )
 
-    private data class RecoveryFixture(
-        val repository: ExpenseRepository,
-        val outbox: OutboxRepository,
-        val queue: FakePendingMutationDao,
-        val cache: ExpenseDao,
-        val vm: OutboxStatusViewModel,
-    )
+}
 
-    private class RecoveryApi(initial: ExpenseDto) : ApiService by FakeApiService(mutableListOf(), 0) {
-        val reads = mutableListOf<Long>()
-        var read: suspend () -> ExpenseDto = { initial }
+private data class RecoveryFixture(
+    val repository: ExpenseRepository,
+    val outbox: OutboxRepository,
+    val queue: FakePendingMutationDao,
+    val cache: ExpenseDao,
+    val vm: OutboxStatusViewModel,
+)
 
-        override suspend fun expense(id: Long): ExpenseDto {
-            reads += id
-            return read()
-        }
+private class RecoveryApi(initial: ExpenseDto) : ApiService by FakeApiService(mutableListOf(), 0) {
+    val reads = mutableListOf<Long>()
+    var read: suspend () -> ExpenseDto = { initial }
+
+    override suspend fun expense(id: Long): ExpenseDto {
+        reads += id
+        return read()
     }
 }

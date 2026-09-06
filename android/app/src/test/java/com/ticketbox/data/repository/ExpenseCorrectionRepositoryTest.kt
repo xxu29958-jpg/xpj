@@ -27,12 +27,14 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxTestBase() {
+    private val harness = CorrectionRepositoryHarness()
+
     @Test
     fun `request storage boundaries refuse before enqueue and preserve every legal boundary`() = runTest {
         for ((label, draft, accepted) in correctionAdmissionBoundaryCases()) {
             val queue = FakePendingMutationDao()
-            val repo = buildCorrectionRepository(FakeApiService(mutableListOf(), 0), outbox = testOutboxRepository(queue))
-            val result = submit(repo, baselineExpense().copy(status = "confirmed", rowVersion = 7), draft)
+            val repo = harness.buildCorrectionRepository(FakeApiService(mutableListOf(), 0), outbox = testOutboxRepository(queue))
+            val result = harness.submit(repo, baselineExpense().copy(status = "confirmed", rowVersion = 7), draft)
 
             assertEquals(accepted, result.isSuccess, label)
             if (!accepted) {
@@ -56,7 +58,7 @@ internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxT
     fun `stored oversized split replacement is readable but cannot become an original retry`() = runTest {
         val queue = FakePendingMutationDao()
         val outbox = testOutboxRepository(queue)
-        val repo = buildCorrectionRepository(FakeApiService(mutableListOf(), 0), outbox = outbox)
+        val repo = harness.buildCorrectionRepository(FakeApiService(mutableListOf(), 0), outbox = outbox)
         val binding = assertNotNull(repo.observeCorrections().first().access).binding
         val request = ExpenseCorrectionRequestDto(7L, "保留原分摊", splits = List(101) {
             com.ticketbox.data.remote.dto.ExpenseSplitRequestDto(it.toLong() + 1, 1L, "原备注")
@@ -90,8 +92,8 @@ internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxT
                 throw httpException(404, """{"error":"not_found"}""")
             }
         }
-        val repo = buildCorrectionRepository(api, outbox = outbox)
-        val id = submit(repo, baselineExpense().copy(status = "confirmed", rowVersion = 7),
+        val repo = harness.buildCorrectionRepository(api, outbox = outbox)
+        val id = harness.submit(repo, baselineExpense().copy(status = "confirmed", rowVersion = 7),
             ExpenseCorrectionDraft("原更正", note = "保留内容")).getOrThrow()
         val binding = assertNotNull(repo.observeCorrections().first().access).binding
         val dispatcher = CorrectExpenseDispatcher({ api }, OutboxAdapterGraph().correctionAdapter,
@@ -119,7 +121,7 @@ internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxT
         for (character in listOf("改", "\uD83D\uDE42")) {
             val queue = FakePendingMutationDao()
             val outbox = testOutboxRepository(queue)
-            val repo = buildCorrectionRepository(FakeApiService(mutableListOf(), 0), outbox = outbox)
+            val repo = harness.buildCorrectionRepository(FakeApiService(mutableListOf(), 0), outbox = outbox)
             val binding = assertNotNull(repo.observeCorrections().first().access).binding
             val payload = ExpenseCorrectionPayload(1, 42L, "原商家", "CNY", 1200L, "CNY",
                 binding.ownerKey, binding.ledgerId, binding.sessionGeneration, binding.bindingRevision,
@@ -164,7 +166,7 @@ internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxT
                 awaitCancellation()
             }
         }
-        val repo = buildCorrectionRepository(api = api, outbox = outbox)
+        val repo = harness.buildCorrectionRepository(api = api, outbox = outbox)
         val baseline = baselineExpense().copy(
             status = "confirmed", confirmedAt = "2026-05-20T12:30:00Z", rowVersion = 7L, factRevision = 3L,
         )
@@ -181,7 +183,7 @@ internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxT
             items = listOf(ExpenseItemDraft("午餐", "1", 1_200L, 1_200L, "餐饮", null, null)),
             splits = listOf(ExpenseSplitDraft(memberId = 7L, amountCents = 1_200L, note = "共同用餐")),
         )
-        val submission = async { submit(repo, baseline, correction) }
+        val submission = async { harness.submit(repo, baseline, correction) }
 
         try {
             select {
@@ -209,7 +211,7 @@ internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxT
     fun `full original command round trips without projecting a new canonical fact or recomputing FX`() = runTest {
         val dao = FakeExpenseDao()
         val queue = FakePendingMutationDao()
-        val repo = buildCorrectionRepository(FakeApiService(mutableListOf(), 0), dao, testOutboxRepository(queue))
+        val repo = harness.buildCorrectionRepository(FakeApiService(mutableListOf(), 0), dao, testOutboxRepository(queue))
         val baseline = baselineExpense().copy(status = "confirmed", rowVersion = 7, factRevision = 3,
             homeCurrencyCode = "CNY", originalCurrencyCode = CurrencyCode.JPY, originalCurrencyCodeRaw = "JPY",
             originalAmountMinor = 1200, amountCents = 6000, homeAmountCents = 6000, exchangeRateToCny = "0.05", fxStatus = "ready")
@@ -219,7 +221,7 @@ internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxT
             items = listOf(ExpenseItemDraft("午餐", "1", 1300, 1300, "餐饮", "原文", null)),
             splits = emptyList())
 
-        val id = submit(repo, baseline, draft).getOrThrow()
+        val id = harness.submit(repo, baseline, draft).getOrThrow()
         val pending = repo.observeCorrections().first().corrections.single()
         val stored = assertNotNull(pending.intent)
         assertEquals(id, pending.row.id)
@@ -246,11 +248,11 @@ internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxT
     @Test
     fun `a second correction cannot skip an unresolved original submission`() = runTest {
         val queue = FakePendingMutationDao()
-        val repo = buildCorrectionRepository(FakeApiService(mutableListOf(), 0), outbox = testOutboxRepository(queue))
+        val repo = harness.buildCorrectionRepository(FakeApiService(mutableListOf(), 0), outbox = testOutboxRepository(queue))
         val baseline = baselineExpense().copy(status = "confirmed", rowVersion = 7)
-        submit(repo, baseline, ExpenseCorrectionDraft("第一次", note = "原意图")).getOrThrow()
+        harness.submit(repo, baseline, ExpenseCorrectionDraft("第一次", note = "原意图")).getOrThrow()
         val original = queue.rows.values.single()
-        assertTrue(submit(repo, baseline, ExpenseCorrectionDraft("第二次", note = "不得替代")).isFailure)
+        assertTrue(harness.submit(repo, baseline, ExpenseCorrectionDraft("第二次", note = "不得替代")).isFailure)
         assertEquals(original, queue.rows.values.single())
     }
 
@@ -258,7 +260,7 @@ internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxT
     fun `old normalized intent remains readable but cannot retry and explicit discard preserves the fact`() = runTest {
         val queue = FakePendingMutationDao()
         val outbox = testOutboxRepository(queue)
-        val repo = buildCorrectionRepository(FakeApiService(mutableListOf(), 0), outbox = outbox)
+        val repo = harness.buildCorrectionRepository(FakeApiService(mutableListOf(), 0), outbox = outbox)
         val json = OutboxAdapterGraph().legacyCorrectionAdapter.toJson(ExpenseCorrectionRequestDto(0, "旧明细", items = emptyList()))
         val id = outbox.enqueue(PendingMutationType.CorrectExpense, "expense:42", json, 9, "old-key")
         outbox.markFailed(id, "correction_requires_review")
@@ -279,7 +281,7 @@ internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxT
     fun `old DONE is unproven and an unknown payload retains its original bytes until explicit discard`() = runTest {
         val queue = FakePendingMutationDao()
         val outbox = testOutboxRepository(queue)
-        val repo = buildCorrectionRepository(FakeApiService(mutableListOf(), 0), outbox = outbox)
+        val repo = harness.buildCorrectionRepository(FakeApiService(mutableListOf(), 0), outbox = outbox)
         val id = outbox.enqueue(PendingMutationType.CorrectExpense, "expense:42", "{unknown format}", 9, "old-key")
         outbox.markDone(id)
         val observed = repo.observeCorrections().first()
@@ -295,7 +297,7 @@ internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxT
     @Test
     fun `zero OCC and changed logical binding refuse before publishing`() = runTest {
         val queue = FakePendingMutationDao()
-        val repo = buildCorrectionRepository(FakeApiService(mutableListOf(), 0), outbox = testOutboxRepository(queue))
+        val repo = harness.buildCorrectionRepository(FakeApiService(mutableListOf(), 0), outbox = testOutboxRepository(queue))
         val baseline = baselineExpense().copy(status = "confirmed", rowVersion = 0)
         val binding = assertNotNull(repo.observeCorrections().first().access).binding
         assertTrue(repo.submitCorrection(binding, baseline, ExpenseCorrectionDraft("更正", note = "草稿")).isFailure)
@@ -309,8 +311,8 @@ internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxT
         val queue = FakePendingMutationDao()
         val clock = java.time.Clock.fixed(java.time.Instant.parse("2026-09-06T00:00:00Z"), java.time.ZoneOffset.UTC)
         val outbox = testOutboxRepository(queue, clock)
-        val repo = buildCorrectionRepository(FakeApiService(mutableListOf(), 0), outbox = outbox)
-        val id = submit(repo, baselineExpense().copy(status = "confirmed", rowVersion = 7),
+        val repo = harness.buildCorrectionRepository(FakeApiService(mutableListOf(), 0), outbox = outbox)
+        val id = harness.submit(repo, baselineExpense().copy(status = "confirmed", rowVersion = 7),
             ExpenseCorrectionDraft("原始到期提交", note = "内容仍在")).getOrThrow()
         val original = queue.rows.getValue(id)
         outbox.reapExpiredPending(java.time.Instant.parse("2026-09-14T00:00:00Z").toEpochMilli())
@@ -324,10 +326,15 @@ internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxT
         assertTrue(observed.corrections.single().canDiscard)
     }
 
-    private suspend fun submit(repo: ExpenseRepository, baseline: Expense, draft: ExpenseCorrectionDraft) =
+
+}
+
+
+private class CorrectionRepositoryHarness : ExpensePendingRepositoryOutboxTestBase() {
+    suspend fun submit(repo: ExpenseRepository, baseline: Expense, draft: ExpenseCorrectionDraft) =
         repo.submitCorrection(assertNotNull(repo.observeCorrections().first().access).binding, baseline, draft)
 
-    private fun buildCorrectionRepository(api: ApiService, expenseDao: FakeExpenseDao = FakeExpenseDao(),
+    fun buildCorrectionRepository(api: ApiService, expenseDao: FakeExpenseDao = FakeExpenseDao(),
         outbox: OutboxRepository = testOutboxRepository(FakePendingMutationDao())): ExpenseRepository = ExpenseRepository(
         expenseDao = expenseDao,
         binding = testServerSessionBinding(apiClient = TestApiServiceFactory(api), settingsStore = seededSettingsStore(),
