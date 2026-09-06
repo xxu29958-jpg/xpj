@@ -120,7 +120,7 @@ def _normalized_recovery_target(raw: str | None) -> str:
         [
             (key, value)
             for key, value in parse_qsl(parsed.query, keep_blank_values=True)
-            if key != "ledger_id"
+            if key not in {"ledger_id", "msg", "flash_type"}
         ]
     )
     return urlunsplit(("", "", parsed.path, query, ""))

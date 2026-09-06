@@ -49,10 +49,16 @@
       <span>{% if can_write %}去待确认{% else %}查看可确认项{% endif %} →</span>
     </a>
     {% endif %}
-    {% if summary.missing_category > 0 %}
-    <a class="quality-action" href="/web/rules?ledger_id={{ selected_ledger_id }}">
-      <span><strong>{{ summary.missing_category }} 条未分类</strong></span>
-      <span>{% if can_write %}新增分类规则{% else %}查看分类规则{% endif %} →</span>
+    {% if summary.missing_category_pending > 0 %}
+    <a class="quality-action" href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=missing_category">
+      <span><strong>{{ summary.missing_category_pending }} 条待确认记录未分类</strong></span>
+      <span>{% if can_write %}去补分类{% else %}查看记录{% endif %} →</span>
+    </a>
+    {% endif %}
+    {% if summary.missing_category_confirmed > 0 %}
+    <a class="quality-action" href="/web/confirmed?ledger_id={{ selected_ledger_id }}&amp;filter=missing_category">
+      <span><strong>{{ summary.missing_category_confirmed }} 条已确认账单未分类</strong><small>全部月份</small></span>
+      <span>{% if can_write %}去更正分类{% else %}查看账单{% endif %} →</span>
     </a>
     {% endif %}
     {% if summary.pending_total == 0 and summary.missing_category == 0 and summary.suspected_duplicates == 0 %}

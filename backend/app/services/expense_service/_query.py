@@ -16,6 +16,7 @@ from app.schemas import (
     ConfirmedOffsetStreamProjection,
     ExpenseResponse,
 )
+from app.services.data_quality_service import uncategorized_expense_category_predicate
 from app.services.expense_offset_summary import expense_financial_summary
 from app.services.expense_query import (  # noqa: F401 — re-exported
     get_expense,
@@ -142,6 +143,7 @@ def list_confirmed(
     category: str | None = None,
     tag: str | None = None,
     timezone_name: str | None = None,
+    missing_category: bool = False,
 ) -> tuple[list[ConfirmedExpenseStreamItem], int]:
     page = max(page, 1)
     page_size = min(max(page_size, 1), 200)
@@ -153,6 +155,11 @@ def list_confirmed(
         tag=tag,
         timezone_name=timezone_name,
     )
+    if missing_category:
+        stream = select(stream).where(
+            stream.c.entry_kind == "expense",
+            uncategorized_expense_category_predicate(stream.c.category),
+        ).subquery("uncategorized_confirmed")
     total = int(db.scalar(select(func.count()).select_from(stream)) or 0)
     locators = list(
         db.execute(

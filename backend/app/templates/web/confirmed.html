@@ -23,11 +23,17 @@
 {% block content %}
 <header class="product-page-header">
   <div class="product-page-heading">
+    {% if filter == 'missing_category' %}
+    <h1 class="page-title">待补分类账单</h1>
+    <p class="product-page-summary">全部月份 · 共 {{ total }} 笔已确认账单 · {% if can_write %}打开详情或勾选账单更正分类{% else %}打开详情查看，当前角色只读{% endif %}。</p>
+    <a href="/web/data-quality?ledger_id={{ selected_ledger_id }}">返回数据体检</a>
+    {% else %}
     <h1 class="page-title">已确认流水</h1>
     <p class="confirmed-hero-amount"><span class="sr-only">{{ selected_month }} 合计 </span>{{ home_currency_symbol }}{{ month_total_amount_yuan }}</p>
     <p class="product-page-summary">
       {{ selected_month }} · 共 {{ month_total_count }} 笔 · 打开任意一行可查看详情与变更记录。
     </p>
+    {% endif %}
   </div>
   {% if can_write and request.state.web_session_auth %}
   <div class="product-page-actions">
@@ -38,10 +44,11 @@
 
 {% if tag %}
 {# 标签筛选是服务端真实筛选: 明确告知范围并给一键清除。清除只保留路由已验证的
-   ledger/month 上下文 (month 即 route 给的 effective_month), 回到第 1 页;
+   ledger 与 month 或跨月 filter 上下文，回到第 1 页;
    不重建通用 query — Jinja 是 HTML escape 不是 URL encode, 且 msg/flash_type
    等过时反馈本就不该跨导航存活。 #}
-{% set _clear_href = '/web/confirmed?ledger_id=' ~ selected_ledger_id ~ '&month=' ~ month %}
+{% set _clear_scope = '&filter=missing_category' if filter == 'missing_category' else '&month=' ~ month %}
+{% set _clear_href = '/web/confirmed?ledger_id=' ~ selected_ledger_id ~ _clear_scope %}
 <div class="ledger-active-filter" role="status">
   <span class="product-status product-status--info">标签：{{ tag }}</span>
   <span class="ledger-active-filter-copy">当前只显示带这个标签的账单。</span>
@@ -142,7 +149,11 @@
   {% include "product/_pagination.html" %}
   {% else %}
   <div class="product-state">
-    {% if tag %}
+    {% if filter == 'missing_category' %}
+    <div class="product-state-title">{% if tag %}这个标签下{% else %}全部月份{% endif %}没有待补分类的已确认账单</div>
+    <div class="product-state-body">已更正的账单会从此清单移除，可以回到体检查看其余待办。</div>
+    {% if tag %}<a class="product-state-action" href="{{ _clear_href }}">清除标签筛选</a>{% endif %}
+    {% elif tag %}
     <div class="product-state-title">这个月没有带标签「{{ tag }}」的已确认账单</div>
     <div class="product-state-body">换个标签筛选，或清除筛选查看本月全部流水。</div>
     <a class="product-state-action" href="{{ _clear_href }}">清除标签筛选</a>
@@ -161,6 +172,7 @@
 {# 本月概况: 次要信息区, 下沉到流水之后; 每日分布按 server-owned typed stream
    净贡献 (含退款/拒付/冲销, 与列表日合计同一投影), 原始账单来源是 root-only
    入账渠道。 #}
+{% if filter != 'missing_category' %}
 <section class="month-overview" aria-label="本月概况">
   <div class="product-panel product-panel--padded">
     <div class="product-panel-header">
@@ -215,6 +227,7 @@
     </div>
   </div>
 </section>
+{% endif %}
 </div>
 
 {% if can_write and expenses %}
@@ -227,6 +240,7 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
   <input type="hidden" name="month" value="{{ month }}">
+  <input type="hidden" name="filter" value="{{ filter }}">
   <input type="hidden" name="tag" value="{{ tag }}">
   <input type="hidden" name="page" value="{{ page }}">
   <input type="hidden" name="idempotency_key" value="{{ batch_idempotency_key }}">

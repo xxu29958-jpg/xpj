@@ -131,6 +131,12 @@ def is_uncategorized_expense_category(value: str | None) -> bool:
     return value.strip(_KOTLIN_TRIM_CHARS).lower() in _UNCATEGORIZED_TOKENS
 
 
+def uncategorized_expense_category_predicate(column):
+    """SQL counterpart for paginated remediation, using the same token/trim caliber."""
+    normalized = func.lower(func.btrim(func.coalesce(column, ""), _KOTLIN_TRIM_CHARS))
+    return normalized.in_(sorted(_UNCATEGORIZED_TOKENS))
+
+
 def is_ready_to_confirm_row(
     *,
     amount_cents: int | None,
