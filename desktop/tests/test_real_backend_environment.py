@@ -3,8 +3,12 @@
 import io
 import json
 import os
+import sys
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
+
+import pytest
 
 from tests import _real_backend
 
@@ -52,3 +56,86 @@ def test_backend_child_keeps_the_passfile_without_ambient_libpq_overrides(monkey
         fixture.close()
     process.terminate.assert_called_once()
     process.wait.assert_called_once_with(timeout=10)
+
+
+class _StoppedBeforeDatabaseError(RuntimeError):
+    pass
+
+
+@pytest.fixture
+def helper_authority_probe(monkeypatch, tmp_path):
+    # Importing the subprocess helper selects its backend working directory.
+    monkeypatch.chdir(Path.cwd())
+    monkeypatch.syspath_prepend(str(_real_backend._REPO_ROOT / "backend"))
+    from scripts.test_postgres_contract import TEST_POSTGRES_CONTRACT, TestPostgresContract
+
+    from tests import _real_backend_helper
+
+    # Substitute the already-owned cluster marker; this probe never creates or connects to PostgreSQL.
+    identity = TEST_POSTGRES_CONTRACT.database_identity("11111111-1111-4111-8111-111111111111")
+    monkeypatch.setattr(TestPostgresContract, "local_database_identity", lambda _self, _port: identity)
+    monkeypatch.setattr(TestPostgresContract, "default_data_dir", lambda _self, _port: tmp_path / "owned-local-pg")
+
+    for key in ("DATABASE_URL", "SMOKE_DATABASE_URL", "XPJ_TEST_CLUSTER_IDENTITY", "PGPASSFILE"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("XPJ_E2E_BACKEND_PORT", "12345")
+    observed = {}
+
+    def stop_before_database(url, **kwargs):
+        observed.update(url=url, identity=kwargs["cluster_identity"], passfile=kwargs["passfile"],
+                        backend_passfile=os.environ.get("PGPASSFILE"))
+        raise _StoppedBeforeDatabaseError
+
+    # The Desktop unit lane does not install server/SQL packages. Stop at that
+    # adapter boundary; the separate Windows live lane exercises the real lease.
+    monkeypatch.setitem(sys.modules, "uvicorn", SimpleNamespace())
+    monkeypatch.setitem(sys.modules, "scripts.test_postgres_database",
+                        SimpleNamespace(dedicated_test_database_lease=stop_before_database))
+    return _real_backend_helper, observed
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_helper_selects_one_complete_database_authority(helper_authority_probe, monkeypatch, tmp_path, explicit):
+    from scripts.test_postgres_contract import TEST_POSTGRES_CONTRACT
+    from scripts.write_test_postgres_env import render_environment
+
+    helper, observed = helper_authority_probe
+    monkeypatch.setenv("PGPASSFILE", str(tmp_path / "ambient.pgpass"))
+    expected = render_environment(
+        host="localhost", port=TEST_POSTGRES_CONTRACT.ports.local, admin_user="postgres",
+        application_user=TEST_POSTGRES_CONTRACT.application_role,
+        passfile=TEST_POSTGRES_CONTRACT.default_data_dir(TEST_POSTGRES_CONTRACT.ports.local)
+        / TEST_POSTGRES_CONTRACT.passfile_name,
+        cluster_identity=TEST_POSTGRES_CONTRACT.local_database_identity(TEST_POSTGRES_CONTRACT.ports.local),
+    )
+    if explicit:
+        expected = {
+            "SMOKE_DATABASE_URL": "explicit-test-route", "XPJ_TEST_CLUSTER_IDENTITY": "explicit-test-cluster",
+            "PGPASSFILE": str(tmp_path / "authorized.pgpass"),
+        }
+        for key, value in expected.items():
+            monkeypatch.setenv(key, value)
+
+    with pytest.raises(_StoppedBeforeDatabaseError):
+        helper.main()
+
+    assert observed == {
+        "url": expected["SMOKE_DATABASE_URL"], "identity": expected["XPJ_TEST_CLUSTER_IDENTITY"],
+        "passfile": expected["PGPASSFILE"], "backend_passfile": expected["PGPASSFILE"],
+    }
+
+
+@pytest.mark.parametrize("provided", [
+    {"SMOKE_DATABASE_URL": "explicit-test-route"},
+    {"XPJ_TEST_CLUSTER_IDENTITY": "explicit-test-cluster"},
+    {"SMOKE_DATABASE_URL": "explicit-test-route", "XPJ_TEST_CLUSTER_IDENTITY": "explicit-test-cluster"},
+])
+def test_helper_rejects_partial_authority_before_database_access(helper_authority_probe, monkeypatch, provided):
+    helper, observed = helper_authority_probe
+    for key, value in provided.items():
+        monkeypatch.setenv(key, value)
+
+    with pytest.raises(ValueError, match="complete"):
+        helper.main()
+
+    assert observed == {}
