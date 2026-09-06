@@ -9,9 +9,13 @@ from fastapi.testclient import TestClient
 
 from app.auth import get_current_writer_context
 from app.database import get_db
-from app.errors import add_exception_handlers
+from app.errors import AppError, add_exception_handlers
 from app.routes import income_plans, recycle_bin
-from app.runtime_compatibility_contract import CURRENT_API_VERSION
+from app.runtime_compatibility_contract import (
+    CURRENT_API_VERSION,
+    RUNTIME_COMPATIBILITY_SESSION_KEY,
+    RuntimeCompatibilityRequest,
+)
 
 MONTHLESS_API_VERSION = "2026-08-02"
 COMMANDS = (
@@ -89,3 +93,41 @@ def test_income_protocol_rejection_precedes_month_validation(version, method, pa
     response = TestClient(app).request(method, path, json=body, headers=headers)
     assert response.status_code == (422 if version == "current" else 409)
     assert response.json()["error"] == ("invalid_request" if version == "current" else "client_upgrade_required")
+
+
+@pytest.mark.parametrize("case", [
+    ("ADOPTION_REQUIRED", CURRENT_API_VERSION, None, "http_client", None, "currency_adoption_required"),
+    ("ACTIVE", CURRENT_API_VERSION, None, "http_client", None, "client_upgrade_required"),
+    ("EMPTY", CURRENT_API_VERSION, None, "http_client", None, "client_upgrade_required"),
+    ("ADOPTION_REQUIRED", MONTHLESS_API_VERSION, None, "http_client", None, "client_upgrade_required"),
+    ("ADOPTION_REQUIRED", None, None, "http_client", None, "currency_adoption_required"),
+    ("ADOPTION_REQUIRED", None, None, "server_runtime", None, "currency_adoption_required"),
+    ("ADOPTION_REQUIRED", CURRENT_API_VERSION, None, "http_client", 0, "client_upgrade_required"),
+    ("ADOPTION_REQUIRED", CURRENT_API_VERSION, "invalid", "http_client", None, "client_upgrade_required"),
+    ("ADOPTION_REQUIRED", CURRENT_API_VERSION, "1:0:CNY", "http_client", None, "currency_adoption_required"),
+])
+def test_currency_owner_keeps_adoption_refusal_without_inventing_proof(
+    monkeypatch, case,
+) -> None:
+    from app.services import currency_binding_service as currency_owner
+
+    state, version, binding, origin, revision, error = case
+    db = Mock(info={RUNTIME_COMPATIBILITY_SESSION_KEY: RuntimeCompatibilityRequest(version, binding, origin)})
+    monkeypatch.setattr(currency_owner, "home_currency_code", lambda: "CNY")
+    monkeypatch.setattr(currency_owner, "_load_binding", lambda _db, **_: SimpleNamespace(state=state))
+    claim = Mock(side_effect=AssertionError("Refused command must not claim an EMPTY binding"))
+    proof = Mock(side_effect=AssertionError("Refused command must not gain writer proof"))
+    monkeypatch.setattr(currency_owner, "_claim_initial_binding", claim)
+    monkeypatch.setattr(currency_owner, "_set_writer_proof", proof)
+
+    with pytest.raises(AppError) as raised:
+        currency_owner.resolve_write_capability(
+            db, expected_contract_version=1 if revision is not None else None, expected_revision=revision,
+        )
+
+    assert raised.value.error == error
+    assert raised.value.status_code == 409
+    claim.assert_not_called()
+    proof.assert_not_called()
+    db.add.assert_not_called()
+    db.commit.assert_not_called()
