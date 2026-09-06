@@ -37,3 +37,11 @@
 短验证：8 个原纯导航用例在改前 `3.10s`、改后 `2.76s` 均通过；两修改 Python 文件的 Ruff 和 diff 检查通过。另行尝试收集既有 `test_uncategorized_token_shared_samples` 时，其模块引入 PG 环境并因本机测试集群标记不存在失败（1 collection error），没有执行该用例，也没有启动数据库或修改基础设施。Lizard 和真实 PG 三个失败任务未在本机重跑；修正后的 exact head 必须由原 repository-weight、PG shards 和完整 CI 重新核准，不用纯测试或旧 head 代替。
 
 Root 集成复核：从仓库根误调用纯测试得到 `scripts.check_api_contract` 导入错误（1 PASS / 7 setup errors）；改用该入口要求的 `backend` 工作目录后，原 8 例实际通过（2.87 秒），Ruff 与 diff 检查通过。未改导入路径或生产代码来迎合错误启动方式。
+
+## 清除标签后的范围闭合
+
+`df397e63` 的三个 real-db shard 已通过；ordinary 2/2 job `101488519734` 在既有 `test_web_tags` 的五月清除标签链接失败（1 failed / 1822 passed / 3 skipped）。修改前已沿真实模板核对：筛选条与空态共用 `_clear_href`，它无条件同时拼 `month` 和 `filter`，把无关空参数带到月度或跨月入口。新增实际 Jinja 渲染反例同时执行两种范围、解析两个真实链接，得到 2 RED / 8 PASS（2.93 秒）；不放宽既有五月返回断言。
+
+本次影响范围是 confirmed GET、批量错误重渲染共同使用的模板及两个清除标签出口：只清 tag 和分页，保留既有 ledger，并分别保留非空月度 month 或跨月 missing_category filter。财务查询、批量 writer、原幂等/OCC、持久化字段和详情返回上下文均未改；现有真实 PG 标签用例和新模板反例是直接生产者，Web 模板仍需 Desktop 和整合后的 native Windows consumer 资格化。缺口修正后再次核对两个入口，而非默认旧月度路径不受影响。
+
+修后两个链接均只携带其有效范围；原 8 例加两个实际模板反例全 10 PASS（2.75 秒），Ruff 与 diff 检查通过。原云端 `test_web_tags` 没有在本机运行，仍由新 head 的 ordinary PG lane 重新核准。

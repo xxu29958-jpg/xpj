@@ -168,3 +168,29 @@ def test_shrunk_last_page_still_exposes_remaining_uncategorized_work(monkeypatch
     )
     assert requested_pages == [2, 1]
     assert page[-1] == 1
+
+
+@pytest.mark.parametrize("filter,month,scope", [
+    ("", "2026-05", {"month": ["2026-05"]}),
+    ("missing_category", "", {"filter": ["missing_category"]}),
+])
+def test_clear_tag_links_keep_only_the_current_month_or_all_month_scope(filter, month, scope):
+    templates = Path(__file__).resolve().parents[1] / "app" / "templates" / "web"
+    environment = Environment(
+        loader=ChoiceLoader([
+            DictLoader({"base.html": "{% block content %}{% endblock %}"}),
+            FileSystemLoader(templates),
+        ]), autoescape=True, undefined=StrictUndefined,
+    )
+    body = environment.get_template("confirmed.html").render(
+        filter=filter, month=month, selected_month=month, selected_ledger_id="family",
+        tag="Shared", can_write=False, total=0, expenses=[], flash_message=None,
+        home_currency_symbol="¥", month_total_amount_yuan="0.00", month_total_count=0,
+        by_day=[], source_breakdown=[],
+    )
+    hrefs = re.findall(r'<a[^>]*href="([^"]+)"[^>]*>清除[^<]*</a>', body)
+    assert len(hrefs) == 2  # Both the active-filter bar and the empty-state exit.
+    for href in hrefs:
+        target = urlsplit(unescape(href))
+        assert target.path == "/web/confirmed"
+        assert parse_qs(target.query, keep_blank_values=True) == {"ledger_id": ["family"], **scope}
