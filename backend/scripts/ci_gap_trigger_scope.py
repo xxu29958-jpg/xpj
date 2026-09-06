@@ -211,7 +211,7 @@ _WINDOWS_DATASET_MAINTENANCE_PREFIXES = (
 )
 _REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 _WEB_BFF_SOURCE = _REPO_ROOT / "desktop" / "backend_manager" / "web_bff.py"
-_DESKTOP_PRODUCT_SCOPES = ("postgres", "backend_frozen", "desktop")
+_DESKTOP_PRODUCT_SCOPES = ("postgres", "backend_frozen", "desktop", "windows")
 _DESKTOP_BFF_AUTH_ROUTES = frozenset({"backend/app/routes/web_auth.py"})
 
 
@@ -249,8 +249,9 @@ def desktop_bff_static_repo_prefixes() -> tuple[str, ...]:
     return unique
 
 
-# Desktop BFF proxies /web and /static/{web,shared}; Edge E2E also reads
-# those files from disk. /web/auth is rejected by the BFF, so web_auth.py
+# Desktop BFF proxies /web and /static/{web,shared}; the native backend gate
+# renders those pages and assets, in addition to the isolated Desktop probes.
+# /web/auth is rejected by the BFF, so web_auth.py
 # stays on the ordinary backend/app rule via the exact exclusion below.
 _SHARED_WEB_DESKTOP_PREFIXES = (
     *desktop_bff_static_repo_prefixes(),
@@ -270,6 +271,7 @@ _FROZEN_DESKTOP_FILES = {
     "desktop/requirements-build.lock",
 }
 _DESKTOP_BACKEND_CONSUMER_FILES = {
+    "desktop/tests/_edge_cdp.py",
     "desktop/tests/_real_backend.py",
     "desktop/tests/_real_backend_helper.py",
     "desktop/tests/test_web_bff_edge_e2e.py",

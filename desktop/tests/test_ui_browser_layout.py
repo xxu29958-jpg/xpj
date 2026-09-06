@@ -666,7 +666,7 @@ pytest_plugins = ["tests._real_backend"]
 _SERVED_WEB_PROBE = """
 (() => {
   const atWeb = location.pathname === "/web" || location.pathname === "/web/pending";
-  if (!atWeb || !document.querySelector("#main-content")) return undefined;
+  if (!atWeb || document.readyState !== "complete" || !document.querySelector("#main-content")) return undefined;
   const interactive = [...document.querySelectorAll("button, a, input, select, textarea")];
   const visible = interactive.filter((el) => {
     const style = getComputedStyle(el);
@@ -675,6 +675,8 @@ _SERVED_WEB_PROBE = """
   });
   return JSON.stringify({
     overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    viewportWidth: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth,
     ledgerChip: Boolean(document.querySelector(".ledger-role-chip")),
     hasOwnerLedger: document.body.innerText.includes("我的小票夹"),
     unnamedControls: visible.filter((el) =>
@@ -723,7 +725,7 @@ def test_served_web_layout_through_manager_bff(
     assert not bootstrap_path.exists()
     assert isinstance(value, str)
     probe = json.loads(value)
-    assert probe["overflow"] is False
+    assert probe["overflow"] is False, (probe["viewportWidth"], probe["scrollWidth"])
     assert probe["ledgerChip"] is True
     assert probe["hasOwnerLedger"] is True
     assert probe["unnamedControls"] == 0
