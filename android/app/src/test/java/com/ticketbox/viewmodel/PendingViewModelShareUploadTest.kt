@@ -111,11 +111,13 @@ internal class PendingViewModelShareUploadTest : PendingViewModelReviewTestBase(
     }
 
     @Test
-    fun multiImageShareStopsBeforeDiscardingCapacityRetainedImage() = review {
+    fun capacityRetryContinuesTheUnsentShareTailWithoutRepeatingAcceptedImages() = review {
         val ledgerFlow = MutableStateFlow<String?>("owner")
         val fake = FakeReviewActions(activeLedgerFlow = ledgerFlow, activeLedgerIdProvider = { ledgerFlow.value })
+        var refusedSecondImage = false
         fake.uploadResponder = { name ->
-            if (name == "first.jpg") {
+            if (name == "b.jpg" && !refusedSecondImage) {
+                refusedSecondImage = true
                 Result.failure(
                     RepositoryException(
                         message = "识别队列暂时已满。",
@@ -123,18 +125,42 @@ internal class PendingViewModelShareUploadTest : PendingViewModelReviewTestBase(
                     ),
                 )
             } else {
-                Result.success(PendingUploadReceipt(8L, "task-$name"))
+                val id = when (name) {
+                    "a.jpg" -> 1L
+                    "b.jpg" -> 2L
+                    "c.jpg" -> 3L
+                    else -> error("Unexpected shared image: $name")
+                }
+                fake.pending = fake.pending + expense(id, merchant = name)
+                Result.success(PendingUploadReceipt(id, "task-$name"))
             }
         }
         val vm = PendingViewModel(fake)
+        val preparedNames = mutableListOf<String>()
         advanceUntilIdle()
 
-        uploadSharedImageSequence(vm, listOf("first.jpg", "second.jpg")) { preparedImage(it) }
+        // Exercise the actual Route consumer once; Retry must own the remaining tail.
+        uploadSharedImageSequence(vm, listOf("a.jpg", "b.jpg", "c.jpg")) {
+            preparedNames += it
+            preparedImage(it)
+        }
         advanceUntilIdle()
 
-        assertEquals(listOf("first.jpg"), fake.uploadedFileNames)
+        assertEquals(listOf("a.jpg", "b.jpg"), fake.uploadedFileNames)
+        assertEquals(listOf("a.jpg", "b.jpg"), preparedNames)
+        assertEquals(listOf(1L), vm.uiState.value.items.map { it.id })
         assertTrue(vm.uiState.value.canRetryUpload)
         assertEquals(UiText.res(R.string.pending_msg_upload_capacity_full), vm.uiState.value.message)
+
+        vm.retryCapacityUpload()
+        advanceUntilIdle()
+
+        assertEquals(listOf("a.jpg", "b.jpg", "b.jpg", "c.jpg"), fake.uploadedFileNames)
+        assertEquals(listOf("a.jpg", "b.jpg", "c.jpg"), preparedNames)
+        assertEquals(listOf("owner", "owner", "owner", "owner"), fake.uploadedLedgerIds)
+        assertEquals(setOf(1L, 2L, 3L), vm.uiState.value.items.map { it.id }.toSet())
+        assertFalse(vm.uiState.value.canRetryUpload)
+        assertFalse(vm.uiState.value.uploading)
     }
 
     @Test
