@@ -66,7 +66,7 @@ class OutboxProtocolRefusalTest(private val refusal: String) {
         assertEquals(original, retained.copy(status = original.status, retryCount = original.retryCount,
             attemptedAt = original.attemptedAt, lastError = original.lastError))
         if (refusal == "currency_adoption_required") {
-            assertEquals(listOf(CURRENT_TICKETBOX_API_VERSION), transport.mutationVersions)
+            assertEquals(listOf<String?>(CURRENT_TICKETBOX_API_VERSION), transport.mutationVersions)
             assertTrue(transport.currencyBindings.all { it == null })
         }
         assertEquals(if (refusal == "runtime_version_mismatch") 0 else 1, transport.mutations.size)
