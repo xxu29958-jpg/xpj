@@ -12,6 +12,7 @@ import struct
 import subprocess
 import time
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -298,13 +299,14 @@ def evaluate_page(
     edge: str,
     *,
     profile: Path,
-    url: str,
+    prepare_url: Callable[[int], str],
     width: int,
     height: int,
     expression: str,
 ) -> object:
     failures: list[BaseException] = []
     for attempt in range(1, _EVALUATE_PAGE_ATTEMPTS + 1):
+        url = prepare_url(attempt)
         try:
             return _evaluate_page_once(
                 edge,

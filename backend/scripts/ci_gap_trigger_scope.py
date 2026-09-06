@@ -278,6 +278,14 @@ _DESKTOP_BACKEND_CONSUMER_FILES = {
     "desktop/tests/test_desktop_first_use_backend.py",
     "desktop/tests/test_ui_browser_layout.py",
 }
+_WEB_EDGE_RUNTIME_CONSUMER_FILES = {
+    "backend/tests/test_web_edge_runtime_contract.py",
+    "backend/tests/fixtures/bulk_bar_announcement_contract.html",
+    "backend/tests/fixtures/bulk_bar_empty_reload_contract.html",
+    "backend/tests/fixtures/drawer_bulk_occ_contract.html",
+    "backend/tests/fixtures/review_keyboard_contract.html",
+    "backend/tests/fixtures/shell_keyboard_contract.html",
+}
 # Derive the service dependencies with the existing native-producer walker.
 # Route guards remain explicit: broad schema re-exports are not task ownership.
 _DESKTOP_PAIRING_PRODUCER_FILES = _app_python_dependencies((
@@ -329,6 +337,7 @@ _EXACT_SCOPE_RULES = {
     ),
     **dict.fromkeys(_FROZEN_DESKTOP_FILES, ("desktop", "windows")),
     **dict.fromkeys(_DESKTOP_BACKEND_CONSUMER_FILES, ("desktop", "windows")),
+    **dict.fromkeys(_WEB_EDGE_RUNTIME_CONSUMER_FILES, ("postgres", "desktop")),
     **dict.fromkeys(_DESKTOP_PAIRING_PRODUCER_FILES, _DESKTOP_PAIRING_SCOPES),
     _CROSS_RUNTIME_RELEASE_CONFIG: ("postgres", "desktop", "windows"),
     "backend/app/version.py": ("postgres", "desktop", "windows"),
