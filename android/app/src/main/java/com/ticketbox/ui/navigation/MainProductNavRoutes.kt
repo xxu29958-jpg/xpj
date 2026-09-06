@@ -233,9 +233,10 @@ internal fun NavGraphBuilder.addObligationRoutes(
         composable(ProductSecondaryPage.ObligationSync.route) {
             val vm: OutboxStatusViewModel = viewModel(
                 factory = outboxStatusViewModelFactory(
-                    screenFactory.outboxRepository, screenFactory.repository, screenFactory.debtCreationRepository,
-                    screenFactory.recurringRepository.occurrences,
-                    screenFactory.incomePlanRepository,
+                    screenFactory.outboxRepository, screenFactory.repository,
+                    com.ticketbox.viewmodel.OutboxRecoveryRepositories(screenFactory.debtCreationRepository,
+                        screenFactory.recurringRepository.occurrences, screenFactory.incomePlanRepository,
+                        screenFactory.debtAdjustmentRepository),
                 ),
             )
             SyncStatusScreen(viewModel = vm, onBack = onBack)

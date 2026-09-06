@@ -178,6 +178,11 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
         return response
     }
 
+    private fun Request.requiresRuntimeNegotiation(incomeForecastRead: Boolean): Boolean =
+        (incomeForecastRead || method in MUTATING_HTTP_METHODS) &&
+            header("Authorization") != null && !url.encodedPath.startsWith("/api/auth/") &&
+            header(TICKETBOX_API_VERSION_HEADER) == null
+
     private fun compatibilityRequest(request: Request): Request {
         val url = request.url.newBuilder()
             .encodedPath("/api/system/runtime-compatibility")
@@ -190,11 +195,6 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
         return builder.build()
     }
 }
-
-private fun Request.requiresRuntimeNegotiation(incomeForecastRead: Boolean): Boolean =
-    (incomeForecastRead || method in MUTATING_HTTP_METHODS) &&
-        header("Authorization") != null && !url.encodedPath.startsWith("/api/auth/") &&
-        header(TICKETBOX_API_VERSION_HEADER) == null
 
 private fun incompatibleProtocolResponse(request: Request): Response =
     Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(409)

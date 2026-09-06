@@ -123,6 +123,7 @@ internal data class SettingsRouteRepositories(
     val activeLedgerId: String?,
     val recurringOccurrences: com.ticketbox.data.repository.RecurringOccurrenceActions? = null,
     val incomePlans: com.ticketbox.data.repository.IncomePlanActions,
+    val debtAdjustments: com.ticketbox.data.repository.DebtAdjustmentActions,
 )
 
 @Composable
@@ -374,9 +375,8 @@ internal fun SettingsDestinationHost(
                 factory = outboxStatusViewModelFactory(
                     repositories.outboxRepository,
                     repositories.expenseRepository,
-                    repositories.debtCreationRepository,
-                    repositories.recurringOccurrences,
-                    repositories.incomePlans,
+                    com.ticketbox.viewmodel.OutboxRecoveryRepositories(repositories.debtCreationRepository,
+                        repositories.recurringOccurrences, repositories.incomePlans, repositories.debtAdjustments),
                 ),
             )
             SyncStatusScreen(

@@ -4,7 +4,6 @@ import com.ticketbox.data.local.PersistedLedgerIdentity
 
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
-import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtBillParseResponseDto
 import com.ticketbox.data.remote.dto.DebtDto
 import com.ticketbox.data.remote.dto.DebtForgiveCreateRequestDto
@@ -30,7 +29,6 @@ import okhttp3.MultipartBody
 import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.HttpException
 import retrofit2.Response
-import java.io.IOException
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
@@ -252,87 +250,6 @@ class DebtRepositoryTest {
         val keys = handler.repaymentCalls.mapNotNull { it.idempotencyKey }
         assertEquals(2, keys.size)
         assertEquals(2, keys.toSet().size)
-    }
-
-    @Test
-    fun recordAdjustmentSendsSignedAmountTrimmedReasonAndVersion() = runTest {
-        val handler = DebtApiHandler()
-
-        repository(handler).recordAdjustment(
-            publicId = "d1",
-            expectedRowVersion = 2L,
-            amountCents = -5_000L,
-            reason = "  减免部分  ",
-        ).getOrThrow()
-
-        val call = handler.adjustmentCalls.single()
-        assertEquals(-5_000L, call.request.amountCents)
-        // The repository trims the reason before the request leaves the client.
-        assertEquals("减免部分", call.request.reason)
-        assertEquals(2L, call.request.expectedRowVersion)
-        assertTrue(!call.idempotencyKey.isNullOrBlank())
-    }
-
-    @Test
-    fun responseLostAfterAdjustmentCommitRecoversTheOriginalCommand() = runTest {
-        val handler = DebtApiHandler()
-        var committed: AdjustmentCall? = null
-        handler.adjustmentReply = { call ->
-            if (committed == null) {
-                committed = call
-                throw IOException("response lost after commit")
-            }
-            if (call.idempotencyKey != committed?.idempotencyKey) {
-                throw HttpException(
-                    Response.error<DebtDto>(
-                        409,
-                        """{"error":"state_conflict","message":"Debt changed"}"""
-                            .toResponseBody("application/json".toMediaType()),
-                    ),
-                )
-            }
-            debtDto(publicId = "d1", remaining = 53_000L).copy(rowVersion = 3L, paidAmountCents = 0L)
-        }
-        val repository = repository(handler)
-
-        assertTrue(repository.recordAdjustment("d1", 2L, 3_000L, "补记借款").isFailure)
-        val recovered = repository.recordAdjustment("d1", 2L, 3_000L, "补记借款")
-
-        assertTrue(recovered.isSuccess, "Retry must recover the committed original adjustment")
-        assertEquals(1, handler.adjustmentCalls.map { it.idempotencyKey }.toSet().size)
-        assertEquals(committed?.request, handler.adjustmentCalls.last().request)
-        assertEquals(3L, recovered.getOrThrow().rowVersion)
-    }
-
-    @Test
-    fun recordAdjustmentRejectsZeroAmountBeforeApiCall() = runTest {
-        val handler = DebtApiHandler()
-
-        val result = repository(handler).recordAdjustment("d1", expectedRowVersion = 1L, amountCents = 0L, reason = "x")
-
-        assertTrue(result.isFailure)
-        assertTrue(handler.adjustmentCalls.isEmpty())
-    }
-
-    @Test
-    fun recordAdjustmentRejectsBlankReasonBeforeApiCall() = runTest {
-        val handler = DebtApiHandler()
-
-        val result = repository(handler).recordAdjustment("d1", expectedRowVersion = 1L, amountCents = 100L, reason = "   ")
-
-        assertTrue(result.isFailure)
-        assertTrue(handler.adjustmentCalls.isEmpty())
-    }
-
-    @Test
-    fun recordAdjustmentViewerShortCircuitsWithoutApiCall() = runTest {
-        val handler = DebtApiHandler()
-
-        val result = repository(handler, role = "viewer")
-            .recordAdjustment("d1", expectedRowVersion = 1L, amountCents = 100L, reason = "x")
-
-        assertTrue(result.isFailure)
-        assertTrue(handler.adjustmentCalls.isEmpty())
     }
 
     @Test
@@ -695,7 +612,6 @@ private class DebtApiFactory(private val handler: DebtApiHandler) : ApiServiceFa
 }
 
 private data class RepaymentCall(val publicId: String, val request: RepaymentCreateRequestDto, val idempotencyKey: String?)
-private data class AdjustmentCall(val publicId: String, val request: DebtAdjustmentCreateRequestDto, val idempotencyKey: String?)
 private data class VoidCall(val publicId: String, val request: DebtVoidCreateRequestDto, val idempotencyKey: String?)
 private data class SetKindCall(val publicId: String, val request: DebtKindSetRequestDto, val idempotencyKey: String?)
 private data class ForgiveCall(val publicId: String, val request: DebtForgiveCreateRequestDto, val idempotencyKey: String?)
@@ -729,8 +645,6 @@ private class DebtApiHandler : InvocationHandler {
     val listLenses = mutableListOf<String?>()
     val parseBillCalls = mutableListOf<MultipartBody.Part>()
     val repaymentCalls = mutableListOf<RepaymentCall>()
-    val adjustmentCalls = mutableListOf<AdjustmentCall>()
-    var adjustmentReply: ((AdjustmentCall) -> DebtDto)? = null
     val voidCalls = mutableListOf<VoidCall>()
     // ADR-0049 §7.0 / 8e-6e debt_kind correction-setter route recording.
     val setKindCalls = mutableListOf<SetKindCall>()
@@ -796,14 +710,6 @@ private class DebtApiHandler : InvocationHandler {
                     idempotencyKey = values[2] as String?,
                 )
                 writeResult ?: debtDto(publicId = values[0] as String)
-            }
-            "recordDebtAdjustment" -> {
-                adjustmentCalls += AdjustmentCall(
-                    publicId = values[0] as String,
-                    request = values[1] as DebtAdjustmentCreateRequestDto,
-                    idempotencyKey = values[2] as String?,
-                )
-                adjustmentReply?.invoke(adjustmentCalls.last()) ?: writeResult ?: debtDto(publicId = values[0] as String)
             }
             "voidDebt" -> {
                 voidCalls += VoidCall(
