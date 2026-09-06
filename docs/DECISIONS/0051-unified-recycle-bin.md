@@ -1,5 +1,11 @@
 # ADR-0051: 统一回收站
 
+> 2026-09-06 当前实现修订：以下六月分片为历史记录。Owner 业务回收站已被现有
+> `/web/recycle-bin` 入口替代，复用 Web/API/Android 的当前账本恢复 owner，并已纳入商家目录。
+> 旧 Owner 路由、投影和恢复分发已物理退役；账本归档恢复继续位于 `/owner/ledgers`。
+> 保留期、实体恢复规则和身份/权限/OCC 边界未改变。当前能力与资格化状态见
+> [产品施工地图](../current/TICKETBOX_CURRENT_PRODUCT_ATLAS.md)。
+
 - 状态：accepted / partially implemented（2026-06-30：Owner Console `/owner/recycle-bin`；普通 web/Android 当前账本回收站；短窗软删的回收站天级 retention；ADR-0052 月度预算配置归档/恢复与自定义分类偏好；ADR-0053 已定义 merchant catalog 后续边界）
 - 关联：ENGINEERING_RULES §6（持久化/同步/恢复）/ §12（保留天数预算）/ §13（反扩）、[[0038]]（`deleted_at` 软删 tombstone）、[[0043]]（tag mutation-undo）、[[0046]]（Android 周期 worker 边界）、[[0049]]（债务域 append-only，**排除在回收站外**）、[[0052]]（主数据删除边界）
 

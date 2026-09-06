@@ -12,8 +12,8 @@ from jinja2 import Environment, FileSystemLoader
 
 from tests._infra.merchant_catalog import create_catalog
 from tests._local_web_identity_support import (
-    _InstalledWeb,
     _connect_local_session,
+    _InstalledWeb,
     installed_web_setup,
 )
 

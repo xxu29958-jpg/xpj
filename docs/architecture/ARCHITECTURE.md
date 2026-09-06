@@ -52,9 +52,10 @@ CSV 和家庭分账只是事实入口；核心是让一个家庭在明确的 Acc
 > v0.3.3 起后端已提供轻量网页版账本 `/web`；v1.0 公网形态只允许按
 > ADR-0028 通过 Cloudflare allowlist + Access（生产建议）+ 后端
 > `__Host-session` Web cookie 访问。v0.4-alpha1 起本机 Owner Console 增加
-> `/owner/ledgers` 多账本管理入口；v0.10 起 `/owner/recycle-bin` 提供
-> 归档/限期删除统一恢复入口；v0.10 起 `/api/recycle-bin` 与
-> `/web/recycle-bin` 提供当前账本维度的普通端回收站，并纳入月度预算配置归档/恢复；`/owner` **仍只允许 loopback 访问**，
+> `/owner/ledgers` 多账本管理及账本归档恢复入口。业务恢复统一使用
+> `/api/recycle-bin` 与 `/web/recycle-bin` 的当前账本回收站，涵盖月度预算、收入计划、
+> 固定支出、目标和限期保留的目录项；Owner 导航直接进入该 Web 入口，遵守相同身份和账本权限。
+> 旧 Owner 业务回收站路由、投影和恢复分发已退役；`/owner` **仍只允许 loopback 访问**，
 > 不通过 Cloudflare Tunnel 暴露到公网，也不是商业 Web 后台。
 
 ## 2. 总体流程

@@ -1183,34 +1183,6 @@
         "title": "Body_owner_pairing_post_owner_pairing_post",
         "type": "object"
       },
-      "Body_owner_recycle_bin_restore_owner_recycle_bin_restore_post": {
-        "properties": {
-          "expected_row_version": {
-            "default": "",
-            "title": "Expected Row Version",
-            "type": "string"
-          },
-          "kind": {
-            "title": "Kind",
-            "type": "string"
-          },
-          "ledger_id": {
-            "default": "",
-            "title": "Ledger Id",
-            "type": "string"
-          },
-          "resource_id": {
-            "title": "Resource Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "kind",
-          "resource_id"
-        ],
-        "title": "Body_owner_recycle_bin_restore_owner_recycle_bin_restore_post",
-        "type": "object"
-      },
       "Body_owner_rename_device_owner_devices__public_id__rename_post": {
         "properties": {
           "device_name": {
@@ -35167,100 +35139,6 @@
         "summary": "Owner Pairing Post",
         "tags": [
           "owner-console"
-        ]
-      }
-    },
-    "/owner/recycle-bin": {
-      "get": {
-        "operationId": "owner_recycle_bin_get_owner_recycle_bin_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "msg",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Msg",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "error",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Error",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "text/html": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Owner Recycle Bin Get",
-        "tags": [
-          "owner"
-        ]
-      }
-    },
-    "/owner/recycle-bin/restore": {
-      "post": {
-        "operationId": "owner_recycle_bin_restore_owner_recycle_bin_restore_post",
-        "requestBody": {
-          "content": {
-            "application/x-www-form-urlencoded": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_owner_recycle_bin_restore_owner_recycle_bin_restore_post"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "text/html": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Owner Recycle Bin Restore",
-        "tags": [
-          "owner"
         ]
       }
     },
