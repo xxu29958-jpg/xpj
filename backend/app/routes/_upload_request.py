@@ -9,7 +9,6 @@ from time import perf_counter
 from typing import TYPE_CHECKING
 
 from fastapi import Request
-from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile
@@ -18,7 +17,6 @@ from starlette.formparsers import MultiPartException
 
 from app.config import get_settings
 from app.errors import AppError
-from app.models import ApiIdempotencyKey, BackgroundTask, Expense
 from app.schemas import UploadResponse
 from app.services.expense_service import stage_pending_expense
 from app.services.file_service import (
@@ -28,20 +26,20 @@ from app.services.file_service import (
     save_upload_bytes,
 )
 from app.services.idempotency import (
-    IDEMPOTENCY_STATUS_SUCCEEDED,
     IdempotencyOutcomeKind,
     claim_idempotency_key,
     fingerprint_request,
     mark_idempotency_succeeded,
 )
 from app.services.pending_enrichment_task_service import (
-    PENDING_EXPENSE_ENRICHMENT_TASK_TYPE,
     prepare_pending_expense_enrichment,
     submit_pending_expense_enrichment,
 )
+from app.services.upload_receipt_service import upload_commit_is_durable
 from app.upload_limits import multipart_request_limit_bytes
 
 if TYPE_CHECKING:
+    from app.models import ApiIdempotencyKey, Expense
     from app.services.background_task_service import PreparedBackgroundTask
 
 IOS_SHORTCUT_FILE_FIELDS = ("file", "image", "photo", "screenshot")
@@ -274,34 +272,6 @@ def _log_upload(
     )
 
 
-def _upload_commit_is_durable(
-    db: Session,
-    claim_id: int,
-    receipt: UploadResponse,
-    prepared_task: PreparedBackgroundTask,
-) -> bool:
-    stored_receipt = db.scalar(
-        select(ApiIdempotencyKey.response_body)
-        .join(Expense, Expense.public_id == ApiIdempotencyKey.resource_id)
-        .join(BackgroundTask, BackgroundTask.id == prepared_task.task_id)
-        .where(
-            ApiIdempotencyKey.id == claim_id,
-            ApiIdempotencyKey.tenant_id == prepared_task.payload["tenant_id"],
-            ApiIdempotencyKey.operation == "upload_screenshot",
-            ApiIdempotencyKey.status == IDEMPOTENCY_STATUS_SUCCEEDED,
-            ApiIdempotencyKey.resource_type == "upload_receipt",
-            Expense.id == receipt.id,
-            Expense.public_id == receipt.public_id,
-            Expense.tenant_id == ApiIdempotencyKey.tenant_id,
-            BackgroundTask.public_id == prepared_task.task_public_id,
-            BackgroundTask.public_id == receipt.enrichment_task_public_id,
-            BackgroundTask.tenant_id == ApiIdempotencyKey.tenant_id,
-            BackgroundTask.task_type == PENDING_EXPENSE_ENRICHMENT_TASK_TYPE,
-        )
-    )
-    return stored_receipt == receipt.model_dump(mode="json")
-
-
 def _commit_upload(
     db: Session,
     claim_id: int | None,
@@ -315,7 +285,7 @@ def _commit_upload(
             raise
         try:
             db.rollback()
-            if _upload_commit_is_durable(db, claim_id, receipt, prepared_task):
+            if upload_commit_is_durable(db, claim_id, receipt, prepared_task):
                 return
         except SQLAlchemyError:
             # An unavailable read cannot prove success; preserve the commit error.

@@ -108,9 +108,19 @@ Keyed receipt 的 `duration_ms/timing_ms` 随成功收据在 commit 前冻结，
 
 | 当前直接责任与消费者 | 本轮 after-impact / 退役出口 | 直接验证边界 |
 | --- | --- | --- |
-| `handle_upload` 的 keyed 原业务 commit | 原来 commit 抛错后只回滚并返回异常，已经落库的 queued task 没有提交出口。现在 `_commit_upload` 在数据库提交异常后先 rollback，再由同文件只读查询核实原 claim id、同 ledger、succeeded 状态、完整原 receipt，以及其原 Expense id/public_id 和 prepared task id/public_id/type。只在这些事实共同成立时继续原 postcommit 段。 | 原 lost-ack 例继续要求一次原 task/payload submit、原 timezone/OCC 和精确原收据；新源码仍须在 exact PG 执行。读回没有修改 ORM、补写 claim 或第二次业务 commit。 |
+| `handle_upload` 的 keyed 原业务 commit | 原来 commit 抛错后只回滚并返回异常，已经落库的 queued task 没有提交出口。现在 `_commit_upload` 在数据库提交异常后先 rollback，再由 `upload_receipt_service.upload_commit_is_durable` 只读核实原 claim id、同 ledger、succeeded 状态、完整原 receipt，以及其原 Expense id/public_id 和 prepared task id/public_id/type。只在这些事实共同成立时继续原 postcommit 段。 | 原 lost-ack 例继续要求一次原 task/payload submit、原 timezone/OCC 和精确原收据；新源码仍须在 exact PG 执行。读回没有修改 ORM、补写 claim 或第二次业务 commit。 |
 | 同一 prepared task / submit / HIT | 已证明提交的当前请求仍将内存中的同一个 `PreparedBackgroundTask` 及原 payload 交给既有 `submit_pending_expense_enrichment`；与普通 commit 成功共用唯一后置调用。原 HIT 直接返回已保存 typed receipt，绝不据此重新 submit。 | 旧 same-key 完整收据和不同 key 同图正控、postcommit submission owner 的既有失败语义均保留；没有新增后台扫描、payload 列、队列或启动 orphan 规则。 |
 | 未提交或无法读取证明的异常 | 没有匹配持久收据、Expense/task，或 rollback/read 遇到数据库错误时继续抛原 commit 异常；已有不确定附件保留规则不变。退役“内存里已有成功 receipt 就能宣布接受/submit”的可能出口。 | 新增唯一 real-db 负控 `test_android_upload_uncommitted_attempt_cannot_submit_or_return_a_receipt`：提交动作实际抛错且未 commit，要求 500、claim/Expense/task 未持久、零 submit、原附件保留；恢复数据库提交后原 key 才首次成功。该新增例未在本机运行。 |
 | Headerless / UploadLink / Web / API 协议 | 无 claim 的调用继续原 commit / rollback / 附件补偿规则；上传 body、header 可选性、鉴权、容量、UploadLink guard、Web 返回和 OpenAPI 均未改变。 | `test_uploads.py` 与本轮基线完整不变；focused 文件的全部既有函数 AST 不变。仅 request owner、focused 测试和本段变更，不改 Android 或其它工作树。 |
 
 本轮实际秒级检查仅覆盖 Python AST、原测试 AST 保留、Ruff、diff、既有逐路径 scope 与定向 Lizard；不是 PG 或产品执行。没有本机 PG/Gradle/长测、提交或推送。修正后原 lost-ack 后置断言和新未提交负控的运行结果仍待主控发布新 exact 候选，不能用本轮源码检查宣称 GREEN。
+
+### ceb36432 实际分层失败与只读收据 owner 迁移
+
+基线 `ceb364325c8657e47c529ee253b3e76ccd44b26d` / tree `23742427e47ffcd278fe202e1862bf9ad4728a62` 的 Backend contracts job `101574447236` 由主控实读为 `route_layer_imports actual=1 allowed=0`：`_upload_request.py:21` 的运行时 model import 使 route 承担了持久查询。迁移前本机只执行现有 `_audit_codebase.audit_layer_violations`，实际复现同一处计数 1；没有执行数据库或产品。
+
+| 直接责任 / 旧出口 | 本轮 after-impact 与退役范围 | 实际验证 |
+| --- | --- | --- |
+| 原 claim / Expense / task / 完整 receipt 的持久核验 | 原 `_upload_commit_is_durable` 整体迁至 `upload_receipt_service.upload_commit_is_durable`，这是唯一只读查询 owner；route 删除旧函数、select 及运行时 model import，只保留类型注解所需的 TYPE_CHECKING import。全部关联条件和完整 receipt 比较原样保留，没有第二个查询实现。 | 迁移函数仅规范化名称后 AST 完全相同；现有分层审计实际从 1 变为 0。 |
+| commit 异常 → rollback / 核验 → 原 postcommit submit | route 仍负责当前请求的提交异常处理、附件补偿和唯一 submit 组合；service 不 commit、rollback、修改 ORM 或提交任务。不能证明原事务存在时仍抛原异常，HIT 和无 header 调用边界不变。 | route 其余 13 个函数仅规范化 service 调用名后 AST 全部不变，实际 submit 调用仍只有一个。`test_upload_intent_continuity.py` 与 `test_uploads.py` 完整保持基线，原 lost-ack 与未提交负控的断言未修改，也无需迁移测试 seam。 |
+| 直接验证 producer | 新 service 与现有 request 路径均由原 classifier 选中 postgres/backend_frozen；合同不新增 heavy scope。没有改变 selector、阈值、API/生成 schema 或 Android。 | 两份 Python AST、Ruff、分层审计、逐路径 classifier 与 diff 检查实际通过；本机没有执行 pytest、PG、Gradle、提交或推送。新的 exact 候选仍须云端执行原行为与质量门，不能从该源码迁移宣称产品 GREEN。 |
