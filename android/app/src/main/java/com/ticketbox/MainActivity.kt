@@ -20,6 +20,8 @@ import com.ticketbox.ui.navigation.TicketboxApp
 import com.ticketbox.ui.navigation.TicketboxAppDependencies
 import com.ticketbox.ui.navigation.TicketboxAppViewModelFactories
 import com.ticketbox.ui.navigation.resolveLaunchIntent
+import com.ticketbox.ui.navigation.mergeLaunchRequest
+import com.ticketbox.ui.navigation.remainingLaunchRequest
 import kotlinx.coroutines.runBlocking
 import com.ticketbox.viewmodel.appViewModelFactory
 import com.ticketbox.viewmodel.appearanceViewModelFactory
@@ -60,7 +62,7 @@ class MainActivity : FragmentActivity() {
         // singleTask: 前台时的分享/快捷方式都从这里来。更新 Activity 的 intent 以保持
         // getIntent() 一致，再喂给 state；为 null（普通 re-launch）则不覆盖已有待处理请求。
         setIntent(intent)
-        parseLaunchIntent(intent)?.let { launchRequest.value = it }
+        parseLaunchIntent(intent)?.let { launchRequest.value = mergeLaunchRequest(launchRequest.value, it) }
     }
 
     /**
@@ -86,11 +88,12 @@ class MainActivity : FragmentActivity() {
             .firstNotNullOfOrNull { index -> clip.getItemAt(index)?.text?.toString() }
     }
 
-    /** Remove a consumed one-time invitation from both Compose state and Activity intent. */
+    /** Clear a handled request while preserving shares arriving during its handoff. */
     private fun clearHandledLaunchIntent(handled: LaunchIntentRequest) {
-        if (launchRequest.value != handled) return
-        launchRequest.value = null
-        setIntent(Intent(Intent.ACTION_MAIN).setClass(this, MainActivity::class.java))
+        launchRequest.value = remainingLaunchRequest(launchRequest.value, handled)
+        if (launchRequest.value == null) {
+            setIntent(Intent(Intent.ACTION_MAIN).setClass(this, MainActivity::class.java))
+        }
     }
 
     /** EXTRA_STREAM（单 Uri + Uri 列表）与 clipData 三处汇总成 uri 字符串。 */

@@ -409,12 +409,14 @@ _REAL_RENDER_PROBE = """
   const done = globalThis.__probeResult;
   if (done) return done;
   const atWeb = location.pathname === "/web" || location.pathname === "/web/pending";
-  const ready = atWeb && document.querySelector("#main-content");
+  const ready = atWeb && document.readyState === "complete" && document.querySelector("#main-content");
   if (!ready || globalThis.__probeStarted) return undefined;
   globalThis.__probeStarted = true;
   const overflow = document.documentElement.scrollWidth > document.documentElement.clientWidth + 1;
   const snapshot = {
     overflow,
+    viewportWidth: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth,
     ledgerChip: Boolean(document.querySelector(".ledger-role-chip")),
     hasOwnerLedger: document.body.innerText.includes("我的小票夹"),
     href: location.href,
@@ -475,7 +477,7 @@ def test_real_backend_bootstrap_pair_bridge_render_probe(
     assert not bootstrap_path.exists()
     assert isinstance(value, str)
     probe = json.loads(value)
-    assert probe["overflow"] is False
+    assert probe["overflow"] is False, (probe["viewportWidth"], probe["scrollWidth"])
     assert probe["ledgerChip"] is True
     assert probe["hasOwnerLedger"] is True
     # The server-side LedgerRequestGuard: a foreign ledger_id is refused.
@@ -502,7 +504,7 @@ def test_real_backend_unpaired_bridge_renders_manager_recovery_action(
     assert _INSTANCE_SECRET not in body
 
 
-def test_real_backend_reconcile_after_manager_death_mid_pair(
+def test_real_backend_resumes_a_persisted_activation_receipt(
     tmp_path: Path,
     real_backend: RealBackend,
 ) -> None:

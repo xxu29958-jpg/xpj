@@ -26710,9 +26710,10 @@
         "operationId": "create_plan_api_income_plans_post",
         "parameters": [
           {
+            "description": "Required API contract version from the runtime compatibility handshake.",
             "in": "header",
             "name": "Ticketbox-Api-Version",
-            "required": false,
+            "required": true,
             "schema": {
               "anyOf": [
                 {
@@ -26722,6 +26723,7 @@
                   "type": "null"
                 }
               ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
               "title": "Ticketbox-Api-Version"
             }
           },
@@ -26756,9 +26758,6 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
-          },
-          {
-            "$ref": "#/components/parameters/TicketboxApiVersion"
           },
           {
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"
@@ -26826,9 +26825,10 @@
             }
           },
           {
+            "description": "Required API contract version from the runtime compatibility handshake.",
             "in": "header",
             "name": "Ticketbox-Api-Version",
-            "required": false,
+            "required": true,
             "schema": {
               "anyOf": [
                 {
@@ -26838,6 +26838,7 @@
                   "type": "null"
                 }
               ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
               "title": "Ticketbox-Api-Version"
             }
           },
@@ -26872,9 +26873,6 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
-          },
-          {
-            "$ref": "#/components/parameters/TicketboxApiVersion"
           },
           {
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"
@@ -26956,9 +26954,10 @@
             }
           },
           {
+            "description": "Required API contract version from the runtime compatibility handshake.",
             "in": "header",
             "name": "Ticketbox-Api-Version",
-            "required": false,
+            "required": true,
             "schema": {
               "anyOf": [
                 {
@@ -26968,6 +26967,7 @@
                   "type": "null"
                 }
               ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
               "title": "Ticketbox-Api-Version"
             }
           },
@@ -27002,9 +27002,6 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
-          },
-          {
-            "$ref": "#/components/parameters/TicketboxApiVersion"
           },
           {
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"
@@ -27072,9 +27069,10 @@
             }
           },
           {
+            "description": "Required API contract version from the runtime compatibility handshake.",
             "in": "header",
             "name": "Ticketbox-Api-Version",
-            "required": false,
+            "required": true,
             "schema": {
               "anyOf": [
                 {
@@ -27084,6 +27082,7 @@
                   "type": "null"
                 }
               ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
               "title": "Ticketbox-Api-Version"
             }
           },
@@ -27118,9 +27117,6 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
-          },
-          {
-            "$ref": "#/components/parameters/TicketboxApiVersion"
           },
           {
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"
@@ -31557,6 +31553,7 @@
         "operationId": "restore_recycle_bin_api_recycle_bin_restore_post",
         "parameters": [
           {
+            "description": "Required current API version when kind is income_plan; optional for other restore kinds.",
             "in": "header",
             "name": "Ticketbox-Api-Version",
             "required": false,
@@ -31569,6 +31566,7 @@
                   "type": "null"
                 }
               ],
+              "description": "Required current API version when kind is income_plan; optional for other restore kinds.",
               "title": "Ticketbox-Api-Version"
             }
           },
@@ -31603,9 +31601,6 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
-          },
-          {
-            "$ref": "#/components/parameters/TicketboxApiVersion"
           },
           {
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"

@@ -280,6 +280,17 @@ def _http_runtime_request(db: Session) -> RuntimeCompatibilityRequest | None:
     return value
 
 
+def _required_http_currency_binding(db: Session, request: RuntimeCompatibilityRequest) -> str:
+    if request.api_version != CURRENT_API_VERSION:
+        raise AppError("client_upgrade_required", status_code=409)
+    if request.currency_binding is not None:
+        return request.currency_binding
+    binding = _load_binding(db)
+    if binding is not None and binding.state == CURRENCY_BINDING_ADOPTION_REQUIRED:
+        raise AppError("currency_adoption_required", status_code=409)
+    raise AppError("client_upgrade_required", status_code=409)
+
+
 def _currency_write_expectation(
     db: Session,
     *,
@@ -318,11 +329,10 @@ def _currency_write_expectation(
         return _CurrencyWriteExpectation(mode="internal")
     if request.is_legacy:
         return _CurrencyWriteExpectation(mode="legacy_http")
-    if request.api_version != CURRENT_API_VERSION or request.currency_binding is None:
-        raise AppError("client_upgrade_required", status_code=409)
+    request_binding = _required_http_currency_binding(db, request)
     try:
         contract_version, binding_revision, binding_currency = parse_currency_binding(
-            request.currency_binding
+            request_binding
         )
     except ValueError:
         raise AppError("client_upgrade_required", status_code=409) from None

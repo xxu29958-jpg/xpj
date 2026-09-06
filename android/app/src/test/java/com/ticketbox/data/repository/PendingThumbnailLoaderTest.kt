@@ -73,6 +73,7 @@ private class ThumbnailFakeReviewActions(
     private val thumbnails: Map<Long, ProtectedImage> = emptyMap(),
     private val failures: Set<Long> = emptySet(),
 ) : PendingReviewActions {
+    override fun currentUploadBinding(): LogicalSessionBinding = error("Upload is not exercised by thumbnail tests")
     val thumbnailCalls = mutableListOf<Long>()
 
     override suspend fun fetchPending(): Result<List<Expense>> = Result.success(emptyList())

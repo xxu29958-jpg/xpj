@@ -26,6 +26,7 @@ from app.services.income_plan_service._history import (
     income_intent_month,
     income_month_start,
     require_forward_income_month,
+    require_income_status_month,
 )
 from app.services.income_plan_service._money import (
     updated_income_amount_cents as _updated_income_amount_cents,
@@ -224,10 +225,11 @@ def archive_income_plan(
     """Soft-delete an income row. Atomic optimistic concurrency."""
 
     plan = _require_plan(db, tenant_id=tenant_id, public_id=public_id)
+    when = now or now_utc()
     if plan.status == "archived":
+        require_income_status_month(db, plan, income_intent_month(intent_month, when))
         return plan
     resolve_write_capability(db)
-    when = now or now_utc()
     period = income_intent_month(intent_month, when)
     require_forward_income_month(db, plan, period)
     rowcount = claim_row_with_token(
@@ -244,6 +246,7 @@ def archive_income_plan(
         db.rollback()
         current = _require_plan(db, tenant_id=tenant_id, public_id=public_id)
         if current.status == "archived":
+            require_income_status_month(db, current, period)
             return current
         raise AppError("state_conflict", status_code=409)
     db.expire_all()
@@ -268,10 +271,11 @@ def restore_income_plan(
     """Reactivate an archived income row. Atomic optimistic concurrency."""
 
     plan = _require_plan(db, tenant_id=tenant_id, public_id=public_id)
+    when = now or now_utc()
     if plan.status == "active":
+        require_income_status_month(db, plan, income_intent_month(intent_month, when))
         return plan
     resolve_write_capability(db)
-    when = now or now_utc()
     period = income_intent_month(intent_month, when)
     require_forward_income_month(db, plan, period)
     rowcount = claim_row_with_token(
@@ -288,6 +292,7 @@ def restore_income_plan(
         db.rollback()
         current = _require_plan(db, tenant_id=tenant_id, public_id=public_id)
         if current.status == "active":
+            require_income_status_month(db, current, period)
             return current
         raise AppError("state_conflict", status_code=409)
     db.expire_all()
