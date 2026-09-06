@@ -1,6 +1,6 @@
 # Monthly recurring occurrence working product contract
 
-Status: implementation present; final candidate and main qualification pending.
+Status: candidate qualified and merged in #373; independent merged-main qualification pending.
 Decision date: 2026-09-06. Source base: `1d5cc293a94dd7e9b13fdf2a5442d505907d7d3b`.
 
 This is the maintained task contract for this vertical slice. Its authority is the
@@ -118,5 +118,12 @@ Atlas, then continue the original Goal. This slice cannot complete the full RC.
   three concrete fixes: canonical confirmed zero amounts remain eligible; the
   associated payment has a real detail entry; original submissions are identifiable
   and recoverable without a successful period GET. Snapshot manifests matched.
+- Final candidate `c50519b2548efd737c8ce2e7fa0fb0bd3363af26` passed CI `34009632568`,
+  CodeQL `34009632598` and actual Connected `34009632572` (111 emulator tests,
+  no failures or skips). The tested PR merge and candidate share tree
+  `7a60709583b532fd8f90f0d1bb6f042d0721ce13`.
+- Protected squash merge #373 produced `3f604d1d0ba7c34afef1311c963c817431a2c521`
+  with that same tree. Its independent CI `34010262230`, CodeQL `34010262245`
+  and Connected `34010262247` are running at this evidence update.
 - Room close/reopen and synthetic response-loss probes are mechanism tests, not
   process-death, cross-client, clean-Windows or full Internal Beta qualification.
