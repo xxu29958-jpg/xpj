@@ -45,6 +45,20 @@ def require_forward_income_month(db: Session, plan: MonthlyIncomePlan, period: d
         raise AppError("state_conflict", "计划已有更晚月份的变更，请核对当前计划后重新提交。", status_code=409)
 
 
+def require_income_status_month(db: Session, plan: MonthlyIncomePlan, period: date) -> None:
+    """An existing status completes only the month represented by its latest head."""
+    latest = db.scalar(select(IncomePlanRevision).where(
+        IncomePlanRevision.tenant_id == plan.tenant_id, IncomePlanRevision.plan_id == plan.id,
+    ).order_by(IncomePlanRevision.revision_number.desc()).limit(1))
+    if (
+        latest is None
+        or latest.revision_number != plan.row_version
+        or latest.status != plan.status
+        or latest.intent_month != period
+    ):
+        raise AppError("state_conflict", "请核对当前计划的生效月份后重新提交。", status_code=409)
+
+
 def append_income_revision(
     db: Session, plan: MonthlyIncomePlan, *, period: date, intent_period: date, change_kind: str,
     actor_account_id: int | None, when: datetime,
