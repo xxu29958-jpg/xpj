@@ -1,14 +1,4 @@
-"""User-declared income plan / income-entry service.
-
-Rows in ``monthly_income_plans`` now cover two user-facing rhythms:
-
-* ``monthly``: fixed income that applies to every accounting month.
-* ``one_time``: a single income amount that applies only to ``income_month``.
-
-The table name is kept for compatibility with existing migrations and clients,
-but all aggregation entry points now accept a month when one-time income should
-be included.
-"""
+"""Income estimate commands, their current projection and monthly revision queries."""
 
 from __future__ import annotations
 
@@ -16,19 +6,27 @@ import re
 from datetime import date, datetime
 from typing import Literal, NoReturn
 
-from sqlalchemy import and_, false, func, or_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.errors import AppError
-from app.ledger_scope import add_ledger_scope, ledger_filter, ledger_scoped_select
-from app.models import MonthlyIncomePlan
+from app.ledger_scope import ledger_filter, ledger_scoped_select
+from app.models import IncomePlanRevision, MonthlyIncomePlan
 from app.money_contract import projection_sum_to_int
 from app.services.currency_binding_service import (
     assert_currency_binding_consistent,
     resolve_write_capability,
 )
 from app.services.currency_common import home_currency_code
+from app.services.income_plan_service._forecast import IncomeForecast, query_income_forecast
+from app.services.income_plan_service._history import (
+    append_income_revision,
+    income_change_month,
+    income_intent_month,
+    income_month_start,
+    require_forward_income_month,
+)
 from app.services.income_plan_service._money import (
     updated_income_amount_cents as _updated_income_amount_cents,
 )
@@ -71,22 +69,21 @@ def list_applicable_income_plans(
     month: str,
     as_of: datetime | None = None,
     timezone_name: str | None = None,
-) -> list[MonthlyIncomePlan]:
-    """Active income rows that should count for ``month``.
+) -> list[IncomePlanRevision]:
+    """The declared whole-month estimates, including archived plans' earlier revisions."""
+    return list(income_forecast(
+        db, tenant_id=tenant_id, month=month, as_of=as_of, timezone_name=timezone_name,
+    ).entries)
 
-    For the current accounting month, rows are counted only after their
-    pay/arrival day has passed. A month-end salary should not inflate
-    today's spendable amount before it actually lands.
-    """
 
-    clean_month = _normalize_month(month, field_label="月份")
-    as_of_date = _income_as_of_date(as_of=as_of, timezone_name=timezone_name)
-    statement = (
-        _income_plan_base_select(tenant_id=tenant_id)
-        .where(MonthlyIncomePlan.status == "active")
-        .where(_applicable_income_clause(clean_month, as_of_date=as_of_date))
+def income_forecast(
+    db: Session, *, tenant_id: str, month: str, as_of: datetime | None = None,
+    timezone_name: str | None = None,
+) -> IncomeForecast:
+    return query_income_forecast(
+        db, tenant_id=tenant_id, period=income_month_start(month),
+        today=_income_as_of_date(as_of=as_of, timezone_name=timezone_name),
     )
-    return list(db.scalars(statement))
 
 
 def create_income_plan(
@@ -99,6 +96,8 @@ def create_income_plan(
     pay_day: int,
     frequency: str = "monthly",
     income_month: str | None = None,
+    intent_month: str | None = None,
+    actor_account_id: int | None = None,
     now: datetime | None = None,
 ) -> MonthlyIncomePlan:
     """Insert a new active income row."""
@@ -116,6 +115,12 @@ def create_income_plan(
     assert_currency_binding_consistent(db, home_currency_code())
 
     when = now or now_utc()
+    intent_period = income_intent_month(intent_month, when)
+    period = income_change_month(
+        current_frequency=None, current_income_month=None,
+        frequency=clean_frequency, income_month=clean_income_month,
+        period=intent_period,
+    )
     row = MonthlyIncomePlan(
         tenant_id=tenant_id,
         label=clean_label,
@@ -129,6 +134,10 @@ def create_income_plan(
         updated_at=when,
     )
     db.add(row)
+    db.flush()
+    append_income_revision(
+        db, row, period=period, intent_period=intent_period, change_kind="create", actor_account_id=actor_account_id, when=when,
+    )
     db.commit()
     db.refresh(row)
     return row
@@ -147,6 +156,8 @@ def update_income_plan(
     frequency: str | None = None,
     income_month: str | None = None,
     income_month_provided: bool = False,
+    intent_month: str | None = None,
+    actor_account_id: int | None = None,
     now: datetime | None = None,
     commit: bool = True,
 ) -> MonthlyIncomePlan:
@@ -160,7 +171,16 @@ def update_income_plan(
     assert_currency_binding_consistent(db, home_currency_code())
 
     when = now or now_utc()
+    period = income_intent_month(intent_month, when)
+    require_forward_income_month(db, plan, period)
     new_frequency = _updated_income_frequency(plan, frequency)
+    new_income_month = _updated_income_month(
+        plan, frequency=new_frequency, income_month=income_month, income_month_provided=income_month_provided,
+    )
+    effective_month = income_change_month(
+        current_frequency=plan.frequency, current_income_month=plan.income_month,
+        frequency=new_frequency, income_month=new_income_month, period=period,
+    )
     rowcount = claim_row_with_token(
         db,
         MonthlyIncomePlan,
@@ -171,12 +191,7 @@ def update_income_plan(
             "label": _updated_income_label(plan, label),
             "source_type": _updated_income_source_type(plan, source_type),
             "frequency": new_frequency,
-            "income_month": _updated_income_month(
-                plan,
-                frequency=new_frequency,
-                income_month=income_month,
-                income_month_provided=income_month_provided,
-            ),
+            "income_month": new_income_month,
             "amount_cents": _updated_income_amount_cents(plan, amount_cents),
             "pay_day": _updated_income_pay_day(plan, pay_day),
             "updated_at": when,
@@ -186,12 +201,14 @@ def update_income_plan(
     )
     if rowcount != 1:
         _raise_income_plan_edit_conflict(db, tenant_id=tenant_id, public_id=public_id)
+    db.expire_all()
+    current = _require_plan(db, tenant_id=tenant_id, public_id=public_id)
+    append_income_revision(
+        db, current, period=effective_month, intent_period=period, change_kind="edit", actor_account_id=actor_account_id, when=when,
+    )
     if commit:
         db.commit()
-    else:
-        db.flush()
-    db.expire_all()
-    return _require_plan(db, tenant_id=tenant_id, public_id=public_id)
+    return current
 
 
 def archive_income_plan(
@@ -200,6 +217,8 @@ def archive_income_plan(
     tenant_id: str,
     public_id: str,
     expected_row_version: int,
+    intent_month: str | None = None,
+    actor_account_id: int | None = None,
     now: datetime | None = None,
 ) -> MonthlyIncomePlan:
     """Soft-delete an income row. Atomic optimistic concurrency."""
@@ -209,6 +228,8 @@ def archive_income_plan(
         return plan
     resolve_write_capability(db)
     when = now or now_utc()
+    period = income_intent_month(intent_month, when)
+    require_forward_income_month(db, plan, period)
     rowcount = claim_row_with_token(
         db,
         MonthlyIncomePlan,
@@ -225,9 +246,13 @@ def archive_income_plan(
         if current.status == "archived":
             return current
         raise AppError("state_conflict", status_code=409)
-    db.commit()
     db.expire_all()
-    return _require_plan(db, tenant_id=tenant_id, public_id=public_id)
+    current = _require_plan(db, tenant_id=tenant_id, public_id=public_id)
+    append_income_revision(
+        db, current, period=period, intent_period=period, change_kind="archive", actor_account_id=actor_account_id, when=when,
+    )
+    db.commit()
+    return current
 
 
 def restore_income_plan(
@@ -236,6 +261,8 @@ def restore_income_plan(
     tenant_id: str,
     public_id: str,
     expected_row_version: int,
+    intent_month: str | None = None,
+    actor_account_id: int | None = None,
     now: datetime | None = None,
 ) -> MonthlyIncomePlan:
     """Reactivate an archived income row. Atomic optimistic concurrency."""
@@ -245,6 +272,8 @@ def restore_income_plan(
         return plan
     resolve_write_capability(db)
     when = now or now_utc()
+    period = income_intent_month(intent_month, when)
+    require_forward_income_month(db, plan, period)
     rowcount = claim_row_with_token(
         db,
         MonthlyIncomePlan,
@@ -261,9 +290,13 @@ def restore_income_plan(
         if current.status == "active":
             return current
         raise AppError("state_conflict", status_code=409)
-    db.commit()
     db.expire_all()
-    return _require_plan(db, tenant_id=tenant_id, public_id=public_id)
+    current = _require_plan(db, tenant_id=tenant_id, public_id=public_id)
+    append_income_revision(
+        db, current, period=period, intent_period=period, change_kind="restore", actor_account_id=actor_account_id, when=when,
+    )
+    db.commit()
+    return current
 
 
 def get_income_plan(db: Session, *, tenant_id: str, public_id: str) -> MonthlyIncomePlan:
@@ -280,26 +313,16 @@ def total_monthly_income_cents(
     as_of: datetime | None = None,
     timezone_name: str | None = None,
 ) -> int:
-    """Sum active income for the monthly discretionary formula.
-
-    Without ``month``, only recurring monthly rows are counted. With ``month``,
-    rows are additionally gated by the local as-of date so a month-end salary is
-    not treated as available before payday.
-    """
-
-    clean_month = _normalize_month(month, field_label="月份") if month else None
-    as_of_date = _income_as_of_date(as_of=as_of, timezone_name=timezone_name) if clean_month is not None else None
-    statement = add_ledger_scope(
-        select(func.coalesce(func.sum(MonthlyIncomePlan.amount_cents), 0)),
-        MonthlyIncomePlan,
-        tenant_id,
-    ).where(MonthlyIncomePlan.status == "active")
-    statement = statement.where(_applicable_income_clause(clean_month, as_of_date=as_of_date))
-    total = db.scalar(statement)
-    return projection_sum_to_int(
-        total,
-        label="income_plan.total",
+    """Whole-month planned income; it is never a receipt or cash balance."""
+    today = _income_as_of_date(as_of=as_of, timezone_name=timezone_name)
+    forecast = query_income_forecast(
+        db, tenant_id=tenant_id, period=income_month_start(month) if month else today.replace(day=1), today=today,
     )
+    if month is not None:
+        return forecast.expected_amount_cents
+    return projection_sum_to_int(sum(
+        row.amount_cents for row in forecast.entries if row.frequency == "monthly"
+    ), label="income_plan.total")
 
 
 def _require_active_income_plan(plan: MonthlyIncomePlan) -> None:
@@ -369,33 +392,6 @@ def _income_plan_base_select(*, tenant_id: str):
         MonthlyIncomePlan.pay_day.asc(),
         MonthlyIncomePlan.id.asc(),
     )
-
-
-def _applicable_income_clause(month: str | None, *, as_of_date: date | None = None):
-    if month is None:
-        return MonthlyIncomePlan.frequency == "monthly"
-    timing_clause = _income_timing_clause(month=month, as_of_date=as_of_date)
-    return or_(
-        and_(MonthlyIncomePlan.frequency == "monthly", timing_clause),
-        and_(
-            MonthlyIncomePlan.frequency == "one_time",
-            MonthlyIncomePlan.income_month == month,
-            timing_clause,
-        ),
-    )
-
-
-def _income_timing_clause(*, month: str, as_of_date: date | None):
-    if as_of_date is None:
-        return True
-    year_text, month_text = month.split("-", maxsplit=1)
-    target_index = int(year_text) * 12 + int(month_text)
-    as_of_index = as_of_date.year * 12 + as_of_date.month
-    if target_index < as_of_index:
-        return True
-    if target_index > as_of_index:
-        return false()
-    return MonthlyIncomePlan.pay_day <= as_of_date.day
 
 
 def _income_as_of_date(
@@ -479,6 +475,7 @@ __all__ = [
     "archive_income_plan",
     "create_income_plan",
     "get_income_plan",
+    "income_forecast",
     "list_applicable_income_plans",
     "list_income_plans",
     "restore_income_plan",

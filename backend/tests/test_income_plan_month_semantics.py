@@ -21,7 +21,8 @@ def test_income_page_does_not_turn_a_due_plan_into_received_money() -> None:
         frequency="monthly", pay_day=1, amount_cents=100_00, row_version=1,
     )
     html = environment.get_template("income_plans.html").render(
-        can_write=False, plans_active=[plan], plans_archived=[], total_yuan="100.00",
+        can_write=False, plans_active=[plan], plans_archived=[], total_yuan="100.00", scheduled_yuan="100.00",
+        intent_month="2026-09",
         home_currency_symbol="¥", minor_label=lambda _: "100.00",
     )
     assert "尚未收到的计划" in html

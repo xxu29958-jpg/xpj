@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% set page_title = '收入记录' %}
+{% set page_title = '收入计划' %}
 {% set product_body_domain = 'plans' %}
-{% block title %}收入记录 · 小票夹{% endblock %}
+{% block title %}收入计划 · 小票夹{% endblock %}
 
-{# C2 收入记录迁入 product 正文栈:
-   - 新上旧下: 「截至今日已到账」hero → 在用列表 → 添加表单收进右侧窄列
+{# C2 收入计划迁入 product 正文栈:
+   - 新上旧下: 整月预测与按计划截至今日汇总 → 在用列表 → 添加表单收进右侧窄列
      (income-workspace--list-first), 已归档沉底; 只读角色单列只读列表;
    - source_type 在列表渲染为与创建表单一致的中文类型名, 不向用户暴露
      salary/bonus 等协议枚举;
@@ -15,26 +15,27 @@
 <header class="product-page-header">
   <div class="product-page-heading">
     <span class="product-eyebrow">计划 / 收入</span>
-    <h1 class="page-title">收入记录</h1>
-    <p class="product-page-summary">补录工资、奖金和接单到账；真正稳定的收入再设为每月固定。</p>
+    <h1 class="page-title">收入计划</h1>
+    <p class="product-page-summary">计划工资、奖金和接单收入，用于估算月度预算。</p>
   </div>
   {% if can_write %}<a class="product-button product-button--primary" href="#add-income">添加收入</a>{% endif %}
 </header>
 
 <div class="plan-flow">
+<p class="product-page-summary">每月计划从 {{ intent_month }} 生效，单次计划使用所选预计月份。归档或恢复保留更早月份的计划。</p>
 {% if message %}<div class="product-feedback" role="status">{{ message }}</div>{% endif %}
 {% if error %}<div class="product-feedback product-feedback--danger" role="alert">{{ error }}</div>{% endif %}
 {% if not can_write %}
-<div class="product-feedback" role="status">只读角色可以查看收入记录，但不能添加或修改。</div>
+<div class="product-feedback" role="status">只读角色可以查看收入计划，但不能添加或修改。</div>
 {% endif %}
 
-<section class="product-panel product-panel--padded" aria-label="本月已到账收入">
+<section class="product-panel product-panel--padded" aria-label="本月预计收入">
   <div class="plan-income-hero">
     <div>
-      <span class="product-eyebrow">截至今日已到账收入</span>
+      <span class="product-eyebrow">本月预计收入</span>
       <span class="plan-income-value"><small>{{ home_currency_symbol }}</small>{{ total_yuan }}</span>
     </div>
-    <p>只计入今天已经到账的本月收入；月末工资到发薪日才算进来。</p>
+    <p>按收入计划估算，不代表实际到账或账户余额。按计划截至今日：{{ home_currency_symbol }}{{ scheduled_yuan }}。</p>
   </div>
 </section>
 
@@ -53,7 +54,7 @@
     <div class="plan-row-meta">
       <span>
         {% if action == 'archive' %}
-          {% if plan.frequency == 'one_time' %}实际到账 · {{ income_month_label(plan.income_month) }} · {{ plan.pay_day }} 号{% else %}每月固定 · {{ plan.pay_day }} 号{% endif %}
+          {% if plan.frequency == 'one_time' %}单次预计 · {{ income_month_label(plan.income_month) }} · {{ plan.pay_day }} 号{% else %}每月预计 · {{ plan.pay_day }} 号{% endif %}
         {% else %}
           已归档 · 恢复后回到在用列表
         {% endif %}
@@ -62,6 +63,7 @@
       <form method="post" action="/web/income-plans/{{ plan.public_id }}/{{ action }}" class="product-inline-form">
         {{ csrf_field|safe }}
         <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+        <input type="hidden" name="intent_month" value="{{ intent_month }}">
         {# ADR-0038 PR-B: OCC token = plan updated_at at render time; a stale
            archive/restore (plan edited elsewhere since) fails the atomic UPDATE
            WHERE and redirects with the 过期 message instead of flipping status. #}
@@ -86,8 +88,8 @@
     {{ income_rows(plans_active, 'archive') }}
     {% if not plans_active %}
     <div class="product-state">
-      <div class="product-state-title">还没有收入记录</div>
-      <div class="product-state-body">补录一笔工资或其它到账后，「本月可自由支配」会扣掉已有花销重新计算。</div>
+      <div class="product-state-title">还没有收入计划</div>
+      <div class="product-state-body">添加预计收入后，月度预算会结合已有花销重新估算。</div>
     </div>
     {% endif %}
   </section>
@@ -100,6 +102,7 @@
     <form method="post" action="/web/income-plans/create" class="budget-form">
       {{ csrf_field|safe }}
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+        <input type="hidden" name="intent_month" value="{{ intent_month }}">
       <div class="product-field">
         <label for="income-create-label">名称</label>
         <input id="income-create-label" class="product-input" type="text" name="label" maxlength="64" required placeholder="例如：我的工资">
@@ -113,25 +116,25 @@
         </select>
       </div>
       <div class="product-field">
-        <label for="income-create-frequency">入账方式</label>
+        <label for="income-create-frequency">计划频率</label>
         <select id="income-create-frequency" class="product-input" name="frequency">
-          <option value="one_time" selected>实际到账</option>
+          <option value="one_time" selected>单次预计</option>
           <option value="monthly">每月固定</option>
         </select>
       </div>
       <fieldset class="income-month-fields">
-        <legend>到账月份（单笔收入填写）</legend>
+        <legend>预计月份（单笔收入填写）</legend>
         <div class="product-field">
-          <label for="income-create-year" class="sr-only">到账年份</label>
-          <select id="income-create-year" class="product-input" name="income_month_year" aria-label="到账年份">
+          <label for="income-create-year" class="sr-only">预计年份</label>
+          <select id="income-create-year" class="product-input" name="income_month_year" aria-label="预计年份">
             {% for year in income_year_options %}
             <option value="{{ year }}" {% if year|string == income_default_year %}selected{% endif %}>{{ year }} 年</option>
             {% endfor %}
           </select>
         </div>
         <div class="product-field">
-          <label for="income-create-month" class="sr-only">到账月份</label>
-          <select id="income-create-month" class="product-input" name="income_month_number" aria-label="到账月份">
+          <label for="income-create-month" class="sr-only">预计月份</label>
+          <select id="income-create-month" class="product-input" name="income_month_number" aria-label="预计月份">
             {% for month in range(1, 13) %}
             <option value="{{ month }}" {% if month|string == income_default_month %}selected{% endif %}>{{ month }} 月</option>
             {% endfor %}
@@ -143,7 +146,7 @@
         <input id="income-create-amount" class="product-input" type="number" name="amount_yuan" step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}" placeholder="{{ currency_input.amount_placeholder }}" inputmode="{{ currency_input.inputmode }}" required>
       </div>
       <div class="product-field">
-        <label for="income-create-payday">发薪日 / 到账日（1-31）</label>
+        <label for="income-create-payday">预计收入日（1-31，短月取月末）</label>
         <input id="income-create-payday" class="product-input" type="number" name="pay_day" min="1" max="31" required value="10">
       </div>
       <div class="budget-actions">
@@ -161,7 +164,7 @@
   {{ income_rows(plans_active, 'archive') }}
   {% if not plans_active %}
   <div class="product-state">
-    <div class="product-state-title">还没有收入记录</div>
+    <div class="product-state-title">还没有收入计划</div>
     <div class="product-state-body">这个账本还没有记录收入。</div>
   </div>
   {% endif %}

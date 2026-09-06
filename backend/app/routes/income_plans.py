@@ -29,9 +29,9 @@ from app.services.income_plan_service import (
     archive_income_plan,
     create_income_plan,
     get_income_plan,
+    income_forecast,
     list_income_plans,
     restore_income_plan,
-    total_monthly_income_cents,
     update_income_plan,
 )
 from app.services.spending_contract_service import current_accounting_month
@@ -76,11 +76,12 @@ def list_plans(
     status_filter = None if status == "all" else status
     month_label = month or current_accounting_month()
     plans = list_income_plans(db, tenant_id=auth.tenant_id, status=status_filter)
+    forecast = income_forecast(db, tenant_id=auth.tenant_id, month=month_label)
     return IncomePlanListResponse(
         items=[_to_response(p) for p in plans],
-        total_active_amount_cents=total_monthly_income_cents(
-            db, tenant_id=auth.tenant_id, month=month_label
-        ),
+        month=month_label,
+        total_active_amount_cents=forecast.expected_amount_cents,
+        scheduled_amount_cents=forecast.scheduled_amount_cents,
     )
 
 
@@ -99,6 +100,8 @@ def create_plan(
         income_month=payload.income_month,
         amount_cents=payload.amount_cents,
         pay_day=payload.pay_day,
+        intent_month=payload.intent_month,
+        actor_account_id=auth.account_id,
     )
     return _to_response(plan)
 
@@ -143,6 +146,8 @@ def update_plan(
         income_month_provided="income_month" in payload.model_fields_set,
         amount_cents=payload.amount_cents,
         pay_day=payload.pay_day,
+        intent_month=payload.intent_month,
+        actor_account_id=auth.account_id,
         commit=False,
     )
     mark_idempotency_succeeded(
@@ -165,6 +170,8 @@ def archive_plan(
         tenant_id=auth.tenant_id,
         public_id=public_id,
         expected_row_version=payload.expected_row_version,
+        intent_month=payload.intent_month,
+        actor_account_id=auth.account_id,
     )
     return _to_response(plan)
 
@@ -181,5 +188,7 @@ def restore_plan(
         tenant_id=auth.tenant_id,
         public_id=public_id,
         expected_row_version=payload.expected_row_version,
+        intent_month=payload.intent_month,
+        actor_account_id=auth.account_id,
     )
     return _to_response(plan)
