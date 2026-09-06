@@ -220,6 +220,7 @@
     <string name="sync_status_overview_quarantined_caption">已停止发送</string>
     <string name="sync_status_overview_caption_quarantined">有 %1$d 笔旧操作已隔离，不会自动发送。</string>
     <string name="sync_status_overview_caption_needs_action">%1$d 笔需要处理，处理后才会继续进入账本。</string>
+    <string name="sync_status_overview_caption_review_required">%1$d 笔旧提交需要核对当前事实，送达情况尚未确认。</string>
     <string name="sync_status_overview_caption_queued">离线改动已保留，恢复连接后会自动同步。</string>
     <string name="sync_status_overview_caption_settled">没有等待处理的离线改动。</string>
     <string name="sync_status_quarantined_body">这 %1$d 笔操作不属于当前已验证的成员与设备。带原设备身份的操作会在恢复同一设备后重新出现；旧版本未记录主体的操作无法安全认领，只能继续保留或由你明确移除。</string>

@@ -8,9 +8,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
+import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.OutboxStatus
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.OutboxWriteBlock
+import com.ticketbox.data.repository.PendingExpenseCorrection
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.OutboxStatusUiState
 
@@ -26,24 +28,29 @@ internal data class SyncStatusOverview(
     val conflictCount: Int,
     val failedCount: Int,
     val quarantinedCount: Int,
+    val reviewRequiredCount: Int,
     val writeBlock: OutboxWriteBlock?,
 ) {
-    val needsActionCount: Int = conflictCount + failedCount + quarantinedCount
+    val needsActionCount: Int = conflictCount + failedCount + quarantinedCount + reviewRequiredCount
     val isSettled: Boolean = queuedCount == 0 && needsActionCount == 0
 }
 
-internal fun syncStatusOverview(status: OutboxStatus): SyncStatusOverview =
+internal fun syncStatusOverview(
+    status: OutboxStatus,
+    corrections: List<PendingExpenseCorrection>,
+): SyncStatusOverview =
     SyncStatusOverview(
         queuedCount = status.queueDepth.coerceAtLeast(0),
         conflictCount = status.conflicts.size,
         failedCount = status.failed.size,
         quarantinedCount = status.quarantinedCount.coerceAtLeast(0),
+        reviewRequiredCount = corrections.count { !it.delivered && it.row.status == PendingMutationStatus.Done },
         writeBlock = status.writeBlock,
     )
 
 @Composable
-internal fun SyncStatusOverviewSection(status: OutboxStatus) {
-    val overview = syncStatusOverview(status)
+internal fun SyncStatusOverviewSection(status: OutboxStatus, corrections: List<PendingExpenseCorrection>) {
+    val overview = syncStatusOverview(status, corrections)
     SettingsSection(
         title = stringResource(R.string.sync_status_overview_title),
         icon = Icons.Filled.Sync,
@@ -86,6 +93,10 @@ internal fun SyncStatusOverviewSection(status: OutboxStatus) {
 
 @Composable
 private fun overviewCaption(overview: SyncStatusOverview): String = when {
+    overview.reviewRequiredCount > 0 -> stringResource(
+        R.string.sync_status_overview_caption_review_required,
+        overview.reviewRequiredCount,
+    )
     overview.quarantinedCount > 0 -> stringResource(
         R.string.sync_status_overview_caption_quarantined,
         overview.quarantinedCount,

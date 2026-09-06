@@ -5,6 +5,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -53,8 +55,8 @@ class ExpenseCorrectionRoomContinuityTest {
         }
         compose.waitUntil(10_000) { model.value?.uiState?.value?.expenseLoadState == ExpenseDetailDataLoadState.Loaded }
         compose.onNodeWithText("更正这笔账单").performScrollTo().performClick()
-        compose.onNodeWithText("更正原因（必填）").performScrollTo().performTextReplacement("核对原小票")
-        compose.onNodeWithText("10.00").performScrollTo().performTextReplacement("12.00")
+        compose.onAllNodes(hasSetTextAction())[0].performScrollTo().performTextReplacement("核对原小票")
+        compose.onNode(hasSetTextAction() and hasText("10.00")).performScrollTo().performTextReplacement("12.00")
         compose.onNodeWithText("保存更正").performScrollTo().performClick()
         compose.waitUntil(10_000) { fixture.stored().size == 1 && model.value?.uiState?.value?.corrections?.size == 1 }
         val original = fixture.stored().single()

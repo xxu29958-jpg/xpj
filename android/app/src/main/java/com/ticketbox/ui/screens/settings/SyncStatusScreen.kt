@@ -140,7 +140,7 @@ private fun SyncStatusPageBody(
     actions: SyncStatusActions,
 ) {
     val status = state.status
-    SyncStatusOverviewSection(status)
+    SyncStatusOverviewSection(status, state.correctionObservation.corrections)
     SyncStatusCorrectionSection(state, actions)
 
     SyncStatusQuarantineSection(
