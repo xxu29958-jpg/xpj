@@ -52,6 +52,7 @@ def test_apply_refusal_retains_only_a_recoverable_original_batch(import_route, m
     }]
     assert response.status_code == 303
     target = urlsplit(response.headers["location"])
+    assert parse_qs(target.query).get("flash_type") == ["error"]
     assert target.path == ("/web/import" if missing else "/web/import/original")
     assert parse_qs(target.query)["ledger_id"] == ["family"]
     assert parse_qs(target.query)["msg"] == ["导入批次不存在。" if missing else "导入批次正在应用中，请稍后重试。"]
@@ -63,8 +64,10 @@ def test_apply_refusal_retains_only_a_recoverable_original_batch(import_route, m
     ids=["all-invalid", "insert-failed-after-partial-success", "completed"],
 )
 def test_batch_actions_follow_effective_remainder_and_actual_applied_rows(
-    status, total, valid, applied, errors,
+    import_route, status, total, valid, applied, errors,
 ):
+    from app.services.csv_import_batch_service._queries import CsvImportBatchPage, CsvImportBatchProgress
+
     environment = Environment(
         loader=ChoiceLoader([
             DictLoader({"base.html": "{% block content %}{% endblock %}"}),
@@ -77,13 +80,24 @@ def test_batch_actions_follow_effective_remainder_and_actual_applied_rows(
         public_id="original", file_name="saved.csv", status=status, total_rows=total,
         valid_rows=valid, applied_rows=applied, error_rows=errors, last_error=None,
     )
-    body = environment.get_template("import_batch.html").render(
-        batch=batch, remaining_valid_rows=0, created_label="2026-06-01", updated_label="2026-06-01",
-        q="?ledger_id=family", selected_ledger_id="family", can_write=True, csrf_token="fixture",
-        flash_message="", rows=[], page=1, page_size=100, total=0, total_pages=1,
-        status="", home_currency_symbol="¥", base_batch_url="/web/import/original?ledger_id=family",
-    )
+    flash_type = "success" if status == "applied" else "error"
+    context = {
+        "batch": batch, "progress": CsvImportBatchProgress(batch, remaining_valid_rows=0),
+        "created_label": "2026-06-01", "updated_label": "2026-06-01",
+        "q": "?ledger_id=family", "selected_ledger_id": "family", "can_write": True, "csrf_token": "fixture",
+        "flash_message": "Import result", "flash_type": flash_type,
+        "rows": [], "page": 1, "page_size": 100, "total": 0, "total_pages": 1,
+        "status": "", "home_currency_symbol": "¥", "base_batch_url": "/web/import/original?ledger_id=family",
+        "batch_page": CsvImportBatchPage([], page=1, page_size=20, total=0, total_pages=1),
+        "batch_created_labels": {}, "max_rows": 1000, "export_categories": [], "export_tags": [],
+    }
+    body = environment.get_template("import_batch.html").render(context)
+    hub = environment.get_template("import_export.html").render(context)
 
+    role = "status" if flash_type == "success" else "alert"
+    for rendered in (hub, body):
+        assert f'role="{role}"' in rendered
+        assert ("product-feedback--error" in rendered) == (flash_type == "error")
     assert "/web/import/original/apply" not in hidden_post_forms(body)
     assert ('href="/web/pending?ledger_id=family"' in body) == (applied > 0)
     assert ('href="/web/import/original/errors.csv?ledger_id=family"' in body) == (errors > 0)

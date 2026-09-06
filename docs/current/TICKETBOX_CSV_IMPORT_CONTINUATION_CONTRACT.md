@@ -5,9 +5,9 @@
 | Item | Current decision |
 | --- | --- |
 | Goal | After applying only part of a CSV batch, a household writer can leave and return through Import, identify the original batch and continue its remaining valid rows once. A viewer can inspect the same ledger's receipts and errors without applying. |
-| Allowed changes | This first phase changes only tests and this contract. The eventual slice may add a bounded, paginated batch read to the existing CSV query owner, wire Import hub/detail projections and preserve the original detail on recoverable apply refusal. |
+| Allowed changes | After actual cloud behavior RED, extend the existing CSV query owner with a bounded, paginated batch read and shared remaining-row projection; wire Import hub/detail and preserve the original detail on recoverable apply refusal. Move the existing remaining-row read and its direct imports without changing apply, claim or lease behavior. Update only the necessary template fixture and generated OpenAPI query parameters. |
 | Forbidden surface | No new import writer, batch identity, schema, lease/retry state machine, content-based reupload merge, financial confirmation, Android workflow or Windows lifecycle action. No local PostgreSQL/Gradle/long tests. |
-| Done checks | Actual no-database route/template RED; cloud PostgreSQL counterexamples prepared for native preview, partial apply, return, isolation/viewer, active lease refusal, row-error receipts and finding an older batch through pagination. The controller has reviewed this test-only candidate for cloud submission; production implementation follows actual behavior RED and remains within the existing Goal authorization. |
+| Done checks | Actual no-database route/template RED and six cloud PostgreSQL behavior counterexamples precede implementation. The five narrow pure cases must turn GREEN; run Ruff, actual OpenAPI generation/check, diff checks and each direct producer's scope classifier locally. The unchanged six PostgreSQL cases and affected integration gates must pass on the controller's next exact cloud candidate. |
 | Evidence | Start `1a3bbf9a6401cbafcb3178be8953d626e6586cfe`, tree `a339d7401907b7e6d2edf400b7beef9b9320b373`, branch `codex/csv-import-continuation-20260906`, clean. This integration base contains Income/Capture/Web candidates; it is not asserted to be independently qualified main. Results below distinguish execution from source-only probes. |
 
 Authority: the current full Goal and September 6 Owner/controller FIX govern this slice;
@@ -100,6 +100,81 @@ discovers the native-form and pure files without adding a manual test registry.
 | `backend/app/routes/web_import_export.py`; `backend/app/templates/web/import_export.html`; `import_batch.html` | PostgreSQL, frozen backend, Desktop, native Windows | Planned route/template changes also select existing served-Web consumers; no Windows lifecycle action is added. |
 | This contract | No heavy lane | Documentation is not executable qualification. |
 
-Both test files passed Ruff; AST parsing and `git diff --check` passed. The changed native-form
-file remains below 800 lines and retains all original assertions. The bounded local work stops
-at a test-first handoff: cloud RED, production implementation, GREEN and final review remain.
+At the test-first handoff, both test files passed Ruff; AST parsing and `git diff --check`
+passed. The changed native-form file remained below 800 lines with all original assertions.
+Cloud RED, production implementation, GREEN and final review were still outstanding then.
+
+## Authorized implementation after actual cloud RED
+
+The controller read both complete ordinary PostgreSQL job logs for source
+`9f7aaf2c14e0d71336600919f41c477659b188b2`, tree
+`fafb6c33b820a983775ab0b9006bac8c06e3053b`, CI `34042134022`:
+ordinary 2/2 (`101511259225`) recorded 4 failed / 1855 passed / 3 skipped in 453.41s;
+ordinary 1/2 (`101511259270`) recorded 5 failed / 1844 passed / 3 skipped in 482.66s.
+Together these two completed jobs recorded **9 failed / 3699 passed / 6 skipped**.
+After obtaining this sufficient RED, the controller cancelled the remaining CI run;
+this is not an aggregate CI failure or a qualified candidate. CodeQL `34042134087` and
+Connected `34042134010` had succeeded and were not cancelled. Their results do not
+replace the next production head's full necessary gates.
+All six new native-form cases reached their intended behavior failures: five could not
+find the original batch on Import, and the active-lease case actually redirected to the hub.
+The other three failures were the already observed pure route/template cases. These are
+executed behavior RED, not collection, environment or unrelated code-weight failures.
+
+The existing `_remaining_importable_rows` read moves from `_row_claim` into `_queries`.
+Its apply/finalization consumers keep the same arguments and `valid`/`applying` meaning;
+the old definition physically retires. A single grouped read supplies the same remaining
+count to the paginated hub and individual detail projection. Listing includes all receipts,
+uses stable newest-first ordering and bounds both page size and effective page. It does
+not refresh stored counts, acquire/release leases, or rewrite row or batch status.
+
+Both templates consume that projection for continuation and result state. A nonzero
+applied count independently permits review; an error-only or empty receipt never claims
+to have entered pending review. Known apply conflicts retain the same batch/ledger and
+show failure feedback. Missing or inaccessible batches still return to the hub. The
+existing role checks and per-row Desktop revalidation remain on the original writer.
+No six-case PG assertion is weakened. The pure template fixture may construct the actual
+read projection so it exercises the same status/action inputs as production.
+
+Failure feedback was separately proved before changing either template: the fixed `9f7`
+route was loaded in memory with both current templates checked against their original
+bytes, then the existing five pure cases were run with added severity/role assertions.
+Result: **4 failed / 1 passed / 1 warning in 0.28s** (3.61s process time). Both refusal
+redirects lacked `flash_type=error`; both error detail renders still used status/success;
+the completed success receipt remained a passing control. The import hub's original
+template was then exercised by the existing all-invalid case and also actually failed
+its `role=alert` assertion (**1 failed / 4 deselected in 2.77s**). Engine connections were
+forbidden throughout. The import warning was reported, not suppressed.
+
+All message producers are included: successful preview/apply keep ordinary success;
+preview failure, detail lookup failure, apply refusal, error-download lookup failure and
+the existing legacy-confirm refusal explicitly request error feedback. Hub/detail accept
+only the finite success/error projection; arbitrary query values never become CSS classes.
+
+## After-change impact closure
+
+| Entry / owner / consumer | Implemented change and retained boundary | Evidence and remaining exit gate |
+| --- | --- | --- |
+| Selected-ledger Import → `_queries.list_csv_import_batches` → hub | All saved receipts are listed newest-first by creation time and ID, default 20/max 100 per page, with the effective page bounded by the actual total. Previous/next links preserve ledger and page size. Viewer reads the same list; only writers get continuation wording. | Six original PG cases remain byte-unchanged; their new-head execution must prove original-batch return, isolation/viewer and both older-batch variants. |
+| Detail → `get_csv_import_batch_progress` → the same read projection | Hub and detail use the actual `valid/applying` count and one result-label projection. Historical `valid_rows` no longer controls actions. Pending-review access requires a nonzero applied count; errors remain downloadable and empty/error-only receipts have no apply loop. | The existing pure template cases now construct the actual `CsvImportBatchProgress`; all original action assertions remain, with both templates also checked for failure severity and success-role preservation. |
+| Apply/finalization → `_remaining_importable_rows` | The count owner moved to `_queries`, with one grouped predicate reused by detail and the paginated batch read. `_row_claim`'s old definition is removed. Only imports change in `_apply` and `_apply_lease`; original claim, lease, row key, transactions and per-row identity checks remain. | AST comparison against `9f7` found no changed function bodies in `_apply`/`_apply_lease`; all surviving `_row_claim` functions were unchanged. Cloud apply/lease/idempotency tests remain required. |
+| Apply failure → existing redirect owner → original detail | Recoverable refusals preserve the same batch and selected ledger. Missing-batch/unauthenticated failures return to Import; the normal selected-ledger and batch lookup guards still prevent inaccessible batches from rendering. No new preview occurs while returning. | Pure active-lease and missing-batch cases pass with unchanged writer arguments and new error severity. Actual held-lease/expiry recovery is still a new-head PG gate. |
+| Preview/apply/lookup/error-download/legacy refusal → hub/detail feedback | All actual failure message producers request error/alert; normal preview/apply results retain success/status. A demoted writer can read the saved result through existing read permissions, without regaining apply permission. | Fixed-original severity RED is recorded above. No new message framework, raw class interpolation or permission bypass was added. |
+| Generated API contract / direct verification | Actual OpenAPI generation adds only optional `page`, `page_size`, `flash_type` on `GET /web/import` and optional `flash_type` on detail GET. The route set and all schema components remain equal to `9f7`. | Generation and the existing OpenAPI check ran with Engine connections forbidden. This does not claim API integration or Android execution. |
+
+Each final direct producer was classified individually with the existing selector:
+
+| Exact producer paths | Actual selected lanes |
+| --- | --- |
+| `backend/app/routes/web_import_export.py`; `backend/app/templates/web/import_export.html`; `backend/app/templates/web/import_batch.html` | PostgreSQL, frozen backend, Desktop, Windows |
+| `backend/app/services/csv_import_batch_service/_queries.py`; `__init__.py`; `_apply.py`; `_apply_lease.py`; `_row_claim.py` | PostgreSQL, frozen backend |
+| `backend/tests/test_web_import_continuation.py`; unchanged `backend/tests/test_web_import_review_native_forms.py` | PostgreSQL |
+| `docs/architecture/openapi_contract.json` | Android, under the existing snapshot-path rule |
+| This contract | No heavy lane |
+
+The existing five pure cases passed after implementation (**5 passed in 2.65s**), with
+database connections forbidden. Ruff and actual OpenAPI check passed; the original six
+native-form PG cases have no diff. Final narrow checks are recorded in the handoff.
+No local PostgreSQL, Android build, application, browser or broad suite was run. Production
+cloud GREEN, final review and integration qualification remain outstanding; the dirty diff
+is reviewable implementation evidence, not a new qualified HEAD.

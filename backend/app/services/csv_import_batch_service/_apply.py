@@ -49,13 +49,15 @@ from app.services.csv_import_batch_service._idempotency import (
     _existing_csv_import_expense_id,
     _resolve_csv_import_idempotency_conflict,
 )
-from app.services.csv_import_batch_service._queries import get_csv_import_batch
+from app.services.csv_import_batch_service._queries import (
+    _remaining_importable_rows,
+    get_csv_import_batch,
+)
 from app.services.csv_import_batch_service._row_claim import (
     _applying_row_count,
     _claim_csv_import_rows,
     _recover_stale_csv_import_rows,
     _refresh_claimed_csv_import_row,
-    _remaining_importable_rows,
     _reset_claimed_csv_import_rows,
 )
 from app.services.currency_binding_service import (

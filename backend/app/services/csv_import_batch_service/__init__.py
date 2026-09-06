@@ -5,6 +5,8 @@ Public API used by ``routes/imports.py`` and ``routes/web_import_export.py``:
 - ``create_csv_import_batch`` — parse uploaded CSV into a CsvImportBatch
   with one CsvImportRow per data line
 - ``get_csv_import_batch`` — fetch a batch by public_id, scoped to tenant
+- ``get_csv_import_batch_progress`` — read a batch's actual importable remainder
+- ``list_csv_import_batches`` — paginate saved batch receipts with the same progress
 - ``list_csv_import_rows`` — paginate rows of a batch
 - ``apply_csv_import_batch`` — promote ``valid`` rows to Expense records
 - ``build_csv_import_errors_csv`` — return a CSV string of failed rows
@@ -70,6 +72,10 @@ from app.services.csv_import_batch_service._lifecycle import (
     get_csv_import_batch,
     list_csv_import_rows,
 )
+from app.services.csv_import_batch_service._queries import (
+    get_csv_import_batch_progress,
+    list_csv_import_batches,
+)
 from app.services.csv_import_batch_service._row_claim import (
     _claim_csv_import_rows,
     _refresh_claimed_csv_import_row,
@@ -88,5 +94,7 @@ __all__ = [
     "build_csv_import_errors_csv",
     "create_csv_import_batch",
     "get_csv_import_batch",
+    "get_csv_import_batch_progress",
+    "list_csv_import_batches",
     "list_csv_import_rows",
 ]

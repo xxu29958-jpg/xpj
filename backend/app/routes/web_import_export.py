@@ -31,7 +31,8 @@ from app.services.csv_import_batch_service import (
     apply_csv_import_batch,
     build_csv_import_errors_csv,
     create_csv_import_batch,
-    get_csv_import_batch,
+    get_csv_import_batch_progress,
+    list_csv_import_batches,
     list_csv_import_rows,
 )
 from app.services.spending_contract_service import accounting_datetime_label
@@ -78,18 +79,27 @@ def web_export_csv(
 def web_import_form(
     request: Request,
     ledger_id: str = "",
+    page: int = 1,
+    page_size: int = 20,
     msg: str = "",
+    flash_type: str = "",
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    batches = list_csv_import_batches(db, tenant_id=selected_id, page=page, page_size=page_size)
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id)
     ctx["max_rows"] = MAX_CSV_IMPORT_ROWS
     ctx["export_categories"] = list_ledger_category_options(db, tenant_id=selected_id)
     ctx["export_tags"] = list_tags(db, selected_id)
     ctx["flash_message"] = msg
+    ctx["flash_type"] = "error" if flash_type == "error" else "success"
     ctx["q"] = "?ledger_id=" + selected_id
+    ctx["batch_page"] = batches
+    ctx["batch_created_labels"] = {
+        item.batch.id: accounting_datetime_label(item.batch.created_at) for item in batches.items
+    }
     return templates.TemplateResponse(
         request=request, name="import_export.html", context=ctx
     )
@@ -117,7 +127,7 @@ async def web_import_preview(
             file_obj=csv_file.file,
         )
     except AppError as exc:
-        return _web_redirect("/web/import", selected_id, msg=exc.message)
+        return _web_redirect("/web/import", selected_id, msg=exc.message, flash_type="error")
     msg = f"已解析 {batch.total_rows} 行，{batch.valid_rows} 行可导入。"
     return _web_redirect(f"/web/import/{batch.public_id}", selected_id, msg=msg)
 
@@ -131,13 +141,14 @@ def web_import_batch_detail(
     page_size: int = 100,
     status: str | None = None,
     msg: str = "",
+    flash_type: str = "",
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     try:
-        batch = get_csv_import_batch(db, tenant_id=selected_id, public_id=public_id)
+        progress = get_csv_import_batch_progress(db, tenant_id=selected_id, public_id=public_id)
         rows_page = list_csv_import_rows(
             db,
             tenant_id=selected_id,
@@ -147,12 +158,14 @@ def web_import_batch_detail(
             status=status,
         )
     except AppError as exc:
-        return _web_redirect("/web/import", selected_id, msg=exc.message)
+        return _web_redirect("/web/import", selected_id, msg=exc.message, flash_type="error")
+    batch = progress.batch
     total_pages = max(1, (rows_page.total + rows_page.page_size - 1) // rows_page.page_size)
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id)
     ctx.update(
         {
             "batch": batch,
+            "progress": progress,
             "created_label": accounting_datetime_label(batch.created_at),
             "updated_label": accounting_datetime_label(batch.updated_at),
             "rows": rows_page.items,
@@ -162,6 +175,7 @@ def web_import_batch_detail(
             "total_pages": total_pages,
             "status": status or "",
             "flash_message": msg,
+            "flash_type": "error" if flash_type == "error" else "success",
             "q": "?ledger_id=" + selected_id,
             "base_batch_url": _with_ledger(f"/web/import/{public_id}", selected_id),
         }
@@ -201,7 +215,8 @@ def web_import_batch_apply(
             desktop_session=desktop_session,
         )
     except AppError as exc:
-        return _web_redirect("/web/import", selected_id, msg=exc.message)
+        target = "/web/import" if exc.status_code in {401, 404} else f"/web/import/{public_id}"
+        return _web_redirect(target, selected_id, msg=exc.message, flash_type="error")
     msg = f"本次导入 {applied.inserted_count} 条，剩余 {applied.remaining_valid_rows} 条可导入。"
     return _web_redirect(f"/web/import/{public_id}", selected_id, msg=msg)
 
@@ -223,7 +238,7 @@ def web_import_batch_errors_csv(
             public_id=public_id,
         )
     except AppError as exc:
-        return _web_redirect("/web/import", selected_id, msg=exc.message)
+        return _web_redirect("/web/import", selected_id, msg=exc.message, flash_type="error")
     return Response(
         content=content,
         media_type="text/csv; charset=utf-8",
@@ -247,4 +262,5 @@ def web_import_confirm(
         "/web/import",
         selected_id,
         msg="CSV 导入已升级为服务端批次流程，请重新上传 CSV。",
+        flash_type="error",
     )
