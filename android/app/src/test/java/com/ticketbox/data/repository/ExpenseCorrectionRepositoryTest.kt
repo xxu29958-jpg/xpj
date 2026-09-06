@@ -27,6 +27,56 @@ import kotlin.test.assertTrue
 
 internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxTestBase() {
     @Test
+    fun `reason code point limit is enforced before enqueue while 500 stays legal`() = runTest {
+        for (character in listOf("改", "\uD83D\uDE42")) {
+            for (length in listOf(501, 500)) {
+                val queue = FakePendingMutationDao()
+                val repo = buildCorrectionRepository(FakeApiService(mutableListOf(), 0), outbox = testOutboxRepository(queue))
+                val reason = character.repeat(length)
+                val result = submit(repo, baselineExpense().copy(status = "confirmed", rowVersion = 7),
+                    ExpenseCorrectionDraft(reason, merchant = "核对后的商家"))
+
+                assertEquals(length == 500, result.isSuccess, "Reason length follows API Unicode characters, not UTF-16 units")
+                if (length == 501) {
+                    assertTrue(queue.rows.isEmpty(), "A permanently invalid command must not be scheduled")
+                } else {
+                    val pending = repo.observeCorrections().first().corrections.single()
+                    assertEquals(reason, assertNotNull(pending.intent).request.reason)
+                    assertEquals(7L, pending.row.expectedRowVersion)
+                    assertNotNull(pending.row.idempotencyKey)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `stored overlong original reason remains visible but cannot retry or change its command`() = runTest {
+        for (character in listOf("改", "\uD83D\uDE42")) {
+            val queue = FakePendingMutationDao()
+            val outbox = testOutboxRepository(queue)
+            val repo = buildCorrectionRepository(FakeApiService(mutableListOf(), 0), outbox = outbox)
+            val binding = assertNotNull(repo.observeCorrections().first().access).binding
+            val payload = ExpenseCorrectionPayload(1, 42L, "原商家", "CNY", 1200L, "CNY",
+                binding.ownerKey, binding.ledgerId, binding.sessionGeneration, binding.bindingRevision,
+                ExpenseCorrectionRequestDto(7L, character.repeat(501), note = "原命令内容"))
+            val json = OutboxAdapterGraph().correctionAdapter.toJson(payload)
+            val id = outbox.enqueue(PendingMutationType.CorrectExpense, "expense:42", json, 7L, "original-invalid-key")
+            outbox.markFailed(id, "validation_error")
+            val original = queue.rows.getValue(id)
+            val pending = repo.observeCorrections().first().corrections.single()
+
+            assertFalse(pending.hasSupportedIntent, "A known format with an impossible reason is not replayable")
+            assertFalse(pending.canRetry)
+            assertTrue(pending.canDiscard)
+            assertEquals(json, pending.row.payloadJson)
+            assertTrue(repo.recoverCorrection(binding, id, drop = false).isFailure)
+            assertEquals(original, queue.rows.getValue(id), "Refusal preserves original key, OCC, binding and payload")
+            repo.recoverCorrection(binding, id, drop = true).getOrThrow()
+            assertTrue(queue.rows.isEmpty())
+        }
+    }
+
+    @Test
     fun `composite correction is persisted before scheduling without waiting for a direct request`() = runTest {
         val mutationDao = FakePendingMutationDao()
         var scheduledRow: PendingMutationEntity? = null

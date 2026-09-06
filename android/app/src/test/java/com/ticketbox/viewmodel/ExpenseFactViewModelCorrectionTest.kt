@@ -20,6 +20,48 @@ import kotlinx.coroutines.test.advanceUntilIdle
 internal class ExpenseFactViewModelCorrectionTest : ExpenseFactViewModelTestBase() {
 
     @Test
+    fun `501 Unicode characters keep the original correction form without saving`() = edit { _ ->
+        for (character in listOf("改", "\uD83D\uDE42")) {
+            val fake = FakeExpenseFactActions()
+            fake.itemsResult = fake.itemsResult.map { it.copy(parentRowVersion = fake.baseExpense.rowVersion) }
+            fake.splitsResult = fake.splitsResult.map { it.copy(parentRowVersion = fake.baseExpense.rowVersion) }
+            val vm = viewModel(fake)
+            val reason = character.repeat(501)
+            vm.openCorrectionSheet()
+            vm.updateCorrectionField(CorrectionScalarField.Reason, reason)
+            vm.updateCorrectionField(CorrectionScalarField.Merchant, "核对后的商家")
+            vm.submitCorrection()
+            advanceUntilIdle()
+
+            assertEquals(0, fake.correctCalls, "The API reason limit must be checked before local acceptance")
+            assertTrue(vm.uiState.value.correction.open)
+            assertEquals(reason, vm.uiState.value.correction.reason)
+            assertEquals("核对后的商家", vm.uiState.value.correction.merchant)
+            assertNotNull(vm.uiState.value.correction.submitError)
+        }
+    }
+
+    @Test
+    fun `500 Unicode characters remain a legal correction reason`() = edit { _ ->
+        for (character in listOf("改", "\uD83D\uDE42")) {
+            val fake = FakeExpenseFactActions()
+            fake.itemsResult = fake.itemsResult.map { it.copy(parentRowVersion = fake.baseExpense.rowVersion) }
+            fake.splitsResult = fake.splitsResult.map { it.copy(parentRowVersion = fake.baseExpense.rowVersion) }
+            val vm = viewModel(fake)
+            val reason = character.repeat(500)
+            vm.openCorrectionSheet()
+            vm.updateCorrectionField(CorrectionScalarField.Reason, reason)
+            vm.updateCorrectionField(CorrectionScalarField.Merchant, "核对后的商家")
+            vm.submitCorrection()
+            advanceUntilIdle()
+
+            assertEquals(1, fake.correctCalls)
+            assertEquals(reason, fake.lastCorrectionDraft?.reason)
+            assertFalse(vm.uiState.value.correction.open)
+        }
+    }
+
+    @Test
     fun `blank reason blocks the draft locally and never reaches the repository`() = edit { fake ->
         val vm = viewModel(fake)
         vm.openCorrectionSheet()
