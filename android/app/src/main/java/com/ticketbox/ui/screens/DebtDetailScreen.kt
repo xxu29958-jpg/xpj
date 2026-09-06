@@ -64,7 +64,7 @@ private const val DebtDetailFlashDismissMillis = 4000L
  * 镜像 [DebtListScreen] 的生活流骨架（[AppScrollableContent] + secondary header + [AppPaperCard] +
  * [AppStatusBanner]）。记还款 / 调整 / 作废三类直接写只对 external/manual 欠款开放（[Debt.isDirectWritable]）；
  * 成员/拆账欠款显示走对方确认流程的提示而非按钮。统一动作面板（[DebtActionSheet]）按 [DebtAction] 渲染
- * 相应字段，写成功后 ViewModel 把折叠后的欠款换入本地态。
+ * 相应字段；调整先保留原提交，确认同步后再读取服务端欠款。
  */
 // ADR-0049 §3.2 (slice 8d): the detail screen's side-effects, extracted so the screen composable
 // stays under the LongMethod gate. Loads the member proposal收发箱 on entry, refreshes the Debt
@@ -99,6 +99,7 @@ fun DebtDetailScreen(
         },
         onSelectKind = viewModel::selectKind,
         onOpenAction = viewModel::openAction,
+        onRecoverAdjustment = viewModel::recoverAdjustment,
     )
     DebtDetailContent(
         state = state,
@@ -397,7 +398,7 @@ private fun DebtActionForm(
                     placeholder = stringResource(R.string.components_amount_input_placeholder),
                     isError = state.validationError != null,
                 ),
-                actions = AppAmountInputActions(onValueChange = viewModel::updateAmount),
+                actions = AppAmountInputActions(onValueChange = { viewModel.updateActionInput(amount = it) }),
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -416,7 +417,7 @@ private fun DebtActionForm(
                     label = stringResource(R.string.debt_action_reason_label),
                     value = state.reasonInput,
                 ),
-                actions = AppTextInputActions(onValueChange = viewModel::updateReason),
+                actions = AppTextInputActions(onValueChange = { viewModel.updateActionInput(reason = it) }),
                 modifier = Modifier.fillMaxWidth(),
             )
         }

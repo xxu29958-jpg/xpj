@@ -8,8 +8,75 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import DBAPIError
 
 from app.database import SessionLocal
-from app.models import IncomePlanRevision
+from app.models import IncomePlanRevision, MonthlyIncomePlan
 from tests._runtime_protocol import negotiated_headers
+
+
+def _seed_undated_single_month_plan(when: datetime) -> tuple[int, str, int]:
+    from app.services.currency_binding_service import resolve_write_capability
+
+    with SessionLocal() as db:
+        resolve_write_capability(db)
+        plan = MonthlyIncomePlan(
+            tenant_id="owner", label="旧名称", source_type="salary", frequency="one_time",
+            income_month="2026-08", amount_cents=10000, pay_day=1, status="active",
+            row_version=1, created_at=when, updated_at=when,
+        )
+        db.add(plan)
+        db.flush()
+        db.add(IncomePlanRevision(
+            tenant_id="owner", plan_id=plan.id, revision_number=1, change_kind="baseline",
+            effective_month=None, intent_month=None, label=plan.label, source_type=plan.source_type,
+            frequency=plan.frequency, income_month=plan.income_month, amount_cents=plan.amount_cents,
+            pay_day=plan.pay_day, status=plan.status, recorded_at=when,
+        ))
+        db.commit()
+        return plan.id, plan.public_id, plan.row_version
+
+
+@pytest.mark.real_db
+def test_legacy_single_month_label_patch_preserves_unknown_history_until_financial_correction(
+    client, identity, monkeypatch,
+) -> None:
+    from app.services import income_plan_service
+
+    now = datetime(2026, 9, 2, tzinfo=UTC)
+    monkeypatch.setattr(income_plan_service, "now_utc", lambda: now)
+    plan_id, public_id, token = _seed_undated_single_month_plan(now)
+    path = f"/api/income-plans/{public_id}"
+    history_path = "/api/income-plans?month=2026-08"
+    before = client.get(history_path, headers=identity.app_headers)
+    assert before.status_code == 422
+    assert before.json()["error"] == "invalid_request"
+    headers = negotiated_headers(client, {**identity.app_headers, "Idempotency-Key": str(uuid4())})
+    rename = {"intent_month": "2026-09", "expected_row_version": token, "label": "新名称"}
+    renamed = client.patch(path, headers=headers, json=rename)
+    assert renamed.status_code == 200
+    assert renamed.json()["label"] == "新名称"
+    assert renamed.json()["amount_cents"] == 10000
+    assert client.get(history_path, headers=identity.app_headers).status_code == 422
+    current = client.get("/api/income-plans?month=2026-09", headers=identity.app_headers)
+    assert current.status_code == 200
+    assert current.json()["expected_amount_cents"] == 0
+    assert current.json()["items"][0]["label"] == "新名称"
+    corrected = client.patch(path, headers=negotiated_headers(
+        client, {**identity.app_headers, "Idempotency-Key": str(uuid4())},
+    ), json={"intent_month": "2026-09", "expected_row_version": renamed.json()["row_version"], "amount_cents": 12000})
+    assert corrected.status_code == 200
+    historical = client.get(history_path, headers=identity.app_headers)
+    assert historical.status_code == 200
+    assert historical.json()["expected_amount_cents"] == 12000
+    assert historical.json()["scheduled_amount_cents"] == 12000
+    replay = client.patch(path, headers=headers, json=rename)
+    assert replay.status_code == 200
+    assert replay.json() == renamed.json()
+    with SessionLocal() as db:
+        revisions = list(db.scalars(select(IncomePlanRevision).where(
+            IncomePlanRevision.plan_id == plan_id, IncomePlanRevision.tenant_id == "owner",
+        ).order_by(IncomePlanRevision.revision_number)))
+        assert len(revisions) == 3
+        assert revisions[0].effective_month is None
+        assert revisions[0].amount_cents == 10000
 
 
 @pytest.mark.real_db

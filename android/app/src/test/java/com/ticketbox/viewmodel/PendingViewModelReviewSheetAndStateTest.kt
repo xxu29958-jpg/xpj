@@ -12,7 +12,6 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -39,7 +38,7 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
         advanceUntilIdle()
 
         assertTrue(vm.uiState.value.readOnly)
-        assertNull(vm.beginUploadPreparation())
+        assertFalse(vm.acceptUploads(listOf("blocked")) { error("viewer must not prepare") })
         vm.openQuickCategory(target)
         vm.saveQuickCategory(target.id, "交通")
         vm.confirm(target)
@@ -256,25 +255,20 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
     }
 
     @Test
-    fun uploadPreparedBeforeLedgerChangeIsDroppedBeforeRepositoryCall() = review {
+    fun uploadAcceptedBeforeLedgerChangeIsDroppedBeforeRepositoryCall() = review {
         val ledgerFlow = MutableStateFlow<String?>("owner")
         val fake = FakeReviewActions(activeLedgerFlow = ledgerFlow, activeLedgerIdProvider = { ledgerFlow.value })
         val vm = PendingViewModel(fake)
         advanceUntilIdle()
 
-        val uploadAttempt = assertNotNull(vm.beginUploadPreparation())
-        ledgerFlow.value = "family"
-        advanceUntilIdle()
-
-        vm.uploadScreenshot(
+        assertTrue(vm.acceptUploads(listOf("receipt.jpg")) {
             PreparedUploadImage(
-                fileName = "receipt.jpg",
-                contentType = "image/jpeg",
-                bytes = byteArrayOf(1, 2, 3),
-                sourceSizeBytes = 3L,
-            ),
-            attempt = uploadAttempt,
-        )
+                fileName = "receipt.jpg", contentType = "image/jpeg",
+                bytes = byteArrayOf(1, 2, 3), sourceSizeBytes = 3L,
+            )
+        })
+        // Change the binding before the accepted session gets its first scheduled turn.
+        ledgerFlow.value = "family"
         advanceUntilIdle()
 
         assertEquals(0, fake.uploadCalls)

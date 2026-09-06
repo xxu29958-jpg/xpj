@@ -1,6 +1,7 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.PendingReviewActions
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.PendingEnrichmentTaskReader
 import com.ticketbox.data.repository.ScreenshotUploadRequest
 import com.ticketbox.domain.model.CurrencyCode
@@ -166,6 +167,13 @@ internal class FakeReviewActions(
 
     override fun currentActiveLedgerId(): String? = activeLedgerIdProvider()
 
+    var uploadBinding: LogicalSessionBinding? = null
+
+    override fun currentUploadBinding(): LogicalSessionBinding = uploadBinding ?: LogicalSessionBinding(
+        serverUrl = "https://test.local", ledgerId = currentActiveLedgerId() ?: "test-ledger",
+        ownerKey = "test-owner", sessionGeneration = "test-generation", bindingRevision = "test-revision",
+    )
+
     override suspend fun fetchPending(): Result<List<Expense>> {
         fetchPendingCalls += 1
         fetchPendingResponder?.let { return it() }
@@ -272,11 +280,15 @@ internal class FakeReviewActions(
     // share tests can assert order + count without leaking bytes.
     val uploadedFileNames = mutableListOf<String>()
     val uploadedLedgerIds = mutableListOf<String?>()
+    val uploadedBindings = mutableListOf<LogicalSessionBinding>()
+    val uploadedBytes = mutableListOf<ByteArray>()
 
     override suspend fun uploadScreenshot(request: ScreenshotUploadRequest): Result<PendingUploadReceipt> {
         uploadCalls += 1
         uploadedFileNames += request.fileName
-        uploadedLedgerIds += request.expectedLedgerId
+        uploadedLedgerIds += request.expectedBinding.ledgerId
+        uploadedBindings += request.expectedBinding
+        uploadedBytes += request.bytes
         uploadResponder?.let { return it(request.fileName) }
         return Result.failure(IllegalStateException("upload not exercised in tests"))
     }

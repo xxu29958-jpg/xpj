@@ -115,6 +115,8 @@ class ExpenseRepository(
 
     override fun currentActiveLedgerId(): String? = pendingRepository.currentActiveLedgerId()
 
+    override fun currentUploadBinding(): LogicalSessionBinding? = pendingRepository.currentUploadBinding()
+
     override suspend fun bindServer(serverUrl: String, pairingCode: String): Result<BindServerResult> =
         bindingRepository.bindServer(serverUrl, pairingCode)
 

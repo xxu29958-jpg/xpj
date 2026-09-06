@@ -31,13 +31,13 @@ class DebtRepaymentVoidViewModelTest {
     @Test
     fun selectedPaymentUsesExistingActionOwnerAndPublishesCanonicalParent() = runTest(dispatcher) {
         val repository = RecordingVoidActions()
-        val viewModel = DebtDetailViewModel(repository)
+        val viewModel = DebtDetailViewModel(repository, FakeDebtAdjustmentActions())
         viewModel.loadDebt("debt-1")
         advanceUntilIdle()
         viewModel.openAction(DebtAction.RepaymentVoid, payment())
         assertEquals(DebtAction.RepaymentVoid, viewModel.state.value.activeAction)
         assertEquals("payment-7", viewModel.state.value.repaymentToVoid?.publicId)
-        viewModel.updateReason("  重复记录  ")
+        viewModel.updateActionInput(reason = "  重复记录  ")
         viewModel.submit()
         advanceUntilIdle()
 
@@ -53,11 +53,11 @@ class DebtRepaymentVoidViewModelTest {
         val repository = RecordingVoidActions().apply {
             writeResult = Result.failure(RepositoryException("欠款已变化，请刷新后再试"))
         }
-        val viewModel = DebtDetailViewModel(repository)
+        val viewModel = DebtDetailViewModel(repository, FakeDebtAdjustmentActions())
         viewModel.loadDebt("debt-1")
         advanceUntilIdle()
         viewModel.openAction(DebtAction.RepaymentVoid, payment())
-        viewModel.updateReason("重复记录")
+        viewModel.updateActionInput(reason = "重复记录")
         viewModel.submit()
         advanceUntilIdle()
 
@@ -70,11 +70,11 @@ class DebtRepaymentVoidViewModelTest {
     @Test
     fun inFlightVoidCannotBeDismissedOrSubmittedTwice() = runTest(dispatcher) {
         val repository = RecordingVoidActions().apply { gate = CompletableDeferred() }
-        val viewModel = DebtDetailViewModel(repository)
+        val viewModel = DebtDetailViewModel(repository, FakeDebtAdjustmentActions())
         viewModel.loadDebt("debt-1")
         advanceUntilIdle()
         viewModel.openAction(DebtAction.RepaymentVoid, payment())
-        viewModel.updateReason("重复记录")
+        viewModel.updateActionInput(reason = "重复记录")
         viewModel.submit()
         runCurrent()
         viewModel.dismissAction()
@@ -90,11 +90,11 @@ class DebtRepaymentVoidViewModelTest {
     @Test
     fun anotherDebtCannotReceiveLateVoidResult() = runTest(dispatcher) {
         val repository = RecordingVoidActions().apply { gate = CompletableDeferred() }
-        val viewModel = DebtDetailViewModel(repository)
+        val viewModel = DebtDetailViewModel(repository, FakeDebtAdjustmentActions())
         viewModel.loadDebt("debt-1")
         advanceUntilIdle()
         viewModel.openAction(DebtAction.RepaymentVoid, payment())
-        viewModel.updateReason("重复记录")
+        viewModel.updateActionInput(reason = "重复记录")
         viewModel.submit()
         runCurrent()
         viewModel.loadDebt("debt-2")
@@ -113,7 +113,7 @@ class DebtRepaymentVoidViewModelTest {
         }
         val repositories = listOf(member, RecordingVoidActions(canModify = false))
         for (repository in repositories) {
-            val viewModel = DebtDetailViewModel(repository)
+            val viewModel = DebtDetailViewModel(repository, FakeDebtAdjustmentActions())
             viewModel.loadDebt("debt-1")
             advanceUntilIdle()
             viewModel.openAction(DebtAction.RepaymentVoid, payment())

@@ -217,6 +217,7 @@ def _sort_key(row: RecycleBinItem) -> datetime:
 
 
 def _archived_income_rows(db: Session, tenant_id: str) -> list[RecycleBinItem]:
+    intent_month = current_accounting_month()
     rows = db.scalars(
         select(MonthlyIncomePlan)
         .where(MonthlyIncomePlan.tenant_id == tenant_id)
@@ -229,11 +230,11 @@ def _archived_income_rows(db: Session, tenant_id: str) -> list[RecycleBinItem]:
             kind_label="收入计划",
             resource_id=item.public_id,
             title=item.label,
-            detail=_income_detail(item) + f" · 恢复从 {current_accounting_month()} 生效",
+            detail=_income_detail(item) + f" · 恢复从 {intent_month} 生效",
             removed_at=item.archived_at,
             retention_label="长期保留",
             expected_row_version=item.row_version,
-            restore_intent_month=current_accounting_month(),
+            restore_intent_month=intent_month,
         )
         for item in rows
     ]

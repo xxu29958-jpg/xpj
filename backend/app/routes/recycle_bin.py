@@ -55,7 +55,10 @@ def restore_recycle_bin(
     payload: RecycleBinRestoreRequest,
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
-    api_version: str | None = Header(default=None, alias=TICKETBOX_API_VERSION_HEADER),
+    api_version: str | None = Header(
+        default=None, alias=TICKETBOX_API_VERSION_HEADER,
+        description="Required current API version when kind is income_plan; optional for other restore kinds.",
+    ),
 ) -> RecycleBinRestoreResponse:
     if payload.kind.strip() == "income_plan":
         require_current_api_version(api_version)

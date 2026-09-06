@@ -26,6 +26,26 @@ sealed interface LaunchIntentRequest {
     data class Navigate(val target: ShortcutTarget) : LaunchIntentRequest
 }
 
+/** Preserve ordered shares that arrive before the shell accepts the previous request. */
+internal fun mergeLaunchRequest(pending: LaunchIntentRequest?, incoming: LaunchIntentRequest): LaunchIntentRequest =
+    if (pending is LaunchIntentRequest.ShareImages && incoming is LaunchIntentRequest.ShareImages) {
+        LaunchIntentRequest.ShareImages(pending.uris + incoming.uris)
+    } else {
+        incoming
+    }
+
+/** Remove only the share prefix actually handed to the shell, retaining a later hot share. */
+internal fun remainingLaunchRequest(
+    pending: LaunchIntentRequest?,
+    handled: LaunchIntentRequest,
+): LaunchIntentRequest? = when {
+    pending === handled -> null
+    pending is LaunchIntentRequest.ShareImages && handled is LaunchIntentRequest.ShareImages &&
+        pending.uris.take(handled.uris.size) == handled.uris ->
+        LaunchIntentRequest.ShareImages(pending.uris.drop(handled.uris.size))
+    else -> pending
+}
+
 /** 启动器静态 shortcut 的三个目标（与 `res/xml/shortcuts.xml` 一一对应）。
  *  public 同 [LaunchIntentRequest]：经 Navigate 间接出现在公开 composable 签名里。 */
 enum class ShortcutTarget(val id: String) {

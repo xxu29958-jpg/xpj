@@ -70,13 +70,6 @@ internal class FakeDebtActions(
         amountCents: Long,
     ): Result<Debt> = Result.success(sampleDebt(publicId))
 
-    override suspend fun recordAdjustment(
-        publicId: String,
-        expectedRowVersion: Long,
-        amountCents: Long,
-        reason: String,
-    ): Result<Debt> = Result.success(sampleDebt(publicId))
-
     override suspend fun voidRepayment(
         publicId: String,
         repaymentPublicId: String,

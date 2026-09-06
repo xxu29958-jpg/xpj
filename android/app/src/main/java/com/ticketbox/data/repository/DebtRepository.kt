@@ -1,6 +1,5 @@
 package com.ticketbox.data.repository
 
-import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtForgiveCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtKindSetRequestDto
 import com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto
@@ -22,7 +21,7 @@ import java.util.UUID
 
 /**
  * Canonical Debt queries and existing online fact/proposal operations.
- * New external/manual creation belongs to [DebtCreationActions] and the durable Outbox.
+ * External creation and adjustment belong to [DebtCreationActions] and [DebtAdjustmentActions].
  */
 interface DebtActions {
     fun canModifyLedger(): Boolean
@@ -33,12 +32,6 @@ interface DebtActions {
     // is the §2.1 OCC carrier (the local Debt's row_version); the response is the fold-after Debt
     // (status / remaining / paid / a fresh row_version) the detail screen swaps in.
     suspend fun recordRepayment(publicId: String, expectedRowVersion: Long, amountCents: Long): Result<Debt>
-    suspend fun recordAdjustment(
-        publicId: String,
-        expectedRowVersion: Long,
-        amountCents: Long,
-        reason: String,
-    ): Result<Debt>
     suspend fun voidDebt(publicId: String, expectedRowVersion: Long, reason: String): Result<Debt>
 
     suspend fun voidRepayment(
@@ -227,31 +220,6 @@ class DebtRepository(
                         expectedRowVersion = expectedRowVersion,
                     ),
                     // ADR-0042: single-use key — direct-only path, no offline replay.
-                    idempotencyKey = UUID.randomUUID().toString(),
-                ).toDomain()
-            }
-        }
-    }
-
-    override suspend fun recordAdjustment(
-        publicId: String,
-        expectedRowVersion: Long,
-        amountCents: Long,
-        reason: String,
-    ): Result<Debt> {
-        if (!canModifyLedger()) return Result.failure(RepositoryException(DEBT_VIEWER_READONLY))
-        if (amountCents == 0L) return Result.failure(RepositoryException("调整金额不能为 0。"))
-        val cleanReason = reason.trim()
-        if (cleanReason.isEmpty()) return Result.failure(RepositoryException("请填写调整原因。"))
-        return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
-                api.recordDebtAdjustment(
-                    publicId = publicId,
-                    request = DebtAdjustmentCreateRequestDto(
-                        amountCents = amountCents,
-                        reason = cleanReason,
-                        expectedRowVersion = expectedRowVersion,
-                    ),
                     idempotencyKey = UUID.randomUUID().toString(),
                 ).toDomain()
             }

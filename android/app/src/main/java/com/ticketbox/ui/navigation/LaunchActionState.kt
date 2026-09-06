@@ -34,16 +34,27 @@ internal class LaunchActionState {
     var pending by mutableStateOf<LaunchAction?>(null)
         private set
 
-    // 单槽语义(有意为之,非队列):极端的「一帧内连续两次分享」会让后一次覆盖
-    // 未消费的前一次,前一批 uri 丢弃——用户重新分享即可,不为亚帧窗口建队列。
     fun post(action: LaunchAction) {
-        pending = action
+        val previous = pending
+        pending = if (previous is LaunchAction.UploadSharedImages && action is LaunchAction.UploadSharedImages) {
+            LaunchAction.UploadSharedImages(previous.uris + action.uris)
+        } else {
+            action
+        }
     }
 
-    /** 取走待处理入口动作并清空（调用方应已确认是自己负责的变体）。 */
-    fun consume(): LaunchAction? {
-        val action = pending ?: return null
-        pending = null
-        return action
+    /** Consume only the accepted action; a share posted during handoff remains pending. */
+    fun consume(accepted: LaunchAction? = pending): LaunchAction? {
+        val current = pending ?: return null
+        if (current === accepted) {
+            pending = null
+        } else if (current is LaunchAction.UploadSharedImages && accepted is LaunchAction.UploadSharedImages &&
+            current.uris.take(accepted.uris.size) == accepted.uris
+        ) {
+            pending = LaunchAction.UploadSharedImages(current.uris.drop(accepted.uris.size))
+        } else {
+            return null
+        }
+        return accepted
     }
 }

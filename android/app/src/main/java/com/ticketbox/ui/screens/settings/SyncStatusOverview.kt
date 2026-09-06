@@ -9,8 +9,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.data.repository.OutboxStatus
+import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.OutboxWriteBlock
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.viewmodel.OutboxStatusUiState
+
+@Composable
+internal fun SyncStatusOriginalIntentSummary(row: OutboxRow, state: OutboxStatusUiState) {
+    state.recurringOccurrences[row.id]?.let { com.ticketbox.ui.screens.recurring.RecurringOccurrenceIntentSummary(it) }
+    state.incomeEdits[row.id]?.let { com.ticketbox.ui.screens.IncomePlanIntentSummary(it) }
+    state.debtAdjustments[row.id]?.let { com.ticketbox.ui.screens.DebtAdjustmentIntentSummary(it) }
+}
 
 internal data class SyncStatusOverview(
     val queuedCount: Int,
@@ -115,6 +124,10 @@ internal val syncStatusExactErrorMessageResources = mapOf(
     "runtime_version_mismatch" to R.string.sync_status_error_protocol_mismatch,
     "client_upgrade_required" to R.string.sync_status_error_protocol_mismatch,
     "rule_category_deleted" to R.string.sync_status_error_rule_category_deleted,
+    "debt_adjustment_payload_unsupported" to R.string.debt_adjustment_unsupported,
+    "debt_adjustment_response_unverified" to R.string.debt_adjustment_attention,
+    "debt_adjustment_binding_changed" to R.string.debt_adjustment_attention,
+    "debt_adjustment_connection_interrupted" to R.string.debt_adjustment_attention,
     "debt_create_payload_unsupported" to R.string.debt_create_pending_unsupported,
     "debt_create_intent_invalid" to R.string.debt_create_sync_rejected,
     "debt_create_binding_changed" to R.string.debt_create_sync_rejected,

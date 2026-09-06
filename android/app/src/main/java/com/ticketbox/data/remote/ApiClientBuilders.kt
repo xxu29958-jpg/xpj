@@ -156,16 +156,14 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
             return incompatibleProtocolResponse(request)
         }
         // A readable forecast does not require writer permission or an activated currency binding.
-        if (incomeForecastRead) return chain.proceed(request)
-        if (compatibility?.canWrite != true) {
-            return chain.proceed(request)
-        }
-        val response = chain.proceed(
-            request.newBuilder()
-                .header(TICKETBOX_API_VERSION_HEADER, CURRENT_TICKETBOX_API_VERSION)
-                .header(TICKETBOX_CURRENCY_BINDING_HEADER, checkNotNull(compatibility.requestBinding))
-                .build(),
-        )
+        if (incomeForecastRead || compatibility == null) return chain.proceed(request)
+        // Negotiated evidence identifies this request; the backend still authorizes the write.
+        // A blocked capability may have a real binding (configuration drift) or none (adoption).
+        val negotiatedRequest = request.newBuilder()
+            .header(TICKETBOX_API_VERSION_HEADER, checkNotNull(compatibility.apiVersion))
+            .removeHeader(TICKETBOX_CURRENCY_BINDING_HEADER)
+        compatibility.requestBinding?.let { negotiatedRequest.header(TICKETBOX_CURRENCY_BINDING_HEADER, it) }
+        val response = chain.proceed(negotiatedRequest.build())
         if (response.code == 409 && runCatching {
                 runtimeErrorAdapter.fromJson(response.peekBody(64 * 1024).string())?.error
             }.getOrNull() == "currency_binding_revision_conflict"

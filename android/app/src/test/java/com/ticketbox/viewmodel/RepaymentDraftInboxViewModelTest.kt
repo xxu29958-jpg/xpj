@@ -430,13 +430,6 @@ private class FakeRepayableDebtActions(
     override suspend fun recordRepayment(publicId: String, expectedRowVersion: Long, amountCents: Long): Result<Debt> =
         Result.success(debt(publicId))
 
-    override suspend fun recordAdjustment(
-        publicId: String,
-        expectedRowVersion: Long,
-        amountCents: Long,
-        reason: String,
-    ): Result<Debt> = Result.success(debt(publicId))
-
     override suspend fun voidRepayment(
         publicId: String,
         repaymentPublicId: String,

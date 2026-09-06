@@ -34,7 +34,18 @@ def _applicable_revisions(revisions: Iterable[IncomePlanRevision], period: date)
             # A single-month correction changes its old/new targets, not an
             # unrelated monthly schedule that preceded the conversion.
             assert revision.intent_month is not None  # Typed revision constraint excludes undated edits.
-            applies = month in {previous.income_month, revision.income_month} or period >= revision.intent_month
+            selected = chosen.get(revision.plan_id)
+            history_known = selected is not None and selected.effective_month is not None
+            financial_correction = (
+                previous.income_month, previous.amount_cents, previous.pay_day,
+            ) != (revision.income_month, revision.amount_cents, revision.pay_day)
+            # A rename or source label does not establish an undated baseline's
+            # historical amount. Keep that marker through consecutive metadata
+            # edits; actual financial corrections can still declare old/new targets.
+            applies = period >= revision.intent_month or (
+                month in {previous.income_month, revision.income_month}
+                and (history_known or financial_correction)
+            )
         if applies:
             chosen[revision.plan_id] = revision
     return list(chosen.values())

@@ -87,6 +87,7 @@ def _confirmed_redirect(
     tag: str = "",
     page: int = 1,
     msg: str = "",
+    filter: str = "",
 ) -> RedirectResponse:
     page_value = str(page) if page > 1 else ""
     return _web_redirect(
@@ -96,6 +97,7 @@ def _confirmed_redirect(
         tag=tag,
         page=page_value,
         msg=msg,
+        filter="missing_category" if filter == "missing_category" else "",
     )
 
 
@@ -182,6 +184,7 @@ def _confirmed_edit_query(
     effective_month: str,
     page: int,
     tag: str | None,
+    filter: str = "",
 ) -> str:
     return urlencode(
         {
@@ -191,6 +194,7 @@ def _confirmed_edit_query(
                 return_month=effective_month,
                 return_page=str(page),
                 return_tag=tag or "",
+                return_filter=filter,
             ),
         }
     )
@@ -203,21 +207,29 @@ def _confirmed_page_rows(
     page: int,
     month: str | None,
     tag: str | None,
-) -> tuple[str, str, list[dict], int, int, str]:
+    filter: str = "",
+) -> tuple[str, str, list[dict], int, int, str, int]:
     timezone_name = accounting_timezone_key()
-    effective_month = month or current_accounting_month(timezone_name)
-    entries, total = list_confirmed(
-        db,
-        tenant_id=selected_id,
-        page=page,
-        page_size=_CONFIRMED_PAGE_SIZE,
-        month=effective_month,
-        tag=tag,
-        timezone_name=timezone_name,
-    )
+    missing_category = filter == "missing_category"
+    effective_month = "" if missing_category else month or current_accounting_month(timezone_name)
+    page = max(1, page)
+    query = {
+        "tenant_id": selected_id,
+        "page_size": _CONFIRMED_PAGE_SIZE,
+        "month": effective_month or None,
+        "tag": tag,
+        "timezone_name": timezone_name,
+        "missing_category": missing_category,
+    }
+    entries, total = list_confirmed(db, page=page, **query)
     home = require_runtime_home_currency_code(db)
     total_pages = max(1, (total + _CONFIRMED_PAGE_SIZE - 1) // _CONFIRMED_PAGE_SIZE)
+    if page > total_pages:
+        page = total_pages
+        entries, total = list_confirmed(db, page=page, **query)
     pager_params = {"ledger_id": selected_id, "month": effective_month}
+    if missing_category:
+        pager_params = {"ledger_id": selected_id, "filter": "missing_category"}
     if tag:
         pager_params["tag"] = tag
     return (
@@ -227,6 +239,7 @@ def _confirmed_page_rows(
         total,
         total_pages,
         urlencode(pager_params),
+        page,
     )
 
 
@@ -240,6 +253,7 @@ def _render_confirmed_page(
     month: str | None,
     tag: str | None,
     msg: str | None,
+    filter: str = "",
     status_code: int = 200,
     flash_type: str = "",
     selected_expense_ids: list[int] | None = None,
@@ -248,8 +262,8 @@ def _render_confirmed_page(
     batch_reason_input: str = "",
     batch_idempotency_key: str = "",
 ) -> HTMLResponse:
-    effective_month, home, items, total, total_pages, pager_query = _confirmed_page_rows(
-        db, selected_id=selected_id, page=page, month=month, tag=tag
+    effective_month, home, items, total, total_pages, pager_query, page = _confirmed_page_rows(
+        db, selected_id=selected_id, page=page, month=month, tag=tag, filter=filter
     )
     ctx = _base_ctx(
         request,
@@ -257,7 +271,7 @@ def _render_confirmed_page(
         options=options,
         selected_ledger_id=selected_id,
         page_title="已确认",
-        show_month_picker=True,
+        show_month_picker=filter != "missing_category",
         selected_month=effective_month,
         sidebar_counts=_sidebar_counts(db, selected_id),
     )
@@ -268,23 +282,26 @@ def _render_confirmed_page(
         total=total,
         month=effective_month,
         tag=tag or "",
+        filter="missing_category" if filter == "missing_category" else "",
         pager_query=pager_query,
         confirmed_edit_query=_confirmed_edit_query(
             selected_id,
             effective_month=effective_month,
             page=page,
             tag=tag,
+            filter=filter,
         ),
     )
-    ctx.update(
-        _confirmed_month_context(
-            db,
-            selected_id=selected_id,
-            effective_month=effective_month,
-            currency_code=home,
-            tag=tag,
+    if filter != "missing_category":
+        ctx.update(
+            _confirmed_month_context(
+                db,
+                selected_id=selected_id,
+                effective_month=effective_month,
+                currency_code=home,
+                tag=tag,
+            )
         )
-    )
     ctx.update(
         flash_message=msg or "",
         flash_type=flash_type,
@@ -310,6 +327,7 @@ def web_confirmed(
     tag: str | None = None,
     ledger_id: str | None = None,
     msg: str | None = None,
+    filter: str = "",
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -324,6 +342,7 @@ def web_confirmed(
         month=month,
         tag=tag,
         msg=msg,
+        filter=filter,
     )
 
 

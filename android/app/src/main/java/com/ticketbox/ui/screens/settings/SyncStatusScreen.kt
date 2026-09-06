@@ -122,11 +122,11 @@ internal fun SyncStatusScreenContent(
             state = state,
             actions = actions.copy(
                 onDropMine = { confirmingDrop = SyncStatusDropSelection(it, failed = false, debtCreation = null,
-                    recurringOccurrence = state.recurringOccurrences[it.id], incomeEdit = state.incomeEdits[it.id]) },
+                    recurringOccurrence = state.recurringOccurrences[it.id], incomeEdit = state.incomeEdits[it.id], debtAdjustment = state.debtAdjustments[it.id]) },
                 onDropFailed = { row ->
                     if (row.type == PendingMutationType.CorrectExpense) actions.onDropFailed(row)
                     else confirmingDrop = SyncStatusDropSelection(row, failed = true, debtCreation = state.failedDebtCreations[row.id],
-                        recurringOccurrence = state.recurringOccurrences[row.id], incomeEdit = state.incomeEdits[row.id])
+                        recurringOccurrence = state.recurringOccurrences[row.id], incomeEdit = state.incomeEdits[row.id], debtAdjustment = state.debtAdjustments[row.id])
                 },
                 onClearQuarantined = { confirmingClearQuarantined = true },
             ),
@@ -149,12 +149,17 @@ private fun SyncStatusPageBody(
         onClear = actions.onClearQuarantined,
     )
 
+    if (state.waitingDebtAdjustments.isNotEmpty()) {
+        SettingsSection(title = stringResource(R.string.debt_adjustment_waiting), icon = Icons.Filled.CloudUpload) {
+            state.waitingDebtAdjustments.forEach { com.ticketbox.ui.screens.DebtAdjustmentIntentSummary(it) }
+        }
+    }
+
     val conflicts = status.conflicts.filter { it.type != PendingMutationType.CorrectExpense }
     if (conflicts.isNotEmpty()) {
         SettingsSection(title = stringResource(R.string.sync_status_section_needs_action), icon = Icons.Filled.SyncProblem) {
             conflicts.forEach { row ->
-                state.recurringOccurrences[row.id]?.let { com.ticketbox.ui.screens.recurring.RecurringOccurrenceIntentSummary(it) }
-                state.incomeEdits[row.id]?.let { com.ticketbox.ui.screens.IncomePlanIntentSummary(it) }
+                SyncStatusOriginalIntentSummary(row, state)
                 ConflictCard(
                     row = row,
                     busy = state.busyRowId == row.id,
@@ -169,14 +174,14 @@ private fun SyncStatusPageBody(
     if (failures.isNotEmpty()) {
         SettingsSection(title = stringResource(R.string.sync_status_section_failed), icon = Icons.Filled.ErrorOutline) {
             failures.forEach { row ->
-                state.recurringOccurrences[row.id]?.let { com.ticketbox.ui.screens.recurring.RecurringOccurrenceIntentSummary(it) }
-                state.incomeEdits[row.id]?.let { com.ticketbox.ui.screens.IncomePlanIntentSummary(it) }
+                SyncStatusOriginalIntentSummary(row, state)
                 FailedCard(
                     row = row,
                     debtCreation = state.failedDebtCreations[row.id],
                     busy = state.busyRowId == row.id,
                     onRetry = { actions.onRetry(row) }.takeIf {
-                        row.type != PendingMutationType.UpdateIncomePlan || state.incomeEdits[row.id]?.hasSupportedIntent == true
+                        (row.type != PendingMutationType.UpdateIncomePlan || state.incomeEdits[row.id]?.hasSupportedIntent == true) &&
+                            (row.type != PendingMutationType.RecordDebtAdjustment || state.debtAdjustments[row.id]?.hasSupportedIntent == true)
                     },
                     onDrop = { actions.onDropFailed(row) },
                 )
@@ -409,6 +414,7 @@ internal val syncStatusMutationLabelResources = mapOf(
     PendingMutationType.CorrectExpense to R.string.sync_status_mutation_correct_expense,
     PendingMutationType.CreateExpense to R.string.sync_status_mutation_create_expense,
     PendingMutationType.CreateDebt to R.string.sync_status_mutation_create_debt,
+    PendingMutationType.RecordDebtAdjustment to R.string.debt_action_adjustment_title,
     PendingMutationType.ConfirmExpense to R.string.sync_status_mutation_confirm_expense,
     PendingMutationType.RejectExpense to R.string.sync_status_mutation_reject_expense,
     PendingMutationType.MarkNotDuplicate to R.string.sync_status_mutation_mark_not_duplicate,

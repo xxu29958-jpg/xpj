@@ -1,5 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="debt_adjustment_saved">原调整已保存在本机，同步完成后更新欠款。</string>
+    <string name="debt_adjustment_waiting">调整等待同步</string>
+    <string name="debt_adjustment_attention">这次调整尚未确认完成，原提交仍保留在本机。</string>
+    <string name="debt_adjustment_original_amount">原调整金额：%1$s</string>
+    <string name="debt_adjustment_unsupported">当前版本无法读取原调整，请升级后继续；原记录仍保留在本机。</string>
+    <string name="debt_adjustment_conflict">欠款已发生变化。请核对最新欠款；这次调整不会用新版本自动覆盖。</string>
+    <string name="debt_adjustment_expired">已超出安全重试期限，请先核对账本中的调整结果。</string>
+    <string name="debt_adjustment_retry">重试原调整</string>
+    <string name="debt_adjustment_drop">放弃本机调整</string>
+    <string name="debt_adjustment_drop_explanation">只会移除这次调整的本机恢复记录，不会撤销账本中可能已记入的调整。请先核对账本，再决定是否放弃。</string>
     <string name="debt_create_no_synced_records">暂无已同步往来</string>
     <string name="debt_create_local_saved">已保存在本机，同步后会更新账本。</string>
     <string name="debt_create_pending_title">待同步的往来</string>

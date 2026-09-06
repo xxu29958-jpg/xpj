@@ -21,6 +21,7 @@ import com.ticketbox.ui.screens.settings.SyncStatusScreen
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.ExpenseDetailDataLoadState
 import com.ticketbox.viewmodel.ExpenseFactViewModel
+import com.ticketbox.viewmodel.OutboxRecoveryRepositories
 import com.ticketbox.viewmodel.OutboxStatusViewModel
 import com.ticketbox.viewmodel.outboxStatusViewModelFactory
 import kotlinx.coroutines.cancel
@@ -113,8 +114,9 @@ class ExpenseCorrectionRoomContinuityTest {
         fixture.network.failReads = true
         var opened: Long? = null
         compose.runOnIdle {
-            global = outboxStatusViewModelFactory(fixture.outbox, graph.expenseRepository, graph.debtCreationRepository,
-                graph.recurringRepository.occurrences, graph.incomePlanRepository).create(OutboxStatusViewModel::class.java)
+            global = outboxStatusViewModelFactory(fixture.outbox, graph.expenseRepository,
+                OutboxRecoveryRepositories(graph.debtCreationRepository, graph.recurringRepository.occurrences,
+                    graph.incomePlanRepository, graph.debtAdjustmentRepository)).create(OutboxStatusViewModel::class.java)
         }
         compose.setContent { TicketboxTheme(skin = AppSkin.Paper) {
             SyncStatusScreen(requireNotNull(global), {}, onOpenExpense = { opened = it })
@@ -140,8 +142,9 @@ class ExpenseCorrectionRoomContinuityTest {
         }
         val original = fixture.stored().single()
         compose.runOnIdle {
-            global = outboxStatusViewModelFactory(fixture.outbox, graph.expenseRepository, graph.debtCreationRepository,
-                graph.recurringRepository.occurrences, graph.incomePlanRepository).create(OutboxStatusViewModel::class.java)
+            global = outboxStatusViewModelFactory(fixture.outbox, graph.expenseRepository,
+                OutboxRecoveryRepositories(graph.debtCreationRepository, graph.recurringRepository.occurrences,
+                    graph.incomePlanRepository, graph.debtAdjustmentRepository)).create(OutboxStatusViewModel::class.java)
         }
         compose.setContent { TicketboxTheme(skin = AppSkin.Paper) {
             SyncStatusScreen(requireNotNull(global), {}, onOpenExpense = {})
