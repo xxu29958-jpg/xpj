@@ -397,6 +397,12 @@ class OutboxRepository private constructor(
             afterPersisted()
             insertedId
         }
+        schedulePending()
+        return id
+    }
+
+    /** Reuses the enqueue scheduler after a caller has verified a persisted Pending transition. */
+    internal fun schedulePending() {
         try {
             onEnqueued()
         } catch (_: Exception) {
@@ -405,7 +411,6 @@ class OutboxRepository private constructor(
             // it. JVM-level Errors (OOM / StackOverflow / Linkage)
             // propagate up by design.
         }
-        return id
     }
 
     suspend fun pauseForBindingTransition() {

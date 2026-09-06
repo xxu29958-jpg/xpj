@@ -454,7 +454,7 @@
     <string name="debt_action_submit">保存</string>
     <string name="debt_action_submitting">保存中…</string>
     <string name="debt_action_repayment_validation">请输入大于 0 的还款金额。</string>
-    <string name="debt_action_adjustment_validation">请输入大于 0 的调整金额并填写原因。</string>
+    <string name="debt_action_adjustment_validation">请输入大于 0 的调整金额，并填写不超过 500 个字符的原因。</string>
     <string name="debt_action_void_validation">请填写作废原因。</string>
     <string name="debt_action_repayment_done">已记一笔还款。</string>
     <string name="debt_action_adjustment_done">已记录调整。</string>

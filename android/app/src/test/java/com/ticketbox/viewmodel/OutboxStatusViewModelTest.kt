@@ -2,9 +2,12 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.R
 import com.ticketbox.OutboxAdapterGraph
+import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.DebtCreationRepository
+import com.ticketbox.data.repository.DebtAdjustmentRepository
+import com.ticketbox.data.repository.DebtAdjustmentPayload
 import com.ticketbox.data.repository.FakeApiService
 import com.ticketbox.data.repository.FakeApiServiceFactory
 import com.ticketbox.data.repository.FakeExpenseDao
@@ -13,11 +16,13 @@ import com.ticketbox.data.repository.TestSessionFixture
 import com.ticketbox.data.repository.OutboxRepository
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.IncomePlanRepository
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.testOutboxRepository
 import com.ticketbox.data.repository.testApiServiceProvider
 import com.ticketbox.data.repository.testServerSessionBinding
 import com.ticketbox.data.repository.boundSettingsStore
 import com.ticketbox.domain.model.MessageTone
+import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -32,6 +37,8 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class OutboxStatusViewModelTest {
@@ -52,7 +59,8 @@ class OutboxStatusViewModelTest {
     fun keepMineWithoutServerRowShowsDangerTone() = runTest(dispatcher) {
         val harness = harness()
         val row = harness.conflictRow(targetId = "expense:local:client-1")
-        val vm = OutboxStatusViewModel(harness.outbox, harness.expenseRepository, harness.debtCreation, incomePlans = harness.incomePlans)
+        val vm = OutboxStatusViewModel(harness.outbox, harness.expenseRepository, harness.debtCreation,
+            incomePlans = harness.incomePlans, debtAdjustments = harness.debtAdjustments)
         runCurrent()
 
         vm.keepMine(row)
@@ -67,7 +75,8 @@ class OutboxStatusViewModelTest {
     fun resolvingRowClearsStaleDangerTone() = runTest(dispatcher) {
         val harness = harness()
         val row = harness.conflictRow(targetId = "expense:local:client-1")
-        val vm = OutboxStatusViewModel(harness.outbox, harness.expenseRepository, harness.debtCreation, incomePlans = harness.incomePlans)
+        val vm = OutboxStatusViewModel(harness.outbox, harness.expenseRepository, harness.debtCreation,
+            incomePlans = harness.incomePlans, debtAdjustments = harness.debtAdjustments)
         runCurrent()
 
         vm.keepMine(row)
@@ -100,7 +109,8 @@ class OutboxStatusViewModelTest {
         harness.outbox.markFailed(id, "unsupported original intent")
         val row = harness.outbox.observeStatus().first().failed.single()
         val vm = outboxStatusViewModelFactory(harness.outbox, harness.expenseRepository,
-            harness.debtCreation, incomePlans = harness.incomePlans).create(OutboxStatusViewModel::class.java)
+            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments))
+            .create(OutboxStatusViewModel::class.java)
         runCurrent()
         kotlin.test.assertNotNull(vm.uiState.value.incomeEdits[id])
         vm.retry(row)
@@ -108,6 +118,106 @@ class OutboxStatusViewModelTest {
         assertEquals(row, harness.outbox.observeStatus().first().failed.single())
         assertEquals(UiText.res(R.string.income_plan_edit_unsupported), vm.uiState.value.message)
         assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
+    }
+
+    @Test
+    fun unretryableAdjustmentsKeepOriginalFailedRecordsAndAllowExplicitDrop() = runTest(dispatcher) {
+        for (supported in listOf(false, true)) {
+            val harness = harness()
+            val id = if (supported) {
+                val binding = assertNotNull(harness.debtAdjustments.currentAccess()).binding
+                harness.debtAdjustments.save(binding, sampleDebt().copy(rowVersion = 7), -5_000, "减免").getOrThrow()
+            } else harness.outbox.enqueue(
+                type = PendingMutationType.RecordDebtAdjustment, targetId = "debt:debt-1",
+                payloadJson = "{\"revision\":99}", expectedRowVersion = 7,
+                idempotencyKey = "original-unsupported-adjustment",
+            )
+            harness.outbox.markFailed(id, if (supported) "debt_adjustment_negative_remaining" else "unsupported original intent")
+            val original = harness.outbox.observeStatus().first().failed.single()
+            val vm = outboxStatusViewModelFactory(harness.outbox, harness.expenseRepository,
+                OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments))
+                .create(OutboxStatusViewModel::class.java)
+            runCurrent()
+            val described = assertNotNull(vm.uiState.value.debtAdjustments[id])
+            assertEquals(original, described.row)
+            assertEquals(supported, described.hasSupportedIntent)
+            assertEquals(false, described.canRetry)
+            if (supported) {
+                assertEquals(-5_000L, described.intent?.request?.amountCents)
+                assertEquals("减免", described.intent?.request?.reason)
+            }
+
+            vm.retry(original)
+            runCurrent()
+
+            assertEquals(original, harness.outbox.observeStatus().first().failed.single())
+            assertEquals(0, harness.outbox.observeStatus().first().queueDepth)
+            assertEquals(UiText.res(if (supported) R.string.debt_adjustment_reduction_rejected
+                else R.string.debt_adjustment_unsupported), vm.uiState.value.message)
+            assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
+
+            vm.dropFailed(original)
+            runCurrent()
+            assertEquals(emptyList(), harness.outbox.observeStatus().first().failed)
+            assertNull(vm.uiState.value.debtAdjustments[id])
+        }
+    }
+
+    private fun assertOriginalAdjustmentContext(
+        intent: DebtAdjustmentPayload,
+        debt: Debt,
+        binding: LogicalSessionBinding,
+    ) {
+        assertEquals(debt.publicId, intent.subject.publicId)
+        assertEquals(debt.counterpartyLabel, intent.subject.label)
+        assertEquals(debt.homeCurrencyCode, intent.subject.homeCurrencyCode)
+        assertEquals(-5_000L, intent.request.amountCents)
+        assertEquals("减免", intent.request.reason)
+        assertEquals(7L, intent.request.expectedRowVersion)
+        assertEquals(binding.sessionGeneration, intent.originSessionGeneration)
+        assertEquals(binding.bindingRevision, intent.originBindingRevision)
+    }
+
+    @Test
+    fun reopenedSyncStatusKeepsOriginalAdjustmentContextWhilePendingThenInFlight() = runTest(dispatcher) {
+        val harness = harness()
+        val binding = assertNotNull(harness.debtAdjustments.currentAccess()).binding
+        val debt = sampleDebt().copy(rowVersion = 7)
+        val id = harness.debtAdjustments.save(binding, debt, -5_000, "减免").getOrThrow()
+        val types = setOf(PendingMutationType.RecordDebtAdjustment)
+        val original = harness.outbox.observeActiveByTypes(types).first().single()
+
+        // Open the global entry after persistence; no canonical Debt read or retry is needed.
+        val vm = outboxStatusViewModelFactory(harness.outbox, harness.expenseRepository,
+            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments))
+            .create(OutboxStatusViewModel::class.java)
+        runCurrent()
+
+        val pending = vm.uiState.value.waitingDebtAdjustments.single()
+        assertEquals(original, pending.row)
+        assertEquals(id, pending.row.id)
+        assertEquals(PendingMutationStatus.Pending, pending.row.status)
+        assertEquals(0, pending.row.retryCount)
+        assertNotNull(pending.row.idempotencyKey)
+        val intent = assertNotNull(pending.intent)
+        assertOriginalAdjustmentContext(intent, debt, binding)
+        assertTrue(vm.uiState.value.status.failed.isEmpty())
+        assertTrue(vm.uiState.value.status.conflicts.isEmpty())
+
+        assertTrue(harness.outbox.tryClaim(id))
+        runCurrent()
+
+        val inFlight = vm.uiState.value.waitingDebtAdjustments.single()
+        assertEquals(intent, inFlight.intent)
+        assertNotNull(inFlight.row.attemptedAt)
+        // retryCount counts claimed attempts: the first Pending-to-InFlight claim is 1.
+        assertEquals(original.copy(status = PendingMutationStatus.InFlight, retryCount = 1,
+            attemptedAt = inFlight.row.attemptedAt), inFlight.row)
+        assertEquals(inFlight.row, harness.outbox.observeActiveByTypes(types).first().single())
+        assertEquals(1, inFlight.row.retryCount)
+        assertTrue(vm.uiState.value.status.failed.isEmpty())
+        assertTrue(vm.uiState.value.status.conflicts.isEmpty())
+        assertNull(vm.uiState.value.busyRowId)
     }
 
     private fun harness(): Harness {
@@ -130,6 +240,8 @@ class OutboxStatusViewModelTest {
             ),
             incomePlans = IncomePlanRepository(testApiServiceProvider(api, tokenStore), outbox,
                 OutboxAdapterGraph().incomePlanUpdateAdapter),
+            debtAdjustments = DebtAdjustmentRepository(testApiServiceProvider(api, tokenStore), outbox,
+                OutboxAdapterGraph().debtAdjustmentAdapter),
         )
     }
 
@@ -138,5 +250,6 @@ class OutboxStatusViewModelTest {
         val expenseRepository: ExpenseRepository,
         val debtCreation: DebtCreationRepository,
         val incomePlans: IncomePlanRepository,
+        val debtAdjustments: DebtAdjustmentRepository,
     )
 }

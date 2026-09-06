@@ -32,6 +32,7 @@ internal data class DebtDetailScreenCallbacks(
     val onRefresh: () -> Unit,
     val onSelectKind: (String) -> Unit,
     val onOpenAction: (DebtAction) -> Unit,
+    val onRecoverAdjustment: (com.ticketbox.data.repository.PendingDebtAdjustment, Boolean) -> Unit,
 )
 
 /** 还款记录段的回调组：作废入口走详情 VM 的统一动作面板，分页/重试走只读 history VM。 */
@@ -85,6 +86,9 @@ internal fun DebtDetailContent(
             proposalState = readableProposalState,
             bodyState = bodyState,
         )
+        if (state.pendingAdjustments.isNotEmpty()) item {
+            DebtPendingAdjustments(state.pendingAdjustments, callbacks.onRecoverAdjustment)
+        }
         debtDetailBodyItems(
             state = state,
             bodyState = bodyState,
@@ -119,7 +123,7 @@ private fun LazyListScope.debtDetailBodyItems(
             } else {
                 debtDetailExternalItems(
                     debt = loaded,
-                    canModify = state.canModify,
+                    canModify = state.canWriteActions,
                     callbacks = callbacks,
                 )
             }
@@ -128,7 +132,7 @@ private fun LazyListScope.debtDetailBodyItems(
             item {
                 DebtRepaymentHistorySection(
                     debt = loaded,
-                    canModify = state.canModify,
+                    canModify = state.canWriteActions,
                     history = panels.historyState,
                     callbacks = panels.historyCallbacks,
                 )
@@ -155,6 +159,7 @@ private fun LazyListScope.debtDetailStatusItems(
     proposalState: MemberProposalUiState,
     bodyState: DebtDetailBodyState,
 ) {
+    state.adjustmentWriteMessage?.let { message -> item { AppStatusBanner(message = message, tone = MessageTone.Info) } }
     state.flashMessage?.let { msg -> item { AppStatusBanner(message = msg, tone = MessageTone.Success) } }
     proposalState.flashMessage?.let { msg -> item { AppStatusBanner(message = msg, tone = MessageTone.Success) } }
     debtDetailInlineMessage(bodyState = bodyState, message = state.error)?.let { err ->

@@ -287,6 +287,10 @@ class AppContainer(context: Context) {
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.recurringCreateAdapter,
             ),
+            com.ticketbox.data.repository.RecordDebtAdjustmentDispatcher(
+                apiProvider = ::outboxApi,
+                adapter = outboxAdapters.debtAdjustmentAdapter,
+            ),
             CreateDebtDispatcher(
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.debtCreateAdapter,
@@ -350,6 +354,7 @@ class AppContainer(context: Context) {
     val incomePlanRepository = repositories.incomePlanRepository
     val debtRepository = repositories.debtRepository
     val debtCreationRepository = repositories.debtCreationRepository
+    val debtAdjustmentRepository = repositories.debtAdjustmentRepository
     val repaymentDraftRepository = repositories.repaymentDraftRepository
     val reportsRepository = repositories.reportsRepository
     val ruleRepository = repositories.ruleRepository

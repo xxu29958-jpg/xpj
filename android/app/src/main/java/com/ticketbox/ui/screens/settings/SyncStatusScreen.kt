@@ -117,10 +117,10 @@ internal fun SyncStatusScreenContent(
             state = state,
             actions = actions.copy(
                 onDropMine = { confirmingDrop = SyncStatusDropSelection(it, failed = false, debtCreation = null,
-                    recurringOccurrence = state.recurringOccurrences[it.id], incomeEdit = state.incomeEdits[it.id]) },
+                    recurringOccurrence = state.recurringOccurrences[it.id], incomeEdit = state.incomeEdits[it.id], debtAdjustment = state.debtAdjustments[it.id]) },
                 onDropFailed = { row ->
                     confirmingDrop = SyncStatusDropSelection(row, failed = true, debtCreation = state.failedDebtCreations[row.id],
-                        recurringOccurrence = state.recurringOccurrences[row.id], incomeEdit = state.incomeEdits[row.id])
+                        recurringOccurrence = state.recurringOccurrences[row.id], incomeEdit = state.incomeEdits[row.id], debtAdjustment = state.debtAdjustments[row.id])
                 },
                 onClearQuarantined = { confirmingClearQuarantined = true },
             ),
@@ -142,11 +142,16 @@ private fun SyncStatusPageBody(
         onClear = actions.onClearQuarantined,
     )
 
+    if (state.waitingDebtAdjustments.isNotEmpty()) {
+        SettingsSection(title = stringResource(R.string.debt_adjustment_waiting), icon = Icons.Filled.CloudUpload) {
+            state.waitingDebtAdjustments.forEach { com.ticketbox.ui.screens.DebtAdjustmentIntentSummary(it) }
+        }
+    }
+
     if (status.conflicts.isNotEmpty()) {
         SettingsSection(title = stringResource(R.string.sync_status_section_needs_action), icon = Icons.Filled.SyncProblem) {
             status.conflicts.forEach { row ->
-                state.recurringOccurrences[row.id]?.let { com.ticketbox.ui.screens.recurring.RecurringOccurrenceIntentSummary(it) }
-                state.incomeEdits[row.id]?.let { com.ticketbox.ui.screens.IncomePlanIntentSummary(it) }
+                SyncStatusOriginalIntentSummary(row, state)
                 ConflictCard(
                     row = row,
                     busy = state.busyRowId == row.id,
@@ -160,14 +165,14 @@ private fun SyncStatusPageBody(
     if (status.failed.isNotEmpty()) {
         SettingsSection(title = stringResource(R.string.sync_status_section_failed), icon = Icons.Filled.ErrorOutline) {
             status.failed.forEach { row ->
-                state.recurringOccurrences[row.id]?.let { com.ticketbox.ui.screens.recurring.RecurringOccurrenceIntentSummary(it) }
-                state.incomeEdits[row.id]?.let { com.ticketbox.ui.screens.IncomePlanIntentSummary(it) }
+                SyncStatusOriginalIntentSummary(row, state)
                 FailedCard(
                     row = row,
                     debtCreation = state.failedDebtCreations[row.id],
                     busy = state.busyRowId == row.id,
                     onRetry = { actions.onRetry(row) }.takeIf {
-                        row.type != PendingMutationType.UpdateIncomePlan || state.incomeEdits[row.id]?.hasSupportedIntent == true
+                        (row.type != PendingMutationType.UpdateIncomePlan || state.incomeEdits[row.id]?.hasSupportedIntent == true) &&
+                            (row.type != PendingMutationType.RecordDebtAdjustment || state.debtAdjustments[row.id]?.canRetry == true)
                     },
                     onDrop = { actions.onDropFailed(row) },
                 )
@@ -387,6 +392,7 @@ internal val syncStatusMutationLabelResources = mapOf(
     PendingMutationType.CorrectExpense to R.string.sync_status_mutation_correct_expense,
     PendingMutationType.CreateExpense to R.string.sync_status_mutation_create_expense,
     PendingMutationType.CreateDebt to R.string.sync_status_mutation_create_debt,
+    PendingMutationType.RecordDebtAdjustment to R.string.debt_action_adjustment_title,
     PendingMutationType.ConfirmExpense to R.string.sync_status_mutation_confirm_expense,
     PendingMutationType.RejectExpense to R.string.sync_status_mutation_reject_expense,
     PendingMutationType.MarkNotDuplicate to R.string.sync_status_mutation_mark_not_duplicate,
@@ -428,6 +434,11 @@ internal val syncStatusExactErrorMessageResources = mapOf(
     "runtime_version_mismatch" to R.string.sync_status_error_protocol_mismatch,
     "client_upgrade_required" to R.string.sync_status_error_protocol_mismatch,
     "rule_category_deleted" to R.string.sync_status_error_rule_category_deleted,
+    "debt_adjustment_payload_unsupported" to R.string.debt_adjustment_unsupported,
+    "debt_adjustment_negative_remaining" to R.string.debt_adjustment_reduction_rejected,
+    "debt_adjustment_response_unverified" to R.string.debt_adjustment_attention,
+    "debt_adjustment_binding_changed" to R.string.debt_adjustment_attention,
+    "debt_adjustment_connection_interrupted" to R.string.debt_adjustment_attention,
     "debt_create_payload_unsupported" to R.string.debt_create_pending_unsupported,
     "debt_create_intent_invalid" to R.string.debt_create_sync_rejected,
     "debt_create_binding_changed" to R.string.debt_create_sync_rejected,

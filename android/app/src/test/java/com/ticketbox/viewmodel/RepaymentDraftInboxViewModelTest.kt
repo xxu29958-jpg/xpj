@@ -1,6 +1,7 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.DebtActions
+import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.data.repository.RepaymentDraftActions
 import com.ticketbox.domain.model.Debt
@@ -55,7 +56,7 @@ class RepaymentDraftInboxViewModelTest {
                 ),
             ),
         )
-        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, debtsRepo)
+        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, debtsRepo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
 
         assertEquals(listOf("d1"), viewModel.state.value.drafts.map { it.publicId })
@@ -75,7 +76,7 @@ class RepaymentDraftInboxViewModelTest {
         val debtsRepo = FakeRepayableDebtActions(
             listResult = Result.success(listOf(debt("open-external").copy(homeCurrencyCode = "JPY"))),
         )
-        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, debtsRepo)
+        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, debtsRepo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
 
         assertEquals("JPY", viewModel.state.value.drafts.single().homeCurrencyCode)
@@ -85,7 +86,7 @@ class RepaymentDraftInboxViewModelTest {
     @Test
     fun refreshFailureSetsError() = runTest(dispatcher) {
         val draftsRepo = FakeRepaymentDraftActions(listResult = Result.failure(RuntimeException("offline")))
-        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, FakeRepayableDebtActions())
+        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, FakeRepayableDebtActions(), adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
 
         assertTrue(viewModel.state.value.drafts.isEmpty())
@@ -98,7 +99,9 @@ class RepaymentDraftInboxViewModelTest {
             listResult = Result.success(listOf(draft("d1"))),
             confirmResult = Result.success(draft("d1", status = RepaymentDraftStatuses.CONFIRMED)),
         )
-        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, FakeRepayableDebtActions())
+        val viewModel = RepaymentDraftInboxViewModel(draftsRepo,
+            FakeRepayableDebtActions(listResult = Result.success(listOf(debt("debt-9", rowVersion = 5L)))),
+            adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
         val listCallsAfterInit = draftsRepo.listCalls
 
@@ -121,7 +124,9 @@ class RepaymentDraftInboxViewModelTest {
             listResult = Result.success(listOf(draft("d1"))),
             confirmResult = Result.failure(RuntimeException("409")),
         )
-        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, FakeRepayableDebtActions())
+        val viewModel = RepaymentDraftInboxViewModel(draftsRepo,
+            FakeRepayableDebtActions(listResult = Result.success(listOf(debt("debt-9", rowVersion = 1L)))),
+            adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
 
         viewModel.confirm("d1", debt("debt-9", rowVersion = 1L))
@@ -138,7 +143,7 @@ class RepaymentDraftInboxViewModelTest {
             listResult = Result.success(listOf(draft("d1"))),
             dismissResult = Result.success(draft("d1", status = RepaymentDraftStatuses.DISMISSED)),
         )
-        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, FakeRepayableDebtActions())
+        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, FakeRepayableDebtActions(), adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
         val listCallsAfterInit = draftsRepo.listCalls
 
@@ -156,7 +161,9 @@ class RepaymentDraftInboxViewModelTest {
             listResult = Result.success(listOf(draft("d1"), draft("d2"))),
             confirmResult = Result.success(draft("d1", status = RepaymentDraftStatuses.CONFIRMED)),
         )
-        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, FakeRepayableDebtActions())
+        val viewModel = RepaymentDraftInboxViewModel(draftsRepo,
+            FakeRepayableDebtActions(listResult = Result.success(listOf(debt("debt-9", rowVersion = 1L)))),
+            adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
 
         // Two actions fired back-to-back before the first settles: the second must be dropped
@@ -173,7 +180,7 @@ class RepaymentDraftInboxViewModelTest {
     fun partialDebtFetchFailureClearsTargetDebtsAndSurfacesError() = runTest(dispatcher) {
         val draftsRepo = FakeRepaymentDraftActions(listResult = Result.success(listOf(draft("d1"))))
         val debtsRepo = FakeRepayableDebtActions(listResult = Result.success(listOf(debt("open-external"))))
-        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, debtsRepo)
+        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, debtsRepo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
         assertEquals(listOf("open-external"), viewModel.state.value.targetDebts.map { it.publicId })
 
@@ -190,7 +197,7 @@ class RepaymentDraftInboxViewModelTest {
     @Test
     fun reloadClearsPriorLedgerStateThenRefetches() = runTest(dispatcher) {
         val draftsRepo = FakeRepaymentDraftActions(listResult = Result.success(listOf(draft("a"))))
-        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, FakeRepayableDebtActions())
+        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, FakeRepayableDebtActions(), adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
         assertEquals("a", viewModel.state.value.drafts.single().publicId)
 
@@ -216,7 +223,7 @@ class RepaymentDraftInboxViewModelTest {
         val debtsRepo = FakeRepayableDebtActions(
             listResult = Result.success(listOf(debt("card"))),
         )
-        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, debtsRepo)
+        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, debtsRepo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
 
         viewModel.reload(focusedDraftPublicId = "from-expense")
@@ -241,7 +248,7 @@ class RepaymentDraftInboxViewModelTest {
             // default remaining 50_000 ≥ draft amount 50_000 → feasible.
             listResult = Result.success(listOf(debt("card", rowVersion = 3L))),
         )
-        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, debtsRepo)
+        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, debtsRepo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
 
         val suggested = viewModel.state.value.suggestedDebtByDraftId["d1"]
@@ -268,7 +275,7 @@ class RepaymentDraftInboxViewModelTest {
         val debtsRepo = FakeRepayableDebtActions(
             listResult = Result.success(listOf(debt("card").copy(remainingAmountCents = 10_000))),
         )
-        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, debtsRepo)
+        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, debtsRepo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
 
         assertNull(viewModel.state.value.suggestedDebtByDraftId["d1"])
@@ -284,7 +291,7 @@ class RepaymentDraftInboxViewModelTest {
         val debtsRepo = FakeRepayableDebtActions(
             listResult = Result.success(listOf(debt("other"))),
         )
-        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, debtsRepo)
+        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, debtsRepo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
 
         assertNull(viewModel.state.value.suggestedDebtByDraftId["d1"])
@@ -296,7 +303,7 @@ class RepaymentDraftInboxViewModelTest {
             listResult = Result.success(listOf(draft("d1"))),
             dismissResult = Result.success(draft("d1", status = RepaymentDraftStatuses.DISMISSED)),
         )
-        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, FakeRepayableDebtActions())
+        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, FakeRepayableDebtActions(), adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
         viewModel.dismiss("d1")
         advanceUntilIdle()
@@ -316,15 +323,22 @@ class RepaymentDraftInboxViewModelTest {
         // the next confirm sends a stale OCC token → a deterministic 409.
         val draftsRepo = FakeRepaymentDraftActions(listResult = Result.success(listOf(draft("d1"))))
         val debtsRepo = FakeRepayableDebtActions(listResult = Result.success(listOf(debt("card", rowVersion = 1L))))
-        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, debtsRepo)
+        val adjustments = FakeDebtAdjustmentActions()
+        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, debtsRepo, adjustments)
         advanceUntilIdle()
         assertEquals(1L, viewModel.state.value.targetDebts.single().rowVersion)
+        val originalChoice = viewModel.state.value.targetDebts.single()
 
         // A slow refresh stalls having captured the rv1 debt snapshot...
         val gate = CompletableDeferred<Unit>()
         debtsRepo.listGate = gate
-        viewModel.refresh()
+        adjustments.rows.value = listOf(pendingAdjustment(status = PendingMutationStatus.Done))
         runCurrent()
+        assertTrue(viewModel.state.value.isLoading)
+        assertTrue(viewModel.state.value.targetDebts.isEmpty())
+        viewModel.confirm("d1", originalChoice)
+        runCurrent()
+        assertTrue(draftsRepo.confirmCalls.isEmpty())
 
         // ...then a repayment elsewhere bumps the row_version; a newer refresh picks up rv2.
         debtsRepo.listGate = null
@@ -332,6 +346,13 @@ class RepaymentDraftInboxViewModelTest {
         viewModel.refresh()
         advanceUntilIdle()
         assertEquals(2L, viewModel.state.value.targetDebts.single().rowVersion)
+
+        viewModel.confirm("d1", originalChoice)
+        advanceUntilIdle()
+        assertTrue(draftsRepo.confirmCalls.isEmpty(), "An old picker callback cannot silently borrow fresh OCC")
+        viewModel.confirm("d1", viewModel.state.value.targetDebts.single())
+        advanceUntilIdle()
+        assertEquals(2L, draftsRepo.confirmCalls.single().expectedRowVersion)
 
         // Release the stale refresh; the stale rv1 must NOT come back as the OCC token.
         gate.complete(Unit)
@@ -343,7 +364,7 @@ class RepaymentDraftInboxViewModelTest {
     fun staleRefreshDoesNotClobberReloadedLedger() = runTest(dispatcher) {
         // Ledger switch: a slow prior refresh must not show the old ledger's drafts under the new one.
         val draftsRepo = FakeRepaymentDraftActions(listResult = Result.success(listOf(draft("ledgerA"))))
-        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, FakeRepayableDebtActions())
+        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, FakeRepayableDebtActions(), adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
 
         // A slow refresh stalls (it captured ledger A's drafts)...
@@ -429,13 +450,6 @@ private class FakeRepayableDebtActions(
     ): Result<DebtBillSuggestion> = Result.failure(UnsupportedOperationException())
     override suspend fun recordRepayment(publicId: String, expectedRowVersion: Long, amountCents: Long): Result<Debt> =
         Result.success(debt(publicId))
-
-    override suspend fun recordAdjustment(
-        publicId: String,
-        expectedRowVersion: Long,
-        amountCents: Long,
-        reason: String,
-    ): Result<Debt> = Result.success(debt(publicId))
 
     override suspend fun voidRepayment(
         publicId: String,

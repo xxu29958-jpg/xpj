@@ -4,7 +4,6 @@ import com.ticketbox.data.local.PersistedLedgerIdentity
 
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
-import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtBillParseResponseDto
 import com.ticketbox.data.remote.dto.DebtDto
 import com.ticketbox.data.remote.dto.DebtForgiveCreateRequestDto
@@ -251,56 +250,6 @@ class DebtRepositoryTest {
         val keys = handler.repaymentCalls.mapNotNull { it.idempotencyKey }
         assertEquals(2, keys.size)
         assertEquals(2, keys.toSet().size)
-    }
-
-    @Test
-    fun recordAdjustmentSendsSignedAmountTrimmedReasonAndVersion() = runTest {
-        val handler = DebtApiHandler()
-
-        repository(handler).recordAdjustment(
-            publicId = "d1",
-            expectedRowVersion = 2L,
-            amountCents = -5_000L,
-            reason = "  减免部分  ",
-        ).getOrThrow()
-
-        val call = handler.adjustmentCalls.single()
-        assertEquals(-5_000L, call.request.amountCents)
-        // The repository trims the reason before the request leaves the client.
-        assertEquals("减免部分", call.request.reason)
-        assertEquals(2L, call.request.expectedRowVersion)
-        assertTrue(!call.idempotencyKey.isNullOrBlank())
-    }
-
-    @Test
-    fun recordAdjustmentRejectsZeroAmountBeforeApiCall() = runTest {
-        val handler = DebtApiHandler()
-
-        val result = repository(handler).recordAdjustment("d1", expectedRowVersion = 1L, amountCents = 0L, reason = "x")
-
-        assertTrue(result.isFailure)
-        assertTrue(handler.adjustmentCalls.isEmpty())
-    }
-
-    @Test
-    fun recordAdjustmentRejectsBlankReasonBeforeApiCall() = runTest {
-        val handler = DebtApiHandler()
-
-        val result = repository(handler).recordAdjustment("d1", expectedRowVersion = 1L, amountCents = 100L, reason = "   ")
-
-        assertTrue(result.isFailure)
-        assertTrue(handler.adjustmentCalls.isEmpty())
-    }
-
-    @Test
-    fun recordAdjustmentViewerShortCircuitsWithoutApiCall() = runTest {
-        val handler = DebtApiHandler()
-
-        val result = repository(handler, role = "viewer")
-            .recordAdjustment("d1", expectedRowVersion = 1L, amountCents = 100L, reason = "x")
-
-        assertTrue(result.isFailure)
-        assertTrue(handler.adjustmentCalls.isEmpty())
     }
 
     @Test
@@ -663,7 +612,6 @@ private class DebtApiFactory(private val handler: DebtApiHandler) : ApiServiceFa
 }
 
 private data class RepaymentCall(val publicId: String, val request: RepaymentCreateRequestDto, val idempotencyKey: String?)
-private data class AdjustmentCall(val publicId: String, val request: DebtAdjustmentCreateRequestDto, val idempotencyKey: String?)
 private data class VoidCall(val publicId: String, val request: DebtVoidCreateRequestDto, val idempotencyKey: String?)
 private data class SetKindCall(val publicId: String, val request: DebtKindSetRequestDto, val idempotencyKey: String?)
 private data class ForgiveCall(val publicId: String, val request: DebtForgiveCreateRequestDto, val idempotencyKey: String?)
@@ -697,7 +645,6 @@ private class DebtApiHandler : InvocationHandler {
     val listLenses = mutableListOf<String?>()
     val parseBillCalls = mutableListOf<MultipartBody.Part>()
     val repaymentCalls = mutableListOf<RepaymentCall>()
-    val adjustmentCalls = mutableListOf<AdjustmentCall>()
     val voidCalls = mutableListOf<VoidCall>()
     // ADR-0049 §7.0 / 8e-6e debt_kind correction-setter route recording.
     val setKindCalls = mutableListOf<SetKindCall>()
@@ -760,14 +707,6 @@ private class DebtApiHandler : InvocationHandler {
                 repaymentCalls += RepaymentCall(
                     publicId = values[0] as String,
                     request = values[1] as RepaymentCreateRequestDto,
-                    idempotencyKey = values[2] as String?,
-                )
-                writeResult ?: debtDto(publicId = values[0] as String)
-            }
-            "recordDebtAdjustment" -> {
-                adjustmentCalls += AdjustmentCall(
-                    publicId = values[0] as String,
-                    request = values[1] as DebtAdjustmentCreateRequestDto,
                     idempotencyKey = values[2] as String?,
                 )
                 writeResult ?: debtDto(publicId = values[0] as String)
