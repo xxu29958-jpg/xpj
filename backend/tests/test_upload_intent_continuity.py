@@ -238,3 +238,44 @@ def test_android_upload_lost_commit_ack_recovers_its_original_task_and_receipt(
     assert _stored_upload_files() == accepted_files
     assert len(submissions) == 1
 
+
+@pytest.mark.real_db
+def test_android_upload_uncommitted_attempt_cannot_submit_or_return_a_receipt(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, *, identity,
+) -> None:
+    from sqlalchemy.exc import SQLAlchemyError
+    from sqlalchemy.orm import Session
+
+    submissions: list[int] = []
+    monkeypatch.setattr("app.services.background_task_service._submit_task",
+        lambda task_id, *_args, **_kwargs: submissions.append(task_id))
+    before_rows, before_files = _ledger_upload_row_counts("owner"), set(_stored_upload_files())
+    key = "70000000-0000-4000-8000-000000000023"
+    headers = {**identity.app_headers, "Idempotency-Key": key, "Content-Type": "image/png"}
+    original_commit = Session.commit
+    commit_attempted = False
+
+    def reject_upload_commit(db):
+        nonlocal commit_attempted
+        if any(isinstance(row, ApiIdempotencyKey) and row.idempotency_key == key
+            and row.status == "succeeded" for row in db.identity_map.values()):
+            commit_attempted = True
+            raise SQLAlchemyError("upload transaction was not committed")
+        original_commit(db)
+
+    monkeypatch.setattr(Session, "commit", reject_upload_commit)
+    with TestClient(app, raise_server_exceptions=False) as no_raise_client:
+        failed = no_raise_client.post("/api/app/upload-screenshot", headers=headers, content=PNG_BYTES)
+    assert commit_attempted
+    assert failed.status_code == 500
+    assert _ledger_upload_row_counts("owner") == before_rows
+    assert set(_stored_upload_files()) > before_files, "An uncertain commit preserves its original attachment"
+    assert submissions == []
+    with SessionLocal() as db:
+        assert db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == key)) is None
+
+    monkeypatch.setattr(Session, "commit", original_commit)
+    retry = client.post("/api/app/upload-screenshot", headers=headers, content=PNG_BYTES)
+    assert retry.status_code == 200
+    assert _ledger_upload_row_counts("owner") == (before_rows[0] + 1, before_rows[1] + 1)
+    assert len(submissions) == 1

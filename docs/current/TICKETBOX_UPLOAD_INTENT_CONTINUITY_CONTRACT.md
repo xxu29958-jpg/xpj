@@ -101,3 +101,16 @@ Keyed receipt 的 `duration_ms/timing_ms` 随成功收据在 commit 前冻结，
 主控先纠正这一新增测试：真实 commit 之后注入确认丢失，期望在确认原提交存在后返回其原收据，并且原 task id、原 timezone 和原 OCC 只提交一次；同 key 重放不再新增或执行另一项任务。新增判定尚待实际云端 RED；前文 seven-case 源码检查不再等于该测试已正确闭合。当前后端稳定收据候选仍是部分生产实现，整个 PR 保持 Draft，未具备合并资格。
 
 提交前实际体量检查发现，把上述案例继续放在通用 `test_uploads.py` 会使它从 880 增至 1037 行。现将完整收据/claim/replay/recovery 责任的五个场景及唯一行数 oracle 一起迁入 `test_upload_intent_continuity.py`，共 240 行；原文件保留上传路由/输入/文件行为，共 811 行。共享文件与图片测试工具复用既有 `api_contract_helpers` 和 `tests._infra.assets`，没有测试模块互相导入、额外框架或阈值修改。AST 对照证明基线 32 个原测试跨两文件各保留一次，正文不变；四个新函数共七 case，包括上述已纠正的恢复判定。所有选中 Python 源的 AST、Ruff 与 diff 检查通过，本机没有执行数据库或应用测试。
+
+### 4e4472ea 的实际恢复 RED 与原提交出口修正
+
+本轮基线 source 为 `4e4472ea2f50ffe9fc5532b4a02cc5c9dcc571de` / tree `aaeb2f091bccad13b076b04284af78abb95d27ca`。主控已核 actual checkout `58419d27f2acd1cc97c409008ef93f78545ce192` 同 tree；CI `34064652217` 的 real-db 3/3 job `101571199638` 原日志实际为 108 passed / 1 failed / 3926 deselected，468.76 秒。唯一失败 `test_upload_intent_continuity.py:216` 已越过真正 commit 后注入确认丢失的前提，但 HTTP 返回 500 而非 200。后续 task/payload/receipt 与重放断言被该首项遮住，不能宣称已执行。该实际行为 RED 已由主控裁 FIX；原断言全部保留。
+
+| 当前直接责任与消费者 | 本轮 after-impact / 退役出口 | 直接验证边界 |
+| --- | --- | --- |
+| `handle_upload` 的 keyed 原业务 commit | 原来 commit 抛错后只回滚并返回异常，已经落库的 queued task 没有提交出口。现在 `_commit_upload` 在数据库提交异常后先 rollback，再由同文件只读查询核实原 claim id、同 ledger、succeeded 状态、完整原 receipt，以及其原 Expense id/public_id 和 prepared task id/public_id/type。只在这些事实共同成立时继续原 postcommit 段。 | 原 lost-ack 例继续要求一次原 task/payload submit、原 timezone/OCC 和精确原收据；新源码仍须在 exact PG 执行。读回没有修改 ORM、补写 claim 或第二次业务 commit。 |
+| 同一 prepared task / submit / HIT | 已证明提交的当前请求仍将内存中的同一个 `PreparedBackgroundTask` 及原 payload 交给既有 `submit_pending_expense_enrichment`；与普通 commit 成功共用唯一后置调用。原 HIT 直接返回已保存 typed receipt，绝不据此重新 submit。 | 旧 same-key 完整收据和不同 key 同图正控、postcommit submission owner 的既有失败语义均保留；没有新增后台扫描、payload 列、队列或启动 orphan 规则。 |
+| 未提交或无法读取证明的异常 | 没有匹配持久收据、Expense/task，或 rollback/read 遇到数据库错误时继续抛原 commit 异常；已有不确定附件保留规则不变。退役“内存里已有成功 receipt 就能宣布接受/submit”的可能出口。 | 新增唯一 real-db 负控 `test_android_upload_uncommitted_attempt_cannot_submit_or_return_a_receipt`：提交动作实际抛错且未 commit，要求 500、claim/Expense/task 未持久、零 submit、原附件保留；恢复数据库提交后原 key 才首次成功。该新增例未在本机运行。 |
+| Headerless / UploadLink / Web / API 协议 | 无 claim 的调用继续原 commit / rollback / 附件补偿规则；上传 body、header 可选性、鉴权、容量、UploadLink guard、Web 返回和 OpenAPI 均未改变。 | `test_uploads.py` 与本轮基线完整不变；focused 文件的全部既有函数 AST 不变。仅 request owner、focused 测试和本段变更，不改 Android 或其它工作树。 |
+
+本轮实际秒级检查仅覆盖 Python AST、原测试 AST 保留、Ruff、diff、既有逐路径 scope 与定向 Lizard；不是 PG 或产品执行。没有本机 PG/Gradle/长测、提交或推送。修正后原 lost-ack 后置断言和新未提交负控的运行结果仍待主控发布新 exact 候选，不能用本轮源码检查宣称 GREEN。
