@@ -1,6 +1,7 @@
 """Protocol rejection precedes validation of the new month-bearing commands."""
 
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 from fastapi import FastAPI
@@ -25,6 +26,50 @@ COMMANDS = (
 
 def test_month_bearing_protocol_has_a_distinct_version() -> None:
     assert CURRENT_API_VERSION != MONTHLESS_API_VERSION
+
+
+def test_protocol_schema_requires_one_header_for_each_guarded_income_command() -> None:
+    from app.main import app
+
+    schema = app.openapi()
+    components = schema["components"]["parameters"]
+    for method, path, _ in COMMANDS[:4]:
+        route = path.replace("/plan", "/{public_id}")
+        parameters = schema["paths"][route][method.lower()]["parameters"]
+        resolved = [components[p["$ref"].rsplit("/", 1)[-1]] if "$ref" in p else p for p in parameters]
+        version_headers = [p for p in resolved if p.get("name") == "Ticketbox-Api-Version"]
+        assert len(version_headers) == 1, (method, route, version_headers)
+        assert version_headers[0]["required"] is True, (method, route)
+    # Other recycle kinds do not require the income epoch. Document that
+    # conditional guard without imposing a new protocol on every restore.
+    parameters = schema["paths"]["/api/recycle-bin/restore"]["post"]["parameters"]
+    resolved = [components[p["$ref"].rsplit("/", 1)[-1]] if "$ref" in p else p for p in parameters]
+    version_headers = [p for p in resolved if p.get("name") == "Ticketbox-Api-Version"]
+    assert len(version_headers) == 1
+    assert version_headers[0]["required"] is False
+    assert "income_plan" in version_headers[0]["description"]
+
+
+def test_recycle_income_display_and_restore_share_one_accounting_month(monkeypatch) -> None:
+    from app.services import recycle_bin_service
+
+    clock = Mock(side_effect=["2026-09", "2026-10", "2026-10", "2026-10"])
+    monkeypatch.setattr(recycle_bin_service, "current_accounting_month", clock)
+    monkeypatch.setattr(recycle_bin_service, "_income_detail", lambda _: "计划")
+    db = Mock()
+    db.scalars.return_value = [
+        SimpleNamespace(public_id=key, label=key, archived_at=None, row_version=2)
+        for key in ("plan-a", "plan-b")
+    ]
+
+    rows = recycle_bin_service._archived_income_rows(db, "owner")
+    responses = [recycle_bin._to_response(row) for row in rows]
+
+    assert len(responses) == 2
+    for row in responses:
+        assert row.restore_intent_month == "2026-09"
+        assert row.detail.endswith("恢复从 2026-09 生效")
+    clock.assert_called_once_with()
 
 
 @pytest.mark.parametrize("version", [None, MONTHLESS_API_VERSION, "current"])

@@ -271,6 +271,7 @@ _FROZEN_DESKTOP_FILES = {
 }
 _EXACT_SCOPE_RULES = {
     **dict.fromkeys(_DOC_FILES, ()),
+    "docs/architecture/openapi_contract.json": ("android",),
     **dict.fromkeys(_WINDOWS_ONLY_BACKEND_FILES, ("windows",)),
     **dict.fromkeys(_POSTGRES_WINDOWS_BACKEND_FILES, ("postgres", "windows")),
     **dict.fromkeys(

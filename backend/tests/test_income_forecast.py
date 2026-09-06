@@ -74,6 +74,75 @@ def test_undated_baseline_cannot_fabricate_historical_income() -> None:
     assert current.expected_amount_cents == 100_00
 
 
+def test_metadata_edits_do_not_turn_an_undated_single_month_estimate_into_known_history() -> None:
+    from app.errors import AppError
+    from app.services.income_plan_service._forecast import forecast_from_revisions
+
+    baseline = _revision(1, None)
+    baseline.change_kind = "baseline"
+    renamed = _revision(2, date(2026, 8, 1))
+    renamed.intent_month = date(2026, 9, 1)
+    reclassified = _revision(3, date(2026, 8, 1))
+    reclassified.intent_month = date(2026, 10, 1)
+    for row, label, source in (
+        (baseline, "旧名称", "salary"), (renamed, "新名称", "salary"), (reclassified, "新名称", "other"),
+    ):
+        row.frequency, row.income_month = "one_time", "2026-08"
+        row.label, row.source_type = label, source
+
+    for revisions in ([baseline, renamed], [baseline, renamed, reclassified]):
+        with pytest.raises(AppError, match="历史计划") as error:
+            forecast_from_revisions(revisions, period=date(2026, 8, 1), today=date(2026, 11, 2))
+        assert error.value.status_code == 422
+        current = forecast_from_revisions(revisions, period=date(2026, 11, 1), today=date(2026, 11, 2))
+        assert current.expected_amount_cents == 0
+
+
+@pytest.mark.parametrize(("field", "value", "target", "expected"), [
+    ("amount_cents", 120_00, date(2026, 8, 1), 120_00),
+    ("pay_day", 28, date(2026, 8, 1), 100_00),
+    ("income_month", "2026-07", date(2026, 7, 1), 100_00),
+])
+def test_explicit_single_month_financial_correction_survives_a_later_rename(field, value, target, expected) -> None:
+    from app.services.income_plan_service._forecast import forecast_from_revisions
+
+    baseline = _revision(1, None)
+    baseline.change_kind = "baseline"
+    baseline.frequency, baseline.income_month = "one_time", "2026-08"
+    corrected = SimpleNamespace(**vars(baseline))
+    corrected.revision_number, corrected.change_kind = 2, "edit"
+    corrected.effective_month, corrected.intent_month = min(target, date(2026, 8, 1)), date(2026, 9, 1)
+    setattr(corrected, field, value)
+    renamed = SimpleNamespace(**vars(corrected))
+    renamed.revision_number, renamed.intent_month, renamed.label = 3, date(2026, 10, 1), "新名称"
+
+    forecast = forecast_from_revisions(
+        [baseline, corrected, renamed], period=target, today=date(2026, 11, 2),
+    )
+    assert (forecast.expected_amount_cents, forecast.scheduled_amount_cents) == (expected, expected)
+    if field == "income_month":
+        original_target = forecast_from_revisions(
+            [baseline, corrected, renamed], period=date(2026, 8, 1), today=date(2026, 11, 2),
+        )
+        assert original_target.expected_amount_cents == 0
+
+
+def test_metadata_edit_keeps_the_existing_dated_single_month_projection() -> None:
+    from app.services.income_plan_service._forecast import forecast_from_revisions
+
+    created = _revision(1, date(2026, 8, 1))
+    created.frequency, created.income_month, created.label = "one_time", "2026-08", "旧名称"
+    renamed = SimpleNamespace(**vars(created))
+    renamed.revision_number, renamed.change_kind = 2, "edit"
+    renamed.intent_month, renamed.label = date(2026, 9, 1), "新名称"
+
+    forecast = forecast_from_revisions(
+        [created, renamed], period=date(2026, 8, 1), today=date(2026, 10, 2),
+    )
+    assert forecast.expected_amount_cents == 100_00
+    assert forecast.entries[0].label == "新名称"
+
+
 def test_single_month_correction_does_not_erase_unrelated_monthly_history() -> None:
     from app.services.income_plan_service._forecast import forecast_from_revisions
 

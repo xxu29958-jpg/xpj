@@ -170,7 +170,11 @@ def require_current_api_version(api_version: str | None) -> None:
 
 def get_current_protocol_writer_context(
     auth: AuthContext = Depends(get_current_writer_context),
-    api_version: str | None = Header(default=None, alias=TICKETBOX_API_VERSION_HEADER),
+    api_version: str | None = Header(
+        default=None, alias=TICKETBOX_API_VERSION_HEADER,
+        description="Required API contract version from the runtime compatibility handshake.",
+        json_schema_extra={"x-ticketbox-runtime-required": True},
+    ),
 ) -> AuthContext:
     """Authenticate and negotiate before validating a new command body."""
     require_current_api_version(api_version)

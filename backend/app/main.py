@@ -257,6 +257,23 @@ def _uses_project_error_envelope(path: str) -> bool:
     return path.startswith("/api/") or path.startswith("/u/")
 
 
+def _apply_protocol_header_contract(operation: dict, parameter_components: dict, *, runtime_write: bool) -> None:
+    if runtime_write:
+        parameters = operation.setdefault("parameters", [])
+        existing_names = {parameter.get("name") for parameter in parameters if isinstance(parameter, dict)}
+        parameters.extend(
+            dict(parameter_ref)
+            for parameter_ref in _RUNTIME_WRITE_PARAMETER_REFS
+            if parameter_components[parameter_ref["$ref"].rsplit("/", 1)[-1]]["name"] not in existing_names
+        )
+    for parameter in operation.get("parameters", []):
+        # A runtime optional declaration preserves the custom refusal envelope;
+        # consume the guard's metadata here so clients see its real requirement.
+        runtime_required = parameter.get("schema", {}).pop("x-ticketbox-runtime-required", False)
+        if parameter.get("in") == "header" and (runtime_required or parameter.get("name") == "Idempotency-Key"):
+            parameter["required"] = True
+
+
 def _custom_openapi() -> dict:
     """OpenAPI document with project-level protocol fixes applied.
 
@@ -314,19 +331,10 @@ def _custom_openapi() -> dict:
         for method, operation in path_item.items():
             if not isinstance(operation, dict):
                 continue
-            if path.startswith("/api/") and method.lower() in _RUNTIME_WRITE_METHODS:
-                operation_parameters = operation.setdefault("parameters", [])
-                existing_refs = {
-                    parameter.get("$ref") for parameter in operation_parameters if isinstance(parameter, dict)
-                }
-                operation_parameters.extend(
-                    dict(parameter_ref)
-                    for parameter_ref in _RUNTIME_WRITE_PARAMETER_REFS
-                    if parameter_ref["$ref"] not in existing_refs
-                )
-            for parameter in operation.get("parameters", []):
-                if parameter.get("in") == "header" and parameter.get("name") == "Idempotency-Key":
-                    parameter["required"] = True
+            _apply_protocol_header_contract(
+                operation, parameter_components,
+                runtime_write=path.startswith("/api/") and method.lower() in _RUNTIME_WRITE_METHODS,
+            )
             if _uses_project_error_envelope(path):
                 responses = operation.setdefault("responses", {})
                 responses["422"] = _project_error_response(responses.get("422"))

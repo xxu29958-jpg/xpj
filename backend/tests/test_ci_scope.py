@@ -20,14 +20,15 @@ def test_docs_only_change_skips_heavy_jobs() -> None:
     }
 
 
-def test_android_source_change_runs_only_android_job() -> None:
-    assert classify_ci_paths(["android/app/src/main/java/com/ticketbox/MainActivity.kt"]) == {
-        "postgres": False,
-        "backend_frozen": False,
-        "desktop": False,
-        "android": True,
-        "windows": False,
-    }
+def test_android_source_and_openapi_snapshot_run_only_android_job() -> None:
+    # OpenApiContractGateTest reads this snapshot to drive actual Moshi DTO checks.
+    _assert_path_scopes(
+        (
+            "android/app/src/main/java/com/ticketbox/MainActivity.kt",
+            "docs/architecture/openapi_contract.json",
+        ),
+        "android",
+    )
 
 
 def _assert_path_scopes(paths: tuple[str, ...], *enabled: str) -> None:
