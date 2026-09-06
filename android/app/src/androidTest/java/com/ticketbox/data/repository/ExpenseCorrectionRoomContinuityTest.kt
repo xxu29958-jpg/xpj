@@ -184,7 +184,8 @@ class ExpenseCorrectionRoomContinuityTest {
             """{"expected_row_version":0,"reason":"旧提交","splits":[]}""", 9, "old-key")
         fixture.outbox.markDone(id)
         val original = fixture.stored().single()
-        val repository = fixture.reopen().expenseRepository
+        val graph = fixture.reopen()
+        val repository = graph.expenseRepository
         val observed = repository.observeCorrections().first()
         val pending = observed.corrections.single()
         assertFalse(pending.delivered)
@@ -193,8 +194,36 @@ class ExpenseCorrectionRoomContinuityTest {
         assertEquals(original["payload"], fixture.stored().single()["payload"])
         val binding = requireNotNull(observed.access).binding
         assertTrue(repository.recoverCorrection(binding, id, false).isFailure)
+        compose.runOnIdle {
+            global = outboxStatusViewModelFactory(fixture.outbox, repository,
+                OutboxRecoveryRepositories(graph.debtCreationRepository, graph.recurringRepository.occurrences,
+                    graph.incomePlanRepository, graph.debtAdjustmentRepository)).create(OutboxStatusViewModel::class.java)
+        }
+        compose.setContent { TicketboxTheme(skin = AppSkin.Paper) {
+            SyncStatusScreen(requireNotNull(global), {}, onOpenExpense = {})
+        } }
+        compose.waitUntil(10_000) { global?.uiState?.value?.correctionObservation?.corrections?.singleOrNull()?.row?.id == id }
+        val status = requireNotNull(global).uiState.value.status
+        assertEquals(0, status.queueDepth)
+        assertTrue(status.conflicts.isEmpty())
+        assertTrue(status.failed.isEmpty())
+        assertEquals(0, status.quarantinedCount)
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        compose.onNodeWithText(context.getString(R.string.correction_submission_unsupported))
+            .performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.correction_submission_retry)).assertDoesNotExist()
+        compose.onNodeWithText(context.getString(R.string.sync_status_overview_caption_settled)).assertDoesNotExist()
+        compose.onNodeWithText(context.getString(R.string.sync_status_overview_caption_needs_action, 1)).assertDoesNotExist()
+        compose.onNodeWithText("1 笔旧提交需要核对当前事实，送达情况尚未确认。")
+            .performScrollTo().assertIsDisplayed()
+        assertEquals(original, fixture.stored().single())
+        assertEquals(0, fixture.confirmedCallbacks)
+        assertEquals(0, fixture.adviceCallbacks)
         repository.recoverCorrection(binding, id, true).getOrThrow()
         assertTrue(fixture.stored().isEmpty())
+        compose.waitUntil(10_000) { global?.uiState?.value?.correctionObservation?.corrections?.isEmpty() == true }
+        compose.onNodeWithText(context.getString(R.string.sync_status_overview_caption_settled))
+            .performScrollTo().assertIsDisplayed()
         assertEquals(0, fixture.network.calls.size)
     }
 
