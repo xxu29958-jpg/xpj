@@ -1,6 +1,5 @@
 package com.ticketbox.ui.navigation
 
-import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -10,7 +9,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -24,9 +22,7 @@ import com.ticketbox.ui.screens.pending.PendingQuickFixEntryActions
 import com.ticketbox.ui.screens.pending.PendingReviewFlowActions
 import com.ticketbox.ui.screens.pending.PendingReviewSheetHostActions
 import com.ticketbox.ui.screens.pending.PendingScreenChromeActions
-import com.ticketbox.upload.prepareScreenshotUpload
 import com.ticketbox.viewmodel.PendingViewModel
-import kotlinx.coroutines.CoroutineScope
 import com.ticketbox.viewmodel.closeSheet
 import com.ticketbox.viewmodel.confirmReadyExpenses
 import com.ticketbox.viewmodel.openBulkConfirm
@@ -39,9 +35,6 @@ import com.ticketbox.viewmodel.saveAmountDraft
 import com.ticketbox.viewmodel.saveQuickCategory
 import com.ticketbox.viewmodel.saveQuickMerchant
 import com.ticketbox.viewmodel.skipReviewField
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 @Composable
 internal fun PendingRoute(
@@ -63,7 +56,7 @@ internal fun PendingRoute(
     }
     val state by pendingViewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val uploadScope = rememberCoroutineScope()
+    val uploadSource = remember(context.applicationContext) { pendingUploadSource(context) }
 
     // Targeted entries (data-quality remediation) land on the PRESERVED
     // PendingViewModel with only a client-side filter — unlike Transactions
@@ -81,24 +74,29 @@ internal fun PendingRoute(
         }
     }
 
-    val imagePickerLauncher = rememberSingleImageUploadLauncher(pendingViewModel, context, uploadScope)
-    val launchImagePicker = {
-        imagePickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+    val imagePickerLauncher = rememberSingleImageUploadLauncher(shellState)
+    val launchImagePicker: () -> Boolean = {
+        if (state.canStartUpload) {
+            imagePickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            true
+        } else {
+            false
+        }
     }
 
     // 待确认页负责的两个入口动作：「传小票」shortcut 拉起图片选择 / 系统分享图直传。
     PendingLaunchActionEffect(
         shellState = shellState,
-        uploadScope = uploadScope,
+        canAcceptUpload = state.canStartUpload,
         onOpenPicker = launchImagePicker,
-        onUploadSharedImages = { uris -> uploadSharedImages(context, pendingViewModel, uris) },
+        onUploadSharedImages = { uris -> pendingViewModel.acceptUploads(uris, uploadSource) },
     )
 
     PendingScreen(
         state = state,
         chromeActions = pendingScreenChromeActions(
             viewModel = pendingViewModel,
-            onUploadScreenshot = launchImagePicker,
+            onUploadScreenshot = { launchImagePicker() },
             navigation = PendingInboxNavigationActions(
                 onOpenRepaymentReview = shellState::openRepaymentDrafts,
                 onOpenDataQuality = {
@@ -113,12 +111,12 @@ internal fun PendingRoute(
     )
 }
 
-private data class PendingInboxNavigationActions(
+internal data class PendingInboxNavigationActions(
     val onOpenRepaymentReview: () -> Unit,
     val onOpenDataQuality: () -> Unit,
 )
 
-private fun pendingScreenChromeActions(
+internal fun pendingScreenChromeActions(
     viewModel: PendingViewModel,
     onUploadScreenshot: () -> Unit,
     navigation: PendingInboxNavigationActions,
@@ -130,6 +128,7 @@ private fun pendingScreenChromeActions(
     onOpenDataQuality = navigation.onOpenDataQuality,
     onRetryEnrichment = viewModel::retryEnrichmentObservation,
     onRetryCapacityUpload = viewModel::retryCapacityUpload,
+    onDiscardCapacityUpload = viewModel::discardCapacityUpload,
     requestedFilter = filterRequest.pending,
     onRequestedFilterConsumed = { filterRequest.consume() },
 )
@@ -182,19 +181,12 @@ private fun pendingReviewSheetActions(viewModel: PendingViewModel): PendingRevie
  * 图片选择触发。
  */
 @Composable
-private fun rememberSingleImageUploadLauncher(
-    viewModel: PendingViewModel,
-    context: Context,
-    scope: CoroutineScope,
+internal fun rememberSingleImageUploadLauncher(
+    shellState: MainShellState,
 ): ManagedActivityResultLauncher<PickVisualMediaRequest, Uri?> =
     rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        val attempt = viewModel.beginUploadPreparation() ?: return@rememberLauncherForActivityResult
-        scope.launch {
-            prepareAndUploadSingleImage(viewModel, attempt) {
-                withContext(Dispatchers.IO) { context.prepareScreenshotUpload(uri) }
-            }
-        }
+        shellState.launchAction.post(LaunchAction.UploadSharedImages(listOf(uri.toString())))
     }
 
 /**
@@ -205,24 +197,20 @@ private fun rememberSingleImageUploadLauncher(
 @Composable
 internal fun PendingLaunchActionEffect(
     shellState: MainShellState,
-    uploadScope: CoroutineScope,
-    onOpenPicker: () -> Unit,
-    onUploadSharedImages: suspend (List<String>) -> Unit,
+    canAcceptUpload: Boolean,
+    onOpenPicker: () -> Boolean,
+    onUploadSharedImages: (List<String>) -> Boolean,
 ) {
     // rememberUpdatedState 让 effect 始终读到最新回调，不因首帧捕获而失效。
     val currentOpenPicker by rememberUpdatedState(onOpenPicker)
     val currentUploadShared by rememberUpdatedState(onUploadSharedImages)
-    LaunchedEffect(shellState.launchAction.pending) {
-        when (shellState.launchAction.pending) {
+    LaunchedEffect(shellState.launchAction.pending, canAcceptUpload) {
+        when (val action = shellState.launchAction.pending) {
             is LaunchAction.OpenImagePicker -> {
-                shellState.launchAction.consume()
-                currentOpenPicker()
+                if (canAcceptUpload && currentOpenPicker()) shellState.launchAction.consume(action)
             }
             is LaunchAction.UploadSharedImages -> {
-                val action = shellState.launchAction.consume() as? LaunchAction.UploadSharedImages
-                if (action != null) {
-                    uploadScope.launch { currentUploadShared(action.uris) }
-                }
+                if (currentUploadShared(action.uris)) shellState.launchAction.consume(action)
             }
             else -> Unit
         }

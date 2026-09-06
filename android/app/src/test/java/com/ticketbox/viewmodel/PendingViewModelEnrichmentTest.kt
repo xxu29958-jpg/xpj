@@ -11,7 +11,6 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -57,8 +56,8 @@ internal class PendingViewModelEnrichmentTest : PendingViewModelReviewTestBase()
         val vm = PendingViewModel(fake, enrichmentTaskReader = fake.enrichmentTasks)
         advanceUntilIdle()
 
-        val uploadAttempt = assertNotNull(vm.beginUploadPreparation())
-        assertTrue(vm.uploadPreparedImage(preparedImage("receipt.jpg"), uploadAttempt))
+        assertTrue(vm.acceptUploads(listOf("receipt.jpg")) { preparedImage(it) })
+        runCurrent()
         advanceUntilIdle()
 
         assertEquals(2, fake.enrichmentTasks.calls)
@@ -89,8 +88,8 @@ internal class PendingViewModelEnrichmentTest : PendingViewModelReviewTestBase()
         val vm = PendingViewModel(fake, enrichmentTaskReader = fake.enrichmentTasks)
         advanceUntilIdle()
 
-        val uploadAttempt = assertNotNull(vm.beginUploadPreparation())
-        assertTrue(vm.uploadPreparedImage(preparedImage("receipt.jpg"), uploadAttempt))
+        assertTrue(vm.acceptUploads(listOf("receipt.jpg")) { preparedImage(it) })
+        runCurrent()
         advanceUntilIdle()
 
         assertEquals(1, fake.enrichmentTasks.calls)
@@ -117,8 +116,8 @@ internal class PendingViewModelEnrichmentTest : PendingViewModelReviewTestBase()
         val vm = PendingViewModel(fake, enrichmentTaskReader = fake.enrichmentTasks)
         advanceUntilIdle()
 
-        val uploadAttempt = assertNotNull(vm.beginUploadPreparation())
-        assertTrue(vm.uploadPreparedImage(preparedImage("receipt.jpg"), uploadAttempt))
+        assertTrue(vm.acceptUploads(listOf("receipt.jpg")) { preparedImage(it) })
+        runCurrent()
         runCurrent()
         assertEquals(1, vm.uiState.value.enrichment.activeCount)
 
@@ -152,11 +151,11 @@ internal class PendingViewModelEnrichmentTest : PendingViewModelReviewTestBase()
         val vm = PendingViewModel(fake, enrichmentTaskReader = fake.enrichmentTasks)
         advanceUntilIdle()
 
-        val firstAttempt = assertNotNull(vm.beginUploadPreparation())
-        assertTrue(vm.uploadPreparedImage(preparedImage("first.jpg"), firstAttempt))
+        assertTrue(vm.acceptUploads(listOf("first.jpg")) { preparedImage(it) })
         runCurrent()
-        val secondAttempt = assertNotNull(vm.beginUploadPreparation())
-        assertTrue(vm.uploadPreparedImage(preparedImage("second.jpg"), secondAttempt))
+        runCurrent()
+        assertTrue(vm.acceptUploads(listOf("second.jpg")) { preparedImage(it) })
+        runCurrent()
         runCurrent()
         assertEquals(2, vm.uiState.value.enrichment.activeCount)
 
