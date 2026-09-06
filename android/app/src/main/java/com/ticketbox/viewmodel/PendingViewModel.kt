@@ -8,6 +8,7 @@ import com.ticketbox.data.repository.ExpenseStateOutcome
 import com.ticketbox.data.repository.PendingThumbnailLoader
 import com.ticketbox.data.repository.PendingEnrichmentTaskReader
 import com.ticketbox.data.repository.PendingReviewActions
+import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.ProtectedImage
