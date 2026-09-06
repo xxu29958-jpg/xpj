@@ -269,6 +269,13 @@ _FROZEN_DESKTOP_FILES = {
     "desktop/requirements-build.txt",
     "desktop/requirements-build.lock",
 }
+_DESKTOP_BACKEND_CONSUMER_FILES = {
+    "desktop/tests/_real_backend.py",
+    "desktop/tests/_real_backend_helper.py",
+    "desktop/tests/test_web_bff_edge_e2e.py",
+    "desktop/tests/test_desktop_first_use_backend.py",
+    "desktop/tests/test_ui_browser_layout.py",
+}
 _EXACT_SCOPE_RULES = {
     **dict.fromkeys(_DOC_FILES, ()),
     **dict.fromkeys(_WINDOWS_ONLY_BACKEND_FILES, ("windows",)),
@@ -294,6 +301,7 @@ _EXACT_SCOPE_RULES = {
         ("postgres", "backend_frozen", "windows"),
     ),
     **dict.fromkeys(_FROZEN_DESKTOP_FILES, ("desktop", "windows")),
+    **dict.fromkeys(_DESKTOP_BACKEND_CONSUMER_FILES, ("desktop", "windows")),
     _CROSS_RUNTIME_RELEASE_CONFIG: ("postgres", "desktop", "windows"),
     "backend/app/version.py": ("postgres", "desktop", "windows"),
     "backend/packaging/windows-build-toolchain.json": ("postgres", "windows"),

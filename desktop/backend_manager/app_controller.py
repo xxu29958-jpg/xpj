@@ -318,9 +318,7 @@ class AppController:
                 self._loopback_origin(config),
                 session,
             )
-            if session is not None:
-                return session.public_projection()
-            projection: dict = {"configured": False}
+            projection = session.public_projection() if session is not None else {"configured": False}
             recovery = self._load_rebind_recovery(config)
             if recovery is not None and not recovery.ledger_id and not _provisional_expired(recovery):
                 projection["pairing_recovery"] = "original_code_required"

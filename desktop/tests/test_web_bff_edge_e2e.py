@@ -502,7 +502,7 @@ def test_real_backend_unpaired_bridge_renders_manager_recovery_action(
     assert _INSTANCE_SECRET not in body
 
 
-def test_real_backend_reconcile_after_manager_death_mid_pair(
+def test_real_backend_resumes_a_persisted_activation_receipt(
     tmp_path: Path,
     real_backend: RealBackend,
 ) -> None:

@@ -1534,8 +1534,10 @@ def test_product_mutations_honor_the_shutdown_seal() -> None:
         controller.switch_product_principal_ledger("family")
 
 
-def test_pair_reuses_the_provisional_attempt_after_response_loss() -> None:
-    sessions, recoveries, store = _stores(None)
+@pytest.mark.parametrize("has_previous_session", [False, True])
+def test_pair_reuses_the_provisional_attempt_after_response_loss(has_previous_session: bool) -> None:
+    previous = _product_session(ledger_id="archived") if has_previous_session else None
+    sessions, recoveries, store = _stores(previous)
     seen_attempts: list[tuple[str, str]] = []
     calls = {"count": 0}
 
@@ -1565,6 +1567,7 @@ def test_pair_reuses_the_provisional_attempt_after_response_loss() -> None:
         _config(),
         product_session_pairer=pairer,
         product_session_activator=_activate_pending,
+        product_session_revoker=lambda *_args, **_kwargs: None,
         **store,
     )
 
@@ -1579,11 +1582,15 @@ def test_pair_reuses_the_provisional_attempt_after_response_loss() -> None:
     # or exposing the proof. Only an explicit retry with the original code pairs.
     controller = AppController(
         FakeRuntime(), _config(), product_session_pairer=pairer,
-        product_session_activator=_activate_pending, **store,
+        product_session_activator=_activate_pending,
+        product_session_revoker=lambda *_args, **_kwargs: None, **store,
     )
     assert controller.product_principal() == {
-        "configured": False, "pairing_recovery": "original_code_required",
+        **(previous.public_projection() if previous else {"configured": False}),
+        "pairing_recovery": "original_code_required",
     }
+    if previous is not None:
+        assert sessions[_INSTALLATION_ID] is previous
     assert calls["count"] == 1
     projection = controller.pair_product_principal("12345678")
 

@@ -769,20 +769,13 @@
       // The import/export entry opens the bound ledger's product page; without a
       // live binding it stays disabled so the card never offers a dead click.
       $("importExportAction").disabled = productBusy || !available || !showManage;
-      if (!configured) {
+      if (!configured || membershipLost) {
         const pending = productSession && productSession.pairing_recovery === "original_code_required";
         $("productState").textContent = pending
           ? "上次绑定结果尚未确认，请输入原绑定码继续。若原码已丢失，请等待几分钟，状态更新后再获取新码。"
-          : available ? "获取自己的设备绑定码，连接这台电脑上的桌面账本。"
-            : "服务正常后可以把这台电脑连接到账本。";
-        $("pairAction").disabled = productBusy || !available;
-        $("pairingCodeInput").disabled = productBusy || !available;
-        return;
-      }
-      if (membershipLost) {
-        // The bound ledger vanished from the account's memberships: the stored
-        // session is dead weight — offer the re-pair path, not a phantom role.
-        $("productState").textContent = "原绑定已失效，请使用新的绑定码重新连接。";
+          : membershipLost ? "原绑定已失效，请使用新的绑定码重新连接。"
+            : available ? "获取自己的设备绑定码，连接这台电脑上的桌面账本。"
+              : "服务正常后可以把这台电脑连接到账本。";
         $("pairAction").disabled = productBusy || !available;
         $("pairingCodeInput").disabled = productBusy || !available;
         return;

@@ -30,6 +30,7 @@ def test_local_first_use_and_original_code_continuation(tmp_path: Path) -> None:
         "invalidCanGetNewCode": True, "originalCodeRetained": True,
         "pendingExplained": True, "pendingCannotMintNewCode": True,
         "restartStillExplainsOriginalCode": True, "expiredCanGetNewCode": True,
+        "pendingRebindExplained": True,
         "readFailureClosed": True, "unavailableClosed": True,
         "horizontalOverflow": False,
     }

@@ -259,6 +259,17 @@ def test_version_contract_crosses_backend_desktop_and_packaging() -> None:
     }
 
 
+def test_real_desktop_backend_consumers_require_the_native_postgres_lane() -> None:
+    for path in (
+        "desktop/tests/_real_backend.py",
+        "desktop/tests/_real_backend_helper.py",
+        "desktop/tests/test_web_bff_edge_e2e.py",
+        "desktop/tests/test_desktop_first_use_backend.py",
+        "desktop/tests/test_ui_browser_layout.py",
+    ):
+        _assert_path_scopes((path,), "desktop", "windows")
+
+
 def test_always_on_contract_tests_do_not_expand_heavy_scopes() -> None:
     for path in (
         "backend/tests/test_android_test_qualification.py",

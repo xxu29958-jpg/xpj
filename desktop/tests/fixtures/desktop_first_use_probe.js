@@ -11,6 +11,9 @@
       if (readFails) throw new Error("synthetic unavailable");
       return {ok: true, json: async () => session};
     }
+    if (path === "/api/product/ledgers") return {ok: true, json: async () => ({ledgers: [
+      {ledger_id: "family", name: "家庭账本", role: "member", is_default: true, is_current: false},
+    ]})};
     if (path === "/api/open_pairing") {
       commands.push({path, method: options.method});
       return {ok: true, json: async () => status};
@@ -53,6 +56,12 @@
   session = {configured: false}; // The Controller, not a browser clock, settles expiry.
   await loadProductSession();
   result.expiredCanGetNewCode = entryAvailable();
+  session = {configured: true, account_name: "我", ledger_id: "archived", ledger_name: "原账本",
+    device_name: "此电脑", role: "owner", expires_at: null, pairing_recovery: "original_code_required"};
+  await loadProductSession();
+  await loadProductLedgers();
+  result.pendingRebindExplained = !document.getElementById("productPairGroup").hidden &&
+    document.getElementById("productState").textContent.includes("原绑定码") && codeEntry().disabled;
   result.horizontalOverflow = document.documentElement.scrollWidth > document.documentElement.clientWidth + 1;
   readFails = true;
   await loadProductSession();
