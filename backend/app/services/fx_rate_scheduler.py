@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -39,20 +39,25 @@ class FxRateSyncStatus:
     scheduler_config_error: bool = False
 
 
-_status = FxRateSyncStatus()
-_scheduler_thread: threading.Thread | None = None
-_scheduler_config_error = False
+@dataclass
+class _FxRateRuntime:
+    counters: FxRateSyncStatus = field(default_factory=FxRateSyncStatus)
+    scheduler: FxRateScheduler | None = None
+    config_error: bool = False
+
+
+_runtime = _FxRateRuntime()
 
 
 def fx_rate_sync_status() -> FxRateSyncStatus:
     """Snapshot of the background FX sync counters (read-only)."""
     return FxRateSyncStatus(
-        success_count=_status.success_count,
-        failed_count=_status.failed_count,
-        last_error=_status.last_error,
-        last_success_at=_status.last_success_at,
-        scheduler_running=_scheduler_thread is not None and _scheduler_thread.is_alive(),
-        scheduler_config_error=_scheduler_config_error,
+        success_count=_runtime.counters.success_count,
+        failed_count=_runtime.counters.failed_count,
+        last_error=_runtime.counters.last_error,
+        last_success_at=_runtime.counters.last_success_at,
+        scheduler_running=_runtime.scheduler is not None and _runtime.scheduler.thread.is_alive(),
+        scheduler_config_error=_runtime.config_error,
     )
 
 
@@ -119,16 +124,16 @@ def run_fx_sync_once(db: Session) -> bool:
     except Exception:  # noqa: BLE001 — daemon thread + UI trigger must not crash
         _record_sync_failure("sync_failed")
         return False
-    _status.success_count += 1
-    _status.last_success_at = now_utc()
-    _status.last_error = None
+    _runtime.counters.success_count += 1
+    _runtime.counters.last_success_at = now_utc()
+    _runtime.counters.last_error = None
     logger.info("FX sync completed: %s rates", len(rows))
     return True
 
 
 def _record_sync_failure(code: str) -> None:
-    _status.failed_count += 1
-    _status.last_error = code
+    _runtime.counters.failed_count += 1
+    _runtime.counters.last_error = code
     logger.warning("FX sync failed (%s); keeping last-known rates", code)
 
 
@@ -153,10 +158,8 @@ def _scheduler_loop(stop_event: threading.Event, sync_times: list[time], timezon
 
 
 def start_fx_rate_scheduler() -> FxRateScheduler | None:
-    global _scheduler_thread, _scheduler_config_error
-
-    _scheduler_thread = None
-    _scheduler_config_error = False
+    _runtime.scheduler = None
+    _runtime.config_error = False
     settings = get_settings()
     if not settings.fx_rate_auto_sync_enabled:
         return None
@@ -164,7 +167,7 @@ def start_fx_rate_scheduler() -> FxRateScheduler | None:
         sync_times = _parse_sync_times(settings.fx_rate_sync_times)
         timezone = ZoneInfo(settings.fx_rate_sync_timezone)
     except (ValueError, ZoneInfoNotFoundError):
-        _scheduler_config_error = True
+        _runtime.config_error = True
         logger.warning("FX rate scheduler config is invalid")
         return None
 
@@ -175,6 +178,7 @@ def start_fx_rate_scheduler() -> FxRateScheduler | None:
         name="fx-rate-scheduler",
         daemon=True,
     )
-    _scheduler_thread = thread
+    scheduler = FxRateScheduler(thread=thread, stop_event=stop_event)
+    _runtime.scheduler = scheduler
     thread.start()
-    return FxRateScheduler(thread=thread, stop_event=stop_event)
+    return scheduler

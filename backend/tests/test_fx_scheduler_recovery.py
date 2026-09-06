@@ -1,4 +1,4 @@
-"""The FX worker recovers on its next scheduled tick and reports real liveness."""
+"""The FX worker survives storage failures and reports real liveness."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def test_worker_recovers_after_storage_failure(
     else:
         sessions.side_effect = [unavailable, nullcontext(object()), nullcontext(object())]
     refresh = Mock(return_value=[])
-    monkeypatch.setattr(scheduler, "_status", scheduler.FxRateSyncStatus())
+    monkeypatch.setattr(scheduler._runtime, "counters", scheduler.FxRateSyncStatus())
     monkeypatch.setattr(scheduler, "SessionLocal", sessions)
     monkeypatch.setattr(scheduler, "try_claim_scheduler_lease", lease)
     monkeypatch.setattr(scheduler, "require_runtime_home_currency_code", lambda db: "CNY")
@@ -61,7 +61,7 @@ def test_recovery_respects_an_unexpired_lease_before_a_later_success(monkeypatch
     ])
     lease = Mock(side_effect=[True, False, True])
     refresh = Mock(return_value=[])
-    monkeypatch.setattr(scheduler, "_status", scheduler.FxRateSyncStatus())
+    monkeypatch.setattr(scheduler._runtime, "counters", scheduler.FxRateSyncStatus())
     monkeypatch.setattr(scheduler, "SessionLocal", sessions)
     monkeypatch.setattr(scheduler, "try_claim_scheduler_lease", lease)
     monkeypatch.setattr(scheduler, "require_runtime_home_currency_code", lambda db: "CNY")

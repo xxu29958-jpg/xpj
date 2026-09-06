@@ -1,6 +1,6 @@
 # Monthly recurring occurrence working product contract
 
-Status: candidate qualified and merged in #373; independent merged-main qualification pending.
+Status: candidate qualified and merged in #373; independent merged-main qualification passed.
 Decision date: 2026-09-06. Source base: `1d5cc293a94dd7e9b13fdf2a5442d505907d7d3b`.
 
 This is the maintained task contract for this vertical slice. Its authority is the
@@ -124,6 +124,6 @@ Atlas, then continue the original Goal. This slice cannot complete the full RC.
   `7a60709583b532fd8f90f0d1bb6f042d0721ce13`.
 - Protected squash merge #373 produced `3f604d1d0ba7c34afef1311c963c817431a2c521`
   with that same tree. Its independent CI `34010262230`, CodeQL `34010262245`
-  and Connected `34010262247` are running at this evidence update.
+  and actual Connected `34010262247` all passed on that exact merged head.
 - Room close/reopen and synthetic response-loss probes are mechanism tests, not
   process-death, cross-client, clean-Windows or full Internal Beta qualification.
