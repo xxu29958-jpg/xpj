@@ -15,7 +15,7 @@ import com.ticketbox.data.repository.DebtRepository
 import com.ticketbox.data.repository.DebtCreationRepository
 import com.ticketbox.data.repository.toOutboxBinding
 import com.ticketbox.data.repository.ExpenseRepository
-import com.ticketbox.data.repository.IncomePlanActions
+import com.ticketbox.data.repository.IncomePlanRepository
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.data.repository.OutboxRepository
 import com.ticketbox.data.repository.RecurringRepository
@@ -104,6 +104,7 @@ internal class DataQualityConnectedHarness : AutoCloseable {
             dao = database.pendingMutationDao(),
             bindingProvider = { sessionRecord.toOutboxBinding() },
         )
+        val adapters = OutboxAdapterGraph()
         val repositories = MainFeatureRepositories(
             repository = ExpenseRepository(database.expenseDao(), binding),
             ledgerRepository = LedgerRepository(
@@ -115,9 +116,9 @@ internal class DataQualityConnectedHarness : AutoCloseable {
             recurringRepository = RecurringRepository(apiProvider),
             budgetRepository = BudgetRepository(apiProvider),
             reportsRepository = interfaceProxy<ReportsActions>(),
-            incomePlanRepository = interfaceProxy<IncomePlanActions>(),
+            incomePlanRepository = IncomePlanRepository(apiProvider, outbox, adapters.incomePlanUpdateAdapter),
             debtRepository = DebtRepository(apiProvider),
-            debtCreationRepository = DebtCreationRepository(apiProvider, outbox, OutboxAdapterGraph().debtCreateAdapter),
+            debtCreationRepository = DebtCreationRepository(apiProvider, outbox, adapters.debtCreateAdapter),
             repaymentDraftRepository = RepaymentDraftRepository(apiProvider),
             outboxRepository = outbox,
             tagRepository = TagRepository(apiProvider),

@@ -165,10 +165,10 @@ private fun SyncStatusPageBody(
                 FailedCard(
                     row = row,
                     debtCreation = state.failedDebtCreations[row.id],
-                    supportedIntent = row.type != PendingMutationType.UpdateIncomePlan ||
-                        state.incomeEdits[row.id]?.hasSupportedIntent == true,
                     busy = state.busyRowId == row.id,
-                    onRetry = { actions.onRetry(row) },
+                    onRetry = { actions.onRetry(row) }.takeIf {
+                        row.type != PendingMutationType.UpdateIncomePlan || state.incomeEdits[row.id]?.hasSupportedIntent == true
+                    },
                     onDrop = { actions.onDropFailed(row) },
                 )
             }
@@ -260,9 +260,8 @@ private fun ConflictCard(
 private fun FailedCard(
     row: OutboxRow,
     debtCreation: PendingDebtCreation?,
-    supportedIntent: Boolean,
     busy: Boolean,
-    onRetry: () -> Unit,
+    onRetry: (() -> Unit)?,
     onDrop: () -> Unit,
 ) {
     // Expired rows cannot be retried because the server-side idempotency key may be gone.
@@ -288,7 +287,7 @@ private fun FailedCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             SyncStatusRecoveryActions(
-                primary = if (expired || !supportedIntent) {
+                primary = if (expired || onRetry == null) {
                     null
                 } else {
                     SyncStatusActionButton(

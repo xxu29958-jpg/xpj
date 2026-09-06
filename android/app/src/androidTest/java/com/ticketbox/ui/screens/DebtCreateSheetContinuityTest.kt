@@ -7,11 +7,14 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.lifecycle.viewModelScope
 import androidx.test.platform.app.InstrumentationRegistry
@@ -75,7 +78,10 @@ class DebtCreateSheetContinuityTest {
             .performScrollTo().assertIsDisplayed().assertIsEnabled()
         capture("debt-create-editing")
         val touchBefore = saveObservation()
-        compose.onNodeWithText(context.getString(R.string.debt_create_save)).performClick()
+        compose.onNode(hasText(context.getString(R.string.debt_create_save)) and hasClickAction()).performTouchInput {
+            assertTrue("Save injection visibleSize=$visibleSize; before=[$touchBefore]", width > 0 && height > 0)
+            click()
+        }
         runCatching { compose.waitUntil(5_000) { viewModel.state.value.isSubmitting } }.getOrElse { error ->
             val observed = viewModel.state.value
             throw AssertionError("Save did not enter submission: canModify=${observed.canModify}, " +
@@ -103,6 +109,8 @@ class DebtCreateSheetContinuityTest {
 
     private fun saveObservation(): String {
         val node = compose.onNodeWithText(context.getString(R.string.debt_create_save)).fetchSemanticsNode()
+        val label = compose.onNodeWithText(context.getString(R.string.debt_create_save), useUnmergedTree = true)
+            .fetchSemanticsNode()
         val root = requireNotNull(node.root) as ViewRootForTest
         return compose.runOnIdle {
             val view = root.view
@@ -111,7 +119,10 @@ class DebtCreateSheetContinuityTest {
             "attached=${view.isAttachedToWindow}, focus=${view.hasWindowFocus()}, " +
                 "decorFocus=${window.decorView.hasWindowFocus()}, resumed=${root.isLifecycleInResumedState}, " +
                 "pendingLayout=${root.hasPendingMeasureOrLayout}, bounds=${node.boundsInRoot}, " +
-                "touch=${node.touchBoundsInRoot}, windowBounds=${node.boundsInWindow}"
+                "touch=${node.touchBoundsInRoot}, windowBounds=${node.boundsInWindow}, " +
+                "buttonId=${node.id}, buttonSize=${node.size}, buttonPosition=${node.positionInRoot}, " +
+                "labelId=${label.id}, labelSize=${label.size}, labelPosition=${label.positionInRoot}, " +
+                "labelBounds=${label.boundsInRoot}"
         }
     }
 
