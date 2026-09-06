@@ -13,6 +13,7 @@ internal fun ExpenseFactViewModel.observeCorrectionSubmissions(onBindingSnapshot
         repository.observeCorrections().collect { observation ->
             val previous = _uiState.value.correctionAccess
             if (previous != null && previous.binding != observation.access?.binding) {
+                correctionSplitMemberGeneration++
                 correctionBaseline = null
                 correctionBinding = null
                 correctionOriginalItems = null

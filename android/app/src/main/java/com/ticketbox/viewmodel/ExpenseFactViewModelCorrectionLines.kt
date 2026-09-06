@@ -73,8 +73,9 @@ fun ExpenseFactViewModel.dismissCorrectionItemsEditor() = updateCorrection {
 
 fun ExpenseFactViewModel.openCorrectionSplitsEditor() {
     if (!requireCurrentCorrectionContext() || !canEditCorrectionSplits()) return
+    val generation = ++correctionSplitMemberGeneration
     if (_uiState.value.correction.splitsTouched) {
-        updateCorrection { it.copy(splitEditorOpen = true) }
+        updateCorrection { it.copy(splitEditorOpen = true, splitMembersLoading = false) }
         return
     }
     val currentSplits = correctionOriginalSplits ?: _uiState.value.currentCorrectionSplits?.also { correctionOriginalSplits = it } ?: return
@@ -82,9 +83,10 @@ fun ExpenseFactViewModel.openCorrectionSplitsEditor() {
     val binding = correctionBinding
     updateCorrection { it.copy(splitEditorOpen = true, splitMembersLoading = true) }
     viewModelScope.launch {
+        if (generation != correctionSplitMemberGeneration) return@launch
         repository.fetchSplitMembers()
             .onSuccess { members ->
-                if (correctionBinding != binding || correctionBaseline !== expense ||
+                if (generation != correctionSplitMemberGeneration || correctionBinding != binding || correctionBaseline !== expense ||
                     !_uiState.value.correction.splitEditorOpen || correctionContextError() != null) return@onSuccess
                 updateCorrection {
                     it.copy(
@@ -98,8 +100,8 @@ fun ExpenseFactViewModel.openCorrectionSplitsEditor() {
                 }
             }
             .onFailure { error ->
-                if (correctionBinding != binding || correctionBaseline !== expense ||
-                    !_uiState.value.correction.splitEditorOpen) return@onFailure
+                if (generation != correctionSplitMemberGeneration || correctionBinding != binding || correctionBaseline !== expense ||
+                    !_uiState.value.correction.splitEditorOpen || correctionContextError() != null) return@onFailure
                 updateCorrection { it.copy(splitMembersLoading = false) }
                 _uiState.update {
                     it.copy(
@@ -131,8 +133,9 @@ fun ExpenseFactViewModel.updateCorrectionSplitDraft(
     )
 }
 
-fun ExpenseFactViewModel.adoptCorrectionSplits() = updateCorrection {
-    it.copy(splitEditorOpen = false, splitsTouched = true)
+fun ExpenseFactViewModel.adoptCorrectionSplits() {
+    correctionSplitMemberGeneration++
+    updateCorrection { it.copy(splitEditorOpen = false, splitsTouched = true, splitMembersLoading = false) }
 }
 
 /** 均分：把「父金额 − 停用成员固定额」按最大余数法摊到勾选的活跃成员，
@@ -164,6 +167,7 @@ fun ExpenseFactViewModel.evenCorrectionSplitAmounts() {
     }
 }
 
-fun ExpenseFactViewModel.dismissCorrectionSplitsEditor() = updateCorrection {
-    it.copy(splitEditorOpen = false)
+fun ExpenseFactViewModel.dismissCorrectionSplitsEditor() {
+    correctionSplitMemberGeneration++
+    updateCorrection { it.copy(splitEditorOpen = false, splitMembersLoading = false) }
 }
