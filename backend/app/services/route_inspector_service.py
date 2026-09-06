@@ -4,7 +4,7 @@ Walks the FastAPI app's router and groups endpoints by access surface so the
 operator can see at a glance:
 
 - which routes are loopback-only (Owner Console)
-- which require admin token (admin API)
+- which require loopback and a maintenance session (governance API)
 - which are upload/public surfaces
 - which are bootstrap or health probes
 
@@ -42,7 +42,7 @@ class RouteGroup:
 
 _GROUPS: tuple[tuple[str, str, str, str], ...] = (
     ("owner", "Owner Console（仅本机）", "本机环回 + Host 头双重校验，公网不可达。", "surface-owner"),
-    ("admin", "Admin API（管理 token）", "通常只在本机 + admin token 才能调用，可通过 ALLOW_PUBLIC_ADMIN_API 放开（不建议）。", "surface-admin"),
+    ("admin", "管理 API（仅本机）", "设备、上传链接、维护和管理配对码入口仅限本机环回 + Host 校验，另需管理会话。", "surface-admin"),
     ("upload", "上传接口（公网，按 token / Key 校验）", "iPhone 快捷指令 / Android 客户端通过 Cloudflare Tunnel 访问。", "surface-upload"),
     (
         "web",
@@ -60,8 +60,8 @@ _GROUPS: tuple[tuple[str, str, str, str], ...] = (
 def _classify(path: str) -> tuple[str, str, str]:
     if path.startswith("/owner"):
         return ("owner", "Owner Console（仅本机）", "surface-owner")
-    if path.startswith("/api/admin"):
-        return ("admin", "Admin API（管理 token）", "surface-admin")
+    if path.startswith(("/api/admin/", "/api/maintenance/")) or path == "/api/bootstrap/pairing-codes":
+        return ("admin", "管理 API（仅本机）", "surface-admin")
     if path.startswith("/api/bootstrap"):
         return ("bootstrap", "首次绑定 / 引导", "surface-bootstrap")
     if path.startswith("/api/uploads") or path.startswith("/u/") or path == "/u":

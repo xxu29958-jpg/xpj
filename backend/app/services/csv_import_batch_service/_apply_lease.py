@@ -21,9 +21,9 @@ from app.config import get_settings
 from app.errors import AppError
 from app.models import CsvImportBatch
 from app.services.csv_import_batch_service._csv_io import _refresh_batch_counts
+from app.services.csv_import_batch_service._queries import _remaining_importable_rows
 from app.services.csv_import_batch_service._row_claim import (
     _applying_row_count,
-    _remaining_importable_rows,
 )
 from app.services.time_service import ensure_utc, now_utc
 

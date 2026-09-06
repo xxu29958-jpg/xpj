@@ -92,6 +92,24 @@ Authorization: Bearer <admin_token>
 
 以下维护脚本只用于源码/测试环境，不拥有正式安装数据或备份 authority。当前正式 Windows 完整备份/恢复保持 `HOLD`，不得对安装数据套用这些命令。
 
+在运行后端的同一台电脑上执行。`-ServerUrl` 默认是 `http://127.0.0.1:8000`。自定义端口还要求后端明确允许对应的 HTTP Host；仅修改客户端参数会得到 `403/admin_api_local_only`。公网域名和其他电脑的服务地址不属于受支持用法，管理会话不能放宽本机网络边界。
+
+脚本在读取环境管理凭据或发起请求前拒绝非环回地址。参数须为 HTTP(S) 根地址，不得包含登录信息、额外路径、查询或片段；维护请求不跟随重定向。IPv4、IPv6 环回地址及 `localhost` 均保持原精确端口配置前提。
+
+例如使用 `http://127.0.0.1:8765` 时，先在**源码/测试后端的启动窗口**设置：
+
+```powershell
+$env:XPJ_EXTRA_LOOPBACK_HOSTS = "127.0.0.1:8765"
+```
+
+再从该窗口按现有启动方式启动监听此地址的后端；已运行的后端须按原方式重启以继承配置。只在维护脚本窗口设置此变量不会改变另一个后端进程的环境。条目是与 `ServerUrl` 精确匹配的主机和端口，不含协议或路径；如使用 `localhost:8765` 或 `[::1]:8765`，须分别显式列出，多个条目用逗号分隔。连接仍须来自本机环回 peer；此配置不允许公网 Host 或远程电脑。
+
+然后在仓库根目录的维护窗口中，使用现有管理会话执行不删除文件的 dry-run 预览：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\maintenance_ticketbox.ps1 -ServerUrl http://127.0.0.1:8765 -CleanupOrphans
+```
+
 检查孤儿文件但不删除：
 
 ```powershell

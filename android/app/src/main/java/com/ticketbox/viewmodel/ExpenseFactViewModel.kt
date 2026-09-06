@@ -153,6 +153,7 @@ class ExpenseFactViewModel(
     internal var correctionOriginalSplits: ExpenseSplits? = null
     internal var correctionBaseline: Expense? = null
     internal var correctionBinding: com.ticketbox.data.repository.LogicalSessionBinding? = null
+    internal var correctionSplitMemberGeneration = 0L
     internal var observedCorrectionCompletions: Set<Long>? = null
     internal var expenseLoadGeneration = 0L
     internal var itemsLoadGeneration = 0L

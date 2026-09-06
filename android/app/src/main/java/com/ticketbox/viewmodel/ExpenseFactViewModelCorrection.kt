@@ -29,6 +29,7 @@ fun ExpenseFactViewModel.openCorrectionSheet() {
     val state = _uiState.value
     if (!state.canStartCorrection) return
     val expense = state.expense ?: return
+    correctionSplitMemberGeneration++
     correctionOriginalItems = state.currentCorrectionItems
     correctionOriginalSplits = state.currentCorrectionSplits
     correctionBaseline = expense
@@ -40,6 +41,7 @@ fun ExpenseFactViewModel.openCorrectionSheet() {
 }
 
 fun ExpenseFactViewModel.closeCorrectionSheet() {
+    correctionSplitMemberGeneration++
     _uiState.update { it.copy(correction = CorrectionFormState()) }
 }
 
