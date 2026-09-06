@@ -5,7 +5,7 @@
 - Allowed Changes：当前阶段只新增两个直接行为反例、必要的真实仓储 fixture、本合同和 Atlas 原 gap 链接。后续生产须复用现有上传、Room Outbox、幂等、身份与恢复 owner；本阶段没有生产实现授权。
 - Forbidden Surface：不新增 queue / status ledger / bus；不把图片相同当作命令幂等；不把本地保存冒充服务端 receipt；不清除未完成原意图来满足回归；不修改鉴权、金额 writer、容量政策或其它领域；不扩展任何 Windows 生命周期 HOLD。无本机 Gradle / PG / 长测，无 stage / commit / push。
 - Done Checks：来源失效后重开的真实 Room / repository / VM 可读原恢复，原 Retry 最终只发送 A/B/B/C；同一原 key、文件及 timezone 重放返回同一 receipt，账单、任务、文件和执行器提交不增加；不同 key 同图仍新增 Pending 并进入重复核查；容量准入失败仍回滚 Expense / task / file。绑定、权限、未知 payload、协议拒绝与过期不得改绑、换 key 或静默结算；全部直接消费者和旧出口在生产施工后按下表重新闭合。
-- Evidence：基线 `61aa4f7e94667778e82584a3ba878e30eef9d38a`，隔离树 `codex/upload-intent-continuity-20260907`。当前仅 test-first 准备，不是已执行 RED / GREEN，也不代表该基线或全 Goal 已资格化。主控先整合当前 Facts / main，再发布真正反例候选。
+- Evidence：准备基线 `61aa4f7e94667778e82584a3ba878e30eef9d38a`，隔离树 `codex/upload-intent-continuity-20260907`。test-first 经主控提交并整合父链后发布 `e22ff121e7cde6ab600a7f716fae0451fb691463`；实际云端已取得 PG 回执反例 RED，Android 新反例的原始退出原因被 fixture 清理异常覆盖，不能算恢复业务 RED。下文记录此证据及两处测试修正；没有生产 GREEN 或全 Goal 完成声明。
 
 ## 施工前 impact closure
 
@@ -33,10 +33,29 @@
 1. `PendingLaunchActionEffectTest.reopenedRoomAndNewOwnerRecoverConsumedBatchAfterTheSourceUrisAreGone`：先实际创建三个 MediaStore PNG，原 effect → 实际 repositoryViewModelFactory / VM → RepositoryGraph 发 A/B，断言容量暂停、A 的 Room 缓存/lastUploadAt 成立、分享已消费。移除页面后真正清空旧 ViewModelStore、等待旧 VM 子任务结束，撤回源 URI，关闭/重开同一磁盘 Room；建立全新 VM 与空 shell。恢复状态最终应可达，点真实“重试上传”后应有 A/B/B/C，B/C 内容与原图相同且三个 Pending 经原 refresh 可见。当前源预计在新 VM 等待恢复状态处失败；先决条件失败必须单独标为 fixture/接线问题，不能归作此缺口 RED。测试保留源 bytes 仅供断言，生产 owner 无法访问它；不注入 fake PendingReviewActions、不手动重放 refs、不写恢复 loop、不声明 OS 死亡或真实 WorkManager 资格化。
 2. `test_android_upload_same_intent_returns_the_original_receipt_without_another_expense_or_task`：真实 authenticated app 路由 + PostgreSQL + 文件存储，首次提交先验证一条 Expense、一条 task、文件与 timezone/execution submission。完全相同 key/file/timezone 再提交，要求 expense/public/task/status/message receipt 不变，行数、文件集合和执行器提交不增加。只替换原 executor submit，仍使用真实 file-save/准入/claim候选/事务 owner，不调用 OCR/网络。当前源预计在 receipt 标识比较处失败。最后不同 key 同图须新增 Pending/task 并保持 suspected duplicate；该后续正控可能被首次 RED 遮住，不能提前声称执行。
 
-现有两个 workflow 共用 `classify_ci_paths`：两个 Android 测试路径直接触发 Android fast / actual Connected，PG 文件走既有 PostgreSQL lane；没有新增 workflow 或改阈值。当前实际纯 classifier 逐路径结果为：两个 Android 路径仅 `android=true`，`test_uploads.py` 仅 `postgres=true`，两份文档不触发 heavy scope。新增 PG 例带 `real_db`，由 `tests/conftest.py` 的现有 collection/lane 约束送入 CI 的 real-db lane，不是 ordinary 的事务回滚替代。Connected 现有 producer 使用 API 36；MediaStore fixture 的 `RequiresApi(29)` 是 API 使用声明，没有新增 skip/filter。
+现有两个 workflow 共用 `classify_ci_paths`：两个 Android 测试路径直接触发 Android fast / actual Connected，PG 文件走既有 PostgreSQL lane；没有新增 workflow 或改阈值。实际纯 classifier 逐路径结果为：两个 Android 路径仅 `android=true`，`test_uploads.py` 仅 `postgres=true`，两份文档不触发 heavy scope。新增 PG 例带 `real_db`，由 `tests/conftest.py` 的现有 collection/lane 约束送入 CI 的 real-db lane，不是 ordinary 的事务回滚替代。Connected 现有 producer 使用 API 36；初版在测试方法上使用 `RequiresApi(29)` 被实际 lint 拒绝，本轮按标准改为 `SdkSuppress(minSdkVersion = 29)`。该 API 36 lane 仍实际执行此例，原 no-skip / count 门不变。
 
-本地实际检查：Python AST 有效、31 个原上传测试函数体不变；三个原 Connected 方法正文不变；Ruff / `git diff --check` 通过，逐项复核当前 factory、RepositoryGraph、DTO 和 API 参数。未运行 pytest、PG、Gradle、Connected 或设备；没有 Kotlin 编译通过的声明。预计的恢复缺失和重复 receipt 仍须主控发布 exact head 后用真实 XML/log 裁为 RED；不能用源可读性或先前 #381 GREEN 代替。
+准备阶段本地实际检查：Python AST 有效、31 个原上传测试函数体不变；三个原 Connected 方法正文不变；Ruff / `git diff --check` 通过，逐项复核当时 factory、RepositoryGraph、DTO 和 API 参数。没有本机 pytest、PG、Gradle、Connected 或设备执行；当时的源码检查不能代替下述云端编译、XML 与日志。
 
 施工后须在本合同同表补每条实际迁移与验证结果，再更新 Atlas 这一原 gap；当前不得填写完整闭合或 RC 完成。
 
-Root 已完整读取五文件及真实上传准备/仓储/事务入口；独立 bounded review 未发现当前 P1/P2 或会先于目标行为失败的具体接线问题。31 个原 PG 测试 AST 与三个原 Connected 方法正文保持不变。既有 pinned Lizard 1.24.0 producer 对三个代码路径定向解析（0.31 秒）没有 over-80 或 over-15 项；该测量不代表 Kotlin 编译、完整 Detekt 或运行结果。主控获准按原计划提交 test-first 并正常整合最新 Facts/Gov/CSV 父候选，再发布 exact 云端反例；维护当前旧失败与新反例归因边界。
+test-first 发布前 Root 已完整读取五文件及真实上传准备/仓储/事务入口；当时的独立 bounded review 未发现会先于目标行为失败的具体接线问题，但下述云端发现证明该源码检查遗漏了两处 fixture / lint 问题。31 个原 PG 测试 AST 与三个原 Connected 方法正文保持不变。准备阶段的 pinned Lizard 1.24.0 producer 对三个代码路径定向解析（0.31 秒）没有 over-80 或 over-15 项；该测量不代表 Kotlin 编译、完整 Detekt 或运行结果。
+
+## e22 实际失败与测试夹具修正
+
+实际 source 为 `e22ff121e7cde6ab600a7f716fae0451fb691463`，PR checkout 为 `27749dd44ce038b6357451e315cc66b19c180c49`；GitHub commit tree 读回均为 `9263c105696463e06f92b790099b31aade5c3083`。CI `34059100042` 的 PG real-db 1/3 job `101556343704` 实际为 97 passed / 1 failed：新增 `test_uploads.py:192` 在相同 key/file/timezone 的第二个 200 响应发现 id 从 1 变为 2，public_id / enrichment_task_public_id 也不同。首次行、文件、单次执行器提交与 timezone 前提均已越过；其后的无第二条行/文件/提交及不同 key 正控因首失败未达，不宣称已执行。五个 PG 分片合计 4021 passed / 1 failed / 6 skipped；当前 lane 没有 JUnit 输出，以原始 pytest 日志为证。
+
+Connected `34059100141` / execution `101556387743` 的 artifact `9997091930` 实际 XML 为 129 tests / 1 failure / 0 skips，原三个 `PendingLaunchActionEffectTest` 用例全部通过。唯一栈为 `UploadIntentConnectedFixture.close:114` → 新例 finally `PendingLaunchActionEffectTest:190`：已撤销的 URI 仍留在待清理集合，退出时再次 delete 触发 SecurityException。XML 和该例 logcat 都未保留被覆盖的原始退出原因；7.166 秒时长不能证明预期恢复超时。这是新增 fixture 失败，不能归作 Android 恢复业务 RED。
+
+Android fast job `101556343768` 的 artifact `9997142562` 实际 JVM XML 为 2155 tests / 0 failures / 0 errors / 0 skips。job 失败来自 `lintGrayDebug` 的唯一 `UseSdkSuppress` error，指向新增测试方法 `@RequiresApi(29)`；不是生产编译或 JVM 业务失败。CodeQL `34059100054` 全部成功。e22 CI 已全部结束：Windows installer job `101556343725`、release packaging、Desktop manager 和其它执行 lane 成功；CI failure 只有 PG 新业务反例及 Android lint 两个执行源头，相应 aggregate failure 不算额外反例。上述是 e22 的执行事实，不能给本轮未提交修正背书。
+
+| 本轮直接影响面 | 修正前的实际问题 / 保留边界 | 修正后 owner 与验证生产者 |
+| --- | --- | --- |
+| MediaStore 创建 → revoke → close | 现有 sourceUris 同时记录已删除和待清理 URI；finally 的重复删除遮住原失败。 | 每次 delete 返回 1 后立即从同一集合移除该 URI，然后仍断言原 URI 不可读。close 仅清理尚未撤销的本例 URI；无额外集合、权限或生产文件 owner。 |
+| 新 Connected 例的资源退出 | 手写 finally 直接 close 可以替换主断言异常。 | fixture 实现标准 Closeable，由唯一测试调用者使用 Kotlin use 释放。业务失败仍为主异常，后续 close 异常按标准 suppressed 保留；原 VM dispose / Job join / Room reopen、全部业务前提与 A/B/B/C 断言保持。 |
+| 测试入口 / API 前提 | 测试方法 RequiresApi 被 Android lint 拒绝。 | 改标准 SdkSuppress(minSdkVersion = 29)，保留 fixture 的 API 使用声明。实际 cloud API 36、真实 factory / graph / Room / effect / Retry 点击以及既有 no-skip 门全部保留；没有调整生产、manifest 或 workflow。 |
+| 直接验证与未改出口 | 原三个 Connected 入口及 31 个原 PG 测试不得为新反例让步。 | 只改两份 Android 测试文件与本合同；PG 文件、HTTP fixture 返回、原 3 例、生产 owner/权限/协议/容量/重试次数不变。秒级源码、Lizard、diff 检查后由主控发布新的 exact source 再取得实际 Android 业务 RED。 |
+
+本轮不把清理失败算作业务反例，也不以捕获异常、放宽不可读前提或跳过当前 emulator 测试制造 RED/GREEN。证据保存在独立 qualification 目录，源码树不保存 raw log 或 credentials。
+
+本轮实际秒级检查：三个原 Connected 方法逐字不变；新方法排除标准 resource lifecycle 改动后，全部业务源码行不变；PG 文件与 e22 相同。复用既有 `repository_weight_functions._lizard_functions` 和 pinned Lizard 1.24.0 检查两份 Kotlin 文件，未报 over-80 / over-15；新方法实际文本跨度为 74 行，Kotlin 嵌套解析仍只是导航估计。`git diff --check` 通过。没有安装依赖、运行本机 Gradle / PG / emulator、stage / commit / push；新候选仍需云端证明预期恢复业务 RED。

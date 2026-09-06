@@ -9,7 +9,6 @@ import androidx.activity.result.ActivityResultRegistryOwner
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.annotation.RequiresApi
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
@@ -25,6 +24,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.core.app.ActivityOptionsCompat
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.filters.SdkSuppress
 import com.ticketbox.RepositoryGraph
 import com.ticketbox.data.repository.UploadIntentConnectedFixture
 import com.ticketbox.domain.model.AppSkin
@@ -115,79 +115,79 @@ class PendingLaunchActionEffectTest {
     }
 
     @Test
-    @RequiresApi(29)
+    @SdkSuppress(minSdkVersion = 29)
     fun reopenedRoomAndNewOwnerRecoverConsumedBatchAfterTheSourceUrisAreGone() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
-        val fixture = UploadIntentConnectedFixture(context)
-        val graph = mutableStateOf<RepositoryGraph?>(fixture.reopen())
-        var vm: PendingViewModel? = null
-        lateinit var shell: MainShellState
-        try {
-            val refs = fixture.createSources()
-            composeRule.setContent {
-                graph.value?.let { repositories ->
-                    val currentShell = remember(repositories) { MainShellState() }
-                    val store = remember(repositories) { ViewModelStore() }
-                    val owner = remember(repositories) { ViewModelProvider(store, repositoryViewModelFactory(
-                        RepositoryViewModelRepositories(repositories.expenseRepository, repositories.budgetRepository,
-                            repositories.reportsRepository, repositories.debtRepository), currentShell::markInsightsDataChanged,
-                    ))[PendingViewModel::class.java] }
-                    vm = owner
-                    shell = currentShell
-                    DisposableEffect(store) { onDispose { store.clear() } }
-                    val state by owner.uiState.collectAsState()
-                    PendingLaunchActionEffect(currentShell, state.canStartUpload, { false }) { images ->
-                        owner.acceptUploads(images, pendingUploadSource(context))
-                    }
-                    TicketboxTheme(skin = AppSkin.Default) {
-                        PendingScreen(state, pendingScreenChromeActions(
-                            owner, {}, PendingInboxNavigationActions({}, {}), currentShell.pendingFilterRequest,
-                        ), PendingExpenseQueueActions({}, {}, {}, {}), unusedReviewActions(), unusedSheetActions())
+        UploadIntentConnectedFixture(context).use { fixture ->
+            val graph = mutableStateOf<RepositoryGraph?>(fixture.reopen())
+            var vm: PendingViewModel? = null
+            lateinit var shell: MainShellState
+            try {
+                val refs = fixture.createSources()
+                composeRule.setContent {
+                    graph.value?.let { repositories ->
+                        val currentShell = remember(repositories) { MainShellState() }
+                        val store = remember(repositories) { ViewModelStore() }
+                        val owner = remember(repositories) { ViewModelProvider(store, repositoryViewModelFactory(
+                            RepositoryViewModelRepositories(repositories.expenseRepository, repositories.budgetRepository,
+                                repositories.reportsRepository, repositories.debtRepository), currentShell::markInsightsDataChanged,
+                        ))[PendingViewModel::class.java] }
+                        vm = owner
+                        shell = currentShell
+                        DisposableEffect(store) { onDispose { store.clear() } }
+                        val state by owner.uiState.collectAsState()
+                        PendingLaunchActionEffect(currentShell, state.canStartUpload, { false }) { images ->
+                            owner.acceptUploads(images, pendingUploadSource(context))
+                        }
+                        TicketboxTheme(skin = AppSkin.Default) {
+                            PendingScreen(state, pendingScreenChromeActions(
+                                owner, {}, PendingInboxNavigationActions({}, {}), currentShell.pendingFilterRequest,
+                            ), PendingExpenseQueueActions({}, {}, {}, {}), unusedReviewActions(), unusedSheetActions())
+                        }
                     }
                 }
+                composeRule.runOnIdle { shell.launchAction.post(LaunchAction.UploadSharedImages(refs)) }
+                composeRule.waitUntil(timeoutMillis = 5_000) {
+                    vm?.uiState?.value?.let { it.canRetryUpload && !it.loading && it.items.size == 1 } == true
+                }
+                assertEquals(listOf("a.png", "b.png"), fixture.network.attempts.map { it.name })
+                assertArrayEquals(fixture.sourceBytes.getValue("b.png"), fixture.network.attempts[1].bytes)
+                assertEquals(listOf("upload-ledger"), fixture.savedUploadLedgers.toList())
+                assertEquals("a.png", requireNotNull(vm).uiState.value.items.single().merchant)
+                assertTrue(fixture.hasDiskDatabase())
+                val oldOwner = requireNotNull(vm)
+                val oldShell = shell
+                val oldJob = requireNotNull(oldOwner.viewModelScope.coroutineContext[Job])
+                composeRule.runOnIdle {
+                    assertNull(oldShell.launchAction.pending)
+                    graph.value = null
+                }
+                composeRule.waitForIdle()
+                runBlocking { oldJob.join() }
+                fixture.revokeSources()
+                val reopened = fixture.reopen()
+                composeRule.runOnIdle { graph.value = reopened }
+                composeRule.waitUntil(timeoutMillis = 5_000) {
+                    vm !== oldOwner && vm?.uiState?.value?.let { it.hasLoadedOnce && !it.loading } == true
+                }
+                composeRule.runOnIdle {
+                    assertTrue(shell !== oldShell)
+                    assertNull(shell.launchAction.pending)
+                    assertEquals(listOf("a.png"), requireNotNull(vm).uiState.value.items.map { it.merchant })
+                }
+                composeRule.waitUntil(timeoutMillis = 5_000) { requireNotNull(vm).uiState.value.canRetryUpload }
+                composeRule.onNodeWithText("重试上传").performScrollTo().performClick()
+                composeRule.waitUntil(timeoutMillis = 5_000) {
+                    vm?.uiState?.value?.let { it.items.size == 3 && !it.uploading } == true
+                }
+                assertEquals(listOf("a.png", "b.png", "b.png", "c.png"), fixture.network.attempts.map { it.name })
+                fixture.network.attempts.forEach { assertArrayEquals(fixture.sourceBytes.getValue(it.name), it.bytes) }
+                assertFalse(requireNotNull(vm).uiState.value.canRetryUpload)
+            } finally {
+                composeRule.runOnIdle { graph.value = null; vm?.viewModelScope?.cancel() }
+                composeRule.waitForIdle()
+                runBlocking { vm?.viewModelScope?.coroutineContext?.get(Job)?.join() }
             }
-            composeRule.runOnIdle { shell.launchAction.post(LaunchAction.UploadSharedImages(refs)) }
-            composeRule.waitUntil(timeoutMillis = 5_000) {
-                vm?.uiState?.value?.let { it.canRetryUpload && !it.loading && it.items.size == 1 } == true
-            }
-            assertEquals(listOf("a.png", "b.png"), fixture.network.attempts.map { it.name })
-            assertArrayEquals(fixture.sourceBytes.getValue("b.png"), fixture.network.attempts[1].bytes)
-            assertEquals(listOf("upload-ledger"), fixture.savedUploadLedgers.toList())
-            assertEquals("a.png", requireNotNull(vm).uiState.value.items.single().merchant)
-            assertTrue(fixture.hasDiskDatabase())
-            val oldOwner = requireNotNull(vm)
-            val oldShell = shell
-            val oldJob = requireNotNull(oldOwner.viewModelScope.coroutineContext[Job])
-            composeRule.runOnIdle {
-                assertNull(oldShell.launchAction.pending)
-                graph.value = null
-            }
-            composeRule.waitForIdle()
-            runBlocking { oldJob.join() }
-            fixture.revokeSources()
-            val reopened = fixture.reopen()
-            composeRule.runOnIdle { graph.value = reopened }
-            composeRule.waitUntil(timeoutMillis = 5_000) {
-                vm !== oldOwner && vm?.uiState?.value?.let { it.hasLoadedOnce && !it.loading } == true
-            }
-            composeRule.runOnIdle {
-                assertTrue(shell !== oldShell)
-                assertNull(shell.launchAction.pending)
-                assertEquals(listOf("a.png"), requireNotNull(vm).uiState.value.items.map { it.merchant })
-            }
-            composeRule.waitUntil(timeoutMillis = 5_000) { requireNotNull(vm).uiState.value.canRetryUpload }
-            composeRule.onNodeWithText("重试上传").performScrollTo().performClick()
-            composeRule.waitUntil(timeoutMillis = 5_000) {
-                vm?.uiState?.value?.let { it.items.size == 3 && !it.uploading } == true
-            }
-            assertEquals(listOf("a.png", "b.png", "b.png", "c.png"), fixture.network.attempts.map { it.name })
-            fixture.network.attempts.forEach { assertArrayEquals(fixture.sourceBytes.getValue(it.name), it.bytes) }
-            assertFalse(requireNotNull(vm).uiState.value.canRetryUpload)
-        } finally {
-            composeRule.runOnIdle { graph.value = null; vm?.viewModelScope?.cancel() }
-            composeRule.waitForIdle()
-            runBlocking { vm?.viewModelScope?.coroutineContext?.get(Job)?.join() }
-            fixture.close()
         }
     }
 

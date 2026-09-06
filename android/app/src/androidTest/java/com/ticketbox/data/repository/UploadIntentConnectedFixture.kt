@@ -26,6 +26,7 @@ import com.ticketbox.security.LocalSessionStore
 import com.ticketbox.security.SessionCredentialAdapter
 import com.ticketbox.security.StoredSessionToken
 import java.io.ByteArrayOutputStream
+import java.io.Closeable
 import java.io.IOException
 import java.lang.reflect.Proxy
 import java.time.Clock
@@ -40,7 +41,7 @@ import retrofit2.HttpException
 
 /** Disk Room and real repositories. Only HTTP, session storage and the last-upload timestamp are synthetic. */
 @RequiresApi(29)
-internal class UploadIntentConnectedFixture(private val context: Context) {
+internal class UploadIntentConnectedFixture(private val context: Context) : Closeable {
     private val testId = UUID.randomUUID().toString()
     private val databaseName = "upload-intent-$testId.db"
     private var database: AppDatabase? = null
@@ -73,8 +74,11 @@ internal class UploadIntentConnectedFixture(private val context: Context) {
     }
 
     fun revokeSources() {
-        sourceUris.values.forEach { uri ->
+        val remaining = sourceUris.values.iterator()
+        while (remaining.hasNext()) {
+            val uri = remaining.next()
             check(context.contentResolver.delete(uri, null, null) == 1)
+            remaining.remove()
             check(runCatching { context.contentResolver.openInputStream(uri)?.use { it.read() } }.getOrNull() == null)
         }
     }
@@ -108,7 +112,7 @@ internal class UploadIntentConnectedFixture(private val context: Context) {
 
     fun hasDiskDatabase(): Boolean = context.getDatabasePath(databaseName).isFile
 
-    fun close() {
+    override fun close() {
         database?.close()
         context.deleteDatabase(databaseName)
         sourceUris.values.forEach { context.contentResolver.delete(it, null, null) }
