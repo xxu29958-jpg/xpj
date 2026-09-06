@@ -439,7 +439,7 @@ def _clean_frequency(frequency: str | None) -> IncomeFrequency:
 def _normalize_income_month(*, frequency: str, income_month: str | None) -> str | None:
     if frequency == "monthly":
         return None
-    return _normalize_month(income_month, field_label="到账月份")
+    return _normalize_month(income_month, field_label="预计月份")
 
 
 def _normalize_month(value: str | None, *, field_label: str) -> str:
@@ -457,7 +457,7 @@ def _validate_pay_day(pay_day: int) -> None:
     if not 1 <= pay_day <= 31:
         raise AppError(
             "invalid_request",
-            "发薪日/到账日需在 1 到 31 之间。",
+            "预计收入日需在 1 到 31 之间。",
             status_code=422,
         )
 

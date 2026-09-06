@@ -56,13 +56,13 @@ def _parse_yuan(raw: str, *, currency_code: str, label: str) -> int:
 def _parse_pay_day(raw: str) -> int:
     text = (raw or "").strip()
     if not text:
-        raise AppError("invalid_request", "请选择发薪日。", status_code=422)
+        raise AppError("invalid_request", "请选择预计收入日。", status_code=422)
     try:
         day = int(text)
     except ValueError as exc:
-        raise AppError("invalid_request", "发薪日需为 1-31 的整数。", status_code=422) from exc
+        raise AppError("invalid_request", "预计收入日需为 1-31 的整数。", status_code=422) from exc
     if not 1 <= day <= 31:
-        raise AppError("invalid_request", "发薪日需为 1-31 的整数。", status_code=422)
+        raise AppError("invalid_request", "预计收入日需为 1-31 的整数。", status_code=422)
     return day
 
 
@@ -92,7 +92,7 @@ def _income_month_from_form(
     try:
         return f"{int(clean_year):04d}-{int(clean_month):02d}"
     except ValueError as exc:
-        raise AppError("invalid_request", "请选择正确的到账月份。", status_code=422) from exc
+        raise AppError("invalid_request", "请选择正确的预计月份。", status_code=422) from exc
 
 
 def _income_month_options() -> tuple[list[int], str, str]:
@@ -178,7 +178,7 @@ def post_create(
     amount_cents = _parse_yuan(
         amount_yuan,
         currency_code=presentation_currency,
-        label="收入金额",
+        label="预计收入金额",
     )
     day = _parse_pay_day(pay_day)
     create_income_plan(
@@ -197,7 +197,7 @@ def post_create(
         intent_month=intent_month,
         actor_account_id=resolve_web_actor_account_id(db, request, selected),
     )
-    return _web_redirect("/web/income-plans", selected, message="已添加收入")
+    return _web_redirect("/web/income-plans", selected, message="已添加收入计划")
 
 
 @router.post("/{public_id}/archive")
@@ -232,7 +232,7 @@ def post_archive(
                 "/web/income-plans", selected, error="页面已过期，请刷新后重新操作。"
             )
         raise
-    return _web_redirect("/web/income-plans", selected, message="已归档收入")
+    return _web_redirect("/web/income-plans", selected, message="已归档收入计划")
 
 
 @router.post("/{public_id}/restore")
@@ -264,4 +264,4 @@ def post_restore(
                 "/web/income-plans", selected, error="页面已过期，请刷新后重新操作。"
             )
         raise
-    return _web_redirect("/web/income-plans", selected, message="已恢复收入")
+    return _web_redirect("/web/income-plans", selected, message="已恢复收入计划")

@@ -51,10 +51,10 @@ class RecycleBinViewModelTest {
         kind: String = "income_plan",
     ) = RecycleBinItemDto(
         kind = kind,
-        kindLabel = "收入",
+        kindLabel = "收入计划",
         resourceId = resourceId,
         title = title,
-        detail = "2026-06 到账 · ¥1234.00",
+        detail = "2026-06 预计 · ¥1234.00",
         removedAt = "2026-06-29T00:00:00Z",
         retentionLabel = "长期保留",
         expectedRowVersion = rowVersion,
@@ -93,7 +93,7 @@ class RecycleBinViewModelTest {
         try {
             val api = StubApi().apply {
                 recycleBinResult = RecycleBinListResponseDto(items = emptyList(), shortWindowCount = 0)
-                recycleBinRestoreResult = RecycleBinRestoreResponseDto(message = "收入记录已恢复。")
+                recycleBinRestoreResult = RecycleBinRestoreResponseDto(message = "收入计划已恢复。")
             }
             val vm = harness(api)
             val item = recycleItem().toDomain()
@@ -106,11 +106,11 @@ class RecycleBinViewModelTest {
             assertEquals(2, api.recycleBinRestoreRequests.single().expectedRowVersion)
             assertEquals(1, api.recycleBinRefreshCount.size)
             assertEquals(emptyList(), state.items)
-            assertEquals(UiText.raw("收入记录已恢复。"), state.message)
+            assertEquals(UiText.raw("收入计划已恢复。"), state.message)
             assertEquals(MessageTone.Success, state.messageTone)
             assertNull(state.busyItemKey)
             assertEquals(1, state.changedRevision)
-            // 收入记录恢复不改写确认流水行 —— 流水行 revision 保持 0。
+            // 收入计划恢复不改写确认流水行 —— 流水行 revision 保持 0。
             assertEquals(0, state.expenseRowsRestoredRevision)
         } finally {
             advanceUntilIdle()
@@ -154,7 +154,7 @@ class RecycleBinViewModelTest {
                     items = listOf(restoredItem, remainingItem),
                     shortWindowCount = 1,
                 )
-                recycleBinRestoreResult = RecycleBinRestoreResponseDto(message = "收入记录已恢复。")
+                recycleBinRestoreResult = RecycleBinRestoreResponseDto(message = "收入计划已恢复。")
             }
             val vm = harness(api)
 

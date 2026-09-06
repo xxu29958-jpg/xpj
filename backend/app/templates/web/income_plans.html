@@ -18,7 +18,7 @@
     <h1 class="page-title">收入计划</h1>
     <p class="product-page-summary">计划工资、奖金和接单收入，用于估算月度预算。</p>
   </div>
-  {% if can_write %}<a class="product-button product-button--primary" href="#add-income">添加收入</a>{% endif %}
+  {% if can_write %}<a class="product-button product-button--primary" href="#add-income">添加收入计划</a>{% endif %}
 </header>
 
 <div class="plan-flow">
@@ -80,7 +80,7 @@
 
 {% if can_write %}
 <div class="income-workspace income-workspace--list-first">
-  <section class="product-panel product-panel--padded" aria-label="在用收入">
+  <section class="product-panel product-panel--padded" aria-label="在用收入计划">
     <div class="product-panel-header">
       <h2 class="product-panel-title">在用</h2>
       <p class="product-panel-subtitle">{{ plans_active|length }} 条</p>
@@ -94,9 +94,9 @@
     {% endif %}
   </section>
 
-  <section class="product-panel product-panel--padded" id="add-income" aria-label="添加收入">
+  <section class="product-panel product-panel--padded" id="add-income" aria-label="添加收入计划">
     <div class="product-panel-header">
-      <h2 class="product-panel-title">添加收入</h2>
+      <h2 class="product-panel-title">添加收入计划</h2>
       <p class="product-panel-subtitle">真正稳定的收入再设为每月固定。</p>
     </div>
     <form method="post" action="/web/income-plans/create" class="budget-form">
@@ -123,7 +123,7 @@
         </select>
       </div>
       <fieldset class="income-month-fields">
-        <legend>预计月份（单笔收入填写）</legend>
+        <legend>预计月份（单次计划填写）</legend>
         <div class="product-field">
           <label for="income-create-year" class="sr-only">预计年份</label>
           <select id="income-create-year" class="product-input" name="income_month_year" aria-label="预计年份">
@@ -142,7 +142,7 @@
         </div>
       </fieldset>
       <div class="product-field">
-        <label for="income-create-amount">金额（{{ currency_input.currency_symbol }}）</label>
+        <label for="income-create-amount">预计金额（{{ currency_input.currency_symbol }}）</label>
         <input id="income-create-amount" class="product-input" type="number" name="amount_yuan" step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}" placeholder="{{ currency_input.amount_placeholder }}" inputmode="{{ currency_input.inputmode }}" required>
       </div>
       <div class="product-field">
@@ -156,7 +156,7 @@
   </section>
 </div>
 {% else %}
-<section class="product-panel product-panel--padded" aria-label="在用收入">
+<section class="product-panel product-panel--padded" aria-label="在用收入计划">
   <div class="product-panel-header">
     <h2 class="product-panel-title">在用</h2>
     <p class="product-panel-subtitle">{{ plans_active|length }} 条</p>
@@ -165,14 +165,14 @@
   {% if not plans_active %}
   <div class="product-state">
     <div class="product-state-title">还没有收入计划</div>
-    <div class="product-state-body">这个账本还没有记录收入。</div>
+    <div class="product-state-body">这个账本还没有收入计划。</div>
   </div>
   {% endif %}
 </section>
 {% endif %}
 
 {% if plans_archived %}
-<section class="product-panel product-panel--padded" aria-label="已归档收入">
+<section class="product-panel product-panel--padded" aria-label="已归档收入计划">
   <div class="product-panel-header">
     <h2 class="product-panel-title">已归档</h2>
     <p class="product-panel-subtitle">{{ plans_archived|length }} 条 · 恢复后回到在用列表。</p>
