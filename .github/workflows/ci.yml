@@ -360,6 +360,14 @@ jobs:
           powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts\stop_test_pg.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Upload native Desktop backend test results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: desktop-backend-test-results
+          path: ${{ runner.temp }}/desktop-backend-results.xml
+          if-no-files-found: error
+
       - name: Windows installer safety behavior
         env:
           PYTEST_ADDOPTS: ""

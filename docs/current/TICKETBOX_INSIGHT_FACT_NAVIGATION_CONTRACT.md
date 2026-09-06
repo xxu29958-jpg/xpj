@@ -139,3 +139,19 @@ Root 集成复核：从仓库根误调用纯测试得到 `scripts.check_api_cont
 直接云生产者是现有 `.github/workflows/ci.yml:349` 的 native Windows pytest 命令，它显式选择原 served-Web 函数，因此会收集新增参数实例；原 BFF/身份和其余消费者继续保留。当前只有测试源与本合同改变；本机不运行 Edge、PG 或长测，不声称已观察新 RED，主控负责 test-only candidate 的实际执行。
 
 本轮短检查：原两个纯 helper 回归实际 2 PASS（0.13 秒；仅既有 `tests._real_backend` 预导入 rewrite warning），Ruff、Python AST 和 diff 检查通过。抽出的七行布局断言与原函数对应 AST 完全相同，原 `_SERVED_WEB_PROBE` 及其余函数 AST 未变；新增故障注入 helper 为 28 行、原 served-Web 函数现为 45 行。该测试路径独立选择 Desktop/Windows=true，其余重范围 false。原两个尺寸的参数 ID 保持，只有一个额外响应丢失实例；`_edge_cdp.py` 与所有产品、grant、会话和其余调用者源码未改。以上不证明新反例已 RED/GREEN，且未 commit/push。
+
+### Native JUnit 证据出口补齐（仍未核准目标 RED）
+
+Exact test-only `47822dbca71b1f14d592cc1469c46f006a46e49f` 的 CI `34046290437` 中，实际 native producer 是 **Windows installer build** job `101521833932`，不是已成功的 coordinator job `101521833967`。其真实 pytest 日志得到 11 PASS / 1 FAIL（57.45 秒），唯一失败为新增 `[1180x760-cdp-response-loss]`，最终 `AssertionError: layout probe did not become available`。但是 `RUNNER_TEMP/desktop-backend-results.xml` 未上传：原步骤在 pytest 非零后立即退出，当前 artifact 清单只有 APK/Room，没有 native XML。故不能核 `cdp_response_loss_after_consumed_bootstrap_dom=attempt-1`，不能把相符的错误形状认作已取得目标 RED。
+
+| 直接生产者 / 消费者 | 最小补齐与保持边界 |
+| --- | --- |
+| 原 Windows native pytest → 唯一现成 JUnit XML → 主控核前置属性 | 在同 job 增加一个 `always()` artifact 上传步骤，原样上传已生成的 XML；复用该 job 已有的完整 SHA 固定 `upload-artifact` action。不复制报告、不另造断言或验收框架。 |
+| 原退出 / no-skip / 清理 / 后续 Windows gate | pytest 命令、非零即退出和零用例/skip 拒绝原样保留；上传位于原 PG cleanup 之后。缺文件令上传失败，不能因此声明任何前置成立，也不改变或重跑 native 用例。 |
+| 原请求与后续 helper 修正 | 响应丢失测试、record_property、单用 grant、产品会话及 CDP helper 全部保持。等新 exact candidate 的实际 XML 核准前置，再决定是否进入全部 16 消费者的 required prepare_url 施工。原 `3eb75aed` socket timeout 与 Facts `f614ceef` 的 820×660 probe-unavailable 仍是不同的 unknown 根因，不宣称由此修复。 |
+
+本次只改必要 workflow 上传步骤和本合同。没有本机 Edge/PG/长测、commit/push；这次报告缺口补齐本身不是目标行为 RED 或 GREEN。
+
+短检查通过：仓库实际 GitHub workflow contract audit 为 OK（4.65 秒）；现有 YAML loader 解析后，移除唯一新增上传步骤即与 `47822dbc` 的完整 workflow 数据相同，因此所有原命令、退出、no-skip、cleanup 和条件不变。上传复用原 job 已有 pinned v4 action，位于 PG cleanup 后，artifact 名为 `desktop-backend-test-results`，缺文件设为 error。现有 classifier 对 workflow 路径选中全部五个重范围；未改变路由规则。diff 检查通过，helper 和真实反例保持原样，等待新 candidate 的 actual XML。
+
+后续 required 回调迁移还须保留准备失败的原出口：`ControlServer.prepare_web_bootstrap` 的目录/ACL/文件签发可以原样抛出 OSError；其写入清理分支也会重新抛出异常，没有统一转换成另一错误类型。旧调用在 `evaluate_page` 之前暴露这些错误，因此 `prepare_url(attempt)` 必须在每轮 transport try/catch **之外**执行，只有 `_evaluate_page_once` 的既有传输异常接受原两次处理。不得把签发、文件权限或 caller 准备错误包装为可重试的 CDP 故障；此边界进入 RED 后的前后 closure。
