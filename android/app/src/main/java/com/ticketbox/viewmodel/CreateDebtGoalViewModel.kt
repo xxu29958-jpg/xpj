@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.DebtAdjustmentActions
+import com.ticketbox.data.repository.DebtAdjustmentObservation
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.Debt
@@ -43,9 +44,11 @@ data class CreateDebtGoalUiState(
 ) {
     val unavailableSelectedDebtIds: Set<String>
         get() = selectedDebtIds - candidates.map { it.publicId }.toSet()
+    val canStartSubmission: Boolean
+        get() = canModify && !isSubmitting && !isLoadingDebts && loadError == null
     val canSubmit: Boolean
-        get() = name.trim().isNotEmpty() && selectedDebtIds.isNotEmpty() && !isSubmitting &&
-            !isLoadingDebts && loadError == null && unavailableSelectedDebtIds.isEmpty()
+        get() = canStartSubmission && name.trim().isNotEmpty() && selectedDebtIds.isNotEmpty() &&
+            unavailableSelectedDebtIds.isEmpty()
 }
 
 class CreateDebtGoalViewModel(
@@ -55,7 +58,7 @@ class CreateDebtGoalViewModel(
 ) : ViewModel() {
 
     private var adjustmentBinding = adjustments.currentAccess()?.binding
-    private var adjustmentSnapshotReady = false
+    private var adjustmentObservation: DebtAdjustmentObservation? = null
 
     private val _state = MutableStateFlow(CreateDebtGoalUiState(canModify = reports.canModifyLedger()))
     val state: StateFlow<CreateDebtGoalUiState> = _state.asStateFlow()
@@ -64,14 +67,17 @@ class CreateDebtGoalViewModel(
 
     init {
         viewModelScope.launch {
-            adjustments.observeCompletionRefreshes().collect { change ->
+            adjustments.observeAdjustments().collect { change ->
                 val changedBinding = adjustmentBinding != change.binding
                 adjustmentBinding = change.binding
-                adjustmentSnapshotReady = change.binding != null
+                adjustmentObservation = change
                 if (change.binding == null) {
                     loadGeneration++
                     _state.value = CreateDebtGoalUiState(canModify = false)
-                } else if (changedBinding) reload() else refreshCandidates()
+                } else if (changedBinding) reload() else if (change.requiresRefresh) refreshCandidates()
+                else _state.update { state -> state.copy(candidates = state.candidates.filterNot {
+                    "debt:${it.publicId}" in change.unresolvedTargetIds
+                }) }
             }
         }
     }
@@ -90,22 +96,29 @@ class CreateDebtGoalViewModel(
 
     /** Refresh or retry within the open form, preserving its name and explicit selection. */
     fun refreshCandidates() {
-        if (!adjustmentSnapshotReady) {
+        val observation = adjustmentObservation
+        if (observation?.binding == null) {
             _state.update { it.copy(isLoadingDebts = adjustments.currentAccess() != null) }
             return
         }
         val generation = ++loadGeneration
         _state.update { it.copy(isLoadingDebts = true, loadError = null) }
         viewModelScope.launch {
-            val result = debts.listDebts()
-            if (generation != loadGeneration) return@launch
+            val result = debts.listDebts().mapCatching { page ->
+                check(page.debts.filterNot { "debt:${it.publicId}" in observation.unresolvedTargetIds }
+                    .all(observation::acceptsCanonical)) { "请刷新并核对调整后的欠款。" }
+                page
+            }
+            if (generation != loadGeneration || observation.binding != adjustments.currentAccess()?.binding) return@launch
+            val currentObservation = adjustmentObservation ?: return@launch
             result.fold(
                 onSuccess = { page ->
                     _state.update {
                         it.copy(
                             isLoadingDebts = false,
                             canModify = reports.canModifyLedger(),
-                            candidates = page.debts.filter { debt -> debt.isOpen },
+                            candidates = page.debts.filter { debt -> debt.isOpen &&
+                                "debt:${debt.publicId}" !in currentObservation.unresolvedTargetIds },
                             loadError = null,
                         )
                     }
@@ -140,7 +153,8 @@ class CreateDebtGoalViewModel(
 
     fun submit() {
         val current = _state.value
-        if (current.isLoadingDebts || current.loadError != null || !current.canModify || current.isSubmitting) return
+        val binding = adjustmentObservation?.binding ?: return
+        if (binding != adjustments.currentAccess()?.binding || !current.canStartSubmission) return
         val cleanName = current.name.trim()
         // Build the id list from candidate order ∩ selection — a stable, candidate-ordered
         // request (NOT selection-insertion order; submitSuccess...InCandidateOrder pins this).
@@ -156,8 +170,17 @@ class CreateDebtGoalViewModel(
             return
         }
         _state.update { it.copy(isSubmitting = true, formError = null) }
+        val generation = loadGeneration
         viewModelScope.launch {
-            reports.createDebtGoal(cleanName, ids).fold(
+            val currentObservation = adjustmentObservation ?: return@launch
+            if (generation != loadGeneration || binding != adjustments.currentAccess()?.binding ||
+                ids.any { "debt:$it" in currentObservation.unresolvedTargetIds }) {
+                _state.update { it.copy(isSubmitting = false) }
+                return@launch
+            }
+            val result = reports.createDebtGoal(cleanName, ids, expectedBinding = binding)
+            if (binding != adjustments.currentAccess()?.binding) return@launch
+            result.fold(
                 onSuccess = { goal ->
                     _state.update { it.copy(isSubmitting = false, createdPublicId = goal.publicId) }
                 },

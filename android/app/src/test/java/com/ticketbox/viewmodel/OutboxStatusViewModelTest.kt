@@ -159,7 +159,12 @@ class OutboxStatusViewModelTest {
             vm.dropFailed(original)
             runCurrent()
             assertEquals(emptyList(), harness.outbox.observeStatus().first().failed)
-            assertNull(vm.uiState.value.debtAdjustments[id])
+            val stopped = assertNotNull(vm.uiState.value.debtAdjustments[id])
+            assertEquals(PendingMutationStatus.Abandoned, stopped.row.status)
+            assertEquals(original.payloadJson, stopped.row.payloadJson)
+            assertEquals(original.idempotencyKey, stopped.row.idempotencyKey)
+            assertEquals(original.expectedRowVersion, stopped.row.expectedRowVersion)
+            assertEquals(false, stopped.canRetry)
         }
     }
 

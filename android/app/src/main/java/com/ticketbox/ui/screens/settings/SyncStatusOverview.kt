@@ -3,6 +3,7 @@ package com.ticketbox.ui.screens.settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -13,6 +14,7 @@ import com.ticketbox.data.repository.OutboxStatus
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.OutboxWriteBlock
 import com.ticketbox.data.repository.PendingExpenseCorrection
+import com.ticketbox.data.repository.PendingDebtAdjustment
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.OutboxStatusUiState
 
@@ -29,15 +31,17 @@ internal data class SyncStatusOverview(
     val failedCount: Int,
     val quarantinedCount: Int,
     val reviewRequiredCount: Int,
+    val stoppedCount: Int,
     val writeBlock: OutboxWriteBlock?,
 ) {
     val needsActionCount: Int = conflictCount + failedCount + quarantinedCount + reviewRequiredCount
-    val isSettled: Boolean = queuedCount == 0 && needsActionCount == 0
+    val isSettled: Boolean = queuedCount == 0 && needsActionCount == 0 && stoppedCount == 0
 }
 
 internal fun syncStatusOverview(
     status: OutboxStatus,
     corrections: List<PendingExpenseCorrection>,
+    adjustments: List<PendingDebtAdjustment>,
 ): SyncStatusOverview =
     SyncStatusOverview(
         queuedCount = status.queueDepth.coerceAtLeast(0),
@@ -45,12 +49,13 @@ internal fun syncStatusOverview(
         failedCount = status.failed.size,
         quarantinedCount = status.quarantinedCount.coerceAtLeast(0),
         reviewRequiredCount = corrections.count { !it.delivered && it.row.status == PendingMutationStatus.Done },
+        stoppedCount = adjustments.count { it.row.status == PendingMutationStatus.Abandoned },
         writeBlock = status.writeBlock,
     )
 
 @Composable
-internal fun SyncStatusOverviewSection(status: OutboxStatus, corrections: List<PendingExpenseCorrection>) {
-    val overview = syncStatusOverview(status, corrections)
+internal fun SyncStatusOverviewSection(status: OutboxStatus, corrections: List<PendingExpenseCorrection>, adjustments: List<PendingDebtAdjustment>) {
+    val overview = syncStatusOverview(status, corrections, adjustments)
     SettingsSection(
         title = stringResource(R.string.sync_status_overview_title),
         icon = Icons.Filled.Sync,
@@ -106,7 +111,24 @@ private fun overviewCaption(overview: SyncStatusOverview): String = when {
         overview.needsActionCount,
     )
     overview.queuedCount > 0 -> stringResource(overviewCaptionResource(overview))
+    overview.stoppedCount > 0 -> stringResource(R.string.sync_status_overview_caption_stopped, overview.stoppedCount)
     else -> stringResource(R.string.sync_status_overview_caption_settled)
+}
+
+/** Both Sync entrances share the pending and explicit local-stop descriptions. */
+@Composable
+internal fun SyncStatusDebtSections(state: OutboxStatusUiState) {
+    if (state.waitingDebtAdjustments.isNotEmpty()) {
+        SettingsSection(title = stringResource(R.string.debt_adjustment_waiting), icon = Icons.Filled.CloudUpload) {
+            state.waitingDebtAdjustments.forEach { com.ticketbox.ui.screens.DebtAdjustmentIntentSummary(it) }
+        }
+    }
+    val stopped = state.debtAdjustments.values.filter { it.row.status == PendingMutationStatus.Abandoned }
+    if (stopped.isNotEmpty()) {
+        SettingsSection(title = stringResource(R.string.debt_adjustment_stopped), icon = Icons.Filled.Sync) {
+            stopped.forEach { com.ticketbox.ui.screens.DebtAdjustmentIntentSummary(it) }
+        }
+    }
 }
 
 internal fun overviewCaptionResource(overview: SyncStatusOverview): Int =

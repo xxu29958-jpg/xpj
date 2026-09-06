@@ -376,6 +376,23 @@ interface PendingMutationDao {
         expectedStatus: String,
     ): Int
 
+    /** Debt-only local stop. The original command and failure context remain intact. */
+    @Query(
+        """
+        UPDATE pending_mutations SET status = 'abandoned', completedAt = :stoppedAt
+        WHERE id = :id AND ownerKey = :ownerKey AND ledgerId = :ledgerId
+          AND type = 'record_debt_adjustment' AND status = :expectedStatus
+          AND status IN ('failed', 'conflict')
+        """,
+    )
+    suspend fun abandonDebtAdjustment(
+        id: Long,
+        ownerKey: String,
+        ledgerId: String,
+        expectedStatus: String,
+        stoppedAt: String,
+    ): Int
+
     /**
      * Cascade a new ``expected_row_version`` to every still-PENDING
      * row that targets the same row as a just-succeeded mutation.

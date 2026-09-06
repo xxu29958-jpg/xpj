@@ -1,7 +1,6 @@
 package com.ticketbox.data.repository
 
 import com.squareup.moshi.JsonAdapter
-import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto
 import com.ticketbox.domain.model.Expense
@@ -67,15 +66,27 @@ internal class ExpenseCorrectionRepository(
         val pending = current.corrections.singleOrNull { it.row.id == rowId } ?: throw RepositoryException("原提交状态已变化，请重新查看。")
         bound.requireStillActive()
         val changed = when {
-            drop && pending.canDiscard -> when (pending.row.status) {
-                PendingMutationStatus.Conflict -> outbox.resolveConflict(rowId, ConflictResolution.DropMine)
-                PendingMutationStatus.Done, PendingMutationStatus.Pending -> outbox.discardUnprovenCorrection(rowId, pending.row.status)
-                else -> outbox.resolveFailed(rowId, FailedResolution.Drop)
+            drop && pending.canDiscard -> {
+                if (pending.hasSupportedIntent && pending.row.lastError != "correction_target_unavailable") {
+                    refreshBeforeDiscard(bound, requireNotNull(pending.expenseId))
+                }
+                outbox.discardCorrection(bound, pending.row)
             }
             !drop && current.access?.canModify == true && pending.canRetry -> outbox.resolveFailed(rowId, FailedResolution.Retry())
             else -> throw RepositoryException("请核对当前事实后明确重新提交；原提交不能直接重试或覆盖。")
         }
         if (!changed) throw RepositoryException("原提交状态已变化，请重新查看。")
         if (!drop) outbox.schedulePending()
+    }
+
+    private suspend fun refreshBeforeDiscard(bound: BoundLedgerRequest, expenseId: Long) {
+        val current = bound.call { it.expense(expenseId) }
+        if (current.status == "confirmed") {
+            core.cacheIfConfirmed(current, bound)
+        } else {
+            core.withActiveBindingCommit(bound) {
+                core.expenseDao.retireConfirmedRoot(bound.ledgerId, expenseId, current.rowVersion)
+            }
+        }
     }
 }

@@ -59,6 +59,7 @@ class SyncStatusFailureTest {
                 quarantinedCount = 4,
             ),
             corrections = emptyList(),
+            adjustments = emptyList(),
         )
 
         assertEquals(3, overview.queuedCount)
@@ -79,11 +80,25 @@ class SyncStatusFailureTest {
                 failed = emptyList(),
             ),
             corrections = emptyList(),
+            adjustments = emptyList(),
         )
 
         assertEquals(0, overview.queuedCount)
         assertEquals(0, overview.reviewRequiredCount)
         assertTrue(overview.isSettled)
+
+        val stopped = com.ticketbox.data.repository.PendingDebtAdjustment(
+            row(id = 7).copy(type = PendingMutationType.RecordDebtAdjustment, status = PendingMutationStatus.Abandoned), null,
+        )
+        val localStop = syncStatusOverview(OutboxStatus(0, emptyList(), emptyList()), emptyList(), listOf(stopped))
+        assertEquals(1, localStop.stoppedCount)
+        assertEquals(0, localStop.needsActionCount)
+        assertEquals(0, localStop.queuedCount)
+        assertEquals(0, localStop.failedCount)
+        assertFalse(localStop.isSettled, "A local stop is neither delivery confirmation nor unresolved work")
+        val otherStatuses = PendingMutationStatus.entries.filter { it != PendingMutationStatus.Abandoned }
+            .map { stopped.copy(row = stopped.row.copy(status = it)) }
+        assertEquals(0, syncStatusOverview(OutboxStatus(0, emptyList(), emptyList()), emptyList(), otherStatuses).stoppedCount)
     }
 
     @Test
@@ -96,6 +111,7 @@ class SyncStatusFailureTest {
                 writeBlock = OutboxWriteBlock.CURRENCY_ADOPTION_REQUIRED,
             ),
             corrections = emptyList(),
+            adjustments = emptyList(),
         )
 
         assertEquals(
@@ -113,7 +129,7 @@ class SyncStatusFailureTest {
             idempotencyKey = "original-key",
         )
         val pending = PendingExpenseCorrection(original, intent = null)
-        val overview = syncStatusOverview(OutboxStatus(0, emptyList(), emptyList()), listOf(pending))
+        val overview = syncStatusOverview(OutboxStatus(0, emptyList(), emptyList()), listOf(pending), emptyList())
 
         assertEquals(1, overview.reviewRequiredCount)
         assertEquals(1, overview.needsActionCount)
@@ -157,6 +173,7 @@ class SyncStatusFailureTest {
         assertTrue(verified.delivered)
         val overview = syncStatusOverview(
             OutboxStatus(2, listOf(active[2].row), listOf(active[3].row)), active + verified,
+            adjustments = emptyList(),
         )
         assertEquals(0, overview.reviewRequiredCount)
         assertEquals(2, overview.queuedCount)
@@ -164,7 +181,7 @@ class SyncStatusFailureTest {
         assertEquals(1, overview.failedCount)
         assertEquals(2, overview.needsActionCount)
         assertFalse(overview.isSettled)
-        val doneOnly = syncStatusOverview(OutboxStatus(0, emptyList(), emptyList()), listOf(verified))
+        val doneOnly = syncStatusOverview(OutboxStatus(0, emptyList(), emptyList()), listOf(verified), emptyList())
         assertEquals(0, doneOnly.reviewRequiredCount)
         assertTrue(doneOnly.isSettled)
     }

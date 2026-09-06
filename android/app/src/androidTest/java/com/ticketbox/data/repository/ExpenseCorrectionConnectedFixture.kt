@@ -34,6 +34,7 @@ import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
 import com.ticketbox.data.remote.dto.ServerSettingsDto
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.NotificationPreferences
+import com.ticketbox.security.LocalSessionBindingUpdate
 import com.ticketbox.security.LocalSessionIdentity
 import com.ticketbox.security.LocalSessionRecord
 import com.ticketbox.security.LocalSessionStore
@@ -86,12 +87,25 @@ internal class ExpenseCorrectionConnectedFixture(private val context: Context) {
         val db = Room.databaseBuilder(context, AppDatabase::class.java, name).build().also { database = it }
         outbox = OutboxRepository(db.pendingMutationDao(), clock, bindingProvider = { session.value.toOutboxBinding() },
             onEnqueued = { check(stored().isNotEmpty()); schedules++ })
-        val sessions = correctionProxy<LocalSessionStore> { method -> when (method) {
+        val sessions = object : LocalSessionStore by correctionProxy<LocalSessionStore>({ method -> when (method) {
             "currentSession" -> session.value
             "observeSession" -> session
             "hasPersistedSessionState" -> true
             else -> error("Unexpected session method: $method")
-        } }
+        } }) {
+            override suspend fun updateBindingIfCurrent(update: LocalSessionBindingUpdate): Boolean {
+                while (true) {
+                    val current = session.value
+                    if (current.version != update.expectedVersion) return false
+                    val replacement = current.copy(
+                        bindingRevision = update.bindingRevision, serverId = update.serverId,
+                        dataGeneration = update.dataGeneration, serverUrl = update.serverUrl,
+                        credential = update.replacementCredential ?: current.credential, identity = update.identity,
+                    )
+                    if (session.compareAndSet(current, replacement)) return true
+                }
+            }
+        }
         val credentials = SessionCredentialAdapter(sessions)
         val factory = object : ApiServiceFactory {
             override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = network.service

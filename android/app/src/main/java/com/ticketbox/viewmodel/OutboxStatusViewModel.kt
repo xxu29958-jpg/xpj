@@ -58,7 +58,7 @@ class OutboxStatusViewModel(
         }
         viewModelScope.launch {
             outbox.observeStatus().combine(
-                outbox.observeActiveByTypes(setOf(PendingMutationType.RecordDebtAdjustment)),
+                debtAdjustments.observeAdjustments(),
             ) { status, adjustments -> status to adjustments }.collect { (status, adjustments) ->
                 val descriptions = status.failed.mapNotNull { row ->
                     debtCreation.describePendingCreation(row)?.let { row.id to it }
@@ -69,9 +69,9 @@ class OutboxStatusViewModel(
                 val incomeDescriptions = (status.failed + status.conflicts).mapNotNull { row ->
                     incomePlans.describeEdit(row)?.let { row.id to it }
                 }.toMap()
-                val adjustmentDescriptions = adjustments.mapNotNull { row ->
-                    debtAdjustments.describeAdjustment(row)?.let { row.id to it }
-                }.toMap()
+                val adjustmentDescriptions = adjustments.adjustments.filter {
+                    it.row.status != com.ticketbox.data.local.PendingMutationStatus.Done
+                }.associateBy { it.row.id }
                 _uiState.update { it.copy(status = status, failedDebtCreations = descriptions,
                     debtAdjustments = adjustmentDescriptions,
                     waitingDebtAdjustments = adjustmentDescriptions.values.filter {
@@ -108,6 +108,7 @@ class OutboxStatusViewModel(
     /** "放弃我的改动" — discard the queued change; the server's version wins. */
     fun dropMine(row: OutboxRow) {
         if (row.type == PendingMutationType.CorrectExpense) recoverCorrection(row, true)
+        else if (row.type == PendingMutationType.RecordDebtAdjustment) recoverAdjustment(row, true)
         else resolve(row) { outbox.resolveConflict(row.id, ConflictResolution.DropMine) }
     }
 
@@ -118,23 +119,7 @@ class OutboxStatusViewModel(
             return
         }
         if (row.type == PendingMutationType.RecordDebtAdjustment) {
-            val access = debtAdjustments.currentAccess()
-            val pending = debtAdjustments.describeAdjustment(row)
-            if (access == null || pending?.hasSupportedIntent != true) {
-                _uiState.update { it.copy(message = UiText.res(R.string.debt_adjustment_unsupported), messageTone = MessageTone.Danger) }
-                return
-            }
-            if (!pending.canRetry) {
-                _uiState.update { it.copy(message = UiText.res(if (pending.reductionRejected) {
-                    R.string.debt_adjustment_reduction_rejected
-                } else R.string.debt_adjustment_attention), messageTone = MessageTone.Danger) }
-                return
-            }
-            resolve(row) {
-                debtAdjustments.recover(access.binding, pending, false).onFailure { error ->
-                    _uiState.update { it.copy(message = error.toUiText(R.string.debt_action_failed), messageTone = MessageTone.Danger) }
-                }
-            }
+            recoverAdjustment(row, false)
             return
         }
         if (row.type == PendingMutationType.UpdateIncomePlan && incomePlans.describeEdit(row)?.hasSupportedIntent != true) {
@@ -147,7 +132,27 @@ class OutboxStatusViewModel(
     /** "放弃" — drop a FAILED row. */
     fun dropFailed(row: OutboxRow) {
         if (row.type == PendingMutationType.CorrectExpense) recoverCorrection(row, true)
+        else if (row.type == PendingMutationType.RecordDebtAdjustment) recoverAdjustment(row, true)
         else resolve(row) { outbox.resolveFailed(row.id, FailedResolution.Drop) }
+    }
+
+    private fun recoverAdjustment(row: OutboxRow, drop: Boolean) {
+        val access = debtAdjustments.currentAccess()
+        val pending = debtAdjustments.describeAdjustment(row)
+        if (access == null || pending == null || !drop && !pending.hasSupportedIntent) {
+            _uiState.update { it.copy(message = UiText.res(R.string.debt_adjustment_unsupported), messageTone = MessageTone.Danger) }
+            return
+        }
+        if (!drop && !pending.canRetry) {
+            val message = if (pending.reductionRejected) R.string.debt_adjustment_reduction_rejected else R.string.debt_adjustment_attention
+            _uiState.update { it.copy(message = UiText.res(message), messageTone = MessageTone.Danger) }
+            return
+        }
+        resolve(row) {
+            debtAdjustments.recover(access.binding, pending, drop).onFailure { error ->
+                _uiState.update { it.copy(message = error.toUiText(R.string.debt_action_failed), messageTone = MessageTone.Danger) }
+            }
+        }
     }
 
     private fun recoverCorrection(row: OutboxRow, drop: Boolean) {

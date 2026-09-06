@@ -16,13 +16,15 @@ import com.ticketbox.viewmodel.outboxStatusViewModelFactory
 import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.job
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
-import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlin.test.AfterTest
@@ -47,9 +49,12 @@ internal class ExpenseCorrectionGlobalRecoveryTest {
     }
 
     @AfterTest
-    fun tearDown() {
-        harness.close()
-        Dispatchers.resetMain()
+    fun tearDown() = runTest(dispatcher) {
+        try {
+            harness.close()
+        } finally {
+            Dispatchers.resetMain()
+        }
     }
 
     @Test
@@ -60,17 +65,19 @@ internal class ExpenseCorrectionGlobalRecoveryTest {
         advanceUntilIdle()
         val original = fixture.queue.rows.getValue(row.id)
         val response = CompletableDeferred<ExpenseDto>()
+        val readStarted = CompletableDeferred<Unit>()
         api.reads.clear()
-        api.read = { response.await() }
+        api.read = { readStarted.complete(Unit); response.await() }
 
-        fixture.vm.dropMine(row)
-        runCurrent()
+        val operation = fixture.startRecovery { fixture.vm.dropMine(row) }
+        awaitReadOrFinished(operation, readStarted)
 
         assertEquals(original, fixture.queue.rows[row.id], "A pending current-fact GET must retain the original intent")
         assertEquals(listOf(42L), api.reads)
         assertEquals(row.id, fixture.vm.uiState.value.busyRowId)
         val current = harness.confirmedDto().copy(merchant = "Server correction", rowVersion = 8L)
         response.complete(current)
+        operation.join()
         advanceUntilIdle()
 
         val cached = fixture.repository.fetchExpenseFromLocalCache(42L).getOrThrow()
@@ -93,7 +100,7 @@ internal class ExpenseCorrectionGlobalRecoveryTest {
         api.reads.clear()
         api.read = { throw IOException("current fact unavailable") }
 
-        fixture.vm.dropFailed(row)
+        fixture.startRecovery { fixture.vm.dropFailed(row) }.join()
         advanceUntilIdle()
 
         assertEquals(original, fixture.queue.rows[row.id], "An unknown outcome is still recoverable after GET failure")
@@ -102,7 +109,7 @@ internal class ExpenseCorrectionGlobalRecoveryTest {
         assertEquals(MessageTone.Danger, fixture.vm.uiState.value.messageTone)
         assertNull(fixture.vm.uiState.value.busyRowId)
         api.read = { harness.confirmedDto() }
-        fixture.vm.dropFailed(row)
+        fixture.startRecovery { fixture.vm.dropFailed(row) }.join()
         advanceUntilIdle()
 
         assertEquals(7L, fixture.repository.fetchExpenseFromLocalCache(42L).getOrThrow().rowVersion)
@@ -129,14 +136,14 @@ internal class ExpenseCorrectionGlobalRecoveryTest {
         val current = harness.confirmedDto().copy(merchant = "Refreshed", rowVersion = 8L)
         api.read = { current }
         rejectCache = true
-        fixture.vm.dropMine(row)
+        fixture.startRecovery { fixture.vm.dropMine(row) }.join()
         advanceUntilIdle()
 
         assertEquals(original, fixture.queue.rows[row.id])
         assertEquals(7L, fixture.repository.fetchExpenseFromLocalCache(42L).getOrThrow().rowVersion)
         assertNotNull(fixture.vm.uiState.value.message)
         rejectCache = false
-        fixture.vm.dropMine(row)
+        fixture.startRecovery { fixture.vm.dropMine(row) }.join()
         advanceUntilIdle()
 
         assertTrue(fixture.queue.rows.isEmpty())
@@ -160,7 +167,7 @@ internal class ExpenseCorrectionGlobalRecoveryTest {
         advanceUntilIdle()
         api.read = { harness.confirmedDto().copy(status = "pending", rowVersion = 8L, confirmedAt = null) }
 
-        fixture.vm.dropMine(row)
+        fixture.startRecovery { fixture.vm.dropMine(row) }.join()
         advanceUntilIdle()
 
         assertEquals(listOf(99L), fixture.cache.getConfirmed("owner").map { it.serverId })
@@ -180,12 +187,14 @@ internal class ExpenseCorrectionGlobalRecoveryTest {
         advanceUntilIdle()
         val original = fixture.queue.rows.getValue(row.id)
         val response = CompletableDeferred<ExpenseDto>()
-        api.read = { response.await() }
-        fixture.vm.dropMine(row)
-        runCurrent()
+        val readStarted = CompletableDeferred<Unit>()
+        api.read = { readStarted.complete(Unit); response.await() }
+        val operation = fixture.startRecovery { fixture.vm.dropMine(row) }
+        awaitReadOrFinished(operation, readStarted)
         assertEquals(original, fixture.queue.rows[row.id])
         token.switchLedgerForFixture("other-ledger", "Another family", role = "member")
         response.complete(harness.confirmedDto().copy(merchant = "Old binding reply", rowVersion = 8L))
+        operation.join()
         advanceUntilIdle()
 
         assertEquals(original, fixture.queue.rows[row.id])
@@ -202,11 +211,13 @@ internal class ExpenseCorrectionGlobalRecoveryTest {
         val row = harness.seedCorrection(fixture, PendingMutationStatus.Failed)
         fixture.outbox.markFailed(row.id, "correction_target_unavailable")
         advanceUntilIdle()
-        val current = fixture.vm.uiState.value.status.failed.single()
+        val current = fixture.vm.uiState.first { state ->
+            state.status.failed.any { it.id == row.id && it.lastError == "correction_target_unavailable" }
+        }.status.failed.single()
         api.reads.clear()
         api.read = { throw IOException("not a fact refresh") }
 
-        fixture.vm.dropFailed(current)
+        fixture.startRecovery { fixture.vm.dropFailed(current) }.join()
         advanceUntilIdle()
 
         assertTrue(fixture.queue.rows.isEmpty())
@@ -221,16 +232,18 @@ internal class ExpenseCorrectionGlobalRecoveryTest {
         val row = harness.seedCorrection(fixture, PendingMutationStatus.Failed)
         advanceUntilIdle()
         val response = CompletableDeferred<ExpenseDto>()
+        val readStarted = CompletableDeferred<Unit>()
         api.reads.clear()
-        api.read = { response.await() }
-        fixture.vm.dropFailed(row)
-        runCurrent()
+        api.read = { readStarted.complete(Unit); response.await() }
+        val operation = fixture.startRecovery { fixture.vm.dropFailed(row) }
+        awaitReadOrFinished(operation, readStarted)
         assertEquals(listOf(42L), api.reads)
 
         assertTrue(fixture.outbox.resolveFailed(row.id, FailedResolution.Retry()))
         val retried = fixture.queue.rows.getValue(row.id)
         assertEquals(PendingMutationStatus.Pending.wireValue, retried.status)
         response.complete(harness.confirmedDto())
+        operation.join()
         advanceUntilIdle()
 
         assertEquals(retried, fixture.queue.rows[row.id])
@@ -246,10 +259,11 @@ internal class ExpenseCorrectionGlobalRecoveryTest {
         val row = harness.seedCorrection(fixture, PendingMutationStatus.Conflict)
         advanceUntilIdle()
         val response = CompletableDeferred<ExpenseDto>()
+        val readStarted = CompletableDeferred<Unit>()
         api.reads.clear()
-        api.read = { response.await() }
-        fixture.vm.dropMine(row)
-        runCurrent()
+        api.read = { readStarted.complete(Unit); response.await() }
+        val operation = fixture.startRecovery { fixture.vm.dropMine(row) }
+        awaitReadOrFinished(operation, readStarted)
         assertEquals(listOf(42L), api.reads)
 
         val newer = harness.confirmedDto().copy(merchant = "A newer confirmed fact", rowVersion = 9L)
@@ -258,6 +272,7 @@ internal class ExpenseCorrectionGlobalRecoveryTest {
             .copy(publicId = "newer-offset", rootServerId = 42L)
         fixture.cache.upsertConfirmedStreamOffsets(listOf(offset))
         response.complete(harness.confirmedDto().copy(status = "pending", rowVersion = 8L, confirmedAt = null))
+        operation.join()
         advanceUntilIdle()
 
         assertEquals(newer.merchant, fixture.repository.fetchExpenseFromLocalCache(42L).getOrThrow().merchant)
@@ -280,7 +295,7 @@ internal class ExpenseCorrectionGlobalRecoveryTest {
         assertFalse(pending.hasSupportedIntent)
         assertEquals(original, pending.legacyRequest)
 
-        fixture.vm.dropFailed(pending.row)
+        fixture.startRecovery { fixture.vm.dropFailed(pending.row) }.join()
         advanceUntilIdle()
 
         assertTrue(fixture.queue.rows.isEmpty())
@@ -292,7 +307,11 @@ internal class ExpenseCorrectionGlobalRecoveryTest {
 private class CorrectionRecoveryHarness : ExpensePendingRepositoryOutboxTestBase() {
     private val recoveryModels = mutableListOf<OutboxStatusViewModel>()
 
-    fun close() = recoveryModels.forEach { it.viewModelScope.cancel() }
+    suspend fun close() {
+        val jobs = recoveryModels.map { it.viewModelScope.coroutineContext.job }
+        jobs.forEach { it.cancel() }
+        jobs.joinAll()
+    }
     fun token(): TestSessionFixture = seededTokenStore()
 
     fun fixture(
@@ -328,6 +347,9 @@ private class CorrectionRecoveryHarness : ExpensePendingRepositoryOutboxTestBase
         assertTrue(pending.hasSupportedIntent)
         assertEquals(status, pending.row.status)
         assertNotNull(pending.row.idempotencyKey)
+        fixture.vm.uiState.first { state ->
+            state.correctionObservation.corrections.any { it.row.id == id && it.row.status == status }
+        }
         return pending.row
     }
 
@@ -345,6 +367,20 @@ private data class RecoveryFixture(
     val cache: ExpenseDao,
     val vm: OutboxStatusViewModel,
 )
+
+private fun RecoveryFixture.startRecovery(action: () -> Unit): Job {
+    val scopeJob = vm.viewModelScope.coroutineContext.job
+    val existing = scopeJob.children.toSet()
+    action()
+    return scopeJob.children.single { it !in existing }
+}
+
+private suspend fun awaitReadOrFinished(operation: Job, readStarted: CompletableDeferred<Unit>) {
+    select<Unit> {
+        readStarted.onAwait { }
+        operation.onJoin { }
+    }
+}
 
 private class RecoveryApi(initial: ExpenseDto) : ApiService by FakeApiService(mutableListOf(), 0) {
     val reads = mutableListOf<Long>()

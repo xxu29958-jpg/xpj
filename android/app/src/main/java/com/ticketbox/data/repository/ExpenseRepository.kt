@@ -223,10 +223,12 @@ class ExpenseRepository(
         detailRepository.replaceExpenseItemsAllowingOffline(expense, items, currentItems)
 
     override suspend fun createBillSplitInvitation(
+        expectedBinding: LogicalSessionBinding,
         expenseId: Long,
         receiverAccountId: Long,
         amountCents: Long,
     ): Result<BillSplitSent> = billSplitRepository.createBillSplitInvitation(
+        expectedBinding = expectedBinding,
         expenseId = expenseId,
         receiverAccountId = receiverAccountId,
         amountCents = amountCents,
@@ -294,8 +296,10 @@ class ExpenseRepository(
     internal fun captureDeferredLedgerBinding(): LogicalSessionBinding? =
         core.ledgerRequestGuard.captureLogicalBinding()
 
-    override suspend fun createRepaymentDraftFromExpense(expense: Expense): Result<RepaymentDraft> =
-        detailRepository.createRepaymentDraftFromExpense(expense)
+    override suspend fun createRepaymentDraftFromExpense(
+        expectedBinding: LogicalSessionBinding,
+        expense: Expense,
+    ): Result<RepaymentDraft> = detailRepository.createRepaymentDraftFromExpense(expectedBinding, expense)
 
     override suspend fun confirmExpense(id: Long, expectedRowVersion: Long): Result<Expense> =
         pendingRepository.confirmExpense(id, expectedRowVersion)

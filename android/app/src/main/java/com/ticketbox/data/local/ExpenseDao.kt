@@ -288,6 +288,15 @@ interface ExpenseDao {
     )
     suspend fun deleteConfirmedStreamOffsetsForRoot(ledgerId: String, rootServerId: Long)
 
+    /** Retire a non-confirmed root without erasing a newer confirmed projection installed during the GET. */
+    @Transaction
+    suspend fun retireConfirmedRoot(ledgerId: String, rootServerId: Long, rowVersion: Long) {
+        val current = findByServerId(ledgerId, rootServerId)
+        if (current != null && current.rowVersion > rowVersion) return
+        deleteConfirmedByServerIds(ledgerId, listOf(rootServerId))
+        deleteConfirmedStreamOffsetsForRoot(ledgerId, rootServerId)
+    }
+
     @Transaction
     suspend fun clearAllExpenseCaches() {
         clear()

@@ -140,7 +140,7 @@ private fun SyncStatusPageBody(
     actions: SyncStatusActions,
 ) {
     val status = state.status
-    SyncStatusOverviewSection(status, state.correctionObservation.corrections)
+    SyncStatusOverviewSection(status, state.correctionObservation.corrections, state.debtAdjustments.values.toList())
     SyncStatusCorrectionSection(state, actions)
 
     SyncStatusQuarantineSection(
@@ -149,11 +149,7 @@ private fun SyncStatusPageBody(
         onClear = actions.onClearQuarantined,
     )
 
-    if (state.waitingDebtAdjustments.isNotEmpty()) {
-        SettingsSection(title = stringResource(R.string.debt_adjustment_waiting), icon = Icons.Filled.CloudUpload) {
-            state.waitingDebtAdjustments.forEach { com.ticketbox.ui.screens.DebtAdjustmentIntentSummary(it) }
-        }
-    }
+    SyncStatusDebtSections(state)
 
     val conflicts = status.conflicts.filter { it.type != PendingMutationType.CorrectExpense }
     if (conflicts.isNotEmpty()) {

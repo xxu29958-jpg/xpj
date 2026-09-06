@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.repository.DebtAdjustmentFixture
+import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.DebtKinds
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -28,6 +29,54 @@ class DebtAdjustmentRecoveryViewModelTest {
 
     @BeforeTest fun setup() { Dispatchers.setMain(dispatcher) }
     @AfterTest fun tearDown() { Dispatchers.resetMain() }
+
+    @Test
+    fun preStopReadCannotReleaseBarrierAndConfirmedMissingTargetRetiresTheOldWriter() = runTest(dispatcher) {
+        val adjustments = DebtAdjustmentFixture()
+        val canonical = adjustments.debt
+        val fresh = canonical.copy(rowVersion = 3L, remainingAmountCents = 53_000L)
+        val repo = AdjustmentDetailActions().apply { getResult = Result.success(canonical) }
+        val model = DebtDetailViewModel(repo, adjustments.repository)
+        val oldRead = CompletableDeferred<Unit>()
+        val newRead = CompletableDeferred<Unit>()
+        try {
+            model.loadDebt(canonical.publicId)
+            advanceUntilIdle()
+            val id = adjustments.save().getOrThrow()
+            adjustments.outbox.markFailed(id, "debt_adjustment_response_unverified")
+            advanceUntilIdle()
+            repo.getGate = oldRead
+            model.refresh()
+            runCurrent()
+            repo.getResult = Result.success(fresh)
+            repo.getGate = newRead
+            adjustments.repository.recover(adjustments.binding, adjustments.pending(), true).getOrThrow()
+            runCurrent()
+            assertEquals(3, repo.getCalls.size)
+            oldRead.complete(Unit)
+            runCurrent()
+            assertFalse(model.state.value.canWriteActions)
+            assertEquals(canonical, model.state.value.debt)
+            newRead.complete(Unit)
+            advanceUntilIdle()
+            assertEquals(fresh, model.state.value.debt)
+            assertTrue(model.state.value.canWriteActions)
+
+            repo.getGate = null
+            repo.getResult = Result.failure(RepositoryException("这笔欠款不存在。", "debt_not_found"))
+            model.refresh()
+            advanceUntilIdle()
+            assertNull(model.state.value.debt)
+            assertFalse(model.state.value.canWriteActions)
+            assertTrue(model.state.value.error != null)
+            assertTrue(repo.mutations.isEmpty())
+            assertEquals("abandoned", adjustments.dao.rows.getValue(id).status)
+        } finally {
+            oldRead.complete(Unit)
+            newRead.complete(Unit)
+            model.viewModelScope.cancel()
+        }
+    }
 
     @Test
     fun droppingUnverifiedAdjustmentBlocksOldFoldUntilCanonicalReadRecovers() = runTest(dispatcher) {

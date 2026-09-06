@@ -61,8 +61,12 @@ interface ExpenseFactCommandActions {
         expense: Expense,
         currentItems: ExpenseItems,
     ): Result<ItemsAckOutcome>
-    suspend fun createRepaymentDraftFromExpense(expense: Expense): Result<RepaymentDraft>
+    suspend fun createRepaymentDraftFromExpense(
+        expectedBinding: LogicalSessionBinding,
+        expense: Expense,
+    ): Result<RepaymentDraft>
     suspend fun createBillSplitInvitation(
+        expectedBinding: LogicalSessionBinding,
         expenseId: Long,
         receiverAccountId: Long,
         amountCents: Long,

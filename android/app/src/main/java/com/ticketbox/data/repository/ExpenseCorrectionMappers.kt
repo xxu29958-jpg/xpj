@@ -77,6 +77,8 @@ internal fun ExpenseCorrectionRequestDto.correctionAdmissionError(): String? = w
     tags?.hasOversizedCorrectionTag() == true -> "单个标签标准化后最多 64 个字符，请缩短后再保存。"
     items != null && items.size > 200 -> "一次更正最多保存 200 条明细，请减少后再保存。"
     items?.any { it.name.exceedsCorrectionLimit(255) } == true -> "明细名称最多 255 个字符，请缩短后再保存。"
+    splits != null && splits.size > 100 -> "一次更正最多保存 100 条分摊，请减少后再保存。"
+    splits?.any { it.amountCents <= 0 } == true -> "每条分摊金额必须大于零，请核对后再保存。"
     else -> null
 }
 

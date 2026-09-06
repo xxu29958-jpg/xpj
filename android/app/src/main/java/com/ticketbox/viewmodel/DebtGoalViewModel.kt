@@ -76,14 +76,14 @@ class DebtGoalViewModel(
 
     init {
         viewModelScope.launch {
-            adjustments.observeCompletionRefreshes().collect { change ->
+            adjustments.observeAdjustments().collect { change ->
                 val changedBinding = adjustmentBinding != change.binding
                 adjustmentBinding = change.binding
                 adjustmentSnapshotReady = change.binding != null
                 if (change.binding == null) {
                     loadGeneration++
                     _state.value = DebtGoalUiState(canModify = false)
-                } else refresh(clearStale = changedBinding)
+                } else if (changedBinding || change.requiresRefresh) refresh(clearStale = changedBinding)
             }
         }
     }
@@ -107,12 +107,13 @@ class DebtGoalViewModel(
             }
         }
         val gen = ++loadGeneration
+        val binding = adjustmentBinding
         latestRefreshGeneration = gen
         _state.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
             val result = repository.debtGoals()
             // Drop a load superseded by a newer load or a committed mutation.
-            if (gen != loadGeneration) {
+            if (gen != loadGeneration || binding != adjustments.currentAccess()?.binding) {
                 // Clear our loading flag unless a newer refresh now owns it (else a
                 // non-refresh superseder — openDetail / a mutation — would leave the
                 // screen stuck refreshing).
@@ -154,11 +155,13 @@ class DebtGoalViewModel(
      */
     private suspend fun latchSelectedDetail(gen: Long) {
         val selected = _state.value.selectedGoal ?: return
+        val binding = adjustmentBinding
         // Both endpoints return the complete canonical Goal, including metadata and OCC.
         val listed = _state.value.goals.firstOrNull { it.publicId == selected.publicId }
         if (listed != null) _state.update { it.copy(selectedGoal = listed) }
         val result = repository.goal(selected.publicId)
-        if (gen != loadGeneration || _state.value.selectedGoal?.publicId != selected.publicId) return
+        if (gen != loadGeneration || binding != adjustments.currentAccess()?.binding ||
+            _state.value.selectedGoal?.publicId != selected.publicId) return
         val fresh = result.getOrElse { err ->
             _state.update { it.copy(error = err.toUiText(R.string.debt_goal_load_failed)) }
             listed ?: return
@@ -183,11 +186,12 @@ class DebtGoalViewModel(
      */
     fun openDetail(goal: Goal) {
         val gen = ++loadGeneration
+        val binding = adjustmentBinding
         _state.update { it.copy(selectedGoal = goal) }
         viewModelScope.launch {
             val fresh = repository.goal(goal.publicId).getOrNull() ?: return@launch
             // A newer load/mutation superseded this detail fetch — don't clobber it.
-            if (gen != loadGeneration) return@launch
+            if (gen != loadGeneration || binding != adjustments.currentAccess()?.binding) return@launch
             _state.update { current ->
                 if (current.selectedGoal?.publicId == fresh.publicId) {
                     current.copy(selectedGoal = fresh, goals = current.goals.replaceGoal(fresh))

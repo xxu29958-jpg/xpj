@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.DebtAdjustmentActions
+import com.ticketbox.data.repository.DebtAdjustmentObservation
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtCreationActions
 import com.ticketbox.data.repository.DebtDraft
@@ -33,7 +34,7 @@ class DebtListViewModel(
 ) : ViewModel() {
 
     private var adjustmentBinding = adjustments.currentAccess()?.binding
-    private var adjustmentSnapshotReady = false
+    private var adjustmentObservation: DebtAdjustmentObservation? = null
 
     private var activeAccess = creation.currentAccess()
     private var draftGeneration = 0L
@@ -82,15 +83,15 @@ class DebtListViewModel(
             }
         }
         viewModelScope.launch {
-            adjustments.observeCompletionRefreshes().collect { change ->
+            adjustments.observeAdjustments().collect { change ->
                 val changedBinding = adjustmentBinding != change.binding
                 adjustmentBinding = change.binding
-                adjustmentSnapshotReady = change.binding != null
+                adjustmentObservation = change
                 if (change.binding == null) {
                     loadGeneration++
                     _state.value = DebtListUiState(canModify = false, lens = lens)
                 } else if (change.binding == creation.currentAccess()?.binding) {
-                    if (changedBinding) reload() else refresh()
+                    if (changedBinding) reload() else if (change.requiresRefresh) refresh()
                 }
             }
         }
@@ -128,7 +129,8 @@ class DebtListViewModel(
     }
 
     fun refresh() {
-        if (!adjustmentSnapshotReady) {
+        val observation = adjustmentObservation
+        if (observation?.binding == null || observation.binding != creation.currentAccess()?.binding) {
             _state.update { it.copy(isLoading = adjustments.currentAccess() != null) }
             return
         }
@@ -136,9 +138,14 @@ class DebtListViewModel(
         val binding = creation.currentAccess()?.binding
         _state.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
-            val result = repository.listDebts(lens)
+            val result = repository.listDebts(lens).mapCatching { page ->
+                check(page.debts.filterNot { "debt:${it.publicId}" in observation.unresolvedTargetIds }
+                    .all(observation::acceptsCanonical)) { "请刷新并核对调整后的欠款。" }
+                page
+            }
             // Drop a load superseded by a newer refresh (which set isLoading and owns clearing it).
-            if (gen != loadGeneration || binding != creation.currentAccess()?.binding) return@launch
+            if (gen != loadGeneration || binding != creation.currentAccess()?.binding ||
+                binding != adjustments.currentAccess()?.binding) return@launch
             result.fold(
                 onSuccess = { page ->
                     val debts = page.debts

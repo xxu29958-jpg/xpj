@@ -96,6 +96,7 @@ class FactEntryNavigationTest {
         compose.onNodeWithText("刷新并核对当前事实").performScrollTo().performClick()
         assertRealFactAndReturn()
         compose.onNodeWithText(context.getString(R.string.sync_status_page_title)).performScrollTo().assertIsDisplayed()
+        waitForText("原因：导航核对原提交")
         compose.onNodeWithText("原因：导航核对原提交").performScrollTo().assertIsDisplayed()
     }
 

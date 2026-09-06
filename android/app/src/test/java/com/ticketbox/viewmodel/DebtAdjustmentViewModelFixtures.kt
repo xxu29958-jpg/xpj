@@ -5,7 +5,7 @@ import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtAdjustmentActions
-import com.ticketbox.data.repository.DebtAdjustmentRefresh
+import com.ticketbox.data.repository.DebtAdjustmentObservation
 import com.ticketbox.data.repository.DebtAdjustmentPayload
 import com.ticketbox.data.repository.DebtAdjustmentSubject
 import com.ticketbox.data.repository.LedgerAccessContext
@@ -44,16 +44,19 @@ internal class FakeDebtAdjustmentActions(
 
     override fun currentAccess() = access.value
     override fun observeActiveLedgerAccess() = access
-    override fun observeCompletionRefreshes() = flow {
+    override fun observeAdjustments() = flow {
         var previous = access.value?.binding
         var initial = true
         val seen = mutableSetOf<Long>()
         combine(access, rows) { current, pending -> current?.binding to pending }.collect { (binding, pending) ->
             if (binding != previous) { previous = binding; initial = true; seen.clear() }
-            val done = pending.filter { it.row.status == PendingMutationStatus.Done }.map { it.row.id }
-            val changed = done.any { it !in seen }
-            seen += done
-            if (initial || changed) { emit(DebtAdjustmentRefresh(binding, initial)); initial = false }
+            val bound = pending.filter { it.row.ownerKey == binding?.ownerKey && it.row.ledgerId == binding?.ledgerId &&
+                it.row.serverUrl == binding?.serverUrl }
+            val terminal = bound.filter { it.isTerminal }
+            val arrived = if (initial) emptyList() else terminal.filter { it.row.id !in seen }
+            seen += terminal.map { it.row.id }
+            emit(DebtAdjustmentObservation(binding, bound, initial, arrived))
+            initial = false
         }
     }
     override fun observeAdjustments(binding: LogicalSessionBinding, publicId: String) = rows.map { pending ->

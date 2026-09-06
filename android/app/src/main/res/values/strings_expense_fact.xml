@@ -17,6 +17,7 @@
     <string name="expense_fact_value_empty">—</string>
     <string name="expense_fact_correct_cta">更正这笔账单</string>
     <string name="expense_fact_readonly_hint">只读角色可查看事实与变更记录。</string>
+    <string name="expense_fact_snapshot_actions_unavailable">请先处理更正或刷新并核对账单，再创建还款关联或拆账邀请。</string>
     <string name="expense_fact_items_title">小票明细</string>
     <string name="expense_fact_items_hint">只记录本张小票的商品行，修改请使用更正。</string>
     <string name="expense_fact_items_empty">没有记录明细行。</string>

@@ -338,13 +338,17 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
         return ackResult(expense, currentItems)
     }
 
-    override suspend fun createRepaymentDraftFromExpense(expense: Expense): Result<RepaymentDraft> {
+    override suspend fun createRepaymentDraftFromExpense(
+        expectedBinding: LogicalSessionBinding,
+        expense: Expense,
+    ): Result<RepaymentDraft> {
         repaymentDraftCalls++
         repaymentDraftExpense = expense
         return repaymentDraftResult(expense)
     }
 
     override suspend fun createBillSplitInvitation(
+        expectedBinding: LogicalSessionBinding,
         expenseId: Long,
         receiverAccountId: Long,
         amountCents: Long,

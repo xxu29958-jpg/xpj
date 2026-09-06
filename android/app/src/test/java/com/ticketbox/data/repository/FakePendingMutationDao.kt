@@ -21,7 +21,6 @@ class FakePendingMutationDao : PendingMutationDao {
     var beforeNextRunnableBatchReturn: (suspend () -> Unit)? = null
     private var nextId = 1L
     private val queueDepth = MutableStateFlow(0)
-    private val conflictRows = MutableStateFlow<List<PendingMutationEntity>>(emptyList())
 
     override suspend fun insert(row: PendingMutationEntity): Long {
         val assigned = nextId++
@@ -262,6 +261,22 @@ class FakePendingMutationDao : PendingMutationDao {
         return 1
     }
 
+    override suspend fun abandonDebtAdjustment(
+        id: Long,
+        ownerKey: String,
+        ledgerId: String,
+        expectedStatus: String,
+        stoppedAt: String,
+    ): Int {
+        val current = rows[id] ?: return 0
+        if (current.ownerKey != ownerKey || current.ledgerId != ledgerId || current.status != expectedStatus ||
+            current.type != "record_debt_adjustment" || current.status !in setOf("failed", "conflict")
+        ) return 0
+        rows[id] = current.copy(status = "abandoned", completedAt = stoppedAt)
+        refreshObservables()
+        return 1
+    }
+
     override suspend fun nextRunnableBatch(
         ownerKey: String,
         ledgerId: String,
@@ -384,7 +399,7 @@ class FakePendingMutationDao : PendingMutationDao {
         ledgerId: String,
         conflictStatus: String,
     ): Flow<List<PendingMutationEntity>> =
-        conflictRows.map { _ ->
+        queueDepth.map { _ ->
             rows.values
                 .filter { it.ownerKey == ownerKey && it.ledgerId == ledgerId && it.status == conflictStatus }
                 .sortedWith(compareBy({ it.createdAt }, { it.id }))
@@ -395,7 +410,7 @@ class FakePendingMutationDao : PendingMutationDao {
         ledgerId: String,
         failedStatus: String,
     ): Flow<List<PendingMutationEntity>> =
-        conflictRows.map { _ ->
+        queueDepth.map { _ ->
             rows.values
                 .filter { it.ownerKey == ownerKey && it.ledgerId == ledgerId && it.status == failedStatus }
                 .sortedWith(compareBy({ it.createdAt }, { it.id }))
@@ -461,6 +476,5 @@ class FakePendingMutationDao : PendingMutationDao {
 
     private fun refreshObservables() {
         queueDepth.value++
-        conflictRows.value = conflictRows.value
     }
 }

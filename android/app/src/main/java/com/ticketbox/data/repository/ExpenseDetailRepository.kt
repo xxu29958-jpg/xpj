@@ -479,7 +479,10 @@ internal class ExpenseDetailRepository(
         created.toDomain()
     }
 
-    suspend fun createRepaymentDraftFromExpense(expense: Expense): Result<RepaymentDraft> =
+    suspend fun createRepaymentDraftFromExpense(
+        expectedBinding: LogicalSessionBinding,
+        expense: Expense,
+    ): Result<RepaymentDraft> =
         core.errorHandler.safeCall {
             if (!core.canModifyLedger()) {
                 throw RepositoryException("当前角色为只读，无法修改账本。")
@@ -491,7 +494,7 @@ internal class ExpenseDetailRepository(
             if (expense.status != "confirmed" || amount == null || amount <= 0L) {
                 throw RepositoryException("这条账本记录还不能作为还款处理。")
             }
-            val bound = core.ledgerRequestGuard.bind()
+            val bound = core.ledgerRequestGuard.bindExact(expectedBinding)
             bound.call {
                 it.createRepaymentDraftFromExpense(
                     expense.id.toString(),

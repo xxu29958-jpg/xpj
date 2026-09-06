@@ -19,7 +19,7 @@ import kotlinx.coroutines.flow.map
 interface DebtAdjustmentActions {
     fun currentAccess(): LedgerAccessContext?
     fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?>
-    fun observeCompletionRefreshes(): Flow<DebtAdjustmentRefresh>
+    fun observeAdjustments(): Flow<DebtAdjustmentObservation>
     fun observeAdjustments(binding: LogicalSessionBinding, publicId: String): Flow<List<PendingDebtAdjustment>>
     fun describeAdjustment(row: OutboxRow): PendingDebtAdjustment?
     suspend fun save(binding: LogicalSessionBinding, debt: Debt, amountCents: Long, reason: String): Result<Long>
@@ -42,22 +42,21 @@ class DebtAdjustmentRepository(
     override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> = apiProvider.observeActiveLedgerAccess()
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    override fun observeCompletionRefreshes(): Flow<DebtAdjustmentRefresh> = observeActiveLedgerAccess()
+    override fun observeAdjustments(): Flow<DebtAdjustmentObservation> = observeActiveLedgerAccess()
         .map { it?.binding }.distinctUntilChanged().flatMapLatest { binding ->
-            if (binding == null) flowOf(DebtAdjustmentRefresh(null, initial = true))
+            if (binding == null) flowOf(DebtAdjustmentObservation(null, emptyList(), true, emptyList()))
             else flow {
                 var initial = true
                 val seen = mutableSetOf<Long>()
-                outbox.observeActiveByTypes(setOf(PendingMutationType.RecordDebtAdjustment), includeCompleted = true)
+                outbox.observeDebtAdjustments()
                     .collect { rows ->
                         if (guard.captureLogicalBinding() != binding) return@collect
-                        val completed = rows.filter { it.status == PendingMutationStatus.Done }.map { it.id }
-                        val newlyCompleted = completed.any { it !in seen }
-                        seen += completed
-                        if (initial || newlyCompleted) {
-                            emit(DebtAdjustmentRefresh(binding, initial))
-                            initial = false
-                        }
+                        val descriptions = rows.mapNotNull(::describeAdjustment)
+                        val terminal = descriptions.filter { it.isTerminal }
+                        val arrived = if (initial) emptyList() else terminal.filter { it.row.id !in seen }
+                        seen += terminal.map { it.row.id }
+                        emit(DebtAdjustmentObservation(binding, descriptions, initial, arrived))
+                        initial = false
                     }
             }
         }
@@ -71,7 +70,7 @@ class DebtAdjustmentRepository(
     }
 
     override fun observeAdjustments(binding: LogicalSessionBinding, publicId: String): Flow<List<PendingDebtAdjustment>> =
-        outbox.observeActiveByTypes(setOf(PendingMutationType.RecordDebtAdjustment), includeCompleted = true).map { rows ->
+        outbox.observeDebtAdjustments().map { rows ->
             if (guard.captureLogicalBinding() != binding) emptyList()
             else rows.filter { it.targetId == debtAdjustmentTarget(publicId) }.mapNotNull(::describeAdjustment)
         }
@@ -114,16 +113,13 @@ class DebtAdjustmentRepository(
             require(drop || currentAccess()?.canModify == true) { "当前角色为只读，无法重试调整。" }
             require(drop || original.hasSupportedIntent) { "当前版本无法读取原调整，请升级后继续。" }
             require(drop || original.canRetry) { "这次原调整不能重试，请核对后处理本地记录。" }
-            when (current.status) {
-                PendingMutationStatus.Conflict -> if (drop) outbox.resolveConflict(current.id, ConflictResolution.DropMine)
-                PendingMutationStatus.Failed -> {
-                    val changed = outbox.resolveFailed(current.id,
-                        if (drop) FailedResolution.Drop else FailedResolution.Retry())
-                    if (!drop && changed && outbox.activeForTarget(bound, current.targetId).any {
-                            it.id == current.id && it.status == PendingMutationStatus.Pending
-                        }) outbox.schedulePending()
-                }
-                else -> throw RepositoryException("这次本地调整状态已变化，请重新核对。")
+            val changed = if (drop) outbox.abandonDebtAdjustment(bound, current) else {
+                val retried = outbox.resolveFailed(current.id, FailedResolution.Retry())
+                if (retried && outbox.activeForTarget(bound, current.targetId).any {
+                        it.id == current.id && it.status == PendingMutationStatus.Pending
+                    }) outbox.schedulePending()
+                retried
             }
+            if (!changed) throw RepositoryException("这次本地调整状态已变化，请重新核对。")
         }
 }

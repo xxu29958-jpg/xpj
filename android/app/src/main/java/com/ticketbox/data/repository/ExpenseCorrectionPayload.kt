@@ -33,7 +33,7 @@ data class PendingExpenseCorrection(
     val expenseId: Long? get() = parseExpenseTargetRef(row.targetId)?.toLongOrNull()
     val delivered: Boolean get() = hasSupportedIntent && row.status == PendingMutationStatus.Done
     val canRetry: Boolean get() = hasSupportedIntent && row.status == PendingMutationStatus.Failed &&
-        row.lastError != "outbox_row_expired"
+        row.lastError != "outbox_row_expired" && row.lastError != "correction_target_unavailable"
     val canDiscard: Boolean get() = row.status == PendingMutationStatus.Failed ||
         row.status == PendingMutationStatus.Conflict || (!hasSupportedIntent && row.status in setOf(PendingMutationStatus.Done, PendingMutationStatus.Pending))
 }

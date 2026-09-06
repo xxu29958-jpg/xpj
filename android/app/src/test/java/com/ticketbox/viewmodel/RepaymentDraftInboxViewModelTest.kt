@@ -177,6 +177,7 @@ class RepaymentDraftInboxViewModelTest {
         advanceUntilIdle()
 
         val call = draftsRepo.confirmCalls.single()
+        assertEquals(adjustmentBinding(), draftsRepo.confirmBindings.single())
         assertEquals("d1", call.draftPublicId)
         assertEquals("debt-9", call.targetDebtPublicId)
         // The chosen Debt's row_version is the §2.1 OCC token.
@@ -432,8 +433,18 @@ class RepaymentDraftInboxViewModelTest {
     fun staleRefreshDoesNotClobberReloadedLedger() = runTest(dispatcher) {
         // Ledger switch: a slow prior refresh must not show the old ledger's drafts under the new one.
         val draftsRepo = FakeRepaymentDraftActions(listResult = Result.success(listOf(draft("ledgerA"))))
-        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, FakeRepayableDebtActions(), adjustments = FakeDebtAdjustmentActions())
+        val target = debt("debt-a", rowVersion = 5L)
+        val debtsRepo = FakeRepayableDebtActions(listResult = Result.success(listOf(target)))
+        val adjustments = FakeDebtAdjustmentActions()
+        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, debtsRepo, adjustments)
         advanceUntilIdle()
+        val confirmGate = CompletableDeferred<Unit>()
+        draftsRepo.confirmGate = confirmGate
+        viewModel.confirm("ledgerA", target)
+        runCurrent()
+        assertEquals(ConfirmCall("ledgerA", "debt-a", 5L), draftsRepo.confirmCalls.single())
+        assertEquals(adjustmentBinding(), draftsRepo.confirmBindings.single())
+        assertEquals("ledgerA", viewModel.state.value.pendingActionDraftId)
 
         // A slow refresh stalls (it captured ledger A's drafts)...
         val gate = CompletableDeferred<Unit>()
@@ -444,15 +455,23 @@ class RepaymentDraftInboxViewModelTest {
         // ...then a ledger switch reloads with ledger B's drafts.
         draftsRepo.listGate = null
         draftsRepo.listResult = Result.success(listOf(draft("ledgerB")))
-        viewModel.reload()
+        debtsRepo.listResult = Result.success(emptyList())
+        adjustments.access.value = com.ticketbox.data.repository.LedgerAccessContext(
+            adjustmentBinding().copy(ledgerId = "ledger-b", bindingRevision = "binding-b"), canModify = true,
+        )
         advanceUntilIdle()
         assertEquals("ledgerB", viewModel.state.value.drafts.single().publicId)
+        assertNull(viewModel.state.value.pendingActionDraftId)
 
-        // Release the stale refresh; ledger A's drafts must NOT leak back under ledger B.
+        // Neither a stale read nor a late successful write may publish into the replacement binding.
         gate.complete(Unit)
+        confirmGate.complete(Unit)
         advanceUntilIdle()
         assertEquals("ledgerB", viewModel.state.value.drafts.single().publicId)
         assertEquals(false, viewModel.state.value.isLoading)
+        assertNull(viewModel.state.value.flashMessage)
+        assertNull(viewModel.state.value.pendingActionDraftId)
+        viewModel.viewModelScope.cancel()
     }
 }
 
@@ -466,10 +485,12 @@ private class FakeRepaymentDraftActions(
 ) : RepaymentDraftActions {
     var listCalls = 0
     val confirmCalls = mutableListOf<ConfirmCall>()
+    val confirmBindings = mutableListOf<com.ticketbox.data.repository.LogicalSessionBinding>()
     val dismissCalls = mutableListOf<String>()
 
     /** When set, listPendingDrafts() stalls until completed — used to interleave a slow load. */
     var listGate: CompletableDeferred<Unit>? = null
+    var confirmGate: CompletableDeferred<Unit>? = null
 
     override fun canModifyLedger(): Boolean = canModify
 
@@ -485,9 +506,13 @@ private class FakeRepaymentDraftActions(
         draftPublicId: String,
         targetDebtPublicId: String,
         expectedRowVersion: Long,
+        expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding,
     ): Result<RepaymentDraft> {
         confirmCalls += ConfirmCall(draftPublicId, targetDebtPublicId, expectedRowVersion)
-        return confirmResult
+        confirmBindings += expectedBinding
+        val captured = confirmResult
+        confirmGate?.await()
+        return captured
     }
 
     override suspend fun dismissDraft(draftPublicId: String): Result<RepaymentDraft> {

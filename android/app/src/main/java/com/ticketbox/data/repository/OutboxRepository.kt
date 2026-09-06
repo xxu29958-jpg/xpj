@@ -541,10 +541,14 @@ class OutboxRepository private constructor(
         return rowcount > 0
     }
 
-    internal suspend fun discardUnprovenCorrection(id: Long, status: PendingMutationStatus): Boolean = bindingTransitionLease.withLock {
+    internal suspend fun discardCorrection(boundRequest: BoundLedgerRequest, row: OutboxRow): Boolean = bindingTransitionLease.withLock {
         val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
-        check(status == PendingMutationStatus.Done || status == PendingMutationStatus.Pending)
-        dao.deleteIfStatus(id, binding.ownerStorageKey, binding.ledgerId, status.wireValue) > 0
+        boundRequest.requireStillActiveFor(binding)
+        check(row.type == PendingMutationType.CorrectExpense && row.status in setOf(
+            PendingMutationStatus.Failed, PendingMutationStatus.Conflict, PendingMutationStatus.Done, PendingMutationStatus.Pending,
+        ))
+        check(row.ownerKey == binding.ownerStorageKey && row.ledgerId == binding.ledgerId)
+        dao.deleteIfStatus(row.id, binding.ownerStorageKey, binding.ledgerId, row.status.wireValue) > 0
     }
 
     suspend fun markDone(id: Long) {
@@ -872,6 +876,28 @@ class OutboxRepository private constructor(
 
     suspend fun activeForTarget(targetId: String): List<OutboxRow> =
         activeForTarget(currentBinding(), targetId)
+
+    /** Only the Debt adjustment owner can turn an unresolved command into a local stop. */
+    internal suspend fun abandonDebtAdjustment(boundRequest: BoundLedgerRequest, row: OutboxRow): Boolean =
+        bindingTransitionLease.withLock {
+            val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
+            boundRequest.requireStillActiveFor(binding)
+            require(row.type == PendingMutationType.RecordDebtAdjustment)
+            dao.abandonDebtAdjustment(row.id, binding.ownerStorageKey, binding.ledgerId,
+                row.status.wireValue, ISO.format(Instant.now(clock))) > 0
+        }
+
+    /** Explicit Debt history scope; other mutation types retain their existing observation policy. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    internal fun observeDebtAdjustments(): Flow<List<OutboxRow>> = bindingFlow().flatMapLatest { binding ->
+        dao.observeActiveByTypes(
+            ownerKey = binding.ownerStorageKey,
+            ledgerId = binding.ledgerId,
+            types = listOf(PendingMutationType.RecordDebtAdjustment.wireValue),
+            activeStatuses = ACTIVE_STATUS_VALUES + listOf(PendingMutationStatus.Done.wireValue,
+                PendingMutationStatus.Abandoned.wireValue),
+        )
+    }.map { rows -> rows.map { it.toDomain() } }
 
     internal suspend fun activeForTarget(
         boundRequest: BoundLedgerRequest,
