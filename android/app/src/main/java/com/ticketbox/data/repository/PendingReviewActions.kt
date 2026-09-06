@@ -13,7 +13,7 @@ data class ScreenshotUploadRequest(
     val bytes: ByteArray,
     val preparationDurationMs: Long? = null,
     val sourceSizeBytes: Long? = null,
-    val expectedLedgerId: String? = null,
+    val expectedBinding: LogicalSessionBinding,
 )
 
 /**
@@ -30,6 +30,7 @@ interface PendingReviewActions {
     fun canModifyLedger(): Boolean = true
     fun observeActiveLedgerId(): Flow<String?> = emptyFlow()
     fun currentActiveLedgerId(): String? = null
+    fun currentUploadBinding(): LogicalSessionBinding?
     suspend fun fetchPending(): Result<List<Expense>>
 
     /**
