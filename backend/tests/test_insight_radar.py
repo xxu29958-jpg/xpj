@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from app.database import SessionLocal
-from app.models import Expense, MonthlyIncomePlan
+from app.models import Expense
 from app.services.insight_radar_service import (
     cashflow_radar,
     subscription_radar,
@@ -68,20 +68,11 @@ def _add_income_plan(
     frequency: str = "monthly",
     income_month: str | None = None,
 ) -> None:
+    from app.services.income_plan_service import create_income_plan
     with SessionLocal() as db:
-        db.add(
-            MonthlyIncomePlan(
-                tenant_id=tenant_id,
-                label="pytest",
-                source_type="salary",
-                frequency=frequency,
-                income_month=income_month,
-                amount_cents=amount_cents,
-                pay_day=10,
-                status="active",
-            )
-        )
-        db.commit()
+        create_income_plan(db, tenant_id=tenant_id, label="pytest", source_type="salary",
+            frequency=frequency, income_month=income_month, amount_cents=amount_cents,
+            pay_day=10, now=datetime(2026, 5, 1, tzinfo=UTC))
 
 
 def test_cashflow_radar_emits_one_row_per_month(*, identity) -> None:

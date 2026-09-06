@@ -7,6 +7,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.activity.compose.BackHandler
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -288,6 +290,7 @@ fun PendingScreen(
                             uploading = state.uploading,
                             readOnly = readOnly,
                             showUploadAction = uploadEntrySlot == PendingUploadEntrySlot.Header,
+                            canStartUpload = state.canStartUpload,
                         ),
                         onUploadScreenshot = chromeActions.onUploadScreenshot,
                         trailingAction = if (state.items.isNotEmpty()) {
@@ -337,6 +340,11 @@ fun PendingScreen(
                         null
                     },
                 )
+                if (showCapacityRetry) {
+                    TextButton(onClick = chromeActions.onDiscardCapacityUpload) {
+                        Text(stringResource(R.string.pending_upload_stop_action))
+                    }
+                }
             }
         }
 
@@ -387,6 +395,7 @@ fun PendingScreen(
                             loading = state.loading,
                             readOnly = readOnly,
                             showUploadGuide = showUploadGuide,
+                            canStartUpload = state.canStartUpload,
                         ),
                         onUploadScreenshot = chromeActions.onUploadScreenshot,
                         onToggleGuide = { showUploadGuide = !showUploadGuide },

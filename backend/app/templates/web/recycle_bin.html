@@ -100,6 +100,7 @@
                 <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
                 <input type="hidden" name="kind" value="{{ row.kind }}">
                 <input type="hidden" name="resource_id" value="{{ row.resource_id }}">
+                {% if row.restore_intent_month %}<input type="hidden" name="intent_month" value="{{ row.restore_intent_month }}">{% endif %}
                 <input type="hidden" name="expected_row_version" value="{{ row.expected_row_version or '' }}">
                 <button class="product-button" type="submit">恢复</button>
               </form>

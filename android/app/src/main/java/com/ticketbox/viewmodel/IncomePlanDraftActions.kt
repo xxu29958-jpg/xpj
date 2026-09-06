@@ -36,6 +36,7 @@ internal fun IncomePlanDraftUi.toPatchOrNull(expectedRowVersion: Long): IncomePl
         IncomeFrequency.ONE_TIME -> parsedIncomeMonth() ?: return null
     }
     return IncomePlanPatch(
+        intentMonth = intentMonth,
         expectedRowVersion = expectedRowVersion,
         label = cleanLabel,
         sourceType = sourceType,

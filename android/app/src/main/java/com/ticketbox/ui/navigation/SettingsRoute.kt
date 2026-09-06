@@ -77,6 +77,7 @@ internal fun SettingsRoute(
             debtCreationRepository = screenFactory.debtCreationRepository,
             activeLedgerId = screenFactory.ledgerRepository.activeLedgerId(),
             recurringOccurrences = screenFactory.recurringRepository.occurrences,
+            incomePlans = screenFactory.incomePlanRepository,
         ),
     )
 }

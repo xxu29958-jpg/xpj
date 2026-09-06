@@ -31,7 +31,7 @@
     <string name="plan_income_loading">正在读取收入安排</string>
     <string name="plan_income_error">收入计划暂时无法读取</string>
     <string name="plan_income_empty">还没有收入安排</string>
-    <string name="plan_income_summary">本月 %1$d 项有效 · 预计 %2$s · 历史 %3$d 条</string>
+    <string name="plan_income_summary">本月 %1$d 项有效 · 预计 %2$s</string>
     <!-- W2-C：入口行动词统一为 chevron（旧 设置/调整/查看/管理/打开/读取中 动词族退役）。 -->
     <string name="budget_advice_page_title">预算建议</string>
     <string name="budget_advice_page_subtitle">%1$s · 收支结构与分类额度</string>

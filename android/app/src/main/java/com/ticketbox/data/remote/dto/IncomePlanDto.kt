@@ -28,9 +28,14 @@ data class IncomePlanDto(
 data class IncomePlanListResponseDto(
     val items: List<IncomePlanDto>,
     @param:Json(name = "total_active_amount_cents") val totalActiveAmountCents: Long,
+    val month: String,
+    @param:Json(name = "scheduled_amount_cents") val scheduledAmountCents: Long,
+    @param:Json(name = "effective_plan_count") val effectivePlanCount: Int,
+    @param:Json(name = "expected_amount_cents") val expectedAmountCents: Long,
 )
 
 data class IncomePlanCreateRequestDto(
+    @param:Json(name = "intent_month") val intentMonth: String,
     val label: String,
     @param:Json(name = "source_type") val sourceType: String,
     val frequency: String = "monthly",
@@ -46,6 +51,7 @@ data class IncomePlanCreateRequestDto(
  */
 @JsonClass(generateAdapter = true)
 data class IncomePlanUpdateRequestDto(
+    @param:Json(name = "intent_month") val intentMonth: String,
     @param:Json(name = "expected_row_version") val expectedRowVersion: Long,
     val label: String? = null,
     @param:Json(name = "source_type") val sourceType: String? = null,
@@ -55,11 +61,8 @@ data class IncomePlanUpdateRequestDto(
     @param:Json(name = "pay_day") val payDay: Int? = null,
 )
 
-/**
- * ADR-0038 PR-B: archive (DELETE) / restore (POST) body. Carries only the OCC
- * token — backend ``IncomePlanTokenRequest`` is ``extra="forbid"``, so reusing
- * the richer update DTO would be rejected. Mirrors RecurringItemTokenRequest.
- */
+/** Archive/restore retain the displayed month and the current OCC token. */
 data class IncomePlanTokenRequestDto(
     @param:Json(name = "expected_row_version") val expectedRowVersion: Long,
+    @param:Json(name = "intent_month") val intentMonth: String,
 )

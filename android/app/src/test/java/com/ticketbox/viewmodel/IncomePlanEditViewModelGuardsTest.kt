@@ -36,7 +36,7 @@ class IncomePlanEditViewModelGuardsTest {
     @Test
     fun amountSeedsWhenCurrencyResolutionCompletesAfterOpen() = runTest(dispatcher) {
         val plan = editPlan("p1", 12_300, rowVersion = 7L)
-        val repo = FakeIncomePlanEditRepository(active = IncomePlanListing(listOf(plan), 12_300))
+        val repo = FakeIncomePlanEditRepository(active = IncomePlanListing(listOf(plan), 12_300, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0))
         val gate = CompletableDeferred<Unit>()
         val debts = CapabilityDebtActions()
         debts.listDebtsGate = { gate.await() }
@@ -44,7 +44,7 @@ class IncomePlanEditViewModelGuardsTest {
         advanceUntilIdle()
 
         // 弱网路径：列表已有缓存、编辑 VM 刚建立、币种解析未归时点行——先开会话（无币种）。
-        viewModel.openEdit(plan)
+        viewModel.openEdit(plan, "2026-09")
         viewModel.state.value.also { state ->
             assertNotNull(state.session)
             assertNull(state.session?.draft?.homeCurrency)
@@ -67,7 +67,7 @@ class IncomePlanEditViewModelGuardsTest {
     @Test
     fun retryCurrencyResolutionSeedsDraftAfterRecovery() = runTest(dispatcher) {
         val plan = editPlan("p1", 12_300, rowVersion = 7L)
-        val repo = FakeIncomePlanEditRepository(active = IncomePlanListing(listOf(plan), 12_300))
+        val repo = FakeIncomePlanEditRepository(active = IncomePlanListing(listOf(plan), 12_300, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0))
         // 首次解析 fail closed：信封 capability 是未知码（"XXX"）→ 无币种；恢复后重试补种子。
         val debts = CapabilityDebtActions(
             page = DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "XXX"),
@@ -75,7 +75,7 @@ class IncomePlanEditViewModelGuardsTest {
         val viewModel = IncomePlanEditViewModel(repo, debts)
         advanceUntilIdle()
 
-        viewModel.openEdit(plan)
+        viewModel.openEdit(plan, "2026-09")
         viewModel.state.value.also { state ->
             assertNotNull(state.session)
             assertNull(state.session?.draft?.homeCurrency)
@@ -98,12 +98,12 @@ class IncomePlanEditViewModelGuardsTest {
     @Test
     fun dismissDuringSubmitKeepsSessionUntilResult() = runTest(dispatcher) {
         val plan = editPlan("p1", 12_300, rowVersion = 7L)
-        val repo = FakeIncomePlanEditRepository(active = IncomePlanListing(listOf(plan), 12_300))
+        val repo = FakeIncomePlanEditRepository(active = IncomePlanListing(listOf(plan), 12_300, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0))
         val gate = CompletableDeferred<Unit>()
         repo.updateGate = { gate.await() }
         val viewModel = IncomePlanEditViewModel(repo, CapabilityDebtActions())
         advanceUntilIdle()
-        viewModel.openEdit(plan)
+        viewModel.openEdit(plan, "2026-09")
 
         viewModel.submit()
         advanceUntilIdle()
@@ -124,17 +124,17 @@ class IncomePlanEditViewModelGuardsTest {
     fun openEditDuringSubmitKeepsOriginalSession() = runTest(dispatcher) {
         val planA = editPlan("p1", 12_300, rowVersion = 7L)
         val planB = editPlan("p2", 5_000, rowVersion = 2L)
-        val repo = FakeIncomePlanEditRepository(active = IncomePlanListing(listOf(planA, planB), 17_300))
+        val repo = FakeIncomePlanEditRepository(active = IncomePlanListing(listOf(planA, planB), 17_300, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0))
         val gate = CompletableDeferred<Unit>()
         repo.updateGate = { gate.await() }
         val viewModel = IncomePlanEditViewModel(repo, CapabilityDebtActions())
         advanceUntilIdle()
-        viewModel.openEdit(planA)
+        viewModel.openEdit(planA, "2026-09")
         viewModel.submit()
         advanceUntilIdle()
 
         // busy 期间点开另一行不切 target：A 的迟到结果不得盖到 B 的会话上。
-        viewModel.openEdit(planB)
+        viewModel.openEdit(planB, "2026-09")
         assertEquals("p1", viewModel.state.value.session?.publicId)
 
         gate.complete(Unit)

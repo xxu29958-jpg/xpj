@@ -108,7 +108,8 @@ class DebtCreationRecoveryTest {
         }
         compose.setContent {
             viewModel = remember {
-                outboxStatusViewModelFactory(factory.outboxRepository, factory.repository, factory.debtCreationRepository)
+                outboxStatusViewModelFactory(factory.outboxRepository, factory.repository, factory.debtCreationRepository,
+                    incomePlans = factory.incomePlanRepository)
                     .create(OutboxStatusViewModel::class.java)
             }
             TicketboxTheme(skin = AppSkin.Default) {

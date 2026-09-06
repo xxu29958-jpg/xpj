@@ -304,6 +304,7 @@ _DESKTOP_PAIRING_PRODUCER_FILES = _app_python_dependencies((
 _DESKTOP_PAIRING_SCOPES = ("postgres", "backend_frozen", "windows")
 _EXACT_SCOPE_RULES = {
     **dict.fromkeys(_DOC_FILES, ()),
+    "docs/architecture/openapi_contract.json": ("android",),
     **dict.fromkeys(_WINDOWS_ONLY_BACKEND_FILES, ("windows",)),
     **dict.fromkeys(_POSTGRES_WINDOWS_BACKEND_FILES, ("postgres", "windows")),
     **dict.fromkeys(

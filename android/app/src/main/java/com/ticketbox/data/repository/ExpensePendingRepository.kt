@@ -33,6 +33,8 @@ internal class ExpensePendingRepository(
 
     override fun currentActiveLedgerId(): String? = core.currentActiveLedgerId()
 
+    override fun currentUploadBinding(): LogicalSessionBinding? = core.ledgerRequestGuard.captureLogicalBinding()
+
     override suspend fun fetchPending(): Result<List<Expense>> = core.errorHandler.safeCall {
         core.ledgerRequestGuard.guardedCall { api ->
             api.pendingExpenses().map { it.toDomain() }
@@ -60,8 +62,8 @@ internal class ExpensePendingRepository(
         val preparationDurationMs = request.preparationDurationMs
         val sourceSizeBytes = request.sourceSizeBytes
         require(bytes.isNotEmpty()) { "请选择一张账单截图。" }
-        val bound = core.ledgerRequestGuard.bind(
-            expectedLedgerId = request.expectedLedgerId,
+        val bound = core.ledgerRequestGuard.bindExact(
+            expectedBinding = request.expectedBinding,
             ledgerChangedMessage = LedgerRequestGuard.UPLOAD_LEDGER_CHANGED_MESSAGE,
         )
         val cleanName = fileName

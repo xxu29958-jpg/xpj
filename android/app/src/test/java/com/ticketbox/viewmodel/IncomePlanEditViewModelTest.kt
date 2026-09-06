@@ -19,7 +19,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * W2-C 收入编辑窄回归（冻结合同：直连 update，不假离线承诺；归档收编辑器内）：
+ * 收入编辑窄回归（原月份与绑定先保存本机；归档收编辑器内）：
  * openEdit 捕获打开时的 binding + rowVersion 作 baseline；成功才关编辑器（succeeded
  * ack，与主 VM addSucceeded 同一约定）；失败留草稿；切账本后编辑会话随状态重置失权，
  * 不写向新账本。伴随 VM 与列表 VM 分离（同 DebtRepaymentHistoryViewModel 先例）。
@@ -34,13 +34,13 @@ class IncomePlanEditViewModelTest {
     @AfterTest fun tearDown() { Dispatchers.resetMain() }
 
     @Test
-    fun openEditSeedsDraftAndCapturesBaseline() = runTest(dispatcher) {
+    fun openEditUsesConfirmedMonthAndCapturesBaseline() = runTest(dispatcher) {
         val plan = editPlan("p1", 12_300, rowVersion = 7L)
-        val repo = FakeIncomePlanEditRepository(active = IncomePlanListing(listOf(plan), 12_300))
+        val repo = FakeIncomePlanEditRepository(active = IncomePlanListing(listOf(plan), 12_300, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0))
         val viewModel = IncomePlanEditViewModel(repo, CapabilityDebtActions())
         advanceUntilIdle()
 
-        viewModel.openEdit(plan)
+        viewModel.openEdit(plan, "2026-09")
 
         val session = viewModel.state.value.session
         assertNotNull(session)
@@ -48,6 +48,8 @@ class IncomePlanEditViewModelTest {
         assertEquals(7L, session.baselineRowVersion)
         assertEquals(editAccess().binding, session.binding)
         assertEquals(plan.label, session.draft.label)
+        assertEquals("2026-09", session.draft.intentMonth)
+        assertEquals("2026-09", session.draft.incomeMonthInput)
         assertEquals("123.00", session.draft.amountYuanInput)
         assertEquals(plan.payDay.toString(), session.draft.payDayInput)
         assertEquals(plan.frequency, session.draft.frequency)
@@ -59,26 +61,29 @@ class IncomePlanEditViewModelTest {
     fun viewerCannotOpenEditor() = runTest(dispatcher) {
         val plan = editPlan("p1", 12_300)
         val repo = FakeIncomePlanEditRepository(
-            active = IncomePlanListing(listOf(plan), 12_300),
+            active = IncomePlanListing(listOf(plan), 12_300, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0),
             canModify = false,
         )
         val viewModel = IncomePlanEditViewModel(repo, CapabilityDebtActions())
         advanceUntilIdle()
 
-        viewModel.openEdit(plan)
+        viewModel.openEdit(plan, "2026-09")
 
         assertNull(viewModel.state.value.session)
     }
 
     @Test
-    fun submitSuccessSendsPatchToCapturedBindingAndAcks() = runTest(dispatcher) {
+    fun acceptedEditRetainsTheDisplayedMonthAcrossRollover() = runTest(dispatcher) {
         val plan = editPlan("p1", 12_300, rowVersion = 7L)
-        val repo = FakeIncomePlanEditRepository(active = IncomePlanListing(listOf(plan), 12_300))
+        val repo = FakeIncomePlanEditRepository(active = IncomePlanListing(listOf(plan), 12_300, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0))
         var dataChanged = 0
-        val viewModel = IncomePlanEditViewModel(repo, CapabilityDebtActions(), onDataChanged = { dataChanged += 1 })
+        val viewModel = IncomePlanEditViewModel(repo, CapabilityDebtActions(),
+            onDataChanged = { dataChanged += 1 })
         advanceUntilIdle()
-        viewModel.openEdit(plan)
+        viewModel.openEdit(plan, "2026-09")
         viewModel.updateDraftField(IncomePlanDraftField.Label, "新工资")
+        assertEquals("2026-09", viewModel.state.value.session?.draft?.intentMonth)
+        repo.active = repo.active.copy(month = "2026-10")
 
         viewModel.submit()
         advanceUntilIdle()
@@ -90,6 +95,11 @@ class IncomePlanEditViewModelTest {
         assertEquals("新工资", call.patch.label)
         assertEquals(12_300L, call.patch.amountCents)
         assertEquals(10, call.patch.payDay)
+        assertEquals("2026-09", call.patch.intentMonth)
+        assertEquals(plan, call.baseline)
+        assertEquals(CurrencyCode.CNY, call.currency)
+        assertEquals(com.ticketbox.domain.model.UiText.res(com.ticketbox.R.string.income_plan_edit_saved_locally),
+            viewModel.state.value.flashMessage)
         assertTrue(viewModel.state.value.succeeded)
         assertFalse(viewModel.state.value.isSubmitting)
         assertEquals(1, dataChanged)
@@ -98,11 +108,11 @@ class IncomePlanEditViewModelTest {
     @Test
     fun submitFailureKeepsDraftAndEditorOpen() = runTest(dispatcher) {
         val plan = editPlan("p1", 12_300, rowVersion = 7L)
-        val repo = FakeIncomePlanEditRepository(active = IncomePlanListing(listOf(plan), 12_300))
+        val repo = FakeIncomePlanEditRepository(active = IncomePlanListing(listOf(plan), 12_300, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0))
         repo.updateResult = Result.failure(RuntimeException("boom"))
         val viewModel = IncomePlanEditViewModel(repo, CapabilityDebtActions())
         advanceUntilIdle()
-        viewModel.openEdit(plan)
+        viewModel.openEdit(plan, "2026-09")
         viewModel.updateDraftField(IncomePlanDraftField.Label, "新工资")
 
         viewModel.submit()
@@ -119,10 +129,10 @@ class IncomePlanEditViewModelTest {
     @Test
     fun invalidDraftNeverReachesRepository() = runTest(dispatcher) {
         val plan = editPlan("p1", 12_300)
-        val repo = FakeIncomePlanEditRepository(active = IncomePlanListing(listOf(plan), 12_300))
+        val repo = FakeIncomePlanEditRepository(active = IncomePlanListing(listOf(plan), 12_300, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0))
         val viewModel = IncomePlanEditViewModel(repo, CapabilityDebtActions())
         advanceUntilIdle()
-        viewModel.openEdit(plan)
+        viewModel.openEdit(plan, "2026-09")
         viewModel.updateDraftField(IncomePlanDraftField.Label, "   ")
 
         viewModel.submit()
@@ -135,10 +145,10 @@ class IncomePlanEditViewModelTest {
     @Test
     fun ledgerSwitchClosesEditorAndLosesWriteAuthority() = runTest(dispatcher) {
         val plan = editPlan("p1", 12_300, rowVersion = 7L)
-        val repo = FakeIncomePlanEditRepository(active = IncomePlanListing(listOf(plan), 12_300))
+        val repo = FakeIncomePlanEditRepository(active = IncomePlanListing(listOf(plan), 12_300, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0))
         val viewModel = IncomePlanEditViewModel(repo, CapabilityDebtActions())
         advanceUntilIdle()
-        viewModel.openEdit(plan)
+        viewModel.openEdit(plan, "2026-09")
 
         repo.activeAccessFlow.value = editAccess(ledgerId = "family", ownerKey = "family-owner")
         advanceUntilIdle()
@@ -152,11 +162,11 @@ class IncomePlanEditViewModelTest {
     @Test
     fun archiveFromEditSuccessClosesSession() = runTest(dispatcher) {
         val plan = editPlan("p1", 12_300, rowVersion = 7L)
-        val repo = FakeIncomePlanEditRepository(active = IncomePlanListing(listOf(plan), 12_300))
+        val repo = FakeIncomePlanEditRepository(active = IncomePlanListing(listOf(plan), 12_300, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0))
         var dataChanged = 0
         val viewModel = IncomePlanEditViewModel(repo, CapabilityDebtActions(), onDataChanged = { dataChanged += 1 })
         advanceUntilIdle()
-        viewModel.openEdit(plan)
+        viewModel.openEdit(plan, "2026-09")
 
         viewModel.archiveFromEdit()
         advanceUntilIdle()
@@ -173,11 +183,11 @@ class IncomePlanEditViewModelTest {
     @Test
     fun archiveFromEditFailureKeepsDraft() = runTest(dispatcher) {
         val plan = editPlan("p1", 12_300, rowVersion = 7L)
-        val repo = FakeIncomePlanEditRepository(active = IncomePlanListing(listOf(plan), 12_300))
+        val repo = FakeIncomePlanEditRepository(active = IncomePlanListing(listOf(plan), 12_300, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0))
         repo.archiveResult = Result.failure(RuntimeException("boom"))
         val viewModel = IncomePlanEditViewModel(repo, CapabilityDebtActions())
         advanceUntilIdle()
-        viewModel.openEdit(plan)
+        viewModel.openEdit(plan, "2026-09")
 
         viewModel.archiveFromEdit()
         advanceUntilIdle()
@@ -191,10 +201,10 @@ class IncomePlanEditViewModelTest {
     @Test
     fun dismissClearsSession() = runTest(dispatcher) {
         val plan = editPlan("p1", 12_300)
-        val repo = FakeIncomePlanEditRepository(active = IncomePlanListing(listOf(plan), 12_300))
+        val repo = FakeIncomePlanEditRepository(active = IncomePlanListing(listOf(plan), 12_300, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0))
         val viewModel = IncomePlanEditViewModel(repo, CapabilityDebtActions())
         advanceUntilIdle()
-        viewModel.openEdit(plan)
+        viewModel.openEdit(plan, "2026-09")
 
         viewModel.dismiss()
 

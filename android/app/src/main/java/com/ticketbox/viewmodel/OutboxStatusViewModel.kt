@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
+import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.repository.ConflictResolution
 import com.ticketbox.data.repository.DebtCreationActions
 import com.ticketbox.data.repository.ExpenseRepository
@@ -42,6 +43,7 @@ class OutboxStatusViewModel(
     private val expenseRepository: ExpenseRepository,
     private val debtCreation: DebtCreationActions,
     private val recurringOccurrences: com.ticketbox.data.repository.RecurringOccurrenceActions? = null,
+    private val incomePlans: com.ticketbox.data.repository.IncomePlanActions,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(OutboxStatusUiState())
     val uiState: StateFlow<OutboxStatusUiState> = _uiState.asStateFlow()
@@ -55,7 +57,11 @@ class OutboxStatusViewModel(
                 val occurrenceDescriptions = (status.failed + status.conflicts).mapNotNull { row ->
                     recurringOccurrences?.describe(row)?.let { row.id to it }
                 }.toMap()
-                _uiState.update { it.copy(status = status, failedDebtCreations = descriptions, recurringOccurrences = occurrenceDescriptions) }
+                val incomeDescriptions = (status.failed + status.conflicts).mapNotNull { row ->
+                    incomePlans.describeEdit(row)?.let { row.id to it }
+                }.toMap()
+                _uiState.update { it.copy(status = status, failedDebtCreations = descriptions,
+                    recurringOccurrences = occurrenceDescriptions, incomeEdits = incomeDescriptions) }
             }
         }
     }
@@ -87,8 +93,12 @@ class OutboxStatusViewModel(
     }
 
     /** "重试" — flip a FAILED row back to PENDING for the next drain. */
-    fun retry(row: OutboxRow) = resolve(row) {
-        outbox.resolveFailed(row.id, FailedResolution.Retry())
+    fun retry(row: OutboxRow) {
+        if (row.type == PendingMutationType.UpdateIncomePlan && incomePlans.describeEdit(row)?.hasSupportedIntent != true) {
+            _uiState.update { it.copy(message = UiText.res(R.string.income_plan_edit_unsupported), messageTone = MessageTone.Danger) }
+            return
+        }
+        resolve(row) { outbox.resolveFailed(row.id, FailedResolution.Retry()) }
     }
 
     /** "放弃" — drop a FAILED row. */
@@ -149,6 +159,7 @@ data class OutboxStatusUiState(
     val status: OutboxStatus = OutboxStatus(queueDepth = 0, conflicts = emptyList(), failed = emptyList()),
     val failedDebtCreations: Map<Long, PendingDebtCreation> = emptyMap(),
     val recurringOccurrences: Map<Long, com.ticketbox.data.repository.PendingOccurrencePayment> = emptyMap(),
+    val incomeEdits: Map<Long, com.ticketbox.data.repository.PendingIncomePlanEdit> = emptyMap(),
     val busyRowId: Long? = null,
     val isClearingQuarantine: Boolean = false,
     val message: UiText? = null,

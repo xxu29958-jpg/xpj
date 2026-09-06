@@ -31,8 +31,8 @@ import androidx.room.PrimaryKey
  *              "keep mine / drop mine" choice; user picks one and
  *              the row either retries with a fresh token or is
  *              deleted
- *   FAILED   → non-conflict error (4xx/5xx other than 409); user
- *              can retry manually
+ *   FAILED   → unresolved rejection, protocol refusal or exhausted retry;
+ *              original intent stays available for explicit recovery
  *   DONE     → server accepted; row is kept briefly for audit /
  *              undo and then garbage-collected by cleanup_service
  *

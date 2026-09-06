@@ -167,6 +167,7 @@ def post_restore_recycle_bin(
     kind: str = Form(default=""),
     resource_id: str = Form(default=""),
     expected_row_version: str = Form(default=""),
+    intent_month: str | None = Form(default=None),
     db: Session = Depends(get_db),
     _local: None = LocalOnly,
 ) -> Response:
@@ -184,6 +185,7 @@ def post_restore_recycle_bin(
             resource_id=resource_id,
             expected_row_version=parsed,
             actor_account_id=actor_id,
+            intent_month=intent_month,
         )
     except AppError as exc:
         return _restore_error_rerender(

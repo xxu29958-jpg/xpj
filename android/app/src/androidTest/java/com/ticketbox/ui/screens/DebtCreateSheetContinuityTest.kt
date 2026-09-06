@@ -2,13 +2,18 @@ package com.ticketbox.ui.screens
 
 import androidx.compose.runtime.remember
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
 import androidx.lifecycle.viewModelScope
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
@@ -67,10 +72,22 @@ class DebtCreateSheetContinuityTest {
         compose.onNodeWithText(context.getString(R.string.debt_list_add)).performClick()
         compose.onAllNodes(hasSetTextAction())[0].performTextInput("小王")
         compose.onAllNodes(hasSetTextAction())[1].performScrollTo().performClick().performTextInput("123.45")
-        compose.onNodeWithText(context.getString(R.string.debt_create_save)).performScrollTo().assertIsDisplayed()
         capture("debt-create-editing")
-        compose.onNodeWithText(context.getString(R.string.debt_create_save)).performClick()
-        compose.waitUntil(5_000) { viewModel.state.value.isSubmitting }
+        // System window updates can resize the viewport during capture. Locate Save in the
+        // current viewport immediately before the user's touch, not before taking the preview.
+        compose.onNode(hasText(context.getString(R.string.debt_create_save)) and hasClickAction())
+            .performScrollTo().assertIsDisplayed().assertIsEnabled().performTouchInput {
+                assertTrue("Save injection visibleSize=$visibleSize", width > 0 && height > 0)
+                click()
+            }
+        runCatching { compose.waitUntil(5_000) { viewModel.state.value.isSubmitting } }.getOrElse { error ->
+            val observed = viewModel.state.value
+            throw AssertionError("Save did not enter submission: canModify=${observed.canModify}, " +
+                "currencyReady=${observed.homeCurrencyResolved}, parsing=${observed.isParsingBill}, " +
+                "amountValid=${observed.addDraft.parsedAmountCents() != null}, " +
+                "labelPresent=${observed.addDraft.counterpartyLabel.isNotBlank()}, " +
+                "validation=${observed.addDraft.validationError}, calls=${creation.submitted.size}", error)
+        }
 
         compose.onNodeWithText("小王").assertIsNotEnabled()
         compose.onNodeWithText("123.45").assertIsNotEnabled()

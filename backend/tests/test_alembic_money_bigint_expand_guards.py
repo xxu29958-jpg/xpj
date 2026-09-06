@@ -10,6 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
 from app.database import SessionLocal, engine
+from app.database._lifecycle import load_alembic_context
 from app.database._managed_postgres_migration_runtime import _prearmed_transaction
 from app.database._money_schema_attestation import (
     MoneySchemaAttestationError,
@@ -51,7 +52,7 @@ def test_money_widening_uses_caller_transaction_without_c07_context() -> None:
         config.attributes["connection"] = connection
         command.upgrade(config, "head")
 
-    assert current_revision() == "20260906_0001"
+    assert current_revision() == load_alembic_context().head_revision
 
 
 def test_frozen_migration_legacy_checks_match_ready_absence_contract() -> None:
