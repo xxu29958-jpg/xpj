@@ -42289,6 +42289,38 @@
               ],
               "title": "Ledger Id"
             }
+          },
+          {
+            "in": "query",
+            "name": "msg",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Msg"
+            }
+          },
+          {
+            "in": "query",
+            "name": "flash_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Flash Type"
+            }
           }
         ],
         "responses": {

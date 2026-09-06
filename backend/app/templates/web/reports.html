@@ -17,6 +17,13 @@
   </div>
 </header>
 
+{% if flash_message %}
+<div class="product-feedback{% if flash_type == 'error' %} product-feedback--error{% endif %}"
+     role="{% if flash_type == 'error' %}alert{% else %}status{% endif %}">
+  <span>{{ flash_message }}</span>
+</div>
+{% endif %}
+
 {# 趋势粒度 / 商家排行口径：GET 链接 segmented 控件（切换走整页刷新，无 JS 依赖）。
    每个链接保留另一维度的当前取值、当前商家分类筛选（merchant_category, 现有 Owner
    提供的真实查询参数）、账本和月份，月份本身由顶栏月份切换器统一管理。

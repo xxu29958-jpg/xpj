@@ -342,6 +342,8 @@ def web_reports(
     ranking_metric: str | None = None,
     merchant_category: str | None = Query(default=None, max_length=64),
     ledger_id: str | None = None,
+    msg: str | None = None,
+    flash_type: str | None = None,
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -387,6 +389,8 @@ def web_reports(
     )
     ctx.update(
         {
+            "flash_message": msg or "",
+            "flash_type": flash_type if flash_type in ("success", "error") else "",
             "report": _view_model(payload, currency_code=home),
             "monthly_report": monthly_report_vm,
             "budget_explanations": budget_explanations,

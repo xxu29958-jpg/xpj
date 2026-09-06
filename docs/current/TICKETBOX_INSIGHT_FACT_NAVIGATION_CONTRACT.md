@@ -45,3 +45,44 @@ Root 集成复核：从仓库根误调用纯测试得到 `scripts.check_api_cont
 本次影响范围是 confirmed GET、批量错误重渲染共同使用的模板及两个清除标签出口：只清 tag 和分页，保留既有 ledger，并分别保留非空月度 month 或跨月 missing_category filter。财务查询、批量 writer、原幂等/OCC、持久化字段和详情返回上下文均未改；现有真实 PG 标签用例和新模板反例是直接生产者，Web 模板仍需 Desktop 和整合后的 native Windows consumer 资格化。缺口修正后再次核对两个入口，而非默认旧月度路径不受影响。
 
 修后两个链接均只携带其有效范围；原 8 例加两个实际模板反例全 10 PASS（2.75 秒），Ruff 与 diff 检查通过。原云端 `test_web_tags` 没有在本机运行，仍由新 head 的 ordinary PG lane 重新核准。
+
+## 报表返回反馈的影响闭合
+
+施工前固定 `cb6deb00304f4037e35897a8a6bd2b83d831e821`：formal P2 指出详情失效返回报表时丢失提示。实际详情 GET、更正 GET 以及更正 POST 的目标不存在分支均通过原 return owner 将 msg/flash_type、ledger 和原 month 交给报表；报表 GET 没有接收参数，模板没有反馈消费者，因此旧“成功渲染报表”出口掩盖失败。生命周期返回沿相同 allowlist，但不创建新的反馈 writer。
+
+第一步补报表 GET → 实际 reports.html 反馈消费者，复用 pending/confirmed 的 success/error allowlist、转义和状态/警示语义。报表正文筛选控件、CSV 与图表 JSON 继续只消费原报表字段，不传播临时提示；顶栏月份的补查和修正见下文。查询 owner、写权限、OCC/幂等、持久化和原月返回规则不改。直接生产者是真实 FastAPI route → redirect → 原模板的无 DB 反例、原月报真实 PG 任务、OpenAPI 生成检查，以及既有 Web/Desktop/native consumer scope。新增参数仅为 Web 可选 query，不改变产品 API 版本和 Android DTO。
+
+施工后：两个实际详情/更正 GET 的失效返回均在原月份报表显示 alert；未经许可的样式值不进入 HTML，提示始终由 Jinja 转义。四条新增真实路由/模板反例在改前均因没有反馈实际失败（3.18 秒），修后连同原十条纯导航共 14 PASS（3.21 秒）。实际 Engine.connect 在路由执行前被封口，读服务隔离；这不代替真实 PG 资格。正文控制链接和 CSV 链接解析证明不带 msg/flash_type；OpenAPI 真实生成 diff 仅新增 `/web/reports` 两个 optional query。Ruff 与 diff 检查通过，final candidate 云门禁和 formal resolution 仍需新 SHA。
+
+### 月选择器的直接消费者补查
+
+独立审查发现上述“控制链接”证明只覆盖 reports.html 正文：新测试替换了 base.html，未执行真实顶栏的月选择器。实际 `base.html` 唯一 include → `_month_picker.html::_link` 只排除 month/page；五月错误返回的 msg/flash_type 会同时进入四月和六月链接，使已离开的事实操作仍显示为新月份错误。本项由主控裁 FIX；以下范围在修改共享模板前核准，不追认原测试已经覆盖全部导航。
+
+| 真实入口 / owner | 修改前链与本次保留项 |
+| --- | --- |
+| 月报 GET | `web_reports.web_reports` → `_base_ctx(show_month_picker=True)` → base 月选择器；保留 ledger、原粒度、排名口径、商家分类，切到目标月份并去除 page 和临时反馈。正文控件、CSV、图表 JSON 保持原消费者。 |
+| 已确认 GET / 批量错误重渲染 | `web_app._render_confirmed_page` 同样消费 base；月度模式保留 ledger/tag，切月仍回第 1 页。missing_category 跨月模式明确隐藏月选择器；批量草稿、原键、OCC 与筛选 owner 不改。 |
+| 预算 GET / POST 重渲染 | `web_budgets._render_budgets` 消费同一月选择器；保留 ledger，预算表单、草稿、权限与 writer 不改。 |
+| 目标 GET / POST 重渲染 | `web_goals._render_goals` 消费同一月选择器；保留 ledger/include_archived，目标表单、权限与 writer 不改。 |
+| 唯一链接 owner / 直接生产者 | 只在 `_month_picker.html::_link` 排除 msg/flash_type，不增加页面分支、替代导航或持久化字段。新增短测试直接加载实际共享模板，执行四个真实页面的 query 上下文并解析上下月链接；旧真实 confirmed 切月去 page 用例仍保留。CI classifier 对模板触发 PostgreSQL、frozen backend、Desktop 和 native Windows；不因此开启 Windows lifecycle。 |
+
+施工后：`test_web_month_picker_feedback.py` 四例先在实际 query 断言得到 4 RED（0.45 秒），均精确多出 msg/flash_type。唯一 `_link` 现只新增排除两字段；修后四页的上下月链接均精确保留原路径和非临时 query，去除旧 page，替换 month。未更改 base 的启用判断、任何页面 constructor、查询、表单、持久化或写权限。四例使用独立 Jinja 环境加载原共享模板，不替换该消费者，也不污染原报告 fixture 的 loader/StrictUndefined 恢复。
+
+短组命令在 backend 目录执行 `python -B -m pytest --noconftest -p no:cacheprovider -q tests/test_web_month_picker_feedback.py tests/test_web_report_feedback.py tests/test_web_insight_fact_navigation.py`，得到 18 PASS（3.20 秒；原 14 例加本次 4 例）。新测试与原反馈测试 Ruff、diff 检查通过；旧真实 confirmed 去页码用例及 PG/Windows 云门禁本轮未在本机重跑。这一步证明限定月选择器及报表正文/导出，不把原 base stub 扩称全部导航；切账 next 随后由主控纳入下述同片闭合。
+
+### 切账与身份恢复的同片闭合
+
+主控随后将临时反馈进入切账/身份恢复的直接消费者裁 FIX。施工前一次搜索全部 Web routes、templates 与 middleware 的 query 读取/复制，确认只有下列完整 query 复制链；其余读取是字段消费（事实页 msg、revision pager 的既有返回字段 allowlist、ledger binding guard），不复制临时反馈到新导航。
+
+| 复制链 | 本次最小改动与保留边界 |
+| --- | --- |
+| 月选择器 `_link` | 上述修正已覆盖四页上下月；只排除旧 month/page/msg/flash_type。 |
+| `_base_ctx` → `_ledger_switch_next_url` → 浏览器 `_ledger_switcher` hidden next → `web_auth.web_ledger_switch` → `_safe_next_url` → 303 | 当前 helper 仅去旧 ledger，POST 只做站内目标校验，反馈会到新账本。既有 helper 增加去 msg/flash_type；账本切换仍由原鉴权、principal、session 与 `switch_ledger` owner 执行，目标 ledger 仍来自原表单，month/page/筛选保留。 |
+| `_ledger_switcher` 的 Desktop / 非浏览器链接分支 | 当前另有原始 query 循环，也会复制旧反馈。迁移为消费同一 `ledger_switch_next_url`，只追加已选目标 ledger；物理退役该模板重复 query 循环。`_base_ctx` 已对所有 base 消费者提供该字段，不新增 fallback 或构造器。 |
+| `_session_recovery_target` → `_normalized_recovery_target` → 身份入口 next | GET/HEAD 读取当前 URL、POST 只读取同源 referer；原规范化 owner 去旧 ledger 并拒绝外站/身份入口。只额外去两临时字段，其余目标与 query 保留，不改原 session、CSRF、权限或任何 POST draft/body。 |
+
+新增反例使用实际切账模板；浏览器分支执行真实切账 POST 和站内 303，Desktop/非浏览器分支执行实际链接，再进入原报表 route/模板。仅隔离身份/读服务并封口 Engine.connect，不声称执行真实身份数据库。另两例执行实际 GET/POST 身份恢复目标 owner。以上先取行为 RED，再改既有 query owner；没有新增消息框架。
+
+施工后重新核对同一复制范围：模板的第二个 query 循环已删除，两种切账分支均消费原 `_base_ctx` 必填投影；月选择器和身份恢复原 owner 均只去指定临时字段。实际 `desktop/ledger-switcher.js` 仅处理原生披露关闭，不解析目标 URL，因此目标 ledger 追加到 query 尾部没有改变该脚本消费方式。原角色展示、CSRF 表单字段、目标 ledger、principal/session 传递及权限服务未改；身份恢复的站内 allowlist、POST 同源 referer 与正文草稿未改。revision pager 和两个事实页 msg 消费者也保持原行为，未另建返回或消息 owner。
+
+新增五例实际得到 5 RED（3.11 秒）：三种切账分支均在最终报表 HTML 仍含旧账本错误失败，两个身份恢复分支精确多出 msg/flash_type。修后同一短组共 23 PASS（3.61 秒），所有新/改 Python 文件 Ruff 与 diff 检查通过。shared template 环境仍由原 fixture 恢复 loader/undefined 并清缓存；月选择器用独立环境。实际全候选 changed-path classifier 为 PostgreSQL/frozen backend/Desktop/Windows=true、Android=false。原 `test_web_app_pages`、`test_web_reports_goals`、`test_web_budgets`、`test_local_web_identity*`、四个 real-db 任务及 native BFF 消费门继续由现有云端生产者执行；本机未运行 PG、长测或 Windows 生命周期，最终资格与 formal resolution 只认随后冻结的新 SHA。
