@@ -251,6 +251,7 @@ internal class ExpenseFactViewModelBillSplitTest : ExpenseFactViewModelTestBase(
 
 }
 
+@OptIn(ExperimentalCoroutinesApi::class)
 private suspend fun assertInvitationActionsRespectCorrection(scope: TestScope, fake: FakeExpenseFactActions) {
     val cancelled = mutableListOf<String>()
     prepareCorrectionInvitations(fake, cancelled)
