@@ -100,6 +100,36 @@ internal class ExpenseFactCorrectionCohortTest : ExpenseFactViewModelTestBase() 
         assertEquals("我的草稿商家", vm.uiState.value.correction.merchant)
     }
 
+    @Test
+    fun `oversized item name remains in the draft and a corrected editor input can save`() = edit { fake ->
+        fake.useCurrentCollections()
+        val vm = viewModel(fake)
+        vm.openCorrectionSheet()
+        vm.updateCorrectionField(CorrectionScalarField.Reason, "核对明细名称")
+        vm.openCorrectionItemsEditor()
+        vm.addCorrectionItemRow()
+        vm.updateCorrectionItemDraft(0, "名".repeat(256), null, null)
+        vm.adoptCorrectionItems()
+        vm.submitCorrection()
+        advanceUntilIdle()
+
+        assertEquals(0, fake.correctCalls)
+        assertTrue(vm.uiState.value.correction.open)
+        assertEquals("名".repeat(256), vm.uiState.value.correction.itemDrafts.single().name)
+        assertEquals("核对明细名称", vm.uiState.value.correction.reason)
+        assertTrue(vm.uiState.value.correction.submitError != null)
+        vm.openCorrectionItemsEditor()
+        assertEquals("名".repeat(256), vm.uiState.value.correction.itemDrafts.single().name)
+        vm.updateCorrectionItemDraft(0, "名".repeat(255), null, null)
+        vm.adoptCorrectionItems()
+        vm.submitCorrection()
+        advanceUntilIdle()
+
+        assertEquals(1, fake.correctCalls)
+        assertEquals("名".repeat(255), fake.lastCorrectionDraft?.items?.single()?.name)
+        assertFalse(vm.uiState.value.correction.open)
+    }
+
     private fun ExpenseFactViewModel.assertCollectionEditorsUnavailable() {
         closeCorrectionSheet()
         openCorrectionSheet()
