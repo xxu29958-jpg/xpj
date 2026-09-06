@@ -86,3 +86,21 @@ Root 集成复核：从仓库根误调用纯测试得到 `scripts.check_api_cont
 施工后重新核对同一复制范围：模板的第二个 query 循环已删除，两种切账分支均消费原 `_base_ctx` 必填投影；月选择器和身份恢复原 owner 均只去指定临时字段。实际 `desktop/ledger-switcher.js` 仅处理原生披露关闭，不解析目标 URL，因此目标 ledger 追加到 query 尾部没有改变该脚本消费方式。原角色展示、CSRF 表单字段、目标 ledger、principal/session 传递及权限服务未改；身份恢复的站内 allowlist、POST 同源 referer 与正文草稿未改。revision pager 和两个事实页 msg 消费者也保持原行为，未另建返回或消息 owner。
 
 新增五例实际得到 5 RED（3.11 秒）：三种切账分支均在最终报表 HTML 仍含旧账本错误失败，两个身份恢复分支精确多出 msg/flash_type。修后同一短组共 23 PASS（3.61 秒），所有新/改 Python 文件 Ruff 与 diff 检查通过。shared template 环境仍由原 fixture 恢复 loader/undefined 并清缓存；月选择器用独立环境。实际全候选 changed-path classifier 为 PostgreSQL/frozen backend/Desktop/Windows=true、Android=false。原 `test_web_app_pages`、`test_web_reports_goals`、`test_web_budgets`、`test_local_web_identity*`、四个 real-db 任务及 native BFF 消费门继续由现有云端生产者执行；本机未运行 PG、长测或 Windows 生命周期，最终资格与 formal resolution 只认随后冻结的新 SHA。
+
+### 月报 history 投影的质量回归修正
+
+实际 Web source `1a3bbf9a6401cbafcb3178be8953d626e6586cfe` 的 CI `34040693548`、Backend contracts job `101506808834` 编译成功，但 release audit 失败。weight artifact `9991661364` 测量 qualification checkout `9ce6d5703d988b60315b92a0c27bad1c7c5010fa`（source 为上述 Web，base 为 main `6376bde3`）；唯一失败是 `long_functions:Python:Backend:production: 3 -> 4`。`web_reports` 从 80 行增至 84 行，越过物理长度 80；其 CCN 为 5，未越过复杂度 15。主控裁 FIX，不调整阈值、空行或原断言。
+
+| 施工前实际 owner / 全部直接消费者 | 本次修正与保持项 |
+| --- | --- |
+| `web_reports` → `six_month_summary` → 六个月已确认支出与预算（含 rollover） | 查询仍位于 base ctx 之后、top-expenses 查询之前；服务、账本、锚定月、时区、本位币参数、返回顺序、金额与预算异常处理完全沿用。只抽取已读历史数据的纯视图组，不合并查询或前移均值异常。 |
+| 六个月数组 → reports.html 期间范围、环比、超支月份 | `_six_month_history_view` 原样传递同一 rows；模板的首月、当前/前月及逐月预算比较不改。 |
+| 同一数组 → 均值、图表与无 JS 数据表 | 原 `six_month_average_amount_yuan` 保留整数平均及币种格式化；新视图组统一给模板原两个字段。`#chart-trend` 的 data-series 与实际 trend-chart.js、fallback 数据表消费协议不改，不复制历史数据或引入另一 writer。 |
+| 其余读链、反馈、返回与 CSV | `reports_overview`、monthly report/budget、base/sidebar、six-month、top-expenses 的调用顺序保持；均值仍在 top-expenses 之后求值。原 msg/flash_type、账本/月份返回、正文图表 JSON、CSV route 与 export query 不变。 |
+| 验证生产者及旧出口 | 云端 weight 已给实际 RED；既有 23 短用例、OpenAPI、Ruff 与 diff 复核本次抽取；`test_reports` 的金额/rollover 和 `test_web_reports_goals` 的真实六个月图表、PG 月报事实任务由原云端执行。退役 route 内联六个月字段组；不另造框架、替代渲染或第二份均值计算。 |
+
+同 run 的 Desktop manager job `101506808920` 另有 Node no-root 子进程 10 秒超时，未到主题断言；该测试/探针与 main `6376` 相同，原因未定。此项保持为独立未通过门，本次不改其源码、超时或断言，新 Web candidate 必须按原测试重新资格化。
+
+施工后仅改 `web_reports.py` 与本合同：route 中原五行历史字段被同一文件的 `_six_month_history_view` 替代，传递原数组并调用原均值 owner。AST 实测 route 为 80 行（349–428），新纯视图组为 9 行；主控明确接受现有上限，不再为额外余量扩大上下文 owner。将新纯组按实际参数内联后，整个 route 的 AST 与 `1a3bbf9a` 完全相同（忽略位置属性），包括所有查询、其它投影与异常求值顺序；该静态等价证据不等于编译或云端 weight 通过。
+
+同一原短组实际 23 PASS（3.37 秒）；OpenAPI 检查 up to date、Ruff 与 diff 检查通过。未改快照、测试断言、Desktop、金额/预算服务或任何模板/JS 消费者。未安装本机 Lizard、未重跑全仓 weight、PG 或长测；最终 repository-weight 与其余云门禁由 root 提交后的 exact candidate 重新核准。
