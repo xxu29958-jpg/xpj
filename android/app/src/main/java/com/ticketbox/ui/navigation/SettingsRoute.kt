@@ -25,6 +25,7 @@ internal fun SettingsRoute(
     preferenceControls: SettingsPreferenceControls,
     onBindingCleared: () -> Unit,
     onClose: () -> Unit,
+    onOpenExpense: (Long) -> Unit,
 ) {
     val settingsViewModel: SettingsViewModel = viewModel(
         factory = screenFactory.settingsViewModelFactory,
@@ -47,7 +48,7 @@ internal fun SettingsRoute(
             currentCurrency = preferenceControls.currentCurrency,
             showAdvancedTools = BuildConfig.SHOW_ADVANCED_TOOLS,
         ),
-        navigation = SettingsDestinationNavigation(onCloseRoot = onClose),
+        navigation = SettingsDestinationNavigation(onCloseRoot = onClose, onOpenExpense = onOpenExpense),
         actions = SettingsRouteActions(
             onTestConnection = settingsViewModel::testConnection,
             onRunDiagnostics = settingsViewModel::runDiagnostics,
@@ -78,6 +79,7 @@ internal fun SettingsRoute(
             activeLedgerId = screenFactory.ledgerRepository.activeLedgerId(),
             recurringOccurrences = screenFactory.recurringRepository.occurrences,
             incomePlans = screenFactory.incomePlanRepository,
+            debtAdjustments = screenFactory.debtAdjustmentRepository,
         ),
     )
 }

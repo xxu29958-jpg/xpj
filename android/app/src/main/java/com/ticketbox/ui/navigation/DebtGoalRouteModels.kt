@@ -37,7 +37,7 @@ internal fun rememberDebtGoalRouteViewModels(screenFactory: MainScreenFactory): 
         ),
         linkedDetail = viewModel(
             key = DebtGoalLinkedDetailViewModelKey,
-            factory = debtDetailViewModelFactory(screenFactory.debtRepository),
+            factory = debtDetailViewModelFactory(screenFactory.debtRepository, screenFactory.debtAdjustmentRepository),
         ),
         linkedProposal = viewModel(
             key = DebtGoalLinkedProposalViewModelKey,

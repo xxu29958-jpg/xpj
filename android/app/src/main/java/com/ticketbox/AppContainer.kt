@@ -180,11 +180,9 @@ class AppContainer(context: Context) {
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.correctionAdapter,
                 cacheAuthoritativeExpense = { ledgerId, expense ->
-                    database.expenseDao().upsertByServerIdForLedger(
-                        ledgerId,
-                        expense.toEntity(ledgerId),
-                    )
+                    database.expenseDao().upsertByServerIdForLedger(ledgerId, expense.toEntity(ledgerId))
                 },
+                onConfirmedCommitted = { ledgerId -> expenseRepository.onConfirmedCommitted(ledgerId) },
             ),
             // issue #65 slice 4: POST /api/expenses/manual via outbox (offline manual
             // create). On success, write the server-assigned id/public_id/row_version
@@ -287,6 +285,10 @@ class AppContainer(context: Context) {
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.recurringCreateAdapter,
             ),
+            com.ticketbox.data.repository.RecordDebtAdjustmentDispatcher(
+                apiProvider = ::outboxApi,
+                adapter = outboxAdapters.debtAdjustmentAdapter,
+            ),
             CreateDebtDispatcher(
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.debtCreateAdapter,
@@ -350,6 +352,7 @@ class AppContainer(context: Context) {
     val incomePlanRepository = repositories.incomePlanRepository
     val debtRepository = repositories.debtRepository
     val debtCreationRepository = repositories.debtCreationRepository
+    val debtAdjustmentRepository = repositories.debtAdjustmentRepository
     val repaymentDraftRepository = repositories.repaymentDraftRepository
     val reportsRepository = repositories.reportsRepository
     val ruleRepository = repositories.ruleRepository

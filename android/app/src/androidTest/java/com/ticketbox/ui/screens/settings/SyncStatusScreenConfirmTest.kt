@@ -35,6 +35,7 @@ class SyncStatusScreenConfirmTest {
         setScreenContent(
             conflicts = listOf(row),
             actions = SyncStatusActions(
+        onOpenExpense = {},
                 onKeepMine = {},
                 onDropMine = { dropped = it },
                 onRetry = {},
@@ -62,6 +63,7 @@ class SyncStatusScreenConfirmTest {
         setScreenContent(
             failed = listOf(row),
             actions = SyncStatusActions(
+        onOpenExpense = {},
                 onKeepMine = {},
                 onDropMine = {},
                 onRetry = {},
@@ -91,6 +93,7 @@ class SyncStatusScreenConfirmTest {
         setScreenContent(
             failed = listOf(row),
             actions = SyncStatusActions(
+        onOpenExpense = {},
                 onKeepMine = {},
                 onDropMine = {},
                 onRetry = {},
@@ -113,7 +116,7 @@ class SyncStatusScreenConfirmTest {
             type = PendingMutationType.UpdateIncomePlan, targetId = "income_plan:old",
         )
         setScreenContent(failed = listOf(row), incomeEdits = mapOf(row.id to PendingIncomePlanEdit(row, null)),
-            actions = SyncStatusActions(onKeepMine = {}, onDropMine = {}, onRetry = { error("Unsupported retry") },
+            actions = SyncStatusActions(onOpenExpense = {}, onKeepMine = {}, onDropMine = {}, onRetry = { error("Unsupported retry") },
                 onDropFailed = {}, onClearQuarantined = {}))
         val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext
         composeRule.onNodeWithText(context.getString(com.ticketbox.R.string.income_plan_edit_unsupported)).assertIsDisplayed()
@@ -127,6 +130,7 @@ class SyncStatusScreenConfirmTest {
         setScreenContent(
             quarantinedCount = 2,
             actions = SyncStatusActions(
+        onOpenExpense = {},
                 onKeepMine = {},
                 onDropMine = {},
                 onRetry = {},
@@ -152,6 +156,7 @@ class SyncStatusScreenConfirmTest {
         var retried: OutboxRow? = null
         val original = outboxRow(PendingMutationStatus.Failed, lastError = "runtime_version_mismatch")
         setScreenContent(failed = listOf(original), actions = SyncStatusActions(
+        onOpenExpense = {},
             onKeepMine = {}, onDropMine = {}, onRetry = { retried = it }, onDropFailed = {}, onClearQuarantined = {},
         ))
         val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext

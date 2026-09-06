@@ -132,6 +132,7 @@ internal fun FactSummarySection(
             text = stringResource(R.string.expense_fact_correct_cta),
             icon = Icons.Filled.Edit,
             onClick = onOpenCorrection,
+            enabled = state.canStartCorrection,
             modifier = Modifier.fillMaxWidth(),
         )
     }

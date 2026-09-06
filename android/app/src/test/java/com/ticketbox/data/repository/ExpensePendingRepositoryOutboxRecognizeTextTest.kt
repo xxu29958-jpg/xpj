@@ -40,6 +40,8 @@ internal class ExpensePendingRepositoryOutboxRecognizeTextTest : ExpensePendingR
         offlineMutations = ExpenseOfflineMutationWiring(
             outbox = outbox,
             recognizeTextAdapter = moshi().adapter(ExpenseRecognizeTextRequestDto::class.java),
+            correctionAdapter = com.ticketbox.OutboxAdapterGraph().correctionAdapter,
+            legacyCorrectionAdapter = com.ticketbox.OutboxAdapterGraph().legacyCorrectionAdapter,
         ),
     )
 

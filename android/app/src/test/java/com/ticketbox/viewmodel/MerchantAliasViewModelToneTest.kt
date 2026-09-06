@@ -8,7 +8,6 @@ import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.MerchantAliasListDto
 import com.ticketbox.data.remote.dto.MerchantCatalogListDto
-import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.FakeApiService
 import com.ticketbox.data.repository.FakeExpenseDao
 import com.ticketbox.data.repository.ledgerSessionFixture
@@ -207,7 +206,7 @@ class MerchantAliasViewModelToneTest {
                 tokenStore = tokenStore,
             ),
         )
-        val expenseRepository = ExpenseRepository(
+        val expenseRepository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = FakeExpenseDao(),
             binding = testServerSessionBinding(
                 apiClient = apiFactory,

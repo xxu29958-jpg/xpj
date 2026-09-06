@@ -17,6 +17,7 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -44,13 +45,21 @@ class OutboxStatusViewModel(
     private val debtCreation: DebtCreationActions,
     private val recurringOccurrences: com.ticketbox.data.repository.RecurringOccurrenceActions? = null,
     private val incomePlans: com.ticketbox.data.repository.IncomePlanActions,
+    private val debtAdjustments: com.ticketbox.data.repository.DebtAdjustmentActions,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(OutboxStatusUiState())
     val uiState: StateFlow<OutboxStatusUiState> = _uiState.asStateFlow()
 
     init {
         viewModelScope.launch {
-            outbox.observeStatus().collect { status ->
+            expenseRepository.observeCorrections().collect { observation ->
+                _uiState.update { it.copy(correctionObservation = observation) }
+            }
+        }
+        viewModelScope.launch {
+            outbox.observeStatus().combine(
+                outbox.observeActiveByTypes(setOf(PendingMutationType.RecordDebtAdjustment)),
+            ) { status, adjustments -> status to adjustments }.collect { (status, adjustments) ->
                 val descriptions = status.failed.mapNotNull { row ->
                     debtCreation.describePendingCreation(row)?.let { row.id to it }
                 }.toMap()
@@ -60,7 +69,15 @@ class OutboxStatusViewModel(
                 val incomeDescriptions = (status.failed + status.conflicts).mapNotNull { row ->
                     incomePlans.describeEdit(row)?.let { row.id to it }
                 }.toMap()
+                val adjustmentDescriptions = adjustments.mapNotNull { row ->
+                    debtAdjustments.describeAdjustment(row)?.let { row.id to it }
+                }.toMap()
                 _uiState.update { it.copy(status = status, failedDebtCreations = descriptions,
+                    debtAdjustments = adjustmentDescriptions,
+                    waitingDebtAdjustments = adjustmentDescriptions.values.filter {
+                        it.row.status in setOf(com.ticketbox.data.local.PendingMutationStatus.Pending,
+                            com.ticketbox.data.local.PendingMutationStatus.InFlight)
+                    },
                     recurringOccurrences = occurrenceDescriptions, incomeEdits = incomeDescriptions) }
             }
         }
@@ -68,6 +85,7 @@ class OutboxStatusViewModel(
 
     /** "用我的覆盖" — re-apply my change on top of the server's latest. */
     fun keepMine(row: OutboxRow) {
+        if (row.type == PendingMutationType.CorrectExpense) return
         if (_uiState.value.busyRowId != null) return
         viewModelScope.launch {
             _uiState.update { it.copy(busyRowId = row.id, message = null, messageTone = MessageTone.Neutral) }
@@ -88,12 +106,31 @@ class OutboxStatusViewModel(
     }
 
     /** "放弃我的改动" — discard the queued change; the server's version wins. */
-    fun dropMine(row: OutboxRow) = resolve(row) {
-        outbox.resolveConflict(row.id, ConflictResolution.DropMine)
+    fun dropMine(row: OutboxRow) {
+        if (row.type == PendingMutationType.CorrectExpense) recoverCorrection(row, true)
+        else resolve(row) { outbox.resolveConflict(row.id, ConflictResolution.DropMine) }
     }
 
     /** "重试" — flip a FAILED row back to PENDING for the next drain. */
     fun retry(row: OutboxRow) {
+        if (row.type == PendingMutationType.CorrectExpense) {
+            recoverCorrection(row, false)
+            return
+        }
+        if (row.type == PendingMutationType.RecordDebtAdjustment) {
+            val access = debtAdjustments.currentAccess()
+            val pending = debtAdjustments.describeAdjustment(row)
+            if (access == null || pending?.hasSupportedIntent != true) {
+                _uiState.update { it.copy(message = UiText.res(R.string.debt_adjustment_unsupported), messageTone = MessageTone.Danger) }
+                return
+            }
+            resolve(row) {
+                debtAdjustments.recover(access.binding, pending, false).onFailure { error ->
+                    _uiState.update { it.copy(message = error.toUiText(R.string.debt_action_failed), messageTone = MessageTone.Danger) }
+                }
+            }
+            return
+        }
         if (row.type == PendingMutationType.UpdateIncomePlan && incomePlans.describeEdit(row)?.hasSupportedIntent != true) {
             _uiState.update { it.copy(message = UiText.res(R.string.income_plan_edit_unsupported), messageTone = MessageTone.Danger) }
             return
@@ -102,8 +139,18 @@ class OutboxStatusViewModel(
     }
 
     /** "放弃" — drop a FAILED row. */
-    fun dropFailed(row: OutboxRow) = resolve(row) {
-        outbox.resolveFailed(row.id, FailedResolution.Drop)
+    fun dropFailed(row: OutboxRow) {
+        if (row.type == PendingMutationType.CorrectExpense) recoverCorrection(row, true)
+        else resolve(row) { outbox.resolveFailed(row.id, FailedResolution.Drop) }
+    }
+
+    private fun recoverCorrection(row: OutboxRow, drop: Boolean) {
+        val binding = _uiState.value.correctionObservation.access?.binding ?: return
+        resolve(row) {
+            expenseRepository.recoverCorrection(binding, row.id, drop).onFailure { error ->
+                _uiState.update { it.copy(message = error.toUiText(R.string.expense_correction_failed), messageTone = MessageTone.Danger) }
+            }
+        }
     }
 
     /** Remove only ownerless or foreign-owner rows after the screen confirms it. */
@@ -156,12 +203,24 @@ class OutboxStatusViewModel(
 }
 
 data class OutboxStatusUiState(
+    val correctionObservation: com.ticketbox.data.repository.ExpenseCorrectionObservation =
+        com.ticketbox.data.repository.ExpenseCorrectionObservation(null, emptyList()),
     val status: OutboxStatus = OutboxStatus(queueDepth = 0, conflicts = emptyList(), failed = emptyList()),
     val failedDebtCreations: Map<Long, PendingDebtCreation> = emptyMap(),
     val recurringOccurrences: Map<Long, com.ticketbox.data.repository.PendingOccurrencePayment> = emptyMap(),
     val incomeEdits: Map<Long, com.ticketbox.data.repository.PendingIncomePlanEdit> = emptyMap(),
+    val debtAdjustments: Map<Long, com.ticketbox.data.repository.PendingDebtAdjustment> = emptyMap(),
+    val waitingDebtAdjustments: List<com.ticketbox.data.repository.PendingDebtAdjustment> = emptyList(),
     val busyRowId: Long? = null,
     val isClearingQuarantine: Boolean = false,
     val message: UiText? = null,
     val messageTone: MessageTone = MessageTone.Neutral,
+)
+
+/** Required consumers for readable original-intent recovery at either navigation entrance. */
+data class OutboxRecoveryRepositories(
+    val debtCreation: DebtCreationActions,
+    val recurringOccurrences: com.ticketbox.data.repository.RecurringOccurrenceActions?,
+    val incomePlans: com.ticketbox.data.repository.IncomePlanActions,
+    val debtAdjustments: com.ticketbox.data.repository.DebtAdjustmentActions,
 )

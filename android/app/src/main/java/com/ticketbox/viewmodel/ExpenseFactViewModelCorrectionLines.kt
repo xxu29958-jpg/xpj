@@ -12,8 +12,8 @@ import kotlinx.coroutines.launch
  */
 
 fun ExpenseFactViewModel.openCorrectionItemsEditor() {
-    val items = _uiState.value.expenseItems ?: return
-    val expense = _uiState.value.expense ?: return
+    val items = correctionOriginalItems ?: _uiState.value.expenseItems?.also { correctionOriginalItems = it } ?: return
+    val expense = correctionBaseline ?: return
     val displayCurrency = expense.editDisplayParseCurrency()
     val drafts = items.items.map { item ->
         EditableItem(
@@ -67,8 +67,8 @@ fun ExpenseFactViewModel.dismissCorrectionItemsEditor() = updateCorrection {
 }
 
 fun ExpenseFactViewModel.openCorrectionSplitsEditor() {
-    val currentSplits = _uiState.value.expenseSplits ?: return
-    val expense = _uiState.value.expense ?: return
+    val currentSplits = correctionOriginalSplits ?: _uiState.value.expenseSplits?.also { correctionOriginalSplits = it } ?: return
+    val expense = correctionBaseline ?: return
     updateCorrection { it.copy(splitEditorOpen = true, splitMembersLoading = true) }
     viewModelScope.launch {
         repository.fetchSplitMembers()

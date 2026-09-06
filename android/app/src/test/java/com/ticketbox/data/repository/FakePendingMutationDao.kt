@@ -144,7 +144,7 @@ class FakePendingMutationDao : PendingMutationDao {
         ownerKey: String,
         ledgerId: String,
         targetId: String,
-        preservedTokenType: String,
+        preservedTokenTypes: List<String>,
         freshToken: Long,
     ): Int {
         val matching = rows.values.filter {
@@ -152,7 +152,7 @@ class FakePendingMutationDao : PendingMutationDao {
                 it.ledgerId == ledgerId &&
                 it.targetId == targetId &&
                 it.status == PendingMutationStatus.Pending.wireValue &&
-                it.type != preservedTokenType
+                it.type !in preservedTokenTypes
         }
         for (row in matching) {
             rows[row.id] = row.copy(expectedRowVersion = freshToken)
@@ -180,6 +180,7 @@ class FakePendingMutationDao : PendingMutationDao {
         rotatedIdempotencyKey: String?,
     ): Int {
         val current = rows[id] ?: return 0
+        if (current.type == "correct_expense") return 0
         if (current.ownerKey != ownerKey || current.ledgerId != ledgerId || current.status != "conflict") return 0
         // codex P1 #7: 同步真实 DAO 的 retryCount = 0 重置, 否则 fake 看不到用户 retry
         // 重置预算的语义。
@@ -203,6 +204,7 @@ class FakePendingMutationDao : PendingMutationDao {
         rotatedIdempotencyKey: String?,
     ): Int {
         val current = rows[id] ?: return 0
+        if (current.type == "correct_expense") return 0
         if (current.ownerKey != ownerKey || current.ledgerId != ledgerId || current.status != "failed") return 0
         rows[id] = current.copy(
             status = "pending",

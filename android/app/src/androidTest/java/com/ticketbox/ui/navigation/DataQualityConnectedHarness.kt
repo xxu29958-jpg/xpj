@@ -106,7 +106,8 @@ internal class DataQualityConnectedHarness : AutoCloseable {
         )
         val adapters = OutboxAdapterGraph()
         val repositories = MainFeatureRepositories(
-            repository = ExpenseRepository(database.expenseDao(), binding),
+            repository = ExpenseRepository(database.expenseDao(), binding, offlineMutations =
+                com.ticketbox.data.repository.ExpenseOfflineMutationWiring(outbox, adapters.correctionAdapter, adapters.legacyCorrectionAdapter)),
             ledgerRepository = LedgerRepository(
                 settingsStore = settingsStore,
                 expenseDao = database.expenseDao(),
@@ -119,6 +120,7 @@ internal class DataQualityConnectedHarness : AutoCloseable {
             incomePlanRepository = IncomePlanRepository(apiProvider, outbox, adapters.incomePlanUpdateAdapter),
             debtRepository = DebtRepository(apiProvider),
             debtCreationRepository = DebtCreationRepository(apiProvider, outbox, adapters.debtCreateAdapter),
+            debtAdjustmentRepository = com.ticketbox.data.repository.DebtAdjustmentRepository(apiProvider, outbox, adapters.debtAdjustmentAdapter),
             repaymentDraftRepository = RepaymentDraftRepository(apiProvider),
             outboxRepository = outbox,
             tagRepository = TagRepository(apiProvider),

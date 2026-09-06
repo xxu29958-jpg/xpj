@@ -72,7 +72,7 @@ internal class ExpenseUploadBindingTest {
         assertEquals(listOf("original-image", "original-image"), bytes)
     }
 
-    private fun repository(api: ApiService, session: TestSessionFixture) = ExpenseRepository(
+    private fun repository(api: ApiService, session: TestSessionFixture) = expenseRepositoryFixture(
         expenseDao = FakeExpenseDao(),
         binding = testServerSessionBinding(
             apiClient = object : ApiServiceFactory {

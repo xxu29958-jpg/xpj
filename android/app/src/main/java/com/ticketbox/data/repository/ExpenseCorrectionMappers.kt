@@ -9,11 +9,6 @@ import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import com.ticketbox.domain.model.ExpenseRevision
 import com.ticketbox.domain.model.ExpenseRevisionPage
-import com.ticketbox.domain.model.CurrencyCode
-import com.ticketbox.domain.model.FxContract
-import com.ticketbox.domain.model.MONEY_MINOR_MAX
-import java.math.BigDecimal
-import java.math.RoundingMode
 
 fun ExpenseRevisionDto.toDomain(): ExpenseRevision = ExpenseRevision(
     publicId = publicId,
@@ -74,92 +69,6 @@ private fun ExpenseCorrectionDraft.hasMutationFields(): Boolean =
     amountCents != null || originalCurrencyCode != null || originalAmountMinor != null ||
         merchant != null || category != null || note != null || expenseTimeChanged ||
         tags != null || valueScoreChanged || regretScoreChanged || items != null || splits != null
-
-fun Expense.projectCorrection(draft: ExpenseCorrectionDraft): Expense =
-    projectCorrectionMoney(draft).projectCorrectionDetails(
-        draft = draft,
-        projectExpenseTime = canProjectExpenseTimeWithoutFxRefresh(draft),
-    )
-
-private fun Expense.projectCorrectionMoney(draft: ExpenseCorrectionDraft): Expense {
-    val changesOriginalMoney = draft.originalCurrencyCode != null || draft.originalAmountMinor != null
-    if ((changesOriginalMoney || draft.amountCents != null) && (draft.items != null || draft.splits != null)) {
-        return this
-    }
-    if (!changesOriginalMoney) {
-        val projectedHomeAmount = draft.amountCents ?: return this
-        return copy(
-            amountCents = projectedHomeAmount,
-            homeAmountCents = projectedHomeAmount,
-        )
-    }
-    val projectedHomeAmount = projectedFrozenHomeAmount(draft) ?: return this
-    return copy(
-        amountCents = projectedHomeAmount,
-        homeAmountCents = projectedHomeAmount,
-        originalCurrency = draft.originalCurrencyCode ?: originalCurrency,
-        originalCurrencyCode = draft.originalCurrencyCode ?: originalCurrencyCode,
-        originalCurrencyCodeRaw = draft.originalCurrencyCode?.storageKey ?: originalCurrencyCodeRaw,
-        originalAmountMinor = draft.originalAmountMinor ?: originalAmountMinor,
-    )
-}
-
-private fun Expense.projectedFrozenHomeAmount(draft: ExpenseCorrectionDraft): Long? {
-    val originalAmount = draft.originalAmountMinor ?: return null
-    val targetCurrency = draft.originalCurrencyCode ?: return null
-    val homeCurrency = CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode)
-        ?: homeCurrency.takeIf { homeCurrencyCode.isNullOrBlank() }
-        ?: return null
-    val currentCurrency = CurrencyCode.fromStorageKeyOrNull(originalCurrencyCodeRaw)
-        ?: originalCurrencyCode.takeIf { originalCurrencyCodeRaw.isNullOrBlank() }
-        ?: return null
-    if (
-        draft.expenseTimeChanged ||
-        targetCurrency != currentCurrency ||
-        fxStatus != FxContract.StatusReady
-    ) {
-        return null
-    }
-    if (targetCurrency == homeCurrency) return originalAmount
-    val frozenRate = exchangeRateToCny?.trim()?.toBigDecimalOrNull()
-        ?.takeIf { it.signum() > 0 }
-        ?: return null
-    return runCatching {
-        BigDecimal.valueOf(originalAmount)
-            .movePointLeft(targetCurrency.minorUnitDigits)
-            .multiply(frozenRate)
-            .movePointRight(homeCurrency.minorUnitDigits)
-            .setScale(0, RoundingMode.HALF_UP)
-            .longValueExact()
-            .takeIf { it in 0L..MONEY_MINOR_MAX }
-    }.getOrNull()
-}
-
-private fun Expense.canProjectExpenseTimeWithoutFxRefresh(draft: ExpenseCorrectionDraft): Boolean {
-    if (!draft.expenseTimeChanged) return false
-    val currentCurrency = CurrencyCode.fromStorageKeyOrNull(originalCurrencyCodeRaw)
-        ?: originalCurrencyCode.takeIf { originalCurrencyCodeRaw.isNullOrBlank() }
-        ?: return false
-    val homeCurrency = CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode)
-        ?: homeCurrency.takeIf { homeCurrencyCode.isNullOrBlank() }
-        ?: return false
-    val targetCurrency = draft.originalCurrencyCode ?: currentCurrency
-    return currentCurrency == homeCurrency && targetCurrency == homeCurrency
-}
-
-private fun Expense.projectCorrectionDetails(
-    draft: ExpenseCorrectionDraft,
-    projectExpenseTime: Boolean,
-): Expense = copy(
-    merchant = draft.merchant ?: merchant,
-    serverCategory = draft.category ?: serverCategory,
-    category = draft.category ?: category,
-    note = draft.note ?: note,
-    expenseTime = if (projectExpenseTime) draft.expenseTime else expenseTime,
-    tags = draft.tags ?: tags,
-    valueScore = if (draft.valueScoreChanged) draft.valueScore else valueScore,
-    regretScore = if (draft.regretScoreChanged) draft.regretScore else regretScore,
-)
 
 /**
  * Mirrors the advisor input owner: confirmed amount/original currency,

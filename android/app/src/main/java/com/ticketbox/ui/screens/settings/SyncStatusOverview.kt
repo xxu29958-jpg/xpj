@@ -8,33 +8,49 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
+import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.OutboxStatus
+import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.OutboxWriteBlock
+import com.ticketbox.data.repository.PendingExpenseCorrection
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.viewmodel.OutboxStatusUiState
+
+@Composable
+internal fun SyncStatusOriginalIntentSummary(row: OutboxRow, state: OutboxStatusUiState) {
+    state.recurringOccurrences[row.id]?.let { com.ticketbox.ui.screens.recurring.RecurringOccurrenceIntentSummary(it) }
+    state.incomeEdits[row.id]?.let { com.ticketbox.ui.screens.IncomePlanIntentSummary(it) }
+    state.debtAdjustments[row.id]?.let { com.ticketbox.ui.screens.DebtAdjustmentIntentSummary(it) }
+}
 
 internal data class SyncStatusOverview(
     val queuedCount: Int,
     val conflictCount: Int,
     val failedCount: Int,
     val quarantinedCount: Int,
+    val reviewRequiredCount: Int,
     val writeBlock: OutboxWriteBlock?,
 ) {
-    val needsActionCount: Int = conflictCount + failedCount + quarantinedCount
+    val needsActionCount: Int = conflictCount + failedCount + quarantinedCount + reviewRequiredCount
     val isSettled: Boolean = queuedCount == 0 && needsActionCount == 0
 }
 
-internal fun syncStatusOverview(status: OutboxStatus): SyncStatusOverview =
+internal fun syncStatusOverview(
+    status: OutboxStatus,
+    corrections: List<PendingExpenseCorrection>,
+): SyncStatusOverview =
     SyncStatusOverview(
         queuedCount = status.queueDepth.coerceAtLeast(0),
         conflictCount = status.conflicts.size,
         failedCount = status.failed.size,
         quarantinedCount = status.quarantinedCount.coerceAtLeast(0),
+        reviewRequiredCount = corrections.count { !it.delivered && it.row.status == PendingMutationStatus.Done },
         writeBlock = status.writeBlock,
     )
 
 @Composable
-internal fun SyncStatusOverviewSection(status: OutboxStatus) {
-    val overview = syncStatusOverview(status)
+internal fun SyncStatusOverviewSection(status: OutboxStatus, corrections: List<PendingExpenseCorrection>) {
+    val overview = syncStatusOverview(status, corrections)
     SettingsSection(
         title = stringResource(R.string.sync_status_overview_title),
         icon = Icons.Filled.Sync,
@@ -77,6 +93,10 @@ internal fun SyncStatusOverviewSection(status: OutboxStatus) {
 
 @Composable
 private fun overviewCaption(overview: SyncStatusOverview): String = when {
+    overview.reviewRequiredCount > 0 -> stringResource(
+        R.string.sync_status_overview_caption_review_required,
+        overview.reviewRequiredCount,
+    )
     overview.quarantinedCount > 0 -> stringResource(
         R.string.sync_status_overview_caption_quarantined,
         overview.quarantinedCount,
@@ -95,3 +115,35 @@ internal fun overviewCaptionResource(overview: SyncStatusOverview): Int =
     } else {
         R.string.sync_status_overview_caption_queued
     }
+
+/** Translate known outbox error markers; never expose raw transport or engine errors to users. */
+@Composable
+internal fun friendlyLastError(raw: String?, fallback: String): String {
+    val text = raw?.trim().orEmpty()
+    if (text.isEmpty()) return fallback
+    return when {
+        text.startsWith("max_attempts_exceeded") -> stringResource(R.string.sync_status_error_max_attempts)
+        text.startsWith("no_dispatcher_registered") -> stringResource(R.string.sync_status_error_no_dispatcher)
+        text.startsWith("outbox_row_expired") -> stringResource(R.string.sync_status_error_expired)
+        text in syncStatusExactErrorMessageResources ->
+            stringResource(syncStatusExactErrorMessageResources.getValue(text))
+        else -> fallback
+    }
+}
+
+internal val syncStatusExactErrorMessageResources = mapOf(
+    "runtime_version_mismatch" to R.string.sync_status_error_protocol_mismatch,
+    "client_upgrade_required" to R.string.sync_status_error_protocol_mismatch,
+    "rule_category_deleted" to R.string.sync_status_error_rule_category_deleted,
+    "debt_adjustment_payload_unsupported" to R.string.debt_adjustment_unsupported,
+    "debt_adjustment_response_unverified" to R.string.debt_adjustment_attention,
+    "debt_adjustment_binding_changed" to R.string.debt_adjustment_attention,
+    "debt_adjustment_connection_interrupted" to R.string.debt_adjustment_attention,
+    "debt_create_payload_unsupported" to R.string.debt_create_pending_unsupported,
+    "debt_create_intent_invalid" to R.string.debt_create_sync_rejected,
+    "debt_create_binding_changed" to R.string.debt_create_sync_rejected,
+    "debt_create_rejected" to R.string.debt_create_sync_rejected,
+    "debt_create_response_unverified" to R.string.debt_create_sync_uncertain,
+    "debt_create_response_pending" to R.string.debt_create_sync_uncertain,
+    "debt_create_connection_interrupted" to R.string.debt_create_sync_uncertain,
+)

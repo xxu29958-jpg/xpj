@@ -86,6 +86,7 @@ internal data class SettingsDestinationChromeState(
 )
 
 internal data class SettingsDestinationNavigation(
+    val onOpenExpense: (Long) -> Unit,
     val onSecondaryActiveChange: (Boolean) -> Unit = {},
     val onCloseRoot: () -> Unit = {},
 )
@@ -123,13 +124,14 @@ internal data class SettingsRouteRepositories(
     val activeLedgerId: String?,
     val recurringOccurrences: com.ticketbox.data.repository.RecurringOccurrenceActions? = null,
     val incomePlans: com.ticketbox.data.repository.IncomePlanActions,
+    val debtAdjustments: com.ticketbox.data.repository.DebtAdjustmentActions,
 )
 
 @Composable
 internal fun SettingsDestinationHost(
     states: SettingsRouteStates,
     chromeState: SettingsDestinationChromeState,
-    navigation: SettingsDestinationNavigation = SettingsDestinationNavigation(),
+    navigation: SettingsDestinationNavigation,
     actions: SettingsRouteActions,
     repositories: SettingsRouteRepositories,
 ) {
@@ -374,12 +376,12 @@ internal fun SettingsDestinationHost(
                 factory = outboxStatusViewModelFactory(
                     repositories.outboxRepository,
                     repositories.expenseRepository,
-                    repositories.debtCreationRepository,
-                    repositories.recurringOccurrences,
-                    repositories.incomePlans,
+                    com.ticketbox.viewmodel.OutboxRecoveryRepositories(repositories.debtCreationRepository,
+                        repositories.recurringOccurrences, repositories.incomePlans, repositories.debtAdjustments),
                 ),
             )
             SyncStatusScreen(
+                onOpenExpense = navigation.onOpenExpense,
                 viewModel = vm,
                 onBack = { route = SettingsDestination.Root },
             )

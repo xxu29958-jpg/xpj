@@ -144,9 +144,10 @@ fun debtViewModelFactory(
 @Suppress("UNCHECKED_CAST")
 fun debtDetailViewModelFactory(
     repository: DebtActions,
+    adjustments: com.ticketbox.data.repository.DebtAdjustmentActions,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return DebtDetailViewModel(repository) as T
+        return DebtDetailViewModel(repository, adjustments) as T
     }
 }
 
@@ -351,11 +352,10 @@ fun backgroundTasksViewModelFactory(
 fun outboxStatusViewModelFactory(
     outbox: OutboxRepository,
     expenseRepository: ExpenseRepository,
-    debtCreation: DebtCreationActions,
-    recurringOccurrences: com.ticketbox.data.repository.RecurringOccurrenceActions? = null,
-    incomePlans: com.ticketbox.data.repository.IncomePlanActions,
+    repositories: OutboxRecoveryRepositories,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return OutboxStatusViewModel(outbox, expenseRepository, debtCreation, recurringOccurrences, incomePlans) as T
+        return OutboxStatusViewModel(outbox, expenseRepository, repositories.debtCreation,
+            repositories.recurringOccurrences, repositories.incomePlans, repositories.debtAdjustments) as T
     }
 }

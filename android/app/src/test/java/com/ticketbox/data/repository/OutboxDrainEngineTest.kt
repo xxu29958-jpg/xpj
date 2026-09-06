@@ -220,6 +220,38 @@ class OutboxDrainEngineTest {
     }
 
     @Test
+    fun successDoesNotRebaseQueuedCompositeCorrection() = runTest {
+        val dao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(dao = dao)
+        val engine = OutboxDrainEngine(
+            outbox,
+            listOf(StubDispatcher(result = DispatchResult.Success(newRowVersion = 8L))),
+        )
+        outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 7L)
+        val payload = """{"expected_row_version":0,"reason":"校正复合事实","original_currency_code":"CNY","original_amount_minor":1200,"items":[{"name":"午餐","amount_cents":1200}],"splits":[{"member_id":7,"amount_cents":1200}]}"""
+        val correctionId = outbox.enqueue(
+            PendingMutationType.CorrectExpense,
+            "expense:1",
+            payload,
+            7L,
+            idempotencyKey = "original-correction-key",
+        )
+        val original = dao.rows.getValue(correctionId)
+
+        val summary = engine.drainOnce()
+
+        assertEquals(1, summary.done)
+        assertEquals(1, summary.attempted, "the correction waits behind the earlier same-target command")
+        val pending = dao.rows.getValue(correctionId)
+        assertEquals(7L, pending.expectedRowVersion, "a predecessor's success cannot authorize correction of an unseen fact version")
+        assertEquals("original-correction-key", pending.idempotencyKey)
+        assertEquals(payload, pending.payload)
+        assertEquals(original.ownerKey, pending.ownerKey)
+        assertEquals(original.ledgerId, pending.ledgerId)
+        assertEquals(PendingMutationStatus.Pending.wireValue, pending.status)
+    }
+
+    @Test
     fun voidSuccessCascadesRootTokenWithoutOverwritingAnotherOffsetsOccToken() = runTest {
         val dao = FakePendingMutationDao()
         val outbox = testOutboxRepository(dao = dao)

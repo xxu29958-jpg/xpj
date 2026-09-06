@@ -1,10 +1,13 @@
 package com.ticketbox.viewmodel
 
-import com.ticketbox.data.repository.projectCorrection
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import com.ticketbox.domain.model.ExpenseSplits
+import com.ticketbox.domain.model.FxContract
+import com.ticketbox.domain.model.MONEY_MINOR_MAX
+import java.math.BigDecimal
+import java.math.RoundingMode
 
 /** Local certainty gate for corrections that would otherwise queue a known-invalid split aggregate. */
 internal fun wouldOverallocateLoadedSplits(
@@ -32,17 +35,23 @@ private fun projectedCorrectionParent(
         draft.originalCurrencyCode != null ||
         draft.originalAmountMinor != null
     if (!changesMoney) return expense.amountCents
-    val projected = expense.projectCorrection(draft.copy(items = null, splits = null))
-    draft.amountCents?.let { explicitHomeAmount ->
-        return projected.amountCents.takeIf { it == explicitHomeAmount }
-    }
+    draft.amountCents?.let { return it }
     val targetCurrency = draft.originalCurrencyCode ?: return null
     val targetAmount = draft.originalAmountMinor ?: return null
-    val homeCurrency = CurrencyCode.fromStorageKeyOrNull(expense.homeCurrencyCode?.trim()?.uppercase())
-        ?: expense.homeCurrency.takeIf { expense.homeCurrencyCode.isNullOrBlank() }
+    val homeCurrency = correctionHomeCurrency(expense) ?: return null
     if (targetCurrency == homeCurrency) return targetAmount
-    if (projected.originalCurrencyCode != targetCurrency || projected.originalAmountMinor != targetAmount) {
-        return null
-    }
-    return projected.amountCents
+    val originalCurrency = CurrencyCode.fromStorageKeyOrNull(expense.originalCurrencyCodeRaw)
+        ?: expense.originalCurrencyCode.takeIf { expense.originalCurrencyCodeRaw.isNullOrBlank() }
+    if (draft.expenseTimeChanged || targetCurrency != originalCurrency || expense.fxStatus != FxContract.StatusReady) return null
+    val rate = expense.exchangeRateToCny?.trim()?.toBigDecimalOrNull()?.takeIf { it.signum() > 0 } ?: return null
+    // Validation-only use of the existing frozen snapshot; never a canonical publication.
+    return runCatching {
+        BigDecimal.valueOf(targetAmount).movePointLeft(targetCurrency.minorUnitDigits)
+            .multiply(rate).movePointRight(homeCurrency.minorUnitDigits).setScale(0, RoundingMode.HALF_UP)
+            .longValueExact().takeIf { it in 0L..MONEY_MINOR_MAX }
+    }.getOrNull()
 }
+
+private fun correctionHomeCurrency(expense: Expense): CurrencyCode? =
+    CurrencyCode.fromStorageKeyOrNull(expense.homeCurrencyCode)
+        ?: expense.homeCurrency.takeIf { expense.homeCurrencyCode.isNullOrBlank() }
