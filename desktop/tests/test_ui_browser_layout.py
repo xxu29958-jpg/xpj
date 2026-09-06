@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -688,13 +689,59 @@ _SERVED_WEB_PROBE = """
 """
 
 
+def _assert_served_web_layout(value: object) -> None:
+    assert isinstance(value, str)
+    probe = json.loads(value)
+    assert probe["overflow"] is False, (probe["viewportWidth"], probe["scrollWidth"])
+    assert probe["ledgerChip"] is True
+    assert probe["hasOwnerLedger"] is True
+    assert probe["unnamedControls"] == 0
+
+
+def _lose_first_completed_served_web_response(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    bootstrap_path: Path,
+    profile: Path,
+    record_property: Callable[[str, object], None],
+) -> None:
+    real_request = _edge_cdp._WebSocket.request
+    dropped = False
+
+    def request(page, method: str, params=None):
+        nonlocal dropped
+        result = real_request(page, method, params)
+        if dropped or method != "Runtime.evaluate" or params is None:
+            return result
+        if params.get("expression") != _SERVED_WEB_PROBE or "exceptionDetails" in result:
+            return result
+        remote = result.get("result", {})
+        if not isinstance(remote, dict) or remote.get("type") != "string":
+            return result
+        _assert_served_web_layout(remote.get("value"))
+        assert not (profile / "attempt-2").exists(), "fault prerequisite: first profile must finish the real DOM"
+        assert not bootstrap_path.exists(), "fault prerequisite: real bootstrap must already be consumed"
+        dropped = True
+        record_property("cdp_response_loss_after_consumed_bootstrap_dom", "attempt-1")
+        raise TimeoutError("injected CDP response loss after completed served-Web DOM")
+
+    monkeypatch.setattr(_edge_cdp._WebSocket, "request", request)
+
+
 @pytest.mark.skipif(os.name != "nt", reason="Windows Edge consumer gate")
-@pytest.mark.parametrize(("width", "height"), [(1180, 760), (820, 660)])
+@pytest.mark.parametrize(("width", "height", "lose_first_response"), [
+    pytest.param(1180, 760, False, id="1180-760"),
+    pytest.param(820, 660, False, id="820-660"),
+    pytest.param(1180, 760, True, id="1180x760-cdp-response-loss"),
+])
 def test_served_web_layout_through_manager_bff(
     tmp_path: Path,
     real_backend: RealBackend,
     width: int,
     height: int,
+    lose_first_response: bool,
+    monkeypatch: pytest.MonkeyPatch,
+    record_property: Callable[[str, object], None],
 ) -> None:
     """The BFF-served /web stays usable at both supported app-window sizes."""
     edge = discover_edge_executable()
@@ -713,9 +760,14 @@ def test_served_web_layout_through_manager_bff(
         assert status == 200, projection
         bootstrap_path = tmp_path / f"served-web-{width}x{height}" / "bootstrap.html"
         bootstrap_url = manager.prepare_web_bootstrap(bootstrap_path)
+        profile = tmp_path / f"edge-served-web-{width}x{height}"
+        if lose_first_response:
+            _lose_first_completed_served_web_response(
+                monkeypatch, bootstrap_path=bootstrap_path, profile=profile, record_property=record_property,
+            )
         value = evaluate_page(
             edge,
-            profile=tmp_path / f"edge-served-web-{width}x{height}",
+            profile=profile,
             url=bootstrap_url,
             width=width,
             height=height,
@@ -723,13 +775,10 @@ def test_served_web_layout_through_manager_bff(
         )
 
     assert not bootstrap_path.exists()
-    assert isinstance(value, str)
-    probe = json.loads(value)
-    assert probe["overflow"] is False, (probe["viewportWidth"], probe["scrollWidth"])
-    assert probe["ledgerChip"] is True
-    assert probe["hasOwnerLedger"] is True
-    assert probe["unnamedControls"] == 0
+    _assert_served_web_layout(value)
     assert stores.sessions
+    if lose_first_response:
+        assert (profile / "attempt-2").is_dir()
 
 
 # ── Manager product card: hidden-authority + live ledger switching (218-E) ──

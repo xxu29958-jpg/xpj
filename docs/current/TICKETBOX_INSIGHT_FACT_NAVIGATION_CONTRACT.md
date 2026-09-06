@@ -104,3 +104,38 @@ Root 集成复核：从仓库根误调用纯测试得到 `scripts.check_api_cont
 施工后仅改 `web_reports.py` 与本合同：route 中原五行历史字段被同一文件的 `_six_month_history_view` 替代，传递原数组并调用原均值 owner。AST 实测 route 为 80 行（349–428），新纯视图组为 9 行；主控明确接受现有上限，不再为额外余量扩大上下文 owner。将新纯组按实际参数内联后，整个 route 的 AST 与 `1a3bbf9a` 完全相同（忽略位置属性），包括所有查询、其它投影与异常求值顺序；该静态等价证据不等于编译或云端 weight 通过。
 
 同一原短组实际 23 PASS（3.37 秒）；OpenAPI 检查 up to date、Ruff 与 diff 检查通过。未改快照、测试断言、Desktop、金额/预算服务或任何模板/JS 消费者。未安装本机 Lizard、未重跑全仓 weight、PG 或长测；最终 repository-weight 与其余云门禁由 root 提交后的 exact candidate 重新核准。
+
+### Windows served-Web 验证入口：单用 bootstrap 与 fresh-profile 重试（test-first）
+
+本次固定 source `3eb75aed8d02f7177978978cd7427f7171ea6567`，施工前 clean。主控已核该候选只有 Windows 门禁失败，其余门禁完成；1180×760 served-Web 用例最后一次 `Runtime.evaluate` socket 读取超时，原始超时根因仍 unknown，probe 本身不 fetch。此处不把独立发现的恢复入口缺口冒充该超时根因，也不新增产品或 Windows lifecycle FIX。
+
+当前 `_edge_cdp.evaluate_page` 为两次尝试分别建立 fresh profile，却复用调用前准备的同一个 URL。`ControlServer.prepare_web_bootstrap` 是既有单用 grant/material owner；真实 POST 成功后 `consume_web_bootstrap` 删除 material，再由原 handler 发放受约束 session cookie。第一 profile 已消费 grant 后再丢失 CDP 响应，第二 profile 既无第一 profile 的 cookie，也不能重用已删除 material。旧成功出口是“一次 DOM 成功”；必须补证受控传输失败之后，第二次真实浏览器仍能通过相同身份、账本和布局断言。
+
+施工前全部直接消费者如下（行号固定为 `3eb75aed`）。Desktop 是 15 个调用，其中两个是纯 helper 测试；此外 Backend 动态导入同一 helper 的一个调用也必须在后续 required 签名迁移中处理，不能漏掉。
+
+| 入口 / 行 | 当前 URL 与原验证责任 | RED 后需保留的准备责任 |
+| --- | --- | --- |
+| `test_desktop_first_use_edge.py:26` | 可复用 file URI；本机入口和原 code 继续 | 返回原 fixture URI |
+| `test_ui_browser_layout.py:156` `_render_with_edge` | 可复用 file URI；Manager 各尺寸布局 | 返回原 fixture URI |
+| 同文件 `:327` `_render_behavior_probe` | 可复用 file URI；实际页面状态与操作探针 | 返回原 fixture URI |
+| 同文件 `:476` transport timeout 回归 | 纯 helper；两次不同 profile 后恢复 | 保留两次预算及原断言，URL 可复用 |
+| 同文件 `:505` semantic assertion 回归 | 纯 helper；语义失败只执行一次 | 保留语义错误不重试，URL 可复用 |
+| 同文件 `:716` served-Web 布局 | 单用 bootstrap；1180×760、820×660 两实例，真实 backend/pair/BFF/DOM | 仅原 Manager 每次独立创建 grant；本轮在原两个实例之外加一个响应丢失反例 |
+| 同文件 `:814` product card matrix | 可复用 file URI；hidden authority 与尺寸 | 返回原 fixture URI |
+| 同文件 `:971` prompt failures | 可复用 file URI；旧 DOM 退役与公网状态保留 | 返回原 fixture URI |
+| 同文件 `:1071` dirty ledger selection | 可复用 file URI；成功前保留选择 | 返回原 fixture URI |
+| 同文件 `:1131` ledger refresh cadence | 可复用 file URI；刷新不覆盖未提交选择 | 返回原 fixture URI |
+| 同文件 `:1203` role / vanished ledger | 可复用 file URI；实时成员与账本消失 | 返回原 fixture URI |
+| `test_web_bff_edge_e2e.py:328` | 单用 bootstrap；真实 BFF identity/header/请求与 DOM | 仅原 Manager 每次独立创建 grant |
+| 同文件 `:381` theme | 单用 bootstrap；原 theme 静态脚本与本地外观 | 同上；不增加 API 外观 owner |
+| 同文件 `:468` real backend render | 单用 bootstrap；两尺寸实例，pair/role/foreign-ledger 403/秘密不外露 | 同上；全部原断言保留 |
+| `test_web_manual_draft_edge.py:108` | 可复用本机 HTTP URL；真实草稿重载和 unknown-response 继续 | 返回同一仍在 serving 的 URI |
+| `backend/tests/test_web_edge_runtime_contract.py:87` | 动态加载 Desktop helper，可复用 file URI；实际 Web runtime consumers | required 签名迁移必须同步这个第 16 个调用 |
+
+四个单用函数在基线共六个参数化实例；其余 Desktop 十一个 URL 可复用。预计最小责任修正是 `evaluate_page` 必填 `prepare_url(attempt)`，在每个 fresh profile 之前向原 caller 请求入口；内部 `_evaluate_page_once` 继续只读 URL。把 URL 识别、cookie 注入或 grant 生成塞进 CDP helper 会复制 Manager 的身份责任；复用同一个 profile 又不满足现有传输故障隔离。本轮不实施该 helper/调用者迁移，等实际 RED 后一次迁移全部 16 处，保持两次/10 秒和最后错误原义。
+
+新反例只包装真实 `_WebSocket.request`：首次真实 `Runtime.evaluate` 已返回完整 served-Web DOM、同一布局/Owner 账本断言通过、单用文件已被真实消费，且仍是 attempt-1，才丢弃这一响应并抛一次 TimeoutError。JUnit 只记录无敏感值的前置成立属性。随后仍由原 helper cleanup 和第二 fresh profile 执行实际页面；最终原布局/身份/账本断言必须成立。JS 异常和布局断言不转换为 transport retry；不修改 bootstrap、cookie、pairing、服务端或 timeout。
+
+直接云生产者是现有 `.github/workflows/ci.yml:349` 的 native Windows pytest 命令，它显式选择原 served-Web 函数，因此会收集新增参数实例；原 BFF/身份和其余消费者继续保留。当前只有测试源与本合同改变；本机不运行 Edge、PG 或长测，不声称已观察新 RED，主控负责 test-only candidate 的实际执行。
+
+本轮短检查：原两个纯 helper 回归实际 2 PASS（0.13 秒；仅既有 `tests._real_backend` 预导入 rewrite warning），Ruff、Python AST 和 diff 检查通过。抽出的七行布局断言与原函数对应 AST 完全相同，原 `_SERVED_WEB_PROBE` 及其余函数 AST 未变；新增故障注入 helper 为 28 行、原 served-Web 函数现为 45 行。该测试路径独立选择 Desktop/Windows=true，其余重范围 false。原两个尺寸的参数 ID 保持，只有一个额外响应丢失实例；`_edge_cdp.py` 与所有产品、grant、会话和其余调用者源码未改。以上不证明新反例已 RED/GREEN，且未 commit/push。
