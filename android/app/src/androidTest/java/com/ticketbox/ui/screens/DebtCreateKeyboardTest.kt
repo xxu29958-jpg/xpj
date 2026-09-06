@@ -75,6 +75,13 @@ class DebtCreateKeyboardTest {
         counterparty.performScrollTo().performTouchInput { click() }
         counterparty.performTextInput("小王")
         assertSaveAboveKeyboard("debt-create-keyboard-paper")
+        compose.onNodeWithText(text(R.string.debt_create_save)).performTouchInput { click() }
+        compose.onNodeWithText(text(R.string.debt_create_validation_error)).assertIsDisplayed()
+        compose.runOnIdle {
+            assertTrue(creation.submitted.isEmpty())
+            assertEquals("小王", viewModel.state.value.addDraft.counterpartyLabel)
+        }
+        assertSaveAboveKeyboard("debt-create-keyboard-validation")
 
         val amount = compose.onAllNodes(hasSetTextAction())[1]
         amount.performScrollTo().performTouchInput { click() }
