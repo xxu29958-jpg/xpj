@@ -12,6 +12,11 @@ import com.ticketbox.data.remote.ApiClient
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.DebtDto
+import com.ticketbox.data.remote.dto.GoalListResponseDto
+import com.ticketbox.data.remote.dto.GoalDto
+import com.ticketbox.data.remote.dto.DebtRepaymentEvaluationDto
+import com.ticketbox.data.remote.dto.DebtGoalLinkViewDto
+import com.ticketbox.data.remote.dto.DebtListResponseDto
 import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
 import com.ticketbox.data.remote.dto.RepaymentFactListDto
 import com.ticketbox.security.LocalSessionIdentity
@@ -34,13 +39,15 @@ internal class DebtAdjustmentConnectedFixture(private val context: Context) {
     val network = DebtAdjustmentConnectedNetwork()
     private val adapters = OutboxAdapterGraph()
     private val session = debtAdjustmentConnectedSession()
+    var scheduleCalls = 0
     lateinit var outbox: OutboxRepository
 
 
     fun reopen(): RepositoryGraph {
         database?.close()
         val db = Room.databaseBuilder(context, AppDatabase::class.java, name).build().also { database = it }
-        outbox = OutboxRepository(db.pendingMutationDao(), clock, bindingProvider = { session.toOutboxBinding() })
+        outbox = OutboxRepository(db.pendingMutationDao(), clock,
+            bindingProvider = { session.toOutboxBinding() }, onEnqueued = { scheduleCalls += 1 })
         val sessions = debtAdjustmentProxy<LocalSessionStore> { method -> when (method) {
             "currentSession" -> session
             "observeSession" -> flowOf(session)
@@ -86,6 +93,18 @@ internal class DebtAdjustmentConnectedNetwork {
             return current
         }
 
+        override suspend fun debts(lens: String?) = DebtListResponseDto(listOf(current), "CNY")
+
+        override suspend fun debtReceivables() = DebtListResponseDto(
+            listOf(current).filter { it.direction == "owed_to_me" }, "CNY",
+        )
+
+        override suspend fun goals(month: String?, includeArchived: Boolean,
+            goalType: String?, timezone: String?): GoalListResponseDto {
+            check(goalType == "debt_repayment")
+            return GoalListResponseDto(listOf(adjustmentConnectedGoal(current)))
+        }
+
         override suspend fun debtRepayments(publicId: String, page: Int) =
             RepaymentFactListDto(publicId, "CNY", emptyList(), page, 20, 0)
 
@@ -115,3 +134,20 @@ private fun debtAdjustmentConnectedSession() = LocalSessionRecord(
 
 private inline fun <reified T> debtAdjustmentProxy(crossinline answer: (String) -> Any?): T =
     Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, method, _ -> answer(method.name) } as T
+
+private fun adjustmentConnectedGoal(debt: DebtDto) = GoalDto(
+    publicId = "goal-original", ledgerId = requireNotNull(debt.ledgerId), name = "原还债目标",
+    goalType = "debt_repayment", period = "monthly", month = null, category = null,
+    targetAmountCents = null, spentAmountCents = null, remainingAmountCents = null,
+    progressPercent = null, progressState = "in_progress", status = "active",
+    createdAt = debt.createdAt, updatedAt = debt.updatedAt, rowVersion = 1, archivedAt = null,
+    debtRepayment = DebtRepaymentEvaluationDto(
+        goalVersion = 1, evaluationState = "in_progress", needsReview = false,
+        linkedDebts = listOf(DebtGoalLinkViewDto(
+            debtPublicId = debt.publicId, status = debt.status, direction = debt.direction,
+            counterpartyType = debt.counterpartyType, counterpartyLabel = debt.counterpartyLabel,
+            principalAmountCents = debt.principalAmountCents,
+            remainingAmountCents = debt.remainingAmountCents, homeCurrencyCode = debt.homeCurrencyCode,
+        )), voidedDebtPublicIds = emptyList(),
+    ),
+)

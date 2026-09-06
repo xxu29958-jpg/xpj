@@ -154,6 +154,7 @@ class DebtAdjustmentRepositoryTest {
 
         assertEquals(PendingMutationStatus.Pending.wireValue, fixture.dao.rows.getValue(id).status)
         assertOriginalIntent(original, fixture.dao.rows.getValue(id))
+        assertEquals(listOf(1, 1), fixture.queueDepthAtSchedule, "Retry must schedule the persisted original command")
         fixture.api.refusal = null
         assertEquals(1, fixture.engine().drainOnce().done)
         assertEquals(2, fixture.api.calls.size)
@@ -183,30 +184,36 @@ class DebtAdjustmentRepositoryTest {
 
     @Test
     fun unsupportedPayloadCannotRetryOrSendAndRemainsUntilExplicitDrop() = runTest {
-        val fixture = DebtAdjustmentFixture()
-        val id = fixture.save().getOrThrow()
-        val row = fixture.dao.rows.getValue(id)
-        val payload = requireNotNull(fixture.adapters.debtAdjustmentAdapter.fromJson(row.payload))
-        val unsupported = row.copy(payload = fixture.adapters.debtAdjustmentAdapter.toJson(payload.copy(revision = 99)))
-        fixture.dao.rows[id] = unsupported
+        for (reason in listOf<String?>(null, "界".repeat(501), "🧾".repeat(501), "界".repeat(500) + " ")) {
+            val fixture = DebtAdjustmentFixture()
+            val id = fixture.save().getOrThrow()
+            val row = fixture.dao.rows.getValue(id)
+            val payload = requireNotNull(fixture.adapters.debtAdjustmentAdapter.fromJson(row.payload))
+            val invalid = if (reason == null) payload.copy(revision = 99)
+                else payload.copy(request = payload.request.copy(reason = reason))
+            val unsupported = row.copy(payload = fixture.adapters.debtAdjustmentAdapter.toJson(invalid))
+            fixture.dao.rows[id] = unsupported
 
-        assertEquals(1, fixture.engine().drainOnce().failures)
-        val pending = fixture.pending()
-        assertFalse(pending.hasSupportedIntent)
-        assertTrue(fixture.repository.recover(fixture.binding, pending, drop = false).isFailure)
-        assertEquals(PendingMutationStatus.Failed.wireValue, fixture.dao.rows.getValue(id).status)
-        assertOriginalIntent(unsupported, fixture.dao.rows.getValue(id))
-        assertEquals(0, fixture.engine().drainOnce().attempted)
-        assertTrue(fixture.api.calls.isEmpty())
+            assertEquals(1, fixture.engine().drainOnce().failures)
+            val pending = fixture.pending()
+            assertFalse(pending.hasSupportedIntent)
+            assertTrue(fixture.repository.recover(fixture.binding, pending, drop = false).isFailure)
+            assertEquals(PendingMutationStatus.Failed.wireValue, fixture.dao.rows.getValue(id).status)
+            assertOriginalIntent(unsupported, fixture.dao.rows.getValue(id))
+            assertEquals(0, fixture.engine().drainOnce().attempted)
+            assertEquals(listOf(1), fixture.queueDepthAtSchedule)
+            assertTrue(fixture.api.calls.isEmpty())
 
-        fixture.repository.recover(fixture.binding, pending, drop = true).getOrThrow()
-        assertTrue(fixture.dao.rows.isEmpty())
-        assertTrue(fixture.api.calls.isEmpty())
+            fixture.repository.recover(fixture.binding, pending, drop = true).getOrThrow()
+            assertTrue(fixture.dao.rows.isEmpty())
+            assertTrue(fixture.api.calls.isEmpty())
+        }
     }
 
     @Test
-    fun zeroAmountOrBlankReasonCannotPublishOrSend() = runTest {
-        for ((amountCents, reason) in listOf(0L to "  补记借款  ", 3_000L to "   ")) {
+    fun invalidAmountOrReasonCannotPublishOrSend() = runTest {
+        for ((amountCents, reason) in listOf(0L to "  补记借款  ", 3_000L to "   ",
+            3_000L to "界".repeat(501), 3_000L to "🧾".repeat(501))) {
             val fixture = DebtAdjustmentFixture()
             val input = "amountCents=$amountCents, reason='$reason'"
 
@@ -215,6 +222,15 @@ class DebtAdjustmentRepositoryTest {
             assertTrue(fixture.dao.rows.isEmpty(), input)
             assertTrue(fixture.queueDepthAtSchedule.isEmpty(), input)
             assertTrue(fixture.api.calls.isEmpty(), input)
+        }
+        for (reason in listOf("界".repeat(500), "🧾".repeat(500))) {
+            val fixture = DebtAdjustmentFixture()
+            fixture.save(reason = "  $reason  ").getOrThrow()
+            assertEquals(reason, fixture.pending().intent?.request?.reason)
+            assertEquals(listOf(1), fixture.queueDepthAtSchedule)
+            assertTrue(fixture.api.calls.isEmpty())
+            assertEquals(1, fixture.engine().drainOnce().done)
+            assertEquals(reason, fixture.api.calls.single().request.reason)
         }
     }
 
