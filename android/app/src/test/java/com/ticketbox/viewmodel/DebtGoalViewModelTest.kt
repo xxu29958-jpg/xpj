@@ -49,7 +49,7 @@ class DebtGoalViewModelTest {
     @Test
     fun initLoadsDebtGoalsAndReflectsRole() = runTest(dispatcher) {
         val repo = FakeReportsActions(canModify = false, debtGoalsResult = Result.success(listOf(debtGoal())))
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
 
         assertEquals(1, viewModel.state.value.goals.size)
@@ -60,7 +60,7 @@ class DebtGoalViewModelTest {
     @Test
     fun refreshFailureSetsError() = runTest(dispatcher) {
         val repo = FakeReportsActions(debtGoalsResult = Result.failure(RuntimeException("offline")))
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
 
         assertTrue(viewModel.state.value.goals.isEmpty())
@@ -75,7 +75,7 @@ class DebtGoalViewModelTest {
             debtGoalsResult = Result.success(listOf(listed)),
             goalResult = Result.success(latched),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
 
         viewModel.openDetail(listed)
@@ -92,7 +92,7 @@ class DebtGoalViewModelTest {
         val repo = FakeReportsActions(
             debtGoalsResult = Result.success(listOf(latched)),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
 
         assertTrue(repo.goalCalls.isEmpty())
@@ -107,7 +107,7 @@ class DebtGoalViewModelTest {
             debtGoalsResult = Result.success(listOf(goal)),
             goalResult = Result.success(goal),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
         viewModel.openDetail(goal)
         advanceUntilIdle()
@@ -126,7 +126,7 @@ class DebtGoalViewModelTest {
             goalResult = Result.success(goal),
             replaceResult = Result.success(replaced),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
         viewModel.openDetail(goal)
         advanceUntilIdle()
@@ -151,7 +151,7 @@ class DebtGoalViewModelTest {
             debtGoalsResult = Result.success(listOf(goal)),
             goalResult = Result.success(goal),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
         viewModel.openDetail(goal)
         advanceUntilIdle()
@@ -172,7 +172,7 @@ class DebtGoalViewModelTest {
             goalResult = Result.success(goal),
             acknowledgeResult = Result.success(acked),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
         viewModel.openDetail(goal)
         advanceUntilIdle()
@@ -195,7 +195,7 @@ class DebtGoalViewModelTest {
             goalResult = Result.success(debtGoal(needsReview = true)),
             acknowledgeResult = Result.success(acked),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
         viewModel.openDetail(debtGoal(needsReview = true))
         advanceUntilIdle()
@@ -225,7 +225,7 @@ class DebtGoalViewModelTest {
             debtGoalsResult = Result.success(listOf(listSnapshot)),
             goalResult = Result.success(latchedDetail),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
         viewModel.openDetail(listSnapshot)
         advanceUntilIdle()
@@ -247,7 +247,7 @@ class DebtGoalViewModelTest {
             goalResult = Result.success(goal),
             archiveResult = Result.success(debtGoal(needsReview = true)),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
         viewModel.openDetail(goal)
         advanceUntilIdle()
@@ -266,7 +266,7 @@ class DebtGoalViewModelTest {
             debtGoalsResult = Result.success(listOf(debtGoal())),
             goalResult = Result.success(debtGoal()),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
 
         // a slow refresh stalls in debtGoals()...
@@ -293,7 +293,7 @@ class DebtGoalViewModelTest {
             debtGoalsResult = Result.success(listOf(goal)),
             goalResult = Result.success(goal),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
         viewModel.openDetail(goal)
         advanceUntilIdle()
@@ -316,7 +316,7 @@ class DebtGoalViewModelTest {
             goalResult = Result.success(goal),
             acknowledgeResult = Result.failure(RuntimeException("conflict")),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
         viewModel.openDetail(goal)
         advanceUntilIdle()
@@ -338,7 +338,7 @@ class DebtGoalViewModelTest {
             goalResult = Result.success(goal),
         )
         repo.setTargetDateResult = Result.success(debtGoal(rowVersion = 5L))
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
         viewModel.openDetail(goal)
         advanceUntilIdle()
@@ -373,7 +373,7 @@ class DebtGoalViewModelTest {
             goalResult = Result.success(goal),
         )
         repo.setTargetDateResult = Result.success(debtGoal(rowVersion = 5L))
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
         viewModel.openDetail(goal)
         advanceUntilIdle()
@@ -398,7 +398,7 @@ class DebtGoalViewModelTest {
             debtGoalsResult = Result.success(listOf(listed)),
             goalResult = Result.success(achieved),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
 
         viewModel.openDetail(listed)
@@ -418,7 +418,7 @@ class DebtGoalViewModelTest {
             debtGoalsResult = Result.success(listOf(listed)),
             goalResult = Result.success(achieved),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
 
         viewModel.openDetail(listed)
@@ -445,7 +445,7 @@ class DebtGoalViewModelTest {
             debtGoalsResult = Result.success(listOf(listed)),
             goalResult = Result.success(achieved),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
 
         viewModel.openDetail(listed)
@@ -463,7 +463,7 @@ class DebtGoalViewModelTest {
             debtGoalsResult = Result.success(listOf(achieved)),
             goalResult = Result.success(achieved),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
 
         viewModel.openDetail(achieved)
@@ -481,7 +481,7 @@ class DebtGoalViewModelTest {
             debtGoalsResult = Result.success(listOf(listed)),
             goalResult = Result.success(achieved),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
 
         viewModel.openDetail(listed)
@@ -504,7 +504,7 @@ class DebtGoalViewModelTest {
             debtGoalsResult = Result.success(listOf(listed)),
             goalResult = Result.success(achieved),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
         viewModel.openDetail(listed)
         advanceUntilIdle()
@@ -531,7 +531,7 @@ class DebtGoalViewModelTest {
             goalResult = Result.success(needsReview),
             replaceResult = Result.success(completed),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
         viewModel.openDetail(needsReview)
         advanceUntilIdle()
@@ -552,7 +552,7 @@ class DebtGoalViewModelTest {
             debtGoalsResult = Result.success(listOf(inProgress)),
             goalResult = Result.success(inProgress),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, adjustments = FakeDebtAdjustmentActions())
         advanceUntilIdle()
         viewModel.openDetail(inProgress)
         advanceUntilIdle()

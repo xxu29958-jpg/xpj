@@ -170,9 +170,14 @@ class DebtAdjustmentRepositoryTest {
             (422 to "debt_adjustment_negative_remaining") to PendingMutationStatus.Failed,
         )) {
             val fixture = DebtAdjustmentFixture()
-            fixture.api.refusal = refusal
+            fixture.api.refusal = 409 to "future_domain_refusal"
             val id = fixture.save(amountCents = -5_000L).getOrThrow()
             val original = fixture.dao.rows.getValue(id)
+            assertEquals(1, fixture.engine().drainOnce().failures)
+            val staleRetryable = fixture.pending()
+            assertTrue(staleRetryable.canRetry)
+            fixture.repository.recover(fixture.binding, staleRetryable, drop = false).getOrThrow()
+            fixture.api.refusal = refusal
 
             val drained = fixture.engine().drainOnce()
             assertEquals(1, if (expectedStatus == PendingMutationStatus.Conflict) drained.conflicts else drained.failures)
@@ -181,12 +186,15 @@ class DebtAdjustmentRepositoryTest {
             assertTrue(pending.hasSupportedIntent)
             val recovery = fixture.repository.recover(fixture.binding, pending, drop = false)
             if (expectedStatus == PendingMutationStatus.Failed) assertTrue(recovery.isFailure)
+            assertTrue(fixture.repository.recover(fixture.binding, staleRetryable, drop = false).isFailure,
+                "An old unknown-result callback cannot override the current definite refusal")
 
             assertEquals(expectedStatus.wireValue, fixture.dao.rows.getValue(id).status)
             assertOriginalIntent(original, fixture.dao.rows.getValue(id))
-            assertEquals(listOf(1), fixture.queueDepthAtSchedule)
+            assertEquals(listOf(1, 1), fixture.queueDepthAtSchedule)
             assertEquals(0, fixture.engine().drainOnce().attempted)
-            assertEquals(1, fixture.api.calls.size)
+            assertEquals(2, fixture.api.calls.size)
+            assertEquals(fixture.api.calls.first(), fixture.api.calls.last())
             assertTrue(fixture.api.facts.isEmpty())
             fixture.repository.recover(fixture.binding, pending, drop = true).getOrThrow()
             assertTrue(fixture.dao.rows.isEmpty())

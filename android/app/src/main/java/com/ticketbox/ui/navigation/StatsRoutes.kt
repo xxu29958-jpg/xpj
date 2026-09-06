@@ -223,7 +223,7 @@ internal fun DebtRoute(
     // ViewModelStore 内「我欠」(payables) 与全账本页 (ledger) 是两份实例）。
     val debtListViewModel: DebtListViewModel = viewModel(
         key = "$DebtListViewModelKey:${lens.name}",
-        factory = debtViewModelFactory(screenFactory.debtRepository, screenFactory.debtCreationRepository, lens),
+        factory = debtViewModelFactory(screenFactory.debtRepository, screenFactory.debtCreationRepository, screenFactory.debtAdjustmentRepository, lens),
     )
     val detailViewModel: DebtDetailViewModel = viewModel(
         key = DebtDetailViewModelKey,
@@ -355,7 +355,7 @@ internal fun ReceivablesRoute(
 ) {
     val viewModel: ReceivablesViewModel = viewModel(
         key = ReceivablesViewModelKey,
-        factory = receivablesViewModelFactory(screenFactory.debtRepository),
+        factory = receivablesViewModelFactory(screenFactory.debtRepository, screenFactory.debtAdjustmentRepository),
     )
     val detailViewModel: DebtDetailViewModel = viewModel(
         key = ReceivablesDetailViewModelKey,
@@ -411,6 +411,7 @@ internal fun RepaymentDraftRoute(
         factory = repaymentDraftInboxViewModelFactory(
             drafts = screenFactory.repaymentDraftRepository,
             debts = screenFactory.debtRepository,
+            adjustments = screenFactory.debtAdjustmentRepository,
         ),
     )
     LaunchedEffect(Unit) {

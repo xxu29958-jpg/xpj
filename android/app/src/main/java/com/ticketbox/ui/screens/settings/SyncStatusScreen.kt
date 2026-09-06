@@ -181,7 +181,7 @@ private fun SyncStatusPageBody(
                     busy = state.busyRowId == row.id,
                     onRetry = { actions.onRetry(row) }.takeIf {
                         (row.type != PendingMutationType.UpdateIncomePlan || state.incomeEdits[row.id]?.hasSupportedIntent == true) &&
-                            (row.type != PendingMutationType.RecordDebtAdjustment || state.debtAdjustments[row.id]?.hasSupportedIntent == true)
+                            (row.type != PendingMutationType.RecordDebtAdjustment || state.debtAdjustments[row.id]?.canRetry == true)
                     },
                     onDrop = { actions.onDropFailed(row) },
                 )

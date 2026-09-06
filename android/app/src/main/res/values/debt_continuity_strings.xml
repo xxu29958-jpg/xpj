@@ -26,4 +26,12 @@
     <string name="debt_create_drop_dialog_title">放弃这笔本机记录？</string>
     <string name="debt_create_drop_dialog_text">这只会移除本机待同步记录，不会撤销账本中可能已保存的往来。请先核对账本，再决定是否放弃。</string>
     <string name="debt_create_expired_drop_dialog_text">这笔本机记录已超出安全重试期限。移除不会撤销账本中可能已保存的往来，请先核对账本。</string>
+    <string name="debt_adjustment_refresh_required">原调整已确认，请刷新核对最新欠款。核对完成前暂停新的操作。</string>
+    <string name="debt_adjustment_write_waiting">这笔欠款还有原调整待处理，请先核对原提交，再继续新的操作。</string>
+    <string name="debt_adjustment_checking">正在核对这笔欠款的原调整，请稍候。</string>
+    <string name="debt_goal_create_selection_changed">所选欠款已发生变化，部分已不可关联。原名称和选择已保留，请核对后移除不可关联的选择。</string>
+    <string name="debt_goal_create_remove_unavailable">移除不可关联的选择</string>
+    <string name="repayment_draft_target_changed">这笔欠款已发生变化，请刷新并重新选择还款对象。</string>
+    <string name="debt_adjustment_exceeds_remaining">减少金额不能超过当前剩余金额。</string>
+    <string name="debt_adjustment_reduction_rejected">账本已拒绝这次调整：减少金额超过剩余金额。原金额和原因已保留，请核对后忽略这次本地调整，再重新填写。</string>
 </resources>

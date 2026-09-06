@@ -124,9 +124,10 @@ fun incomePlanEditViewModelFactory(
 @Suppress("UNCHECKED_CAST")
 fun debtGoalViewModelFactory(
     repository: ReportsActions,
+    adjustments: com.ticketbox.data.repository.DebtAdjustmentActions,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return DebtGoalViewModel(repository) as T
+        return DebtGoalViewModel(repository, adjustments) as T
     }
 }
 
@@ -134,10 +135,11 @@ fun debtGoalViewModelFactory(
 fun debtViewModelFactory(
     repository: DebtActions,
     creation: com.ticketbox.data.repository.DebtCreationActions,
+    adjustments: com.ticketbox.data.repository.DebtAdjustmentActions,
     lens: DebtListLens = DebtListLens.Ledger,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return DebtListViewModel(repository, creation, lens) as T
+        return DebtListViewModel(repository, creation, adjustments, lens) as T
     }
 }
 
@@ -165,9 +167,10 @@ fun debtRepaymentHistoryViewModelFactory(
 @Suppress("UNCHECKED_CAST")
 fun receivablesViewModelFactory(
     repository: ReceivablesActions,
+    adjustments: com.ticketbox.data.repository.DebtAdjustmentActions,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return ReceivablesViewModel(repository) as T
+        return ReceivablesViewModel(repository, adjustments) as T
     }
 }
 
@@ -184,9 +187,10 @@ fun memberRepaymentProposalViewModelFactory(
 fun repaymentDraftInboxViewModelFactory(
     drafts: RepaymentDraftActions,
     debts: DebtActions,
+    adjustments: com.ticketbox.data.repository.DebtAdjustmentActions,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return RepaymentDraftInboxViewModel(drafts, debts) as T
+        return RepaymentDraftInboxViewModel(drafts, debts, adjustments) as T
     }
 }
 
@@ -194,9 +198,10 @@ fun repaymentDraftInboxViewModelFactory(
 fun createDebtGoalViewModelFactory(
     reportsRepository: ReportsActions,
     debtRepository: DebtActions,
+    adjustments: com.ticketbox.data.repository.DebtAdjustmentActions,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return CreateDebtGoalViewModel(reportsRepository, debtRepository) as T
+        return CreateDebtGoalViewModel(reportsRepository, debtRepository, adjustments) as T
     }
 }
 

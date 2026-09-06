@@ -41,7 +41,7 @@ class DebtCreateContinuityViewModelTest {
     fun repeatedSaveWhileSubmittingEmitsOnlyOneCreate() = runTest(dispatcher) {
         val gate = CompletableDeferred<Unit>()
         val repository = readyRepository(gate)
-        val viewModel = DebtListViewModel(repository, repository.creation)
+        val viewModel = DebtListViewModel(repository, repository.creation, repository.adjustments)
         advanceUntilIdle()
         fillDraft(viewModel)
 
@@ -63,7 +63,7 @@ class DebtCreateContinuityViewModelTest {
     fun editsWhileSubmittingCannotReplaceTheVisibleSubmittedSnapshot() = runTest(dispatcher) {
         val gate = CompletableDeferred<Unit>()
         val repository = readyRepository(gate)
-        val viewModel = DebtListViewModel(repository, repository.creation)
+        val viewModel = DebtListViewModel(repository, repository.creation, repository.adjustments)
         advanceUntilIdle()
         fillDraft(viewModel)
 
@@ -91,7 +91,7 @@ class DebtCreateContinuityViewModelTest {
     fun oldBindingAcceptanceCannotClearTheNewLedgerFormOrAnnounceItsSuccess() = runTest(dispatcher) {
         val gate = CompletableDeferred<Unit>()
         val repository = readyRepository(gate)
-        val viewModel = DebtListViewModel(repository, repository.creation)
+        val viewModel = DebtListViewModel(repository, repository.creation, repository.adjustments)
         advanceUntilIdle()
         fillDraft(viewModel)
         viewModel.submitDraft()
@@ -116,7 +116,7 @@ class DebtCreateContinuityViewModelTest {
     @Test
     fun completedIntentRefreshesCanonicalListEvenWhenPendingEmissionWasTooFastToObserve() = runTest(dispatcher) {
         val repository = FakeDebtActions().apply { listCapability = "CNY" }
-        val viewModel = DebtListViewModel(repository, repository.creation)
+        val viewModel = DebtListViewModel(repository, repository.creation, repository.adjustments)
         advanceUntilIdle()
         val readsBefore = repository.listCalls
         repository.listResult = Result.success(listOf(sampleDebt("server-debt")))
@@ -136,7 +136,7 @@ class DebtCreateContinuityViewModelTest {
     @Test
     fun localAcceptanceNeverInventsACanonicalDebt() = runTest(dispatcher) {
         val repository = FakeDebtActions().apply { listCapability = "CNY" }
-        val viewModel = DebtListViewModel(repository, repository.creation)
+        val viewModel = DebtListViewModel(repository, repository.creation, repository.adjustments)
         advanceUntilIdle()
         fillDraft(viewModel)
         viewModel.submitDraft()
@@ -151,7 +151,7 @@ class DebtCreateContinuityViewModelTest {
     @Test
     fun newLedgerPendingRowsSurviveQueueEmissionBeforeTheAccessObserverRuns() = runTest(dispatcher) {
         val repository = FakeDebtActions().apply { listCapability = "CNY" }
-        val viewModel = DebtListViewModel(repository, repository.creation)
+        val viewModel = DebtListViewModel(repository, repository.creation, repository.adjustments)
         advanceUntilIdle()
         val next = requireNotNull(repository.creation.access.value).let {
             it.copy(binding = it.binding.copy(ledgerId = "next", bindingRevision = "binding-2"))

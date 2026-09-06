@@ -19,6 +19,11 @@ import com.ticketbox.data.remote.dto.DebtGoalLinkViewDto
 import com.ticketbox.data.remote.dto.DebtListResponseDto
 import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
 import com.ticketbox.data.remote.dto.RepaymentFactListDto
+import com.ticketbox.data.remote.dto.RepaymentDraftDto
+import com.ticketbox.data.remote.dto.RepaymentDraftListResponseDto
+import androidx.lifecycle.ViewModel
+import com.ticketbox.viewmodel.CreateDebtGoalViewModel
+import com.ticketbox.viewmodel.RepaymentDraftInboxViewModel
 import com.ticketbox.security.LocalSessionIdentity
 import com.ticketbox.security.LocalSessionRecord
 import com.ticketbox.security.LocalSessionStore
@@ -30,6 +35,7 @@ import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
 import kotlinx.coroutines.flow.flowOf
+import org.junit.Assert.assertEquals
 
 /** Disk Room and production graph; session and remote IO are synthetic. No real account or financial data. */
 internal class DebtAdjustmentConnectedFixture(private val context: Context) {
@@ -108,6 +114,12 @@ internal class DebtAdjustmentConnectedNetwork {
         override suspend fun debtRepayments(publicId: String, page: Int) =
             RepaymentFactListDto(publicId, "CNY", emptyList(), page, 20, 0)
 
+        override suspend fun repaymentDrafts(status: String?) = RepaymentDraftListResponseDto(listOf(
+            RepaymentDraftDto(publicId = "draft-original", source = "bank_app", amountCents = 1_000,
+                homeCurrencyCode = "CNY", capturedAt = current.createdAt, status = "pending",
+                suggestedDebtPublicId = current.publicId, createdAt = current.createdAt),
+        ))
+
         override suspend fun recordDebtAdjustment(publicId: String, request: DebtAdjustmentCreateRequestDto,
             idempotencyKey: String?): DebtDto {
             check(publicId == current.publicId)
@@ -151,3 +163,17 @@ private fun adjustmentConnectedGoal(debt: DebtDto) = GoalDto(
         )), voidedDebtPublicIds = emptyList(),
     ),
 )
+
+internal fun assertRetainedAdjustmentSelection(model: ViewModel, publicId: String) {
+    when (model) {
+        is CreateDebtGoalViewModel -> {
+            assertEquals("保留原目标名称", model.state.value.name)
+            assertEquals(setOf(publicId), model.state.value.selectedDebtIds)
+            assertEquals(3L, model.state.value.candidates.single().rowVersion)
+        }
+        is RepaymentDraftInboxViewModel -> {
+            assertEquals(3L, model.state.value.targetDebts.single().rowVersion)
+            assertEquals(3L, model.state.value.suggestedDebtByDraftId.getValue("draft-original").rowVersion)
+        }
+    }
+}
