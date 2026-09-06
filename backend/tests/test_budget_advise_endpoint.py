@@ -188,12 +188,15 @@ def test_builder_sends_generalized_income_plan(identity) -> None:  # noqa: ARG00
     to_outbound_dict(inputs)
 
 
-def test_builder_sends_only_income_applicable_to_advice_month(identity) -> None:  # noqa: ARG001
+def test_builder_sends_only_income_applicable_to_advice_month(identity, monkeypatch) -> None:  # noqa: ARG001
+    from app.services import income_plan_service
+
+    server_now = datetime(2026, 6, 1, tzinfo=UTC)
+    monkeypatch.setattr(income_plan_service, "now_utc", lambda: server_now)
     with SessionLocal() as db:
         create_income_plan(
             db,
             tenant_id="owner",
-            now=datetime(2026, 6, 1, tzinfo=UTC),
             label="monthly",
             source_type="salary",
             amount_cents=1_000_000,
@@ -202,7 +205,6 @@ def test_builder_sends_only_income_applicable_to_advice_month(identity) -> None:
         create_income_plan(
             db,
             tenant_id="owner",
-            now=datetime(2026, 6, 1, tzinfo=UTC),
             label="june bonus",
             source_type="bonus",
             amount_cents=200_000,
@@ -213,7 +215,6 @@ def test_builder_sends_only_income_applicable_to_advice_month(identity) -> None:
         create_income_plan(
             db,
             tenant_id="owner",
-            now=datetime(2026, 6, 1, tzinfo=UTC),
             label="july bonus",
             source_type="bonus",
             amount_cents=300_000,

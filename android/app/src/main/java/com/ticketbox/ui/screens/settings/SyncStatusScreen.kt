@@ -136,35 +136,11 @@ private fun SyncStatusPageBody(
     val status = state.status
     SyncStatusOverviewSection(status)
 
-    if (status.quarantinedCount > 0) {
-        SettingsSection(
-            title = stringResource(R.string.sync_status_section_quarantined),
-            icon = Icons.Filled.SyncProblem,
-        ) {
-            SettingsOpenPanel {
-                Text(
-                    text = stringResource(
-                        R.string.sync_status_quarantined_body,
-                        status.quarantinedCount,
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                AppAdaptiveTrailingActionRow {
-                    AppOutlinedButton(
-                        modifier = it,
-                        onClick = actions.onClearQuarantined,
-                        options = AppOutlinedButtonOptions(
-                            enabled = !state.isClearingQuarantine && state.busyRowId == null,
-                            danger = true,
-                        ),
-                    ) {
-                        Text(stringResource(R.string.sync_status_quarantined_remove_button))
-                    }
-                }
-            }
-        }
-    }
+    SyncStatusQuarantineSection(
+        count = status.quarantinedCount,
+        clearEnabled = !state.isClearingQuarantine && state.busyRowId == null,
+        onClear = actions.onClearQuarantined,
+    )
 
     if (status.conflicts.isNotEmpty()) {
         SettingsSection(title = stringResource(R.string.sync_status_section_needs_action), icon = Icons.Filled.SyncProblem) {
@@ -193,6 +169,39 @@ private fun SyncStatusPageBody(
                     onRetry = { actions.onRetry(row) },
                     onDrop = { actions.onDropFailed(row) },
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SyncStatusQuarantineSection(count: Int, clearEnabled: Boolean, onClear: () -> Unit) {
+    if (count > 0) {
+        SettingsSection(
+            title = stringResource(R.string.sync_status_section_quarantined),
+            icon = Icons.Filled.SyncProblem,
+        ) {
+            SettingsOpenPanel {
+                Text(
+                    text = stringResource(
+                        R.string.sync_status_quarantined_body,
+                        count,
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                AppAdaptiveTrailingActionRow {
+                    AppOutlinedButton(
+                        modifier = it,
+                        onClick = onClear,
+                        options = AppOutlinedButtonOptions(
+                            enabled = clearEnabled,
+                            danger = true,
+                        ),
+                    ) {
+                        Text(stringResource(R.string.sync_status_quarantined_remove_button))
+                    }
+                }
             }
         }
     }

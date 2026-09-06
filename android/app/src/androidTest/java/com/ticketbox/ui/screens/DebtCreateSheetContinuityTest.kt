@@ -70,7 +70,14 @@ class DebtCreateSheetContinuityTest {
         compose.onNodeWithText(context.getString(R.string.debt_create_save)).performScrollTo().assertIsDisplayed()
         capture("debt-create-editing")
         compose.onNodeWithText(context.getString(R.string.debt_create_save)).performClick()
-        compose.waitUntil(5_000) { viewModel.state.value.isSubmitting }
+        runCatching { compose.waitUntil(5_000) { viewModel.state.value.isSubmitting } }.getOrElse { error ->
+            val observed = viewModel.state.value
+            throw AssertionError("Save did not enter submission: canModify=${observed.canModify}, " +
+                "currencyReady=${observed.homeCurrencyResolved}, parsing=${observed.isParsingBill}, " +
+                "amountValid=${observed.addDraft.parsedAmountCents() != null}, " +
+                "labelPresent=${observed.addDraft.counterpartyLabel.isNotBlank()}, " +
+                "validation=${observed.addDraft.validationError}, calls=${creation.submitted.size}", error)
+        }
 
         compose.onNodeWithText("小王").assertIsNotEnabled()
         compose.onNodeWithText("123.45").assertIsNotEnabled()

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.canonical_money_facts_contract import INSTALLATION_HOME_CURRENCY_KEY
 from app.database import SessionLocal, engine
+from app.database._lifecycle import load_alembic_context
 from app.errors import AppError
 from app.models import (
     InstallationCurrencyAuditLog,
@@ -38,7 +39,6 @@ pytestmark = [pytest.mark.real_db, pytest.mark.currency_binding_unbound]
 
 PREVIOUS_REVISION = "20260729_0001"
 TARGET_REVISION = "20260802_0001"
-HEAD_REVISION = "20260906_0002"
 EVIDENCE_TABLES = (
     "bill_split_invitations",
     "budget_categories",
@@ -109,7 +109,7 @@ def test_fresh_upgrade_has_complete_authority_shape() -> None:
     reset_schema()
     run_alembic(command.upgrade, "head")
 
-    assert current_revision() == HEAD_REVISION
+    assert current_revision() == load_alembic_context().head_revision
     binding = _binding_row()
     assert binding["state"] == "EMPTY"
     assert binding["currency_contract_version"] == 1

@@ -29,6 +29,14 @@ from app.services.income_plan_service import (
 from app.services.time_service import now_utc
 
 
+@pytest.fixture(autouse=True)
+def income_command_clock(monkeypatch):
+    """Fixture dates never inherit the runner's calendar."""
+    from app.services import income_plan_service
+
+    monkeypatch.setattr(income_plan_service, "now_utc", lambda: datetime(2026, 5, 1, tzinfo=UTC))
+
+
 def _make_extra_ledger(label: str) -> str:
     """Spin up a second ledger for tenant-isolation tests."""
     with SessionLocal() as db:

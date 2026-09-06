@@ -41,7 +41,6 @@ pytestmark = pytest.mark.real_db
 
 _C07_TARGET_REVISION = "20260729_0001"
 _C02_TARGET_REVISION = "20260802_0001"
-_RELEASE_HEAD_REVISION = "20260906_0002"
 _OWNER_PASSWORD = "ManagedOwnerRuntimePassword0001"
 _MIGRATOR_PASSWORD = "ManagedMigratorRuntimePassword01"
 _RUNTIME_PASSWORD = "ManagedApplicationRuntimePassword1"
@@ -306,7 +305,7 @@ def _assert_lease_contention(topology: _ManagedTopology) -> None:
                     pgpassfile=topology.pgpass,
                     program=topology.program,
                     source_revision=_C07_TARGET_REVISION,
-                    target_revision=_RELEASE_HEAD_REVISION,
+                    target_revision=topology.program.target_revision,
                     generation_operation_id=topology.operation_id,
                 )
     finally:
@@ -362,7 +361,7 @@ def _assert_rollback_retry_and_replay(
             pgpassfile=topology.pgpass,
             program=topology.program,
             source_revision=_C07_TARGET_REVISION,
-            target_revision=_RELEASE_HEAD_REVISION,
+            target_revision=topology.program.target_revision,
             generation_operation_id=topology.operation_id,
         )
     monkeypatch.setattr(
@@ -383,11 +382,11 @@ def _assert_rollback_retry_and_replay(
         "pgpassfile": topology.pgpass,
         "program": topology.program,
         "source_revision": _C07_TARGET_REVISION,
-        "target_revision": _RELEASE_HEAD_REVISION,
+        "target_revision": topology.program.target_revision,
         "generation_operation_id": topology.operation_id,
     }
     assert topology.runtime.run(**arguments) == "target_committed"
-    assert _revision(topology.admin_database_url) == _RELEASE_HEAD_REVISION
+    assert _revision(topology.admin_database_url) == topology.program.target_revision
     assert topology.runtime.run(**arguments) == "target_observed_after_interruption"
     monkeypatch.setattr(managed_schema, "DATABASE_NAME", topology.database)
     monkeypatch.setattr(managed_schema, "MIGRATOR_ROLE", topology.migrator)
@@ -397,12 +396,12 @@ def _assert_rollback_retry_and_replay(
         pgpassfile=topology.pgpass,
         generation_program_path=topology.program_path,
         expected_generation_program_sha256=topology.program.payload_sha256,
-        source_revision=_RELEASE_HEAD_REVISION,
-        target_revision=_RELEASE_HEAD_REVISION,
+        source_revision=topology.program.target_revision,
+        target_revision=topology.program.target_revision,
         generation_operation_id=topology.operation_id,
     )
     assert noop_result["result"] == "target_observed_after_interruption"
-    assert noop_result["alembic_revision"] == _RELEASE_HEAD_REVISION
+    assert noop_result["alembic_revision"] == topology.program.target_revision
     assert (
         _migrator_sessions(
             topology.admin,
