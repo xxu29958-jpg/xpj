@@ -1,0 +1,54 @@
+# Income plan month and revision working contract
+
+This implements the active whole-product Goal and the Owner's September 6 capability-first ruling. The final Product contract §6.3/§6.5/§6.8/§6.9 and post-G2 Planning gate remain the authority. This contract records the main agent's bounded product choices under that delegation; old code and tests do not decide their meaning.
+
+## Goal and boundary
+
+A household can declare and revise an income estimate, understand the month it affects, inspect the resulting monthly forecast, and recover the original submitted edit. No plan, pay day or forecast is a confirmed receipt, cash balance or financial transaction. FinancialFacts and actual expenses remain unchanged.
+
+Allowed changes are the existing IncomePlan owner and its revision/query model, API/Web/Android consumers, actual edit publication and recovery, and directly affected budget/Advisor estimates. No income-accounting subsystem, automatic arrival confirmation, external provider call, new host setting or Windows lifecycle work is authorized by this slice.
+
+## Product meaning
+
+- Both `monthly` and `one_time` are declared estimates. The Web claim that a pay day proves actual receipt retires, including its one-time labels and summaries.
+- Each command carries an explicit accounting month M, shown when the user submits and preserved with the original intent. It is a whole month; there is no daily proration or future scheduled-change editor in this slice.
+- A new monthly plan begins at M. An ordinary edit appends a revision effective from M. Archive stops forecasts from M; restore resumes from M and does not fill archived months. Earlier monthly forecasts retain their earlier revisions.
+- One-time creation retains its explicitly chosen target month, including an explicitly entered past estimate. A correction to a one-time estimate revises that selected month; moving it corrects the old and new target months. The form must describe that consequence. This is an explicit correction of a plan, with revision history, and does not claim an earlier confirmation or earlier knowledge of the estimate.
+- Existing frequency conversion remains available. Monthly to one-time ends the monthly schedule at M and requires a target month at or after M. One-time to monthly starts the monthly schedule at M and retains any earlier single-month estimate. It cannot silently convert an earlier monthly forecast into a receipt.
+- Management lists show the current plan head and OCC token. A month-specific query reads the applicable revisions, even when the current head is archived. A latest row and its `row_version` are not a substitute for revision history.
+- One query owner supplies whole-month expected income and the portion scheduled through the current accounting date. A future month's whole-month estimate can be nonzero while its scheduled-through-today amount is zero. A pay day beyond a short month's final day falls on that month's final day.
+- Monthly budget and Advisor planning use the whole-month estimate and identify it as an estimate. An income summary may separately show the scheduled-through-today amount. Clients do not rebuild monthly totals from the current active management list.
+
+## Revision and delivery ownership
+
+The existing IncomePlan service remains the sole command owner. It atomically claims the current head with ledger scope/OCC, appends an immutable typed revision, updates its current projection and settles the original idempotency claim. Failed or stale commands leave no revision or success receipt. Replays retain the original key, month, payload, principal binding and OCC; the replay clock cannot choose a new month.
+
+The revision sequence determines the last applicable declared state for a queried month. Ordinary monthly changes cannot move behind a later established change; an explicitly described one-time correction is the bounded exception for its selected month. Revision metadata retains actual recording time separately from the declared accounting month.
+
+Android's actual edit entry currently calls the direct update method; the existing offline helper is not a product capability. This slice connects that entry to durable intent before dispatch and retains readable original plan/month/amount recovery, including when the following GET fails. Local acceptance is not server confirmation. Conflict requires reviewing current facts before a new command; an unknown result retains the original command. Explicit local discard does not undo a server change.
+
+An old queued payload without a declared month must stay preserved in a visible recovery state. It must not acquire a month from replay time, infer a month from an unrelated timestamp, silently change keys or dispatch with default fields. A caller without the new month semantics is rejected with a bounded actionable error. This is a protocol boundary, not a compatibility bridge that fabricates missing intent.
+
+## Existing state without history
+
+There are no production users, databases or production-history obligations. Existing Owner Internal Beta data and offline intent still cannot be silently discarded. A schema transition may preserve the current plan as an explicitly undated baseline; it cannot invent prior revisions from `created_at`, `updated_at` or the current value. Current/future estimates may use that declared baseline. A past query whose plan history is unavailable must say so, instead of returning a fabricated historical amount or an unexplained zero. New revision history is authoritative from its recorded effective months onward.
+
+## Consumer and retirement map
+
+| Responsibility | Real consumers | Retires |
+|---|---|---|
+| IncomePlan command and immutable revision | Existing API; Web management; Android create/edit/archive/restore | Overwrite-only expression of plan changes |
+| Month-specific forecast | Income summaries, discretionary planning and Advisor inputs | Active-head aggregation used as historical or whole-month truth; Android's duplicate total formula |
+| Original edit intent | Actual Android editor, Room/dispatcher and visible recovery | Direct-first edit publication and uncalled alternative save owner |
+| Estimate meaning | Web/Android navigation, form, summary and status copy | Automatic received-income claims |
+
+## Done checks and bounded evidence
+
+1. A plan with a past pay day never renders a received-income claim without a FinancialFact. The current Web template supplies the initial RED.
+2. Monthly August 100 → September 120 → October archive → November restore yields monthly estimates 100, 120, 0, 120; actual expenses remain unchanged. Creation does not populate earlier months. Stale OCC and original-key replay cannot append extra revisions.
+3. One-time correction and both existing frequency conversions follow the declared month effects. Whole-month and scheduled-through-today totals agree across real consumers, including a future month and a short month.
+4. The real Android edit entry persists the original September intent before network; an unknown result, failed GET and October replay retain September and publish once. A changed binding or an old monthless payload never dispatches under guessed meaning.
+5. Real API/Web permissions, idempotency and forecast consumers pass the final candidate's PostgreSQL lanes; Android runs in current-head cloud qualification. Local work uses only narrow source/template or pure-state checks, not local PostgreSQL/Gradle/emulator/full suites.
+6. One bounded independent review, admitted targeted regression, final-candidate CI/CodeQL/actual Connected and independent merged-main qualification close this slice. Final Setup/APK, process interruption and the whole Internal Beta rehearsal remain the original Goal's later delivery gates.
+
+Status: semantic contract recorded; implementation and runtime qualification are not yet complete.
