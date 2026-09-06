@@ -43,7 +43,7 @@ class DebtGoalCanonicalContinuityTest {
                 else Result.success(original)
             }
         }
-        val viewModel = DebtGoalViewModel(repository)
+        val viewModel = DebtGoalViewModel(repository, FakeDebtAdjustmentActions())
         try {
             advanceUntilIdle()
             viewModel.openDetail(original)

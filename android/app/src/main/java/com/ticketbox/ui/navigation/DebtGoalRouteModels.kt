@@ -26,13 +26,14 @@ internal fun rememberDebtGoalRouteViewModels(screenFactory: MainScreenFactory): 
     DebtGoalRouteViewModels(
         debtGoal = viewModel(
             key = DebtGoalViewModelKey,
-            factory = debtGoalViewModelFactory(screenFactory.reportsRepository),
+            factory = debtGoalViewModelFactory(screenFactory.reportsRepository, screenFactory.debtAdjustmentRepository),
         ),
         createGoal = viewModel(
             key = CreateDebtGoalViewModelKey,
             factory = createDebtGoalViewModelFactory(
                 screenFactory.reportsRepository,
                 screenFactory.debtRepository,
+                screenFactory.debtAdjustmentRepository,
             ),
         ),
         linkedDetail = viewModel(

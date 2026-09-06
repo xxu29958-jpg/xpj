@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
+import com.ticketbox.data.repository.DebtAdjustmentActions
 import com.ticketbox.data.repository.ReceivablesActions
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtLinkStatuses
@@ -30,7 +31,11 @@ data class ReceivablesUiState(
 
 class ReceivablesViewModel(
     private val repository: ReceivablesActions,
+    private val adjustments: DebtAdjustmentActions,
 ) : ViewModel() {
+
+    private var adjustmentBinding = adjustments.currentAccess()?.binding
+    private var adjustmentSnapshotReady = false
 
     private val _state = MutableStateFlow(ReceivablesUiState())
     val state: StateFlow<ReceivablesUiState> = _state.asStateFlow()
@@ -41,7 +46,17 @@ class ReceivablesViewModel(
     private var loadGeneration = 0L
 
     init {
-        refresh()
+        viewModelScope.launch {
+            adjustments.observeCompletionRefreshes().collect { change ->
+                val changedBinding = adjustmentBinding != change.binding
+                adjustmentBinding = change.binding
+                adjustmentSnapshotReady = change.binding != null
+                if (change.binding == null) {
+                    loadGeneration++
+                    _state.value = ReceivablesUiState()
+                } else if (changedBinding) reload() else refresh()
+            }
+        }
     }
 
     fun reload() {
@@ -50,6 +65,10 @@ class ReceivablesViewModel(
     }
 
     fun refresh() {
+        if (!adjustmentSnapshotReady) {
+            _state.update { it.copy(isLoading = adjustments.currentAccess() != null) }
+            return
+        }
         val gen = ++loadGeneration
         _state.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {

@@ -20,6 +20,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -72,7 +73,8 @@ internal fun debtKindDescriptionRes(kind: String): Int = when (kind) {
 internal fun DebtKindCardWithEditor(debt: Debt, canModify: Boolean, onSelect: (String) -> Unit) {
     var sheetOpen by rememberSaveable { mutableStateOf(false) }
     DebtKindCard(debt = debt, canModify = canModify, onEdit = { sheetOpen = true })
-    if (sheetOpen) {
+    LaunchedEffect(canModify) { if (!canModify) sheetOpen = false }
+    if (sheetOpen && canModify) {
         DebtKindSheet(
             currentKind = debt.debtKind,
             onSelect = { sheetOpen = false; onSelect(it) },

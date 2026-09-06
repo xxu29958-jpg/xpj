@@ -31,6 +31,7 @@ internal class FakeDebtActions(
     var parseBillResult: Result<DebtBillSuggestion> = Result.success(blankBillSuggestion()),
 ) : DebtActions {
     val creation = FakeDebtCreationActions(canModify, createResult)
+    val adjustments = FakeDebtAdjustmentActions(creation.access)
     val parseBillCalls = mutableListOf<String>()
     var listCalls = 0
     val listLenses = mutableListOf<DebtListLens>()

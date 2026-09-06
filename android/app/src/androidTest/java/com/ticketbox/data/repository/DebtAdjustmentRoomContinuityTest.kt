@@ -12,6 +12,7 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.click
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.ViewModel
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.RepositoryGraph
@@ -22,6 +23,8 @@ import com.ticketbox.viewmodel.DebtDetailViewModel
 import com.ticketbox.viewmodel.ReceivablesViewModel
 import com.ticketbox.viewmodel.DebtGoalViewModel
 import com.ticketbox.viewmodel.DebtListViewModel
+import com.ticketbox.viewmodel.CreateDebtGoalViewModel
+import com.ticketbox.viewmodel.RepaymentDraftInboxViewModel
 import com.ticketbox.viewmodel.DebtRepaymentHistoryViewModel
 import com.ticketbox.viewmodel.MemberRepaymentProposalViewModel
 import kotlinx.coroutines.cancel
@@ -95,9 +98,15 @@ class DebtAdjustmentRoomContinuityTest {
     @Test
     fun retainedDebtGoalRefreshesAfterBackgroundAdjustmentDelivery() = assertRetainedConsumerRefreshes("goal")
 
+    @Test
+    fun retainedCreateGoalCandidatesRefreshAfterBackgroundAdjustmentDelivery() = assertRetainedConsumerRefreshes("createGoal")
+
+    @Test
+    fun retainedRepaymentDraftTargetsRefreshAfterBackgroundAdjustmentDelivery() = assertRetainedConsumerRefreshes("repaymentDraft")
+
     private fun assertRetainedConsumerRefreshes(consumer: String) {
         val retained = DebtAdjustmentConnectedFixture(InstrumentationRegistry.getInstrumentation().targetContext)
-        var closeConsumer: () -> Unit = {}
+        var model: ViewModel? = null
         try {
             if (consumer == "receivables") {
                 retained.network.current = retained.network.current.copy(direction = "owed_to_me")
@@ -106,38 +115,59 @@ class DebtAdjustmentRoomContinuityTest {
             val graph = retained.reopen()
             lateinit var balance: () -> Long?
             compose.runOnIdle {
-                when (consumer) {
+                model = when (consumer) {
                     "list" -> {
-                        val model = DebtListViewModel(graph.debtRepository, graph.debtCreationRepository)
-                        balance = { model.state.value.debts.singleOrNull()?.remainingAmountCents }
-                        closeConsumer = { model.viewModelScope.cancel() }
+                        DebtListViewModel(graph.debtRepository, graph.debtCreationRepository,
+                            graph.debtAdjustmentRepository).also { viewModel ->
+                            balance = { viewModel.state.value.debts.singleOrNull()?.remainingAmountCents }
+                        }
                     }
                     "receivables" -> {
-                        val model = ReceivablesViewModel(graph.debtRepository)
-                        balance = { model.state.value.receivables.singleOrNull()?.remainingAmountCents }
-                        closeConsumer = { model.viewModelScope.cancel() }
+                        ReceivablesViewModel(graph.debtRepository, graph.debtAdjustmentRepository).also { viewModel ->
+                            balance = { viewModel.state.value.receivables.singleOrNull()?.remainingAmountCents }
+                        }
                     }
-                    else -> {
-                        val model = DebtGoalViewModel(graph.reportsRepository)
-                        balance = { model.state.value.goals.singleOrNull()?.debtRepayment
-                            ?.linkedDebts?.singleOrNull()?.remainingAmountCents }
-                        closeConsumer = { model.viewModelScope.cancel() }
+                    "goal" -> {
+                        DebtGoalViewModel(graph.reportsRepository, graph.debtAdjustmentRepository).also { viewModel ->
+                            balance = { viewModel.state.value.goals.singleOrNull()?.debtRepayment
+                                ?.linkedDebts?.singleOrNull()?.remainingAmountCents }
+                        }
                     }
+                    "createGoal" -> {
+                        CreateDebtGoalViewModel(graph.reportsRepository, graph.debtRepository,
+                            graph.debtAdjustmentRepository).also { viewModel ->
+                            balance = { viewModel.state.value.candidates.singleOrNull()?.remainingAmountCents }
+                        }
+                    }
+                    "repaymentDraft" -> {
+                        RepaymentDraftInboxViewModel(graph.repaymentDraftRepository, graph.debtRepository,
+                            graph.debtAdjustmentRepository).also { viewModel ->
+                            balance = { viewModel.state.value.targetDebts.singleOrNull()?.remainingAmountCents }
+                        }
+                    }
+                    else -> error("Unknown retained consumer: $consumer")
                 }
             }
             compose.waitUntil(10_000) { balance() == 50_000L }
+            compose.runOnIdle {
+                (model as? CreateDebtGoalViewModel)?.apply {
+                    updateName("保留原目标名称")
+                    toggleDebt(retained.network.current.publicId)
+                }
+            }
             saveAndCloseDetail(graph, retained)
             val original = retained.stored().single()
             assertEquals(1, runBlocking { retained.drain() }.done)
             assertEquals("done", retained.stored().single()["status"])
             compose.waitUntil(10_000) { balance() == 53_000L }
             assertEquals(53_000L, balance())
+            assertRetainedAdjustmentSelection(requireNotNull(model), retained.network.current.publicId)
             assertEquals(1, retained.network.results.size)
             for (field in listOf("payload", "expectedRowVersion", "idempotencyKey", "ownerKey", "ledgerId")) {
                 assertEquals(original[field], retained.stored().single()[field])
             }
         } finally {
-            compose.runOnIdle { closeConsumer() }
+            compose.runOnIdle { model?.viewModelScope?.cancel() }
             retained.close()
         }
     }

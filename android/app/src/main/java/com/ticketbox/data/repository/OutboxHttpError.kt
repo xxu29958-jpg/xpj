@@ -3,7 +3,9 @@ package com.ticketbox.data.repository
 import retrofit2.HttpException
 
 private val outboxHttpErrors = NetworkErrorHandler(serverUrlProvider = { null }, context = "Outbox")
-private val outboxRecoveryErrorCodes = setOf("runtime_version_mismatch", "client_upgrade_required", "rule_category_deleted")
+private val outboxRecoveryErrorCodes = setOf(
+    "runtime_version_mismatch", "client_upgrade_required", "rule_category_deleted", DEBT_ADJUSTMENT_NEGATIVE_REMAINING,
+)
 
 /** Persist known recovery reasons so the sync UI can explain the required next step. */
 internal fun NetworkErrorHandler.ParsedError.outboxFailureMessage(): String =

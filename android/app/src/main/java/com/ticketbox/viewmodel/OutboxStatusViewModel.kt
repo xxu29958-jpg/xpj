@@ -113,6 +113,12 @@ class OutboxStatusViewModel(
                 _uiState.update { it.copy(message = UiText.res(R.string.debt_adjustment_unsupported), messageTone = MessageTone.Danger) }
                 return
             }
+            if (!pending.canRetry) {
+                _uiState.update { it.copy(message = UiText.res(if (pending.reductionRejected) {
+                    R.string.debt_adjustment_reduction_rejected
+                } else R.string.debt_adjustment_attention), messageTone = MessageTone.Danger) }
+                return
+            }
             resolve(row) {
                 debtAdjustments.recover(access.binding, pending, false).onFailure { error ->
                     _uiState.update { it.copy(message = error.toUiText(R.string.debt_action_failed), messageTone = MessageTone.Danger) }

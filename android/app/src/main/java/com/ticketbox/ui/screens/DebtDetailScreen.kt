@@ -422,6 +422,7 @@ private fun DebtActionForm(
             )
         }
         DebtActionWarning(action)
+        state.adjustmentWriteMessage?.let { message -> AppStatusBanner(message = message, tone = MessageTone.Info) }
         state.validationError?.let { err ->
             AppStatusBanner(message = err, tone = MessageTone.Danger)
         }
@@ -433,7 +434,7 @@ private fun DebtActionForm(
                     stringResource(R.string.debt_action_submit)
                 },
                 onClick = onSubmit,
-                enabled = !state.isSubmitting,
+                enabled = state.canWriteActions,
             ),
             secondary = AppSheetAction(
                 text = stringResource(R.string.common_cancel),
