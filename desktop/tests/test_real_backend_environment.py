@@ -77,7 +77,8 @@ def helper_authority_probe(monkeypatch, tmp_path):
     monkeypatch.setattr(TestPostgresContract, "default_data_dir", lambda _self, _port: tmp_path / "owned-local-pg")
 
     for key in ("DATABASE_URL", "SMOKE_DATABASE_URL", "XPJ_TEST_CLUSTER_IDENTITY", "PGPASSFILE"):
-        monkeypatch.delenv(key, raising=False)
+        # Register restoration even when the parent lacks the key: main writes these directly.
+        monkeypatch.setenv(key, "")
     monkeypatch.setenv("XPJ_E2E_BACKEND_PORT", "12345")
     observed = {}
 
