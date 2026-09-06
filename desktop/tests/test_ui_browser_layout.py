@@ -1006,7 +1006,7 @@ def test_prompt_product_failures_retire_prior_dom_without_erasing_public_status(
     assert probe["sessionSchemaRejected"] == degraded
     assert probe["sessionRoleSchemaRejected"] == degraded
     assert probe["unpaired"] == {
-        "productState": "输入安装器提供的“绑定此电脑”码，连接桌面账本。",
+        "productState": "获取自己的设备绑定码，连接这台电脑上的桌面账本。",
         "productHomeHidden": True,
         "productPairHidden": False,
         "productManageHidden": True,

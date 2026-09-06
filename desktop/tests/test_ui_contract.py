@@ -145,7 +145,8 @@ def test_installer_recovery_guard_is_not_rendered_as_healthy_product_access() ->
 def test_local_backend_health_does_not_promise_mobile_reachability() -> None:
     html = (Path(__file__).parents[1] / "backend_manager" / "ui.html").read_text(encoding="utf-8")
 
-    assert 's.android_binding_state !== "configured_unverified"' in html
+    # Local code generation is available without a phone URL; mobile status
+    # still follows its own configuration (the real Edge entry test covers it).
     assert 's.iphone_upload_state !== "configured_unverified"' in html
     assert "电脑端运行正常；手机连接尚未配置。" in html
     assert "手机连接、上传和网页管理均可使用。" not in html

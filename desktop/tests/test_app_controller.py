@@ -1575,6 +1575,16 @@ def test_pair_reuses_the_provisional_attempt_after_response_loss() -> None:
     assert _INSTALLATION_ID in recoveries
     assert recoveries[_INSTALLATION_ID].ledger_id == ""
 
+    # A restarted Manager must explain the durable attempt without spending it
+    # or exposing the proof. Only an explicit retry with the original code pairs.
+    controller = AppController(
+        FakeRuntime(), _config(), product_session_pairer=pairer,
+        product_session_activator=_activate_pending, **store,
+    )
+    assert controller.product_principal() == {
+        "configured": False, "pairing_recovery": "original_code_required",
+    }
+    assert calls["count"] == 1
     projection = controller.pair_product_principal("12345678")
 
     assert projection["configured"] is True
@@ -1769,7 +1779,8 @@ def test_reused_provisional_with_mismatched_code_keeps_the_record() -> None:
 
     with pytest.raises(ProductDataError) as error:
         controller.pair_product_principal("99999999")
-    assert error.value.error == "invalid_pairing_code"
+    assert error.value.error == "product_pairing_original_code_required"
+    assert "原绑定码" in str(error.value)
     # A possibly-committed ceremony is never cleared by a mismatched retry.
     assert _INSTALLATION_ID in recoveries
 
