@@ -80,14 +80,13 @@ fun ExpenseFactViewModel.openCorrectionSplitsEditor() {
     }
     val currentSplits = correctionOriginalSplits ?: _uiState.value.currentCorrectionSplits?.also { correctionOriginalSplits = it } ?: return
     val expense = correctionBaseline ?: return
-    val binding = correctionBinding
+    val binding = correctionBinding ?: return
     updateCorrection { it.copy(splitEditorOpen = true, splitMembersLoading = true) }
     viewModelScope.launch {
-        if (generation != correctionSplitMemberGeneration) return@launch
+        if (!isCurrentCorrectionSplitMemberRead(generation, binding, expense)) return@launch
         repository.fetchSplitMembers()
             .onSuccess { members ->
-                if (generation != correctionSplitMemberGeneration || correctionBinding != binding || correctionBaseline !== expense ||
-                    !_uiState.value.correction.splitEditorOpen || correctionContextError() != null) return@onSuccess
+                if (!isCurrentCorrectionSplitMemberRead(generation, binding, expense)) return@onSuccess
                 updateCorrection {
                     it.copy(
                         splitDrafts = buildCorrectionSplitDrafts(
@@ -100,8 +99,7 @@ fun ExpenseFactViewModel.openCorrectionSplitsEditor() {
                 }
             }
             .onFailure { error ->
-                if (generation != correctionSplitMemberGeneration || correctionBinding != binding || correctionBaseline !== expense ||
-                    !_uiState.value.correction.splitEditorOpen || correctionContextError() != null) return@onFailure
+                if (!isCurrentCorrectionSplitMemberRead(generation, binding, expense)) return@onFailure
                 updateCorrection { it.copy(splitMembersLoading = false) }
                 _uiState.update {
                     it.copy(
