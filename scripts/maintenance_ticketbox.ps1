@@ -10,6 +10,7 @@ $env:XPJ_EXTRA_LOOPBACK_HOSTS = "127.0.0.1:8765"
 再从该窗口按现有方式启动监听此地址的后端；已运行的后端须按原方式重启以继承配置。
 只在维护脚本窗口设置变量无效。localhost:8765 等其他环回别名须分别显式列出，逗号分隔。
 不支持公网域名或其他电脑的服务地址。管理会话不能放宽本机网络边界。
+仅接受 HTTP(S) 根地址，不得包含登录信息、路径、查询或片段；维护请求不跟随重定向。
 .DESCRIPTION
 仅用于源码/测试环境，不拥有正式安装的数据、备份或恢复 authority。
 #>
@@ -27,9 +28,25 @@ $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
+[Uri]$maintenanceUri = $null
+if (-not [Uri]::TryCreate($ServerUrl, [UriKind]::Absolute, [ref]$maintenanceUri) -or
+    $maintenanceUri.Scheme -notin @('http', 'https') -or
+    $maintenanceUri.UserInfo -ne '' -or $maintenanceUri.AbsolutePath -ne '/' -or
+    $maintenanceUri.Query -ne '' -or $maintenanceUri.Fragment -ne '') {
+    throw [ArgumentException]::new('ServerUrl 必须是无登录信息、路径、查询或片段的本机 HTTP(S) 环回根地址。', 'ServerUrl')
+}
+[System.Net.IPAddress]$maintenanceAddress = $null
+$isLoopback = $maintenanceUri.DnsSafeHost -eq 'localhost' -or (
+    [System.Net.IPAddress]::TryParse($maintenanceUri.DnsSafeHost, [ref]$maintenanceAddress) -and
+    [System.Net.IPAddress]::IsLoopback($maintenanceAddress)
+)
+if (-not $isLoopback) {
+    throw [ArgumentException]::new('ServerUrl 仅支持本机环回地址。', 'ServerUrl')
+}
+
 $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $BackendRoot = Join-Path $ProjectRoot "backend"
-$BaseUrl = $ServerUrl.TrimEnd("/")
+$BaseUrl = $maintenanceUri.OriginalString.TrimEnd('/')
 
 function Format-Bytes {
     param([long]$Bytes)
@@ -51,7 +68,7 @@ function Invoke-MaintenancePost {
     }
 
     $uri = "$BaseUrl$Path$Query"
-    Invoke-RestMethod -Method Post -Uri $uri -Headers @{ Authorization = "Bearer $AdminToken" } -TimeoutSec 60
+    Invoke-RestMethod -Method Post -Uri $uri -Headers @{ Authorization = "Bearer $AdminToken" } -TimeoutSec 60 -MaximumRedirection 0
 }
 
 function Vacuum-Database {

@@ -83,3 +83,20 @@ PG/完整集成由现有生产者承担：`test_public_host_surface_regression.p
 施工后，main.py 相对 Facts 仅有原 Gov 启动 opt-in 退役差异；相对 Gov 则保留原 Income header helper。18 个 Gov 自有路径与预期集合一致，没有额外生产冲突。Atlas 刷新已闭合 Desktop/Capture、当前核心候选与 CSV 的真实反例，保持全部八个完整 Goal 交付包和 Windows HOLD。组合上的实际 API 合同生成器为 up to date，main.py Ruff、合并 diff 和冲突标记检查通过。
 
 本机组合窄执行实际得到 25 passed（治理及精确 Host 原用例），并有 3 个 Access 用例在 setup 阶段因 `--noconftest` 未提供原 client fixture 而报错；这不是产品行为失败，也不称这三例通过。执行阶段数据库连接被封锁且无调用。原 Access 用例保留给正常云端 fixture 与全候选验证，没有为得到本机绿色另造身份 fixture 或更改原断言。Gov 原独立 source 的成功云证据不替本组合背书；Facts 的 legacy-DONE 概览反例及后续修正仍属活动候选，必须整合最终版本再冻结发布候选。
+
+### 正式 P2：维护地址必须在凭据使用前受约束
+
+施工前固定 `ccfc580261697b978f8384e1fc3eaad4a576dd9c` / tree `f8b496657f76a6cc932a6505d67020e3cbacff32`，tracked clean，原 tmp 保留。正式 `PRRT_kwDOS5LrfM6ftUkm` 成立：帮助宣称本机限定，实际 `ServerUrl → BaseUrl → Invoke-MaintenancePost` 接受任意地址，并在远程 Backend 有机会拒绝之前附加 admin bearer。这是 local-only 合同的强制推论，不接受扩大远程管理或新的权限 policy。
+
+| 入口 / 消费者 / 旧出口 | 本次必须闭合 |
+| --- | --- |
+| CLI ServerUrl、显式 AdminToken、环境 TICKETBOX_ADMIN_TOKEN | 在读取环境 token、进入任何维护调用前，解析绝对 HTTP(S) 根地址；只接受 localhost 或数值环回地址。不接受 userinfo、非根路径、query、fragment，错误不得回显输入或凭据。自定义端口仍须由原后端 extra Host 配置准入。 |
+| 三个清理开关 → 唯一 Invoke-MaintenancePost；orphan dry-run/delete Query | 只有验证后的 authority 可拼接原固定 route/query；认证与维护 writer 不变。禁止 HTTP 重定向逃离已验证 authority。Vacuum 仍是原 autovacuum 提示，无数据库操作。 |
+| 无动作帮助、DATA_RETENTION 操作示例 | 保留本机源码/测试、精确自定义端口与后端继承前提；更新实际地址限制。没有持久化、协议字段、身份 owner、安装或恢复动作变更。 |
+| 直接验证 producer | 新 Desktop 测试在真实 Windows PowerShell 中调用完整原脚本，仅拦截 HTTP cmdlet并使用合成 token，无真实网络、维护或环境凭据读取。既有 Windows Desktop job 自动收集；脚本的 CI scope 另行实际核准，不能以测试文件触发代替产品脚本触发。 |
+
+反例 harness 首次因 PowerShell script scope 捕获错误导致请求记录为空，三项合法地址控制失败，未记为产品 RED。修正为测试子进程内的独立全局请求记录，并保留异常类别后，原脚本实际 **12 failures / 0 errors（0.41 秒）**：九个非法地址均未拒绝，三个合法地址保留正常认证请求但没有禁止重定向。全部 HTTP 已被拦截，未发送真实凭据。生产修正须让同一组原断言 GREEN；不得把任意异常作为非法地址通过条件。
+
+施工后：最前面的 URI/数值地址验证在环境 token 读取及唯一请求函数调用之前拒绝非环回或非 HTTP(S) 根地址；静态错误不回显参数。保留验证后 URI 的原始 authority 拼写，避免 Windows PowerShell 的 `GetLeftPart` 将 `[::1]` 展开后改变文档要求的精确 Host；首次候选这一差异实际由 IPv6 控制捕获（11 PASS / 1 FAIL），修正后原组 **12 PASS（0.35 秒）**。请求保留原三条清理 route、auth、orphan query 与 timeout，仅禁止重定向。帮助和 DATA_RETENTION 同步；没有读取真实环境凭据或执行 HTTP、清理、PG、安装动作。
+
+直接 classifier 实测脚本单路径原本已选择全部五个 scope，新测试文件单路径选择 Desktop；该 Windows job 正常收集此完整 PowerShell 行为测试，无新增 workflow/selector。原后端 guard/router/服务、参数、持久数据与 tmp 不改。Python Ruff、PowerShell parser 与 diff 检查作为短门；最终组合 exact cloud、独立复核、formal resolved 和主分支资格仍由主控完成。
