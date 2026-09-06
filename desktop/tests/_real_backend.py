@@ -15,6 +15,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from queue import Empty, Queue
 
 import pytest
 
@@ -27,6 +28,7 @@ from backend_manager.runtime import RuntimeStatus
 
 _HELPER = Path(__file__).resolve().parent / "_real_backend_helper.py"
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+_SEED_TIMEOUT_SECONDS = 120.0
 
 
 @dataclass(frozen=True)
@@ -96,6 +98,39 @@ def _wait_for_health(origin: str, process: subprocess.Popen[str], timeout: float
     raise RuntimeError("real backend did not become healthy in time")
 
 
+def _pump_seed_output(process: subprocess.Popen[str], output: Queue[str | None]) -> None:
+    assert process.stdout is not None
+    seed_seen = False
+    try:
+        # Keep draining after the seed so later server logs cannot fill the pipe.
+        for line in iter(process.stdout.readline, ""):
+            if not seed_seen:
+                output.put(line)
+                seed_seen = line.startswith("E2E_SEED ")
+    finally:
+        process.stdout.close()
+        output.put(None)
+
+
+def _wait_for_seed(process: subprocess.Popen[str], output: Queue[str | None], timeout: float) -> dict:
+    deadline = time.monotonic() + timeout
+    helper_log: list[str] = []
+    while (remaining := deadline - time.monotonic()) > 0:
+        try:
+            line = output.get(timeout=remaining)
+        except Empty:
+            break
+        if line is None:
+            raise RuntimeError(
+                "real backend helper exited before seeding "
+                f"(code {process.poll()}): {''.join(helper_log)[-2000:]}"
+            )
+        if line.startswith("E2E_SEED "):
+            return json.loads(line.removeprefix("E2E_SEED ").strip())
+        helper_log.append(line)
+    raise RuntimeError("real backend helper did not report its seed in time")
+
+
 @pytest.fixture(scope="session")
 def real_backend(tmp_path_factory: pytest.TempPathFactory):
     """One real backend on the dedicated smoke DB, seeded with one pairing code.
@@ -108,7 +143,10 @@ def real_backend(tmp_path_factory: pytest.TempPathFactory):
     port = _free_port()
     scratch = tmp_path_factory.mktemp("real-backend-e2e")
     env = {
-        **os.environ,
+        # Hosted Windows images set PGPASSWORD for their unrelated installation.
+        # Only the explicit test passfile may supplement the helper's sealed route.
+        **{key: value for key, value in os.environ.items()
+           if not key.upper().startswith("PG") or key.upper() == "PGPASSFILE"},
         "UPLOAD_TOKEN": "e2e-upload-token",
         "APP_TOKEN": "e2e-app-token",
         "ADMIN_TOKEN": "e2e-admin-token",
@@ -128,23 +166,11 @@ def real_backend(tmp_path_factory: pytest.TempPathFactory):
         cwd=str(_REPO_ROOT / "backend"),
         env=env,
     )
-    seed: dict | None = None
-    assert process.stdout is not None
+    output: Queue[str | None] = Queue()
+    reader = threading.Thread(target=_pump_seed_output, args=(process, output), daemon=True)
     try:
-        deadline = time.monotonic() + 120.0
-        helper_log: list[str] = []
-        while seed is None and time.monotonic() < deadline:
-            line = process.stdout.readline()
-            if line == "" and process.poll() is not None:
-                raise RuntimeError(
-                    "real backend helper exited before seeding "
-                    f"(code {process.returncode}): {''.join(helper_log)[-2000:]}"
-                )
-            helper_log.append(line)
-            if line.startswith("E2E_SEED "):
-                seed = json.loads(line.removeprefix("E2E_SEED ").strip())
-        if seed is None:
-            raise RuntimeError("real backend helper did not report its seed in time")
+        reader.start()
+        seed = _wait_for_seed(process, output, _SEED_TIMEOUT_SECONDS)
         origin = f"http://127.0.0.1:{port}"
         _wait_for_health(origin, process)
         yield RealBackend(
@@ -163,6 +189,8 @@ def real_backend(tmp_path_factory: pytest.TempPathFactory):
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait(timeout=10)
+        if reader.ident is not None:
+            reader.join(timeout=2)
 
 
 # ── Shared real-manager helpers ────────────────────────────────────────────
