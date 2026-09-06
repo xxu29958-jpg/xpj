@@ -29,6 +29,7 @@ class RecurringItem(Base):
         CheckConstraint("frequency IN ('monthly')", name="ck_recurring_items_frequency_valid"),
         CheckConstraint("status IN ('active', 'paused', 'archived')", name="ck_recurring_items_status_valid"),
         UniqueConstraint("tenant_id", "merchant_key", "frequency", name="uq_recurring_items_tenant_merchant_frequency"),
+        UniqueConstraint("id", "tenant_id", name="uq_recurring_items_id_tenant"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

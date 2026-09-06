@@ -45,7 +45,7 @@ def local_date_iso(value: datetime | None) -> str:
     return aware.astimezone(accounting_zone()).date().isoformat()
 
 
-def item_view(item, anomaly, *, currency_code: str) -> dict:
+def item_view(item, anomaly, *, currency_code: str, due_date: date | None) -> dict:
     observed = item.occurrence_count > 0
     return {
         "public_id": item.public_id,
@@ -59,6 +59,7 @@ def item_view(item, anomaly, *, currency_code: str) -> dict:
         "occurrence_count": item.occurrence_count,
         "last_seen_date": local_date_iso(item.last_seen_at) if observed else "",
         "next_expected_date": item.next_expected_date.isoformat() if item.next_expected_date else "",
+        "next_due_date": due_date.isoformat() if due_date else "",
         "status": item.status,
         "status_label": status_label(item.status),
         # ADR-0041: OCC token (row_version) for the hidden pause/resume form
@@ -124,21 +125,21 @@ def candidate_review_prefill(candidate: dict, *, currency_code: str) -> dict:
     }
 
 
-def hero_view(items, *, currency_code: str) -> dict | None:
+def hero_view(items, *, currency_code: str, due_dates: dict[int, date | None]) -> dict | None:
     """Hero 只汇总 active 正式项, 与列表状态筛选解耦: 每月合计 + 下一笔到期。"""
     active = [item for item in items if item.status == "active"]
     if not active:
         return None
     total_cents = sum(int(item.baseline_amount_cents) for item in active)
-    dated = [item for item in active if item.next_expected_date is not None]
-    next_item = min(dated, key=lambda item: (item.next_expected_date, item.merchant_name)) if dated else None
+    dated = [item for item in active if due_dates[item.id] is not None]
+    next_item = min(dated, key=lambda item: (due_dates[item.id], item.merchant_name)) if dated else None
     return {
         "active_count": len(active),
         "monthly_total_yuan": _amount_yuan(total_cents, currency_code),
         "next_due": (
             {
                 "merchant": next_item.merchant_name,
-                "date": next_item.next_expected_date.isoformat(),
+                "date": due_dates[next_item.id].isoformat(),
                 "amount_yuan": _amount_yuan(next_item.baseline_amount_cents, currency_code),
             }
             if next_item is not None

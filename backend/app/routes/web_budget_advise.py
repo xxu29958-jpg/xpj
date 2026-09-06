@@ -23,7 +23,6 @@ from app.services.budget_advisor_service import run_budget_advisor
 from app.services.budget_advisor_service._provider_names import canonical_provider_name
 from app.services.budget_baseline_service import (
     compute_monthly_discretionary,
-    total_active_recurring_monthly_cents,
     total_confirmed_spent_cents,
 )
 from app.services.currency_binding_service import require_runtime_home_currency_code
@@ -33,6 +32,7 @@ from app.services.currency_common import (
     minor_amount_value,
 )
 from app.services.income_plan_service import total_monthly_income_cents
+from app.services.recurring_occurrence_query import total_outstanding_recurring_cents
 from app.services.spending_contract_service import current_accounting_month
 
 router = APIRouter(prefix="/web/budget-advise", tags=["web"])
@@ -108,7 +108,7 @@ def _render_budget_advise(
         tenant_id=selected,
         month=month_label,
     )
-    fixed = total_active_recurring_monthly_cents(db, tenant_id=selected)
+    fixed = total_outstanding_recurring_cents(db, tenant_id=selected, month=month)
     spent = total_confirmed_spent_cents(
         db,
         tenant_id=selected,

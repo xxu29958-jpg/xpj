@@ -36,6 +36,7 @@ from app.routes.web_common import (
     parse_form_row_version_token,
     templates,
 )
+from app.routes.web_recurring_occurrences import router as occurrences_router
 from app.schemas import RecurringCandidateConfirmRequest
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.insights_service import recurring_candidates
@@ -44,6 +45,7 @@ from app.services.recurring_item_command_service import (
     create_manual_recurring_item,
     update_recurring_item,
 )
+from app.services.recurring_occurrence_query import next_due_dates
 from app.services.recurring_service import (
     RecurringAmountAnomaly,
     archive_recurring_item,
@@ -59,6 +61,7 @@ from app.services.time_service import now_utc
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/web/recurring", tags=["web"])
+router.include_router(occurrences_router)
 
 _STALE_PAGE_FLASH = "页面已过期，请刷新后重新操作。"
 _VALID_STATUS_FILTERS = {"active", "paused", "archived"}
@@ -136,11 +139,13 @@ def _render_recurring(
         visible = [item for item in all_items if item.status == status]
     else:
         visible = [item for item in all_items if item.status != "archived"]
+    due_dates = next_due_dates(db, tenant_id=selected_id, items=all_items)
     ctx["items"] = [
         item_view(
             item,
             anomalies.get(item.public_id) or RecurringAmountAnomaly(),
             currency_code=currency_code,
+            due_date=due_dates[item.id],
         )
         for item in visible
     ]
@@ -164,7 +169,7 @@ def _render_recurring(
         can_write=ctx["can_write"],
         candidates_error=candidates_error,
     )
-    ctx["hero"] = hero_view(all_items, currency_code=currency_code)
+    ctx["hero"] = hero_view(all_items, currency_code=currency_code, due_dates=due_dates)
     ctx["status_filter"] = status or ""
     ctx["flash_message"] = flash_message
     ctx["error_message"] = error_message

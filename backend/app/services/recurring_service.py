@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
@@ -51,6 +51,8 @@ def _clean_status(value: str | None) -> str:
 def recurring_item_response(
     item: RecurringItem,
     anomaly: RecurringAmountAnomaly | None = None,
+    *,
+    next_due_date: date | None,
 ) -> RecurringItemResponse:
     amount_anomaly = anomaly or RecurringAmountAnomaly()
     return RecurringItemResponse(
@@ -70,6 +72,7 @@ def recurring_item_response(
         occurrence_count=item.occurrence_count,
         last_seen_at=item.last_seen_at,
         next_expected_date=item.next_expected_date,
+        next_due_date=next_due_date,
         status=item.status,
         confidence=item.confidence,
         source=item.source,

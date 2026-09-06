@@ -112,6 +112,7 @@ class RecurringItemResponse(BaseModel):
     occurrence_count: int
     last_seen_at: datetime | None = None
     next_expected_date: date | None = None
+    next_due_date: date | None = None
     status: str
     confidence: str | None = None
     source: str
