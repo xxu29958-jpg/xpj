@@ -37,13 +37,14 @@ internal fun JsonAdapter<RecurringOccurrencePayload>.readSupportedOccurrence(jso
 
 private fun RecurringOccurrencePayload.isSupported(): Boolean {
     val validPeriod = runCatching { YearMonth.parse(period).toString() == period }.getOrDefault(false)
-    val shape = when (request.action) {
-        "link" -> !request.expensePublicId.isNullOrBlank() && (request.expectedExpenseRowVersion ?: 0) > 0
-        "clear" -> request.expensePublicId == null && request.expectedExpenseRowVersion == null
-        else -> false
-    }
-    return revision == RECURRING_OCCURRENCE_PAYLOAD_REVISION && validPeriod && shape &&
+    return revision == RECURRING_OCCURRENCE_PAYLOAD_REVISION && validPeriod && request.hasSupportedAction() &&
         seriesPublicId.isNotBlank() && request.expectedRowVersion >= 0 && request.expectedSeriesRowVersion > 0 &&
         originSessionGeneration.isNotBlank() && originBindingRevision.isNotBlank() &&
         CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode) != null
+}
+
+private fun RecurringOccurrencePaymentRequestDto.hasSupportedAction(): Boolean = when (action) {
+    "link" -> !expensePublicId.isNullOrBlank() && (expectedExpenseRowVersion ?: 0) > 0
+    "clear" -> expensePublicId == null && expectedExpenseRowVersion == null
+    else -> false
 }
