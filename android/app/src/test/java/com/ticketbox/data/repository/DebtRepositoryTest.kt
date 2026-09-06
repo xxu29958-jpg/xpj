@@ -30,6 +30,7 @@ import okhttp3.MultipartBody
 import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.HttpException
 import retrofit2.Response
+import java.io.IOException
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
@@ -270,6 +271,37 @@ class DebtRepositoryTest {
         assertEquals("减免部分", call.request.reason)
         assertEquals(2L, call.request.expectedRowVersion)
         assertTrue(!call.idempotencyKey.isNullOrBlank())
+    }
+
+    @Test
+    fun responseLostAfterAdjustmentCommitRecoversTheOriginalCommand() = runTest {
+        val handler = DebtApiHandler()
+        var committed: AdjustmentCall? = null
+        handler.adjustmentReply = { call ->
+            if (committed == null) {
+                committed = call
+                throw IOException("response lost after commit")
+            }
+            if (call.idempotencyKey != committed?.idempotencyKey) {
+                throw HttpException(
+                    Response.error<DebtDto>(
+                        409,
+                        """{"error":"state_conflict","message":"Debt changed"}"""
+                            .toResponseBody("application/json".toMediaType()),
+                    ),
+                )
+            }
+            debtDto(publicId = "d1", remaining = 53_000L).copy(rowVersion = 3L, paidAmountCents = 0L)
+        }
+        val repository = repository(handler)
+
+        assertTrue(repository.recordAdjustment("d1", 2L, 3_000L, "补记借款").isFailure)
+        val recovered = repository.recordAdjustment("d1", 2L, 3_000L, "补记借款")
+
+        assertTrue(recovered.isSuccess, "Retry must recover the committed original adjustment")
+        assertEquals(1, handler.adjustmentCalls.map { it.idempotencyKey }.toSet().size)
+        assertEquals(committed?.request, handler.adjustmentCalls.last().request)
+        assertEquals(3L, recovered.getOrThrow().rowVersion)
     }
 
     @Test
@@ -698,6 +730,7 @@ private class DebtApiHandler : InvocationHandler {
     val parseBillCalls = mutableListOf<MultipartBody.Part>()
     val repaymentCalls = mutableListOf<RepaymentCall>()
     val adjustmentCalls = mutableListOf<AdjustmentCall>()
+    var adjustmentReply: ((AdjustmentCall) -> DebtDto)? = null
     val voidCalls = mutableListOf<VoidCall>()
     // ADR-0049 §7.0 / 8e-6e debt_kind correction-setter route recording.
     val setKindCalls = mutableListOf<SetKindCall>()
@@ -770,7 +803,7 @@ private class DebtApiHandler : InvocationHandler {
                     request = values[1] as DebtAdjustmentCreateRequestDto,
                     idempotencyKey = values[2] as String?,
                 )
-                writeResult ?: debtDto(publicId = values[0] as String)
+                adjustmentReply?.invoke(adjustmentCalls.last()) ?: writeResult ?: debtDto(publicId = values[0] as String)
             }
             "voidDebt" -> {
                 voidCalls += VoidCall(
