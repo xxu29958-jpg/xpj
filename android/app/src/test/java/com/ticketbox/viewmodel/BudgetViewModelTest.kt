@@ -462,23 +462,6 @@ class BudgetAdviceViewModelTest {
     }
 
     @Test
-    fun invalidAdvisorConfigurationMapsToTerminalUnavailableState() = budgetTest {
-        val message = "AI 顾问配置不完整或无效，请联系服务拥有者检查配置。"
-        val fake = FakeBudgetActions(budget = budget())
-        fake.adviceResponder = {
-            Result.failure(RepositoryException(message = message, errorCode = "ai_advisor_configuration_invalid"))
-        }
-        val adviceViewModel = fixedAdviceViewModel(fake)
-        adviceViewModel.requestAdvice()
-        advanceUntilIdle()
-
-        val state = adviceViewModel.uiState.value
-        assertEquals(BudgetAdviceLoadState.Unavailable, state.loadState)
-        assertEquals(UiText.raw(message), state.error)
-        assertEquals("ai_advisor_configuration_invalid", state.terminalErrorCode)
-    }
-
-    @Test
     fun dailyLimitExceededMapsToTerminalUnavailableState() = budgetTest {
         val fake = FakeBudgetActions(budget = budget())
         fake.adviceResponder = {
@@ -655,12 +638,27 @@ class BudgetAdviceViewModelTest {
     }
 }
 
-/** 218-B4 review P2: ai_advisor_payload_invalid is the deterministic
- *  fail-closed outbound guard (rejects before the provider call), so it maps
- *  to the terminal Unavailable state with its own honest copy — separate
- *  class to stay under the per-class function cap. */
+/** Invalid configuration and rejected outbound input remain unavailable
+ *  with their bounded user-facing explanation. */
 @OptIn(ExperimentalCoroutinesApi::class)
-class BudgetAdvicePayloadInvalidTest {
+class BudgetAdviceInputRejectionTest {
+    @Test
+    fun invalidAdvisorConfigurationMapsToTerminalUnavailableState() = budgetTest {
+        val message = "AI 顾问配置不完整或无效，请联系服务拥有者检查配置。"
+        val fake = FakeBudgetActions(budget = budget())
+        fake.adviceResponder = {
+            Result.failure(RepositoryException(message = message, errorCode = "ai_advisor_configuration_invalid"))
+        }
+        val adviceViewModel = fixedAdviceViewModel(fake)
+        adviceViewModel.requestAdvice()
+        advanceUntilIdle()
+
+        val state = adviceViewModel.uiState.value
+        assertEquals(BudgetAdviceLoadState.Unavailable, state.loadState)
+        assertEquals(UiText.raw(message), state.error)
+        assertEquals("ai_advisor_configuration_invalid", state.terminalErrorCode)
+    }
+
     @Test
     fun payloadInvalidMapsToTerminalUnavailableState() = budgetTest {
         val fake = FakeBudgetActions(budget = budget())
