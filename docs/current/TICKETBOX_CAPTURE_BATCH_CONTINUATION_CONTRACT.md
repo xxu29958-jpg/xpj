@@ -25,3 +25,5 @@
 本阶段只修改该测试，保留既有单图重试、切账本、旧准备结果及失败累计用例；没有宣称这些用例已重新运行。静态可见旧 owner 预计只能发送 A/B/B，实际 RED 与后续 GREEN 交 exact head 云端 `Android fast` 的 `:app:testGrayDebugUnitTest` 取得；本机未运行 Gradle、PG 或产品。实际 `classify_ci_paths` 对该测试及 `PendingRoute`、`PendingUploadConsumers`、`PendingViewModel` 四个路径逐项执行，均仅置 `android=true`。Connected 的 picker/shortcut/share 接线仍需独立执行证据，本 JVM 反例不替代它。
 
 生产施工应让既有 VM 上传 owner 接受并保留完整批次后再消费 launch action，由原 Retry 推进 B 与未准备尾部；URI 边界继续只负责准备。现有 `PendingUploadConsumers` 的页面协程业务循环与仅保存单图的恢复责任必须随迁移退役，repository 的账本 guard、receipt/refresh/enrichment 仍由现有 owner 承担。完整施工后 impact closure 留待生产修改与对应验证，当前仅完成直接验证生产者的反例补齐。
+
+首个云端 run `34034258931` / Android fast `101489352058` 在 Kotlin 测试编译阶段失败：新增断言将 `List<String>` 与 fake 已有的 `MutableList<String?>` 交给泛型 `assertEquals`，不能推断统一类型。仅将期望列表显式声明为 `List<String?>`，四个非空 owner 值与全部断言不变；未改 fake、生产协议或账本可空性。该失败不是上传缺口的运行反例，必须等修正 head 执行 JVM 后再记录 RED。没有本机 Gradle 执行。

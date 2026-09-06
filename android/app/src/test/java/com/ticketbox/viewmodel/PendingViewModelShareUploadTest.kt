@@ -157,7 +157,7 @@ internal class PendingViewModelShareUploadTest : PendingViewModelReviewTestBase(
 
         assertEquals(listOf("a.jpg", "b.jpg", "b.jpg", "c.jpg"), fake.uploadedFileNames)
         assertEquals(listOf("a.jpg", "b.jpg", "c.jpg"), preparedNames)
-        assertEquals(listOf("owner", "owner", "owner", "owner"), fake.uploadedLedgerIds)
+        assertEquals(listOf<String?>("owner", "owner", "owner", "owner"), fake.uploadedLedgerIds)
         assertEquals(setOf(1L, 2L, 3L), vm.uiState.value.items.map { it.id }.toSet())
         assertFalse(vm.uiState.value.canRetryUpload)
         assertFalse(vm.uiState.value.uploading)
