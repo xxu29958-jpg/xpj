@@ -207,9 +207,9 @@ private fun SyncStatusUploadSection(state: OutboxStatusUiState, actions: SyncSta
         AppPrimaryButton(text = stringResource(R.string.sync_status_open_uploads), icon = Icons.Filled.CloudUpload,
             onClick = onOpenInbox)
         rows.forEach { row ->
-            FailedCard(row, null, state.busyRowId == row.id, onRetry = null, onDrop = {
+            FailedCard(row, null, state.busyRowId == row.id, onRetry = null, actions = actions.copy(onDropFailed = {
                 if (row in state.status.conflicts) actions.onDropMine(row) else actions.onDropFailed(row)
-            })
+            }))
         }
     }
 }
