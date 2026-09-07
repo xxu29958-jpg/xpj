@@ -26,7 +26,8 @@ import org.junit.Test
  * explicit confirm word (确定放弃 / 确定移除) fires the drop.
  */
 class SyncStatusScreenConfirmTest {
-    @get:Rule
+    @JvmField
+    @Rule
     val composeRule = createComposeRule()
 
     @Test

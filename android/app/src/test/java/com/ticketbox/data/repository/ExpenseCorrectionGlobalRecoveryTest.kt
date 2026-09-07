@@ -200,7 +200,9 @@ internal class ExpenseCorrectionGlobalRecoveryTest {
         assertEquals(original, fixture.queue.rows[row.id])
         assertEquals(7L, fixture.cache.getConfirmed("owner").single().rowVersion)
         assertTrue(fixture.cache.getConfirmed("other-ledger").isEmpty())
-        assertNotNull(fixture.vm.uiState.value.message)
+        assertEquals("other-ledger", fixture.vm.uiState.value.binding?.ledgerId)
+        assertTrue(fixture.vm.uiState.value.correctionObservation.corrections.isEmpty())
+        assertNull(fixture.vm.uiState.value.message, "A former binding cannot publish its recovery failure here")
         assertNull(fixture.vm.uiState.value.busyRowId)
     }
 

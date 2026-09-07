@@ -108,10 +108,11 @@ internal class ExpenseFactViewModelCorrectionOutcomeTest : ExpenseFactViewModelT
             }
         }
         val vm = ExpenseFactViewModel(original.root.id, delayedRepository, preferLocalCache = true)
-        // Existing initial reads may finish with the old snapshot. A fix may also
-        // wait for the first Room snapshot before starting them; both are valid.
+        // The first access snapshot must establish identity before any cache is adopted.
         advanceUntilIdle()
-        assertEquals(original.root, vm.uiState.value.expense)
+        assertEquals(null, vm.uiState.value.expense)
+        assertEquals(0, fake.fetchExpenseCalls)
+        assertEquals(0, fake.fetchFactBundleCalls)
         assertTrue(vm.uiState.value.corrections.isEmpty())
 
         val published = original.copy(root = original.root.copy(category = "居家",

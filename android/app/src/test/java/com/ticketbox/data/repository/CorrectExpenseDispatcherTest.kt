@@ -164,6 +164,67 @@ internal class CorrectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
 
         assertTrue(dispatcher.dispatch(row()) is DispatchResult.Conflict)
     }
+
+    @Test
+    fun `invalid persisted field constraints keep the original readable without transport or retry`() = runTest {
+        val adapter = com.ticketbox.OutboxAdapterGraph().correctionAdapter
+        val original = row()
+        val payload = requireNotNull(adapter.fromJson(original.payloadJson))
+        val request = payload.request
+        val item = com.ticketbox.data.remote.dto.ExpenseItemRequestDto("Item")
+        val split = com.ticketbox.data.remote.dto.ExpenseSplitRequestDto(1, 1)
+        val maximum = com.ticketbox.domain.model.MONEY_MINOR_MAX
+        val invalid = listOf(
+            request.copy(splits = listOf(split.copy(memberId = 0))),
+            request.copy(splits = listOf(split.copy(amountCents = maximum + 1))),
+            request.copy(splits = listOf(split.copy(note = "x".repeat(201)))),
+            request.copy(items = listOf(item.copy(name = ""))),
+            request.copy(items = listOf(item.copy(kind = "unknown"))),
+            request.copy(items = listOf(item.copy(quantityText = "x".repeat(65)))),
+            request.copy(items = listOf(item.copy(unitPriceCents = -1))),
+            request.copy(items = listOf(item.copy(amountCents = -1))),
+            request.copy(items = listOf(item.copy(kind = "discount", amountCents = 1))),
+            request.copy(items = listOf(item.copy(amountCents = maximum + 1))),
+            request.copy(items = listOf(item.copy(category = "x".repeat(65)))),
+            request.copy(items = listOf(item.copy(rawText = "x".repeat(1001)))),
+            request.copy(items = listOf(item.copy(confidence = 1.1))),
+            request.copy(amountCents = -1), request.copy(originalAmountMinor = maximum + 1),
+            request.copy(originalCurrencyCode = "CN"),
+            request.copy(valueScore = com.ticketbox.data.remote.dto.CorrectionOptionalInt.changed(0)),
+            request.copy(regretScore = com.ticketbox.data.remote.dto.CorrectionOptionalInt.changed(6)),
+        )
+        val stub = Stub(StubResult.Success(ExpenseCorrectionResponseDto(successExpenseDto(), revision())))
+        val dispatcher = CorrectExpenseDispatcher({ stub }, adapter, { _, _ -> }, {})
+        for (invalidRequest in invalid) {
+            val retained = original.copy(status = PendingMutationStatus.Failed,
+                payloadJson = adapter.toJson(payload.copy(request = invalidRequest)))
+            assertEquals(DispatchResult.Failure("correction_requires_review"), dispatcher.dispatch(retained), invalidRequest.toString())
+            assertEquals(invalidRequest, adapter.readDisplayCorrection(retained))
+            val pending = PendingExpenseCorrection(retained, adapter.readSupportedCorrection(retained))
+            assertEquals(false, pending.canRetry)
+            assertEquals(true, pending.canDiscard)
+        }
+        assertEquals(0, stub.calls)
+    }
+
+    @Test
+    fun `explicit server validation refusal cannot offer the same immutable request as retry`() = runTest {
+        val original = row()
+        val adapter = com.ticketbox.OutboxAdapterGraph().correctionAdapter
+        val stub = Stub(StubResult.Throw(httpException(422, """{"detail":"server validation"}""")))
+        val dispatcher = CorrectExpenseDispatcher({ stub }, adapter, { _, _ -> error("No accepted fact") }, {})
+        val result = dispatcher.dispatch(original)
+        assertEquals(DispatchResult.Failure("correction_requires_review"), result)
+        val retained = original.copy(status = PendingMutationStatus.Failed,
+            lastError = (result as DispatchResult.Failure).message)
+        val pending = PendingExpenseCorrection(retained, adapter.readSupportedCorrection(retained))
+        assertEquals(true, pending.hasSupportedIntent)
+        assertEquals(false, pending.delivered)
+        assertEquals(false, pending.canRetry)
+        assertEquals(true, pending.canDiscard)
+        assertEquals(original.payloadJson, retained.payloadJson)
+        assertEquals(1, stub.calls)
+    }
     @Test
     fun `known 2xx notifies the real budget checker even when canonical cache publication fails`() = runTest {
         val response = ExpenseCorrectionResponseDto(successExpenseDto().copy(status = "confirmed", rowVersion = 8), revision())

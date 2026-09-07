@@ -144,6 +144,7 @@ internal class ExpenseCorrectionConnectedFixture(private val context: Context) {
 internal class CorrectionConnectedNetwork {
     var current = correctionExpense()
     var confirmedStreamItems: ((ExpenseDto) -> List<ConfirmedExpenseStreamItemDto>)? = null
+    var beforeStreamResponse: (suspend () -> Unit)? = null
     var failReads = false
     var failStreamReads = false
     var loseResponse = true
@@ -167,6 +168,7 @@ internal class CorrectionConnectedNetwork {
             } ?: listOf(ConfirmedExpenseStreamItemDto(ConfirmedStreamEntryKindDto.Expense,
                 "2026-09-06", current.createdAt, current.id, current.amountCents ?: 0, current,
                 lineageStatus = ExpenseLineageStatusDto.Confirmed, lineageHomeNetCents = current.amountCents ?: 0))
+            beforeStreamResponse?.invoke()
             return PaginatedExpensesDto(items, query.getValue("page").toInt(), query.getValue("page_size").toInt(), items.size)
         }
         override suspend fun recurringItems(status: String?, includeArchived: Boolean, month: String?, timezone: String?) =

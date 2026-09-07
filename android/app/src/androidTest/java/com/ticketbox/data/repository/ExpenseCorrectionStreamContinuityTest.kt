@@ -30,6 +30,52 @@ import org.junit.Test
 /** Real Room, graph, sender and retained ledger; no detail reader or manual post-delivery sync. */
 class ExpenseCorrectionStreamContinuityTest {
     @Test
+    fun rejectedStreamPublicationKeepsTheDeliveredReceiptUntilAnAcceptedReadAfterReopen() = runBlocking {
+        val fixture = ExpenseCorrectionConnectedFixture(InstrumentationRegistry.getInstrumentation().targetContext)
+        try {
+            var repository = fixture.reopen().expenseRepository
+            fixture.network.loseResponse = false
+            val originalExpense = fixture.network.current.copy(expenseTime = "2026-09-01T04:00:00Z")
+            fixture.network.current = originalExpense
+            fixture.network.confirmedStreamItems = { root -> rootStream(root,
+                if (root.rowVersion == originalExpense.rowVersion) "2026-09-01" else "2026-10-02").let(::listOf) }
+            repository.syncConfirmed().getOrThrow()
+            val oldProjection = requireNotNull(fixture.expenseDao.findByServerId("correction-ledger", originalExpense.id))
+            val access = requireNotNull(repository.observeCorrections().first().access)
+            repository.submitCorrection(access.binding, originalExpense.toDomain(), ExpenseCorrectionDraft(
+                reason = "Correct the date", expenseTime = "2026-10-02T04:00:00Z", expenseTimeChanged = true,
+            )).getOrThrow()
+            val original = fixture.stored().single()
+            fixture.network.beforeStreamResponse = {
+                fixture.network.current = fixture.network.current.copy(rowVersion = 9, merchant = "Concurrent newer fact")
+                fixture.expenseDao.upsertByServerIdForLedger("correction-ledger", fixture.network.current.toEntity("correction-ledger"))
+            }
+
+            assertEquals(1, fixture.drain().done)
+            val pending = repository.observeCorrections().first().corrections.single()
+            assertTrue(pending.delivered)
+            assertTrue("An incoming stream rejected by Room cannot satisfy the receipt", pending.refreshRequired)
+            val raced = requireNotNull(fixture.expenseDao.findByServerId("correction-ledger", originalExpense.id))
+            assertEquals(9L, raced.rowVersion)
+            assertEquals(oldProjection.streamDate, raced.streamDate)
+            assertEquals(oldProjection.streamAmountCents, raced.streamAmountCents)
+            for (column in listOf("id", "payload", "idempotencyKey", "expectedRowVersion", "ownerKey", "ledgerId", "serverUrl")) {
+                assertEquals("Original command $column", original[column], fixture.stored().single()[column])
+            }
+            fixture.network.beforeStreamResponse = null
+            repository = fixture.reopen().expenseRepository
+            assertTrue(repository.observeCorrections().first().corrections.single().refreshRequired)
+            repository.syncConfirmed().getOrThrow()
+            assertEquals(false, repository.observeCorrections().first().corrections.single().refreshRequired)
+            assertEquals("2026-10-02", fixture.expenseDao.findByServerId("correction-ledger", originalExpense.id)?.streamDate)
+            assertEquals(0, fixture.drain().attempted)
+            assertEquals(1, fixture.network.calls.size)
+        } finally {
+            fixture.close()
+        }
+    }
+
+    @Test
     fun deliveredAmountAndDateCorrectionUpdatesTheRetainedLedgerWithoutManualSync() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val fixture = ExpenseCorrectionConnectedFixture(context)
