@@ -7,46 +7,25 @@ import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
 /**
- * ADR-0038 PR-2f outbox DAO.
+ * Room persistence for original commands and their delivery state.
  *
- * Read-side responsibilities:
- *   - [nextRunnableBatch] is the drain worker's queue: returns
- *     PENDING rows in ``createdAt`` ASC order, excluding any row
- *     whose target already has an unresolved sibling (IN_FLIGHT /
- *     CONFLICT / blocking FAILED). The exclusion is in SQL (``NOT EXISTS``)
- *     so ``LIMIT`` applies AFTER blocked targets are skipped.
- *   - [nextPendingBatch] is a simpler PENDING-only pull used by
- *     tests and the stale-IN_FLIGHT recovery sweep, neither of
- *     which needs the unresolved-target filter.
- *   - [hasUnresolvedRowForTarget] / [activeForTarget] / [isTargetBusy]
- *     let the repository check target state for cascade / banner
- *     queries.
- *   - [observeQueueDepth] / [observeConflictRows] / [observeFailedRows]
- *     feed the queue-depth pill + the conflict and FAILED banners
- *     in PR-2g; all Flow so the UI re-renders without polling.
+ * [nextRunnableBatch] returns the oldest PENDING row per target in each
+ * selection. The engine can select again after a predecessor settles.
+ * Shared SQL predicates exclude blocking siblings before LIMIT and make
+ * [markInFlightIfPending] recheck that same ordering at the actual claim.
+ * [nextPendingBatch] remains a plain read; it does not authorize dispatch.
  *
- * Write-side responsibilities:
- *   - [insert] is fire-and-forget from the mutation call sites.
- *   - [markInFlightIfPending] / [markDone] / [markConflict] /
- *     [markFailed] / [markRetryable] are the drain worker's status
- *     transitions. ``IfPending`` and the ``...IfStatus`` family
- *     all carry a ``status = :fromStatus`` predicate so concurrent
- *     drains / stale UI banners can't move a row out of the state
- *     the caller thought it was in.
- *   - [requeueConflictWithFreshToken] / [retryFailed] /
- *     [deleteIfStatus] are the user-facing resolveConflict /
- *     resolveFailed building blocks; each is rowcount-checked so
- *     a stale banner click is a no-op rather than a stomp.
- *   - [cascadeFreshTokenForTarget] propagates a server-returned
- *     ``updated_at`` to other PENDING rows of the same target
- *     after a successful dispatch.
- *   - [recoverStaleInFlight] / [deleteResolvedBefore] are the
- *     periodic cleanup operations.
+ * [insert] / [insertBatch] persist before the repository schedules work;
+ * [markDone] commits a receipt with its delivery status. Explicit recovery
+ * uses bound, status-checked updates. [deleteUnfinishedUploadGroup] applies
+ * one bound Stop under the repository's dispatch and binding leases,
+ * retaining delivered receipts and unrelated commands.
  *
- * Why a single DAO instead of a Repository: the outbox surface is
- * small and the Repository in PR-2g will compose DAO calls with
- * Moshi adapters and the ApiService call. Splitting now would just
- * push trivial pass-through methods up a layer.
+ * Observable queue/conflict/failure reads keep original rows visible even
+ * when an ordinary FAILED upload no longer blocks its sibling. [allRows]
+ * includes every binding and raw type for the file owner's reference proof.
+ * [recoverStaleInFlight] and [deleteResolvedBefore] retain their existing
+ * recovery and completed-row retention responsibilities.
  */
 @Dao
 interface PendingMutationDao {
@@ -727,6 +706,16 @@ interface PendingMutationDao {
      */
     @Query("DELETE FROM pending_mutations WHERE id = :id")
     suspend fun deleteById(id: Long): Int
+
+    /** One bound Stop; the repository holds dispatch and binding leases across this statement. */
+    @Query(
+        """
+        DELETE FROM pending_mutations
+        WHERE ownerKey = :ownerKey AND ledgerId = :ledgerId AND targetId = :targetId
+          AND type = 'upload_screenshot' AND status != 'done'
+        """,
+    )
+    suspend fun deleteUnfinishedUploadGroup(ownerKey: String, ledgerId: String, targetId: String): Int
 
     /**
      * Prune DONE rows older than [cutoffIso] (ISO-Z). FAILED rows are

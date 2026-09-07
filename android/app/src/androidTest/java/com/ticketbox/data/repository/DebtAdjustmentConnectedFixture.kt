@@ -52,7 +52,7 @@ internal class DebtAdjustmentConnectedFixture(private val context: Context) {
     fun reopen(): RepositoryGraph {
         database?.close()
         val db = Room.databaseBuilder(context, AppDatabase::class.java, name).build().also { database = it }
-        outbox = OutboxRepository(db.pendingMutationDao(), clock,
+        outbox = OutboxRepository(db.pendingMutationDao(), clock, onRowsDeleted = {},
             bindingProvider = { session.toOutboxBinding() }, onEnqueued = { scheduleCalls += 1 })
         val sessions = debtAdjustmentProxy<LocalSessionStore> { method -> when (method) {
             "currentSession" -> session

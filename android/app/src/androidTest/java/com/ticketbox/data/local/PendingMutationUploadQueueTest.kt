@@ -173,6 +173,31 @@ class PendingMutationUploadQueueTest {
         }
     }
 
+    @Test
+    fun stopDeletesOnlyTheBoundUnfinishedUploadGroupAndPreservesEveryOtherOriginal() = runBlocking<Unit> {
+        UploadQueueFixture().use { fixture ->
+            val unfinished = listOf("pending", "in_flight", "conflict", "failed", "future_status")
+                .map { status -> fixture.row(status).copy(status = status) }
+            val preserved = listOf(
+                fixture.row("delivered").copy(status = "done", receiptJson = RECEIPT, completedAt = COMPLETED),
+                fixture.row("other-command").copy(type = "patch_expense"),
+                fixture.row("other-owner").copy(ownerKey = "other-owner"),
+                fixture.row("other-ledger").copy(ledgerId = "other-ledger"),
+                fixture.row("other-group").copy(targetId = "upload_batch:other"),
+                fixture.row("unowned").copy(ownerKey = null),
+            )
+            val ids = fixture.dao.insertBatch(unfinished + preserved)
+            val originals = fixture.dao.allRows()
+            assertEquals(0, fixture.dao.deleteUnfinishedUploadGroup("missing-owner", LEDGER, TARGET))
+            assertEquals(originals, fixture.dao.allRows())
+
+            assertEquals(unfinished.size, fixture.dao.deleteUnfinishedUploadGroup(OWNER, LEDGER, TARGET))
+            val dao = fixture.reopen()
+            assertEquals(preserved.mapIndexed { index, row -> row.copy(id = ids[unfinished.size + index]) }, dao.allRows())
+            assertEquals(0, dao.deleteUnfinishedUploadGroup(OWNER, LEDGER, TARGET))
+        }
+    }
+
     private suspend fun runnable(dao: PendingMutationDao): List<PendingMutationEntity> =
         dao.nextRunnableBatch(OWNER, LEDGER, UNRESOLVED, 25)
 

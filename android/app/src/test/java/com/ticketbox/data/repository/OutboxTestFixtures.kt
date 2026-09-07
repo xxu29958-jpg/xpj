@@ -27,6 +27,7 @@ internal fun testOutboxRepository(
     onEnqueued: () -> Unit = {},
     onClearAll: () -> Unit = {},
 ): OutboxRepository = OutboxRepository(
+    onRowsDeleted = {},
     dao = dao,
     clock = clock,
     bindingProvider = ::testOutboxBinding,
@@ -41,6 +42,7 @@ internal fun testOutboxRepository(
     bindingChanges: Flow<OutboxBinding>? = null,
     onClearAll: () -> Unit = {},
 ): OutboxRepository = OutboxRepository(
+    onRowsDeleted = {},
     dao = dao,
     clock = clock,
     bindingProvider = bindingProvider,
@@ -63,5 +65,5 @@ internal fun expenseRepositoryFixture(
     sessionCoordinator: LocalLedgerSessionCoordinator = LocalLedgerSessionCoordinator(binding.settingsStore, binding.sessionStore, expenseDao),
     deviceNameProvider: () -> String = ::defaultAndroidDeviceName,
 ): ExpenseRepository = ExpenseRepository(expenseDao, binding, sessionCoordinator, deviceNameProvider,
-    testExpenseOfflineMutationWiring(OutboxRepository(FakePendingMutationDao(),
+    testExpenseOfflineMutationWiring(OutboxRepository(onRowsDeleted = {}, dao = FakePendingMutationDao(),
         bindingProvider = { binding.sessionStore.currentSession().toOutboxBinding() })))

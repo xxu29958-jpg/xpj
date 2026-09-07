@@ -57,7 +57,7 @@ internal class ExpenseCorrectionConnectedFixture(private val context: Context) {
     fun reopen(): RepositoryGraph {
         database?.close()
         val db = Room.databaseBuilder(context, AppDatabase::class.java, name).build().also { database = it }
-        outbox = OutboxRepository(db.pendingMutationDao(), clock, bindingProvider = { session.value.toOutboxBinding() },
+        outbox = OutboxRepository(db.pendingMutationDao(), clock, onRowsDeleted = {}, bindingProvider = { session.value.toOutboxBinding() },
             onEnqueued = { check(stored().isNotEmpty()); schedules++ })
         val sessions = correctionProxy<LocalSessionStore> { method -> when (method) {
             "currentSession" -> session.value

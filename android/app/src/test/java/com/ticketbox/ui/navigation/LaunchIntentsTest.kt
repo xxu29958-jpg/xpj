@@ -4,6 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertNotNull
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 /**
@@ -19,7 +20,7 @@ class LaunchIntentsTest {
         val request = resolveLaunchIntent(
             action = LaunchIntentActions.ACTION_SEND,
             mimeType = "image/jpeg",
-            streamUris = listOf("content://media/1"),
+            shared = LaunchSharedContent(listOf("content://media/1")),
             shortcutTarget = "manual_entry",
         )
 
@@ -31,11 +32,11 @@ class LaunchIntentsTest {
         val request = resolveLaunchIntent(
             action = LaunchIntentActions.ACTION_SEND,
             mimeType = "image/png",
-            streamUris = listOf("content://media/42"),
+            shared = LaunchSharedContent(listOf("content://media/42"), batchId = ORIGINAL_UPLOAD_BATCH_ID),
             shortcutTarget = null,
         )
 
-        assertEquals(LaunchIntentRequest.ShareImages(listOf("content://media/42")), request)
+        assertEquals(LaunchIntentRequest.ShareImages(ORIGINAL_UPLOAD_BATCH_ID, listOf("content://media/42")), request)
     }
 
     @Test
@@ -43,12 +44,15 @@ class LaunchIntentsTest {
         val request = resolveLaunchIntent(
             action = LaunchIntentActions.ACTION_SEND_MULTIPLE,
             mimeType = "image/*",
-            streamUris = listOf("content://a", " content://b ", "content://a", "", null, "content://c"),
+            shared = LaunchSharedContent(
+                listOf("content://a", " content://b ", "content://a", "", null, "content://c"),
+                batchId = ORIGINAL_UPLOAD_BATCH_ID,
+            ),
             shortcutTarget = null,
         )
 
         assertEquals(
-            LaunchIntentRequest.ShareImages(listOf("content://a", "content://b", "content://c")),
+            LaunchIntentRequest.ShareImages(ORIGINAL_UPLOAD_BATCH_ID, listOf("content://a", "content://b", "content://c")),
             request,
         )
     }
@@ -58,7 +62,7 @@ class LaunchIntentsTest {
         val request = resolveLaunchIntent(
             action = LaunchIntentActions.ACTION_SEND,
             mimeType = "image/jpeg",
-            streamUris = listOf(null, "", "   "),
+            shared = LaunchSharedContent(listOf(null, "", "   ")),
             shortcutTarget = null,
         )
 
@@ -70,7 +74,7 @@ class LaunchIntentsTest {
         val request = resolveLaunchIntent(
             action = LaunchIntentActions.ACTION_SEND,
             mimeType = "application/pdf",
-            streamUris = listOf("content://doc/1"),
+            shared = LaunchSharedContent(listOf("content://doc/1")),
             shortcutTarget = null,
         )
 
@@ -83,11 +87,11 @@ class LaunchIntentsTest {
         val request = resolveLaunchIntent(
             action = LaunchIntentActions.ACTION_SEND,
             mimeType = null,
-            streamUris = listOf("content://media/7"),
+            shared = LaunchSharedContent(listOf("content://media/7"), batchId = ORIGINAL_UPLOAD_BATCH_ID),
             shortcutTarget = null,
         )
 
-        assertEquals(LaunchIntentRequest.ShareImages(listOf("content://media/7")), request)
+        assertEquals(LaunchIntentRequest.ShareImages(ORIGINAL_UPLOAD_BATCH_ID, listOf("content://media/7")), request)
     }
 
     @Test
@@ -96,7 +100,7 @@ class LaunchIntentsTest {
             resolveLaunchIntent(
                 action = "android.intent.action.MAIN",
                 mimeType = null,
-                streamUris = emptyList(),
+                shared = LaunchSharedContent(emptyList()),
                 shortcutTarget = null,
             ),
         )
@@ -126,7 +130,19 @@ class LaunchIntentsTest {
         assertEquals("review_pending", ShortcutTarget.ReviewPending.id)
         assertTrue(ShortcutTarget.entries.size == 3)
     }
+
+    @Test
+    fun anotherShareOfTheSameUriGetsAnotherOriginalIdentity() {
+        val first = resolveLaunchIntent(LaunchIntentActions.ACTION_SEND, "image/png", LaunchSharedContent(listOf("content://same")), null)
+            as LaunchIntentRequest.ShareImages
+        val second = resolveLaunchIntent(LaunchIntentActions.ACTION_SEND, "image/png", LaunchSharedContent(listOf("content://same")), null)
+            as LaunchIntentRequest.ShareImages
+        assertNotEquals(first.batchId, second.batchId)
+        assertEquals(first.uris, second.uris)
+    }
 }
+
+private const val ORIGINAL_UPLOAD_BATCH_ID = "614ba8eb-253d-4cfa-b59e-c9686c23a843"
 
 class FamilyInvitationLaunchIntentsTest {
 
@@ -137,9 +153,8 @@ class FamilyInvitationLaunchIntentsTest {
         val request = resolveLaunchIntent(
             action = LaunchIntentActions.ACTION_SEND,
             mimeType = "text/plain",
-            streamUris = emptyList(),
+            shared = LaunchSharedContent(emptyList(), text = shared),
             shortcutTarget = null,
-            sharedText = shared,
         )
 
         assertEquals(LaunchIntentRequest.JoinInvitation(shared), request)
@@ -156,9 +171,8 @@ class FamilyInvitationLaunchIntentsTest {
             resolveLaunchIntent(
                 action = LaunchIntentActions.ACTION_SEND,
                 mimeType = "text/plain",
-                streamUris = emptyList(),
+                shared = LaunchSharedContent(emptyList(), text = "这不是邀请"),
                 shortcutTarget = null,
-                sharedText = "这不是邀请",
             ),
         )
     }

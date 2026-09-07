@@ -196,3 +196,23 @@ Android fast `101583536322` 的实际 XML artifact `10000063383` 共 2161 tests 
 | payload / dispatcher / 完整收据 / Sync 类型展示 | 新具体 UploadScreenshot dispatcher 消费固定 revision、batch/order、完整原 owner、文件和 timezone；不重新准备或换 key。容量/协议/身份失败阻塞尾部，普通失败保留 Failed 并放行，404 不进入 Discarded。Success 的完整含 null receipt 与原行 Done 同次更新；上传不触发 confirmed advice。SyncStatus 全枚举 getValue 消费者增加上传标签。 | 四个 payload 与四个 dispatcher 用例和既有全枚举标签控制尚待运行。dispatcher 尚未注册，旧 direct sender / RAM 上传循环、Activity/shell 提前 consume、新 VM 恢复和删除 hook 仍在施工，PR 保持 Draft。 |
 
 本机只执行 diff、现有文案审计（47 条既有 allowlist 未增加）、逐路径 scope 与 pinned Lizard 的秒级源码检查。基础候选代码路径仅选中 android；Lizard 新增函数无 >80 行 / CC15 超额，AppDatabase 旧 migrate 及其解析器误归属的 expenseDao 跨度仍需按实际报告分层解释。这些不是 Kotlin 编译、Room、Detekt 或产品 GREEN；整个上传任务仍须原 Room 重开反例和全部生产消费者完成后才能闭合。
+
+### ff10 实际结果与完整提交链施工
+
+source `ff10e515cc3b1f21513e56face622edbee0d20f6` / tree `ca93123c6a9a29342ff496bb760301e77f40fbc3` 的 CI `34072964200` 已失败结束，CodeQL `34072964201` 成功；实际 Android fast checkout `38c3d6c9aad884710a6d4c44fa0991f761c33a92` 的 tree 已独立读回相同。fast XML 为 375 suites / 2174 tests / 1 failure / 0 errors / 0 skips；新 payload 四例、dispatcher 四例、同轮继续五例与原 engine 27 / worker 17 例均通过。唯一 JVM 失败为 DebtAdjustment 旧测试仍预期一轮只发送一项，实际已经发出两项；后项的原 OCC 与冲突必须保留，不能为了旧计数恢复错误的一轮停工。由于 JVM 先失败，不能宣称本轮 Detekt、lint 或 count ratchet 通过。
+
+Connected `34072964199` 的原 artifact `10001343267` 为 147 tests / 1 failure / 0 errors / 0 skips。九个实际文件例、八个真实 DAO 例及 schema17→18 migration 通过；唯一原 Room 重开反例仍在恢复 Retry 前失败，B/C 尾段未达。CI 的其它实际失败分别为：原 SQL 静态消费者仍匹配已退役别名、Upload dispatcher/实际入队消费者未登记，以及 release KSP 读取新 schema18 的 JSON EOF。不是测试环境已被证明偶发。真实云端 fast KSP 生成的 schema18 已取回，SHA256 为 `631f321f03b391e1f2e43837654cd4a2a60bc38c48fd619e9a88c480762b82cf`；后续候选纳入该实际生成文件再验证 release。原 XML、日志与 `execution-index.json` 位于独立 qualification 目录，不进入产品源码。
+
+下列接线沿前述施工前表继续，仍是未资格化源码；不能把 ff10 的基础测试结果给它们背书。
+
+| 已列入口 / 消费者 | 本次施工后责任与旧出口退役 | 直接验证及待证 |
+| --- | --- | --- |
+| 原文件 → 一次 Room 接受 → Repo 观察 | `UploadIntentRepository` 复用 FileStore/Outbox；原批次逐项编号先核已接受原行，再读取来源，单次 enqueue collection 持久化。观察包括 Done 的完整 receipt，lastUploadAt 由同一收据投影，设置写失败不重发。 | 真实磁盘 Repo 控制覆盖未知 Room 确认、重开零 URI 读取、原时区/key/完整收据、部分旧行禁止重建、未知类型/错误 owner 禁止回收、权限与取消；尚未执行。 |
+| Activity / shell / picker / Route / VM | 每个原 selection 分别保留稳定编号和首次实际尝试的完整 binding；热分享到达不能改变正在接受的正文。只有文件和 Room 成立才 ACK；首次失败、页面重入、未知确认和 binding 变化不能换 key 或改收到账本 B。未接受 selection 的显式重试与已入队原组恢复分开，忙状态翻转不能触发无限 Retry。VM 只观察原行并调用接受/恢复，旧 `PendingUploadSession` RAM sender 退役。 | 原实际 effect 与工厂、真实 Room 重开反例及 Launch handoff 控制同步迁移；准备 A 期间原“已 consume”断言纠正为仍保留，保序、晚到 C、重入和原 Retry 后置条件继续检验。尚待完整接线与云端执行。 |
+| 唯一 HTTP / DI / 原成功消费者 | AppContainer 注册唯一 `UploadScreenshotDispatcher`，工厂必填传 UploadIntentActions；ExpensePendingRepository direct HTTP、PendingReviewActions 旧 upload API、ExpenseRepository 委托与旧 direct HTTP fake 物理退役。旧 `ExpenseUploadBindingTest` 两例由真实 Repo/原文件/engine 的绑定与原 key 重试控制接替，不能只删测试。收据任务查询接收原完整 binding 并在实际 IO bindExact。 | 新接受不发 HTTP、A/B/B/C、普通失败继续尾部、容量再次暂停、不可读项不阻塞、完整原收据/文件/时区/key 控制在真实发送链验证；VM 测试只证明 typed projection 和动作，不再伪造另一个上传循环。尚未执行。 |
+| Stop / 全部删除 / 文件引用 | Outbox 必填 `onRowsDeleted`，clearAll、clearExistingRows、clearQuarantined、Conflict Drop、Failed Drop、Done GC 和组 Stop 都在实际删行后、释放 lease 后回收。Stop 是单条 owner/ledger/type/target/非 Done 条件删除，保留原 Done 收据和其它记录。FileStore 删除只允许完整原行引用核查；没有生产消费者的按 key 直接删除辅助方法退役。 | 七条入口的真实文件+Room 参数控制、真实 DAO Stop 及错误状态重复删除负控新增待执行；原未知引用负控继续保留。 |
+| 无行孤文件与未知接受的唤醒 | 复核取消准备已明确产生“有 A 文件、无 Room 行”，而原 collector 只有删行 callback，下一次接受仍可能被无行孤文件占满。另原 Room commit 成功但 ACK 丢失后，原行重入分支没有补回漏掉的 onEnqueued。这两条旧成功/恢复出口均裁 FIX，不能保留零唤醒为要求。 | 新反例要求下一接受前回收无引用旧 prefix、跨账本仍有引用原件保留；原 lost-ACK 测试改为要求原 Pending 得到一次原调度唤醒，文件/body/key 不变。当前仅 test-first，生产两处尚未修正，需下一 exact 云端 RED 后闭合。 |
+| 原 Scheduler 最后读取后的 enqueue | KEEP 在旧 Worker 最后一次空读与完成之间吞掉新 enqueue；更多空读不能关闭该窗口。拟使用同一 unique work 的 APPEND_OR_REPLACE 保留正在运行者及持久后继，取消后可起新链，保留网络约束/backoff/periodic owner。 | 新 JVM Robolectric 4.16.1 / SDK35 / 既有 JDK17 测试使用官方 WorkManager/TestDriver/真实 Room，WorkerFactory 只控制最后 Result 的时机。无 RestrictedAPI、全局 AndroidTest delegate 或 suppression；生产仍 KEEP，等待实际 RED。 |
+| 两处 SyncStatus / 通用旧恢复 | Workspace Settings 与 Obligations 同步页都连接原收件箱入口；上传从通用 Retry/KeepMine 消费集合移出，VM 同步禁止该旁路。原行 Drop 仍先确认并经过实际删行回收；收件箱按 typed original 提供文件名/顺序及专属恢复，不解析 raw JSON 冒充上下文。 | 新实际 UI 入口控制要求没有通用 Retry，点击查看待上传截图才进入原组；VM 原行快照控制禁止 fresh token 或通用 Retry 改写。其它更正/往来控制只迁移必填导航参数，未改业务断言。 |
+
+全体 Outbox 构造者显式迁移新的删除 callback；不使用文件的纯持久测试显式空 hook，真实上传 fixture 与生产组合接实际 collector。DataQuality 的修复跳转会真实建立 Pending VM，故它使用同一 UploadIntentRepository/Room 观察，不能保留会在首次订阅即抛错的未实现 proxy。原 SQL 静态消费者与 dispatcher callsite 登记已按实际 source 修正，未增加 allowlist 或放宽阈值。此段仅源码/直接验证生产者闭合记录，PR 仍 Draft，未合并，整个 Capture 与总 Goal 均未完成。

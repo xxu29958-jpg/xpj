@@ -120,6 +120,7 @@ class DebtCreationRoomContinuityTest {
     }
 
     private fun outbox(database: AppDatabase, session: LocalSessionRecord) = OutboxRepository(
+            onRowsDeleted = {},
         dao = database.pendingMutationDao(),
         clock = clock,
         bindingProvider = { session.toOutboxBinding() },

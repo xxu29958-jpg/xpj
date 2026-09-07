@@ -54,12 +54,6 @@ class UploadIntentFileStore internal constructor(
         return withFilesLocked { directory -> readVerified(directory, descriptor) }
     }
 
-    /** Call only after successful conditional row deletion and after releasing the Outbox lease. */
-    suspend fun releaseAfterRowDeletion(keys: Set<String>) {
-        require(keys.all(::isUploadIntentFileKey)) { "Invalid upload file deletion reference" }
-        withFilesLocked { directory -> keys.forEach { deleteOriginal(directory, it) } }
-    }
-
     /** Null or an undecodable reference means that at least one original's ownership is unknown. */
     suspend fun collectOrphans(readAllReferencedKeys: suspend () -> Set<String>?): Int {
         return withFilesLocked { directory ->

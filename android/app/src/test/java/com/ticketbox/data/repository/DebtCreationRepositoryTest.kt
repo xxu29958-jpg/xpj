@@ -164,6 +164,7 @@ internal class DebtCreationFixture(role: String = "owner") {
     val repository = DebtCreationRepository(provider, outbox, adapters.debtCreateAdapter)
 
     fun newOutbox(clock: Clock) = OutboxRepository(
+    onRowsDeleted = {},
         dao = dao,
         clock = clock,
         bindingProvider = { provider.currentSession().toOutboxBinding() },

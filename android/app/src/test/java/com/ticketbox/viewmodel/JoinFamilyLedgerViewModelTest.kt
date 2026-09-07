@@ -19,6 +19,7 @@ import com.ticketbox.domain.model.FamilyInvitationCreated
 import com.ticketbox.domain.model.shareText
 import com.ticketbox.ui.navigation.LaunchIntentActions
 import com.ticketbox.ui.navigation.LaunchIntentRequest
+import com.ticketbox.ui.navigation.LaunchSharedContent
 import com.ticketbox.ui.navigation.resolveLaunchIntent
 import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
@@ -61,9 +62,8 @@ class JoinFamilyLedgerViewModelTest {
             val request = resolveLaunchIntent(
                 action = LaunchIntentActions.ACTION_SEND,
                 mimeType = "text/plain",
-                streamUris = emptyList(),
+                shared = LaunchSharedContent(emptyList(), text = created.shareText),
                 shortcutTarget = null,
-                sharedText = created.shareText,
             ) as LaunchIntentRequest.JoinInvitation
             val viewModel = JoinFamilyLedgerViewModel(repository)
 

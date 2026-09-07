@@ -7,15 +7,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 
-/**
- * Pure-Kotlin DAO fake. Mirrors the SQL semantics in the real
- * [PendingMutationDao]; same field names so a future column add
- * shows up as a compile error here too.
- *
- * Shared between [OutboxRepositoryTest] and [OutboxDrainEngineTest]
- * — extracted from the former so the latter can reach it without
- * making the file-private fake public on every test.
- */
+/** In-memory [PendingMutationDao] preserving bound FIFO, original row identity and atomic batch changes. */
 class FakePendingMutationDao : PendingMutationDao {
     val rows = linkedMapOf<Long, PendingMutationEntity>()
     var beforeNextRunnableBatchReturn: (suspend () -> Unit)? = null
@@ -437,6 +429,16 @@ class FakePendingMutationDao : PendingMutationDao {
         val existed = rows.remove(id) != null
         refreshObservables()
         return if (existed) 1 else 0
+    }
+
+    override suspend fun deleteUnfinishedUploadGroup(ownerKey: String, ledgerId: String, targetId: String): Int {
+        val ids = rows.values.filter {
+            it.ownerKey == ownerKey && it.ledgerId == ledgerId && it.targetId == targetId &&
+                it.type == "upload_screenshot" && it.status != "done"
+        }.map { it.id }
+        ids.forEach(rows::remove)
+        if (ids.isNotEmpty()) refreshObservables()
+        return ids.size
     }
 
     override suspend fun deleteResolvedBefore(

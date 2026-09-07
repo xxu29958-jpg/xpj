@@ -36,7 +36,7 @@ internal class PendingViewModelReviewUndoBannerTest : PendingViewModelReviewTest
         val target = expense(id = 100L)
         val fake = FakeReviewActions(pending = listOf(target))
         fake.rejectResponder = { Result.success(target) }
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.reject(target)
@@ -62,7 +62,7 @@ internal class PendingViewModelReviewUndoBannerTest : PendingViewModelReviewTest
         val second = expense(id = 201L, merchant = "便利店", amountCents = 1200L)
         val fake = FakeReviewActions(pending = listOf(first, second))
         fake.rejectResponder = { Result.success(first) }
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.reject(first)
@@ -108,7 +108,7 @@ internal class PendingViewModelReviewUndoBannerTest : PendingViewModelReviewTest
             assertEquals(301L, id)
             Result.success(target.copy(status = "pending"))
         }
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.reject(target)
@@ -137,7 +137,7 @@ internal class PendingViewModelReviewUndoBannerTest : PendingViewModelReviewTest
         fake.undoRejectResponder = {
             Result.failure(RepositoryException("账单不存在。", errorCode = "expense_not_found"))
         }
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.reject(target)
@@ -162,7 +162,7 @@ internal class PendingViewModelReviewUndoBannerTest : PendingViewModelReviewTest
         fake.undoRejectResponder = {
             Result.failure(RepositoryException("网络断了。", errorCode = null))
         }
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.reject(target)
@@ -201,7 +201,7 @@ internal class PendingViewModelReviewUndoBannerTest : PendingViewModelReviewTest
         val target = expense(id = 600L, details = PendingExpenseDetails(duplicateStatus = "suspected"))
         val fake = FakeReviewActions(pending = listOf(target))
         fake.rejectResponder = { Result.success(target) }
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.openDuplicateAction(target)
@@ -232,7 +232,7 @@ internal class PendingViewModelReviewUndoBannerTest : PendingViewModelReviewTest
                 com.ticketbox.data.repository.ExpenseStateOutcome.Queued(target.copy(status = "rejected")),
             )
         }
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.openDuplicateAction(target)
@@ -256,7 +256,7 @@ internal class PendingViewModelReviewUndoBannerTest : PendingViewModelReviewTest
         val fake = FakeReviewActions(pending = listOf(a, b))
         fake.rejectResponder = { Result.success(a) }
         fake.confirmResponder = { Result.success(b.copy(status = "confirmed")) }
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.reject(a)
@@ -280,7 +280,7 @@ internal class PendingViewModelReviewUndoBannerTest : PendingViewModelReviewTest
         val target = expense(id = 800L)
         val fake = FakeReviewActions(pending = listOf(target))
         fake.rejectResponder = { Result.success(target) }
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.reject(target)
@@ -302,7 +302,7 @@ internal class PendingViewModelReviewUndoBannerTest : PendingViewModelReviewTest
         val target = expense(id = 900L)
         val fake = FakeReviewActions(pending = listOf(target))
         fake.rejectResponder = { Result.success(target) }
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.reject(target)

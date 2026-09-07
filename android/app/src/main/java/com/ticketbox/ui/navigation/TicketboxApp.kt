@@ -15,6 +15,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
@@ -50,6 +51,7 @@ import com.ticketbox.viewmodel.AppUiState
 import com.ticketbox.viewmodel.AppViewModel
 import com.ticketbox.viewmodel.JoinFamilyLedgerViewModel
 import com.ticketbox.viewmodel.joinFamilyLedgerViewModelFactory
+import kotlinx.coroutines.flow.first
 
 @Composable
 internal fun TicketboxApp(
@@ -412,8 +414,8 @@ private fun ShellBodyWithBanner(
 
 /**
  * 系统分享 / 启动器 shortcut 路由：只在 MainShell（已绑定+已解锁）里消费。把入口请求
- * 落成 tab 选择 + 一次性动作信号（拉起图片选择 / 待上传图 / 打开记一笔），由对应 Route
- * 接力；消费后回调清空 Activity 持有的请求（置回 null → 本 effect 以 null 重跑即 no-op）。
+ * 路由不是上传接受。图片请求留在 Activity，直到 Route 持久接受或用户明确取消这次选择。
+ * 热分享仍是后续独立请求；重入使用原 selection id，不能通过再次路由产生另一批命令。
  */
 @Composable
 private fun LaunchRequestEffect(
@@ -424,6 +426,9 @@ private fun LaunchRequestEffect(
     LaunchedEffect(launchRequest) {
         val request = launchRequest ?: return@LaunchedEffect
         dispatchLaunchRequest(request, shellState)
+        if (request is LaunchIntentRequest.ShareImages) {
+            snapshotFlow { shellState.launchAction.containsUpload(request.batchId) }.first { pending -> !pending }
+        }
         onLaunchRequestHandled(request)
     }
 }
@@ -458,7 +463,7 @@ private fun attemptBiometricUnlock(
 private fun dispatchLaunchRequest(request: LaunchIntentRequest, shellState: MainShellState) {
     when (request) {
         is LaunchIntentRequest.ShareImages -> {
-            shellState.launchAction.post(LaunchAction.UploadSharedImages(request.uris))
+            shellState.launchAction.post(LaunchAction.UploadSharedImages(request))
             shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox)
         }
         is LaunchIntentRequest.Navigate -> dispatchShortcutNavigation(request.target, shellState)

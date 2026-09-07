@@ -2,7 +2,10 @@ package com.ticketbox.ui.navigation
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.referentialEqualityPolicy
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.setValue
+import com.ticketbox.data.repository.LogicalSessionBinding
 
 /**
  * 系统分享 / 启动器 shortcut 经 MainShell 派发给具体 Route 的一次性入口动作（W1）。
@@ -11,8 +14,8 @@ import androidx.compose.runtime.setValue
  *  - [OpenManualEntry] → 账本页（LedgerScreen 的记一笔表单）。
  */
 internal sealed interface LaunchAction {
-    /** 系统分享带进来的图（已 sanitize 的 uri 字符串）；顺序上传。 */
-    data class UploadSharedImages(val uris: List<String>) : LaunchAction
+    /** One immutable selection; another share or picker result has another original batch id. */
+    data class UploadSharedImages(val selection: LaunchIntentRequest.ShareImages) : LaunchAction
 
     /** 「传小票」shortcut：拉起系统图片选择。 */
     object OpenImagePicker : LaunchAction
@@ -22,39 +25,96 @@ internal sealed interface LaunchAction {
 }
 
 /**
- * 一次性入口动作的可消费持有者（W1）。MainShell 的 LaunchedEffect [post] 写入；目标 Route
- * 的 LaunchedEffect 只在动作是**自己负责的变体**时才 [consume]（取走即清），不是自己的就
- * 留给对的 Route——tab 是 AnimatedContent 过场时新旧两 Route 短暂共存也不会被错的一方吞掉。
- * 状态挂在这里（由 MainShellState 持有、跨 tab 存活），消费后即不再触发——避免裸 revision/
- * bool 在 Route 重入（局部 remember 丢失）时拿旧值重复弹选择器/表单/上传。
- *
- * 单独成类（而非塞进 MainShellState）是因为后者已贴着 detekt 每文件函数上限。
+ * Pre-acceptance handoff only. Room owns every accepted upload and all delivery/recovery state.
+ * A failed or interrupted acceptance retains the same selection until an explicit retry or cancel.
+ * The saveable snapshot also keeps picker selections when their Activity is recreated.
  */
 internal class LaunchActionState {
-    var pending by mutableStateOf<LaunchAction?>(null)
+    private var actions by mutableStateOf<List<LaunchAction>>(emptyList(), referentialEqualityPolicy())
+    private var acceptingId by mutableStateOf<String?>(null)
+    private var retryId by mutableStateOf<String?>(null)
+    var uploadAttempt by mutableStateOf(0)
         private set
 
+    val pending: LaunchAction? get() = actions.firstOrNull()
+    val pendingUpload: LaunchAction.UploadSharedImages? get() = pending as? LaunchAction.UploadSharedImages
+    val acceptingUpload: Boolean get() = acceptingId != null
+    val awaitingUploadRetry: Boolean get() = retryId != null && retryId == pendingUpload?.selection?.batchId
+
     fun post(action: LaunchAction) {
-        val previous = pending
-        pending = if (previous is LaunchAction.UploadSharedImages && action is LaunchAction.UploadSharedImages) {
-            LaunchAction.UploadSharedImages(previous.uris + action.uris)
+        if (action is LaunchAction.UploadSharedImages) {
+            val index = actions.indexOfFirst { it is LaunchAction.UploadSharedImages && it.selection.batchId == action.selection.batchId }
+            if (index < 0) {
+                actions = actions + action
+            } else {
+                val previous = actions[index] as LaunchAction.UploadSharedImages
+                check(previous.selection.uris == action.selection.uris) { "Original upload selection changed" }
+                check(action.selection.expectedBinding == null || previous.selection.expectedBinding == null ||
+                    action.selection.expectedBinding == previous.selection.expectedBinding) { "Original upload binding changed" }
+                previous.selection.expectedBinding?.let(action.selection::freezeBinding)
+                actions = actions.toMutableList().apply { this[index] = action }
+            }
         } else {
-            action
+            actions = listOf(action) + actions.filterIsInstance<LaunchAction.UploadSharedImages>()
         }
     }
 
-    /** Consume only the accepted action; a share posted during handoff remains pending. */
+    /** Remove one exact action; later shares never become an appended prefix of that original. */
     fun consume(accepted: LaunchAction? = pending): LaunchAction? {
-        val current = pending ?: return null
-        if (current === accepted) {
-            pending = null
-        } else if (current is LaunchAction.UploadSharedImages && accepted is LaunchAction.UploadSharedImages &&
-            current.uris.take(accepted.uris.size) == accepted.uris
-        ) {
-            pending = LaunchAction.UploadSharedImages(current.uris.drop(accepted.uris.size))
-        } else {
-            return null
-        }
+        val index = actions.indexOf(accepted)
+        if (index < 0) return null
+        actions = actions.filterIndexed { position, _ -> position != index }
+        if (accepted is LaunchAction.UploadSharedImages && retryId == accepted.selection.batchId) retryId = null
         return accepted
+    }
+
+    fun containsUpload(batchId: String): Boolean = actions.any {
+        it is LaunchAction.UploadSharedImages && it.selection.batchId == batchId
+    }
+
+    fun beginUpload(action: LaunchAction.UploadSharedImages, binding: LogicalSessionBinding): Boolean {
+        val current = pendingUpload ?: return false
+        if (current.selection.batchId != action.selection.batchId || acceptingUpload || awaitingUploadRetry) return false
+        val originalBinding = current.selection.freezeBinding(binding)
+        action.selection.freezeBinding(originalBinding)
+        acceptingId = current.selection.batchId
+        return true
+    }
+
+    fun finishUpload(action: LaunchAction.UploadSharedImages, accepted: Boolean) {
+        if (acceptingId != action.selection.batchId) return
+        acceptingId = null
+        if (accepted) consume(action) else retryId = action.selection.batchId
+    }
+
+    fun retryUpload() {
+        if (acceptingUpload || pendingUpload == null) return
+        retryId = null
+        uploadAttempt++
+    }
+
+    fun cancelUploadSelection() {
+        if (!acceptingUpload) pendingUpload?.let(::consume)
+    }
+
+    fun snapshot(): List<ArrayList<String>> = listOf(arrayListOf("state", acceptingId ?: retryId.orEmpty())) + actions.map {
+        when (it) {
+            is LaunchAction.UploadSharedImages -> it.selection.savedFields()
+            LaunchAction.OpenImagePicker -> arrayListOf("picker")
+            LaunchAction.OpenManualEntry -> arrayListOf("manual")
+        }
+    }
+
+    companion object {
+        val Saver = listSaver<LaunchActionState, ArrayList<String>>(save = { it.snapshot() }, restore = ::restore)
+
+        fun restore(snapshot: List<List<String>>): LaunchActionState = LaunchActionState().apply {
+            retryId = snapshot.first()[1].ifEmpty { null }
+            actions = snapshot.drop(1).map { fields -> when (fields.first()) {
+                "picker" -> LaunchAction.OpenImagePicker
+                "manual" -> LaunchAction.OpenManualEntry
+                else -> LaunchAction.UploadSharedImages(restoreLaunchRequest(fields) as LaunchIntentRequest.ShareImages)
+            } }
+        }
     }
 }

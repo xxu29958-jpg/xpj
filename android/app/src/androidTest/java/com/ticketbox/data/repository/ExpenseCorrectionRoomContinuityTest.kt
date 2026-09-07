@@ -121,7 +121,7 @@ class ExpenseCorrectionRoomContinuityTest {
                     graph.incomePlanRepository, graph.debtAdjustmentRepository)).create(OutboxStatusViewModel::class.java)
         }
         compose.setContent { TicketboxTheme(skin = AppSkin.Paper) {
-            SyncStatusScreen(requireNotNull(global), {}, onOpenExpense = { opened = it })
+            SyncStatusScreen(requireNotNull(global), {}, onOpenExpense = { opened = it }, onOpenInbox = {})
         } }
         compose.waitUntil(10_000) { global?.uiState?.value?.correctionObservation?.corrections?.size == 1 }
         compose.onNodeWithText("原因：全局恢复原提交").performScrollTo().assertIsDisplayed()
@@ -188,7 +188,7 @@ class ExpenseCorrectionRoomContinuityTest {
                     graph.incomePlanRepository, graph.debtAdjustmentRepository)).create(OutboxStatusViewModel::class.java)
         }
         compose.setContent { TicketboxTheme(skin = AppSkin.Paper) {
-            SyncStatusScreen(requireNotNull(global), {}, onOpenExpense = {})
+            SyncStatusScreen(requireNotNull(global), {}, onOpenExpense = {}, onOpenInbox = {})
         } }
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         for (code in listOf("runtime_version_mismatch", "client_upgrade_required")) {
@@ -241,7 +241,7 @@ class ExpenseCorrectionRoomContinuityTest {
                     graph.incomePlanRepository, graph.debtAdjustmentRepository)).create(OutboxStatusViewModel::class.java)
         }
         compose.setContent { TicketboxTheme(skin = AppSkin.Paper) {
-            SyncStatusScreen(requireNotNull(global), {}, onOpenExpense = {})
+            SyncStatusScreen(requireNotNull(global), {}, onOpenExpense = {}, onOpenInbox = {})
         } }
         compose.waitUntil(10_000) { global?.uiState?.value?.correctionObservation?.corrections?.singleOrNull()?.row?.id == id }
         val status = requireNotNull(global).uiState.value.status

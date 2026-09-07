@@ -2,6 +2,7 @@ package com.ticketbox.data.repository
 
 import android.content.ContentValues
 import android.content.Context
+import android.content.ContextWrapper
 import android.graphics.Bitmap
 import android.net.Uri
 import android.provider.MediaStore
@@ -27,11 +28,21 @@ import com.ticketbox.security.SessionCredentialAdapter
 import com.ticketbox.security.StoredSessionToken
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
+import java.io.File
 import java.io.IOException
 import java.lang.reflect.Proxy
 import java.time.Clock
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.ConcurrentHashMap
+import java.nio.file.Files
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.MutableStateFlow
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
@@ -46,11 +57,20 @@ internal class UploadIntentConnectedFixture(private val context: Context) : Clos
     private val testId = UUID.randomUUID().toString()
     private val databaseName = "upload-intent-$testId.db"
     private var database: AppDatabase? = null
+    private var drainScope: CoroutineScope? = null
+    private val originalDirectory = Files.createTempDirectory(context.cacheDir.toPath(), "upload-continuity-").toFile()
+    private val originalContext = object : ContextWrapper(context) {
+        override fun getApplicationContext(): Context = this
+        override fun getFilesDir(): File = originalDirectory
+    }
     private val session = MutableStateFlow(uploadSession())
     val network = UploadIntentConnectedNetwork()
     val sourceUris = linkedMapOf<String, Uri>()
     val sourceBytes = linkedMapOf<String, ByteArray>()
     val savedUploadLedgers = CopyOnWriteArrayList<String>()
+    private val lastUploadAt = ConcurrentHashMap<String, String>()
+    lateinit var uploadIntents: UploadIntentRepository
+        private set
 
     fun createSources(): List<String> {
         listOf("a.png", "b.png", "c.png").forEachIndexed { index, name ->
@@ -85,6 +105,7 @@ internal class UploadIntentConnectedFixture(private val context: Context) : Clos
     }
 
     fun reopen(): RepositoryGraph {
+        stopDrain()
         database?.close()
         val db = Room.databaseBuilder(context, AppDatabase::class.java, databaseName).build().also { database = it }
         val sessions = uploadProxy<LocalSessionStore> { method, _ -> when (method) {
@@ -94,7 +115,12 @@ internal class UploadIntentConnectedFixture(private val context: Context) : Clos
             else -> error("Unexpected session method: $method")
         } }
         val settings = uploadProxy<TicketboxSettingsStore> { method, args -> when (method) {
-            "saveLastUploadAtForLedger" -> { savedUploadLedgers += args[0] as String; Unit }
+            "lastUploadAtForLedger" -> lastUploadAt[args[0] as String]
+            "saveLastUploadAtForLedger" -> {
+                lastUploadAt[args[0] as String] = args[1] as String
+                savedUploadLedgers += args[0] as String
+                Unit
+            }
             else -> error("Unexpected upload settings method: $method")
         } }
         val credentials = SessionCredentialAdapter(sessions)
@@ -105,22 +131,42 @@ internal class UploadIntentConnectedFixture(private val context: Context) : Clos
                 return network.service
             }
         }
+        val provider = ApiServiceProvider(factory, sessions, credentials)
+        val adapters = OutboxAdapterGraph()
+        val files = UploadIntentFileStore(originalContext)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO).also { drainScope = it }
+        lateinit var engine: OutboxDrainEngine
         val outbox = OutboxRepository(db.pendingMutationDao(), Clock.systemUTC(),
-            bindingProvider = { session.value.toOutboxBinding() })
+            bindingProvider = { session.value.toOutboxBinding() },
+            onEnqueued = { scope.launch { engine.drainOnce() } },
+            onRowsDeleted = { uploadIntents.collectOrphans() })
+        uploadIntents = UploadIntentRepository(provider, outbox, files,
+            adapters.uploadPayloadAdapter, adapters.uploadReceiptAdapter, settings)
+        val guard = LedgerRequestGuard(provider)
+        engine = OutboxDrainEngine(outbox, listOf(UploadScreenshotDispatcher(
+            { row -> guard.bind(expectedLedgerId = row.ledgerId).serviceFor(requireNotNull(row.bindingOrNull())) },
+            adapters.uploadPayloadAdapter, adapters.uploadReceiptAdapter, files::read,
+        )))
         return RepositoryGraph(RepositoryGraphDependencies(db, ApiClient(), settings, sessions, credentials,
-            ApiServiceProvider(factory, sessions, credentials), RepositoryGraphOutbox(outbox, OutboxAdapterGraph())))
+            provider, RepositoryGraphOutbox(outbox, adapters)))
     }
 
     fun hasDiskDatabase(): Boolean = context.getDatabasePath(databaseName).isFile
 
+    private fun stopDrain() = runBlocking { drainScope?.coroutineContext?.job?.cancelAndJoin() }
+
     override fun close() {
+        stopDrain()
         database?.close()
         context.deleteDatabase(databaseName)
         sourceUris.values.forEach { context.contentResolver.delete(it, null, null) }
+        check(originalDirectory.parentFile.canonicalFile == context.cacheDir.canonicalFile)
+        check(originalDirectory.name.startsWith("upload-continuity-"))
+        check(originalDirectory.deleteRecursively())
     }
 }
 
-internal data class UploadAttempt(val name: String, val bytes: ByteArray, val timezone: String?)
+internal data class UploadAttempt(val name: String, val bytes: ByteArray, val timezone: String?, val key: String)
 
 /** The remote model owns accepted receipts only; it never saves or reconstructs local B/C upload intents. */
 internal class UploadIntentConnectedNetwork {
@@ -141,7 +187,7 @@ internal class UploadIntentConnectedNetwork {
             val disposition = requireNotNull(file.headers?.get("Content-Disposition"))
             val name = requireNotNull(Regex("filename=\"([^\"]+)\"").find(disposition)).groupValues[1]
             val bytes = Buffer().also { file.body.writeTo(it) }.readByteArray()
-            attempts += UploadAttempt(name, bytes, timezone)
+            attempts += UploadAttempt(name, bytes, timezone, requireNotNull(idempotencyKey))
             if (name == "b.png" && attempts.count { it.name == name } == 1) {
                 throw HttpException(retrofit2.Response.error<UploadResponseDto>(503,
                     """{"error":"enrichment_capacity_full","message":"识别队列暂时已满"}"""

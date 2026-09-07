@@ -25,6 +25,7 @@ import org.junit.Test
  * explicit confirm word (确定放弃 / 确定移除) fires the drop.
  */
 class SyncStatusScreenConfirmTest {
+    private var openedUploads = 0
     @get:Rule
     val composeRule = createComposeRule()
 
@@ -166,6 +167,20 @@ class SyncStatusScreenConfirmTest {
         composeRule.runOnIdle { assertEquals(original, retried) }
     }
 
+    @Test
+    fun failedUploadOpensItsOriginalInboxGroupInsteadOfUsingGenericRetry() {
+        val original = outboxRow(PendingMutationStatus.Failed, "upload_payload_unsupported")
+            .copy(type = PendingMutationType.UploadScreenshot, targetId = "upload_batch:original")
+        setScreenContent(failed = listOf(original), actions = SyncStatusActions(
+            onOpenExpense = {}, onKeepMine = {}, onDropMine = {},
+            onRetry = { error("An upload must use the original group's recovery") },
+            onDropFailed = {}, onClearQuarantined = {},
+        ))
+        composeRule.onNodeWithText("重试").assertDoesNotExist()
+        composeRule.onNodeWithText("查看待上传截图").performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(1, openedUploads) }
+    }
+
     private fun setScreenContent(
         conflicts: List<OutboxRow> = emptyList(),
         failed: List<OutboxRow> = emptyList(),
@@ -187,6 +202,7 @@ class SyncStatusScreenConfirmTest {
                     ),
                     actions = actions,
                     onBack = {},
+                    onOpenInbox = { openedUploads += 1 },
                 )
             }
         }

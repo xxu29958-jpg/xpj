@@ -48,7 +48,7 @@ internal class RecurringOccurrenceConnectedFixture(private val context: Context)
     fun reopen(): RepositoryGraph {
         database?.close()
         val db = Room.databaseBuilder(context, AppDatabase::class.java, name).build().also { database = it }
-        outbox = OutboxRepository(db.pendingMutationDao(), clock, bindingProvider = { session.toOutboxBinding() })
+        outbox = OutboxRepository(db.pendingMutationDao(), clock, onRowsDeleted = {}, bindingProvider = { session.toOutboxBinding() })
         val sessions = occurrenceProxy<LocalSessionStore> { method, _ -> when (method) {
             "currentSession" -> session
             "observeSession" -> flowOf(session)

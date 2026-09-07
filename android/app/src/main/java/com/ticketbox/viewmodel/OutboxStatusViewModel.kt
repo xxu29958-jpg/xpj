@@ -85,7 +85,7 @@ class OutboxStatusViewModel(
 
     /** "用我的覆盖" — re-apply my change on top of the server's latest. */
     fun keepMine(row: OutboxRow) {
-        if (row.type == PendingMutationType.CorrectExpense) return
+        if (row.type in setOf(PendingMutationType.CorrectExpense, PendingMutationType.UploadScreenshot)) return
         if (_uiState.value.busyRowId != null) return
         viewModelScope.launch {
             _uiState.update { it.copy(busyRowId = row.id, message = null, messageTone = MessageTone.Neutral) }
@@ -113,6 +113,10 @@ class OutboxStatusViewModel(
 
     /** "重试" — flip a FAILED row back to PENDING for the next drain. */
     fun retry(row: OutboxRow) {
+        if (row.type == PendingMutationType.UploadScreenshot) {
+            _uiState.update { it.copy(message = UiText.res(R.string.sync_status_upload_recovery_body), messageTone = MessageTone.Info) }
+            return
+        }
         if (row.type == PendingMutationType.CorrectExpense) {
             recoverCorrection(row, false)
             return

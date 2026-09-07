@@ -10,6 +10,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -22,6 +23,8 @@ import com.ticketbox.ui.screens.pending.PendingQuickFixEntryActions
 import com.ticketbox.ui.screens.pending.PendingReviewFlowActions
 import com.ticketbox.ui.screens.pending.PendingReviewSheetHostActions
 import com.ticketbox.ui.screens.pending.PendingScreenChromeActions
+import com.ticketbox.ui.screens.pending.PendingUploadSelectionUiState
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.viewmodel.PendingViewModel
 import com.ticketbox.viewmodel.closeSheet
 import com.ticketbox.viewmodel.confirmReadyExpenses
@@ -35,6 +38,8 @@ import com.ticketbox.viewmodel.saveAmountDraft
 import com.ticketbox.viewmodel.saveQuickCategory
 import com.ticketbox.viewmodel.saveQuickMerchant
 import com.ticketbox.viewmodel.skipReviewField
+import java.util.UUID
+import kotlinx.coroutines.flow.first
 
 @Composable
 internal fun PendingRoute(
@@ -88,8 +93,11 @@ internal fun PendingRoute(
     PendingLaunchActionEffect(
         shellState = shellState,
         canAcceptUpload = state.canStartUpload,
+        uploadBinding = pendingViewModel.currentUploadBinding(),
         onOpenPicker = launchImagePicker,
-        onUploadSharedImages = { uris -> pendingViewModel.acceptUploads(uris, uploadSource) },
+        onUploadSharedImages = { batchId, uris, binding ->
+            pendingViewModel.acceptUploads(batchId, uris, binding, uploadSource)
+        },
     )
 
     PendingScreen(
@@ -104,6 +112,12 @@ internal fun PendingRoute(
                 },
             ),
             filterRequest = shellState.pendingFilterRequest,
+            uploadSelection = PendingUploadSelectionUiState(
+                pendingCount = shellState.launchAction.pendingUpload?.selection?.uris?.size ?: 0,
+                accepting = shellState.launchAction.acceptingUpload,
+                onRetry = shellState.launchAction::retryUpload,
+                onStop = shellState.launchAction::cancelUploadSelection,
+            ),
         ),
         itemActions = pendingExpenseQueueActions(navController, pendingViewModel),
         reviewActions = pendingReviewFlowActions(pendingViewModel),
@@ -121,7 +135,9 @@ internal fun pendingScreenChromeActions(
     onUploadScreenshot: () -> Unit,
     navigation: PendingInboxNavigationActions,
     filterRequest: PendingFilterRequestState,
+    uploadSelection: PendingUploadSelectionUiState,
 ): PendingScreenChromeActions = PendingScreenChromeActions(
+    uploadSelection = uploadSelection,
     onRefresh = viewModel::refresh,
     onUploadScreenshot = onUploadScreenshot,
     onOpenRepaymentReview = navigation.onOpenRepaymentReview,
@@ -177,8 +193,7 @@ private fun pendingReviewSheetActions(viewModel: PendingViewModel): PendingRevie
 
 /**
  * 列表内「上传截图」按钮 + 「传小票」shortcut 共用的单图选择器：选一张图 → IO 预处理
- * → 走在线-only 上传链。与系统分享多图路径同一套预处理 + VM 入口，只是单张、由系统
- * 图片选择触发。
+ * → 与分享共用持久接受入口。每个非空结果只生成一次原 selection id，重入不重造。
  */
 @Composable
 internal fun rememberSingleImageUploadLauncher(
@@ -186,7 +201,9 @@ internal fun rememberSingleImageUploadLauncher(
 ): ManagedActivityResultLauncher<PickVisualMediaRequest, Uri?> =
     rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        shellState.launchAction.post(LaunchAction.UploadSharedImages(listOf(uri.toString())))
+        shellState.launchAction.post(LaunchAction.UploadSharedImages(
+            LaunchIntentRequest.ShareImages(UUID.randomUUID().toString(), listOf(uri.toString())),
+        ))
     }
 
 /**
@@ -198,21 +215,33 @@ internal fun rememberSingleImageUploadLauncher(
 internal fun PendingLaunchActionEffect(
     shellState: MainShellState,
     canAcceptUpload: Boolean,
+    uploadBinding: LogicalSessionBinding?,
     onOpenPicker: () -> Boolean,
-    onUploadSharedImages: (List<String>) -> Boolean,
+    onUploadSharedImages: suspend (String, List<String>, LogicalSessionBinding) -> Boolean,
 ) {
     // rememberUpdatedState 让 effect 始终读到最新回调，不因首帧捕获而失效。
     val currentOpenPicker by rememberUpdatedState(onOpenPicker)
     val currentUploadShared by rememberUpdatedState(onUploadSharedImages)
-    LaunchedEffect(shellState.launchAction.pending, canAcceptUpload) {
-        when (val action = shellState.launchAction.pending) {
-            is LaunchAction.OpenImagePicker -> {
-                if (canAcceptUpload && currentOpenPicker()) shellState.launchAction.consume(action)
-            }
-            is LaunchAction.UploadSharedImages -> {
-                if (currentUploadShared(action.uris)) shellState.launchAction.consume(action)
-            }
-            else -> Unit
+    val currentCanAccept by rememberUpdatedState(canAcceptUpload)
+    val currentBinding by rememberUpdatedState(uploadBinding)
+    val actionState = shellState.launchAction
+    LaunchedEffect(actionState.pending is LaunchAction.OpenImagePicker, canAcceptUpload) {
+        if (actionState.pending is LaunchAction.OpenImagePicker && canAcceptUpload && currentOpenPicker()) {
+            actionState.consume(LaunchAction.OpenImagePicker)
+        }
+    }
+    val action = actionState.pendingUpload
+    LaunchedEffect(action?.selection?.batchId, actionState.uploadAttempt) {
+        if (action == null || actionState.awaitingUploadRetry) return@LaunchedEffect
+        val binding = snapshotFlow { currentCanAccept to currentBinding }
+            .first { (ready, binding) -> ready && binding != null }.second ?: return@LaunchedEffect
+        if (!actionState.beginUpload(action, binding)) return@LaunchedEffect
+        val original = requireNotNull(actionState.pendingUpload).selection
+        var accepted = false
+        try {
+            accepted = currentUploadShared(original.batchId, original.uris, requireNotNull(original.expectedBinding))
+        } finally {
+            actionState.finishUpload(action, accepted)
         }
     }
 }

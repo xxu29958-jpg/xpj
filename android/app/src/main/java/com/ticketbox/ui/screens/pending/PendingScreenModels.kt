@@ -99,6 +99,14 @@ internal fun pendingPaneExit(
     )
 }
 
+/** The current unaccepted launch selection. Room upload recovery remains a separate consumer. */
+data class PendingUploadSelectionUiState(
+    val pendingCount: Int,
+    val accepting: Boolean,
+    val onRetry: () -> Unit,
+    val onStop: () -> Unit,
+)
+
 data class PendingScreenChromeActions(
     val onRefresh: () -> Unit,
     val onUploadScreenshot: () -> Unit,
@@ -107,6 +115,7 @@ data class PendingScreenChromeActions(
     val onRetryEnrichment: () -> Unit,
     val onRetryCapacityUpload: () -> Unit,
     val onDiscardCapacityUpload: () -> Unit,
+    val uploadSelection: PendingUploadSelectionUiState,
     val requestedFilter: NeedsReviewFilter? = null,
     val onRequestedFilterConsumed: () -> Unit = {},
 )

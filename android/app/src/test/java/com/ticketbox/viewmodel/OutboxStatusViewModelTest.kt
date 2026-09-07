@@ -220,6 +220,29 @@ class OutboxStatusViewModelTest {
         assertNull(vm.uiState.value.busyRowId)
     }
 
+    @Test
+    fun uploadRecoveryCannotUseTheGenericRetryOrFreshTokenExit() = runTest(dispatcher) {
+        val harness = harness()
+        val id = harness.outbox.enqueue(PendingMutationType.UploadScreenshot, "upload_batch:original", "original-payload",
+            0, "original-key")
+        harness.outbox.markFailed(id, "upload_intent_unsupported")
+        val original = harness.outbox.observeStatus().first().failed.single()
+        val vm = OutboxStatusViewModel(harness.outbox, harness.expenseRepository, harness.debtCreation,
+            incomePlans = harness.incomePlans, debtAdjustments = harness.debtAdjustments)
+        runCurrent()
+
+        vm.retry(original)
+        runCurrent()
+        assertEquals(original, harness.outbox.observeStatus().first().failed.single())
+        assertEquals(UiText.res(R.string.sync_status_upload_recovery_body), vm.uiState.value.message)
+        harness.outbox.markConflict(id, "original-requires-review")
+        val conflict = harness.outbox.observeStatus().first().conflicts.single()
+        vm.keepMine(conflict)
+        runCurrent()
+        assertEquals(conflict, harness.outbox.observeStatus().first().conflicts.single())
+        assertNull(vm.uiState.value.busyRowId)
+    }
+
     private fun harness(): Harness {
         val tokenStore = TestSessionFixture().apply { saveToken("session-token") }
         val api = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0))

@@ -47,6 +47,7 @@ fun SyncStatusScreen(
     viewModel: OutboxStatusViewModel,
     onBack: () -> Unit,
     onOpenExpense: (Long) -> Unit,
+    onOpenInbox: () -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val actions = remember(viewModel, onOpenExpense) {
@@ -59,7 +60,7 @@ fun SyncStatusScreen(
             onClearQuarantined = viewModel::clearQuarantined,
         )
     }
-    SyncStatusScreenContent(state = state, actions = actions, onBack = onBack)
+    SyncStatusScreenContent(state = state, actions = actions, onBack = onBack, onOpenInbox = onOpenInbox)
 }
 
 /** Row callbacks grouped to keep the content API small and testable. */
@@ -84,6 +85,7 @@ internal fun SyncStatusScreenContent(
     state: OutboxStatusUiState,
     actions: SyncStatusActions,
     onBack: () -> Unit,
+    onOpenInbox: () -> Unit,
 ) {
     // Dropping an offline edit is irreversible, so both paths require confirmation.
     var confirmingDrop by remember { mutableStateOf<SyncStatusDropSelection?>(null) }
@@ -120,6 +122,7 @@ internal fun SyncStatusScreenContent(
     ) {
         SyncStatusPageBody(
             state = state,
+            onOpenInbox = onOpenInbox,
             actions = actions.copy(
                 onDropMine = { confirmingDrop = SyncStatusDropSelection(it, failed = false, debtCreation = null,
                     recurringOccurrence = state.recurringOccurrences[it.id], incomeEdit = state.incomeEdits[it.id], debtAdjustment = state.debtAdjustments[it.id]) },
@@ -138,10 +141,12 @@ internal fun SyncStatusScreenContent(
 private fun SyncStatusPageBody(
     state: OutboxStatusUiState,
     actions: SyncStatusActions,
+    onOpenInbox: () -> Unit,
 ) {
     val status = state.status
     SyncStatusOverviewSection(status, state.correctionObservation.corrections)
     SyncStatusCorrectionSection(state, actions)
+    SyncStatusUploadSection(state, actions, onOpenInbox)
 
     SyncStatusQuarantineSection(
         count = status.quarantinedCount,
@@ -155,7 +160,7 @@ private fun SyncStatusPageBody(
         }
     }
 
-    val conflicts = status.conflicts.filter { it.type != PendingMutationType.CorrectExpense }
+    val conflicts = status.conflicts.filter { it.type !in SEPARATE_RECOVERY_TYPES }
     if (conflicts.isNotEmpty()) {
         SettingsSection(title = stringResource(R.string.sync_status_section_needs_action), icon = Icons.Filled.SyncProblem) {
             conflicts.forEach { row ->
@@ -170,7 +175,7 @@ private fun SyncStatusPageBody(
         }
     }
 
-    val failures = status.failed.filter { it.type != PendingMutationType.CorrectExpense }
+    val failures = status.failed.filter { it.type !in SEPARATE_RECOVERY_TYPES }
     if (failures.isNotEmpty()) {
         SettingsSection(title = stringResource(R.string.sync_status_section_failed), icon = Icons.Filled.ErrorOutline) {
             failures.forEach { row ->
@@ -186,6 +191,24 @@ private fun SyncStatusPageBody(
                     onDrop = { actions.onDropFailed(row) },
                 )
             }
+        }
+    }
+}
+
+private val SEPARATE_RECOVERY_TYPES = setOf(PendingMutationType.CorrectExpense, PendingMutationType.UploadScreenshot)
+
+@Composable
+private fun SyncStatusUploadSection(state: OutboxStatusUiState, actions: SyncStatusActions, onOpenInbox: () -> Unit) {
+    val rows = (state.status.conflicts + state.status.failed).filter { it.type == PendingMutationType.UploadScreenshot }
+    if (rows.isEmpty()) return
+    SettingsSection(title = stringResource(R.string.sync_status_mutation_upload_screenshot), icon = Icons.Filled.CloudUpload) {
+        Text(stringResource(R.string.sync_status_upload_recovery_body), style = MaterialTheme.typography.bodyMedium)
+        AppPrimaryButton(text = stringResource(R.string.sync_status_open_uploads), icon = Icons.Filled.CloudUpload,
+            onClick = onOpenInbox)
+        rows.forEach { row ->
+            FailedCard(row, null, state.busyRowId == row.id, onRetry = null, onDrop = {
+                if (row in state.status.conflicts) actions.onDropMine(row) else actions.onDropFailed(row)
+            })
         }
     }
 }
@@ -253,7 +276,7 @@ private fun ConflictCard(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ) {
             Text(
-                text = stringResource(R.string.sync_status_conflict_offline_prefix, mutationLabel(row.type)),
+                text = stringResource(R.string.sync_status_conflict_offline_prefix, stringResource(syncStatusMutationLabelRes(row.type))),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -302,8 +325,8 @@ private fun FailedCard(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ) {
             Text(
-                text = if (row.type == PendingMutationType.CreateDebt) mutationLabel(row.type)
-                else stringResource(R.string.sync_status_failed_offline_prefix, mutationLabel(row.type)),
+                text = if (row.type == PendingMutationType.CreateDebt) stringResource(syncStatusMutationLabelRes(row.type))
+                else stringResource(R.string.sync_status_failed_offline_prefix, stringResource(syncStatusMutationLabelRes(row.type))),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -401,9 +424,6 @@ private fun SyncStatusRecoveryActions(
 /** A reaper age-cap expiry is terminal; retry cannot help. */
 internal fun isExpiredFailure(lastError: String?): Boolean =
     lastError?.startsWith("outbox_row_expired") == true
-
-@Composable
-private fun mutationLabel(type: PendingMutationType): String = stringResource(syncStatusMutationLabelRes(type))
 
 @StringRes
 internal fun syncStatusMutationLabelRes(type: PendingMutationType): Int =

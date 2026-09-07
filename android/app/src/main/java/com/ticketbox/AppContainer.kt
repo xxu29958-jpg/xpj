@@ -27,6 +27,9 @@ import com.ticketbox.data.repository.OutboxRepository
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.OutboxScheduler
 import com.ticketbox.data.repository.OutboxWriteBlock
+import com.ticketbox.data.repository.UploadIntentFileStore
+import com.ticketbox.data.repository.UploadIntentRepository
+import com.ticketbox.data.repository.UploadScreenshotDispatcher
 import com.ticketbox.data.repository.PatchExpenseDispatcher
 import com.ticketbox.data.repository.RecognizeTextDispatcher
 import com.ticketbox.data.repository.RejectExpenseDispatcher
@@ -79,6 +82,7 @@ class AppContainer(context: Context) {
     private val apiServiceProvider = ApiServiceProvider(apiClient, sessionStore, credentials)
     private val outboxRequestGuard = LedgerRequestGuard(apiServiceProvider)
     private val outboxAdapters = OutboxAdapterGraph()
+    private val uploadFiles = UploadIntentFileStore(appContext)
     private val outboxWriteBlock = MutableStateFlow<OutboxWriteBlock?>(null)
 
     val outboxScheduler = OutboxScheduler()
@@ -119,6 +123,12 @@ class AppContainer(context: Context) {
             }
         },
         writeBlock = outboxWriteBlock,
+        onRowsDeleted = { uploadIntentRepository.collectOrphans() },
+    )
+
+    val uploadIntentRepository: UploadIntentRepository = UploadIntentRepository(
+        apiServiceProvider, outboxRepository, uploadFiles,
+        outboxAdapters.uploadPayloadAdapter, outboxAdapters.uploadReceiptAdapter, settingsStore,
     )
 
     private fun outboxApi(row: OutboxRow) = outboxRequestGuard
@@ -172,6 +182,12 @@ class AppContainer(context: Context) {
      */
     private val outboxDispatchers: List<OutboxMutationDispatcher> by lazy {
         listOf(
+            UploadScreenshotDispatcher(
+                apiProvider = ::outboxApi,
+                payloadAdapter = outboxAdapters.uploadPayloadAdapter,
+                receiptAdapter = outboxAdapters.uploadReceiptAdapter,
+                readOriginal = uploadFiles::read,
+            ),
             PatchExpenseDispatcher(
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.patchExpenseAdapter,

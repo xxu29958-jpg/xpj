@@ -11,8 +11,8 @@
     <string name="pending_celebration_check_desc">全部完成</string>
 
     <!-- 上传进度卡片 -->
-    <string name="pending_upload_progress_title">正在创建待确认账单</string>
-    <string name="pending_upload_progress_body">上传完成后会自动刷新。新截图仍然只是草稿，不会直接入账。</string>
+    <string name="pending_upload_progress_title">正在处理原上传</string>
+    <string name="pending_upload_progress_body">截图会先保存在本机，上传完成后自动刷新待确认记录，不会直接入账。</string>
 
     <!-- 空态：内容面板 -->
     <string name="pending_empty_card_title_loading">正在整理待确认账单</string>
@@ -123,15 +123,24 @@
 
     <!-- PendingViewModel 状态/结果文案。 -->
     <string name="pending_msg_load_failed">暂时加载不了，请稍后再试。</string>
-    <string name="pending_msg_upload_unreadable">这张图片暂时无法读取，请换一张试试。</string>
-    <string name="pending_msg_upload_ledger_switched">账本已切换，请重新选择截图上传。</string>
+    <string name="pending_msg_upload_unreadable">原图片无法读取，这条上传尚未发送。停止这条上传后可以重新选择图片。</string>
+    <string name="pending_msg_upload_ledger_switched">账本或账号已切换，已保存的上传保留在原账本中。</string>
+    <string name="pending_msg_upload_saved">上传记录已保存在本机。同步后仍需确认才会入账。</string>
+    <string name="pending_msg_upload_unsupported">当前版本无法继续这批原上传。原记录仍保留，可更新应用后核对，或停止余下上传。</string>
     <string name="pending_msg_upload_succeeded">截图已上传，待确认后入账。</string>
     <string name="pending_msg_upload_failed">没有上传成功，请稍后再试。</string>
-    <string name="pending_msg_share_partial_failure">有 %1$d 张小票没有上传，请重新分享或逐张上传。</string>
+    <string name="pending_msg_share_partial_failure">有 %1$d 张小票尚未上传。可读取的原件已保留；重试将继续原上传，或停止余下上传后重新选择。</string>
     <string name="pending_msg_upload_capacity_full">服务正忙，余下小票还没有上传。点「重试上传」将继续这批上传，已上传的小票不会重发。</string>
     <string name="pending_upload_stop_action">停止余下上传</string>
     <string name="pending_msg_upload_stopped">已停止余下上传，已上传的小票仍在待确认中。</string>
     <string name="pending_upload_retry_action">重试上传</string>
+    <string name="pending_upload_selection_saving">正在保存这次选择的 %1$d 张图片，保存后会继续同步。</string>
+    <string name="pending_upload_selection_waiting">这次选择的 %1$d 张图片尚未确认保存。可以重试保存原选择，或取消这次选择；已保存的上传仍可在原上传记录中核对。</string>
+    <string name="pending_upload_selection_retry">重试保存</string>
+    <string name="pending_upload_selection_stop">取消这次选择</string>
+    <string name="pending_upload_original">第 %1$d 张：%2$s</string>
+    <string name="pending_upload_original_unknown">原件信息不可读</string>
+    <string name="pending_upload_original_more">另有 %1$d 张原上传</string>
     <string name="pending_msg_confirmed">已确认入账</string>
     <string name="pending_msg_confirmed_offline">已离线确认，联网后同步</string>
     <string name="pending_msg_confirm_failed">没有确认成功，请稍后再试。</string>

@@ -5,6 +5,7 @@ import com.ticketbox.data.local.PendingMutationEntity
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
@@ -65,6 +66,7 @@ private data class OutboxBindingSource(
 private data class OutboxLifecycleHooks(
     val onEnqueued: () -> Unit,
     val onClearAll: () -> Unit,
+    val onRowsDeleted: suspend () -> Unit,
 )
 
 class OutboxRepository private constructor(
@@ -112,6 +114,7 @@ class OutboxRepository private constructor(
      * [Exception] internally; JVM-level Errors propagate).
      */
     private val onClearAll = lifecycleHooks.onClearAll
+    private val onRowsDeleted = lifecycleHooks.onRowsDeleted
 
     // Composition boundary: the compatibility flow is a real status dependency,
     // alongside persistence, binding and scheduling. Keep these inputs explicit.
@@ -124,11 +127,12 @@ class OutboxRepository private constructor(
         onEnqueued: () -> Unit = {},
         onClearAll: () -> Unit = {},
         writeBlock: Flow<OutboxWriteBlock?> = flowOf(null),
+        onRowsDeleted: suspend () -> Unit,
     ) : this(
         dao = dao,
         clock = clock,
         bindingSource = OutboxBindingSource(bindingProvider, bindingChanges),
-        lifecycleHooks = OutboxLifecycleHooks(onEnqueued, onClearAll),
+        lifecycleHooks = OutboxLifecycleHooks(onEnqueued, onClearAll, onRowsDeleted),
         writeBlock = writeBlock,
     )
 
@@ -277,6 +281,7 @@ class OutboxRepository private constructor(
         block: suspend () -> T,
     ): T {
         var notifyBoundary = false
+        var removed = 0
         try {
             return dispatchLease.withLock {
                 bindingTransitionLease.withLock {
@@ -284,7 +289,7 @@ class OutboxRepository private constructor(
                     notifyBoundary = true
                     try {
                         if (clearExistingRows) {
-                            dao.clearAll()
+                            removed = dao.clearAll()
                         }
                         serverAliasMigration?.let { migration ->
                             rawBinding().owner?.storageKey?.let { ownerKey ->
@@ -306,6 +311,7 @@ class OutboxRepository private constructor(
             if (notifyBoundary) {
                 notifyClearBoundary()
             }
+            notifyRowsDeleted(removed)
         }
     }
 
@@ -459,6 +465,44 @@ class OutboxRepository private constructor(
     /** Raw types stay visible: an unknown future kind makes file ownership unprovable. */
     internal suspend fun allRowsForUploadFileReferences(): List<PendingMutationEntity> = dao.allRows()
 
+    /** Stop and Retry share the original send/binding boundary; neither can replace an original key. */
+    internal suspend fun recoverUploadGroup(
+        boundRequest: BoundLedgerRequest,
+        targetId: String,
+        drop: Boolean,
+        retryIds: List<Long> = emptyList(),
+    ): Boolean {
+        var retried = 0
+        var removed = 0
+        val changed = dispatchLease.withLock {
+            bindingTransitionLease.withLock {
+                val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
+                boundRequest.requireStillActiveFor(binding)
+                if (drop) {
+                    removed = dao.deleteUnfinishedUploadGroup(binding.ownerStorageKey, binding.ledgerId, targetId)
+                    removed > 0
+                } else {
+                    val eligible = activeForTarget(binding, targetId).filter { row ->
+                        row.type == PendingMutationType.UploadScreenshot &&
+                            row.status == PendingMutationStatus.Failed && row.id in retryIds
+                    }
+                    var expired = false
+                    for (row in eligible) {
+                        if (expireOverAgeOnResolve(row.id, binding, PendingMutationStatus.Failed.wireValue)) {
+                            expired = true
+                        } else {
+                            retried += dao.retryFailed(row.id, binding.ownerStorageKey, binding.ledgerId)
+                        }
+                    }
+                    expired || retried > 0
+                }
+            }
+        }
+        if (retried > 0) schedulePending()
+        notifyRowsDeleted(removed)
+        return changed
+    }
+
     suspend fun pauseForBindingTransition() {
         withBindingTransition(clearExistingRows = false) {}
     }
@@ -478,6 +522,7 @@ class OutboxRepository private constructor(
         withBindingTransition(clearExistingRows = false) {
             removed = dao.clearAll()
         }
+        notifyRowsDeleted(removed)
         return removed
     }
 
@@ -491,7 +536,20 @@ class OutboxRepository private constructor(
             }
         }
         if (removed > 0) notifyClearBoundary()
+        notifyRowsDeleted(removed)
         return removed
+    }
+
+    /** Deletion is already committed. Cleanup runs outside either lease and cannot redefine that result. */
+    private suspend fun notifyRowsDeleted(removed: Int) {
+        if (removed <= 0) return
+        try {
+            onRowsDeleted()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            // Keep unclaimed files for the next complete reference check; never infer another row deletion.
+        }
     }
 
     private fun notifyClearBoundary() {
@@ -734,6 +792,8 @@ class OutboxRepository private constructor(
                     expectedStatus = PendingMutationStatus.Conflict.wireValue,
                 ) > 0
         }
+    }.also { changed ->
+        if (changed && resolution == ConflictResolution.DropMine) notifyRowsDeleted(1)
     }
 
     /**
@@ -796,6 +856,8 @@ class OutboxRepository private constructor(
                     expectedStatus = PendingMutationStatus.Failed.wireValue,
                 ) > 0
         }
+    }.also { changed ->
+        if (changed && resolution == FailedResolution.Drop) notifyRowsDeleted(1)
     }
 
     /**
@@ -955,10 +1017,12 @@ class OutboxRepository private constructor(
      */
     suspend fun gcCompleted(retentionMillis: Long = DEFAULT_RETENTION_MS): Int {
         val cutoff = Instant.now(clock).minusMillis(retentionMillis)
-        return dao.deleteResolvedBefore(
+        val removed = dao.deleteResolvedBefore(
             doneStatus = PendingMutationStatus.Done.wireValue,
             cutoffIso = ISO.format(cutoff),
         )
+        notifyRowsDeleted(removed)
+        return removed
     }
 
     /**
@@ -1172,7 +1236,7 @@ enum class OutboxWriteBlock {
     CURRENCY_ADOPTION_REQUIRED,
 }
 
-private fun PendingMutationEntity.toDomain(): OutboxRow = OutboxRow(
+internal fun PendingMutationEntity.toDomain(): OutboxRow = OutboxRow(
     id = id,
     serverUrl = serverUrl,
     ledgerId = ledgerId,

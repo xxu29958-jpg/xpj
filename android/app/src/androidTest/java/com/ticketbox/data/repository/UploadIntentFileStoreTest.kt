@@ -190,7 +190,7 @@ class UploadIntentFileStoreTest {
             assertEquals(1, store.collectOrphans { setOf(original.key) })
             assertArrayEquals(fixture.image().bytes, store.read(original))
             assertFalse(fixture.original(another.key).exists())
-            store.releaseAfterRowDeletion(setOf(original.key))
+            assertEquals(1, store.collectOrphans { emptySet() })
             assertFalse(fixture.original(original.key).exists())
         }
     }

@@ -30,9 +30,9 @@ enum class PendingEnrichmentFeedbackKind {
 }
 
 /**
- * Observes only the durable enrichment tasks returned by uploads initiated in
- * this running Pending consumer. The server task row remains the fact owner;
- * this class owns no persisted queue and resumes nothing after process death.
+ * Observes server-owned tasks from durable upload receipts. A reopened consumer
+ * probes only receipts still present in its authoritative Pending list; terminal
+ * history is not replayed, while queued/running tasks resume the existing poller.
  */
 internal class PendingEnrichmentObserver(
     private val scope: CoroutineScope,
@@ -44,16 +44,23 @@ internal class PendingEnrichmentObserver(
 ) {
     private val active = linkedMapOf<String, TrackedTask>()
     private val paused = linkedMapOf<String, PendingUploadReceipt>()
+    private val observed = mutableSetOf<String>()
     private var latestFeedback: PendingEnrichmentFeedback? = null
 
     fun track(receipt: PendingUploadReceipt) {
-        if (!canObserve()) return
-        active.remove(receipt.enrichmentTaskPublicId)?.job?.cancel()
-        paused.remove(receipt.enrichmentTaskPublicId)
+        start(receipt, restoring = false)
+    }
+
+    fun restore(receipts: List<PendingUploadReceipt>) {
+        receipts.forEach { start(it, restoring = true) }
+    }
+
+    private fun start(receipt: PendingUploadReceipt, restoring: Boolean) {
+        if (!canObserve() || !observed.add(receipt.enrichmentTaskPublicId)) return
         latestFeedback = null
 
         val job = scope.launch(start = CoroutineStart.LAZY) {
-            observe(receipt)
+            observe(receipt, restoring)
         }
         active[receipt.enrichmentTaskPublicId] = TrackedTask(receipt, job)
         emitState()
@@ -67,29 +74,44 @@ internal class PendingEnrichmentObserver(
         }
         val receipts = paused.values.toList()
         paused.clear()
-        receipts.forEach(::track)
+        receipts.forEach {
+            observed.remove(it.enrichmentTaskPublicId)
+            track(it)
+        }
     }
 
     fun clear() {
         val jobs = active.values.map(TrackedTask::job)
         active.clear()
         paused.clear()
+        observed.clear()
         latestFeedback = null
         jobs.forEach(Job::cancel)
         emitState()
     }
 
-    private suspend fun observe(receipt: PendingUploadReceipt) {
+    private suspend fun observe(receipt: PendingUploadReceipt, restoring: Boolean) {
+        var notifyTerminal = !restoring
         while (canObserve()) {
-            val task = fetchTask(receipt.enrichmentTaskPublicId).getOrElse {
+            val result = fetchTask(receipt.enrichmentTaskPublicId)
+            if (!canObserve()) break
+            val task = result.getOrElse {
                 pause(receipt)
                 return
             }
             if (task.status in POLLING_STATUSES) {
+                notifyTerminal = true
                 delay(pollIntervalMs)
                 continue
             }
-            finish(receipt, task.toPendingEnrichmentFeedbackKind())
+            if (notifyTerminal) {
+                finish(receipt, task.toPendingEnrichmentFeedbackKind())
+            } else {
+                discard(receipt.enrichmentTaskPublicId)
+                // The Pending GET may have preceded this task's commit. Read once after that
+                // known update, without replaying historical success feedback or the upload.
+                if (task.status == "completed" && task.outcome == PendingEnrichmentOutcome.Updated) onTerminal()
+            }
             return
         }
         discard(receipt.enrichmentTaskPublicId)

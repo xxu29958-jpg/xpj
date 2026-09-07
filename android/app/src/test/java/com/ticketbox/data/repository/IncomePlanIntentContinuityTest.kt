@@ -100,7 +100,7 @@ private class IncomeIntentFixture {
     suspend fun enqueue() = repository.enqueueUpdate(binding, incomeIntentDto().toDomain(),
         IncomePlanPatch(expectedRowVersion = 3, intentMonth = "2026-09", amountCents = 120_000), CurrencyCode.CNY)
 
-    fun newOutbox(clock: Clock) = OutboxRepository(dao, clock,
+    fun newOutbox(clock: Clock) = OutboxRepository(onRowsDeleted = {}, dao = dao, clock = clock,
         bindingProvider = { provider.currentSession().toOutboxBinding() },
         onEnqueued = { scheduledDepths += dao.rows.size })
 

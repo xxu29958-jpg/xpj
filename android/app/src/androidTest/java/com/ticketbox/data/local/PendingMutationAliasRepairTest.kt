@@ -68,6 +68,7 @@ class PendingMutationAliasRepairTest {
 
     private fun repositoryWithStaleSettings(database: AppDatabase): OutboxRepository =
         OutboxRepository(
+            onRowsDeleted = {},
             dao = database.pendingMutationDao(),
             bindingProvider = {
                 OutboxBinding(

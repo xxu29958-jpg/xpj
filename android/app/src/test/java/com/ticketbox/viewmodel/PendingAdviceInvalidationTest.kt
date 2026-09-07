@@ -1,12 +1,10 @@
 package com.ticketbox.viewmodel
 
-import com.ticketbox.domain.model.PendingUploadReceipt
-import com.ticketbox.upload.PreparedUploadImage
+import com.ticketbox.data.local.PendingMutationStatus
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 /**
  * 218-B4 review P2-16: the pending screen carries TWO change callbacks — the
@@ -20,22 +18,13 @@ internal class PendingAdviceInvalidationTest : PendingViewModelReviewTestBase() 
     @Test
     fun screenshotUploadDoesNotFireAdviceInvalidation() = review {
         val fake = FakeReviewActions()
-        fake.uploadResponder = { Result.success(PendingUploadReceipt(1L, "task-upload")) }
         var invalidations = 0
-        val vm = PendingViewModel(fake).also { it.onAdviceInputsChanged = { invalidations += 1 } }
+        pendingViewModel(fake).also { it.onAdviceInputsChanged = { invalidations += 1 } }
         advanceUntilIdle()
 
-        assertTrue(vm.acceptUploads(listOf("a.jpg")) {
-            PreparedUploadImage(
-                fileName = "a.jpg",
-                contentType = "image/jpeg",
-                bytes = "a.jpg".encodeToByteArray(),
-                sourceSizeBytes = 5L,
-            )
-        })
+        fake.uploadIntents.publish(observedUpload(1, PendingMutationStatus.Done))
         advanceUntilIdle()
 
-        assertEquals(1, fake.uploadCalls)
         assertEquals(0, invalidations)
     }
 
@@ -45,7 +34,7 @@ internal class PendingAdviceInvalidationTest : PendingViewModelReviewTestBase() 
         val fake = FakeReviewActions(pending = listOf(target))
         fake.confirmResponder = { Result.success(target.copy(status = "confirmed")) }
         var invalidations = 0
-        val vm = PendingViewModel(fake).also { it.onAdviceInputsChanged = { invalidations += 1 } }
+        val vm = pendingViewModel(fake).also { it.onAdviceInputsChanged = { invalidations += 1 } }
         advanceUntilIdle()
 
         vm.confirm(target)

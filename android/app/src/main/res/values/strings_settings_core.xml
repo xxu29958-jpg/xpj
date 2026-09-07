@@ -4,6 +4,8 @@
   只放用户可见中文；每处一个 key，不按中文值去重。
 -->
 <resources>
+    <string name="sync_status_upload_recovery_body">原上传记录已保留。请到收件箱查看原截图，并继续或停止原批次。</string>
+    <string name="sync_status_open_uploads">查看待上传截图</string>
 
     <!-- 设置 根屏（SettingsRootScreen）：分组标题、入口标题/副标题、连接入口动态文案 -->
     <string name="settings_root_connection_title_advanced">连接与同步</string>
