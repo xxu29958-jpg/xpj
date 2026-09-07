@@ -14,6 +14,7 @@ import retrofit2.Response
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -23,7 +24,12 @@ internal class ExpenseUploadBindingTest {
         for (changeOrigin in listOf(true, false)) {
             var calls = 0
             val api = object : ApiService by FakeApiService(mutableListOf(), 0) {
-                override suspend fun uploadScreenshot(file: MultipartBody.Part, timezone: String?): UploadResponseDto {
+                override suspend fun uploadScreenshot(
+                    file: MultipartBody.Part,
+                    timezone: String?,
+                    idempotencyKey: String?,
+                ): UploadResponseDto {
+                    assertNull(idempotencyKey)
                     calls += 1
                     return receipt()
                 }
@@ -51,7 +57,12 @@ internal class ExpenseUploadBindingTest {
     fun unchangedBindingCanRetryTheCapacityRefusalWithIdenticalBytes() = runTest {
         val bytes = mutableListOf<String>()
         val api = object : ApiService by FakeApiService(mutableListOf(), 0) {
-            override suspend fun uploadScreenshot(file: MultipartBody.Part, timezone: String?): UploadResponseDto {
+            override suspend fun uploadScreenshot(
+                file: MultipartBody.Part,
+                timezone: String?,
+                idempotencyKey: String?,
+            ): UploadResponseDto {
+                assertNull(idempotencyKey)
                 val buffer = Buffer()
                 file.body.writeTo(buffer)
                 bytes += buffer.readUtf8()
@@ -88,5 +99,9 @@ internal class ExpenseUploadBindingTest {
         expectedBinding = binding,
     )
 
-    private fun receipt() = UploadResponseDto(1L, "expense-1", "task-1", "pending", "accepted")
+    private fun receipt() = UploadResponseDto(
+        id = 1L, publicId = "expense-1", enrichmentTaskPublicId = "task-1",
+        status = "pending", message = "accepted", imageHash = "a".repeat(64),
+        thumbnailPath = null, duplicateStatus = "none", duplicateOfId = null,
+    )
 }

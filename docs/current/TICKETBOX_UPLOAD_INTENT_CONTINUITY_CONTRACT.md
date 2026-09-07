@@ -138,3 +138,26 @@ Keyed receipt 的 `duration_ms/timing_ms` 随成功收据在 commit 前冻结，
 | Headerless Android / UploadLink / Web / 生成 snapshot / CI | 旧三个实际入口及后端可选 key 仍保持；UploadLink/Web 不因此要求 app capability。生成 snapshot 的真实 Android `OpenApiContractGateTest` consumer 后续必须同步生产生成，不能只改 JSON fixture。 | 后端原 runtime 测试仍由既有真实 PG producer 执行；新增 Kotlin 路径由既有 Android JVM producer 执行。本轮不改 selector、现有后端 keyed receipt/事务反例、旧上传测试或 snapshot。新反例尚未执行，不能称行为 RED、编译通过或 GREEN；仅允许源码/静态短检查，云端由主控发布 exact 测试候选后取得。 |
 
 本轮实际源码检查：Python AST / Ruff / diff 通过，原 runtime 测试文件其余 14 个函数 AST 不变；定向使用既有 Lizard producer，两份代码均无超过 80 行或 CC15 的函数，文件分别 499 / 113 行，未新增体量阈值越界。逐路径 classifier 实际为 runtime 测试 → postgres、新 Kotlin 测试 → android、合同 → 无 heavy scope。六个参数例尚未运行，没有本机 PG/Gradle/Edge、生产或 schema 写入、提交或推送。
+
+### 22dbc9ad 实际能力反例与协议施工后影响闭合
+
+测试候选 `22dbc9ad74c84f751ec1bea9374c1f1a32880d9e` 的 Android fast `101580549997` 已实际编译并执行。artifact `9999693413` 的 372 份 XML 共 2161 tests / 4 failures / 0 errors / 0 skips；四个 negative 参数分别在第 55 行得到 expected upload 0 / actual 1，精确覆盖 missing/unknown × 无/已有 API header，最后一个包含 prefix。其后的 negotiation 和 409 断言被首失败遮住。supported=1 keyed 与 missing headerless 两个正控完整通过，包含原 key、timezone、multipart bytes 与 API/currency headers。实际 backend ordinary 2/2 `101580549978` 为 1862 passed / 1 failed / 3 skipped，唯一失败为 runtime JSON 缺少该 capability；401、200、private/no-store、Vary、observed_at 前置条件已越过，后续私有字段断言被精确 JSON 首失败遮住。这里更正上段只按 heavy selector 将该 producer 记为 PG 的不足：此例实际在 ordinary lane 执行，没有 PG/JUnit 证明。两个执行 job 的 checkout `1b8d2d04` 与 source 同 tree；整轮其它 job 仍由独立证据目录记录。
+
+| 真实入口 / owner / 消费者 | after-impact 与原出口处置 | 直接验证与边界 |
+| --- | --- | --- |
+| backend runtime capability | 原 runtime contract 增加 `UPLOAD_ORIGINAL_RECEIPT_VERSION=1`，唯一 snapshot producer 显式赋值，required schema 与唯一认证 route 显式投影。该能力对应已经在 `917033ef` 实际通过的八个原收据、fingerprint、rollback 和 lost-ack 控制；不来自客户端日期、数据库安装回执或另一个状态 owner。 | 当前 API 日期、currency/read/write/legacy conclusions、认证和 private/no-store/Vary 不变；原 runtime 精确 JSON 用例保持 test-first 断言。真正 OpenAPI generator 运行 3.3 秒，只增加该 capability 字段及 required 声明，没有手写生成快照或启动数据库。 |
+| Android negotiation / keyed upload | 原 RuntimeNegotiationInterceptor 识别带 key 的 app upload POST，包含路径 prefix；即使请求已有 API header 也先查询实际同服务器 runtime。只有明确版本 1 才进入上传，missing、unknown、整个 JSON null 均保留明确 mismatch 409；不退回 headerless，不把未发送意图结算成功。非成功 runtime HTTP 保留 close/IOException，解析异常在上传前退出。 | 同一 interceptor 内的 `readCompatibility` 统一拥有原 runtime GET 的读取、关闭和解析，普通写入、income read 与新上传消费同一证据。六个原行为用例不修改；源码 review 核过 null/解析异常的零发送出口，这两个额外边界不是已运行的参数用例。 |
+| Runtime DTO / 旧调用者 | capability 在 Android 为 nullable，缺省表示未证明。`toWriteCompatibility` 显式传递，既有 compatible/blocked helper 的缺省仍为 null。没有把该 capability 放入全局 `canWrite`；旧 income 可读分支、headerless 上传、currency header 替换与 revision-conflict retry 保留。 | 真实 OpenApiContractGateTest 已登记 runtime DTO，消费本轮真正生成的 schema。既有 SessionHeaders、Income、Outbox protocol controls 均保留。完整 durable row/file 的拒绝保留及 Retry 仍须后续真实接线，当前 transport gate 不冒充该证明。 |
+| 完整 upload wire receipt | 既有 UploadResponseDto 过去静默遗漏 image_hash、thumbnail_path、duplicate_status、duplicate_of_id；现按真实类型补齐四字段且不设伪默认值。原 PendingUploadReceipt 继续只作为 task 观察投影，不能代替将来的完整持久 receipt。API 增加可选 Idempotency-Key，当前唯一生产 direct sender 完整不变，仍 headerless；未来唯一 dispatcher 必须传原 key。 | 全部五个 fake override 与三个直接 DTO 构造迁移，旧 binding 控制另断言仍无 key。原完整 JSON fixture 和全部旧断言保留，新增真实 Moshi 的包含 null 字段 JSON 往返及 DTO 往返；OpenAPI gate 新增 UploadResponse pairing，后续完整 receipt 存储须使用同等完整序列化。原 Room 恢复反例和八个 backend receipt 控制不改。 |
+
+独立只读 review 对上述七个 capability 路径未发现阻断，九个 wire/API/直接测试路径已冻结。源码及短检查不等于新候选编译或运行通过；Android 文件、整批接受、原行回执持久化、唯一发送、顺序和新 VM 恢复仍未实现，本合同不提前关闭该缺口。
+
+### 持久上传暂存的产品裁决与施工前边界
+
+总 Goal 已授权 Codex 决定此消费级本地恢复能力的可逆产品实现。本片采用每次分享/选择最多 100 项、上传专属暂存目录累计 256 MiB 的接受上限，并在接受新内容时保留至少 32 MiB 可用磁盘余量。这是新本地持久暂存的准入政策，不修改后端 enrichment 容量或并发政策。累计量包含所有绑定、未完成/隔离/过期原件与尚待核准的孤文件，不能通过换账本或清空 VM 绕过。超限或磁盘不足发生在确认持久接受之前，保留尚未接受的原分享并给出明确的减少数量/处理原暂存项提示；不能仅接受前缀后静默吞掉尾部。不可读单项继续采用现有明确失败计数和其余可读项处理语义。
+
+文件 owner 仅管理 app filesDir 下的专属目录、不可复用的原逐项 key 引用、原子写入和原 bytes 的长度/指纹校验，不拥有上传队列或调度器。原 filename/type/timezone/order 和 binding 由原命令 payload 一次冻结；同 key 的重新进入必须读取既有原件/原行，不能覆盖文件或重造 key，不同 key 的相同图片仍为独立意图。准备按顺序逐项落盘以控制内存；只有全部可接受项文件成立且同一个 bound Room 批次事务成功后，入口才可 consume。文件先于行；数据库结果不确定时保留原件供原行核准，不以异常推测未提交而删除。
+
+删除方向相反：既有原行 Drop、明确停止整个未完成批次、clearAll、quarantine 清理或 Done GC 的条件删除成功后，才释放其原件；取消准备、VM dispose、断网、容量拒绝、协议不匹配、换绑定与过期均不删除已接受的文件。孤文件回收只能在此专属目录内，与所有绑定的实际原行引用核对并与接受互斥；存在无法解读其文件引用的原行时不能假定无引用。`onClearAll` 是调度通知而非删除证据，不能作为文件清理 hook。文件锁与 Outbox lease 的次序在真实批量接受/清理接线时必须统一，不能在持有 Outbox lease 时反向等待文件接受锁。
+
+直接生产者继续为原真实 Room 重开反例以及新增窄文件/迁移/原 batch 接受与 engine 续传控制。上述数值与生命周期是施工决定，尚未实现或运行资格化；不得把辅助文件 owner 的存在当成用户恢复任务完成。

@@ -319,7 +319,11 @@ internal class StubApi(
     override suspend fun createNotificationDraft(
         request: com.ticketbox.data.remote.dto.NotificationDraftRequestDto,
     ): ExpenseDto = ledgerUnsupported()
-    override suspend fun uploadScreenshot(file: MultipartBody.Part, timezone: String?): UploadResponseDto = ledgerUnsupported()
+    override suspend fun uploadScreenshot(
+        file: MultipartBody.Part,
+        timezone: String?,
+        idempotencyKey: String?,
+    ): UploadResponseDto = ledgerUnsupported()
     override suspend fun expense(id: Long): ExpenseDto = ledgerUnsupported()
     override suspend fun updateExpense(
         id: String,

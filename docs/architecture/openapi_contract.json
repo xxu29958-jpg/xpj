@@ -16170,9 +16170,15 @@
         "properties": {
           "currency": {
             "$ref": "#/components/schemas/RuntimeCurrencyCapabilityResponse"
+          },
+          "upload_original_receipt_version": {
+            "minimum": 1.0,
+            "title": "Upload Original Receipt Version",
+            "type": "integer"
           }
         },
         "required": [
+          "upload_original_receipt_version",
           "currency"
         ],
         "title": "RuntimeProductCapabilitiesResponse",

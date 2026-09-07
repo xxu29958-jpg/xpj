@@ -37,6 +37,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.ResponseBody.Companion.toResponseBody
 import okio.Buffer
+import okio.ByteString.Companion.toByteString
 import retrofit2.HttpException
 
 /** Disk Room and real repositories. Only HTTP, session storage and the last-upload timestamp are synthetic. */
@@ -132,7 +133,11 @@ internal class UploadIntentConnectedNetwork {
             publicId = publicId, taskType = "expense_enrichment", status = "completed",
             resultSummary = mapOf("outcome" to "no_result"), createdAt = "2026-09-07T00:00:00Z",
         )
-        override suspend fun uploadScreenshot(file: MultipartBody.Part, timezone: String?): UploadResponseDto {
+        override suspend fun uploadScreenshot(
+            file: MultipartBody.Part,
+            timezone: String?,
+            idempotencyKey: String?,
+        ): UploadResponseDto {
             val disposition = requireNotNull(file.headers?.get("Content-Disposition"))
             val name = requireNotNull(Regex("filename=\"([^\"]+)\"").find(disposition)).groupValues[1]
             val bytes = Buffer().also { file.body.writeTo(it) }.readByteArray()
@@ -144,8 +149,12 @@ internal class UploadIntentConnectedNetwork {
             }
             val expense = uploadedExpense((accepted.size + 1).toLong(), name)
             accepted += expense
-            return UploadResponseDto(expense.id, requireNotNull(expense.publicId), "upload-task-${expense.id}",
-                "pending", "已保存待确认账单", bytes.size.toLong())
+            return UploadResponseDto(
+                id = expense.id, publicId = requireNotNull(expense.publicId),
+                enrichmentTaskPublicId = "upload-task-${expense.id}", status = "pending", message = "已保存待确认账单",
+                imageHash = bytes.toByteString().sha256().hex(), thumbnailPath = null,
+                duplicateStatus = "none", duplicateOfId = null, uploadSizeBytes = bytes.size.toLong(),
+            )
         }
     }
 }

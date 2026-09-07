@@ -45,6 +45,7 @@ class OpenApiContractGateTest {
         Pairing(RefreshSessionResponseDto::class, "RefreshSessionResponse"),
         Pairing(LedgerSwitchResponseDto::class, "LedgerSwitchResponse"),
         Pairing(ExpenseDto::class, "ExpenseResponse"),
+        Pairing(UploadResponseDto::class, "UploadResponse"),
         // Dedicated manual-create DTO (no OCC-token field) + the PATCH body it
         // was split from — the forward check is the forbid-protection: a DTO
         // field the backend model doesn't declare would 422 at runtime.
