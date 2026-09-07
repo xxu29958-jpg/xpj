@@ -113,13 +113,8 @@ class DebtAdjustmentRepository(
             require(drop || currentAccess()?.canModify == true) { "当前角色为只读，无法重试调整。" }
             require(drop || original.hasSupportedIntent) { "当前版本无法读取原调整，请升级后继续。" }
             require(drop || original.canRetry) { "这次原调整不能重试，请核对后处理本地记录。" }
-            val changed = if (drop) outbox.abandonDebtAdjustment(bound, current) else {
-                val retried = outbox.resolveFailed(current.id, FailedResolution.Retry())
-                if (retried && outbox.activeForTarget(bound, current.targetId).any {
-                        it.id == current.id && it.status == PendingMutationStatus.Pending
-                    }) outbox.schedulePending()
-                retried
-            }
+            val changed = if (drop) outbox.abandonDebtAdjustment(bound, current)
+                else outbox.resolveFailed(current.id, FailedResolution.Retry())
             if (!changed) throw RepositoryException("这次本地调整状态已变化，请重新核对。")
         }
 }

@@ -76,6 +76,5 @@ internal class ExpenseCorrectionRepository(
             else -> throw RepositoryException("请核对当前事实后明确重新提交；原提交不能直接重试或覆盖。")
         }
         if (!changed) throw RepositoryException("原提交状态已变化，请重新查看。")
-        if (!drop) outbox.schedulePending()
     }
 }

@@ -550,7 +550,7 @@ class OutboxRepository private constructor(
         ))
         check(row.ownerKey == binding.ownerStorageKey && row.ledgerId == binding.ledgerId)
         dao.deleteIfStatus(row.id, binding.ownerStorageKey, binding.ledgerId, row.status.wireValue) > 0
-    }
+    }.also { changed -> if (changed) schedulePending() }
 
     suspend fun markDone(id: Long, cacheRefreshVersion: Long? = null) {
         dao.markDone(
@@ -674,41 +674,47 @@ class OutboxRepository private constructor(
     suspend fun resolveConflict(
         id: Long,
         resolution: ConflictResolution,
-    ): Boolean = bindingTransitionLease.withLock {
-        val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
-        // [codex round-4 P2] Atomic status-checked updates so a
-        // stale UI banner click can't flip a DONE / re-resolved row
-        // back to PENDING (or delete a row a parallel keep-mine
-        // just turned PENDING). Returns ``true`` only if THIS call
-        // actually changed the row.
-        when (resolution) {
-            is ConflictResolution.KeepMine ->
-                // ADR-0042 §4.10: an over-age CONFLICT row can't be re-queued —
-                // expire it instead (rotating the key can't save a committed-but-
-                // unseen original whose server key the ~30d retention already
-                // purged → double-apply). Otherwise the normal token-refresh flip.
-                if (expireOverAgeOnResolve(id, binding, PendingMutationStatus.Conflict.wireValue)) {
-                    true
-                } else {
-                    dao.requeueConflictWithFreshToken(
+    ): Boolean {
+        var expired = false
+        val changed = bindingTransitionLease.withLock {
+            val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
+            // [codex round-4 P2] Atomic status-checked updates so a
+            // stale UI banner click can't flip a DONE / re-resolved row
+            // back to PENDING (or delete a row a parallel keep-mine
+            // just turned PENDING). Returns ``true`` only if THIS call
+            // actually changed the row.
+            when (resolution) {
+                is ConflictResolution.KeepMine ->
+                    // ADR-0042 §4.10: an over-age CONFLICT row can't be re-queued —
+                    // expire it instead (rotating the key can't save a committed-but-
+                    // unseen original whose server key the ~30d retention already
+                    // purged → double-apply). Otherwise the normal token-refresh flip.
+                    if (expireOverAgeOnResolve(id, binding, PendingMutationStatus.Conflict.wireValue)) {
+                        expired = true
+                        true
+                    } else {
+                        dao.requeueConflictWithFreshToken(
+                            id = id,
+                            ownerKey = binding.ownerStorageKey,
+                            ledgerId = binding.ledgerId,
+                            freshToken = resolution.freshToken,
+                            // ADR-0042 §4.8: KeepMine = overwrite-the-new-version intent →
+                            // rotate the idempotency key (DAO applies it only to
+                            // key-bearing rows; keyless types stay null).
+                            rotatedIdempotencyKey = UUID.randomUUID().toString(),
+                        ) > 0
+                    }
+                ConflictResolution.DropMine ->
+                    dao.deleteIfStatus(
                         id = id,
                         ownerKey = binding.ownerStorageKey,
                         ledgerId = binding.ledgerId,
-                        freshToken = resolution.freshToken,
-                        // ADR-0042 §4.8: KeepMine = overwrite-the-new-version intent →
-                        // rotate the idempotency key (DAO applies it only to
-                        // key-bearing rows; keyless types stay null).
-                        rotatedIdempotencyKey = UUID.randomUUID().toString(),
+                        expectedStatus = PendingMutationStatus.Conflict.wireValue,
                     ) > 0
-                }
-            ConflictResolution.DropMine ->
-                dao.deleteIfStatus(
-                    id = id,
-                    ownerKey = binding.ownerStorageKey,
-                    ledgerId = binding.ledgerId,
-                    expectedStatus = PendingMutationStatus.Conflict.wireValue,
-                ) > 0
+            }
         }
+        if (changed && !expired) schedulePending()
+        return changed
     }
 
     /**
@@ -729,48 +735,54 @@ class OutboxRepository private constructor(
     suspend fun resolveFailed(
         id: Long,
         resolution: FailedResolution,
-    ): Boolean = bindingTransitionLease.withLock {
-        val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
-        // [codex round-4 P2] Same atomic-status guard as
-        // resolveConflict — stale banner click on a row that's
-        // already been retried + DONE elsewhere must be a no-op.
-        when (resolution) {
-            is FailedResolution.Retry -> {
-                // ADR-0042 §4.10: an over-age FAILED row can't be retried — the next
-                // drain's reaper would re-expire it, and replaying risks double-apply
-                // (a rotated/fresh token doesn't help once the server purged the
-                // original key). Expire it so the UI offers only 移除.
-                if (expireOverAgeOnResolve(id, binding, PendingMutationStatus.Failed.wireValue)) {
-                    true
-                } else {
-                    val freshToken = resolution.freshToken
-                    if (freshToken != null) {
-                        dao.requeueFailedWithFreshToken(
-                            id = id,
-                            ownerKey = binding.ownerStorageKey,
-                            ledgerId = binding.ledgerId,
-                            freshToken = freshToken,
-                            // §4.8: retry-with-fresh-token is the same overwrite-new-
-                            // version intent as KeepMine → rotate the key too.
-                            rotatedIdempotencyKey = UUID.randomUUID().toString(),
-                        ) > 0
+    ): Boolean {
+        var expired = false
+        val changed = bindingTransitionLease.withLock {
+            val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
+            // [codex round-4 P2] Same atomic-status guard as
+            // resolveConflict — stale banner click on a row that's
+            // already been retried + DONE elsewhere must be a no-op.
+            when (resolution) {
+                is FailedResolution.Retry -> {
+                    // ADR-0042 §4.10: an over-age FAILED row can't be retried — the next
+                    // drain's reaper would re-expire it, and replaying risks double-apply
+                    // (a rotated/fresh token doesn't help once the server purged the
+                    // original key). Expire it so the UI offers only 移除.
+                    if (expireOverAgeOnResolve(id, binding, PendingMutationStatus.Failed.wireValue)) {
+                        expired = true
+                        true
                     } else {
-                        dao.retryFailed(
-                            id = id,
-                            ownerKey = binding.ownerStorageKey,
-                            ledgerId = binding.ledgerId,
-                        ) > 0
+                        val freshToken = resolution.freshToken
+                        if (freshToken != null) {
+                            dao.requeueFailedWithFreshToken(
+                                id = id,
+                                ownerKey = binding.ownerStorageKey,
+                                ledgerId = binding.ledgerId,
+                                freshToken = freshToken,
+                                // §4.8: retry-with-fresh-token is the same overwrite-new-
+                                // version intent as KeepMine → rotate the key too.
+                                rotatedIdempotencyKey = UUID.randomUUID().toString(),
+                            ) > 0
+                        } else {
+                            dao.retryFailed(
+                                id = id,
+                                ownerKey = binding.ownerStorageKey,
+                                ledgerId = binding.ledgerId,
+                            ) > 0
+                        }
                     }
                 }
+                FailedResolution.Drop ->
+                    dao.deleteIfStatus(
+                        id = id,
+                        ownerKey = binding.ownerStorageKey,
+                        ledgerId = binding.ledgerId,
+                        expectedStatus = PendingMutationStatus.Failed.wireValue,
+                    ) > 0
             }
-            FailedResolution.Drop ->
-                dao.deleteIfStatus(
-                    id = id,
-                    ownerKey = binding.ownerStorageKey,
-                    ledgerId = binding.ledgerId,
-                    expectedStatus = PendingMutationStatus.Failed.wireValue,
-                ) > 0
         }
+        if (changed && !expired) schedulePending()
+        return changed
     }
 
     /**
@@ -909,7 +921,7 @@ class OutboxRepository private constructor(
             require(row.type == PendingMutationType.RecordDebtAdjustment)
             dao.abandonDebtAdjustment(row.id, binding.ownerStorageKey, binding.ledgerId,
                 row.status.wireValue, ISO.format(Instant.now(clock))) > 0
-        }
+        }.also { changed -> if (changed) schedulePending() }
 
     /** Explicit Debt history scope; other mutation types retain their existing observation policy. */
     @OptIn(ExperimentalCoroutinesApi::class)

@@ -22,7 +22,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.job
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -46,12 +45,16 @@ class ExpenseCorrectionStreamContinuityTest {
                 listOf(rootStream(current, if (current.rowVersion == originalExpense.rowVersion) oldDate else newDate)) + unaffected
             }
             val graph = fixture.reopen()
-            val otherLedger = rootStream(originalExpense, oldDate).toConfirmedStreamCacheItem("untouched-ledger").root
+            val otherLedger = rootStream(originalExpense.copy(id = 501, publicId = "other-ledger-expense"), oldDate)
+                .toConfirmedStreamCacheItem("untouched-ledger").root
             fixture.expenseDao.upsertByServerIdForLedger("untouched-ledger", otherLedger)
-            val otherBefore = fixture.expenseDao.findByServerId("untouched-ledger", originalExpense.id)
+            val otherBefore = fixture.expenseDao.findByServerId("untouched-ledger", 501L)
             val ledger = withContext(Dispatchers.Main) { LedgerViewModel(graph.expenseRepository, graph.debtRepository) }
             owner = ledger
-            val initial = withTimeout(10_000) { ledger.uiState.first { !it.syncing && it.items.size == 3 } }
+            val initial = withTimeoutOrNull(10_000) { ledger.uiState.first { !it.syncing && it.items.size == 3 } }
+                ?: ledger.uiState.value
+            assertTrue("Initial stream sync must complete: ${initial.message}", initial.syncedInCurrentSession)
+            assertEquals(3, initial.items.size)
             assertEquals(1_400L, initial.summary.totalAmountCents)
             withContext(Dispatchers.Main) { ledger.clearFilters() }
             val repository = graph.expenseRepository
@@ -70,7 +73,7 @@ class ExpenseCorrectionStreamContinuityTest {
                 assertEquals("Original command $column", original[column], stored[column])
             }
             assertEquals(requireNotNull(delivered.intent).request to original["idempotencyKey"], fixture.network.calls.single())
-            assertEquals(otherBefore, fixture.expenseDao.findByServerId("untouched-ledger", originalExpense.id))
+            assertEquals(otherBefore, fixture.expenseDao.findByServerId("untouched-ledger", 501L))
             val published = awaitCorrectedStream(ledger, originalExpense.id, newDate)
             assertPublishedLedger(context.resources, published, originalExpense.id, oldDate, newDate)
             assertEquals(unaffected.map { it.toConfirmedStreamCacheItem("correction-ledger") }.mapNotNull { it.offset },
