@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.PendingUploadIntent
+import com.ticketbox.data.repository.NON_RETRYABLE_UPLOAD_ERRORS
 import com.ticketbox.data.repository.UPLOAD_CAPACITY_FULL
 import com.ticketbox.data.repository.UploadIntentObservation
 import com.ticketbox.data.repository.isUploadIntentFileKey
@@ -52,6 +53,8 @@ private fun uploadGroupMessage(group: List<PendingUploadIntent>, failures: List<
             UiText.res(R.string.pending_msg_upload_unreadable)
         "idempotency_key_reused" in codes ->
             UiText.res(R.string.pending_msg_upload_key_refused)
+        codes.any { it in NON_RETRYABLE_UPLOAD_ERRORS } ->
+            UiText.res(R.string.pending_msg_upload_original_refused)
         codes.any { it in PROTOCOL_REFUSALS } ->
             UiText.res(R.string.sync_status_error_protocol_mismatch)
         group.any { it.payload?.file == null } ->

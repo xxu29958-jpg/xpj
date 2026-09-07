@@ -37,7 +37,7 @@ class UploadIntentFileStore internal constructor(
         persist: suspend (List<UploadIntentFileDescriptor?>) -> T,
     ): T {
         val batch = sources.toList()
-        if (batch.size > MAX_BATCH_ITEMS) throw UploadIntentFileException(UploadIntentFileFailure.BATCH_LIMIT)
+        if (batch.size > MAX_UPLOAD_BATCH_ITEMS) throw UploadIntentFileException(UploadIntentFileFailure.BATCH_LIMIT)
         require(batch.map { it.key }.distinct().size == batch.size) { "Duplicate upload file key in batch" }
         return withFilesLocked { directory ->
             beforePrepare()?.let { return@withFilesLocked it }
@@ -174,7 +174,6 @@ class UploadIntentFileStore internal constructor(
     private companion object {
         val processMutex = Mutex()
         const val DIRECTORY_NAME = "upload-intents"
-        const val MAX_BATCH_ITEMS = 100
         const val MAX_STAGING_BYTES = 256L * 1024L * 1024L
         const val MIN_FREE_BYTES = 32L * 1024L * 1024L
     }

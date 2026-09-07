@@ -486,7 +486,7 @@ class OutboxRepository private constructor(
                         if (expireOverAgeOnResolve(row.id, binding, PendingMutationStatus.Failed.wireValue)) {
                             expired = true
                         } else {
-                            retried += dao.retryFailed(row.id, binding.ownerStorageKey, binding.ledgerId)
+                            retried += dao.retryFailed(row.id, binding.ownerStorageKey, binding.ledgerId, NON_RETRYABLE_UPLOAD_ERRORS)
                         }
                     }
                     expired || retried > 0
@@ -804,7 +804,7 @@ class OutboxRepository private constructor(
                 }
                 freshToken != null -> requeue(id, binding.ownerStorageKey, binding.ledgerId,
                     freshToken, UUID.randomUUID().toString()) > 0
-                else -> dao.retryFailed(id, binding.ownerStorageKey, binding.ledgerId) > 0
+                else -> dao.retryFailed(id, binding.ownerStorageKey, binding.ledgerId, NON_RETRYABLE_UPLOAD_ERRORS) > 0
             }
         }
         if (changed && !expired) schedulePending()

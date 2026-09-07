@@ -111,7 +111,7 @@ internal fun PendingRoute(
                 pendingCount = shellState.launchAction.pendingUpload?.selection?.uris?.size ?: 0,
                 accepting = shellState.launchAction.acceptingUpload,
                 onRetry = shellState.launchAction::retryUpload,
-                onStop = shellState.launchAction::cancelUploadSelection,
+                onStop = { cancelPendingUploadSelection(context, shellState.launchAction) },
             ),
         ),
         itemActions = pendingExpenseQueueActions(navController, pendingViewModel),
@@ -193,13 +193,16 @@ private fun pendingReviewSheetActions(viewModel: PendingViewModel): PendingRevie
 @Composable
 internal fun rememberSingleImageUploadLauncher(
     shellState: MainShellState,
-): ManagedActivityResultLauncher<PickVisualMediaRequest, Uri?> =
-    rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+): ManagedActivityResultLauncher<PickVisualMediaRequest, Uri?> {
+    val context = LocalContext.current
+    return rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
+        persistPickedUploadSource(context, uri)
         shellState.launchAction.post(LaunchAction.UploadSharedImages(
             LaunchIntentRequest.ShareImages(UUID.randomUUID().toString(), listOf(uri.toString())),
         ))
     }
+}
 
 /**
  * 消费 MainShell 派发给待确认页的入口动作（W1）：「传小票」shortcut 拉起系统图片选择，
@@ -215,6 +218,7 @@ internal fun PendingLaunchActionEffect(
     onUploadSharedImages: suspend (String, List<String>, LogicalSessionBinding) -> Boolean,
 ) {
     // rememberUpdatedState 让 effect 始终读到最新回调，不因首帧捕获而失效。
+    val context = LocalContext.current
     val currentOpenPicker by rememberUpdatedState(onOpenPicker)
     val currentUploadShared by rememberUpdatedState(onUploadSharedImages)
     val currentCanAccept by rememberUpdatedState(canAcceptUpload)
@@ -237,6 +241,7 @@ internal fun PendingLaunchActionEffect(
             accepted = currentUploadShared(original.batchId, original.uris, requireNotNull(original.expectedBinding))
         } finally {
             actionState.finishUpload(action, accepted)
+            if (accepted) releaseUploadSourceGrants(context, actionState, original)
         }
     }
 }

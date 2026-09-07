@@ -4,6 +4,8 @@
 
 This atlas derives a current construction map from the Goal, latest user rulings and three 2026-08-26 contracts. It records what exists, what is only partially usable, what is genuinely missing, and what must retire. `COMPLETE` is intentionally absent until exact Internal Beta RC qualification.
 
+**Standing implementation standard for the entire Goal — Owner ruling, 2026-09-07:** “允许问题域复杂，不允许复杂性在代码里到处扩散。” ACK loss, OCC, binding changes, offline recovery and cross-client consistency remain necessary semantics. Compress their implementation into explicit owners and stable contracts so entrances and consumers do not duplicate the same rules or coordinate additional state. Encapsulation must reduce the places that change together, not merely move complexity behind wrappers. Apply this standard before and after every business-semantic or owner change, together with the Goal's impact closure, and carry it through compaction, subsequent slices and final integration. It is not a standard limited to the current upload slice.
+
 ## 1. Product and container architecture
 
 ```mermaid

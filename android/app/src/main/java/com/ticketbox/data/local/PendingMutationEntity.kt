@@ -146,9 +146,10 @@ data class PendingMutationEntity(
     val retryCount: Int = 0,
 
     /**
-     * Last server message (Chinese, ADR-0038 contract) when the
-     * row landed in ``CONFLICT`` or ``FAILED``. Null while
-     * ``PENDING`` / ``IN_FLIGHT`` / ``DONE``.
+     * Failure code and optional detail, or a legacy display message. Upload
+     * recovery preserves stable server codes so changing display text cannot
+     * authorize another delivery of a refused original. Retry markers may also
+     * be present while pending; DONE clears the failure.
      */
     @ColumnInfo(name = "lastError")
     val lastError: String? = null,

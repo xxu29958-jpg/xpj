@@ -230,6 +230,7 @@ class PendingLaunchActionEffectTest {
             val shell = MainShellState()
             val resolver = context.contentResolver
             val ready = mutableStateOf(false)
+            var attempts = 0
             var selected: Uri? = null
             val registry = object : ActivityResultRegistry() {
                 override fun <I, O> onLaunch(
@@ -251,8 +252,9 @@ class PendingLaunchActionEffectTest {
                         LogicalSessionBinding("https://example.test", "family", "owner", "session", "revision"),
                         onOpenPicker = { false }, onUploadSharedImages = { _, refs, _ ->
                             assertEquals(listOf(original.toString()), refs)
+                            assertTrue(resolver.persistedUriPermissions.any { it.uri == original && it.isReadPermission })
                             assertNotNull(pendingUploadSource(context)(refs.single()))
-                            true
+                            ++attempts == 1
                         })
                 }
             }
@@ -266,9 +268,12 @@ class PendingLaunchActionEffectTest {
                 assertTrue(resolver.persistedUriPermissions.any { it.uri == original && it.isReadPermission })
                 val restored = LaunchActionState.restore(shell.launchAction.snapshot())
                 assertEquals(listOf(original.toString()), restored.pendingUpload!!.selection.uris)
+                shell.launchAction.post(sharedAction(listOf(original.toString())))
                 ready.value = true
             }
-            composeRule.waitUntil(5_000) { shell.launchAction.pending == null }
+            composeRule.waitUntil(5_000) { shell.launchAction.awaitingUploadRetry && attempts == 2 }
+            composeRule.runOnIdle { cancelPendingUploadSelection(context, shell.launchAction) }
+            assertNull(shell.launchAction.pending)
             assertFalse(resolver.persistedUriPermissions.any { it.uri == original })
         }
     }
@@ -277,7 +282,7 @@ class PendingLaunchActionEffectTest {
         pendingCount = shell.launchAction.pendingUpload?.selection?.uris?.size ?: 0,
         accepting = shell.launchAction.acceptingUpload,
         onRetry = shell.launchAction::retryUpload,
-        onStop = shell.launchAction::cancelUploadSelection,
+        onStop = { cancelPendingUploadSelection(ApplicationProvider.getApplicationContext(), shell.launchAction) },
     )
 
     private fun sharedAction(refs: List<String>) = LaunchAction.UploadSharedImages(

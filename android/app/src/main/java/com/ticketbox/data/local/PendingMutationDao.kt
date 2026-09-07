@@ -318,13 +318,14 @@ interface PendingMutationDao {
           AND ledgerId = :ledgerId
           AND status = 'failed'
           AND (type != 'upload_screenshot' OR
-            COALESCE(substr(lastError, 1, instr(lastError || ':', ':') - 1), '') != 'idempotency_key_reused')
+            COALESCE(substr(lastError, 1, instr(lastError || ':', ':') - 1), '') NOT IN (:nonRetryableUploadErrors))
         """,
     )
     suspend fun retryFailed(
         id: Long,
         ownerKey: String,
         ledgerId: String,
+        nonRetryableUploadErrors: Set<String>,
     ): Int
 
     /**

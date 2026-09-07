@@ -6,6 +6,7 @@ import androidx.compose.runtime.referentialEqualityPolicy
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.setValue
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.MAX_UPLOAD_BATCH_ITEMS
 
 /**
  * 系统分享 / 启动器 shortcut 经 MainShell 派发给具体 Route 的一次性入口动作（W1）。
@@ -72,6 +73,10 @@ internal class LaunchActionState {
         it is LaunchAction.UploadSharedImages && it.selection.batchId == batchId
     }
 
+    fun referencesUploadSource(imageRef: String): Boolean = actions.any {
+        it is LaunchAction.UploadSharedImages && imageRef in it.selection.uris
+    }
+
     fun beginUpload(action: LaunchAction.UploadSharedImages, binding: LogicalSessionBinding): Boolean {
         val current = pendingUpload ?: return false
         if (current.selection.batchId != action.selection.batchId || acceptingUpload || awaitingUploadRetry) return false
@@ -88,7 +93,8 @@ internal class LaunchActionState {
     }
 
     fun retryUpload() {
-        if (acceptingUpload || pendingUpload == null) return
+        val count = pendingUpload?.selection?.uris?.size ?: return
+        if (acceptingUpload || count !in 1..MAX_UPLOAD_BATCH_ITEMS) return
         retryId = null
         uploadAttempt++
     }

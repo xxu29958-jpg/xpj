@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models import BackgroundTask
+from app.services.time_service import now_utc
 
 _ACTIVE_STATUSES = ("queued", "running")
 _ADMISSION_LOCK_LABEL = "ticketbox-background-task-admission"
@@ -63,7 +64,8 @@ def readmit_orphaned_task(db: Session, task_id: int) -> BackgroundTask | None:
         return None
     _reserve_active_slot(db)
     task.status = "queued"
-    task.started_at = task.completed_at = task.last_progress_at = None
+    task.started_at = task.completed_at = None
+    task.last_progress_at = now_utc()
     task.error_code = task.error_message = None
     task.progress_current = 0
     task.progress_message = task.result_summary_json = None
