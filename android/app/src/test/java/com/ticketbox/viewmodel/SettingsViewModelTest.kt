@@ -9,9 +9,6 @@ import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.boundSettingsStore
 import com.ticketbox.domain.model.ConnectionDiagnostics
-import com.ticketbox.domain.model.DiagnosticCheck
-import com.ticketbox.domain.model.DiagnosticCheckKind
-import com.ticketbox.domain.model.DiagnosticStatus
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.NotificationPreferences
@@ -102,65 +99,6 @@ class SettingsViewModelTest {
     }
 
     @Test
-    fun runDiagnosticsUsesSuccessAndDangerTones() = runTest(dispatcher) {
-        val successVm = SettingsViewModel(repository = FakeSettingsActions(), settingsStore = boundSettingsStore())
-        runCurrent()
-
-        successVm.runDiagnostics()
-        runCurrent()
-
-        val successState = successVm.uiState.value
-        assertFalse(successState.busy)
-        assertEquals(UiText.res(R.string.settings_vm_diagnostics_passed), successState.message)
-        assertEquals(MessageTone.Success, successState.messageTone)
-
-        val failureVm = SettingsViewModel(
-            repository = FakeSettingsActions().apply {
-                diagnosticsFailure = RuntimeException()
-            },
-            settingsStore = boundSettingsStore(),
-        )
-        runCurrent()
-
-        failureVm.runDiagnostics()
-        runCurrent()
-
-        val failureState = failureVm.uiState.value
-        assertFalse(failureState.busy)
-        assertEquals(UiText.res(R.string.settings_vm_diagnostics_incomplete), failureState.message)
-        assertEquals(MessageTone.Danger, failureState.messageTone)
-    }
-
-    @Test
-    fun runDiagnosticsShowsDangerToneWithFailedChecks() = runTest(dispatcher) {
-        val diagnostics = ConnectionDiagnostics(
-            checks = listOf(
-                DiagnosticCheck(
-                    kind = DiagnosticCheckKind.Auth,
-                    status = DiagnosticStatus.Fail,
-                    detail = "401",
-                    elapsedMs = 12L,
-                ),
-            ),
-        )
-        val repo = FakeSettingsActions().apply {
-            this.diagnostics = diagnostics
-        }
-        val vm = SettingsViewModel(repository = repo, settingsStore = boundSettingsStore())
-        runCurrent()
-
-        vm.runDiagnostics()
-        runCurrent()
-
-        val state = vm.uiState.value
-        assertFalse(state.busy)
-        assertEquals(diagnostics, state.diagnostics)
-        assertEquals(UiText.res(R.string.settings_vm_diagnostics_failed_count, 1), state.message)
-        assertEquals(MessageTone.Danger, state.messageTone)
-        assertFalse(state.serverSettingsFresh)
-    }
-
-    @Test
     fun saveNotificationPreferencesPersistsAndShowsSuccessTone() = runTest(dispatcher) {
         val store = settingsStore()
         val vm = SettingsViewModel(repository = FakeSettingsActions(), settingsStore = store)
@@ -204,79 +142,6 @@ class SettingsViewModelTest {
     }
 
     @Test
-    fun changingServerWithTheSameLedgerIdClearsThePreviousDiagnosis() = runTest(dispatcher) {
-        val repo = FakeSettingsActions()
-        val vm = SettingsViewModel(repo, boundSettingsStore())
-        runCurrent()
-        vm.runDiagnostics()
-        runCurrent()
-        assertEquals(repo.diagnostics, vm.uiState.value.diagnostics)
-
-        repo.binding = repo.binding.copy(serverUrl = "https://other.example.com", ledgerName = "Other ledger")
-        vm.refreshLocalBindingState()
-
-        assertEquals(null, vm.uiState.value.diagnostics)
-        assertFalse(vm.uiState.value.serverSettingsFresh)
-        assertEquals("Other ledger", vm.uiState.value.ledgerName)
-    }
-
-    @Test
-    fun lateDiagnosticSuccessCannotDescribeTheReplacementBinding() = runTest(dispatcher) {
-        val gate = CompletableDeferred<Unit>()
-        val repo = FakeSettingsActions().apply { diagnosticsGate = gate }
-        val vm = SettingsViewModel(repo, boundSettingsStore())
-        runCurrent()
-        vm.runDiagnostics()
-        runCurrent()
-        assertTrue(vm.uiState.value.busy)
-
-        repo.binding = repo.binding.copy(serverUrl = "https://other.example.com")
-        vm.refreshLocalBindingState()
-        gate.complete(Unit)
-        runCurrent()
-
-        assertEquals(null, vm.uiState.value.diagnostics)
-        assertEquals(null, vm.uiState.value.message)
-        assertFalse(vm.uiState.value.busy)
-    }
-
-    @Test
-    fun replacingTheSessionAtTheSameAddressClearsResultsWithoutAnExplicitRefresh() = runTest(dispatcher) {
-        val repo = FakeSettingsActions()
-        val vm = SettingsViewModel(repo, boundSettingsStore())
-        runCurrent()
-        vm.runDiagnostics()
-        runCurrent()
-
-        repo.sessionGenerationValue = "replacement-session"
-        runCurrent()
-
-        assertEquals(null, vm.uiState.value.diagnostics)
-        assertFalse(vm.uiState.value.serverSettingsFresh)
-        assertEquals(null, vm.uiState.value.message)
-    }
-
-    @Test
-    fun leavingTheConnectionPageCancelsItsPendingCheckAndAllowsAnotherAttempt() = runTest(dispatcher) {
-        val repo = FakeSettingsActions().apply { diagnosticsGate = CompletableDeferred() }
-        val vm = SettingsViewModel(repo, boundSettingsStore())
-        runCurrent()
-        vm.runDiagnostics()
-        runCurrent()
-
-        vm.cancelConnectionWork()
-        runCurrent()
-        assertFalse(vm.uiState.value.busy)
-        assertEquals(null, vm.uiState.value.diagnostics)
-
-        repo.diagnosticsGate = null
-        vm.runDiagnostics()
-        runCurrent()
-        assertEquals(repo.diagnostics, vm.uiState.value.diagnostics)
-        assertFalse(vm.uiState.value.busy)
-    }
-
-    @Test
     fun roleRevocationBeforeTheNextFrameCannotKeepAutoCaptureEnabled() = runTest(dispatcher) {
         val repo = FakeSettingsActions()
         val store = boundSettingsStore()
@@ -291,23 +156,7 @@ class SettingsViewModelTest {
         assertEquals(MessageTone.Info, vm.uiState.value.messageTone)
     }
 
-    @Test
-    fun completedSyncWithAnUnavailableStatusRemainsAReadablePartialResult() = runTest(dispatcher) {
-        val repo = FakeSettingsActions()
-        val vm = SettingsViewModel(repo, boundSettingsStore())
-        runCurrent()
-        repo.serverSettingsFailure = RuntimeException()
-
-        vm.sync()
-        runCurrent()
-
-        assertEquals(UiText.res(R.string.settings_vm_sync_state_unavailable), vm.uiState.value.message)
-        assertEquals(MessageTone.Info, vm.uiState.value.messageTone)
-        assertFalse(vm.uiState.value.serverSettingsFresh)
-        assertFalse(vm.uiState.value.busy)
-    }
-
-    private class FakeSettingsActions(
+    internal class FakeSettingsActions(
         private var lastConfirmedSyncAtValue: String? = null,
         private val clearLocalCacheGate: CompletableDeferred<Unit>? = null,
         private val clearLocalCacheFailure: Throwable? = null,

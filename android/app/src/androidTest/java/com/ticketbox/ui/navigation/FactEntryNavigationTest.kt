@@ -28,6 +28,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
 import com.ticketbox.R
+import com.ticketbox.BuildConfig
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.data.remote.dto.BackgroundTaskListResponseDto
@@ -213,7 +214,10 @@ class FactEntryNavigationTest {
         harness.fixture.network.diagnosticApiVersion = "different-protocol"
         installMainGraph()
         compose.runOnIdle { harness.shell.openAccount() }
-        val entry = context.getString(R.string.settings_root_connection_title_advanced)
+        val entry = context.getString(
+            if (BuildConfig.SHOW_ADVANCED_TOOLS) R.string.settings_root_connection_title_advanced
+            else R.string.settings_root_connection_title_basic,
+        )
         waitForText(entry)
         compose.onNodeWithText(entry).performScrollTo().performClick()
         waitForText("检查连接")
