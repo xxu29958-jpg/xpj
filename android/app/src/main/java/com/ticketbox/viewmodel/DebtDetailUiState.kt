@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.PendingDebtAdjustment
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtRepayment
@@ -15,6 +16,7 @@ import com.ticketbox.domain.model.UiText
  * 已确认命令换入服务端 Debt；调整先保留原意图，确认同步后重读。成员/拆账仍走对方确认流程。
  */
 data class DebtDetailUiState(
+    val binding: LogicalSessionBinding? = null,
     val isLoading: Boolean = false,
     val debt: Debt? = null,
     val canModify: Boolean = true,

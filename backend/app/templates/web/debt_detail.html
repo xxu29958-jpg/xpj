@@ -4,7 +4,7 @@
 {% block title %}{{ debt.name }} · 欠款详情 · 小票夹{% endblock %}
 
 {# C3a 欠款详情 (product 正文栈)。成员 communal / 外部 businesslike 双语义不变:
-   成员 = 无金额关系主句 + 件数 native progress + 「看看账」; 外部 = 剩余
+   成员 = 关系主句 + 剩余金额 + native progress + 「看看账」; 外部 = 剩余
    editorial 英雄 + 中性已偿还 progress + 本金/已偿还/类型/状态行。
    失败诚实 (与 Codex action_form 合同配套): 任一动作 422/409 原页重渲染,
    错误锚定到被提交表单 (id=debt-action-error-<kind> + aria-invalid/
@@ -97,10 +97,11 @@
 {% endif %}
 
 {% if debt.is_member %}
-{# 成员债 communal 关系卡: 无金额关系主句, 进度与金额明细收进「看看账」。 #}
+{# The participant can identify the remaining amount before opening supporting totals. #}
 <section class="product-panel product-panel--padded debt-member-card{% if debt.is_voided %} is-receded{% endif %}" aria-label="与 {{ debt.name }} 的往来">
   <div class="debt-member-eyebrow">{{ debt.eyebrow }}</div>
   <div class="debt-member-headline">{{ debt.headline }}</div>
+  <div class="debt-member-remaining">剩余 {{ debt.remaining_label }}</div>
   {% if debt.show_progress %}
   <progress class="debt-progress" value="{{ debt.ratio_percent }}" max="100" aria-label="{{ debt.progress_note }}"></progress>
   <div class="debt-progress-note">{{ debt.progress_note }}</div>
@@ -110,10 +111,6 @@
     <div class="debt-look-rows">
       <div class="debt-look-row"><span>这件事一共</span><span class="debt-num">{{ debt.principal_label }}</span></div>
       <div class="debt-look-row"><span>已经对上</span><span class="debt-num">{{ debt.paid_label }}</span></div>
-      {% if not debt.is_voided %}
-      {# 与欠我的列表同一句; 跨账本债权人进详情后剩余事实不丢。 #}
-      <div class="debt-look-row"><span>还剩</span><span class="debt-num">{{ debt.remaining_label }} 没对上</span></div>
-      {% endif %}
       <div class="debt-look-row"><span>当前状态</span><span class="product-status{% if debt.member_status_tone %} {{ _tone[debt.member_status_tone] }}{% endif %}">{{ debt.member_status_label }}</span></div>
     </div>
   </details>
@@ -348,7 +345,7 @@
       </div>
     </div>
     <div class="debt-form-actions">
-      <button class="product-button product-button--primary" type="submit">把这份给 TA</button>
+      <button class="product-button product-button--primary" type="submit">提交还款确认</button>
     </div>
   </form>
   {% endif %}

@@ -165,7 +165,7 @@ private fun LazyListScope.debtDetailStatusItems(
     debtDetailInlineMessage(bodyState = bodyState, message = state.error)?.let { err ->
         item { AppStatusBanner(message = err, tone = MessageTone.Danger) }
     }
-    proposalState.error?.let { err -> item { AppStatusBanner(message = err, tone = MessageTone.Danger) } }
+    proposalState.error?.let { err -> item { AppStatusBanner(message = err, tone = proposalState.errorTone) } }
 }
 
 @Composable

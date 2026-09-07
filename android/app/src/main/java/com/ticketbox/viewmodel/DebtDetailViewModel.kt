@@ -4,6 +4,7 @@ import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
+import com.ticketbox.data.repository.DebtTask
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.DebtAdjustmentActions
 import com.ticketbox.data.repository.LogicalSessionBinding
@@ -108,6 +109,7 @@ class DebtDetailViewModel(
         if (previousPublicId != publicId || previousBinding != loadedBinding) {
             _state.update {
                 it.copy(
+                    binding = loadedBinding,
                     debt = null,
                     error = null,
                     activeAction = null,
@@ -183,6 +185,19 @@ class DebtDetailViewModel(
         }
     }
 
+    /** Install the acknowledged participant fold in its original detail projection. */
+    fun applyMemberResult(task: DebtTask, updated: Debt) {
+        val current = _state.value.debt ?: return
+        if (loadedPublicId != task.debtPublicId || loadedBinding != task.binding ||
+            adjustments.currentAccess()?.binding != task.binding || updated.publicId != task.debtPublicId ||
+            updated.rowVersion < current.rowVersion) return
+        loadGeneration++
+        detectSettleCelebration(updated, previousStatusByPublicId, celebratedDebtIds)?.let { _celebration.value = it }
+        _state.update { it.copy(debt = updated, isLoading = false, error = null,
+            adjustmentRefreshAfterVersion = it.adjustmentRefreshAfterVersion?.takeIf { version -> updated.rowVersion <= version },
+            adjustmentRefreshAtVersion = it.adjustmentRefreshAtVersion?.takeIf { version -> updated.rowVersion < version }) }
+    }
+
     fun openAction(action: DebtAction, repayment: DebtRepayment? = null) {
         val current = _state.value
         if (!current.canWriteActions) return
@@ -202,12 +217,13 @@ class DebtDetailViewModel(
         }
     }
 
-    fun updateActionInput(amount: String = state.value.amountInput, reason: String = state.value.reasonInput) {
-        _state.update { it.copy(amountInput = amount, reasonInput = reason, validationError = null) }
-    }
-
-    fun setAdjustmentSign(increase: Boolean) {
-        _state.update { it.copy(adjustmentIncrease = increase, validationError = null) }
+    fun updateActionInput(
+        amount: String = state.value.amountInput,
+        reason: String = state.value.reasonInput,
+        adjustmentIncrease: Boolean = state.value.adjustmentIncrease,
+    ) {
+        _state.update { it.copy(amountInput = amount, reasonInput = reason,
+            adjustmentIncrease = adjustmentIncrease, validationError = null) }
     }
 
     fun dismissAction() {

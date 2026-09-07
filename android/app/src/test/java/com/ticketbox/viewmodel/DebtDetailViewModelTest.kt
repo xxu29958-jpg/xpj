@@ -305,7 +305,7 @@ class DebtDetailViewModelTest {
 
             viewModel.openAction(DebtAction.Adjustment)
             viewModel.updateActionInput(amount = "500.01", reason = "减免")
-            viewModel.setAdjustmentSign(increase = false)
+            viewModel.updateActionInput(adjustmentIncrease = false)
             viewModel.submit()
             advanceUntilIdle()
             assertTrue(viewModel.state.value.validationError != null)

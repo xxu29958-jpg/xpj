@@ -128,7 +128,7 @@ class DebtAdjustmentViewModelTest {
 
         viewModel.openAction(DebtAction.Adjustment)
         viewModel.updateActionInput(amount = "50", reason = "  减免  ")
-        viewModel.setAdjustmentSign(increase = false)
+        viewModel.updateActionInput(adjustmentIncrease = false)
         viewModel.submit()
         advanceUntilIdle()
 
@@ -214,7 +214,7 @@ class DebtAdjustmentViewModelTest {
         advanceUntilIdle()
         viewModel.openAction(DebtAction.Adjustment)
         viewModel.updateActionInput(amount = "50", reason = "减免")
-        viewModel.setAdjustmentSign(increase = false)
+        viewModel.updateActionInput(adjustmentIncrease = false)
         viewModel.submit()
         runCurrent()
 
@@ -278,7 +278,7 @@ class DebtAdjustmentViewModelTest {
         advanceUntilIdle()
         viewModel.openAction(DebtAction.Adjustment)
         viewModel.updateActionInput(amount = "50", reason = "减免")
-        viewModel.setAdjustmentSign(increase = false)
+        viewModel.updateActionInput(adjustmentIncrease = false)
         viewModel.submit()
         runCurrent()
         assertEquals(adjustmentBinding(), adjustments.saveCalls.single().binding)

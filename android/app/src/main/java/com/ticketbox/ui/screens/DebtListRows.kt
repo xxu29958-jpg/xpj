@@ -14,9 +14,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import com.ticketbox.R
 import com.ticketbox.domain.model.Debt
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.DebtLinkStatuses
 import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.AppProgressBar
+import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
 import kotlin.math.roundToInt
@@ -82,6 +84,13 @@ internal fun MemberDebtRow(
                 ),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.size(AppSpacing.smallGap))
+            Text(
+                stringResource(R.string.debt_member_remaining_amount,
+                    formatDisplayAmount(debt.remainingAmountCents, CurrencyDisplay.forRecord(debt.homeCurrencyCode))),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
             )
             if (debt.isOpen) {
                 Spacer(Modifier.size(AppSpacing.compactGap))

@@ -2,6 +2,7 @@
 
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -127,3 +128,22 @@ def test_receivables_combine_local_and_cross_ledger_without_exposing_cross_ledge
     assert rows[cross]["ledger_id"] is None
     assert rows[cross]["counterparty_label"] == "另一账本成员"
     assert rows[cross]["viewer_is_debtor"] is False
+
+
+@pytest.mark.parametrize("path", ["/api/debts?lens=payables", "/api/debts", "/api/debts/{debt_id}"])
+def test_split_debtor_can_identify_the_creditor_across_list_and_detail(
+    client: TestClient, identity, path: str,
+) -> None:
+    creditor = _member("小林", "private_creditor_ledger")
+    debt_id = _split(_owner_id(), creditor)
+    response = client.get(path.format(debt_id=debt_id), headers=identity.app_headers)
+    assert response.status_code == 200
+    body = response.json()
+    row = next(item for item in body["items"] if item["public_id"] == debt_id) if "items" in body else body
+
+    assert row["counterparty_label"] == "小林"
+    assert row["remaining_amount_cents"] == 800
+    assert row["home_currency_code"] == "CNY"
+    assert row["viewer_is_debtor"] is True
+    assert row["ledger_id"] == "owner"
+    assert "private_creditor_ledger" not in response.text

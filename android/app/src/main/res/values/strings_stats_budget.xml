@@ -432,6 +432,7 @@
     <!-- ADR-0049 §3 (slice 8c) 欠款详情 + 记还款 / 调整 / 作废管理。 -->
     <string name="debt_detail_back">返回</string>
     <string name="debt_detail_title">欠款详情</string>
+    <string name="debt_member_remaining_amount">剩余 %1$s</string>
     <string name="debt_detail_remaining">剩余</string>
     <string name="debt_detail_principal">本金</string>
     <string name="debt_detail_paid">已偿还</string>
@@ -515,19 +516,19 @@
 
     <!-- ADR-0049 §3.2 (slice 8d) + §7.0 (slice 8e-2) 成员欠款 repayment 收发箱：① 暖措辞（关系化，
          去核验/收账味）。成员债 = Communal 不是 Market；仅成员债改，外部债 debt_action_* 不动。 -->
-    <string name="debt_proposal_debtor_title">把我那份补上</string>
-    <string name="debt_proposal_debtor_hint">这件事由 TA 记的账。补上你那份后，TA 确认一下就两清啦。</string>
+    <string name="debt_proposal_debtor_title">记录还款</string>
+    <string name="debt_proposal_debtor_hint">还款后填写这次金额，发给 TA 核对。确认后才会更新剩余金额。</string>
     <string name="debt_proposal_debtor_pending_hint">已经发给 TA 啦，等 TA 看到确认一下～</string>
-    <string name="debt_proposal_propose_action">把这份给 TA</string>
+    <string name="debt_proposal_propose_action">提交还款确认</string>
     <string name="debt_proposal_withdraw_action">撤回</string>
-    <string name="debt_proposal_creditor_title">TA 给你的</string>
+    <string name="debt_proposal_creditor_title">待核对的还款</string>
     <string name="debt_proposal_creditor_waiting">还没有新消息，有进展会出现在这里～</string>
-    <string name="debt_proposal_creditor_pending">TA 把 %1$s 那份给你啦，收到了就确认一下吧～</string>
+    <string name="debt_proposal_creditor_pending">TA 申报已还 %1$s，请核对实际收到的金额。</string>
     <string name="debt_proposal_confirm_action">收到啦，谢谢～</string>
     <string name="debt_proposal_reject_action">金额对不上？</string>
     <string name="debt_proposal_note_label">想说点什么？（可选）</string>
-    <string name="debt_proposal_propose_title">把我那份给 TA</string>
-    <string name="debt_proposal_confirm_title">收到 TA 的这份</string>
+    <string name="debt_proposal_propose_title">记录这次已还金额</string>
+    <string name="debt_proposal_confirm_title">核对实际收到的金额</string>
     <string name="debt_proposal_voided_note">这件事已经不用记啦。</string>
     <string name="debt_proposal_cleared_note">这件事你们已经两清啦 🌿</string>
     <string name="debt_proposal_readonly_note">你现在只能查看这件事，不能记账哦。</string>
@@ -535,15 +536,16 @@
     <string name="debt_proposal_amount_validation">请填一个大于 0 的金额～</string>
     <string name="debt_proposal_confirm_over">收到的不能比 TA 给的那份多哦。</string>
     <string name="debt_proposal_currency_mismatch">这笔还款与欠款的币种信息不一致，请刷新或升级小票夹后再确认。</string>
-    <string name="debt_proposal_propose_done">已经发给 TA 啦，等 TA 确认一下～</string>
-    <string name="debt_proposal_confirm_done">收到啦，谢谢 TA～</string>
+    <string name="debt_proposal_propose_done">已提交，等待 TA 确认还款。</string>
+    <string name="debt_proposal_confirm_done">这次还款已确认。</string>
     <string name="debt_proposal_withdraw_done">已经撤回啦。</string>
     <string name="debt_proposal_reject_done">已经回复 TA「金额对不上」啦。</string>
     <string name="debt_proposal_action_failed">没成功，待会儿再试一下～</string>
     <string name="debt_proposal_load_failed">往来记录没加载出来，待会儿再看看～</string>
-    <!-- 状态徽章：成员债历史一律 neutral（§3.4）；confirmed→已两清、rejected→在对账（去 shame）。 -->
+    <string name="debt_proposal_refresh_after_action_failed">操作已完成，往来列表暂未更新。已确认的结果仍保留，请刷新后继续。</string>
+    <!-- 状态徽章：成员债历史一律 neutral（§3.4）；confirmed→本次还款已确认、rejected→在对账（去 shame）。 -->
     <string name="debt_proposal_status_pending">待 TA 确认</string>
-    <string name="debt_proposal_status_confirmed">已两清</string>
+    <string name="debt_proposal_status_confirmed">已确认</string>
     <string name="debt_proposal_status_partially_confirmed">收了一部分</string>
     <string name="debt_proposal_status_rejected">在对账</string>
     <string name="debt_proposal_status_withdrawn">已撤回</string>
