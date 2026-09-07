@@ -226,3 +226,9 @@ source `2c84d60f5e5bc502d43691eb14cacefb2c46271c` / tree `161bace602953a6d9db02a
 CI `34076984994` 的 Android fast 在新 Scheduler 测试编译阶段缺少 `CallbackToFutureAdapter`，没有执行 JVM 行为反例。按照官方 WorkManager 2.11.2 POM 所用 concurrent-futures 1.1.0，仅补直接 testImplementation 依赖及版本目录；生产 KEEP、约束、backoff 与周期 owner 不变，仍待真实调度反例执行。
 
 同一 CI 的 Windows 浏览器 12 项实际执行中有 1 项在 layout probe 产生结果前超时，尚未到 response-loss 注入。与 CSV b9d8f67b 的另一实际超时都不能认定根因或偶发。施工前追踪现有 `evaluate_page` 的所有测试调用者；仅给原超时出口增加固定枚举/布尔的页面阶段观察，并在两条真实 bootstrap 测试补创建/剩余文件计数。原 10 秒判定、两次仅 transport 重试、故障注入与业务断言不变；不输出 URL、路径、cookie、token 或原错误文本。此为测试诊断，不修改 Manager/Backend/Windows 生命周期；下一云端 native 结果才能判定实际停留阶段。
+
+### ded10135 调度反例与完成前的 owner 清理
+
+source `ded1013521bce4de3e62bfa376e6761feee2b666` 的 Android fast job `101610640938` 已实际执行 2176 项 JVM；原 XML artifact `10003189992` 中 Scheduler 两例执行，取消后重建原链通过，最后空读之后的 enqueue 则精确失败于 WorkManager 只有原 RUNNING 工作、缺少持久后继（expected 2 / actual 1）。这不是编译失败。对照同版官方 `ExistingWorkPolicy` 源码，唯一即时工作策略改为 APPEND_OR_REPLACE；全部插入/恢复入口继续调用原 `enqueueOnce`，保留运行者、WorkManager 持久化及取消后新链，网络约束、指数 backoff、周期 UPDATE 与原 Outbox payload/OCC/key 不变。真实队列和发送后置条件由同两例在下一 exact candidate 核准。
+
+同轮另一失败为邀请 JVM 测试的 ViewModel 在 resetMain 后仍有 IO continuation。该类 11 个既有用例都自行创建真实 ViewModel，却未在测试结束前取消并等待其 scope；读取到 UI state 不等于 owner 已结束。现在每例 finally 都先取消并等待自己的 owner，再撤销 Main dispatcher。11 条业务用例及断言、真实 IO、生产邀请接线均保持；不添加 sleep、重试、全局 executor 或弱化协程错误。这是直接验证生产者的生命周期纠正，需要下一 exact JVM 结果验证。
