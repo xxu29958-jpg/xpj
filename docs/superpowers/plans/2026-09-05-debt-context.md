@@ -8,7 +8,7 @@
 
 **Tech Stack:** FastAPI/Pydantic/SQLAlchemy/Alembic, native Jinja forms, Kotlin/Compose and existing DTO mappers.
 
-**Spec:** `docs/current/TICKETBOX_CURRENT_PRODUCT_ATLAS.md`, External-debt context construction section, derived from the current Goal and final product/construction contracts.
+**Spec:** [External-debt context journey](../../current/TICKETBOX_USER_JOURNEYS_CONTRACT.md#external-debt-context), derived from the current Goal and final product/construction contracts. The [product atlas](../../current/TICKETBOX_CURRENT_PRODUCT_ATLAS.md) tracks current capability and delivery status.
 
 ## Global Constraints
 

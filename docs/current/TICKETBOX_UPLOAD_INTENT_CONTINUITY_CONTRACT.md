@@ -2,7 +2,7 @@
 
 The opening test-first restrictions below describe that historical phase. Current implementation, qualification, protected merge and hygiene are authorized by the full Goal and subsequent Owner rulings. Current status is recorded in the latest dated evidence below and the same Product Atlas; earlier source results do not qualify a changed head.
 
-- Goal：完成总 Goal / 最终产品合同已要求的 Capture 离线、草稿与恢复任务。原 A/B/C 分享在 A 已保存、B 容量拒绝、C 未发送后，即使原 VM / graph 不再存在且来源 URI 不可再读，用户仍能找到并继续原 B/C，A 不重发。此处是 [Atlas 唯一已登记缺口](TICKETBOX_CURRENT_PRODUCT_ATLAS.md) 的下一纵向片；#381 的 VM 内容量续传仍保持 CLOSED。
+- Goal：完成总 Goal / 最终产品合同已要求的 Capture 离线、草稿与恢复任务。原 A/B/C 分享在 A 已保存、B 容量拒绝、C 未发送后，即使原 VM / graph 不再存在且来源 URI 不可再读，用户仍能找到并继续原 B/C，A 不重发。此处是 [Atlas Capture 交付包](TICKETBOX_CURRENT_PRODUCT_ATLAS.md#5-remaining-delivery-packages) 的当前纵向片；#381 的 VM 内容量续传仍保持 CLOSED。
 - Authority：总 Goal 与最新用户裁决 → 2026-08-26 最终产品合同 Capture 责任及离线意图条款（225–229、372–400），G2 后合同 Inbox 条款（242–249）→ exact source / 实际执行证据。旧代码的 online-only 注释不决定产品范围。
 - Allowed Changes：当前阶段只新增两个直接行为反例、必要的真实仓储 fixture、本合同和 Atlas 原 gap 链接。后续生产须复用现有上传、Room Outbox、幂等、身份与恢复 owner；本阶段没有生产实现授权。
 - Forbidden Surface：不新增 queue / status ledger / bus；不把图片相同当作命令幂等；不把本地保存冒充服务端 receipt；不清除未完成原意图来满足回归；不修改鉴权、金额 writer、容量政策或其它领域；不扩展任何 Windows 生命周期 HOLD。无本机 Gradle / PG / 长测，无 stage / commit / push。
