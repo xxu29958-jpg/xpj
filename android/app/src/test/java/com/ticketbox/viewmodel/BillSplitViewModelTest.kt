@@ -7,6 +7,7 @@ import com.ticketbox.domain.model.BillSplitSent
 import com.ticketbox.domain.model.BillSplitStatusValues
 import com.ticketbox.domain.model.LEDGER_ROLE_OWNER
 import com.ticketbox.domain.model.LedgerSummary
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -104,12 +105,47 @@ class BillSplitViewModelTest {
 
         assertEquals(listOf(BillSplitTargetLedger("fresh", "Fresh ledger")), vm.uiState.value.candidateTargetLedgers)
     }
+
+    @Test
+    fun acceptedResultIsKeptWhenTheFollowingListRefreshFails() = billSplitTest {
+        val fake = FakeBillSplitActions(inboxResult = Result.success(listOf(inboxInvite())))
+        val vm = BillSplitViewModel(fake, FakeBillSplitLedgerActions())
+        vm.refresh()
+        advanceUntilIdle()
+        fake.inboxResult = Result.failure(IllegalStateException("refresh unavailable"))
+
+        vm.accept("split_in_1", "receiver")
+        advanceUntilIdle()
+
+        assertEquals(BillSplitStatusValues.ACCEPTED, vm.uiState.value.inbox.single().status)
+        assertEquals(false, vm.uiState.value.loading)
+        assertNotNull(vm.uiState.value.message)
+    }
+
+    @Test
+    fun repeatedAcceptTapDoesNotStartAnotherCommand() = billSplitTest {
+        val fake = FakeBillSplitActions()
+        val gate = CompletableDeferred<Unit>()
+        fake.acceptGate = gate
+        val vm = BillSplitViewModel(fake, FakeBillSplitLedgerActions())
+        try {
+            vm.accept("split_in_1", "receiver")
+            vm.accept("split_in_1", "receiver")
+            advanceUntilIdle()
+            assertEquals(1, fake.acceptCalls)
+        } finally {
+            gate.complete(Unit)
+            advanceUntilIdle()
+        }
+    }
 }
 
 private class FakeBillSplitActions(
     var inboxResult: Result<List<BillSplitInbox>> = Result.success(emptyList()),
     var sentResult: Result<List<BillSplitSent>> = Result.success(emptyList()),
 ) : BillSplitActions {
+    var acceptGate: CompletableDeferred<Unit>? = null
+    var acceptCalls = 0
     override suspend fun fetchBillSplitInbox(): Result<List<BillSplitInbox>> = inboxResult
 
     override suspend fun fetchBillSplitSent(): Result<List<BillSplitSent>> = sentResult
@@ -117,7 +153,11 @@ private class FakeBillSplitActions(
     override suspend fun acceptBillSplitInvitation(
         publicId: String,
         targetLedgerId: String,
-    ): Result<BillSplitInbox> = Result.success(inboxInvite(publicId = publicId))
+    ): Result<BillSplitInbox> {
+        acceptCalls += 1
+        acceptGate?.await()
+        return Result.success(inboxInvite(publicId = publicId, status = BillSplitStatusValues.ACCEPTED))
+    }
 
     override suspend fun rejectBillSplitInvitation(publicId: String): Result<BillSplitInbox> =
         Result.success(inboxInvite(publicId = publicId, status = BillSplitStatusValues.REJECTED))
