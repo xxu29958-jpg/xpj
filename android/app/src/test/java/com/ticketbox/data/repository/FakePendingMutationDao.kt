@@ -187,17 +187,16 @@ class FakePendingMutationDao : PendingMutationDao {
             .sortedWith(compareBy({ it.createdAt }, { it.id }))
             .take(limit)
 
-    override suspend fun requeueWithFreshToken(
+    override suspend fun requeueConflictWithFreshToken(
         id: Long,
         ownerKey: String,
         ledgerId: String,
         freshToken: Long,
         rotatedIdempotencyKey: String?,
-        expectedStatus: String,
     ): Int {
         val current = rows[id] ?: return 0
         if (current.type in setOf("correct_expense", "create_expense_offset", "upload_screenshot")) return 0
-        if (current.ownerKey != ownerKey || current.ledgerId != ledgerId || current.status != expectedStatus || expectedStatus !in setOf("conflict", "failed")) return 0
+        if (current.ownerKey != ownerKey || current.ledgerId != ledgerId || current.status != "conflict") return 0
         // codex P1 #7: 同步真实 DAO 的 retryCount = 0 重置, 否则 fake 看不到用户 retry
         // 重置预算的语义。
         rows[id] = current.copy(
@@ -213,6 +212,30 @@ class FakePendingMutationDao : PendingMutationDao {
         return 1
     }
 
+    override suspend fun requeueFailedWithFreshToken(
+        id: Long,
+        ownerKey: String,
+        ledgerId: String,
+        freshToken: Long,
+        rotatedIdempotencyKey: String?,
+    ): Int {
+        val current = rows[id] ?: return 0
+        if (current.type in setOf("correct_expense", "create_expense_offset", "upload_screenshot")) return 0
+        if (current.ownerKey != ownerKey || current.ledgerId != ledgerId || current.status != "failed") return 0
+        // codex P1 #7: 同步真实 DAO 的 retryCount = 0 重置, 否则 fake 看不到用户 retry
+        // 重置预算的语义。
+        rows[id] = current.copy(
+            status = "pending",
+            expectedRowVersion = freshToken,
+            // ADR-0042 §4.8: rotate only key-bearing rows (mirrors the DAO CASE).
+            idempotencyKey = if (current.idempotencyKey != null) rotatedIdempotencyKey else null,
+            retryCount = 0,
+            lastError = null,
+            blocksFollowing = true,
+        )
+        refreshObservables()
+        return 1
+    }
 
     override suspend fun retryFailed(id: Long, ownerKey: String, ledgerId: String): Int {
         val current = rows[id] ?: return 0

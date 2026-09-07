@@ -278,23 +278,50 @@ interface PendingMutationDao {
         WHERE id = :id
           AND ownerKey = :ownerKey
           AND ledgerId = :ledgerId
-          AND status = :expectedStatus AND status IN ('conflict', 'failed')
+          AND status = 'conflict'
           AND type NOT IN ('correct_expense', 'create_expense_offset', 'upload_screenshot')
         """,
     )
-    suspend fun requeueWithFreshToken(
+    suspend fun requeueConflictWithFreshToken(
         id: Long,
         ownerKey: String,
         ledgerId: String,
         freshToken: Long,
         rotatedIdempotencyKey: String?,
-        expectedStatus: String,
+    ): Int
+
+    /** Atomic FAILED to PENDING replacement after an explicit current-fact review. */
+    @Query(
+        """
+        UPDATE pending_mutations
+        SET status = 'pending',
+            expectedRowVersion = :freshToken,
+            idempotencyKey = CASE
+                WHEN idempotencyKey IS NOT NULL THEN :rotatedIdempotencyKey
+                ELSE idempotencyKey
+            END,
+            retryCount = 0,
+            lastError = NULL,
+            blocksFollowing = 1
+        WHERE id = :id
+          AND ownerKey = :ownerKey
+          AND ledgerId = :ledgerId
+          AND status = 'failed'
+          AND type NOT IN ('correct_expense', 'create_expense_offset', 'upload_screenshot')
+        """,
+    )
+    suspend fun requeueFailedWithFreshToken(
+        id: Long,
+        ownerKey: String,
+        ledgerId: String,
+        freshToken: Long,
+        rotatedIdempotencyKey: String?,
     ): Int
 
     /**
      * Atomic ``FAILED → PENDING`` manual retry (no token refresh).
      * Same race-protection rationale as
-     * [requeueWithFreshToken] / [markInFlightIfPending].
+     * [requeueFailedWithFreshToken] / [markInFlightIfPending].
      *
      * codex P1 #7: 用户手动 retry 时 ``retryCount = 0``。否则用户点 Retry → 立刻被
      * max_attempts 拦住 → 再点 Retry → 再被拦, 退化成永远困在 FAILED。重置 retryCount

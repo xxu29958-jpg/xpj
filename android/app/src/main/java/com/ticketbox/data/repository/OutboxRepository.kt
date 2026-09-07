@@ -741,7 +741,7 @@ class OutboxRepository private constructor(
      * historical attempt count survives so observability / debug surfaces can
      * read it (codex P1 #7). Once the user picks
      * [FailedResolution.Retry][FailedResolution.Retry], the DAO atomic update
-     * (`retryFailed` / `requeueWithFreshToken`) zeros it so they get a
+     * (`retryFailed` / `requeueFailedWithFreshToken`) zeros it so they get a
      * fresh budget. While the row is FAILED, ``retryCount`` should be treated
      * as historical-only — no future drain decision keys off it.
      */
@@ -791,6 +791,8 @@ class OutboxRepository private constructor(
 
     /** One status-checked recovery owner; only an actual replay or deletion wakes successors. */
     private suspend fun resolveStatus(id: Long, status: PendingMutationStatus, drop: Boolean, freshToken: Long?): Boolean {
+        val requeue = if (status == PendingMutationStatus.Conflict) dao::requeueConflictWithFreshToken
+            else dao::requeueFailedWithFreshToken
         var expired = false
         val changed = bindingTransitionLease.withLock {
             val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
@@ -800,8 +802,8 @@ class OutboxRepository private constructor(
                     expired = true
                     true
                 }
-                freshToken != null -> dao.requeueWithFreshToken(id, binding.ownerStorageKey, binding.ledgerId,
-                    freshToken, UUID.randomUUID().toString(), status.wireValue) > 0
+                freshToken != null -> requeue(id, binding.ownerStorageKey, binding.ledgerId,
+                    freshToken, UUID.randomUUID().toString()) > 0
                 else -> dao.retryFailed(id, binding.ownerStorageKey, binding.ledgerId) > 0
             }
         }
