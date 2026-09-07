@@ -48,7 +48,7 @@ internal class ExpenseCorrectionRepository(
             val bound = core.ledgerRequestGuard.bindExact(expectedBinding)
             val target = "expense:${expense.id}"
             if (outbox.activeForTarget(bound, target).isNotEmpty() || observe().first().corrections.any {
-                    it.row.targetId == target && !it.hasSupportedIntent
+                    it.row.targetId == target && (!it.hasSupportedIntent || it.refreshRequired)
                 }) throw RepositoryException("这笔账单有待处理的提交，请先查看原提交。")
             val payload = ExpenseCorrectionPayload(1, expense.id, expense.merchant,
                 expense.originalCurrencyCodeRaw ?: expense.originalCurrencyCode.storageKey, expense.originalAmountMinor, expense.homeCurrencyCode ?: expense.homeCurrency.storageKey,
@@ -68,7 +68,7 @@ internal class ExpenseCorrectionRepository(
         val changed = when {
             drop && pending.canDiscard -> {
                 if (pending.hasSupportedIntent && pending.row.lastError != "correction_target_unavailable") {
-                    refreshBeforeDiscard(bound, requireNotNull(pending.expenseId))
+                    core.fetchAuthoritativeExpense(bound, requireNotNull(pending.expenseId))
                 }
                 outbox.discardCorrection(bound, pending.row)
             }
@@ -77,16 +77,5 @@ internal class ExpenseCorrectionRepository(
         }
         if (!changed) throw RepositoryException("原提交状态已变化，请重新查看。")
         if (!drop) outbox.schedulePending()
-    }
-
-    private suspend fun refreshBeforeDiscard(bound: BoundLedgerRequest, expenseId: Long) {
-        val current = bound.call { it.expense(expenseId) }
-        if (current.status == "confirmed") {
-            core.cacheIfConfirmed(current, bound)
-        } else {
-            core.withActiveBindingCommit(bound) {
-                core.expenseDao.retireConfirmedRoot(bound.ledgerId, expenseId, current.rowVersion)
-            }
-        }
     }
 }

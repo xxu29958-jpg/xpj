@@ -91,10 +91,17 @@ class FactEntryNavigationTest {
     }
 
     private fun openRecoveryFactAndReturn() {
+        val original = harness.fixture.stored().single()
+        val binding = requireNotNull(harness.fixture.graph.expenseRepository.captureDeferredLedgerBinding())
         waitForText("原因：导航核对原提交")
         compose.onNodeWithText("原因：导航核对原提交").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("刷新并核对当前事实").performScrollTo().performClick()
         assertRealFactAndReturn()
+        assertEquals(original, harness.fixture.stored().single())
+        assertEquals(binding, harness.fixture.graph.expenseRepository.captureDeferredLedgerBinding())
+        assertTrue(harness.fixture.network.calls.isEmpty())
+        waitForText(context.getString(R.string.sync_status_page_subtitle))
+        compose.onNodeWithText(context.getString(R.string.sync_status_page_subtitle)).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(context.getString(R.string.sync_status_page_title)).performScrollTo().assertIsDisplayed()
         waitForText("原因：导航核对原提交")
         compose.onNodeWithText("原因：导航核对原提交").performScrollTo().assertIsDisplayed()

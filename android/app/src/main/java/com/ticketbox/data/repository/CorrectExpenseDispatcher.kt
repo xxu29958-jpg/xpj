@@ -32,15 +32,17 @@ class CorrectExpenseDispatcher(
         } catch (_: Exception) {
             return DispatchResult.Failure("correction_request_failed")
         }
-        // A rebuildable cache failure cannot undo a known 2xx. The detail observer
-        // retains DONE and independently refreshes fact/collections/history.
+        // A rebuildable cache failure cannot undo a known 2xx. Persist its receipt
+        // version with DONE so detail and global recovery can request a fresh root.
         var cancellation: CancellationException? = null
+        var cacheRefreshVersion: Long? = null
         try {
             cacheAuthoritativeExpense(row.ledgerId, response.expense)
         } catch (e: CancellationException) {
             cancellation = e
         } catch (_: Exception) {
             // The authoritative GET is the recovery path; never resend a new command.
+            cacheRefreshVersion = response.expense.rowVersion
         } finally {
             try {
                 onConfirmedCommitted(row.ledgerId)
@@ -51,6 +53,6 @@ class CorrectExpenseDispatcher(
             }
         }
         cancellation?.let { throw it }
-        return DispatchResult.Success(newRowVersion = response.expense.rowVersion)
+        return DispatchResult.Success(newRowVersion = response.expense.rowVersion, cacheRefreshVersion = cacheRefreshVersion)
     }
 }

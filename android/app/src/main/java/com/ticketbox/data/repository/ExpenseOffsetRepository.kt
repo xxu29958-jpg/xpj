@@ -123,6 +123,7 @@ internal class ExpenseOffsetRepository(private val core: ExpenseRepositoryCore) 
                 )
                 core.onConfirmedCommitted(bound.ledgerId)
             }
+            core.acknowledgeCorrectionRefresh(bound, mapOf(response.root.id to response.root.rowVersion))
             true
         } catch (cancelled: CancellationException) {
             throw cancelled

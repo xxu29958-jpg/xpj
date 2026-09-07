@@ -138,16 +138,18 @@ class DebtListViewModel(
         val binding = creation.currentAccess()?.binding
         _state.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
-            val result = repository.listDebts(lens).mapCatching { page ->
-                check(page.debts.filterNot { "debt:${it.publicId}" in observation.unresolvedTargetIds }
-                    .all(observation::acceptsCanonical)) { "请刷新并核对调整后的欠款。" }
-                page
-            }
+            val result = repository.listDebts(lens)
             // Drop a load superseded by a newer refresh (which set isLoading and owns clearing it).
             if (gen != loadGeneration || binding != creation.currentAccess()?.binding ||
                 binding != adjustments.currentAccess()?.binding) return@launch
             result.fold(
                 onSuccess = { page ->
+                    if (!page.debts.filterNot { "debt:${it.publicId}" in observation.unresolvedTargetIds }
+                            .all(observation::acceptsCanonical)) {
+                        _state.update { it.copy(isLoading = false,
+                            error = UiText.res(R.string.debt_adjustment_canonical_refresh_required)) }
+                        return@launch
+                    }
                     val debts = page.debts
                     // 同源裁决（PR#255 R6 P1-1 / R7-1，ADR-0061 C02/C03）：非空账本取 record 级
                     // 权威值；空账本取列表信封的安装级 capability（空账本首笔创建由此放行，

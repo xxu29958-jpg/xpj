@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
@@ -551,13 +552,30 @@ class OutboxRepository private constructor(
         dao.deleteIfStatus(row.id, binding.ownerStorageKey, binding.ledgerId, row.status.wireValue) > 0
     }
 
-    suspend fun markDone(id: Long) {
+    suspend fun markDone(id: Long, cacheRefreshVersion: Long? = null) {
         dao.markDone(
             id = id,
             status = PendingMutationStatus.Done.wireValue,
             completedAt = nowIso(),
+            lastError = cacheRefreshVersion?.let { "$CORRECTION_REFRESH_PREFIX$it" },
         )
     }
+
+    /** Acknowledges adopted roots without changing delivery, original OCC or command bytes. */
+    internal suspend fun acknowledgeCorrectionRefresh(boundRequest: BoundLedgerRequest, versions: Map<Long, Long>) =
+        bindingTransitionLease.withLock {
+            val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
+            boundRequest.requireStillActiveFor(binding)
+            val rows = dao.observeActiveByTypes(binding.ownerStorageKey, binding.ledgerId,
+                listOf(PendingMutationType.CorrectExpense.wireValue), listOf(PendingMutationStatus.Done.wireValue)).first()
+            for (row in rows) {
+                val required = correctionRefreshVersion(row.lastError) ?: continue
+                val target = parseExpenseTargetRef(row.targetId)?.toLongOrNull() ?: continue
+                if ((versions[target] ?: continue) >= required) {
+                    dao.clearCorrectionRefresh(row.id, requireNotNull(row.lastError))
+                }
+            }
+        }
 
     /**
      * Cascade a freshly-server-returned token to every PENDING row

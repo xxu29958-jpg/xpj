@@ -104,15 +104,17 @@ class CreateDebtGoalViewModel(
         val generation = ++loadGeneration
         _state.update { it.copy(isLoadingDebts = true, loadError = null) }
         viewModelScope.launch {
-            val result = debts.listDebts().mapCatching { page ->
-                check(page.debts.filterNot { "debt:${it.publicId}" in observation.unresolvedTargetIds }
-                    .all(observation::acceptsCanonical)) { "请刷新并核对调整后的欠款。" }
-                page
-            }
+            val result = debts.listDebts()
             if (generation != loadGeneration || observation.binding != adjustments.currentAccess()?.binding) return@launch
             val currentObservation = adjustmentObservation ?: return@launch
             result.fold(
                 onSuccess = { page ->
+                    if (!page.debts.filterNot { "debt:${it.publicId}" in observation.unresolvedTargetIds }
+                            .all(observation::acceptsCanonical)) {
+                        _state.update { it.copy(isLoadingDebts = false,
+                            loadError = UiText.res(R.string.debt_adjustment_canonical_refresh_required)) }
+                        return@launch
+                    }
                     _state.update {
                         it.copy(
                             isLoadingDebts = false,

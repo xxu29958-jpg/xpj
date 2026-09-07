@@ -282,7 +282,7 @@ class OutboxDrainEngine(
                 }
                 when (result) {
                     is DispatchResult.Success -> {
-                        outbox.markDone(row.id)
+                        outbox.markDone(row.id, result.cacheRefreshVersion)
                         // [codex finding P1#1] fix: cascade the
                         // server's post-mutation token to same-
                         // target PENDING rows so the next chained

@@ -188,7 +188,7 @@ private fun SyncStatusPageBody(
 
 @Composable
 private fun SyncStatusCorrectionSection(state: OutboxStatusUiState, actions: SyncStatusActions) {
-    state.correctionObservation.corrections.filter { !it.delivered }.forEach { pending ->
+    state.correctionObservation.corrections.filter { !it.delivered || it.refreshRequired }.forEach { pending ->
         com.ticketbox.ui.screens.expense.fact.ExpenseCorrectionSubmissionCard(
             pending = pending,
             options = CorrectionSubmissionOptions(state.correctionObservation.access?.canModify == true, state.busyRowId != null, false),

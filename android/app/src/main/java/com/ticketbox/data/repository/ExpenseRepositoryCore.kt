@@ -30,6 +30,7 @@ import com.ticketbox.domain.model.ledgerRoleCanModify
 import com.ticketbox.domain.model.normalizedTagNames
 import com.ticketbox.security.SessionCredentialProvider
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
@@ -241,8 +242,30 @@ internal class ExpenseRepositoryCore(
                 expenseDao.upsertByServerIdForLedger(bound.ledgerId, dto.toEntity(bound.ledgerId))
                 onConfirmedCommitted(bound.ledgerId)
             }
+            acknowledgeCorrectionRefresh(bound, mapOf(dto.id to dto.rowVersion))
         }
         return dto
+    }
+
+    suspend fun fetchAuthoritativeExpense(bound: BoundLedgerRequest, id: Long): ExpenseDto {
+        val dto = bound.call { it.expense(id) }
+        if (dto.status == "confirmed") return cacheIfConfirmed(dto, bound)
+        withActiveBindingCommit(bound) { expenseDao.retireConfirmedRoot(bound.ledgerId, id, dto.rowVersion) }
+        acknowledgeCorrectionRefresh(bound, mapOf(id to dto.rowVersion))
+        return dto
+    }
+
+    /** Marker cleanup must not turn a successful mutation into an offline enqueue. */
+    suspend fun acknowledgeCorrectionRefresh(bound: BoundLedgerRequest, versions: Map<Long, Long>) {
+        try {
+            outbox?.acknowledgeCorrectionRefresh(bound, versions)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (bindingError: RepositoryException) {
+            throw bindingError
+        } catch (_: Exception) {
+            // The durable requirement remains visible and can be acknowledged by the next read.
+        }
     }
 
     private suspend fun confirmedStreamPruneScope(
@@ -329,6 +352,7 @@ internal class ExpenseRepositoryCore(
                 settingsStore.saveLastConfirmedSyncAtForLedger(ledgerIdAtRequest, Instant.now().toString())
             }
         }
+        acknowledgeCorrectionRefresh(bound, roots.associate { requireNotNull(it.serverId) to it.rowVersion })
         // Only a full-ledger sync delivers the confirmed set the budget
         // advisor consumes; filtered syncs fingerprint a subset and would flap.
         if (isFullLedgerSync) {

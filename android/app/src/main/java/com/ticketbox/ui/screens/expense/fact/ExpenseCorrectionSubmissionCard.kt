@@ -31,7 +31,8 @@ internal fun ExpenseCorrectionSubmissionCard(
     options: CorrectionSubmissionOptions,
     actions: CorrectionSubmissionActions,
 ) {
-    val (canModify, busy, refreshPending) = options
+    val (canModify, busy) = options
+    val refreshPending = options.refreshPending || pending.refreshRequired
     val (recover, reviewFact) = actions
     var confirmDrop by rememberSaveable(pending.row.id) { mutableStateOf(false) }
     var expanded by rememberSaveable(pending.row.id) { mutableStateOf(false) }

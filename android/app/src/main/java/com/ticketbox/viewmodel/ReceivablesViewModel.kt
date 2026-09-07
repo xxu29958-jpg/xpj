@@ -74,15 +74,17 @@ class ReceivablesViewModel(
         val gen = ++loadGeneration
         _state.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
-            val result = repository.listReceivables().mapCatching { debts ->
-                check(debts.filterNot { "debt:${it.publicId}" in observation.unresolvedTargetIds }
-                    .all(observation::acceptsCanonical)) { "请刷新并核对调整后的欠款。" }
-                debts
-            }
+            val result = repository.listReceivables()
             // Drop a load superseded by a newer refresh (which set isLoading and owns clearing it).
             if (gen != loadGeneration || observation.binding != adjustments.currentAccess()?.binding) return@launch
             result.fold(
                 onSuccess = { debts ->
+                    if (!debts.filterNot { "debt:${it.publicId}" in observation.unresolvedTargetIds }
+                            .all(observation::acceptsCanonical)) {
+                        _state.update { it.copy(isLoading = false,
+                            error = UiText.res(R.string.debt_adjustment_canonical_refresh_required)) }
+                        return@launch
+                    }
                     _state.update {
                         it.copy(
                             isLoading = false,

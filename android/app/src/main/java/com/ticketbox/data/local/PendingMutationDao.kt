@@ -111,11 +111,17 @@ interface PendingMutationDao {
         UPDATE pending_mutations
         SET status = :status,
             completedAt = :completedAt,
-            lastError = NULL
+            lastError = :lastError
         WHERE id = :id
         """,
     )
-    suspend fun markDone(id: Long, status: String, completedAt: String): Int
+    suspend fun markDone(id: Long, status: String, completedAt: String, lastError: String?): Int
+
+    @Query("""
+        UPDATE pending_mutations SET lastError = NULL
+        WHERE id = :id AND type = 'correct_expense' AND status = 'done' AND lastError = :expectedError
+    """)
+    suspend fun clearCorrectionRefresh(id: Long, expectedError: String): Int
 
     @Query(
         """
@@ -727,6 +733,7 @@ interface PendingMutationDao {
         WHERE status = :doneStatus
           AND completedAt IS NOT NULL
           AND completedAt < :cutoffIso
+          AND (type != 'correct_expense' OR lastError IS NULL OR lastError NOT GLOB 'correction_refresh_required:*')
         """,
     )
     suspend fun deleteResolvedBefore(

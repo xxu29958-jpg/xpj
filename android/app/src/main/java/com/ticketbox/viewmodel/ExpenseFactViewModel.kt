@@ -40,6 +40,9 @@ data class ExpenseFactUiState(
     val expenseLoadState: ExpenseDetailDataLoadState = ExpenseDetailDataLoadState.Loading,
     /** True when known content is shown because the authoritative refresh failed. */
     val expenseStale: Boolean = false,
+    /** This view must adopt every receipt version it has observed, even after another reader acknowledges it. */
+    val requiredRootRowVersion: Long = 0L,
+    val initialRootVerificationPending: Boolean = false,
     val expenseLoadMessage: UiText? = null,
     val readOnly: Boolean = false,
     val thumbnail: ProtectedImage? = null,
@@ -110,8 +113,9 @@ data class ExpenseFactUiState(
     val doneAdviceInputsChanged: Boolean = false,
 ) {
     val authoritativeRootReady: Boolean get() = correctionAccess != null && expense != null &&
+        !initialRootVerificationPending && expense.rowVersion >= requiredRootRowVersion &&
         !expenseLoading && !expenseStale &&
-        expenseLoadState == ExpenseDetailDataLoadState.Loaded && corrections.none { !it.delivered }
+        expenseLoadState == ExpenseDetailDataLoadState.Loaded && corrections.none { !it.delivered || it.refreshRequired }
 
     val canStartCorrection: Boolean get() = !readOnly && authoritativeRootReady
 }
@@ -160,6 +164,7 @@ class ExpenseFactViewModel(
     internal var correctionSplitMemberGeneration = 0L
     internal var observedCorrectionCompletions: Set<Long>? = null
     internal var expenseLoadGeneration = 0L
+    internal var expenseReadInFlightGeneration: Long? = null
     internal var itemsLoadGeneration = 0L
     internal var splitsLoadGeneration = 0L
     internal var revisionLoadGeneration = 0L
@@ -172,6 +177,7 @@ class ExpenseFactViewModel(
     internal val _uiState = MutableStateFlow(
         ExpenseFactUiState(
             expense = initialExpense,
+            initialRootVerificationPending = initialExpense != null,
             expenseLoading = initialExpense == null,
             expenseLoadState = if (initialExpense == null) {
                 ExpenseDetailDataLoadState.Loading
@@ -188,8 +194,8 @@ class ExpenseFactViewModel(
             val knownExpense = _uiState.value.expense
             if (knownExpense == null) {
                 loadExpense(initialLoad = true)
-            } else if (knownExpense.canInitiateBillSplit(_uiState.value.readOnly)) {
-                loadBillSplitSent(onlyIfUnknown = true)
+            } else {
+                verifyInitialExpenseFromCache { loadExpense(initialLoad = true) }
             }
             loadCategories()
             knownExpense?.let { loadThumbnailFor(it) }
@@ -207,9 +213,11 @@ class ExpenseFactViewModel(
 
     private fun loadExpense(initialLoad: Boolean = false) {
         val generation = ++expenseLoadGeneration
+        expenseReadInFlightGeneration = generation
         _uiState.update {
             it.copy(
                 expenseLoading = true,
+                initialRootVerificationPending = false,
                 expenseLoadState = ExpenseDetailDataLoadState.Loading,
                 expenseStale = false,
                 expenseLoadMessage = null,
@@ -244,6 +252,8 @@ class ExpenseFactViewModel(
                     if (generation != expenseLoadGeneration) return@onFailure
                     resolveExpenseRefreshFailure(refreshError, generation)
                 }
+        }.invokeOnCompletion {
+            if (expenseReadInFlightGeneration == generation) expenseReadInFlightGeneration = null
         }
     }
 

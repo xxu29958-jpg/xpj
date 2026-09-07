@@ -148,7 +148,7 @@ internal class CorrectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
         val dispatcher = CorrectExpenseDispatcher({ stub }, com.ticketbox.OutboxAdapterGraph().correctionAdapter,
             cacheAuthoritativeExpense = { _, _ -> throw IOException("cache failure") },
             onConfirmedCommitted = budget.checker::checkAfterConfirmedWrite)
-        assertEquals(DispatchResult.Success(8), dispatcher.dispatch(row()))
+        assertEquals(DispatchResult.Success(8, cacheRefreshVersion = 8), dispatcher.dispatch(row()))
         assertEquals(1, budget.sourceCalls)
         assertEquals("v1:budget:owner:2026-06", budget.dispatched.single().key)
         assertEquals(5_000L, budget.dispatched.single().overspentCents)
@@ -166,7 +166,7 @@ internal class CorrectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
             val dispatcher = CorrectExpenseDispatcher({ stub }, com.ticketbox.OutboxAdapterGraph().correctionAdapter,
                 cacheAuthoritativeExpense = { _, _ -> if (cacheFails) throw IOException("cache failure") },
                 onConfirmedCommitted = { notificationAttempts++; throw IOException("notification failure") })
-            assertEquals(DispatchResult.Success(8), dispatcher.dispatch(row()))
+            assertEquals(DispatchResult.Success(8, cacheRefreshVersion = 8L.takeIf { cacheFails }), dispatcher.dispatch(row()))
             assertEquals(1, notificationAttempts)
             assertEquals(1, stub.calls)
         }

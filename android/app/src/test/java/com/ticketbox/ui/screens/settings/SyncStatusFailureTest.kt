@@ -184,6 +184,14 @@ class SyncStatusFailureTest {
         val doneOnly = syncStatusOverview(OutboxStatus(0, emptyList(), emptyList()), listOf(verified), emptyList())
         assertEquals(0, doneOnly.reviewRequiredCount)
         assertTrue(doneOnly.isSettled)
+        val refreshRequired = verified.copy(row = verified.row.copy(lastError = "correction_refresh_required:8"))
+        val deliveredWithOldCache = syncStatusOverview(OutboxStatus(0, emptyList(), emptyList()),
+            listOf(refreshRequired), emptyList())
+        assertEquals(0, deliveredWithOldCache.reviewRequiredCount, "Known delivery is not an unsupported old command")
+        assertEquals(1, deliveredWithOldCache.needsActionCount)
+        assertEquals(0, deliveredWithOldCache.queuedCount)
+        assertEquals(0, deliveredWithOldCache.failedCount)
+        assertFalse(deliveredWithOldCache.isSettled)
     }
 
     @Test

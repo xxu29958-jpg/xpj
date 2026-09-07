@@ -1,5 +1,6 @@
 package com.ticketbox.viewmodel
 
+import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.PendingMutationStatus
@@ -26,6 +27,7 @@ import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.job
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -156,8 +158,13 @@ class OutboxStatusViewModelTest {
                 else R.string.debt_adjustment_unsupported), vm.uiState.value.message)
             assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
 
+            val priorJobs = vm.viewModelScope.coroutineContext.job.children.toSet()
             vm.dropFailed(original)
+            val dropJob = vm.viewModelScope.coroutineContext.job.children.single { it !in priorJobs }
+            dropJob.join()
             runCurrent()
+            assertNull(vm.uiState.value.busyRowId)
+            assertNull(vm.uiState.value.message)
             assertEquals(emptyList(), harness.outbox.observeStatus().first().failed)
             val stopped = assertNotNull(vm.uiState.value.debtAdjustments[id])
             assertEquals(PendingMutationStatus.Abandoned, stopped.row.status)

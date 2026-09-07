@@ -31,10 +31,11 @@ internal data class SyncStatusOverview(
     val failedCount: Int,
     val quarantinedCount: Int,
     val reviewRequiredCount: Int,
+    val refreshRequiredCount: Int,
     val stoppedCount: Int,
     val writeBlock: OutboxWriteBlock?,
 ) {
-    val needsActionCount: Int = conflictCount + failedCount + quarantinedCount + reviewRequiredCount
+    val needsActionCount: Int = conflictCount + failedCount + quarantinedCount + reviewRequiredCount + refreshRequiredCount
     val isSettled: Boolean = queuedCount == 0 && needsActionCount == 0 && stoppedCount == 0
 }
 
@@ -49,6 +50,7 @@ internal fun syncStatusOverview(
         failedCount = status.failed.size,
         quarantinedCount = status.quarantinedCount.coerceAtLeast(0),
         reviewRequiredCount = corrections.count { !it.delivered && it.row.status == PendingMutationStatus.Done },
+        refreshRequiredCount = corrections.count { it.refreshRequired },
         stoppedCount = adjustments.count { it.row.status == PendingMutationStatus.Abandoned },
         writeBlock = status.writeBlock,
     )
@@ -98,6 +100,9 @@ internal fun SyncStatusOverviewSection(status: OutboxStatus, corrections: List<P
 
 @Composable
 private fun overviewCaption(overview: SyncStatusOverview): String = when {
+    overview.refreshRequiredCount > 0 -> stringResource(
+        R.string.sync_status_overview_caption_refresh_required, overview.refreshRequiredCount,
+    )
     overview.reviewRequiredCount > 0 -> stringResource(
         R.string.sync_status_overview_caption_review_required,
         overview.reviewRequiredCount,

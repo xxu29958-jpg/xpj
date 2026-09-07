@@ -26,7 +26,7 @@ internal class ExpenseDetailRepository(
 ) {
     suspend fun fetchExpense(id: Long): Result<Expense> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bind()
-        core.cacheIfConfirmed(bound.call { it.expense(id) }, bound).toDomain()
+        core.fetchAuthoritativeExpense(bound, id).toDomain()
     }
 
     /**
