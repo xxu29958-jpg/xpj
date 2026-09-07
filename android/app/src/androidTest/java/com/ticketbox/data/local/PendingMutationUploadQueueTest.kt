@@ -101,6 +101,28 @@ class PendingMutationUploadQueueTest {
     }
 
     @Test
+    fun refusedUploadOriginalsCannotRequeueButOrdinaryFailureAndOtherCommandsCan() = runBlocking<Unit> {
+        UploadQueueFixture().use { fixture ->
+            val refused = listOf("idempotency_key_reused", "unsupported_file_type", "file_too_large", "invalid_request")
+            val rows = refused.flatMap { code -> listOf(code, "$code:original refused") }.map { code ->
+                fixture.row(code).copy(status = "failed", lastError = code, blocksFollowing = false)
+            }
+            val ids = fixture.dao.insertBatch(rows)
+            for (id in ids) assertEquals(0, fixture.dao.retryFailed(id, OWNER, LEDGER))
+            assertEquals(rows.mapIndexed { index, row -> row.copy(id = ids[index]) }, fixture.reopen().allRows())
+            for (row in listOf(
+                fixture.row("network").copy(lastError = "upload_connection_failed"),
+                fixture.row("capacity").copy(lastError = "enrichment_capacity_full"),
+                fixture.row("protocol").copy(lastError = "client_upgrade_required"),
+                fixture.row("ordinary").copy(type = "patch_expense", lastError = "invalid_request"),
+            )) {
+                val id = fixture.dao.insert(row.copy(status = "failed"))
+                assertEquals(1, fixture.dao.retryFailed(id, OWNER, LEDGER))
+            }
+        }
+    }
+
+    @Test
     fun failedBatchRollsBackAndReadsDistinguishBoundLookupFromAllReferences() = runBlocking<Unit> {
         UploadQueueFixture().use { fixture ->
             val original = fixture.row("original").copy(id = 100)

@@ -69,6 +69,23 @@ internal class LaunchShareHandoffTest {
     }
 
     @Test
+    fun oversizedSelectionKeepsCancelWithoutRepeatingTheSameRefusedBatch() {
+        for (count in listOf(1, 100, 101)) {
+            val state = LaunchActionState()
+            val original = share("selection-$count", *(1..count).map { "image-$it" }.toTypedArray())
+            state.post(original)
+            assertTrue(state.beginUpload(original, binding()))
+            state.finishUpload(original, accepted = false)
+            state.retryUpload()
+            assertEquals(count > 100, state.awaitingUploadRetry)
+            assertEquals(if (count > 100) 0 else 1, state.uploadAttempt)
+            assertEquals(original.selection.uris, state.pendingUpload!!.selection.uris)
+            state.cancelUploadSelection()
+            assertNull(state.pending)
+        }
+    }
+
+    @Test
     fun activityAcknowledgesOnlyOneOriginalAndRestoresAnUncertainAcceptance() {
         val first = share("first", "a", "b").selection
         first.freezeBinding(binding())

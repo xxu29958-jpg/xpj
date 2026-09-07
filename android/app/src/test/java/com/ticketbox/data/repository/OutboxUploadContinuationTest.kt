@@ -10,15 +10,17 @@ import kotlin.test.assertTrue
 
 class OutboxUploadContinuationTest {
     @Test
-    fun permanentUploadKeyRefusalCannotRequeueThroughGenericRecovery() = runTest {
-        for (error in listOf("idempotency_key_reused", "idempotency_key_reused:original refused")) {
-            val dao = FakePendingMutationDao()
-            val outbox = testOutboxRepository(dao)
-            val id = enqueue(outbox, 1).single()
-            outbox.markFailed(id, error)
-            val original = dao.rows.getValue(id)
-            assertFalse(outbox.resolveFailed(id, FailedResolution.Retry()))
-            assertEquals(original, dao.rows.getValue(id))
+    fun permanentUploadRefusalsCannotRequeueThroughGenericRecovery() = runTest {
+        for (code in listOf("idempotency_key_reused", "unsupported_file_type", "file_too_large", "invalid_request")) {
+            for (error in listOf(code, "$code:original refused")) {
+                val dao = FakePendingMutationDao()
+                val outbox = testOutboxRepository(dao)
+                val id = enqueue(outbox, 1).single()
+                outbox.markFailed(id, error)
+                val original = dao.rows.getValue(id)
+                assertFalse(outbox.resolveFailed(id, FailedResolution.Retry()))
+                assertEquals(original, dao.rows.getValue(id))
+            }
         }
     }
 
