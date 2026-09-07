@@ -17,6 +17,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -141,6 +142,7 @@ internal class FakeReviewActions(
 
     // A3: 本地缓存种子源，与 [pending]（网络源）分开，便于测「缓存先铺、网络后替」。
     var cachedPending: List<Expense> = emptyList()
+    var cachedConfirmed: List<Expense> = emptyList()
     var getCachedPendingResponder: (suspend () -> Result<List<Expense>>)? = null
 
     var updateResponder: (suspend (Long, ExpenseDraft) -> Result<Expense>)? = null
@@ -180,6 +182,8 @@ internal class FakeReviewActions(
     override fun observeActiveLedgerId(): Flow<String?> = activeLedgerFlow
 
     override fun currentActiveLedgerId(): String? = activeLedgerIdProvider()
+
+    override fun observeConfirmed(): Flow<List<Expense>> = flowOf(cachedConfirmed)
 
     val uploadIntents = FakeUploadIntentActions(
         LedgerAccessContext(uploadTestBinding().copy(ledgerId = activeLedgerIdProvider() ?: (activeLedgerFlow as? StateFlow<String?>)?.value ?: "test-ledger"), canModifyLedger),

@@ -75,16 +75,21 @@ internal fun FactMediaSection(
                 )
             }
         }
-        if (expense.hasImage && expense.imageDeletedAt == null && state.fullImage == null) {
-            QuietOutlinedButton(
-                text = if (state.imageLoading) {
-                    stringResource(R.string.expense_edit_large_image_loading)
-                } else {
-                    stringResource(R.string.expense_fact_image_view_full)
-                },
-                onClick = onLoadFullImage,
-                enabled = !state.imageLoading,
-            )
-        }
+        FactOriginalImageAction(state, onLoadFullImage)
     }
+}
+
+@Composable
+private fun FactOriginalImageAction(state: ExpenseFactUiState, onLoadFullImage: () -> Unit) {
+    val expense = state.expense ?: return
+    if (!expense.hasImage || expense.imageDeletedAt != null || state.fullImage != null) return
+    QuietOutlinedButton(
+        text = if (state.imageLoading) {
+            stringResource(R.string.expense_edit_large_image_loading)
+        } else {
+            stringResource(R.string.expense_fact_image_view_full)
+        },
+        onClick = onLoadFullImage,
+        enabled = !state.imageLoading,
+    )
 }

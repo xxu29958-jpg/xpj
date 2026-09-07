@@ -31,6 +31,9 @@ interface PendingReviewActions {
      */
     suspend fun getCachedPending(): Result<List<Expense>>
 
+    /** Existing confirmed cache, used to reconcile a retained list when its network refresh fails. */
+    fun observeConfirmed(): Flow<List<Expense>>
+
     /**
      * issue #64 A3：拉远端 pending 并写回本地缓存（write-through），供
      * [com.ticketbox.viewmodel.PendingViewModel.refresh] 调用——刷新一次就让本地

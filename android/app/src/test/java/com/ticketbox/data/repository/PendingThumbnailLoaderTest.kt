@@ -3,6 +3,7 @@ package com.ticketbox.data.repository
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.ProtectedImage
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -77,6 +78,8 @@ private class ThumbnailFakeReviewActions(
     override suspend fun fetchPending(): Result<List<Expense>> = Result.success(emptyList())
 
     override suspend fun getCachedPending(): Result<List<Expense>> = Result.success(emptyList())
+
+    override fun observeConfirmed() = flowOf(emptyList<Expense>())
 
     override suspend fun syncPending(): Result<List<Expense>> = Result.success(emptyList())
 
