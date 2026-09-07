@@ -228,7 +228,7 @@ class PendingLaunchActionEffectTest {
         val available = mutableStateOf(false)
         var opens = 0
         composeRule.setContent {
-            PendingLaunchActionEffect(shell, available.value, null, { opens += 1; true }, { _, _, _ -> error("No shared images") })
+            PendingLaunchActionEffect(shell, available.value, null, { opens += 1; true }, { error("No shared images") })
         }
         composeRule.runOnIdle { shell.launchAction.post(LaunchAction.OpenImagePicker) }
         composeRule.runOnIdle {
