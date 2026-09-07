@@ -1,6 +1,5 @@
 package com.ticketbox.ui.screens.settings
 
-import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -438,7 +437,6 @@ private fun SyncStatusRecoveryActions(
 internal fun isExpiredFailure(lastError: String?): Boolean =
     lastError?.startsWith("outbox_row_expired") == true
 
-@StringRes
 internal val syncStatusMutationLabelResources = mapOf(
     PendingMutationType.UploadScreenshot to R.string.sync_status_mutation_upload_screenshot,
     PendingMutationType.PatchExpense to R.string.sync_status_mutation_patch_expense,
