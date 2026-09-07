@@ -6,12 +6,19 @@ import com.ticketbox.data.remote.dto.ExpenseFactBundleDto
 import com.ticketbox.data.remote.dto.ExpenseOffsetCreateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseOffsetVoidRequestDto
 import com.ticketbox.domain.model.ExpenseLineageStatus
+import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import com.ticketbox.domain.model.ExpenseOffsetDraft
 import com.ticketbox.domain.model.ExpenseOffsetFact
 import com.ticketbox.domain.model.ExpenseOffsetMutationOutcome
 import com.ticketbox.domain.model.ExpenseOffsetStatus
 import com.ticketbox.domain.model.StreamOffsetKind
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -20,6 +27,97 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 internal class ExpenseOffsetRepositoryTest : ExpensePendingRepositoryOutboxTestBase() {
+    @Test
+    fun currencyCorrectionDuringLostRefundResponseCannotRebaseTheOriginalRefund() = runTest {
+        val mutationDao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(dao = mutationDao)
+        val entered = CompletableDeferred<Pair<ExpenseOffsetCreateRequestDto, String>>()
+        val release = CompletableDeferred<Unit>()
+        val api = object : ApiService by FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0) {
+            override suspend fun createExpenseOffset(
+                id: String, request: ExpenseOffsetCreateRequestDto, idempotencyKey: String,
+            ): ExpenseFactBundleDto {
+                entered.complete(request to idempotencyKey)
+                release.await()
+                throw IOException("response unavailable")
+            }
+        }
+        val repository = buildRepository(api, FakeExpenseDao(), outbox)
+        val binding = requireNotNull(repository.observeCorrections().first().access).binding
+        val root = rootExpense(7).copy(originalAmountMinor = 10_000L,
+            originalCurrencyCode = CurrencyCode.CNY, originalCurrencyCodeRaw = "CNY")
+        val attempt = async(start = CoroutineStart.UNDISPATCHED) {
+            repository.createExpenseOffsetAllowingOffline(binding, root,
+                ExpenseOffsetDraft(StreamOffsetKind.Refund, 1_000L, "2026-09-03", "Original CNY refund"))
+        }
+        try {
+            val (sentRequest, sentKey) = entered.await()
+            assertTrue(mutationDao.rows.isEmpty(), "the initial request is in flight before fallback persistence")
+            repository.submitCorrection(binding, root,
+                ExpenseCorrectionDraft("The receipt is in yen", originalCurrencyCode = CurrencyCode.JPY,
+                    originalAmountMinor = 1_000L)).getOrThrow()
+            val correction = mutationDao.rows.values.single()
+            release.complete(Unit)
+            assertIs<ExpenseOffsetMutationOutcome.Queued>(attempt.await().getOrThrow())
+            val refund = mutationDao.rows.values.single { it.type == PendingMutationType.CreateExpenseOffset.wireValue }
+            assertEquals(sentKey, refund.idempotencyKey)
+            assertEquals(sentRequest.expectedRowVersion, refund.expectedRowVersion)
+            assertTrue(correction.id < refund.id, "the accepted correction precedes the fallback refund")
+            assertEquals(correction, mutationDao.rows.getValue(correction.id))
+
+            // Exercise the actual completion consumer; no test-local token rewrite.
+            outbox.cascadeFreshToken(correction.targetId, 8L)
+
+            assertEquals(refund, mutationDao.rows.getValue(refund.id),
+                "the original refund key, body and CNY-root OCC must survive correction completion")
+        } finally {
+            release.complete(Unit)
+            attempt.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun currencyCorrectionRefusesANewOffsetWithoutChangingTheOriginalIntent() = runTest {
+        val mutationDao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(dao = mutationDao)
+        val api = OffsetApiService(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0))
+        val repository = buildRepository(api, FakeExpenseDao(), outbox)
+        val binding = requireNotNull(repository.observeCorrections().first().access).binding
+        val root = rootExpense(rowVersion = 7).copy(originalAmountMinor = 10_000L,
+            originalCurrencyCode = CurrencyCode.CNY, originalCurrencyCodeRaw = "CNY")
+        repository.submitCorrection(binding, root,
+            ExpenseCorrectionDraft("The receipt is in yen", originalCurrencyCode = CurrencyCode.JPY,
+                originalAmountMinor = 1_000L)).getOrThrow()
+        val original = mutationDao.rows.values.single()
+        assertEquals(PendingMutationType.CorrectExpense.wireValue, original.type)
+        assertEquals(7L, original.expectedRowVersion)
+
+        val result = repository.createExpenseOffsetAllowingOffline(binding, root,
+            ExpenseOffsetDraft(StreamOffsetKind.Refund, 1_000L, "2026-09-03", "Refund in original currency"))
+
+        assertTrue(result.isFailure)
+        assertEquals(listOf(original), mutationDao.rows.values.toList())
+        assertEquals(null, api.createRequest)
+        assertEquals(null, api.idempotencyKey)
+    }
+
+    @Test
+    fun aRetiredBindingCannotCreateAnOffsetInTheCurrentLedger() = runTest {
+        val mutationDao = FakePendingMutationDao()
+        val api = OffsetApiService(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0))
+        val repository = buildRepository(api, FakeExpenseDao(), testOutboxRepository(mutationDao))
+        val current = requireNotNull(repository.observeCorrections().first().access).binding
+
+        val result = repository.createExpenseOffsetAllowingOffline(
+            current.copy(bindingRevision = "retired-binding"), rootExpense(rowVersion = 7),
+            ExpenseOffsetDraft(StreamOffsetKind.Refund, 1_000L, "2026-09-03", "Original refund"))
+
+        assertTrue(result.isFailure)
+        assertTrue(mutationDao.rows.isEmpty())
+        assertEquals(null, api.createRequest)
+        assertEquals(null, api.idempotencyKey)
+    }
+
     @Test
     fun directRefundPublishesAuthoritativeBundleAndPreservesRootDate() = runTest {
         val dao = FakeExpenseDao()
@@ -43,6 +141,7 @@ internal class ExpenseOffsetRepositoryTest : ExpensePendingRepositoryOutboxTestB
         val repository = buildRepository(api, dao)
 
         val outcome = repository.createExpenseOffsetAllowingOffline(
+            requireNotNull(repository.observeCorrections().first().access).binding,
             rootExpense(rowVersion = 3),
             ExpenseOffsetDraft(StreamOffsetKind.Refund, 300, "2026-09-03", " 退款到账 "),
         ).getOrThrow()
@@ -69,6 +168,7 @@ internal class ExpenseOffsetRepositoryTest : ExpensePendingRepositoryOutboxTestB
         val repository = buildRepository(api, dao, outbox)
 
         val outcome = repository.createExpenseOffsetAllowingOffline(
+            requireNotNull(repository.observeCorrections().first().access).binding,
             rootExpense(rowVersion = 7),
             ExpenseOffsetDraft(StreamOffsetKind.Chargeback, 300, "2026-09-03", "拒付"),
         ).getOrThrow()
@@ -80,7 +180,9 @@ internal class ExpenseOffsetRepositoryTest : ExpensePendingRepositoryOutboxTestB
         assertEquals("expense:9", row.targetId)
         assertEquals(7L, row.expectedRowVersion)
         assertEquals(api.idempotencyKey, row.idempotencyKey)
-        assertTrue(row.payload.contains("\"expected_row_version\":0"), row.payload)
+        val originalRequest = moshi().adapter(ExpenseOffsetCreateRequestDto::class.java).fromJson(row.payload)
+        assertEquals(api.createRequest, originalRequest)
+        assertEquals(7L, originalRequest?.expectedRowVersion)
     }
 
     @Test

@@ -3,8 +3,9 @@ package com.ticketbox.viewmodel
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
+import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtAdjustmentActions
-import com.ticketbox.data.repository.DebtAdjustmentRefresh
+import com.ticketbox.data.repository.DebtAdjustmentObservation
 import com.ticketbox.data.repository.DebtAdjustmentPayload
 import com.ticketbox.data.repository.DebtAdjustmentSubject
 import com.ticketbox.data.repository.LedgerAccessContext
@@ -43,16 +44,19 @@ internal class FakeDebtAdjustmentActions(
 
     override fun currentAccess() = access.value
     override fun observeActiveLedgerAccess() = access
-    override fun observeCompletionRefreshes() = flow {
+    override fun observeAdjustments() = flow {
         var previous = access.value?.binding
         var initial = true
         val seen = mutableSetOf<Long>()
         combine(access, rows) { current, pending -> current?.binding to pending }.collect { (binding, pending) ->
             if (binding != previous) { previous = binding; initial = true; seen.clear() }
-            val done = pending.filter { it.row.status == PendingMutationStatus.Done }.map { it.row.id }
-            val changed = done.any { it !in seen }
-            seen += done
-            if (initial || changed) { emit(DebtAdjustmentRefresh(binding, initial)); initial = false }
+            val bound = pending.filter { it.row.ownerKey == binding?.ownerKey && it.row.ledgerId == binding?.ledgerId &&
+                it.row.serverUrl == binding?.serverUrl }
+            val terminal = bound.filter { it.isTerminal }
+            val arrived = if (initial) emptyList() else terminal.filter { it.row.id !in seen }
+            seen += terminal.map { it.row.id }
+            emit(DebtAdjustmentObservation(binding, bound, initial, arrived))
+            initial = false
         }
     }
     override fun observeAdjustments(binding: LogicalSessionBinding, publicId: String) = rows.map { pending ->
@@ -107,4 +111,36 @@ internal fun pendingAdjustment(
         ),
         intent = payload,
     )
+}
+
+internal class AdjustmentDetailActions : DebtActions by FakeDebtActions() {
+    val mutations = mutableListOf<String>()
+    override suspend fun recordRepayment(publicId: String, expectedRowVersion: Long, amountCents: Long): Result<Debt> {
+        mutations += "repayment:$publicId:$expectedRowVersion:$amountCents"
+        return writeResult ?: getResult
+    }
+    override suspend fun voidDebt(publicId: String, expectedRowVersion: Long, reason: String): Result<Debt> {
+        mutations += "void:$publicId:$expectedRowVersion:$reason"
+        return getResult
+    }
+    override suspend fun voidRepayment(publicId: String, repaymentPublicId: String,
+        expectedRowVersion: Long, reason: String): Result<Debt> {
+        mutations += "repaymentVoid:$publicId:$repaymentPublicId:$expectedRowVersion:$reason"
+        return getResult
+    }
+    override suspend fun setDebtKind(publicId: String, expectedRowVersion: Long, debtKind: String): Result<Debt> {
+        mutations += "kind:$publicId:$expectedRowVersion:$debtKind"
+        return getResult
+    }
+    var getResult: Result<Debt> = Result.success(sampleDebt().copy(rowVersion = 7))
+    var writeResult: Result<Debt>? = null
+    var getGate: CompletableDeferred<Unit>? = null
+    val getCalls = mutableListOf<String>()
+
+    override suspend fun getDebt(publicId: String): Result<Debt> {
+        getCalls += publicId
+        val captured = getResult
+        getGate?.await()
+        return captured
+    }
 }

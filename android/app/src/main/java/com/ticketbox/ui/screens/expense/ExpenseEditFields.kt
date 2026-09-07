@@ -31,6 +31,7 @@ internal fun OcrProgressCard() {
 @Composable
 internal fun ExpenseRepaymentDraftPanel(
     creating: Boolean,
+    canCreate: Boolean,
     onCreate: () -> Unit,
 ) {
     Column(
@@ -39,11 +40,14 @@ internal fun ExpenseRepaymentDraftPanel(
     ) {
         AppSectionHeader(
             title = stringResource(R.string.expense_edit_repayment_draft_card_title),
-            subtitle = stringResource(R.string.expense_edit_repayment_draft_card_subtitle),
+            subtitle = stringResource(
+                if (canCreate) R.string.expense_edit_repayment_draft_card_subtitle
+                else R.string.expense_fact_snapshot_actions_unavailable,
+            ),
         )
         AppOutlinedButton(
             modifier = Modifier.fillMaxWidth(),
-            options = AppOutlinedButtonOptions(enabled = !creating),
+            options = AppOutlinedButtonOptions(enabled = canCreate && !creating),
             onClick = onCreate,
         ) {
             Text(

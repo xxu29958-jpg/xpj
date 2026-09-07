@@ -91,7 +91,7 @@ class ExpenseRepository(
     private val detailRepository = ExpenseDetailRepository(core)
     private val correctionRepository = ExpenseCorrectionRepository(core, offlineMutations.outbox,
         offlineMutations.correctionAdapter, offlineMutations.legacyCorrectionAdapter)
-    private val offsetRepository = ExpenseOffsetRepository(core)
+    private val offsetRepository = ExpenseOffsetRepository(core, correctionRepository)
     private val billSplitRepository = ExpenseBillSplitRepository(core)
     private val backgroundTaskRepository = ExpenseBackgroundTaskRepository(core)
 
@@ -158,6 +158,9 @@ class ExpenseRepository(
 
     override fun observeCorrections(): Flow<ExpenseCorrectionObservation> = correctionRepository.observe()
 
+    internal suspend fun publishDeliveredCorrection(row: OutboxRow, expense: com.ticketbox.data.remote.dto.ExpenseDto) =
+        correctionRepository.publishDelivered(row, expense)
+
     override suspend fun submitCorrection(expectedBinding: LogicalSessionBinding, expense: Expense,
         correction: ExpenseCorrectionDraft): Result<Long> = correctionRepository.submit(expectedBinding, expense, correction)
 
@@ -168,9 +171,13 @@ class ExpenseRepository(
         offsetRepository.fetch(id)
 
     override suspend fun createExpenseOffsetAllowingOffline(
+        expectedBinding: LogicalSessionBinding,
         expense: Expense,
         draft: ExpenseOffsetDraft,
-    ): Result<ExpenseOffsetMutationOutcome> = offsetRepository.createAllowingOffline(expense, draft)
+    ): Result<ExpenseOffsetMutationOutcome> = offsetRepository.createAllowingOffline(expectedBinding, expense, draft)
+
+    internal fun canReplayExpenseOffset(row: OutboxRow): Boolean =
+        row.lastError != "offset_create_requires_review" && core.offsetCreateAdapter?.readSupportedOffsetCreate(row) != null
 
     override suspend fun voidExpenseOffsetAllowingOffline(
         expense: Expense,
@@ -223,10 +230,12 @@ class ExpenseRepository(
         detailRepository.replaceExpenseItemsAllowingOffline(expense, items, currentItems)
 
     override suspend fun createBillSplitInvitation(
+        expectedBinding: LogicalSessionBinding,
         expenseId: Long,
         receiverAccountId: Long,
         amountCents: Long,
     ): Result<BillSplitSent> = billSplitRepository.createBillSplitInvitation(
+        expectedBinding = expectedBinding,
         expenseId = expenseId,
         receiverAccountId = receiverAccountId,
         amountCents = amountCents,
@@ -294,8 +303,12 @@ class ExpenseRepository(
     internal fun captureDeferredLedgerBinding(): LogicalSessionBinding? =
         core.ledgerRequestGuard.captureLogicalBinding()
 
-    override suspend fun createRepaymentDraftFromExpense(expense: Expense): Result<RepaymentDraft> =
-        detailRepository.createRepaymentDraftFromExpense(expense)
+    internal fun observeLedgerAccess(): Flow<LedgerAccessContext?> = core.apiProvider.observeActiveLedgerAccess()
+
+    override suspend fun createRepaymentDraftFromExpense(
+        expectedBinding: LogicalSessionBinding,
+        expense: Expense,
+    ): Result<RepaymentDraft> = detailRepository.createRepaymentDraftFromExpense(expectedBinding, expense)
 
     override suspend fun confirmExpense(id: Long, expectedRowVersion: Long): Result<Expense> =
         pendingRepository.confirmExpense(id, expectedRowVersion)

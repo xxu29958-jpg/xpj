@@ -2,10 +2,8 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
-import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.RepositoryException
-import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtRepayment
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.CompletableDeferred
@@ -299,37 +297,6 @@ class DebtAdjustmentViewModelTest {
         assertTrue(viewModel.state.value.pendingAdjustments.isEmpty())
         assertEquals(listOf(original), adjustments.rows.value)
         assertEquals(1, adjustments.saveCalls.size)
-    }
-}
-
-private class AdjustmentDetailActions : DebtActions by FakeDebtActions() {
-    val mutations = mutableListOf<String>()
-    override suspend fun recordRepayment(publicId: String, expectedRowVersion: Long, amountCents: Long): Result<Debt> {
-        mutations += "repayment:$publicId:$expectedRowVersion:$amountCents"
-        return getResult
-    }
-    override suspend fun voidDebt(publicId: String, expectedRowVersion: Long, reason: String): Result<Debt> {
-        mutations += "void:$publicId:$expectedRowVersion:$reason"
-        return getResult
-    }
-    override suspend fun voidRepayment(publicId: String, repaymentPublicId: String,
-        expectedRowVersion: Long, reason: String): Result<Debt> {
-        mutations += "repaymentVoid:$publicId:$repaymentPublicId:$expectedRowVersion:$reason"
-        return getResult
-    }
-    override suspend fun setDebtKind(publicId: String, expectedRowVersion: Long, debtKind: String): Result<Debt> {
-        mutations += "kind:$publicId:$expectedRowVersion:$debtKind"
-        return getResult
-    }
-    var getResult: Result<Debt> = Result.success(sampleDebt().copy(rowVersion = 7))
-    var getGate: CompletableDeferred<Unit>? = null
-    val getCalls = mutableListOf<String>()
-
-    override suspend fun getDebt(publicId: String): Result<Debt> {
-        getCalls += publicId
-        val captured = getResult
-        getGate?.await()
-        return captured
     }
 }
 

@@ -35,16 +35,27 @@ internal fun ExpenseFactViewModel.unsupportedOriginalCurrencyCode(): String? {
 }
 
 fun ExpenseFactViewModel.submitOffset() {
-    if (blockReadOnlyWrite()) return
-    val expense = _uiState.value.expense ?: return
+    if (blockUnreadyFactWrite()) return
+    val state = _uiState.value
+    val expense = state.expense ?: return
+    if (!state.offsetForm.matchesRoot(expense)) {
+        _uiState.update { it.copy(offsetForm = it.offsetForm.copy(
+            submitError = UiText.res(R.string.expense_offset_draft_root_changed))) }
+        return
+    }
+    val binding = state.correctionAccess?.binding ?: return
     val draft = buildOffsetDraftOrMessage() ?: return
     viewModelScope.launch {
+        if (_uiState.value.correctionAccess?.binding != binding || blockUnreadyFactWrite(expense.rowVersion)) return@launch
         updateOffsetForm { it.copy(saving = true) }
-        repository.createExpenseOffsetAllowingOffline(expense, draft)
+        repository.createExpenseOffsetAllowingOffline(binding, expense, draft)
             .onSuccess { outcome ->
+                if (_uiState.value.correctionAccess?.binding != binding) return@onSuccess
                 publishOffsetOutcome(outcome, offsetSuccessRes(draft.kind))
             }
-            .onFailure { error -> publishOffsetFailure(error, isVoid = false) }
+            .onFailure { error ->
+                if (_uiState.value.correctionAccess?.binding == binding) publishOffsetFailure(error, isVoid = false)
+            }
     }
 }
 
@@ -64,7 +75,7 @@ internal fun ExpenseFactViewModel.buildOffsetDraftOrMessage(): ExpenseOffsetDraf
     if (form.reason.isBlank()) return rejectOffset(R.string.expense_offset_reason_required)
     var amountMinor: Long? = null
     if (form.kind.isMoneyEvent) {
-        val expense = _uiState.value.expense ?: return null
+        val expense = form.sourceExpense ?: return null
         val parsed = parseAmountCents(form.amountText, expense.originalCurrencyCode)
         if (parsed == null || parsed <= 0L) {
             return rejectOffset(R.string.expense_offset_amount_invalid)

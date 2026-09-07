@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
+import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseFactBundle
 import com.ticketbox.domain.model.ExpenseOffsetFact
 import com.ticketbox.domain.model.MessageTone
@@ -35,6 +36,7 @@ import kotlinx.coroutines.launch
 /** 退款/拒付/冲销登记表单态（Reversal 无金额；remaining 只是服务端快照预填/提示）。 */
 data class OffsetFormState(
     val open: Boolean = false,
+    val sourceExpense: Expense? = null,
     val kind: StreamOffsetKind = StreamOffsetKind.Refund,
     val amountText: String = "",
     val accountingDate: String = "",
@@ -46,7 +48,12 @@ data class OffsetFormState(
     /** direct 409 后的权威刷新在途/失败期间为 true：禁用提交，不用旧 root token 循环 409。 */
     val refreshingAfterConflict: Boolean = false,
     val saving: Boolean = false,
-)
+) {
+    fun matchesRoot(expense: Expense?): Boolean = sourceExpense != null && expense != null &&
+        sourceExpense.id == expense.id && sourceExpense.rowVersion == expense.rowVersion &&
+        sourceExpense.originalCurrencyCode == expense.originalCurrencyCode &&
+        sourceExpense.originalCurrencyCodeRaw == expense.originalCurrencyCodeRaw
+}
 
 /** 撤销已生效退回/冲销的确认表单态。 */
 data class VoidOffsetFormState(
@@ -137,7 +144,7 @@ private fun ExpenseFactViewModel.adoptFactBundle(bundle: ExpenseFactBundle) {
 }
 
 fun ExpenseFactViewModel.openOffsetSheet(kind: StreamOffsetKind) {
-    if (blockReadOnlyWrite()) return
+    if (blockUnreadyFactWrite()) return
     val expense = _uiState.value.expense ?: return
     // 与更正流同一口径（R13）：未知原币码 fail-closed，不在本端解析金额。
     val unsupported = unsupportedOriginalCurrencyCode()
@@ -158,6 +165,7 @@ fun ExpenseFactViewModel.openOffsetSheet(kind: StreamOffsetKind) {
         state.copy(
             offsetForm = OffsetFormState(
                 open = true,
+                sourceExpense = expense,
                 kind = kind,
                 amountText = if (kind.isMoneyEvent && summary != null) {
                     formatAmountInput(
@@ -178,6 +186,20 @@ fun ExpenseFactViewModel.openOffsetSheet(kind: StreamOffsetKind) {
 
 fun ExpenseFactViewModel.closeOffsetSheet() {
     _uiState.update { it.copy(offsetForm = OffsetFormState()) }
+}
+
+/** A new reviewed draft; the old command is never rebased or silently reinterpreted. */
+fun ExpenseFactViewModel.reviewOffsetDraft() {
+    if (blockUnreadyFactWrite()) return
+    val state = _uiState.value
+    val expense = state.expense ?: return
+    val form = state.offsetForm
+    if (!form.open || form.saving || form.kind.isMoneyEvent && unsupportedOriginalCurrencyCode() != null) return
+    updateOffsetForm {
+        it.copy(sourceExpense = expense,
+            amountText = it.amountText.takeIf { form.sourceExpense?.originalCurrencyCode == expense.originalCurrencyCode }.orEmpty(),
+            amountError = null, dateError = null, conflictMessage = null)
+    }
 }
 
 /** sheet 内分段切换：商家退款 ↔ 银行拒付（reversal 走独立入口，无分段）。 */
@@ -211,6 +233,8 @@ internal fun ExpenseFactViewModel.updateOffsetForm(transform: (OffsetFormState) 
 fun ExpenseFactViewModel.canSubmitOffset(): Boolean {
     val state = _uiState.value
     val form = state.offsetForm
+    if (state.readOnly || !state.authoritativeRootReady) return false
+    if (!form.matchesRoot(state.expense)) return false
     if (state.offsetCommandsBlockedUntilRefresh) return false
     if (!form.open || form.saving || form.refreshingAfterConflict) return false
     if (form.reason.isBlank() || form.accountingDate.isBlank()) return false

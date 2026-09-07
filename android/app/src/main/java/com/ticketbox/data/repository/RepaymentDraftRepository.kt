@@ -27,6 +27,7 @@ interface RepaymentDraftActions {
         draftPublicId: String,
         targetDebtPublicId: String,
         expectedRowVersion: Long,
+        expectedBinding: LogicalSessionBinding,
     ): Result<RepaymentDraft>
     suspend fun dismissDraft(draftPublicId: String): Result<RepaymentDraft>
 }
@@ -75,10 +76,11 @@ class RepaymentDraftRepository(
         draftPublicId: String,
         targetDebtPublicId: String,
         expectedRowVersion: Long,
+        expectedBinding: LogicalSessionBinding,
     ): Result<RepaymentDraft> {
         if (!canModifyLedger()) return Result.failure(RepositoryException(REPAYMENT_DRAFT_VIEWER_READONLY))
         return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
+            ledgerRequestGuard.bindExact(expectedBinding).call { api ->
                 api.confirmRepaymentDraft(
                     publicId = draftPublicId,
                     request = confirmRepaymentDraftRequest(

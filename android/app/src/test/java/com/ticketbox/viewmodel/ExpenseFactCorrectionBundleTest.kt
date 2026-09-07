@@ -9,14 +9,17 @@ import com.ticketbox.data.repository.toDomain
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.domain.model.BillSplitSent
 import com.ticketbox.domain.model.FamilyMember
+import com.ticketbox.domain.model.ProtectedImage
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.TestScope
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class ExpenseFactCorrectionBundleTest : ExpenseFactViewModelTestBase() {
@@ -154,5 +157,66 @@ internal class ExpenseFactCorrectionBundleTest : ExpenseFactViewModelTestBase() 
         assertEquals(refreshed, vm.uiState.value.factBundle)
         assertEquals(ExpenseDetailDataLoadState.Loaded, vm.uiState.value.factBundleLoadState)
         kotlin.test.assertTrue(vm.uiState.value.corrections.single().delivered)
+    }
+
+    @Test
+    fun `old binding image failures leave the new receipt images unchanged`() = edit { fake ->
+        assertOldImageFailuresCannotPublish(this, fake)
+    }
+
+    private suspend fun assertOldImageFailuresCannotPublish(scope: TestScope, fake: FakeExpenseFactActions) {
+        fake.baseExpense = fake.baseExpense.copy(hasImage = true)
+        val first = fake.correctionBinding
+        val second = first.copy(ledgerId = "new-ledger", bindingRevision = "new-binding")
+        val observations = MutableStateFlow(ExpenseCorrectionObservation(LedgerAccessContext(first, true), emptyList()))
+        val oldThumbnail = CompletableDeferred<Result<ProtectedImage>>()
+        val oldFullImage = CompletableDeferred<Result<ProtectedImage>>()
+        val firstThumbnail = ProtectedImage(byteArrayOf(1), "image/png")
+        val currentThumbnail = ProtectedImage(byteArrayOf(2), "image/png")
+        val currentFullImage = ProtectedImage(byteArrayOf(3), "image/png")
+        var retryOldThumbnail = false
+        val startedReads = mutableListOf<String>()
+        val repository = object : ExpenseFactActions by fake {
+            override fun observeCorrections() = observations
+            override suspend fun fetchThumbnail(id: Long): Result<ProtectedImage> {
+                if (observations.value.access?.binding == second) return Result.success(currentThumbnail)
+                if (!retryOldThumbnail) return Result.success(firstThumbnail)
+                startedReads += "old-thumbnail"
+                return oldThumbnail.await()
+            }
+            override suspend fun fetchImage(id: Long): Result<ProtectedImage> {
+                if (observations.value.access?.binding == second) return Result.success(currentFullImage)
+                startedReads += "old-full-image"
+                return oldFullImage.await()
+            }
+        }
+        val vm = ExpenseFactViewModel(expenseId = fake.baseExpense.id, repository = repository)
+        scope.advanceUntilIdle()
+        assertEquals(firstThumbnail, vm.uiState.value.thumbnail)
+        retryOldThumbnail = true
+        vm.retryLoadThumbnail()
+        vm.loadFullImage()
+        scope.advanceUntilIdle()
+        assertEquals(listOf("old-thumbnail", "old-full-image"), startedReads)
+        assertTrue(vm.uiState.value.imageLoading)
+
+        observations.value = ExpenseCorrectionObservation(LedgerAccessContext(second, true), emptyList())
+        scope.advanceUntilIdle()
+        vm.loadFullImage()
+        scope.advanceUntilIdle()
+        assertEquals(second, vm.uiState.value.correctionAccess?.binding)
+        assertEquals(currentThumbnail, vm.uiState.value.thumbnail)
+        assertEquals(currentFullImage, vm.uiState.value.fullImage)
+        assertEquals(ExpenseDetailDataLoadState.Loaded, vm.uiState.value.thumbnailLoadState)
+        assertFalse(vm.uiState.value.imageLoading)
+        val currentState = vm.uiState.value
+
+        // BoundLedgerRequest rejects an old binding even when its HTTP request finishes.
+        val staleFailure = RepositoryException(errorCode = "binding_changed", message = "old binding")
+        oldThumbnail.complete(Result.failure(staleFailure))
+        oldFullImage.complete(Result.failure(staleFailure))
+        scope.advanceUntilIdle()
+
+        assertEquals(currentState, vm.uiState.value, "Neither old failure may replace the new receipt or its status")
     }
 }

@@ -22,9 +22,12 @@ import com.ticketbox.ui.screens.settings.isExpiredFailure
 
 @Composable
 internal fun DebtAdjustmentIntentSummary(pending: PendingDebtAdjustment) {
+    if (pending.row.status == PendingMutationStatus.Abandoned) Text(stringResource(R.string.debt_adjustment_stopped_body))
     val intent = pending.intent
     if (intent == null) {
-        Text(stringResource(R.string.debt_adjustment_unsupported))
+        Text(stringResource(if (pending.row.status == PendingMutationStatus.Abandoned) {
+            R.string.debt_adjustment_stopped_unreadable
+        } else R.string.debt_adjustment_unsupported))
         return
     }
     Text(intent.subject.label ?: stringResource(R.string.debt_detail_title))
@@ -48,10 +51,15 @@ private fun DebtPendingAdjustment(pending: PendingDebtAdjustment, recover: (Pend
     val status = pending.row.status
     val needsAttention = status in setOf(PendingMutationStatus.Conflict, PendingMutationStatus.Failed)
     HorizontalDivider()
-    Text(stringResource(if (needsAttention) R.string.debt_adjustment_attention else R.string.debt_adjustment_waiting))
+    Text(stringResource(when {
+        status == PendingMutationStatus.Abandoned -> R.string.debt_adjustment_stopped
+        needsAttention -> R.string.debt_adjustment_attention
+        else -> R.string.debt_adjustment_waiting
+    }))
     DebtAdjustmentIntentSummary(pending)
     val expired = isExpiredFailure(pending.row.lastError)
     when {
+        status == PendingMutationStatus.Abandoned -> Unit
         expired -> Text(stringResource(R.string.debt_adjustment_expired))
         status == PendingMutationStatus.Conflict -> Text(stringResource(R.string.debt_adjustment_conflict))
         pending.row.lastError in setOf("runtime_version_mismatch", "client_upgrade_required") ->
