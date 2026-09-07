@@ -41,7 +41,7 @@ class DebtRepaymentHistoryViewModel(private val repository: DebtRepaymentQueries
         target = next
         generation++
         requestedPage = 1
-        _state.value = DebtRepaymentHistoryUiState()
+        _state.value = DebtRepaymentHistoryUiState(debtPublicId = task?.debtPublicId, binding = task?.binding)
         refresh()
     }
 

@@ -49,7 +49,7 @@ _strict_baseline_selected_commit: str | None = None
 CODEBASE_DEBT_LIMITS: DebtCounts = {
     # Keep active ceilings here. Older ratchet provenance belongs in git history,
     # not in executable override chains.
-    "files_over_500": 12,
+    "files_over_500": 11,
     "long_functions": 4,
     "deep_nesting_functions": 0,
     "route_layer_imports": 0,

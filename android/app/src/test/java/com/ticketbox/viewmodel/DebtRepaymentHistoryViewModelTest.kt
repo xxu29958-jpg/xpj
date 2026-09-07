@@ -127,6 +127,20 @@ class DebtRepaymentHistoryViewModelTest {
         assertEquals(null, model.state.value.debtPublicId)
     }
 
+    @Test
+    fun failedInitialHistoryKeepsItsRenderedTaskAndRetryFeedback() = runTest(dispatcher) {
+        val task = memberDebtTask("A")
+        val model = DebtRepaymentHistoryViewModel(DebtRepaymentQueries { _, _ -> Result.failure(IOException("offline")) })
+        model.loadDebt(task, 1)
+        assertTrue(model.state.value.isLoading)
+        assertEquals(task.binding, model.state.value.binding)
+        advanceUntilIdle()
+        assertEquals("A", model.state.value.debtPublicId)
+        assertEquals(task.binding, model.state.value.binding)
+        assertNotNull(model.state.value.error)
+        assertFalse(model.state.value.isLoading)
+    }
+
 }
 
 private fun historyPage(id: String, page: Int) = DebtRepaymentPage(

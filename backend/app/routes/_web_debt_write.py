@@ -27,7 +27,7 @@ from app.services.time_service import now_utc
 
 _PROPOSAL_STATUS_LABELS = {
     "pending": "待 TA 确认",
-    "confirmed": "已两清",
+    "confirmed": "已确认",
     "partially_confirmed": "收了一部分",
     "rejected": "在对账",
     "withdrawn": "已撤回",
@@ -73,17 +73,12 @@ def _day_label(value) -> str:
 
 
 def _proposal_pending_line(pending, viewer_is_debtor: bool | None) -> str:
-    """在途 proposal 的一行关系状态句 (「谁该接下一步」)。
-
-    web 只读=描述非「立即确认」CTA：债务人侧「你说还了，等家人确认」、债权人侧「TA 说还了 ¥X，看看
-    对不对」、第三方中性。**不复用** Android 的 debt_proposal_creditor_pending (那条带「确认一下吧」动作
-    hint，web 没有确认钮、会误导)；确认/拒绝/撤回都在手机 App + /api。
-    """
+    """Describe an unconfirmed repayment claim and the participant who should review it."""
     if viewer_is_debtor is True:
         return "你说你还了这一份，等家人确认一下"
     if viewer_is_debtor is False:
         amount = _home_amount_label(pending.proposed_amount_cents, pending.home_currency_code)
-        return f"TA 把 {amount} 那份给你啦，看看对不对"
+        return f"TA 申报已还 {amount}，请核对实际收到的金额"
     return "他们之间有一笔正在确认"
 
 
