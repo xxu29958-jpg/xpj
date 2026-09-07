@@ -1,5 +1,7 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.UploadBatchRequest
+
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.UploadAcceptance
@@ -24,7 +26,7 @@ internal class PendingViewModelUploadFailureTest : PendingViewModelReviewTestBas
         fake.uploadIntents.accept = { Result.failure(IllegalStateException()) }
         val vm = pendingViewModel(fake)
         advanceUntilIdle()
-        assertFalse(vm.acceptUploads(UPLOAD_TEST_BATCH, listOf("a", "b"), uploadTestBinding()) { error("Repo owns preparation") })
+        assertFalse(vm.acceptUploads(UploadBatchRequest(UPLOAD_TEST_BATCH, listOf("a", "b"), uploadTestBinding(), "Asia/Shanghai") { error("Repo owns preparation") }))
         assertEquals(UiText.res(R.string.pending_msg_upload_failed), vm.uiState.value.message)
         assertFalse(vm.uiState.value.uploading)
         assertTrue(vm.uiState.value.canStartUpload)
@@ -85,7 +87,7 @@ internal class PendingViewModelUploadFailureTest : PendingViewModelReviewTestBas
         val fake = FakeReviewActions()
         val vm = pendingViewModel(fake)
         advanceUntilIdle()
-        assertTrue(vm.acceptUploads(UPLOAD_TEST_BATCH, listOf("unreadable"), uploadTestBinding()) { null })
+        assertTrue(vm.acceptUploads(UploadBatchRequest(UPLOAD_TEST_BATCH, listOf("unreadable"), uploadTestBinding(), "Asia/Shanghai") { null }))
         // Acceptance may arrive before the required Room observation; only that observation describes the originals.
         assertNull(vm.uiState.value.message)
         val unreadable = observedUpload(1).let { it.copy(payload = it.payload!!.copy(file = null)) }
@@ -102,7 +104,7 @@ internal class PendingViewModelUploadFailureTest : PendingViewModelReviewTestBas
         fake.uploadIntents.publish(observedUpload(1, PendingMutationStatus.Failed, "http_503"))
         val vm = pendingViewModel(fake)
         advanceUntilIdle()
-        assertFalse(vm.acceptUploads(UPLOAD_TEST_BATCH, listOf("new"), uploadTestBinding()) { null })
+        assertFalse(vm.acceptUploads(UploadBatchRequest(UPLOAD_TEST_BATCH, listOf("new"), uploadTestBinding(), "Asia/Shanghai") { null }))
         vm.retryCapacityUpload()
         advanceUntilIdle()
         assertTrue(fake.uploadIntents.accepted.isEmpty())
@@ -123,7 +125,7 @@ internal class PendingViewModelUploadFailureTest : PendingViewModelReviewTestBas
         advanceUntilIdle()
         var cancelled = false
         try {
-            vm.acceptUploads(UPLOAD_TEST_BATCH, listOf("new"), uploadTestBinding()) { null }
+            vm.acceptUploads(UploadBatchRequest(UPLOAD_TEST_BATCH, listOf("new"), uploadTestBinding(), "Asia/Shanghai") { null })
         } catch (_: CancellationException) { cancelled = true }
         assertTrue(cancelled)
         assertEquals(listOf(row), fake.uploadIntents.snapshots.value.uploads)
@@ -142,7 +144,7 @@ internal class PendingViewModelUploadFailureTest : PendingViewModelReviewTestBas
         runCurrent()
         var consumed = true
         val job = launch {
-            consumed = vm.acceptUploads(UPLOAD_TEST_BATCH, listOf("original"), uploadTestBinding()) { null }
+            consumed = vm.acceptUploads(UploadBatchRequest(UPLOAD_TEST_BATCH, listOf("original"), uploadTestBinding(), "Asia/Shanghai") { null })
         }
         runCurrent()
         clearPendingViewModels()

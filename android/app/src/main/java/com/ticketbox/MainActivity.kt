@@ -25,7 +25,6 @@ import com.ticketbox.ui.navigation.mergeLaunchRequest
 import com.ticketbox.ui.navigation.remainingLaunchRequest
 import com.ticketbox.ui.navigation.restoreLaunchRequest
 import com.ticketbox.ui.navigation.savedFields
-import java.util.UUID
 import kotlinx.coroutines.runBlocking
 import com.ticketbox.viewmodel.appViewModelFactory
 import com.ticketbox.viewmodel.appearanceViewModelFactory
@@ -69,8 +68,6 @@ class MainActivity : FragmentActivity() {
         super.onNewIntent(intent)
         // singleTask: 前台时的分享/快捷方式都从这里来。更新 Activity 的 intent 以保持
         // getIntent() 一致，再喂给 state；为 null（普通 re-launch）则不覆盖已有待处理请求。
-        intent.removeExtra(UPLOAD_BATCH_ID)
-        intent.removeExtra(LAUNCH_HANDLED)
         setIntent(intent)
         parseLaunchIntent(intent)?.let { launchRequests.value = mergeLaunchRequest(launchRequests.value, it) }
     }
@@ -91,26 +88,25 @@ class MainActivity : FragmentActivity() {
      */
     private fun parseLaunchIntent(intent: Intent?): LaunchIntentRequest? {
         intent ?: return null
-        if (intent.getBooleanExtra(LAUNCH_HANDLED, false)) return null
-        val batchId = intent.getStringExtra(UPLOAD_BATCH_ID) ?: UUID.randomUUID().toString()
-        val request = resolveLaunchIntent(
+        return resolveLaunchIntent(
             action = intent.action,
             mimeType = intent.type,
             shared = LaunchSharedContent(
                 uris = collectStreamUris(intent),
                 text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString() ?: firstClipText(intent),
-                batchId = batchId,
             ),
             shortcutTarget = intent.getStringExtra(EXTRA_SHORTCUT_TARGET),
         )
-        if (request is LaunchIntentRequest.ShareImages) intent.putExtra(UPLOAD_BATCH_ID, request.batchId)
-        return request
     }
 
     /** Clear a handled request while preserving shares arriving during its handoff. */
     private fun clearHandledLaunchIntent(handled: LaunchIntentRequest) {
         launchRequests.value = remainingLaunchRequest(launchRequests.value, handled)
-        if (parseLaunchIntent(intent) == handled) intent.putExtra(LAUNCH_HANDLED, true)
+        // Navigation/text can finish while an earlier image still awaits Room.
+        // Retire that consumed OS input too, so recreation cannot offer it again.
+        if (launchRequests.value.isEmpty() || parseLaunchIntent(intent) == handled) {
+            setIntent(Intent(this, MainActivity::class.java).setAction(Intent.ACTION_MAIN))
+        }
     }
 
     /** EXTRA_STREAM（单 Uri + Uri 列表）与 clipData 三处汇总成 uri 字符串。 */
@@ -205,8 +201,6 @@ class MainActivity : FragmentActivity() {
 
     private companion object {
         const val SAVED_REQUEST_COUNT = "ticketbox.launch.pending.count"
-        const val UPLOAD_BATCH_ID = "ticketbox.launch.upload.batch_id"
-        const val LAUNCH_HANDLED = "ticketbox.launch.handled"
         const val DEBUG_SERVER_URL_EXTRA = "ticketbox.debug.server_url"
         const val DEBUG_SESSION_TOKEN_EXTRA = "ticketbox.debug.session_token"
     }

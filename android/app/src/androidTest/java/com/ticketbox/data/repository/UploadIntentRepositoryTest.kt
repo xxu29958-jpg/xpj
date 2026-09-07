@@ -171,6 +171,32 @@ class UploadIntentRepositoryTest {
     }
 
     @Test
+    fun anUncommittedSelectionRetryKeepsItsOriginalTimezone() = runBlocking<Unit> {
+        val originalZone = TimeZone.getDefault()
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"))
+            UploadIntentRepositoryFixture().use { fixture ->
+                val request = fixture.request(listOf("original.png"))
+                fixture.availableBytes = 0L
+                assertTrue(fixture.repository.acceptUploadBatch(request).isFailure)
+                assertTrue(fixture.dao.allRows().isEmpty())
+                TimeZone.setDefault(TimeZone.getTimeZone("America/Los_Angeles"))
+                fixture.availableBytes = null
+                val reopened = fixture.reopen()
+                reopened.acceptUploadBatch(request).getOrThrow()
+                val original = reopened.observeUploadIntents().first().uploads.single()
+                assertEquals("Asia/Shanghai", original.payload?.timezone)
+                assertEquals(uploadItemKey(request.id, 0), original.row.idempotencyKey)
+                assertEquals(request.expectedBinding, original.payload?.origin)
+                assertArrayEquals("original.png".toByteArray(), fixture.fileStore.read(requireNotNull(original.payload?.file)))
+                assertEquals(0, fixture.apiCalls)
+            }
+        } finally {
+            TimeZone.setDefault(originalZone)
+        }
+    }
+
+    @Test
     fun reopenedCapacityGroupKeepsReceiptAndOriginalTailAndAppendsWithoutRetry() = runBlocking<Unit> {
         UploadIntentRepositoryFixture().use { fixture ->
             val request = fixture.request()

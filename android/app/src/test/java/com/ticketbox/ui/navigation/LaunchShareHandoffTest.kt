@@ -58,6 +58,7 @@ internal class LaunchShareHandoffTest {
         val original = restored.pending as LaunchAction.UploadSharedImages
         assertEquals(first.selection.batchId, original.selection.batchId)
         assertEquals(first.selection.uris, original.selection.uris)
+        assertEquals("Asia/Shanghai", original.selection.timezone)
         assertEquals(binding(), original.selection.expectedBinding)
         assertFalse(restored.beginUpload(original, binding()))
         restored.retryUpload()
@@ -95,6 +96,7 @@ internal class LaunchShareHandoffTest {
 
         assertEquals(listOf(first.batchId, second.batchId), restored.map { (it as LaunchIntentRequest.ShareImages).batchId })
         assertEquals(binding(), (restored.first() as LaunchIntentRequest.ShareImages).expectedBinding)
+        assertEquals("Asia/Shanghai", (restored.first() as LaunchIntentRequest.ShareImages).timezone)
         assertEquals(listOf(second), remainingLaunchRequest(restored, first))
         assertEquals(listOf(second), remainingLaunchRequest(listOf(second), first))
         assertTrue(remainingLaunchRequest(listOf(second), second).isEmpty())
@@ -114,7 +116,7 @@ internal class LaunchShareHandoffTest {
     }
 
     private fun share(name: String, vararg uris: String) = LaunchAction.UploadSharedImages(
-        LaunchIntentRequest.ShareImages(java.util.UUID.nameUUIDFromBytes(name.toByteArray()).toString(), uris.toList()),
+        LaunchIntentRequest.ShareImages(java.util.UUID.nameUUIDFromBytes(name.toByteArray()).toString(), uris.toList(), "Asia/Shanghai"),
     )
 
     private fun binding() = LogicalSessionBinding("https://family.example", "ledger-a", "original-owner", "session", "revision")

@@ -1,5 +1,7 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.UploadBatchRequest
+
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.UploadAcceptance
@@ -24,7 +26,7 @@ internal class PendingViewModelUploadContinuationTest : PendingViewModelReviewTe
         val vm = pendingViewModel(fake)
         advanceUntilIdle()
         val nextId = "00000000-0000-0000-0000-000000000002"
-        assertTrue(vm.acceptUploads(nextId, listOf("d", "e"), uploadTestBinding()) { null })
+        assertTrue(vm.acceptUploads(UploadBatchRequest(nextId, listOf("d", "e"), uploadTestBinding(), "Asia/Shanghai") { null }))
         assertEquals(listOf("d", "e"), fake.uploadIntents.accepted.single().imageRefs)
         assertTrue(fake.uploadIntents.recoveries.isEmpty())
         assertTrue(vm.uiState.value.canRetryUpload)
@@ -40,7 +42,7 @@ internal class PendingViewModelUploadContinuationTest : PendingViewModelReviewTe
             val vm = pendingViewModel(fake)
             runCurrent()
             var consumed = true
-            val acceptance = launch { consumed = vm.acceptUploads(UPLOAD_TEST_BATCH, listOf("old"), uploadTestBinding()) { null } }
+            val acceptance = launch { consumed = vm.acceptUploads(UploadBatchRequest(UPLOAD_TEST_BATCH, listOf("old"), uploadTestBinding(), "Asia/Shanghai") { null }) }
             runCurrent()
             fake.uploadIntents.snapshots.value = UploadIntentObservation(LedgerAccessContext(next, true), emptyList())
             runCurrent()

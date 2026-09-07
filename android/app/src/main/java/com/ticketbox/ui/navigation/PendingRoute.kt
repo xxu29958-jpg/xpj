@@ -25,6 +25,7 @@ import com.ticketbox.ui.screens.pending.PendingReviewSheetHostActions
 import com.ticketbox.ui.screens.pending.PendingScreenChromeActions
 import com.ticketbox.ui.screens.pending.PendingUploadSelectionUiState
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.UploadBatchRequest
 import com.ticketbox.viewmodel.PendingViewModel
 import com.ticketbox.viewmodel.closeSheet
 import com.ticketbox.viewmodel.confirmReadyExpenses
@@ -61,7 +62,6 @@ internal fun PendingRoute(
     }
     val state by pendingViewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val uploadSource = remember(context.applicationContext) { pendingUploadSource(context) }
 
     // Targeted entries (data-quality remediation) land on the PRESERVED
     // PendingViewModel with only a client-side filter — unlike Transactions
@@ -92,9 +92,7 @@ internal fun PendingRoute(
         canAcceptUpload = state.canStartUpload,
         uploadBinding = pendingViewModel.currentUploadBinding(),
         onOpenPicker = launchImagePicker,
-        onUploadSharedImages = { batchId, uris, binding ->
-            pendingViewModel.acceptUploads(batchId, uris, binding, uploadSource)
-        },
+        onUploadSharedImages = pendingViewModel::acceptUploads,
     )
 
     PendingScreen(
@@ -215,10 +213,11 @@ internal fun PendingLaunchActionEffect(
     canAcceptUpload: Boolean,
     uploadBinding: LogicalSessionBinding?,
     onOpenPicker: () -> Boolean,
-    onUploadSharedImages: suspend (String, List<String>, LogicalSessionBinding) -> Boolean,
+    onUploadSharedImages: suspend (UploadBatchRequest) -> Boolean,
 ) {
     // rememberUpdatedState 让 effect 始终读到最新回调，不因首帧捕获而失效。
     val context = LocalContext.current
+    val uploadSource = remember(context.applicationContext) { pendingUploadSource(context) }
     val currentOpenPicker by rememberUpdatedState(onOpenPicker)
     val currentUploadShared by rememberUpdatedState(onUploadSharedImages)
     val currentCanAccept by rememberUpdatedState(canAcceptUpload)
@@ -238,7 +237,9 @@ internal fun PendingLaunchActionEffect(
         val original = requireNotNull(actionState.pendingUpload).selection
         var accepted = false
         try {
-            accepted = currentUploadShared(original.batchId, original.uris, requireNotNull(original.expectedBinding))
+            accepted = currentUploadShared(UploadBatchRequest(
+                original.batchId, original.uris, requireNotNull(original.expectedBinding), original.timezone, uploadSource,
+            ))
         } finally {
             actionState.finishUpload(action, accepted)
             if (accepted) releaseUploadSourceGrants(context, actionState, original)

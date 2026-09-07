@@ -11,7 +11,6 @@ import com.ticketbox.upload.PreparedUploadImage
 import java.io.IOException
 import java.time.Instant
 import java.time.format.DateTimeParseException
-import java.util.TimeZone
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
@@ -60,7 +59,6 @@ class UploadIntentRepository(
         collectOrphans()
         val keys = original.imageRefs.indices.map { uploadItemKey(original.id, it) }
         var groupId = original.id
-        var timezone = ""
         try {
             files.acceptBatch(
                 sources = original.imageRefs.mapIndexed { index, reference ->
@@ -72,7 +70,6 @@ class UploadIntentRepository(
                         if (existing.any { row -> row.status == PendingMutationStatus.Pending }) outbox.schedulePending()
                     } ?: run {
                         groupId = continuationGroup(bound, original.expectedBinding) ?: original.id
-                        timezone = TimeZone.getDefault().id
                         null
                     }
                 },
@@ -81,7 +78,7 @@ class UploadIntentRepository(
                     val intents = descriptors.mapIndexed { index, file ->
                         val payload = UploadScreenshotPayload(1,
                             UploadBatchPosition(original.id, index, descriptors.size, groupId),
-                            original.expectedBinding, timezone, file)
+                            original.expectedBinding, original.timezone, file)
                         PendingMutationIntent(type = PendingMutationType.UploadScreenshot, targetId = "upload_batch:$groupId",
                             payloadJson = payloadAdapter.toJson(payload), expectedRowVersion = 0L, idempotencyKey = keys[index])
                     }

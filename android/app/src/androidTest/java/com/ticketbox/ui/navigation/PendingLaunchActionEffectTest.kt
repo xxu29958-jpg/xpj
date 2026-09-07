@@ -64,6 +64,27 @@ class PendingLaunchActionEffectTest {
     val composeRule = createComposeRule()
 
     @Test
+    fun externalImageSharesCannotSupplyAnAcceptanceFlagOrOriginalBatchIdentity() {
+        composeRule.runOnIdle {
+            val activity = com.ticketbox.MainActivity()
+            val parse = com.ticketbox.MainActivity::class.java.getDeclaredMethod("parseLaunchIntent", Intent::class.java)
+                .apply { isAccessible = true }
+            val forgedId = java.util.UUID.randomUUID().toString()
+            val original = Uri.parse("content://external/receipt.png")
+            val requests = listOf(true, false).map { handled ->
+                val intent = Intent(Intent.ACTION_SEND).setType("image/png")
+                    .putExtra(Intent.EXTRA_STREAM, original)
+                    .putExtra("ticketbox.launch.handled", handled)
+                    .putExtra("ticketbox.launch.upload.batch_id", forgedId)
+                parse.invoke(activity, intent) as? LaunchIntentRequest.ShareImages
+            }
+            assertEquals(listOf(false, false), requests.map { it == null || it.batchId == forgedId })
+            assertEquals(2, requests.map { requireNotNull(it).batchId }.toSet().size)
+            assertTrue(requests.all { it?.uris == listOf(original.toString()) })
+        }
+    }
+
+    @Test
     @SdkSuppress(minSdkVersion = 29)
     fun consumedShareSurvivesRouteReentryAndActualRetryContinuesTheOriginalTail() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
@@ -79,12 +100,12 @@ class PendingLaunchActionEffectTest {
                 composeRule.setContent {
                     val state by owner.uiState.collectAsState()
                     if (visible.value) {
-                        PendingLaunchActionEffect(shell, state.canStartUpload, owner.currentUploadBinding(), { false }) { id, refs, binding ->
-                            owner.acceptUploads(id, refs, binding) { name ->
+                        PendingLaunchActionEffect(shell, state.canStartUpload, owner.currentUploadBinding(), { false }) { request ->
+                            owner.acceptUploads(request.copy(prepare = { name ->
                                 prepared += name
                                 if (name == "a.png") releaseA.await()
                                 preparedImage(name)
-                            }
+                            }))
                         }
                         TicketboxTheme(skin = AppSkin.Default) {
                             PendingScreen(state, pendingScreenChromeActions(
@@ -147,9 +168,8 @@ class PendingLaunchActionEffectTest {
                         shell = currentShell
                         DisposableEffect(store) { onDispose { store.clear() } }
                         val state by owner.uiState.collectAsState()
-                        PendingLaunchActionEffect(currentShell, state.canStartUpload, owner.currentUploadBinding(), { false }) { id, images, binding ->
-                            owner.acceptUploads(id, images, binding, pendingUploadSource(context))
-                        }
+                        PendingLaunchActionEffect(currentShell, state.canStartUpload, owner.currentUploadBinding(), { false },
+                            onUploadSharedImages = owner::acceptUploads)
                         TicketboxTheme(skin = AppSkin.Default) {
                             PendingScreen(state, pendingScreenChromeActions(
                                 owner, {}, PendingInboxNavigationActions({}, {}), currentShell.pendingFilterRequest, selectionUi(currentShell),
@@ -208,7 +228,7 @@ class PendingLaunchActionEffectTest {
         val available = mutableStateOf(false)
         var opens = 0
         composeRule.setContent {
-            PendingLaunchActionEffect(shell, available.value, null, { opens += 1; true }, { _, _, _ -> error("No shared images") })
+            PendingLaunchActionEffect(shell, available.value, null, { opens += 1; true }, { error("No shared images") })
         }
         composeRule.runOnIdle { shell.launchAction.post(LaunchAction.OpenImagePicker) }
         composeRule.runOnIdle {
@@ -250,10 +270,10 @@ class PendingLaunchActionEffectTest {
                     openPicker = { launcher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                     PendingLaunchActionEffect(shell, ready.value,
                         LogicalSessionBinding("https://example.test", "family", "owner", "session", "revision"),
-                        onOpenPicker = { false }, onUploadSharedImages = { _, refs, _ ->
-                            assertEquals(listOf(original.toString()), refs)
+                        onOpenPicker = { false }, onUploadSharedImages = { request ->
+                            assertEquals(listOf(original.toString()), request.imageRefs)
                             assertTrue(resolver.persistedUriPermissions.any { it.uri == original && it.isReadPermission })
-                            assertNotNull(pendingUploadSource(context)(refs.single()))
+                            assertNotNull(request.prepare(request.imageRefs.single()))
                             ++attempts == 1
                         })
                 }

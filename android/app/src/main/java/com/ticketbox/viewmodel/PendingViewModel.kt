@@ -18,7 +18,6 @@ import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.upload.PreparedUploadImage
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -349,14 +348,9 @@ class PendingViewModel(
     internal fun currentUploadBinding(): LogicalSessionBinding? = uploadObservation?.access?.binding
         ?.takeIf { it == uploadIntents.currentUploadBinding() }
 
-    internal suspend fun acceptUploads(
-        batchId: String,
-        imageRefs: List<String>,
-        expectedBinding: LogicalSessionBinding,
-        prepare: suspend (String) -> PreparedUploadImage?,
-    ): Boolean {
+    internal suspend fun acceptUploads(request: UploadBatchRequest): Boolean {
         if (_uiState.value.uploadActionInProgress || blockReadOnlyWrite()) return false
-        val binding = expectedBinding
+        val binding = request.expectedBinding
         if (currentUploadBinding() != binding) {
             _uiState.update { it.copy(message = UiText.res(R.string.pending_msg_upload_ledger_switched)) }
             return false
@@ -364,7 +358,7 @@ class PendingViewModel(
         val generation = requestGeneration
         _uiState.update { it.copy(uploadActionInProgress = true, message = null) }
         return try {
-            val result = uploadIntents.acceptUploadBatch(UploadBatchRequest(batchId, imageRefs, binding, prepare))
+            val result = uploadIntents.acceptUploadBatch(request)
             if (generation != requestGeneration || uploadIntents.currentUploadBinding() != binding) return false
             result.onFailure { error ->
                 _uiState.update { it.copy(message = error.toUiText(R.string.pending_msg_upload_failed)) }

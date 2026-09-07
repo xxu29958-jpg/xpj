@@ -17,6 +17,7 @@ data class UploadBatchRequest(
     val id: String,
     val imageRefs: List<String>,
     val expectedBinding: LogicalSessionBinding,
+    val timezone: String,
     val prepare: suspend (String) -> PreparedUploadImage?,
 )
 

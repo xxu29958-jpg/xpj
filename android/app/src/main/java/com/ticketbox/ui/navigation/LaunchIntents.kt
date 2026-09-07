@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.ticketbox.data.repository.LogicalSessionBinding
+import java.util.TimeZone
 import java.util.UUID
 
 /**
@@ -23,7 +24,11 @@ import java.util.UUID
 // 故 public 与 internal 实际等效，这里取 public 仅为满足该可见性约束。
 sealed interface LaunchIntentRequest {
     /** 系统分享（ACTION_SEND / ACTION_SEND_MULTIPLE，image 类 MIME）带进来的一张或多张图。 */
-    data class ShareImages(val batchId: String, val uris: List<String>) : LaunchIntentRequest {
+    data class ShareImages(
+        val batchId: String,
+        val uris: List<String>,
+        val timezone: String = TimeZone.getDefault().id,
+    ) : LaunchIntentRequest {
         var expectedBinding by mutableStateOf<LogicalSessionBinding?>(null)
             private set
 
@@ -62,20 +67,20 @@ internal fun remainingLaunchRequest(
 internal fun LaunchIntentRequest.savedFields(): ArrayList<String> = ArrayList(when (this) {
     is LaunchIntentRequest.ShareImages -> listOf("share", batchId,
         expectedBinding?.serverUrl.orEmpty(), expectedBinding?.ledgerId.orEmpty(), expectedBinding?.ownerKey.orEmpty(),
-        expectedBinding?.sessionGeneration.orEmpty(), expectedBinding?.bindingRevision.orEmpty()) + uris
+        expectedBinding?.sessionGeneration.orEmpty(), expectedBinding?.bindingRevision.orEmpty(), timezone) + uris
     is LaunchIntentRequest.Navigate -> listOf("navigate", target.id)
     is LaunchIntentRequest.JoinInvitation -> error("Invitation input retains its original Intent lifetime")
 })
 
 internal fun restoreLaunchRequest(fields: List<String>): LaunchIntentRequest = when (fields.first()) {
-    "share" -> LaunchIntentRequest.ShareImages(fields[1], fields.drop(SAVED_SHARE_HEADER_SIZE)).apply {
+    "share" -> LaunchIntentRequest.ShareImages(fields[1], fields.drop(SAVED_SHARE_HEADER_SIZE), fields[7]).apply {
         if (fields[2].isNotEmpty()) freezeBinding(LogicalSessionBinding(fields[2], fields[3], fields[4], fields[5], fields[6]))
     }
     "navigate" -> LaunchIntentRequest.Navigate(requireNotNull(resolveShortcutTarget(fields[1])))
     else -> error("Unsupported saved launch request")
 }
 
-private const val SAVED_SHARE_HEADER_SIZE = 7
+private const val SAVED_SHARE_HEADER_SIZE = 8
 
 /** One OS share payload, captured at arrival; its id survives parsing and Activity restoration. */
 internal data class LaunchSharedContent(

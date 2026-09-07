@@ -159,6 +159,10 @@ def run_pending_expense_enrichment_task(
         task,
         payload,
     )
+    # A restart may interrupt only the worker's final status publication. The
+    # committed outcome is already authoritative; do not rerun its original OCC.
+    if task.result_summary_json is not None:
+        return
 
     def assert_not_cancelled() -> None:
         if check_cancellation_requested(db, task.id):
