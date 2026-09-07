@@ -289,7 +289,7 @@ private fun FactOffsetActions(
         AppSecondaryButton(
             text = stringResource(R.string.expense_offset_create_refund_cta),
             modifier = Modifier.fillMaxWidth(),
-            enabled = status != ExpenseLineageStatus.FullyRefunded,
+            enabled = state.authoritativeRootReady && status != ExpenseLineageStatus.FullyRefunded,
             onClick = { viewModel.openOffsetSheet(StreamOffsetKind.Refund) },
         )
         // reversal gate（共同裁决）：server resolve_offset_money 在存在任一 active
@@ -300,6 +300,7 @@ private fun FactOffsetActions(
             AppSecondaryButton(
                 text = stringResource(R.string.expense_offset_create_reversal_cta),
                 modifier = Modifier.fillMaxWidth(),
+                enabled = state.authoritativeRootReady,
                 onClick = { viewModel.openOffsetSheet(StreamOffsetKind.Reversal) },
             )
         } else {

@@ -288,6 +288,15 @@ interface ExpenseDao {
     )
     suspend fun deleteConfirmedStreamOffsetsForRoot(ledgerId: String, rootServerId: Long)
 
+    /** Retire a non-confirmed root without erasing a newer confirmed projection installed during the GET. */
+    @Transaction
+    suspend fun retireConfirmedRoot(ledgerId: String, rootServerId: Long, rowVersion: Long) {
+        val current = findByServerId(ledgerId, rootServerId)
+        if (current != null && current.rowVersion > rowVersion) return
+        deleteConfirmedByServerIds(ledgerId, listOf(rootServerId))
+        deleteConfirmedStreamOffsetsForRoot(ledgerId, rootServerId)
+    }
+
     @Transaction
     suspend fun clearAllExpenseCaches() {
         clear()
@@ -348,7 +357,7 @@ interface ExpenseDao {
         }
     }
 
-    /** Atomically applies the server-owned typed confirmed stream projection. */
+    /** Atomically applies the server-owned typed stream and returns the roots actually accepted. */
     @Transaction
     suspend fun applyConfirmedStreamSyncForLedger(
         ledgerId: String,
@@ -356,7 +365,7 @@ interface ExpenseDao {
         offsets: List<ExpenseOffsetStreamEntity>,
         replaceCache: Boolean,
         pruneScope: ConfirmedStreamPruneScope,
-    ) {
+    ): Set<Long> {
         if (replaceCache) {
             clearForLedger(ledgerId)
             clearConfirmedStreamOffsetsForLedger(ledgerId)
@@ -392,6 +401,7 @@ interface ExpenseDao {
                 if (chunk.isNotEmpty()) deleteConfirmedStreamOffsetsByPublicIds(ledgerId, chunk)
             }
         }
+        return acceptedRootIds
     }
 
     /**

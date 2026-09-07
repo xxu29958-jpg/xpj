@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
@@ -39,10 +40,9 @@ internal data class PendingMutationIntent(
  * device rebinds do not replay old rows under the new binding.
  *
  * Concurrency contract enforced here:
- * 1. [enqueue] takes a snapshot of the mutation; the call site
- *    must already have applied the optimistic UI update before
- *    calling — the outbox is durable storage, not the UI source
- *    of truth.
+ * 1. [enqueue] publishes the original bound intent. Each mutation owner
+ *    decides its local presentation; a queued correction is never a fact.
+ *    Room acceptance precedes the scheduler notification.
  * 2. Drain happens in [dequeueNextRunnable] which respects "same
  *    target_id serial": a row is skipped if another row for the
  *    same target is currently IN_FLIGHT / CONFLICT / FAILED. The
@@ -211,10 +211,8 @@ class OutboxRepository private constructor(
 
     private suspend fun currentBinding(): OutboxBinding =
         bindingTransitionLease.withLock {
-            canonicalBindingWithAliasesMigratedLocked(rawBinding())
+            canonicalBindingWithAliasesMigratedLocked(bindingProvider())
         }
-
-    private fun rawBinding(): OutboxBinding = bindingProvider()
 
     private suspend fun canonicalBindingWithAliasesMigratedLocked(
         binding: OutboxBinding,
@@ -255,7 +253,7 @@ class OutboxRepository private constructor(
         boundRequest: BoundLedgerRequest,
         block: suspend () -> T,
     ): T = bindingTransitionLease.withLock {
-        val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
+        val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
         boundRequest.requireStillActiveFor(binding)
         block()
     }
@@ -288,7 +286,7 @@ class OutboxRepository private constructor(
                             dao.clearAll()
                         }
                         serverAliasMigration?.let { migration ->
-                            rawBinding().owner?.storageKey?.let { ownerKey ->
+                            bindingProvider().owner?.storageKey?.let { ownerKey ->
                                 dao.migrateServerUrlAlias(
                                     ownerKey = ownerKey,
                                     oldServerUrl = migration.oldServerUrl,
@@ -365,22 +363,27 @@ class OutboxRepository private constructor(
     internal suspend fun enqueue(
         boundRequest: BoundLedgerRequest,
         intent: PendingMutationIntent,
+        validateTargetRows: ((List<OutboxRow>) -> Unit)? = null,
         afterPersisted: suspend () -> Unit = {},
     ): Long = enqueueInternal(
         boundRequest = boundRequest,
         intent = intent,
+        validateTargetRows = validateTargetRows,
         afterPersisted = afterPersisted,
     )
 
     private suspend fun enqueueInternal(
         boundRequest: BoundLedgerRequest?,
         intent: PendingMutationIntent,
+        validateTargetRows: ((List<OutboxRow>) -> Unit)? = null,
         afterPersisted: suspend () -> Unit = {},
     ): Long {
         val id = bindingTransitionLease.withLock {
-            val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
+            val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
             boundRequest?.requireStillActiveFor(binding)
             binding.requireReadyForEnqueue()
+            validateTargetRows?.invoke(activeForTarget(binding, intent.targetId,
+                ACTIVE_STATUS_VALUES + PendingMutationStatus.Done.wireValue))
             val row = PendingMutationEntity(
                 serverUrl = binding.serverUrl,
                 ledgerId = binding.ledgerId,
@@ -401,45 +404,34 @@ class OutboxRepository private constructor(
         return id
     }
 
-    /** Reuses the enqueue scheduler after a caller has verified a persisted Pending transition. */
+    /** Reuses the existing scheduler after a durable insertion or explicit original retry. */
     internal fun schedulePending() {
         try {
             onEnqueued()
         } catch (_: Exception) {
-            // Best-effort scheduler kick; the row is already in the
-            // DAO and the periodic worker (15-min tick) will drain
-            // it. JVM-level Errors (OOM / StackOverflow / Linkage)
-            // propagate up by design.
+            // The durable row remains; the existing periodic worker will drain it.
         }
-    }
-
-    suspend fun pauseForBindingTransition() {
-        withBindingTransition(clearExistingRows = false) {}
     }
 
     /**
      * Drop every queued mutation. Used for explicit sign-out or
      * internal debug rebind paths where preserving offline edits
      * would keep private data after credentials are intentionally
-     * removed. Ledger/server switches use [pauseForBindingTransition]
+     * removed. Ledger/server switches use [withBindingTransition]
      * instead; durable binding columns keep old rows from replaying
      * under the wrong session.
      *
      * @return the number of rows dropped.
      */
     suspend fun clearAll(): Int {
-        var removed = 0
-        withBindingTransition(clearExistingRows = false) {
-            removed = dao.clearAll()
-        }
-        return removed
+        return withBindingTransition(clearExistingRows = false) { dao.clearAll() }
     }
 
     /** Remove only legacy or foreign-owner rows after explicit user confirmation. */
     suspend fun clearQuarantined(): Int {
         val removed = dispatchLease.withLock {
             bindingTransitionLease.withLock {
-                val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
+                val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
                 binding.requireReadyForEnqueue()
                 dao.deleteQuarantined(binding.ownerStorageKey)
             }
@@ -545,13 +537,45 @@ class OutboxRepository private constructor(
         return rowcount > 0
     }
 
-    suspend fun markDone(id: Long) {
+    internal suspend fun discardCorrection(boundRequest: BoundLedgerRequest, row: OutboxRow): Boolean = bindingTransitionLease.withLock {
+        val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
+        boundRequest.requireStillActiveFor(binding)
+        check(row.type == PendingMutationType.CorrectExpense && row.status in setOf(
+            PendingMutationStatus.Failed, PendingMutationStatus.Conflict, PendingMutationStatus.Done, PendingMutationStatus.Pending,
+        ))
+        check(row.ownerKey == binding.ownerStorageKey && row.ledgerId == binding.ledgerId)
+        dao.deleteIfStatus(row.id, binding.ownerStorageKey, binding.ledgerId, row.status.wireValue) > 0
+    }.also { changed -> if (changed) schedulePending() }
+
+    suspend fun markDone(id: Long, cacheRefreshVersion: Long? = null) {
         dao.markDone(
             id = id,
             status = PendingMutationStatus.Done.wireValue,
             completedAt = nowIso(),
+            lastError = cacheRefreshVersion?.let { "$CORRECTION_REFRESH_PREFIX$it" },
         )
     }
+
+    /** Acknowledges adopted roots without changing delivery, original OCC or command bytes. */
+    internal suspend fun acknowledgeCorrectionRefresh(boundRequest: BoundLedgerRequest, versions: Map<Long, Long>) =
+        bindingTransitionLease.withLock {
+            val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
+            try {
+                boundRequest.requireStillActiveFor(binding)
+            } catch (_: RepositoryException) {
+                // Adoption already completed. A later transition leaves its marker for the next bound read.
+                return@withLock
+            }
+            val rows = dao.observeActiveByTypes(binding.ownerStorageKey, binding.ledgerId,
+                listOf(PendingMutationType.CorrectExpense.wireValue), listOf(PendingMutationStatus.Done.wireValue)).first()
+            for (row in rows) {
+                val required = correctionRefreshVersion(row.lastError) ?: continue
+                val target = parseExpenseTargetRef(row.targetId)?.toLongOrNull() ?: continue
+                if ((versions[target] ?: continue) >= required) {
+                    dao.clearCorrectionRefresh(row.id, requireNotNull(row.lastError))
+                }
+            }
+        }
 
     /**
      * Cascade a freshly-server-returned token to every PENDING row
@@ -566,7 +590,8 @@ class OutboxRepository private constructor(
                 ownerKey = binding.ownerStorageKey,
                 ledgerId = binding.ledgerId,
                 targetId = targetId,
-                preservedTokenType = PendingMutationType.VoidExpenseOffset.wireValue,
+                preservedTokenTypes = listOf(PendingMutationType.VoidExpenseOffset.wireValue,
+                    PendingMutationType.CorrectExpense.wireValue, PendingMutationType.CreateExpenseOffset.wireValue),
                 freshToken = newToken,
             )
         }
@@ -644,41 +669,47 @@ class OutboxRepository private constructor(
     suspend fun resolveConflict(
         id: Long,
         resolution: ConflictResolution,
-    ): Boolean = bindingTransitionLease.withLock {
-        val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
-        // [codex round-4 P2] Atomic status-checked updates so a
-        // stale UI banner click can't flip a DONE / re-resolved row
-        // back to PENDING (or delete a row a parallel keep-mine
-        // just turned PENDING). Returns ``true`` only if THIS call
-        // actually changed the row.
-        when (resolution) {
-            is ConflictResolution.KeepMine ->
-                // ADR-0042 §4.10: an over-age CONFLICT row can't be re-queued —
-                // expire it instead (rotating the key can't save a committed-but-
-                // unseen original whose server key the ~30d retention already
-                // purged → double-apply). Otherwise the normal token-refresh flip.
-                if (expireOverAgeOnResolve(id, binding, PendingMutationStatus.Conflict.wireValue)) {
-                    true
-                } else {
-                    dao.requeueConflictWithFreshToken(
+    ): Boolean {
+        var expired = false
+        val changed = bindingTransitionLease.withLock {
+            val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
+            // [codex round-4 P2] Atomic status-checked updates so a
+            // stale UI banner click can't flip a DONE / re-resolved row
+            // back to PENDING (or delete a row a parallel keep-mine
+            // just turned PENDING). Returns ``true`` only if THIS call
+            // actually changed the row.
+            when (resolution) {
+                is ConflictResolution.KeepMine ->
+                    // ADR-0042 §4.10: an over-age CONFLICT row can't be re-queued —
+                    // expire it instead (rotating the key can't save a committed-but-
+                    // unseen original whose server key the ~30d retention already
+                    // purged → double-apply). Otherwise the normal token-refresh flip.
+                    if (expireOverAgeOnResolve(id, binding, PendingMutationStatus.Conflict.wireValue)) {
+                        expired = true
+                        true
+                    } else {
+                        dao.requeueConflictWithFreshToken(
+                            id = id,
+                            ownerKey = binding.ownerStorageKey,
+                            ledgerId = binding.ledgerId,
+                            freshToken = resolution.freshToken,
+                            // ADR-0042 §4.8: KeepMine = overwrite-the-new-version intent →
+                            // rotate the idempotency key (DAO applies it only to
+                            // key-bearing rows; keyless types stay null).
+                            rotatedIdempotencyKey = UUID.randomUUID().toString(),
+                        ) > 0
+                    }
+                ConflictResolution.DropMine ->
+                    dao.deleteIfStatus(
                         id = id,
                         ownerKey = binding.ownerStorageKey,
                         ledgerId = binding.ledgerId,
-                        freshToken = resolution.freshToken,
-                        // ADR-0042 §4.8: KeepMine = overwrite-the-new-version intent →
-                        // rotate the idempotency key (DAO applies it only to
-                        // key-bearing rows; keyless types stay null).
-                        rotatedIdempotencyKey = UUID.randomUUID().toString(),
+                        expectedStatus = PendingMutationStatus.Conflict.wireValue,
                     ) > 0
-                }
-            ConflictResolution.DropMine ->
-                dao.deleteIfStatus(
-                    id = id,
-                    ownerKey = binding.ownerStorageKey,
-                    ledgerId = binding.ledgerId,
-                    expectedStatus = PendingMutationStatus.Conflict.wireValue,
-                ) > 0
+            }
         }
+        if (changed && !expired) schedulePending()
+        return changed
     }
 
     /**
@@ -699,48 +730,54 @@ class OutboxRepository private constructor(
     suspend fun resolveFailed(
         id: Long,
         resolution: FailedResolution,
-    ): Boolean = bindingTransitionLease.withLock {
-        val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
-        // [codex round-4 P2] Same atomic-status guard as
-        // resolveConflict — stale banner click on a row that's
-        // already been retried + DONE elsewhere must be a no-op.
-        when (resolution) {
-            is FailedResolution.Retry -> {
-                // ADR-0042 §4.10: an over-age FAILED row can't be retried — the next
-                // drain's reaper would re-expire it, and replaying risks double-apply
-                // (a rotated/fresh token doesn't help once the server purged the
-                // original key). Expire it so the UI offers only 移除.
-                if (expireOverAgeOnResolve(id, binding, PendingMutationStatus.Failed.wireValue)) {
-                    true
-                } else {
-                    val freshToken = resolution.freshToken
-                    if (freshToken != null) {
-                        dao.requeueFailedWithFreshToken(
-                            id = id,
-                            ownerKey = binding.ownerStorageKey,
-                            ledgerId = binding.ledgerId,
-                            freshToken = freshToken,
-                            // §4.8: retry-with-fresh-token is the same overwrite-new-
-                            // version intent as KeepMine → rotate the key too.
-                            rotatedIdempotencyKey = UUID.randomUUID().toString(),
-                        ) > 0
+    ): Boolean {
+        var expired = false
+        val changed = bindingTransitionLease.withLock {
+            val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
+            // [codex round-4 P2] Same atomic-status guard as
+            // resolveConflict — stale banner click on a row that's
+            // already been retried + DONE elsewhere must be a no-op.
+            when (resolution) {
+                is FailedResolution.Retry -> {
+                    // ADR-0042 §4.10: an over-age FAILED row can't be retried — the next
+                    // drain's reaper would re-expire it, and replaying risks double-apply
+                    // (a rotated/fresh token doesn't help once the server purged the
+                    // original key). Expire it so the UI offers only 移除.
+                    if (expireOverAgeOnResolve(id, binding, PendingMutationStatus.Failed.wireValue)) {
+                        expired = true
+                        true
                     } else {
-                        dao.retryFailed(
-                            id = id,
-                            ownerKey = binding.ownerStorageKey,
-                            ledgerId = binding.ledgerId,
-                        ) > 0
+                        val freshToken = resolution.freshToken
+                        if (freshToken != null) {
+                            dao.requeueFailedWithFreshToken(
+                                id = id,
+                                ownerKey = binding.ownerStorageKey,
+                                ledgerId = binding.ledgerId,
+                                freshToken = freshToken,
+                                // §4.8: retry-with-fresh-token is the same overwrite-new-
+                                // version intent as KeepMine → rotate the key too.
+                                rotatedIdempotencyKey = UUID.randomUUID().toString(),
+                            ) > 0
+                        } else {
+                            dao.retryFailed(
+                                id = id,
+                                ownerKey = binding.ownerStorageKey,
+                                ledgerId = binding.ledgerId,
+                            ) > 0
+                        }
                     }
                 }
+                FailedResolution.Drop ->
+                    dao.deleteIfStatus(
+                        id = id,
+                        ownerKey = binding.ownerStorageKey,
+                        ledgerId = binding.ledgerId,
+                        expectedStatus = PendingMutationStatus.Failed.wireValue,
+                    ) > 0
             }
-            FailedResolution.Drop ->
-                dao.deleteIfStatus(
-                    id = id,
-                    ownerKey = binding.ownerStorageKey,
-                    ledgerId = binding.ledgerId,
-                    expectedStatus = PendingMutationStatus.Failed.wireValue,
-                ) > 0
         }
+        if (changed && !expired) schedulePending()
+        return changed
     }
 
     /**
@@ -757,57 +794,6 @@ class OutboxRepository private constructor(
             .map { currentBinding() }
             .distinctUntilChanged()
     }
-
-    /**
-     * Live queue-depth surface for the global "你有 N 笔待同步"
-     * status pill. Re-subscribes to the new binding when the active ledger
-     * changes (see [bindingFlow]).
-     */
-    @OptIn(ExperimentalCoroutinesApi::class)
-    fun observeQueueDepth(): Flow<Int> =
-        bindingFlow().flatMapLatest { binding ->
-            dao.observeQueueDepth(
-                ownerKey = binding.ownerStorageKey,
-                ledgerId = binding.ledgerId,
-                pendingStatus = PendingMutationStatus.Pending.wireValue,
-                inFlightStatus = PendingMutationStatus.InFlight.wireValue,
-            )
-        }
-
-    /**
-     * Live stream of rows in CONFLICT state. The conflict-banner
-     * UI in PR-2g subscribes to this and renders one banner per
-     * row with "keep mine / drop mine" buttons.
-     *
-     * Status string is converted back to the enum on read so the
-     * UI layer doesn't have to know wire values.
-     */
-    @OptIn(ExperimentalCoroutinesApi::class)
-    fun observeConflicts(): Flow<List<OutboxRow>> =
-        bindingFlow().flatMapLatest { binding ->
-            dao.observeConflictRows(
-                ownerKey = binding.ownerStorageKey,
-                ledgerId = binding.ledgerId,
-                conflictStatus = PendingMutationStatus.Conflict.wireValue,
-            )
-        }
-            .map { rows -> rows.map { it.toDomain() } }
-
-    /**
-     * Live stream of FAILED rows for the "manual retry / drop"
-     * banner. Counterpart of [observeConflicts]; both states block
-     * same-target later mutations and need a UI surface to clear.
-     */
-    @OptIn(ExperimentalCoroutinesApi::class)
-    fun observeFailed(): Flow<List<OutboxRow>> =
-        bindingFlow().flatMapLatest { binding ->
-            dao.observeFailedRows(
-                ownerKey = binding.ownerStorageKey,
-                ledgerId = binding.ledgerId,
-                failedStatus = PendingMutationStatus.Failed.wireValue,
-            )
-        }
-            .map { rows -> rows.map { it.toDomain() } }
 
     /**
      * Product-surface view of durable, unresolved intents for selected mutation
@@ -860,6 +846,7 @@ class OutboxRepository private constructor(
                 dao.observeQuarantinedCount(binding.owner?.storageKey),
             ) { queueDepth, conflicts, failed, quarantinedCount ->
                 OutboxStatus(
+                    binding = binding,
                     queueDepth = queueDepth,
                     conflicts = conflicts.map { it.toDomain() },
                     failed = failed.map { it.toDomain() },
@@ -871,11 +858,33 @@ class OutboxRepository private constructor(
     suspend fun activeForTarget(targetId: String): List<OutboxRow> =
         activeForTarget(currentBinding(), targetId)
 
+    /** Only the Debt adjustment owner can turn an unresolved command into a local stop. */
+    internal suspend fun abandonDebtAdjustment(boundRequest: BoundLedgerRequest, row: OutboxRow): Boolean =
+        bindingTransitionLease.withLock {
+            val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
+            boundRequest.requireStillActiveFor(binding)
+            require(row.type == PendingMutationType.RecordDebtAdjustment)
+            dao.abandonDebtAdjustment(row.id, binding.ownerStorageKey, binding.ledgerId,
+                row.status.wireValue, ISO.format(Instant.now(clock))) > 0
+        }.also { changed -> if (changed) schedulePending() }
+
+    /** Explicit Debt history scope; other mutation types retain their existing observation policy. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    internal fun observeDebtAdjustments(): Flow<List<OutboxRow>> = bindingFlow().flatMapLatest { binding ->
+        dao.observeActiveByTypes(
+            ownerKey = binding.ownerStorageKey,
+            ledgerId = binding.ledgerId,
+            types = listOf(PendingMutationType.RecordDebtAdjustment.wireValue),
+            activeStatuses = ACTIVE_STATUS_VALUES + listOf(PendingMutationStatus.Done.wireValue,
+                PendingMutationStatus.Abandoned.wireValue),
+        )
+    }.map { rows -> rows.map { it.toDomain() } }
+
     internal suspend fun activeForTarget(
         boundRequest: BoundLedgerRequest,
         targetId: String,
     ): List<OutboxRow> = bindingTransitionLease.withLock {
-        val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
+        val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
         boundRequest.requireStillActiveFor(binding)
         activeForTarget(binding, targetId)
     }
@@ -883,11 +892,12 @@ class OutboxRepository private constructor(
     private suspend fun activeForTarget(
         binding: OutboxBinding,
         targetId: String,
+        statuses: List<String> = ACTIVE_STATUS_VALUES,
     ): List<OutboxRow> = dao.activeForTarget(
         ownerKey = binding.ownerStorageKey,
         ledgerId = binding.ledgerId,
         targetId = targetId,
-        activeStatuses = ACTIVE_STATUS_VALUES,
+        activeStatuses = statuses,
     ).map { it.toDomain() }
 
     /**
@@ -916,7 +926,7 @@ class OutboxRepository private constructor(
      * has likely purged it — see [OUTBOX_PENDING_AGE_CAP_MILLIS]), so replaying it
      * risks a double-apply. Flipping it to FAILED here means [dequeueNextRunnable]
      * will never hand it to a dispatcher; instead it surfaces in the
-     * "manual retry / drop" banner via [observeFailed] with the
+     * "manual retry / drop" banner via [observeStatus] with the
      * ``outbox_row_expired`` marker, and the user redoes the action by hand
      * against fresh server state.
      *
@@ -1106,6 +1116,7 @@ data class OutboxStatus(
     val failed: List<OutboxRow>,
     val quarantinedCount: Int = 0,
     val writeBlock: OutboxWriteBlock? = null,
+    val binding: OutboxBinding? = null,
 ) {
     val needsUserAction: Boolean
         get() = conflicts.isNotEmpty() || failed.isNotEmpty() || quarantinedCount > 0

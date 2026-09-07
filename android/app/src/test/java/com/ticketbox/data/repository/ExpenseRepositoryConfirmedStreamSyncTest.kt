@@ -114,7 +114,7 @@ class ExpenseRepositoryConfirmedStreamSyncTest {
 private fun confirmedRepository(
     dao: FakeExpenseDao,
     apiService: FakeApiService,
-): ExpenseRepository = ExpenseRepository(
+): ExpenseRepository = com.ticketbox.data.repository.expenseRepositoryFixture(
     expenseDao = dao,
     binding = testServerSessionBinding(
         apiClient = FakeApiServiceFactory(apiService),
@@ -122,7 +122,7 @@ private fun confirmedRepository(
         tokenStore = TestSessionFixture().apply { saveToken("session-token") },
     ),
     deviceNameProvider = { "Android Test Device" },
-)
+        )
 
 private fun refundOffsetFixture(): ConfirmedOffsetStreamDto = ConfirmedOffsetStreamDto(
     publicId = "refund-1",

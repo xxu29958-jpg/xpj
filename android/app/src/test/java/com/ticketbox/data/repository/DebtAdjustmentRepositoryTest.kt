@@ -197,7 +197,14 @@ class DebtAdjustmentRepositoryTest {
             assertEquals(fixture.api.calls.first(), fixture.api.calls.last())
             assertTrue(fixture.api.facts.isEmpty())
             fixture.repository.recover(fixture.binding, pending, drop = true).getOrThrow()
-            assertTrue(fixture.dao.rows.isEmpty())
+            assertEquals(PendingMutationStatus.Abandoned.wireValue, fixture.dao.rows.getValue(id).status)
+            assertOriginalIntent(original, fixture.dao.rows.getValue(id))
+            assertEquals(pending.row.lastError, fixture.dao.rows.getValue(id).lastError)
+            assertEquals(listOf(1, 1, 1), fixture.queueDepthAtSchedule, "Abandonment publishes its durable terminal state")
+            assertTrue(fixture.repository.recover(fixture.binding, pending, drop = true).isFailure)
+            assertEquals(listOf(1, 1, 1), fixture.queueDepthAtSchedule, "A stale abandonment must not notify again")
+            assertTrue(fixture.repository.recover(fixture.binding, pending, drop = false).isFailure)
+            assertEquals(0, fixture.engine().drainOnce().attempted)
         }
     }
 
@@ -224,7 +231,10 @@ class DebtAdjustmentRepositoryTest {
             assertTrue(fixture.api.calls.isEmpty())
 
             fixture.repository.recover(fixture.binding, pending, drop = true).getOrThrow()
-            assertTrue(fixture.dao.rows.isEmpty())
+            assertEquals(PendingMutationStatus.Abandoned.wireValue, fixture.dao.rows.getValue(id).status)
+            assertOriginalIntent(unsupported, fixture.dao.rows.getValue(id))
+            assertFalse(fixture.pending().canRetry)
+            assertEquals(0, fixture.engine().drainOnce().attempted)
             assertTrue(fixture.api.calls.isEmpty())
         }
     }

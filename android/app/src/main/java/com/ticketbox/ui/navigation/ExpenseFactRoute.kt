@@ -5,7 +5,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.screens.expense.fact.ExpenseFactScreen
 import com.ticketbox.viewmodel.ExpenseFactUiState
 import com.ticketbox.viewmodel.ExpenseFactViewModel
@@ -19,7 +18,6 @@ import com.ticketbox.viewmodel.expenseFactViewModelFactory
 @Composable
 internal fun ExpenseFactRoute(
     expenseId: Long,
-    initialExpense: Expense,
     screenFactory: MainScreenFactory,
     onExit: (adviceInputsChanged: Boolean) -> Unit,
     onOpenRepaymentDrafts: (String) -> Unit,
@@ -29,7 +27,7 @@ internal fun ExpenseFactRoute(
         factory = expenseFactViewModelFactory(
             expenseId = expenseId,
             repository = screenFactory.repository,
-            initialExpense = initialExpense,
+            preferLocalCache = true,
         ),
     )
     val factState by factViewModel.uiState.collectAsStateWithLifecycle()

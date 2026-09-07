@@ -345,7 +345,9 @@ internal class ExpensePendingRepositoryOutboxFallbackTest : ExpensePendingReposi
             offlineMutations = ExpenseOfflineMutationWiring(
                 outbox = outbox,
                 patchExpenseAdapter = adapter,
-            ),
+            correctionAdapter = com.ticketbox.OutboxAdapterGraph().correctionAdapter,
+            legacyCorrectionAdapter = com.ticketbox.OutboxAdapterGraph().legacyCorrectionAdapter,
+        ),
         )
 
         val result = repo.saveExpenseAllowingOffline(baseline.id, draft, baseline)

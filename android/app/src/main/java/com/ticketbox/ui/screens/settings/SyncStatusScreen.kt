@@ -28,6 +28,7 @@ import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.PendingDebtCreation
+import com.ticketbox.data.repository.parseExpenseTargetRef
 import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
 import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppAdaptiveTrailingActionRow
@@ -37,6 +38,8 @@ import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.DebtCreationIntentSummary
+import com.ticketbox.ui.screens.expense.fact.CorrectionSubmissionOptions
+import com.ticketbox.ui.screens.expense.fact.CorrectionSubmissionActions
 import com.ticketbox.viewmodel.OutboxStatusUiState
 import com.ticketbox.viewmodel.OutboxStatusViewModel
 
@@ -44,10 +47,12 @@ import com.ticketbox.viewmodel.OutboxStatusViewModel
 fun SyncStatusScreen(
     viewModel: OutboxStatusViewModel,
     onBack: () -> Unit,
+    onOpenExpense: (Long) -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val actions = remember(viewModel) {
+    val actions = remember(viewModel, onOpenExpense) {
         SyncStatusActions(
+            onOpenExpense = onOpenExpense,
             onKeepMine = viewModel::keepMine,
             onDropMine = viewModel::dropMine,
             onRetry = viewModel::retry,
@@ -60,6 +65,7 @@ fun SyncStatusScreen(
 
 /** Row callbacks grouped to keep the content API small and testable. */
 internal data class SyncStatusActions(
+    val onOpenExpense: (Long) -> Unit,
     val onKeepMine: (OutboxRow) -> Unit,
     val onDropMine: (OutboxRow) -> Unit,
     val onRetry: (OutboxRow) -> Unit,
@@ -81,8 +87,8 @@ internal fun SyncStatusScreenContent(
     onBack: () -> Unit,
 ) {
     // Dropping an offline edit is irreversible, so both paths require confirmation.
-    var confirmingDrop by remember { mutableStateOf<SyncStatusDropSelection?>(null) }
-    var confirmingClearQuarantined by remember { mutableStateOf(false) }
+    var confirmingDrop by remember(state.binding) { mutableStateOf<SyncStatusDropSelection?>(null) }
+    var confirmingClearQuarantined by remember(state.binding) { mutableStateOf(false) }
 
     confirmingDrop?.let { selection ->
         SyncStatusDropDialog(
@@ -119,7 +125,8 @@ internal fun SyncStatusScreenContent(
                 onDropMine = { confirmingDrop = SyncStatusDropSelection(it, failed = false, debtCreation = null,
                     recurringOccurrence = state.recurringOccurrences[it.id], incomeEdit = state.incomeEdits[it.id], debtAdjustment = state.debtAdjustments[it.id]) },
                 onDropFailed = { row ->
-                    confirmingDrop = SyncStatusDropSelection(row, failed = true, debtCreation = state.failedDebtCreations[row.id],
+                    if (row.type == PendingMutationType.CorrectExpense) actions.onDropFailed(row)
+                    else confirmingDrop = SyncStatusDropSelection(row, failed = true, debtCreation = state.failedDebtCreations[row.id],
                         recurringOccurrence = state.recurringOccurrences[row.id], incomeEdit = state.incomeEdits[row.id], debtAdjustment = state.debtAdjustments[row.id])
                 },
                 onClearQuarantined = { confirmingClearQuarantined = true },
@@ -133,8 +140,13 @@ private fun SyncStatusPageBody(
     state: OutboxStatusUiState,
     actions: SyncStatusActions,
 ) {
+    if (!state.bindingReady) {
+        Text(stringResource(if (state.binding == null) R.string.sync_status_binding_unavailable else R.string.sync_status_binding_loading))
+        return
+    }
     val status = state.status
-    SyncStatusOverviewSection(status)
+    SyncStatusOverviewSection(status, state.correctionObservation.corrections, state.debtAdjustments.values.toList())
+    SyncStatusCorrectionSection(state, actions)
 
     SyncStatusQuarantineSection(
         count = status.quarantinedCount,
@@ -142,29 +154,26 @@ private fun SyncStatusPageBody(
         onClear = actions.onClearQuarantined,
     )
 
-    if (state.waitingDebtAdjustments.isNotEmpty()) {
-        SettingsSection(title = stringResource(R.string.debt_adjustment_waiting), icon = Icons.Filled.CloudUpload) {
-            state.waitingDebtAdjustments.forEach { com.ticketbox.ui.screens.DebtAdjustmentIntentSummary(it) }
-        }
-    }
+    SyncStatusDebtSections(state)
 
-    if (status.conflicts.isNotEmpty()) {
+    val conflicts = status.conflicts.filter { it.type != PendingMutationType.CorrectExpense }
+    if (conflicts.isNotEmpty()) {
         SettingsSection(title = stringResource(R.string.sync_status_section_needs_action), icon = Icons.Filled.SyncProblem) {
-            status.conflicts.forEach { row ->
+            conflicts.forEach { row ->
                 SyncStatusOriginalIntentSummary(row, state)
                 ConflictCard(
                     row = row,
                     busy = state.busyRowId == row.id,
-                    onKeepMine = { actions.onKeepMine(row) },
-                    onDropMine = { actions.onDropMine(row) },
+                    actions = actions,
                 )
             }
         }
     }
 
-    if (status.failed.isNotEmpty()) {
+    val failures = status.failed.filter { it.type != PendingMutationType.CorrectExpense }
+    if (failures.isNotEmpty()) {
         SettingsSection(title = stringResource(R.string.sync_status_section_failed), icon = Icons.Filled.ErrorOutline) {
-            status.failed.forEach { row ->
+            failures.forEach { row ->
                 SyncStatusOriginalIntentSummary(row, state)
                 FailedCard(
                     row = row,
@@ -172,12 +181,26 @@ private fun SyncStatusPageBody(
                     busy = state.busyRowId == row.id,
                     onRetry = { actions.onRetry(row) }.takeIf {
                         (row.type != PendingMutationType.UpdateIncomePlan || state.incomeEdits[row.id]?.hasSupportedIntent == true) &&
-                            (row.type != PendingMutationType.RecordDebtAdjustment || state.debtAdjustments[row.id]?.canRetry == true)
+                            (row.type != PendingMutationType.RecordDebtAdjustment || state.debtAdjustments[row.id]?.canRetry == true) &&
+                            (row.type != PendingMutationType.CreateExpenseOffset || row.id in state.retryableOffsetIds)
                     },
-                    onDrop = { actions.onDropFailed(row) },
+                    actions = actions,
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun SyncStatusCorrectionSection(state: OutboxStatusUiState, actions: SyncStatusActions) {
+    state.correctionObservation.corrections.filter { !it.delivered || it.refreshRequired }.forEach { pending ->
+        com.ticketbox.ui.screens.expense.fact.ExpenseCorrectionSubmissionCard(
+            pending = pending,
+            options = CorrectionSubmissionOptions(state.correctionObservation.access?.canModify == true, state.busyRowId != null, false),
+            actions = CorrectionSubmissionActions(
+                recover = { drop -> if (drop) actions.onDropFailed(pending.row) else actions.onRetry(pending.row) },
+                reviewFact = pending.expenseId?.let { id -> { actions.onOpenExpense(id) } }),
+        )
     }
 }
 
@@ -218,11 +241,11 @@ private fun SyncStatusQuarantineSection(count: Int, clearEnabled: Boolean, onCle
 private fun ConflictCard(
     row: OutboxRow,
     busy: Boolean,
-    onKeepMine: () -> Unit,
-    onDropMine: () -> Unit,
+    actions: SyncStatusActions,
 ) {
     // Only expense mutations can refresh state and retry as "keep mine".
-    val canKeep = row.targetId.startsWith("expense:")
+    val originalOffset = row.type == PendingMutationType.CreateExpenseOffset
+    val canKeep = !originalOffset && row.type != PendingMutationType.CorrectExpense && row.targetId.startsWith("expense:")
     SettingsOpenPanel(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
     ) {
@@ -231,22 +254,23 @@ private fun ConflictCard(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ) {
             Text(
-                text = stringResource(R.string.sync_status_conflict_offline_prefix, mutationLabel(row.type)),
+                text = stringResource(R.string.sync_status_conflict_offline_prefix, stringResource(syncStatusMutationLabelRes(row.type))),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = friendlyLastError(row.lastError, fallback = stringResource(R.string.sync_status_conflict_fallback)),
+                text = if (originalOffset) stringResource(R.string.expense_offset_original_requires_review)
+                    else friendlyLastError(row.lastError, fallback = stringResource(R.string.sync_status_conflict_fallback)),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             SyncStatusRecoveryActions(
-                primary = if (canKeep) {
+                primary = if (originalOffset) offsetReviewAction(row, busy, actions) else if (canKeep) {
                     SyncStatusActionButton(
                         text = stringResource(R.string.sync_status_conflict_button_keep_mine),
                         icon = Icons.Filled.CloudUpload,
                         enabled = !busy,
-                        onClick = onKeepMine,
+                        onClick = { actions.onKeepMine(row) },
                     )
                 } else {
                     null
@@ -254,7 +278,7 @@ private fun ConflictCard(
                 danger = SyncStatusActionButton(
                     text = stringResource(R.string.sync_status_conflict_button_drop_mine),
                     enabled = !busy,
-                    onClick = onDropMine,
+                    onClick = { actions.onDropMine(row) },
                 ),
             )
         }
@@ -267,7 +291,7 @@ private fun FailedCard(
     debtCreation: PendingDebtCreation?,
     busy: Boolean,
     onRetry: (() -> Unit)?,
-    onDrop: () -> Unit,
+    actions: SyncStatusActions,
 ) {
     // Expired rows cannot be retried because the server-side idempotency key may be gone.
     val expired = isExpiredFailure(row.lastError)
@@ -280,19 +304,23 @@ private fun FailedCard(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ) {
             Text(
-                text = if (row.type == PendingMutationType.CreateDebt) mutationLabel(row.type)
-                else stringResource(R.string.sync_status_failed_offline_prefix, mutationLabel(row.type)),
+                text = if (row.type == PendingMutationType.CreateDebt) stringResource(syncStatusMutationLabelRes(row.type))
+                else stringResource(R.string.sync_status_failed_offline_prefix, stringResource(syncStatusMutationLabelRes(row.type))),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
             )
             debtCreation?.let { DebtCreationIntentSummary(it) }
             Text(
-                text = friendlyLastError(row.lastError, fallback = stringResource(R.string.sync_status_failed_fallback)),
+                text = if (row.type == PendingMutationType.CreateExpenseOffset && onRetry == null)
+                    stringResource(R.string.expense_offset_original_requires_review)
+                    else friendlyLastError(row.lastError, fallback = stringResource(R.string.sync_status_failed_fallback)),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             SyncStatusRecoveryActions(
-                primary = if (expired || onRetry == null) {
+                primary = if (row.type == PendingMutationType.CreateExpenseOffset && onRetry == null) {
+                    offsetReviewAction(row, busy, actions)
+                } else if (expired || onRetry == null) {
                     null
                 } else {
                     SyncStatusActionButton(
@@ -309,11 +337,18 @@ private fun FailedCard(
                         stringResource(R.string.sync_status_failed_button_drop)
                     },
                     enabled = !busy,
-                    onClick = onDrop,
+                    onClick = { actions.onDropFailed(row) },
                 ),
             )
         }
     }
+}
+
+@Composable
+private fun offsetReviewAction(row: OutboxRow, busy: Boolean, actions: SyncStatusActions): SyncStatusActionButton? {
+    val id = parseExpenseTargetRef(row.targetId)?.toLongOrNull()?.takeIf { it > 0 } ?: return null
+    return SyncStatusActionButton(text = stringResource(R.string.expense_offset_review_current), enabled = !busy,
+        onClick = { actions.onOpenExpense(id) })
 }
 
 @Composable
@@ -380,9 +415,6 @@ private fun SyncStatusRecoveryActions(
 internal fun isExpiredFailure(lastError: String?): Boolean =
     lastError?.startsWith("outbox_row_expired") == true
 
-@Composable
-private fun mutationLabel(type: PendingMutationType): String = stringResource(syncStatusMutationLabelRes(type))
-
 @StringRes
 internal fun syncStatusMutationLabelRes(type: PendingMutationType): Int =
     syncStatusMutationLabelResources.getValue(type)
@@ -413,37 +445,4 @@ internal val syncStatusMutationLabelResources = mapOf(
     PendingMutationType.CreateExpenseOffset to R.string.sync_status_mutation_create_expense_offset,
     PendingMutationType.VoidExpenseOffset to R.string.sync_status_mutation_void_expense_offset,
     PendingMutationType.Unknown to R.string.sync_status_mutation_unknown,
-)
-
-/** Translate known outbox error markers; never expose raw transport or engine errors to users. */
-@Composable
-private fun friendlyLastError(raw: String?, fallback: String): String {
-    val text = raw?.trim().orEmpty()
-    if (text.isEmpty()) return fallback
-    return when {
-        text.startsWith("max_attempts_exceeded") -> stringResource(R.string.sync_status_error_max_attempts)
-        text.startsWith("no_dispatcher_registered") -> stringResource(R.string.sync_status_error_no_dispatcher)
-        text.startsWith("outbox_row_expired") -> stringResource(R.string.sync_status_error_expired)
-        text in syncStatusExactErrorMessageResources ->
-            stringResource(syncStatusExactErrorMessageResources.getValue(text))
-        else -> fallback
-    }
-}
-
-internal val syncStatusExactErrorMessageResources = mapOf(
-    "runtime_version_mismatch" to R.string.sync_status_error_protocol_mismatch,
-    "client_upgrade_required" to R.string.sync_status_error_protocol_mismatch,
-    "rule_category_deleted" to R.string.sync_status_error_rule_category_deleted,
-    "debt_adjustment_payload_unsupported" to R.string.debt_adjustment_unsupported,
-    "debt_adjustment_negative_remaining" to R.string.debt_adjustment_reduction_rejected,
-    "debt_adjustment_response_unverified" to R.string.debt_adjustment_attention,
-    "debt_adjustment_binding_changed" to R.string.debt_adjustment_attention,
-    "debt_adjustment_connection_interrupted" to R.string.debt_adjustment_attention,
-    "debt_create_payload_unsupported" to R.string.debt_create_pending_unsupported,
-    "debt_create_intent_invalid" to R.string.debt_create_sync_rejected,
-    "debt_create_binding_changed" to R.string.debt_create_sync_rejected,
-    "debt_create_rejected" to R.string.debt_create_sync_rejected,
-    "debt_create_response_unverified" to R.string.debt_create_sync_uncertain,
-    "debt_create_response_pending" to R.string.debt_create_sync_uncertain,
-    "debt_create_connection_interrupted" to R.string.debt_create_sync_uncertain,
 )

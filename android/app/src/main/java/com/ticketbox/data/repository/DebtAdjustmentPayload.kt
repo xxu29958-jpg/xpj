@@ -4,6 +4,7 @@ import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.JsonDataException
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.Debt
 import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
 import com.ticketbox.data.local.PendingMutationStatus
 import java.io.IOException
@@ -25,6 +26,9 @@ data class DebtAdjustmentPayload(
 )
 
 data class PendingDebtAdjustment(val row: OutboxRow, val intent: DebtAdjustmentPayload?) {
+    val isTerminal: Boolean get() = row.status == PendingMutationStatus.Done || row.status == PendingMutationStatus.Abandoned
+    val isUnresolved: Boolean get() = row.status in setOf(PendingMutationStatus.Pending,
+        PendingMutationStatus.InFlight, PendingMutationStatus.Failed, PendingMutationStatus.Conflict)
     val hasSupportedIntent: Boolean get() = intent != null
     val reductionRejected: Boolean
         get() = row.status == PendingMutationStatus.Failed && row.lastError == DEBT_ADJUSTMENT_NEGATIVE_REMAINING
@@ -67,5 +71,23 @@ internal fun isDebtAdjustmentReasonValid(reason: String): Boolean =
 internal fun isDebtAdjustmentWithinBalance(amountCents: Long, remainingAmountCents: Long): Boolean =
     amountCents >= 0L || (remainingAmountCents >= 0L && amountCents >= -remainingAmountCents)
 
-/** An invalidation from an actual bound Room snapshot, never a second debt fold or receipt. */
-data class DebtAdjustmentRefresh(val binding: LogicalSessionBinding?, val initial: Boolean)
+/** Actual bound Room state, with terminal arrivals used only to invalidate canonical queries. */
+data class DebtAdjustmentObservation(
+    val binding: LogicalSessionBinding?,
+    val adjustments: List<PendingDebtAdjustment>,
+    val initial: Boolean,
+    val newlyTerminal: List<PendingDebtAdjustment>,
+) {
+    val requiresRefresh: Boolean get() = initial || newlyTerminal.isNotEmpty()
+    val unresolvedTargetIds: Set<String> get() = adjustments.filter { it.isUnresolved }.mapTo(mutableSetOf()) { it.row.targetId }
+
+    /** Call only for a canonical query started after this observation; this does not prove freshness. */
+    fun acceptsCanonical(debt: Debt): Boolean = adjustments.filter { it.row.targetId == debtAdjustmentTarget(debt.publicId) }
+        .all { pending ->
+            when (pending.row.status) {
+                PendingMutationStatus.Done -> debt.rowVersion > (pending.row.expectedRowVersion ?: Long.MAX_VALUE)
+                PendingMutationStatus.Abandoned -> pending.row.expectedRowVersion?.let { debt.rowVersion >= it } ?: true
+                else -> !pending.isUnresolved
+            }
+        }
+}

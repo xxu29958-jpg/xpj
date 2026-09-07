@@ -111,11 +111,17 @@ interface PendingMutationDao {
         UPDATE pending_mutations
         SET status = :status,
             completedAt = :completedAt,
-            lastError = NULL
+            lastError = :lastError
         WHERE id = :id
         """,
     )
-    suspend fun markDone(id: Long, status: String, completedAt: String): Int
+    suspend fun markDone(id: Long, status: String, completedAt: String, lastError: String?): Int
+
+    @Query("""
+        UPDATE pending_mutations SET lastError = NULL
+        WHERE id = :id AND type = 'correct_expense' AND status = 'done' AND lastError = :expectedError
+    """)
+    suspend fun clearCorrectionRefresh(id: Long, expectedError: String): Int
 
     @Query(
         """
@@ -260,6 +266,7 @@ interface PendingMutationDao {
           AND ownerKey = :ownerKey
           AND ledgerId = :ledgerId
           AND status = 'conflict'
+          AND type NOT IN ('correct_expense', 'create_expense_offset')
         """,
     )
     suspend fun requeueConflictWithFreshToken(
@@ -286,6 +293,7 @@ interface PendingMutationDao {
           AND ownerKey = :ownerKey
           AND ledgerId = :ledgerId
           AND status = 'failed'
+          AND type NOT IN ('correct_expense', 'create_expense_offset')
         """,
     )
     suspend fun requeueFailedWithFreshToken(
@@ -374,6 +382,23 @@ interface PendingMutationDao {
         expectedStatus: String,
     ): Int
 
+    /** Debt-only local stop. The original command and failure context remain intact. */
+    @Query(
+        """
+        UPDATE pending_mutations SET status = 'abandoned', completedAt = :stoppedAt
+        WHERE id = :id AND ownerKey = :ownerKey AND ledgerId = :ledgerId
+          AND type = 'record_debt_adjustment' AND status = :expectedStatus
+          AND status IN ('failed', 'conflict')
+        """,
+    )
+    suspend fun abandonDebtAdjustment(
+        id: Long,
+        ownerKey: String,
+        ledgerId: String,
+        expectedStatus: String,
+        stoppedAt: String,
+    ): Int
+
     /**
      * Cascade a new ``expected_row_version`` to every still-PENDING
      * row that targets the same row as a just-succeeded mutation.
@@ -396,14 +421,14 @@ interface PendingMutationDao {
           AND ledgerId = :ledgerId
           AND targetId = :targetId
           AND status = 'pending'
-          AND type != :preservedTokenType
+          AND type NOT IN (:preservedTokenTypes)
         """,
     )
     suspend fun cascadeFreshTokenForTarget(
         ownerKey: String,
         ledgerId: String,
         targetId: String,
-        preservedTokenType: String,
+        preservedTokenTypes: List<String>,
         freshToken: Long,
     ): Int
 
@@ -708,6 +733,7 @@ interface PendingMutationDao {
         WHERE status = :doneStatus
           AND completedAt IS NOT NULL
           AND completedAt < :cutoffIso
+          AND (type != 'correct_expense' OR lastError IS NULL OR lastError NOT GLOB 'correction_refresh_required:*')
         """,
     )
     suspend fun deleteResolvedBefore(

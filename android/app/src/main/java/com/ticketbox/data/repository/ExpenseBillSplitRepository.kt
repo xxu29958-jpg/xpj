@@ -9,6 +9,7 @@ internal class ExpenseBillSplitRepository(
     private val core: ExpenseRepositoryCore,
 ) {
     suspend fun createBillSplitInvitation(
+        expectedBinding: LogicalSessionBinding,
         expenseId: Long,
         receiverAccountId: Long,
         amountCents: Long,
@@ -16,7 +17,7 @@ internal class ExpenseBillSplitRepository(
         if (!core.canModifyLedger()) {
             throw RepositoryException("当前角色为只读，无法修改账本。")
         }
-        val bound = core.ledgerRequestGuard.bind()
+        val bound = core.ledgerRequestGuard.bindExact(expectedBinding)
         bound.call {
             it.createBillSplitInvitation(
                 expenseId,

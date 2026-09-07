@@ -10,7 +10,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.integerResource
 import androidx.compose.ui.res.stringResource
@@ -86,6 +86,7 @@ internal data class SettingsDestinationChromeState(
 )
 
 internal data class SettingsDestinationNavigation(
+    val onOpenExpense: (Long) -> Unit,
     val onSecondaryActiveChange: (Boolean) -> Unit = {},
     val onCloseRoot: () -> Unit = {},
 )
@@ -130,11 +131,11 @@ internal data class SettingsRouteRepositories(
 internal fun SettingsDestinationHost(
     states: SettingsRouteStates,
     chromeState: SettingsDestinationChromeState,
-    navigation: SettingsDestinationNavigation = SettingsDestinationNavigation(),
+    navigation: SettingsDestinationNavigation,
     actions: SettingsRouteActions,
     repositories: SettingsRouteRepositories,
 ) {
-    var route by remember { mutableStateOf<SettingsDestination>(SettingsDestination.Root) }
+    var route by rememberSaveable { mutableStateOf(SettingsDestination.Root) }
     val appVersionName = stringResource(R.string.app_version_name)
     val appVersionCode = integerResource(R.integer.app_version_code)
 
@@ -380,6 +381,7 @@ internal fun SettingsDestinationHost(
                 ),
             )
             SyncStatusScreen(
+                onOpenExpense = navigation.onOpenExpense,
                 viewModel = vm,
                 onBack = { route = SettingsDestination.Root },
             )

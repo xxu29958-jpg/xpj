@@ -32,7 +32,10 @@ import com.ticketbox.ui.screens.expense.ExpenseEditMerchantField
 import com.ticketbox.ui.screens.expense.ExpenseEditNoteField
 import com.ticketbox.ui.screens.expense.ExpenseCurrencySelector
 import com.ticketbox.ui.screens.expense.ExpenseEditSheetScaffold
+import com.ticketbox.viewmodel.ExpenseCorrectionAvailability
 import com.ticketbox.viewmodel.ExpenseFactUiState
+import com.ticketbox.viewmodel.currentCorrectionItems
+import com.ticketbox.viewmodel.currentCorrectionSplits
 
 internal data class ExpenseCorrectionSheetActions(
     val onReasonChange: (String) -> Unit,
@@ -46,6 +49,7 @@ internal data class ExpenseCorrectionSheetActions(
     val onScoreChange: (field: com.ticketbox.viewmodel.CorrectionScoreField, value: Int?) -> Unit,
     val onOpenItems: () -> Unit,
     val onOpenSplits: () -> Unit,
+    val onRefreshFact: () -> Unit,
     val onSubmit: () -> Unit,
     val onDismiss: () -> Unit,
 )
@@ -60,10 +64,10 @@ internal data class ExpenseCorrectionSheetActions(
 @Composable
 internal fun ExpenseCorrectionSheet(
     state: ExpenseFactUiState,
-    canSubmit: Boolean,
+    availability: ExpenseCorrectionAvailability,
     actions: ExpenseCorrectionSheetActions,
 ) {
-    val expense = state.expense ?: return
+    if (state.expense == null) return
     ModalBottomSheet(onDismissRequest = actions.onDismiss) {
         ExpenseEditSheetScaffold(
             title = stringResource(R.string.expense_correction_sheet_title),
@@ -81,7 +85,7 @@ internal fun ExpenseCorrectionSheet(
                         announceUpdates = true,
                     )
                 }
-                state.correction.submitError?.let { error ->
+                (availability.contextError ?: state.correction.submitError)?.let { error ->
                     AppStatusBanner(
                         message = error,
                         tone = MessageTone.Danger,
@@ -92,18 +96,7 @@ internal fun ExpenseCorrectionSheet(
                 CorrectionCurrencySection(state = state, actions = actions)
                 CorrectionScalarSection(state = state, actions = actions)
                 CorrectionScoreSection(state = state, actions = actions)
-                CorrectionEntryRow(
-                    title = stringResource(R.string.expense_correction_items_entry),
-                    touched = state.correction.itemsTouched,
-                    enabled = !state.correction.saving && state.expenseItems != null,
-                    onClick = actions.onOpenItems,
-                )
-                CorrectionEntryRow(
-                    title = stringResource(R.string.expense_correction_splits_entry),
-                    touched = state.correction.splitsTouched,
-                    enabled = !state.correction.saving && state.expenseSplits != null,
-                    onClick = actions.onOpenSplits,
-                )
+                CorrectionCollectionEntries(state, availability, actions)
                 AppSheetActionRow(
                     primary = AppSheetAction(
                         text = if (state.correction.saving) {
@@ -111,11 +104,44 @@ internal fun ExpenseCorrectionSheet(
                         } else {
                             stringResource(R.string.expense_correction_submit)
                         },
-                        enabled = canSubmit,
+                        enabled = availability.canSubmit,
                         onClick = actions.onSubmit,
                     ),
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun CorrectionCollectionEntries(
+    state: ExpenseFactUiState,
+    availability: ExpenseCorrectionAvailability,
+    actions: ExpenseCorrectionSheetActions,
+) {
+    CorrectionEntryRow(
+        title = stringResource(R.string.expense_correction_items_entry),
+        touched = state.correction.itemsTouched,
+        enabled = !state.correction.saving && availability.canEditItems,
+        onClick = actions.onOpenItems,
+    )
+    CorrectionEntryRow(
+        title = stringResource(R.string.expense_correction_splits_entry),
+        touched = state.correction.splitsTouched,
+        enabled = !state.correction.saving && availability.canEditSplits,
+        onClick = actions.onOpenSplits,
+    )
+    if (availability.contextError == null && (state.currentCorrectionItems == null || state.currentCorrectionSplits == null)) {
+        Text(
+            text = stringResource(R.string.expense_correction_collections_not_current),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        TextButton(
+            enabled = !state.expenseLoading && !state.itemsLoading && !state.splitsLoading,
+            onClick = actions.onRefreshFact,
+        ) {
+            Text(stringResource(R.string.expense_fact_refresh_current))
         }
     }
 }

@@ -19,7 +19,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtAdjustmentActions
-import com.ticketbox.data.repository.DebtAdjustmentRefresh
+import com.ticketbox.data.repository.DebtAdjustmentObservation
 import com.ticketbox.data.repository.DebtCreationActions
 import com.ticketbox.data.repository.DebtCreationPendingState
 import com.ticketbox.data.repository.DebtCreationQueueSnapshot
@@ -156,6 +156,6 @@ internal fun initialAdjustmentReadFixture(access: LedgerAccessContext): DebtAdju
     } as DebtAdjustmentActions
     return object : DebtAdjustmentActions by uncalled {
         override fun currentAccess() = access
-        override fun observeCompletionRefreshes() = flowOf(DebtAdjustmentRefresh(access.binding, initial = true))
+        override fun observeAdjustments() = flowOf(DebtAdjustmentObservation(access.binding, emptyList(), true, emptyList()))
     }
 }

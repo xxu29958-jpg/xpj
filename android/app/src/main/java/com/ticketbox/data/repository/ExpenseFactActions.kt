@@ -3,7 +3,6 @@ package com.ticketbox.data.repository
 import com.ticketbox.domain.model.BillSplitSent
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
-import com.ticketbox.domain.model.ExpenseCorrectionOutcome
 import com.ticketbox.domain.model.ExpenseFactBundle
 import com.ticketbox.domain.model.ExpenseItems
 import com.ticketbox.domain.model.ExpenseRevisionPage
@@ -40,11 +39,12 @@ interface ExpenseFactReadActions {
 /** Commands reachable from the confirmed-fact surface. */
 interface ExpenseFactCommandActions {
     fun canModifyLedger(): Boolean
-    suspend fun correctExpenseAllowingOffline(
-        expense: Expense,
-        correction: ExpenseCorrectionDraft,
-    ): Result<ExpenseCorrectionOutcome>
+    fun observeCorrections(): kotlinx.coroutines.flow.Flow<ExpenseCorrectionObservation>
+    suspend fun submitCorrection(expectedBinding: LogicalSessionBinding, expense: Expense,
+        correction: ExpenseCorrectionDraft): Result<Long>
+    suspend fun recoverCorrection(expectedBinding: LogicalSessionBinding, rowId: Long, drop: Boolean): Result<Unit>
     suspend fun createExpenseOffsetAllowingOffline(
+        expectedBinding: LogicalSessionBinding,
         expense: Expense,
         draft: ExpenseOffsetDraft,
     ): Result<ExpenseOffsetMutationOutcome>
@@ -62,8 +62,12 @@ interface ExpenseFactCommandActions {
         expense: Expense,
         currentItems: ExpenseItems,
     ): Result<ItemsAckOutcome>
-    suspend fun createRepaymentDraftFromExpense(expense: Expense): Result<RepaymentDraft>
+    suspend fun createRepaymentDraftFromExpense(
+        expectedBinding: LogicalSessionBinding,
+        expense: Expense,
+    ): Result<RepaymentDraft>
     suspend fun createBillSplitInvitation(
+        expectedBinding: LogicalSessionBinding,
         expenseId: Long,
         receiverAccountId: Long,
         amountCents: Long,

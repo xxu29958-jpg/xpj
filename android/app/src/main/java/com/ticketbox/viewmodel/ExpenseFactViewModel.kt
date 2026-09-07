@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.ExpenseFactActions
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
@@ -39,6 +40,9 @@ data class ExpenseFactUiState(
     val expenseLoadState: ExpenseDetailDataLoadState = ExpenseDetailDataLoadState.Loading,
     /** True when known content is shown because the authoritative refresh failed. */
     val expenseStale: Boolean = false,
+    /** This view must adopt every receipt version it has observed, even after another reader acknowledges it. */
+    val requiredRootRowVersion: Long = 0L,
+    val initialRootVerificationPending: Boolean = false,
     val expenseLoadMessage: UiText? = null,
     val readOnly: Boolean = false,
     val thumbnail: ProtectedImage? = null,
@@ -69,6 +73,9 @@ data class ExpenseFactUiState(
     /** null means the current member directory could not be read. */
     val revisionMemberNames: Map<Long, String>? = null,
     val timelineExpanded: Boolean = false,
+    val correctionAccess: com.ticketbox.data.repository.LedgerAccessContext? = null,
+    val corrections: List<com.ticketbox.data.repository.PendingExpenseCorrection> = emptyList(),
+    val correctionRecoveryBusy: Boolean = false,
     // 更正流（correction 扩展拥有全部逻辑）。
     val correction: CorrectionFormState = CorrectionFormState(),
     // 退回与冲销（offsets 扩展拥有逻辑；bundle = 服务端原子事实包，pending 只是
@@ -104,7 +111,14 @@ data class ExpenseFactUiState(
 
     /** 与编辑页同义：本次离开时需要失效建议缓存（金额/币种/分类/时间发生了变化）。 */
     val doneAdviceInputsChanged: Boolean = false,
-)
+) {
+    val authoritativeRootReady: Boolean get() = correctionAccess != null && expense != null &&
+        !initialRootVerificationPending && expense.rowVersion >= requiredRootRowVersion &&
+        !expenseLoading && !expenseStale &&
+        expenseLoadState == ExpenseDetailDataLoadState.Loaded && corrections.none { !it.delivered || it.refreshRequired }
+
+    val canStartCorrection: Boolean get() = !readOnly && authoritativeRootReady
+}
 
 /** 更正表单态（reason 必填但降层级；draft 相对 baseline 的 diff 决定提交内容）。 */
 data class CorrectionFormState(
@@ -140,59 +154,68 @@ data class CorrectionFormState(
 class ExpenseFactViewModel(
     internal val expenseId: Long,
     internal val repository: ExpenseFactActions,
-    initialExpense: Expense? = null,
+    preferLocalCache: Boolean = false,
 ) : ViewModel() {
 
+    internal var correctionOriginalItems: ExpenseItems? = null
+    internal var correctionOriginalSplits: ExpenseSplits? = null
+    internal var correctionBaseline: Expense? = null
+    internal var correctionBinding: com.ticketbox.data.repository.LogicalSessionBinding? = null
+    internal var correctionSplitMemberGeneration = 0L
+    internal var observedCorrectionCompletions: Set<Long>? = null
+    internal var expenseLoadGeneration = 0L
+    internal var expenseReadInFlightGeneration: Long? = null
+    internal var itemsLoadGeneration = 0L
+    internal var splitsLoadGeneration = 0L
     internal var revisionLoadGeneration = 0L
+    internal var thumbnailLoadGeneration = 0L
+    internal var fullImageLoadGeneration = 0L
 
     /** bundle 读/命令的 authority 序号：只在调用点同步递增（见 Offsets 扩展）。 */
     internal var factBundleLoadGeneration = 0L
 
-    internal val _uiState = MutableStateFlow(
-        ExpenseFactUiState(
-            expense = initialExpense,
-            expenseLoading = initialExpense == null,
-            expenseLoadState = if (initialExpense == null) {
-                ExpenseDetailDataLoadState.Loading
-            } else {
-                ExpenseDetailDataLoadState.Loaded
-            },
-            readOnly = !repository.canModifyLedger(),
-        ),
-    )
+    internal val _uiState = MutableStateFlow(ExpenseFactUiState(readOnly = true))
     val uiState: StateFlow<ExpenseFactUiState> = _uiState.asStateFlow()
 
     init {
-        if (initialExpense == null) {
-            loadExpense()
-        } else if (initialExpense.canInitiateBillSplit(_uiState.value.readOnly)) {
-            loadBillSplitSent()
+        var verifyInitialCache = preferLocalCache
+        observeCorrectionSubmissions {
+            if (verifyInitialCache) {
+                verifyInitialCache = false
+                verifyInitialExpenseFromCache { loadExpense(initialLoad = true) }
+            } else {
+                loadExpense(initialLoad = true)
+            }
+            loadCategories()
+            loadExpenseItems()
+            loadExpenseSplits()
+            loadExpenseFactBundle()
+            loadExpenseRevisions()
+            loadRevisionMemberNames()
         }
-        loadCategories()
-        initialExpense?.let { loadThumbnailFor(it) }
-        loadExpenseItems()
-        loadExpenseSplits()
-        loadExpenseFactBundle()
-        loadExpenseRevisions()
-        loadRevisionMemberNames()
     }
 
     fun retryLoadExpense() {
         loadExpense()
     }
 
-    private fun loadExpense() {
+    private fun loadExpense(initialLoad: Boolean = false) {
+        val generation = ++expenseLoadGeneration
+        expenseReadInFlightGeneration = generation
+        _uiState.update {
+            it.copy(
+                expenseLoading = true,
+                initialRootVerificationPending = false,
+                expenseLoadState = ExpenseDetailDataLoadState.Loading,
+                expenseStale = false,
+                expenseLoadMessage = null,
+            )
+        }
         viewModelScope.launch {
-            _uiState.update {
-                it.copy(
-                    expenseLoading = true,
-                    expenseLoadState = ExpenseDetailDataLoadState.Loading,
-                    expenseStale = false,
-                    expenseLoadMessage = null,
-                )
-            }
+            if (generation != expenseLoadGeneration) return@launch
             repository.fetchExpense(expenseId)
                 .onSuccess { expense ->
+                    if (generation != expenseLoadGeneration) return@onSuccess
                     _uiState.update {
                         // 单调采用：bundle 读/命令已发布更新的 root 时，较旧的
                         // fetchExpense 响应不倒灌 expense（OCC token 不回退）。
@@ -209,17 +232,21 @@ class ExpenseFactViewModel(
                     }
                     loadThumbnailFor(expense)
                     // confirmed 才能发起拆账邀请（domain 门）；满足才拉取，避免无谓请求。
-                    if (expense.canInitiateBillSplit(_uiState.value.readOnly)) {
-                        loadBillSplitSent()
+                    if (_uiState.value.expense?.canInitiateBillSplit(_uiState.value.readOnly) == true) {
+                        loadBillSplitSent(onlyIfUnknown = initialLoad)
                     }
                 }
                 .onFailure { refreshError ->
-                    resolveExpenseRefreshFailure(refreshError)
+                    if (generation != expenseLoadGeneration) return@onFailure
+                    resolveExpenseRefreshFailure(refreshError, generation)
                 }
+        }.invokeOnCompletion {
+            if (expenseReadInFlightGeneration == generation) expenseReadInFlightGeneration = null
         }
     }
 
-    private suspend fun resolveExpenseRefreshFailure(refreshError: Throwable) {
+    private suspend fun resolveExpenseRefreshFailure(refreshError: Throwable, generation: Long) {
+        if (generation != expenseLoadGeneration) return
         if (_uiState.value.expense != null) {
             _uiState.update {
                 it.copy(
@@ -237,6 +264,7 @@ class ExpenseFactViewModel(
         // 但读取面不空）；没有才进入可重试的错误态。
         repository.fetchExpenseFromLocalCache(expenseId)
             .onSuccess { cached ->
+                if (generation != expenseLoadGeneration) return@onSuccess
                 _uiState.update {
                     it.copy(
                         expense = cached,
@@ -249,6 +277,7 @@ class ExpenseFactViewModel(
                 loadThumbnailFor(cached)
             }
             .onFailure { error ->
+                if (generation != expenseLoadGeneration) return@onFailure
                 _uiState.update {
                     it.copy(
                         expenseLoading = false,
@@ -263,10 +292,14 @@ class ExpenseFactViewModel(
     }
 
     private fun loadCategories() {
+        val binding = _uiState.value.correctionAccess?.binding ?: return
         viewModelScope.launch {
+            if (binding != _uiState.value.correctionAccess?.binding) return@launch
             repository.categories()
                 .onSuccess { list ->
-                    _uiState.update { it.copy(categories = list) }
+                    _uiState.update {
+                        if (binding == it.correctionAccess?.binding) it.copy(categories = list) else it
+                    }
                 }
         }
     }
@@ -275,8 +308,10 @@ class ExpenseFactViewModel(
         _uiState.value.expense?.let { loadThumbnailFor(it, force = true) }
     }
 
-    private fun loadThumbnailFor(expense: Expense, force: Boolean = false) {
+    internal fun loadThumbnailFor(expense: Expense, force: Boolean = false) {
+        val binding = _uiState.value.correctionAccess?.binding ?: return
         if (!expense.hasImage) {
+            thumbnailLoadGeneration++
             _uiState.update {
                 it.copy(
                     thumbnail = null,
@@ -293,15 +328,18 @@ class ExpenseFactViewModel(
         ) {
             return
         }
+        val generation = ++thumbnailLoadGeneration
+        _uiState.update {
+            it.copy(
+                thumbnailLoadState = ExpenseDetailDataLoadState.Loading,
+                thumbnailMessage = null,
+            )
+        }
         viewModelScope.launch {
-            _uiState.update {
-                it.copy(
-                    thumbnailLoadState = ExpenseDetailDataLoadState.Loading,
-                    thumbnailMessage = null,
-                )
-            }
+            if (!isCurrentMediaRequest(binding, generation, thumbnailLoadGeneration)) return@launch
             repository.fetchThumbnail(expenseId)
                 .onSuccess { image ->
+                    if (!isCurrentMediaRequest(binding, generation, thumbnailLoadGeneration)) return@onSuccess
                     _uiState.update {
                         it.copy(
                             thumbnail = image,
@@ -311,6 +349,7 @@ class ExpenseFactViewModel(
                     }
                 }
                 .onFailure { error ->
+                    if (!isCurrentMediaRequest(binding, generation, thumbnailLoadGeneration)) return@onFailure
                     _uiState.update {
                         it.copy(
                             thumbnail = null,
@@ -323,14 +362,19 @@ class ExpenseFactViewModel(
     }
 
     fun loadFullImage() {
+        val binding = _uiState.value.correctionAccess?.binding ?: return
         if (_uiState.value.fullImage != null || _uiState.value.imageLoading) return
+        val generation = ++fullImageLoadGeneration
+        _uiState.update { it.copy(imageLoading = true) }
         viewModelScope.launch {
-            _uiState.update { it.copy(imageLoading = true) }
+            if (!isCurrentMediaRequest(binding, generation, fullImageLoadGeneration)) return@launch
             repository.fetchImage(expenseId)
                 .onSuccess { image ->
+                    if (!isCurrentMediaRequest(binding, generation, fullImageLoadGeneration)) return@onSuccess
                     _uiState.update { it.copy(fullImage = image, imageLoading = false) }
                 }
                 .onFailure { error ->
+                    if (!isCurrentMediaRequest(binding, generation, fullImageLoadGeneration)) return@onFailure
                     _uiState.update {
                         it.copy(
                             imageLoading = false,
@@ -343,6 +387,7 @@ class ExpenseFactViewModel(
     }
 
     fun loadExpenseItems() {
+        val generation = ++itemsLoadGeneration
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
@@ -353,6 +398,7 @@ class ExpenseFactViewModel(
             }
             repository.fetchExpenseItems(expenseId)
                 .onSuccess { items ->
+                    if (generation != itemsLoadGeneration) return@onSuccess
                     _uiState.update {
                         it.copy(
                             expenseItems = items,
@@ -363,6 +409,7 @@ class ExpenseFactViewModel(
                     }
                 }
                 .onFailure { error ->
+                    if (generation != itemsLoadGeneration) return@onFailure
                     _uiState.update {
                         it.copy(
                             itemsLoading = false,
@@ -375,6 +422,7 @@ class ExpenseFactViewModel(
     }
 
     fun loadExpenseSplits() {
+        val generation = ++splitsLoadGeneration
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
@@ -385,6 +433,7 @@ class ExpenseFactViewModel(
             }
             repository.fetchExpenseSplits(expenseId)
                 .onSuccess { splits ->
+                    if (generation != splitsLoadGeneration) return@onSuccess
                     _uiState.update {
                         it.copy(
                             expenseSplits = splits,
@@ -395,6 +444,7 @@ class ExpenseFactViewModel(
                     }
                 }
                 .onFailure { error ->
+                    if (generation != splitsLoadGeneration) return@onFailure
                     _uiState.update {
                         it.copy(
                             splitsLoading = false,
@@ -427,3 +477,9 @@ class ExpenseFactViewModel(
         return true
     }
 }
+
+private fun ExpenseFactViewModel.isCurrentMediaRequest(
+    binding: LogicalSessionBinding,
+    generation: Long,
+    currentGeneration: Long,
+): Boolean = generation == currentGeneration && binding == _uiState.value.correctionAccess?.binding

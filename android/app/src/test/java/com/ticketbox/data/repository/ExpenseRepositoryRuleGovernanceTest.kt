@@ -29,7 +29,7 @@ class ExpenseRepositoryRuleGovernanceTest {
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
         val tokenStore = TestSessionFixture().apply { saveToken("session-token") }
         val apiClient = FakeApiServiceFactory(apiService)
-        val expenseRepository = ExpenseRepository(
+        val expenseRepository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = dao,
             binding = testServerSessionBinding(
                 apiClient = apiClient,

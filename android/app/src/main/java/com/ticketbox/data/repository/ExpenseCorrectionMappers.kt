@@ -1,6 +1,8 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto
+import com.ticketbox.data.remote.dto.ExpenseItemRequestDto
+import com.ticketbox.data.remote.dto.ExpenseSplitRequestDto
 import com.ticketbox.data.remote.dto.ExpenseRevisionDto
 import com.ticketbox.data.remote.dto.ExpenseRevisionPageDto
 import com.ticketbox.data.remote.dto.CorrectionOptionalInt
@@ -9,11 +11,8 @@ import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import com.ticketbox.domain.model.ExpenseRevision
 import com.ticketbox.domain.model.ExpenseRevisionPage
-import com.ticketbox.domain.model.CurrencyCode
-import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.MONEY_MINOR_MAX
-import java.math.BigDecimal
-import java.math.RoundingMode
+import java.util.Locale
 
 fun ExpenseRevisionDto.toDomain(): ExpenseRevision = ExpenseRevision(
     publicId = publicId,
@@ -37,9 +36,7 @@ fun ExpenseRevisionPageDto.toDomain(): ExpenseRevisionPage = ExpenseRevisionPage
 )
 
 fun ExpenseCorrectionDraft.toRequest(expectedRowVersion: Long): ExpenseCorrectionRequestDto {
-    val cleanReason = reason.trim()
-    if (cleanReason.isEmpty()) throw RepositoryException("请填写更正原因。")
-    if (!hasMutationFields()) throw RepositoryException("没有需要保存的更正。")
+    val cleanReason = reason.trim { it.isCorrectionWhitespace() }
     return ExpenseCorrectionRequestDto(
         expectedRowVersion = expectedRowVersion,
         reason = cleanReason,
@@ -67,99 +64,84 @@ fun ExpenseCorrectionDraft.toRequest(expectedRowVersion: Long): ExpenseCorrectio
         },
         items = items?.map { it.toRequest() },
         splits = splits?.map { it.toRequest() },
-    )
-}
-
-private fun ExpenseCorrectionDraft.hasMutationFields(): Boolean =
-    amountCents != null || originalCurrencyCode != null || originalAmountMinor != null ||
-        merchant != null || category != null || note != null || expenseTimeChanged ||
-        tags != null || valueScoreChanged || regretScoreChanged || items != null || splits != null
-
-fun Expense.projectCorrection(draft: ExpenseCorrectionDraft): Expense =
-    projectCorrectionMoney(draft).projectCorrectionDetails(
-        draft = draft,
-        projectExpenseTime = canProjectExpenseTimeWithoutFxRefresh(draft),
-    )
-
-private fun Expense.projectCorrectionMoney(draft: ExpenseCorrectionDraft): Expense {
-    val changesOriginalMoney = draft.originalCurrencyCode != null || draft.originalAmountMinor != null
-    if ((changesOriginalMoney || draft.amountCents != null) && (draft.items != null || draft.splits != null)) {
-        return this
+    ).also { request ->
+        request.correctionAdmissionError()?.let { throw RepositoryException(it) }
     }
-    if (!changesOriginalMoney) {
-        val projectedHomeAmount = draft.amountCents ?: return this
-        return copy(
-            amountCents = projectedHomeAmount,
-            homeAmountCents = projectedHomeAmount,
-        )
+}
+
+/** Pure request admission shared by first save and original-command replay; never rewrites a saved request. */
+internal fun ExpenseCorrectionRequestDto.correctionAdmissionError(): String? = when {
+    reason.all { it.isCorrectionWhitespace() } -> "请填写更正原因。"
+    reason.exceedsCorrectionLimit(500) -> "更正原因最多 500 个字符，请缩短后再保存。"
+    merchant.exceedsCorrectionLimit(255) -> "商家名称最多 255 个字符，请缩短后再保存。"
+    category.exceedsCorrectionLimit(64) -> "分类名称最多 64 个字符，请缩短后再保存。"
+    tags.exceedsCorrectionLimit(500) -> "标签合计最多 500 个字符，请缩短后再保存。"
+    tags?.hasOversizedCorrectionTag() == true -> "单个标签标准化后最多 64 个字符，请缩短后再保存。"
+    items != null && items.size > 200 -> "一次更正最多保存 200 条明细，请减少后再保存。"
+    splits != null && splits.size > 100 -> "一次更正最多保存 100 条分摊，请减少后再保存。"
+    else -> correctionValueAdmissionError() ?: items?.firstNotNullOfOrNull { it.correctionAdmissionError() }
+        ?: splits?.firstNotNullOfOrNull { it.correctionAdmissionError() }
+}
+
+private fun ExpenseItemRequestDto.correctionAdmissionError(): String? = when {
+    name.codePointCount(0, name.length) !in 1..255 -> "请填写明细名称，最多 255 个字符。"
+    kind !in setOf("product", "discount", "tax", "service_fee") -> "明细类型无法识别，请核对后再保存。"
+    quantityText.exceedsCorrectionLimit(64) -> "明细数量说明最多 64 个字符。"
+    category.exceedsCorrectionLimit(64) -> "明细分类名称最多 64 个字符。"
+    rawText.exceedsCorrectionLimit(1000) -> "明细原文最多 1000 个字符。"
+    confidence?.let { it !in 0.0..1.0 } == true -> "明细识别可信度超出范围，请核对后再保存。"
+    unitPriceCents?.let { it !in 0L..MONEY_MINOR_MAX } == true -> "明细单价超出范围，请核对后再保存。"
+    amountCents?.let { it !in if (kind == "discount") -MONEY_MINOR_MAX..0L else 0L..MONEY_MINOR_MAX } == true ->
+        "明细金额超出该类型允许的范围，请核对后再保存。"
+    else -> null
+}
+
+private fun ExpenseSplitRequestDto.correctionAdmissionError(): String? = when {
+    memberId <= 0 -> "分摊成员无效，请核对当前成员后再保存。"
+    amountCents <= 0 -> "每条分摊金额必须大于零，请核对后再保存。"
+    amountCents > MONEY_MINOR_MAX -> "分摊金额超出范围，请核对后再保存。"
+    note.exceedsCorrectionLimit(200) -> "分摊备注最多 200 个字符，请缩短后再保存。"
+    else -> null
+}
+
+private fun String?.exceedsCorrectionLimit(limit: Int): Boolean =
+    this != null && codePointCount(0, length) > limit
+
+// Python str.strip / re \s include NEXT LINE as well as Unicode whitespace.
+private fun Char.isCorrectionWhitespace(): Boolean = isWhitespace() || this == '\u0085'
+
+private fun String.hasOversizedCorrectionTag(): Boolean = split(',', '，', ';', '；', '\n').any { raw ->
+    val name = buildString {
+        var separator = false
+        for (character in raw) {
+            if (character.isCorrectionWhitespace()) {
+                separator = isNotEmpty()
+            } else {
+                if (separator) append(' ')
+                append(character)
+                separator = false
+            }
+        }
     }
-    val projectedHomeAmount = projectedFrozenHomeAmount(draft) ?: return this
-    return copy(
-        amountCents = projectedHomeAmount,
-        homeAmountCents = projectedHomeAmount,
-        originalCurrency = draft.originalCurrencyCode ?: originalCurrency,
-        originalCurrencyCode = draft.originalCurrencyCode ?: originalCurrencyCode,
-        originalCurrencyCodeRaw = draft.originalCurrencyCode?.storageKey ?: originalCurrencyCodeRaw,
-        originalAmountMinor = draft.originalAmountMinor ?: originalAmountMinor,
-    )
+    // Inspect expansion width only. The server owns canonical tag keys and deduplication;
+    // neither this temporary name nor its case-converted text replaces the original request.
+    name.exceedsCorrectionLimit(64) ||
+        name.lowercase(Locale.ROOT).uppercase(Locale.ROOT).lowercase(Locale.ROOT).exceedsCorrectionLimit(64)
 }
 
-private fun Expense.projectedFrozenHomeAmount(draft: ExpenseCorrectionDraft): Long? {
-    val originalAmount = draft.originalAmountMinor ?: return null
-    val targetCurrency = draft.originalCurrencyCode ?: return null
-    val homeCurrency = CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode)
-        ?: homeCurrency.takeIf { homeCurrencyCode.isNullOrBlank() }
-        ?: return null
-    val currentCurrency = CurrencyCode.fromStorageKeyOrNull(originalCurrencyCodeRaw)
-        ?: originalCurrencyCode.takeIf { originalCurrencyCodeRaw.isNullOrBlank() }
-        ?: return null
-    if (
-        draft.expenseTimeChanged ||
-        targetCurrency != currentCurrency ||
-        fxStatus != FxContract.StatusReady
-    ) {
-        return null
+private fun ExpenseCorrectionRequestDto.correctionValueAdmissionError(): String? {
+    val hasMutation = listOf(amountCents, originalCurrencyCode, originalAmountMinor, merchant, category,
+        note, tags, items, splits).any { it != null } || expenseTime.changed || valueScore.changed || regretScore.changed
+    return when {
+        listOfNotNull(amountCents, originalAmountMinor).any { it !in 0L..MONEY_MINOR_MAX } ->
+            "更正金额超出范围，请核对后再保存。"
+        originalCurrencyCode?.let { it.codePointCount(0, it.length) != 3 } == true -> "币种代码须为 3 个字符。"
+        listOf(valueScore, regretScore).any { it.changed && it.value?.let { score -> score !in 1..5 } == true } ->
+            "评价分数须为 1 至 5，或明确清除评价。"
+        !hasMutation -> "没有需要保存的更正。"
+        else -> null
     }
-    if (targetCurrency == homeCurrency) return originalAmount
-    val frozenRate = exchangeRateToCny?.trim()?.toBigDecimalOrNull()
-        ?.takeIf { it.signum() > 0 }
-        ?: return null
-    return runCatching {
-        BigDecimal.valueOf(originalAmount)
-            .movePointLeft(targetCurrency.minorUnitDigits)
-            .multiply(frozenRate)
-            .movePointRight(homeCurrency.minorUnitDigits)
-            .setScale(0, RoundingMode.HALF_UP)
-            .longValueExact()
-            .takeIf { it in 0L..MONEY_MINOR_MAX }
-    }.getOrNull()
 }
-
-private fun Expense.canProjectExpenseTimeWithoutFxRefresh(draft: ExpenseCorrectionDraft): Boolean {
-    if (!draft.expenseTimeChanged) return false
-    val currentCurrency = CurrencyCode.fromStorageKeyOrNull(originalCurrencyCodeRaw)
-        ?: originalCurrencyCode.takeIf { originalCurrencyCodeRaw.isNullOrBlank() }
-        ?: return false
-    val homeCurrency = CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode)
-        ?: homeCurrency.takeIf { homeCurrencyCode.isNullOrBlank() }
-        ?: return false
-    val targetCurrency = draft.originalCurrencyCode ?: currentCurrency
-    return currentCurrency == homeCurrency && targetCurrency == homeCurrency
-}
-
-private fun Expense.projectCorrectionDetails(
-    draft: ExpenseCorrectionDraft,
-    projectExpenseTime: Boolean,
-): Expense = copy(
-    merchant = draft.merchant ?: merchant,
-    serverCategory = draft.category ?: serverCategory,
-    category = draft.category ?: category,
-    note = draft.note ?: note,
-    expenseTime = if (projectExpenseTime) draft.expenseTime else expenseTime,
-    tags = draft.tags ?: tags,
-    valueScore = if (draft.valueScoreChanged) draft.valueScore else valueScore,
-    regretScore = if (draft.regretScoreChanged) draft.regretScore else regretScore,
-)
 
 /**
  * Mirrors the advisor input owner: confirmed amount/original currency,

@@ -39,7 +39,7 @@ class ExpenseRepositoryAuthCheckTest {
                 ),
             )
         }
-        val repository = ExpenseRepository(
+        val repository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = FakeExpenseDao(),
             binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(
@@ -109,7 +109,7 @@ class ExpenseRepositoryAuthCheckTest {
                 scope = "app",
             ),
         )
-        val repository = ExpenseRepository(
+        val repository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = FakeExpenseDao(),
             binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(apiService),
@@ -176,7 +176,7 @@ class ExpenseRepositoryAuthCheckTest {
                 )
             )
         }
-        val repository = ExpenseRepository(
+        val repository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = FakeExpenseDao(),
             binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(apiService),
@@ -234,7 +234,7 @@ class ExpenseRepositoryAuthCheckTest {
                 scope = "app",
             ),
         )
-        val repository = ExpenseRepository(
+        val repository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = dao,
             binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(apiService),
@@ -277,7 +277,7 @@ class ExpenseRepositoryAuthCheckTest {
             val apiClient = FakeApiServiceFactory(
                 FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0),
             )
-            val repository = ExpenseRepository(
+            val repository = com.ticketbox.data.repository.expenseRepositoryFixture(
                 expenseDao = FakeExpenseDao(),
                 binding = testServerSessionBinding(
                     apiClient = apiClient,
@@ -285,7 +285,7 @@ class ExpenseRepositoryAuthCheckTest {
                     tokenStore = tokenStore,
                 ),
                 deviceNameProvider = { "Android Test Device" },
-            )
+        )
             val viewModel = settingsViewModel(viewModelStore, repository, settingsStore)
             tokenStore.acceptInvitationForFixture(
                 ledgerId = "family",
@@ -346,7 +346,7 @@ class ExpenseRepositoryAuthCheckTest {
                 latestUploadAt = null,
             ),
         )
-        val repository = ExpenseRepository(
+        val repository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = FakeExpenseDao(),
             binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(apiService),

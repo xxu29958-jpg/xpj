@@ -51,8 +51,12 @@ internal class OutboxAdapterGraph {
         moshi.adapter(ExpenseUpdateRequest::class.java)
     }
 
-    val correctionAdapter: JsonAdapter<ExpenseCorrectionRequestDto> = lazyJsonAdapter {
+    val legacyCorrectionAdapter: JsonAdapter<ExpenseCorrectionRequestDto> = lazyJsonAdapter {
         moshi.adapter(ExpenseCorrectionRequestDto::class.java)
+    }
+
+    val correctionAdapter: JsonAdapter<com.ticketbox.data.repository.ExpenseCorrectionPayload> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.repository.ExpenseCorrectionPayload::class.java)
     }
 
     // PR-2g.4: shared between UpdateCategoryRuleDispatcher

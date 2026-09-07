@@ -47,3 +47,21 @@ internal fun testOutboxRepository(
     bindingChanges = bindingChanges,
     onClearAll = onClearAll,
 )
+
+internal fun testExpenseOfflineMutationWiring(
+    outbox: OutboxRepository = testOutboxRepository(FakePendingMutationDao()),
+): ExpenseOfflineMutationWiring {
+    val adapters = com.ticketbox.OutboxAdapterGraph()
+    return ExpenseOfflineMutationWiring(outbox = outbox, correctionAdapter = adapters.correctionAdapter,
+        legacyCorrectionAdapter = adapters.legacyCorrectionAdapter)
+}
+
+/** Real facade with a fake DAO whose binding follows the exact supplied session owner. */
+internal fun expenseRepositoryFixture(
+    expenseDao: com.ticketbox.data.local.ExpenseDao,
+    binding: ServerSessionBinding,
+    sessionCoordinator: LocalLedgerSessionCoordinator = LocalLedgerSessionCoordinator(binding.settingsStore, binding.sessionStore, expenseDao),
+    deviceNameProvider: () -> String = ::defaultAndroidDeviceName,
+): ExpenseRepository = ExpenseRepository(expenseDao, binding, sessionCoordinator, deviceNameProvider,
+    testExpenseOfflineMutationWiring(OutboxRepository(FakePendingMutationDao(),
+        bindingProvider = { binding.sessionStore.currentSession().toOutboxBinding() })))

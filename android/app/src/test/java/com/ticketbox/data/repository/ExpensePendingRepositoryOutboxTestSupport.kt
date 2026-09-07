@@ -119,9 +119,6 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
         outbox: OutboxRepository? = null,
         adapter: com.squareup.moshi.JsonAdapter<ExpenseUpdateRequest>? = null,
         stateTokenAdapter: com.squareup.moshi.JsonAdapter<ExpenseStateTokenRequest>? = null,
-        correctionAdapter: com.squareup.moshi.JsonAdapter<
-            com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto
-        >? = null,
     ): ExpenseRepository = ExpenseRepository(
         expenseDao = FakeExpenseDao(),
         binding = testServerSessionBinding(
@@ -131,10 +128,11 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
         ),
         deviceNameProvider = { "Android Test" },
         offlineMutations = ExpenseOfflineMutationWiring(
-            outbox = outbox,
-            patchExpenseAdapter = adapter,
-            correctionAdapter = correctionAdapter,
-            expenseStateTokenAdapter = stateTokenAdapter,
+            outbox = outbox ?: testOutboxRepository(FakePendingMutationDao()),
+            patchExpenseAdapter = adapter.takeIf { outbox != null },
+            expenseStateTokenAdapter = stateTokenAdapter.takeIf { outbox != null },
+            correctionAdapter = com.ticketbox.OutboxAdapterGraph().correctionAdapter,
+            legacyCorrectionAdapter = com.ticketbox.OutboxAdapterGraph().legacyCorrectionAdapter,
         ),
     )
 
@@ -209,6 +207,8 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
         offlineMutations = ExpenseOfflineMutationWiring(
             outbox = outbox,
             replaceItemsAdapter = moshi().adapter(ExpenseItemReplaceRequestDto::class.java),
+            correctionAdapter = com.ticketbox.OutboxAdapterGraph().correctionAdapter,
+            legacyCorrectionAdapter = com.ticketbox.OutboxAdapterGraph().legacyCorrectionAdapter,
         ),
     )
 

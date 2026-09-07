@@ -67,8 +67,10 @@ sealed interface DispatchResult {
      *
      * Routes that don't return a token (creates / terminal
      * lifecycle that has its own state machine) pass ``null``.
+     * Corrections additionally retain their receipt version when cache publication
+     * fails; this is a local refresh requirement, never permission to resend.
      */
-    data class Success(val newRowVersion: Long? = null) : DispatchResult
+    data class Success(val newRowVersion: Long? = null, val cacheRefreshVersion: Long? = null) : DispatchResult
 
     /**
      * Server returned 409 ``state_conflict``. The row goes to

@@ -20,6 +20,65 @@ import kotlinx.coroutines.test.advanceUntilIdle
 internal class ExpenseFactViewModelCorrectionTest : ExpenseFactViewModelTestBase() {
 
     @Test
+    fun `oversized request text retains the form and a corrected field can be submitted`() = edit { _ ->
+        val cases = listOf(
+            Triple(CorrectionScalarField.Merchant, "商".repeat(256), "商".repeat(255)),
+            Triple(CorrectionScalarField.Reason, "改".repeat(501), "改".repeat(500)),
+            Triple(CorrectionScalarField.Reason, "\uD83D\uDE42".repeat(501), "\uD83D\uDE42".repeat(500)),
+            Triple(CorrectionScalarField.Tags, "ß".repeat(33), "ß".repeat(32)),
+        )
+        for ((field, rejected, corrected) in cases) {
+            val fake = FakeExpenseFactActions()
+            fake.itemsResult = fake.itemsResult.map { it.copy(parentRowVersion = fake.baseExpense.rowVersion) }
+            fake.splitsResult = fake.splitsResult.map { it.copy(parentRowVersion = fake.baseExpense.rowVersion) }
+            val vm = viewModel(fake)
+            vm.openCorrectionSheet()
+            vm.updateCorrectionField(CorrectionScalarField.Reason, "核对后的原因")
+            vm.updateCorrectionField(CorrectionScalarField.Merchant, "核对后的商家")
+            vm.updateCorrectionField(field, rejected)
+            val entered = vm.uiState.value.correction
+            vm.submitCorrection()
+            advanceUntilIdle()
+
+            assertEquals(0, fake.correctCalls, "$field must be checked before local acceptance")
+            assertTrue(vm.uiState.value.correction.open)
+            assertEquals(entered.reason, vm.uiState.value.correction.reason)
+            assertEquals(entered.merchant, vm.uiState.value.correction.merchant)
+            assertEquals(entered.tags, vm.uiState.value.correction.tags)
+            assertNotNull(vm.uiState.value.correction.submitError)
+            vm.updateCorrectionField(field, corrected)
+            vm.submitCorrection()
+            advanceUntilIdle()
+            assertEquals(1, fake.correctCalls)
+            assertFalse(vm.uiState.value.correction.open)
+            val draft = assertNotNull(fake.lastCorrectionDraft)
+            assertEquals(if (field == CorrectionScalarField.Reason) corrected else entered.reason, draft.reason)
+            assertEquals(if (field == CorrectionScalarField.Merchant) corrected else entered.merchant, draft.merchant)
+            assertEquals(if (field == CorrectionScalarField.Tags) corrected else null, draft.tags)
+        }
+    }
+
+    @Test
+    fun `500 Unicode characters remain a legal correction reason`() = edit { _ ->
+        for (character in listOf("改", "\uD83D\uDE42")) {
+            val fake = FakeExpenseFactActions()
+            fake.itemsResult = fake.itemsResult.map { it.copy(parentRowVersion = fake.baseExpense.rowVersion) }
+            fake.splitsResult = fake.splitsResult.map { it.copy(parentRowVersion = fake.baseExpense.rowVersion) }
+            val vm = viewModel(fake)
+            val reason = character.repeat(500)
+            vm.openCorrectionSheet()
+            vm.updateCorrectionField(CorrectionScalarField.Reason, reason)
+            vm.updateCorrectionField(CorrectionScalarField.Merchant, "核对后的商家")
+            vm.submitCorrection()
+            advanceUntilIdle()
+
+            assertEquals(1, fake.correctCalls)
+            assertEquals(reason, fake.lastCorrectionDraft?.reason)
+            assertFalse(vm.uiState.value.correction.open)
+        }
+    }
+
+    @Test
     fun `blank reason blocks the draft locally and never reaches the repository`() = edit { fake ->
         val vm = viewModel(fake)
         vm.openCorrectionSheet()
@@ -36,6 +95,15 @@ internal class ExpenseFactViewModelCorrectionTest : ExpenseFactViewModelTestBase
         assertNull(vm.uiState.value.message)
         assertEquals(0, fake.correctCalls, "reason 空白不得发出更正请求")
         assertTrue(vm.uiState.value.correction.open, "本地拦截后表单保持打开")
+
+        vm.updateCorrectionField(CorrectionScalarField.Reason, "\u0085")
+        vm.submitCorrection()
+        advanceUntilIdle()
+        assertEquals(0, fake.correctCalls, "Python 空白 U+0085 不得保存成必然被拒绝的意图")
+        assertTrue(vm.uiState.value.correction.submitError != null)
+        assertEquals("\u0085", vm.uiState.value.correction.reason)
+        assertEquals("新商家", vm.uiState.value.correction.merchant)
+        assertTrue(vm.uiState.value.correction.open)
     }
 
     @Test
@@ -173,6 +241,7 @@ internal class ExpenseFactViewModelCorrectionTest : ExpenseFactViewModelTestBase
         fake.splitsResult = Result.success(
             ExpenseSplits(
                 expenseId = fake.baseExpense.id,
+                parentRowVersion = fake.baseExpense.rowVersion,
                 parentAmountCents = 1_000L,
                 splitsTotalAmountCents = 1_000L,
                 mismatchCents = 0L,
@@ -219,6 +288,7 @@ internal class ExpenseFactViewModelCorrectionTest : ExpenseFactViewModelTestBase
         fake.splitsResult = Result.success(
             ExpenseSplits(
                 expenseId = fake.baseExpense.id,
+                parentRowVersion = fake.baseExpense.rowVersion,
                 parentAmountCents = 1_000L,
                 splitsTotalAmountCents = 1_000L,
                 mismatchCents = 0L,

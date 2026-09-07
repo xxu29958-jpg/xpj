@@ -3,7 +3,6 @@ package com.ticketbox.viewmodel
 import com.ticketbox.data.local.PersistedLedgerIdentity
 
 import com.ticketbox.R
-import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.FakeApiService
 import com.ticketbox.data.repository.FakeApiServiceFactory
 import com.ticketbox.data.repository.FakeExpenseDao
@@ -227,7 +226,7 @@ class MerchantAliasViewModelTest {
                 tokenStore = tokenStore,
             ),
         )
-        val expenseRepository = ExpenseRepository(
+        val expenseRepository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = FakeExpenseDao(),
             binding = testServerSessionBinding(
                 apiClient = apiFactory,

@@ -23,6 +23,8 @@ import com.ticketbox.ui.components.SkeletonBlock
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.ExpenseFactUiState
+import com.ticketbox.viewmodel.currentCorrectionItems
+import com.ticketbox.viewmodel.currentCorrectionSplits
 import com.ticketbox.viewmodel.ExpenseDetailDataLoadState
 
 /**
@@ -37,6 +39,7 @@ internal fun FactLinesSection(
     onRetryItems: () -> Unit,
     onRetrySplits: () -> Unit,
     onAcknowledgeItems: () -> Unit,
+    onRefreshFact: () -> Unit,
 ) {
     val expense = state.expense ?: return
     val display = expense.recordCurrencyDisplay()
@@ -45,8 +48,9 @@ internal fun FactLinesSection(
         display = display,
         onRetry = onRetryItems,
         onAcknowledgeItems = onAcknowledgeItems,
+        onRefreshFact = onRefreshFact,
     )
-    FactSplitsCard(state = state, display = display, onRetry = onRetrySplits)
+    FactSplitsCard(state = state, display = display, onRetry = onRetrySplits, onRefreshFact = onRefreshFact)
 }
 
 @Composable
@@ -55,6 +59,7 @@ private fun FactItemsCard(
     display: com.ticketbox.domain.model.CurrencyDisplay,
     onRetry: () -> Unit,
     onAcknowledgeItems: () -> Unit,
+    onRefreshFact: () -> Unit,
 ) {
     val items = state.expenseItems
     Column(
@@ -67,11 +72,11 @@ private fun FactItemsCard(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
-        when (state.itemsLoadState) {
-            ExpenseDetailDataLoadState.Loading -> {
+        when {
+            state.itemsLoadState == ExpenseDetailDataLoadState.Loading -> {
                 SkeletonBlock(modifier = Modifier.fillMaxWidth().height(AppSpacing.sectionGap))
             }
-            ExpenseDetailDataLoadState.Failed -> {
+            state.itemsLoadState == ExpenseDetailDataLoadState.Failed -> {
                 Text(
                     text = state.itemsMessage?.asString()
                         ?: stringResource(R.string.expense_fact_items_failed),
@@ -81,6 +86,10 @@ private fun FactItemsCard(
                 TextButton(onClick = onRetry) {
                     Text(text = stringResource(R.string.expense_fact_retry))
                 }
+            }
+            items != null && state.currentCorrectionItems == null -> {
+                Text(stringResource(R.string.expense_correction_collections_not_current))
+                TextButton(onClick = onRefreshFact) { Text(stringResource(R.string.expense_fact_refresh_current)) }
             }
             else -> {
                 if (items != null && items.hasMismatch) {
@@ -194,6 +203,7 @@ private fun FactSplitsCard(
     state: ExpenseFactUiState,
     display: com.ticketbox.domain.model.CurrencyDisplay,
     onRetry: () -> Unit,
+    onRefreshFact: () -> Unit,
 ) {
     val splits = state.expenseSplits
     Column(
@@ -206,11 +216,11 @@ private fun FactSplitsCard(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
-        when (state.splitsLoadState) {
-            ExpenseDetailDataLoadState.Loading -> {
+        when {
+            state.splitsLoadState == ExpenseDetailDataLoadState.Loading -> {
                 SkeletonBlock(modifier = Modifier.fillMaxWidth().height(AppSpacing.sectionGap))
             }
-            ExpenseDetailDataLoadState.Failed -> {
+            state.splitsLoadState == ExpenseDetailDataLoadState.Failed -> {
                 Text(
                     text = state.splitsMessage?.asString()
                         ?: stringResource(R.string.expense_fact_splits_failed),
@@ -220,6 +230,10 @@ private fun FactSplitsCard(
                 TextButton(onClick = onRetry) {
                     Text(text = stringResource(R.string.expense_fact_retry))
                 }
+            }
+            splits != null && state.currentCorrectionSplits == null -> {
+                Text(stringResource(R.string.expense_correction_collections_not_current))
+                TextButton(onClick = onRefreshFact) { Text(stringResource(R.string.expense_fact_refresh_current)) }
             }
             else -> {
                 FactSplitsReconcileLine(splits = splits, display = display)

@@ -97,6 +97,7 @@ internal class ExpenseFactViewModelCorrectionItemsTest : ExpenseFactViewModelTes
 
 private fun correctionItemsFixture(): ExpenseItems = ExpenseItems(
     expenseId = 7L,
+    parentRowVersion = 1L,
     parentAmountCents = 1000L,
     itemsTotalAmountCents = 600L,
     mismatchCents = 400L,

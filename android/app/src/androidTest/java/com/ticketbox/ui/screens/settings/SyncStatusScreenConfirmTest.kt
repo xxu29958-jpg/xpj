@@ -1,6 +1,7 @@
 package com.ticketbox.ui.screens.settings
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -25,8 +26,44 @@ import org.junit.Test
  * explicit confirm word (确定放弃 / 确定移除) fires the drop.
  */
 class SyncStatusScreenConfirmTest {
-    @get:Rule
+    @JvmField
+    @Rule
     val composeRule = createComposeRule()
+
+    @Test
+    fun offsetConflictOpensTheCurrentFactWithoutOfferingAnOverwrite() {
+        var opened: Long? = null
+        val original = outboxRow(PendingMutationStatus.Conflict, "state_conflict")
+            .copy(type = PendingMutationType.CreateExpenseOffset)
+        setScreenContent(conflicts = listOf(original), actions = SyncStatusActions(
+            onOpenExpense = { opened = it }, onKeepMine = { error("Original refund cannot be rebased") },
+            onDropMine = {}, onRetry = {}, onDropFailed = {}, onClearQuarantined = {},
+        ))
+        val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext
+        composeRule.onNodeWithText(context.getString(com.ticketbox.R.string.sync_status_conflict_button_keep_mine))
+            .assertDoesNotExist()
+        composeRule.onNodeWithText(context.getString(com.ticketbox.R.string.expense_offset_review_current))
+            .performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(7L, opened) }
+        composeRule.onNodeWithText("放弃我的改动").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun unverifiableOffsetKeepsReviewAndDropWithoutRetry() {
+        var opened: Long? = null
+        val original = outboxRow(PendingMutationStatus.Failed, "offset_create_requires_review")
+            .copy(type = PendingMutationType.CreateExpenseOffset)
+        setScreenContent(failed = listOf(original), actions = SyncStatusActions(
+            onOpenExpense = { opened = it }, onKeepMine = {}, onDropMine = {},
+            onRetry = { error("Unverifiable original cannot replay") }, onDropFailed = {}, onClearQuarantined = {},
+        ))
+        val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext
+        composeRule.onNodeWithText("重试").assertDoesNotExist()
+        composeRule.onNodeWithText(context.getString(com.ticketbox.R.string.expense_offset_review_current))
+            .performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(7L, opened) }
+        composeRule.onNodeWithText("放弃").performScrollTo().assertIsDisplayed()
+    }
 
     @Test
     fun conflictDropAsksForConfirmationBeforeFiring() {
@@ -35,6 +72,7 @@ class SyncStatusScreenConfirmTest {
         setScreenContent(
             conflicts = listOf(row),
             actions = SyncStatusActions(
+        onOpenExpense = {},
                 onKeepMine = {},
                 onDropMine = { dropped = it },
                 onRetry = {},
@@ -56,12 +94,35 @@ class SyncStatusScreenConfirmTest {
     }
 
     @Test
+    fun switchingBindingRetiresAnOpenDropConfirmationBeforeTheNextSnapshot() {
+        val binding = com.ticketbox.data.repository.LogicalSessionBinding("https://qa.invalid", "ledger-1", "owner", "session", "first")
+        val original = outboxRow(PendingMutationStatus.Conflict)
+        val state = mutableStateOf(OutboxStatusUiState(binding = binding, bindingReady = true,
+            status = OutboxStatus(0, listOf(original), emptyList())))
+        var dropped: OutboxRow? = null
+        composeRule.setContent { TicketboxTheme(skin = AppSkin.Default) {
+            SyncStatusScreenContent(state.value, SyncStatusActions(onOpenExpense = {}, onKeepMine = {},
+                onDropMine = { dropped = it }, onRetry = {}, onDropFailed = {}, onClearQuarantined = {}), {})
+        } }
+        composeRule.onNodeWithText("放弃我的改动").performScrollTo().performClick()
+        composeRule.onNodeWithText("放弃我的改动？").assertIsDisplayed()
+        composeRule.runOnIdle {
+            state.value = OutboxStatusUiState(binding = binding.copy(ledgerId = "ledger-2", bindingRevision = "second"))
+        }
+        composeRule.onNodeWithText("放弃我的改动？").assertDoesNotExist()
+        composeRule.onNodeWithText("确定放弃").assertDoesNotExist()
+        composeRule.onNodeWithText("正在读取当前账本的同步状态…").assertIsDisplayed()
+        composeRule.runOnIdle { assertNull(dropped) }
+    }
+
+    @Test
     fun failedDropAsksForConfirmationBeforeFiring() {
         var dropped: OutboxRow? = null
         val row = outboxRow(status = PendingMutationStatus.Failed)
         setScreenContent(
             failed = listOf(row),
             actions = SyncStatusActions(
+        onOpenExpense = {},
                 onKeepMine = {},
                 onDropMine = {},
                 onRetry = {},
@@ -91,6 +152,7 @@ class SyncStatusScreenConfirmTest {
         setScreenContent(
             failed = listOf(row),
             actions = SyncStatusActions(
+        onOpenExpense = {},
                 onKeepMine = {},
                 onDropMine = {},
                 onRetry = {},
@@ -113,7 +175,7 @@ class SyncStatusScreenConfirmTest {
             type = PendingMutationType.UpdateIncomePlan, targetId = "income_plan:old",
         )
         setScreenContent(failed = listOf(row), incomeEdits = mapOf(row.id to PendingIncomePlanEdit(row, null)),
-            actions = SyncStatusActions(onKeepMine = {}, onDropMine = {}, onRetry = { error("Unsupported retry") },
+            actions = SyncStatusActions(onOpenExpense = {}, onKeepMine = {}, onDropMine = {}, onRetry = { error("Unsupported retry") },
                 onDropFailed = {}, onClearQuarantined = {}))
         val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext
         composeRule.onNodeWithText(context.getString(com.ticketbox.R.string.income_plan_edit_unsupported)).assertIsDisplayed()
@@ -127,6 +189,7 @@ class SyncStatusScreenConfirmTest {
         setScreenContent(
             quarantinedCount = 2,
             actions = SyncStatusActions(
+        onOpenExpense = {},
                 onKeepMine = {},
                 onDropMine = {},
                 onRetry = {},
@@ -152,6 +215,7 @@ class SyncStatusScreenConfirmTest {
         var retried: OutboxRow? = null
         val original = outboxRow(PendingMutationStatus.Failed, lastError = "runtime_version_mismatch")
         setScreenContent(failed = listOf(original), actions = SyncStatusActions(
+        onOpenExpense = {},
             onKeepMine = {}, onDropMine = {}, onRetry = { retried = it }, onDropFailed = {}, onClearQuarantined = {},
         ))
         val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext
@@ -172,6 +236,7 @@ class SyncStatusScreenConfirmTest {
             TicketboxTheme(skin = AppSkin.Default) {
                 SyncStatusScreenContent(
                     state = OutboxStatusUiState(
+                        bindingReady = true,
                         incomeEdits = incomeEdits,
                         status = OutboxStatus(
                             queueDepth = 0,

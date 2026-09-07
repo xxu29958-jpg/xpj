@@ -4,6 +4,7 @@
   只放用户可见中文；每处一个 key，不按中文值去重。
 -->
 <resources>
+    <string name="sync_status_overview_caption_refresh_required">%1$d 笔更正已送达，仍需刷新并核对账单。</string>
 
     <!-- 设置 根屏（SettingsRootScreen）：分组标题、入口标题/副标题、连接入口动态文案 -->
     <string name="settings_root_connection_title_advanced">连接与同步</string>
@@ -199,6 +200,8 @@
 
     <!-- 离线同步页（SyncStatusScreen） -->
     <string name="sync_status_page_title">离线同步</string>
+    <string name="sync_status_binding_loading">正在读取当前账本的同步状态…</string>
+    <string name="sync_status_binding_unavailable">账本连接已变化，请重新打开同步状态。</string>
     <string name="sync_status_page_subtitle">联网后会自动把离线改动同步到账本；有冲突或失败时在这里处理。</string>
     <string name="sync_status_section_needs_action">需要你确认</string>
     <string name="sync_status_section_failed">同步失败</string>
@@ -220,6 +223,7 @@
     <string name="sync_status_overview_quarantined_caption">已停止发送</string>
     <string name="sync_status_overview_caption_quarantined">有 %1$d 笔旧操作已隔离，不会自动发送。</string>
     <string name="sync_status_overview_caption_needs_action">%1$d 笔需要处理，处理后才会继续进入账本。</string>
+    <string name="sync_status_overview_caption_review_required">%1$d 笔旧提交需要核对当前事实，送达情况尚未确认。</string>
     <string name="sync_status_overview_caption_queued">离线改动已保留，恢复连接后会自动同步。</string>
     <string name="sync_status_overview_caption_settled">没有等待处理的离线改动。</string>
     <string name="sync_status_quarantined_body">这 %1$d 笔操作不属于当前已验证的成员与设备。带原设备身份的操作会在恢复同一设备后重新出现；旧版本未记录主体的操作无法安全认领，只能继续保留或由你明确移除。</string>

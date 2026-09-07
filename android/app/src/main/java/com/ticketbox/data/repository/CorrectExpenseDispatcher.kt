@@ -1,59 +1,59 @@
 package com.ticketbox.data.repository
 
 import com.squareup.moshi.JsonAdapter
-import com.squareup.moshi.JsonDataException
-import com.squareup.moshi.JsonEncodingException
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
-import com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto
 import com.ticketbox.data.remote.dto.ExpenseDto
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
 
-/** Replays one composite confirmed-fact correction and refreshes the Room fact. */
+/** Sole sender of the original, persisted composite correction. */
 class CorrectExpenseDispatcher(
     private val apiProvider: (OutboxRow) -> ApiService,
-    private val payloadAdapter: JsonAdapter<ExpenseCorrectionRequestDto>,
-    private val cacheAuthoritativeExpense: suspend (ledgerId: String, expense: ExpenseDto) -> Unit,
+    private val payloadAdapter: JsonAdapter<ExpenseCorrectionPayload>,
+    private val publishAuthoritativeProjection: suspend (row: OutboxRow, expense: ExpenseDto) -> Unit,
+    private val onConfirmedCommitted: (ledgerId: String) -> Unit,
 ) : OutboxMutationDispatcher {
     override val type: PendingMutationType = PendingMutationType.CorrectExpense
 
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
-        val expenseRef = parseExpenseTargetRef(row.targetId)
-            ?: return DispatchResult.Discarded("invalid target id: ${row.targetId}")
-        val idempotencyKey = row.idempotencyKey
-            ?: return DispatchResult.Failure("CorrectExpense row missing idempotency key")
-        val request = try {
-            val stored = payloadAdapter.fromJson(row.payloadJson)
-                ?: return DispatchResult.Failure("payload deserialised to null")
-            stored.copy(expectedRowVersion = row.expectedRowVersion)
-        } catch (e: JsonDataException) {
-            return DispatchResult.Failure(
-                "payload JSON shape changed: ${e.message ?: "JsonDataException"}",
-            )
-        } catch (e: JsonEncodingException) {
-            return DispatchResult.Failure(
-                "payload JSON malformed: ${e.message ?: "JsonEncodingException"}",
-            )
-        }
-
-        return try {
-            val response = apiProvider(row).correctExpense(
-                expenseRef,
-                request,
-                idempotencyKey,
-            )
-            cacheAuthoritativeExpense(row.ledgerId, response.expense)
-            DispatchResult.Success(newRowVersion = response.expense.rowVersion)
+        val intent = payloadAdapter.readSupportedCorrection(row)
+            ?: return DispatchResult.Failure("correction_requires_review")
+        val response = try {
+            apiProvider(row).correctExpense(intent.expenseId.toString(), intent.request, requireNotNull(row.idempotencyKey))
         } catch (e: HttpException) {
-            mapOutboxHttpException(e)
-        } catch (e: IOException) {
-            DispatchResult.RetryableFailure(e.message ?: "network or cache IO failure")
+            if (e.code() == 422) return DispatchResult.Failure("correction_requires_review")
+            val result = mapOutboxHttpException(e)
+            return if (result is DispatchResult.Discarded) DispatchResult.Failure("correction_target_unavailable") else result
+        } catch (_: IOException) {
+            return DispatchResult.RetryableFailure("correction_delivery_unknown")
         } catch (e: CancellationException) {
             throw e
-        } catch (e: Exception) {
-            DispatchResult.Failure(e.message ?: "POST expense correction threw")
+        } catch (_: Exception) {
+            return DispatchResult.Failure("correction_request_failed")
         }
+        // A rebuildable cache failure cannot undo a known 2xx. Persist its receipt
+        // version with DONE so detail and global recovery can request a fresh root.
+        var cancellation: CancellationException? = null
+        var cacheRefreshVersion: Long? = null
+        try {
+            publishAuthoritativeProjection(row, response.expense)
+        } catch (e: CancellationException) {
+            cancellation = e
+        } catch (_: Exception) {
+            // The authoritative GET is the recovery path; never resend a new command.
+            cacheRefreshVersion = response.expense.rowVersion
+        } finally {
+            try {
+                onConfirmedCommitted(row.ledgerId)
+            } catch (e: CancellationException) {
+                cancellation = cancellation ?: e
+            } catch (_: Exception) {
+                // Notification failure also cannot undo delivery or mask cancellation.
+            }
+        }
+        cancellation?.let { throw it }
+        return DispatchResult.Success(newRowVersion = response.expense.rowVersion, cacheRefreshVersion = cacheRefreshVersion)
     }
 }

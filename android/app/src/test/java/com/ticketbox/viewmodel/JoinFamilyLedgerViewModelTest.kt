@@ -20,6 +20,9 @@ import com.ticketbox.domain.model.shareText
 import com.ticketbox.ui.navigation.LaunchIntentActions
 import com.ticketbox.ui.navigation.LaunchIntentRequest
 import com.ticketbox.ui.navigation.resolveLaunchIntent
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.job
 import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -43,6 +46,7 @@ class JoinFamilyLedgerViewModelTest {
     @Test
     fun rawShareFallbackResolvesLaunchAndBoundSessionPreviewsCurrentServer() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        var testOwner: JoinFamilyLedgerViewModel? = null
         try {
             val api = invitationApi()
             val factory = LedgerStubApiFactory(api)
@@ -66,6 +70,7 @@ class JoinFamilyLedgerViewModelTest {
                 sharedText = created.shareText,
             ) as LaunchIntentRequest.JoinInvitation
             val viewModel = JoinFamilyLedgerViewModel(repository)
+            testOwner = viewModel
 
             viewModel.consumeSharedInvitation(request.sharedText)
             val previewed = viewModel.uiState.first { it.preview != null || it.error != null }
@@ -76,6 +81,7 @@ class JoinFamilyLedgerViewModelTest {
             assertEquals(listOf("https://api.example.com"), factory.baseUrls)
             assertNull(factory.tokenProviders.single().invoke(), "preview must stay anonymous")
         } finally {
+            testOwner?.viewModelScope?.coroutineContext?.job?.cancelAndJoin()
             Dispatchers.resetMain()
         }
     }
@@ -83,6 +89,7 @@ class JoinFamilyLedgerViewModelTest {
     @Test
     fun rawShareOnUnboundSessionUsesProvidedDefaultServer() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        var testOwner: JoinFamilyLedgerViewModel? = null
         try {
             val api = invitationApi()
             val factory = LedgerStubApiFactory(api)
@@ -94,6 +101,7 @@ class JoinFamilyLedgerViewModelTest {
                     expenseDao = LedgerFakeDao(),
                 ),
             )
+            testOwner = viewModel
 
             viewModel.consumeSharedInvitation(
                 sharedText = "inv_RAW_DEFAULT",
@@ -108,6 +116,7 @@ class JoinFamilyLedgerViewModelTest {
             assertEquals(listOf("https://default.example.com"), factory.baseUrls)
             assertNull(factory.tokenProviders.single().invoke(), "preview must stay anonymous")
         } finally {
+            testOwner?.viewModelScope?.coroutineContext?.job?.cancelAndJoin()
             Dispatchers.resetMain()
         }
     }
@@ -115,9 +124,11 @@ class JoinFamilyLedgerViewModelTest {
     @Test
     fun rawShareOnUnboundSessionWithoutAddressKeepsInputForServerEntry() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        var testOwner: JoinFamilyLedgerViewModel? = null
         try {
             val api = invitationApi()
             val viewModel = viewModel(api, LedgerFakeSettingsStore(), LedgerFakeTokenStore())
+            testOwner = viewModel
 
             viewModel.consumeSharedInvitation("inv_RAW_NEEDS_SERVER")
             advanceUntilIdle()
@@ -128,6 +139,7 @@ class JoinFamilyLedgerViewModelTest {
             assertEquals("", viewModel.uiState.value.serverUrl)
             assertTrue(api.previewRequests.isEmpty())
         } finally {
+            testOwner?.viewModelScope?.coroutineContext?.job?.cancelAndJoin()
             Dispatchers.resetMain()
         }
     }
@@ -135,11 +147,13 @@ class JoinFamilyLedgerViewModelTest {
     @Test
     fun sharedLinkAutoPreviewsAndUnboundAcceptNeedsOnlyDisplayName() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        var testOwner: JoinFamilyLedgerViewModel? = null
         try {
             val api = invitationApi()
             val store = LedgerFakeSettingsStore()
             val tokenStore = LedgerFakeTokenStore()
             val viewModel = viewModel(api, store, tokenStore)
+            testOwner = viewModel
 
             viewModel.consumeSharedInvitation(INVITE_URL)
             val previewed = viewModel.uiState.first { it.preview != null || it.error != null }
@@ -169,6 +183,7 @@ class JoinFamilyLedgerViewModelTest {
             assertEquals("https://join.example.com", tokenStore.sessionStore.currentSession()?.serverUrl)
             assertNull(store.serverUrl(), "session authority must stay in LocalSessionStore")
         } finally {
+            testOwner?.viewModelScope?.coroutineContext?.job?.cancelAndJoin()
             Dispatchers.resetMain()
         }
     }
@@ -176,6 +191,7 @@ class JoinFamilyLedgerViewModelTest {
     @Test
     fun boundAliasPreviewAcceptsThroughCurrentSessionWithoutDuplicateIdentity() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        var testOwner: JoinFamilyLedgerViewModel? = null
         try {
             val api = invitationApi()
             val tokenStore = ownerSession()
@@ -187,6 +203,7 @@ class JoinFamilyLedgerViewModelTest {
                 expenseDao = LedgerFakeDao(),
             )
             val viewModel = JoinFamilyLedgerViewModel(repository)
+            testOwner = viewModel
 
             viewModel.consumeSharedInvitation(INVITE_URL)
             val previewed = viewModel.uiState.first { it.preview != null || it.error != null }
@@ -203,6 +220,7 @@ class JoinFamilyLedgerViewModelTest {
             assertNull(api.acceptRequests.single().deviceName)
             assertEquals("old-token", tokenStore.getToken())
         } finally {
+            testOwner?.viewModelScope?.coroutineContext?.job?.cancelAndJoin()
             Dispatchers.resetMain()
         }
     }
@@ -210,12 +228,14 @@ class JoinFamilyLedgerViewModelTest {
     @Test
     fun foreignServerPreviewRefusesAppAcceptAndKeepsBrowserContinuation() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        var testOwner: JoinFamilyLedgerViewModel? = null
         try {
             val api = invitationApi(
                 preview = preview(serverId = FOREIGN_SERVER_ID, generation = FOREIGN_GENERATION),
             )
             val tokenStore = ownerSession()
             val viewModel = viewModel(api, LedgerFakeSettingsStore(), tokenStore)
+            testOwner = viewModel
 
             viewModel.consumeSharedInvitation(INVITE_URL)
             val previewed = viewModel.uiState.first { it.preview != null || it.error != null }
@@ -232,6 +252,7 @@ class JoinFamilyLedgerViewModelTest {
             assertTrue(viewModel.continueInBrowser { opened = it })
             assertEquals(INVITE_URL, opened)
         } finally {
+            testOwner?.viewModelScope?.coroutineContext?.job?.cancelAndJoin()
             Dispatchers.resetMain()
         }
     }
@@ -239,9 +260,11 @@ class JoinFamilyLedgerViewModelTest {
     @Test
     fun invalidTextShareShowsFeedbackAndNeverCallsPreview() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        var testOwner: JoinFamilyLedgerViewModel? = null
         try {
             val api = invitationApi()
             val viewModel = viewModel(api, LedgerFakeSettingsStore(), LedgerFakeTokenStore())
+            testOwner = viewModel
 
             viewModel.consumeSharedInvitation("这不是邀请")
             advanceUntilIdle()
@@ -250,6 +273,7 @@ class JoinFamilyLedgerViewModelTest {
             assertEquals("", viewModel.uiState.value.invitationInput)
             assertTrue(api.previewRequests.isEmpty())
         } finally {
+            testOwner?.viewModelScope?.coroutineContext?.job?.cancelAndJoin()
             Dispatchers.resetMain()
         }
     }
@@ -257,6 +281,7 @@ class JoinFamilyLedgerViewModelTest {
     @Test
     fun sharedLinkPreviewFailureCanRetryWithoutRenderingTheToken() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        var testOwner: JoinFamilyLedgerViewModel? = null
         try {
             var attempts = 0
             val api = StubApi(
@@ -269,6 +294,7 @@ class JoinFamilyLedgerViewModelTest {
                 ),
             )
             val viewModel = viewModel(api, LedgerFakeSettingsStore(), LedgerFakeTokenStore())
+            testOwner = viewModel
 
             viewModel.consumeSharedInvitation(INVITE_URL)
             val failed = viewModel.uiState.first { it.error != null }
@@ -284,6 +310,7 @@ class JoinFamilyLedgerViewModelTest {
             assertEquals(2, api.previewRequests.size)
         } finally {
             advanceUntilIdle()
+            testOwner?.viewModelScope?.coroutineContext?.job?.cancelAndJoin()
             Dispatchers.resetMain()
         }
     }
@@ -291,6 +318,7 @@ class JoinFamilyLedgerViewModelTest {
     @Test
     fun stalePreviewCannotReturnAfterInvitationInputChanges() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        var testOwner: JoinFamilyLedgerViewModel? = null
         val releaseOld = CompletableDeferred<Unit>()
         try {
             val oldStarted = CompletableDeferred<Unit>()
@@ -308,6 +336,7 @@ class JoinFamilyLedgerViewModelTest {
                 ),
             )
             val viewModel = viewModel(api, LedgerFakeSettingsStore(), LedgerFakeTokenStore())
+            testOwner = viewModel
 
             viewModel.consumeSharedInvitation(
                 "https://old.example.com/web/auth/join#invite=inv_old",
@@ -325,6 +354,7 @@ class JoinFamilyLedgerViewModelTest {
         } finally {
             releaseOld.complete(Unit)
             advanceUntilIdle()
+            testOwner?.viewModelScope?.coroutineContext?.job?.cancelAndJoin()
             Dispatchers.resetMain()
         }
     }
@@ -332,6 +362,7 @@ class JoinFamilyLedgerViewModelTest {
     @Test
     fun newShareWaitsForInFlightAcceptInsteadOfStealingItsRequest() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        var testOwner: JoinFamilyLedgerViewModel? = null
         val releaseAccept = CompletableDeferred<Unit>()
         try {
             val acceptStarted = CompletableDeferred<Unit>()
@@ -346,6 +377,7 @@ class JoinFamilyLedgerViewModelTest {
                 ),
             )
             val viewModel = viewModel(api, LedgerFakeSettingsStore(), ownerSession())
+            testOwner = viewModel
             viewModel.consumeSharedInvitation(
                 "https://old.example.com/web/auth/join#invite=inv_old",
             )
@@ -369,6 +401,7 @@ class JoinFamilyLedgerViewModelTest {
         } finally {
             releaseAccept.complete(Unit)
             advanceUntilIdle()
+            testOwner?.viewModelScope?.coroutineContext?.job?.cancelAndJoin()
             Dispatchers.resetMain()
         }
     }
@@ -376,8 +409,10 @@ class JoinFamilyLedgerViewModelTest {
     @Test
     fun resetClearsInputAndPreviewTogether() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        var testOwner: JoinFamilyLedgerViewModel? = null
         try {
             val viewModel = viewModel(invitationApi(), LedgerFakeSettingsStore(), LedgerFakeTokenStore())
+            testOwner = viewModel
             viewModel.onInvitationInputChanged("inv_manual")
             viewModel.reset("https://default.example.com")
 
@@ -386,6 +421,7 @@ class JoinFamilyLedgerViewModelTest {
                 viewModel.uiState.value,
             )
         } finally {
+            testOwner?.viewModelScope?.coroutineContext?.job?.cancelAndJoin()
             Dispatchers.resetMain()
         }
     }

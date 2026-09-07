@@ -27,6 +27,10 @@ import com.ticketbox.viewmodel.loadOlderExpenseRevisions
 import com.ticketbox.viewmodel.openBillSplitInviteSheet
 import com.ticketbox.viewmodel.openCorrectionSheet
 import com.ticketbox.viewmodel.toggleTimelineExpanded
+import com.ticketbox.viewmodel.recoverCorrection
+import com.ticketbox.viewmodel.refreshCorrectionFact
+import com.ticketbox.viewmodel.currentCorrectionItems
+import com.ticketbox.viewmodel.currentCorrectionSplits
 
 /**
  * A1: confirmed 账单事实屏（read-first）。段落顺序 = 用户任务顺序：
@@ -51,6 +55,8 @@ fun ExpenseFactScreen(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ),
     ) {
+        AppStatusBanner(message = state.message, tone = state.messageTone)
+        FactCorrectionSubmissions(state, viewModel)
         when {
             // 首载：骨架占位（成熟产品的加载形态，不是白屏）。
             state.expense == null && state.expenseLoadState != ExpenseDetailDataLoadState.Failed -> {
@@ -72,6 +78,21 @@ fun ExpenseFactScreen(
     ExpenseFactSheetHosts(state = state, viewModel = viewModel)
 }
 
+@Composable
+private fun FactCorrectionSubmissions(state: ExpenseFactUiState, viewModel: ExpenseFactViewModel) {
+        state.corrections.forEach { pending ->
+            ExpenseCorrectionSubmissionCard(pending,
+                options = CorrectionSubmissionOptions(canModify = !state.readOnly, busy = state.correctionRecoveryBusy,
+                    refreshPending = state.expenseLoadState != ExpenseDetailDataLoadState.Loaded ||
+                        state.currentCorrectionItems == null ||
+                        state.currentCorrectionSplits == null ||
+                        state.revisionsLoadState != ExpenseDetailDataLoadState.Loaded ||
+                        state.factBundleLoadState != ExpenseDetailDataLoadState.Loaded),
+                actions = CorrectionSubmissionActions(recover = { drop -> viewModel.recoverCorrection(pending.row.id, drop) },
+                    reviewFact = viewModel::refreshCorrectionFact))
+        }
+}
+
 /** 已知内容时的正文段（stale 提示 + 各事实段 + 关联动作）。 */
 @Composable
 private fun FactContentSections(
@@ -83,7 +104,6 @@ private fun FactContentSections(
                 if (state.expenseStale) {
                     FactStaleBanner(onRetry = viewModel::retryLoadExpense)
                 }
-                AppStatusBanner(message = state.message, tone = state.messageTone)
                 FactSummarySection(
                     expense = expense,
                     state = state,
@@ -99,6 +119,7 @@ private fun FactContentSections(
                     state = state,
                     onRetryItems = viewModel::loadExpenseItems,
                     onRetrySplits = viewModel::loadExpenseSplits,
+                    onRefreshFact = viewModel::refreshCorrectionFact,
                     onAcknowledgeItems = viewModel::acknowledgeItemsMismatch,
                 )
                 FactTimelineSection(
@@ -115,6 +136,7 @@ private fun FactContentSections(
                             loading = state.billSplitLoading,
                             message = state.billSplitMessage,
                             messageTone = state.billSplitMessageTone,
+                            canStartInvite = state.authoritativeRootReady,
                         ),
                         actions = ExpenseBillSplitInvitePanelActions(
                             onStartInvite = viewModel::openBillSplitInviteSheet,
@@ -125,6 +147,7 @@ private fun FactContentSections(
                 if (expense.canCreateRepaymentDraft(state.readOnly)) {
                     ExpenseRepaymentDraftPanel(
                         creating = state.repaymentDraftCreating,
+                        canCreate = state.authoritativeRootReady,
                         onCreate = viewModel::createRepaymentDraftFromExpense,
                     )
                 }
