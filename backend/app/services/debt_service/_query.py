@@ -107,39 +107,38 @@ def get_participant_debt_response(db: Session, *, public_id: str, ledger_id: str
     # §3.2: the server is the authority for the viewer's debtor/creditor role (the client can't
     # derive it — see DebtResponse.viewer_is_debtor). Cross-ledger reads additionally redact the
     # counterparty's ledger id (§5.2).
-    viewer_is_debtor = _viewer_is_debtor(debt, account_id)
-    update: dict = {"viewer_is_debtor": viewer_is_debtor}
+    update = _participant_updates(db, [debt], account_id)[debt.public_id]
     if not is_ledger_member:
         update["ledger_id"] = None
-        # ⑤c list↔detail consistency: a cross-ledger CREDITOR's receivables list shows the
-        # debtor's name in counterparty_label; surface the same name here so opening the
-        # detail doesn't fall back to the generic member label. Only the creditor side
-        # (viewer_is_debtor is False) — the debtor's own payable view stays generic (the
-        # counterparty there is the creditor, framed by the communal headline, not named).
-        if viewer_is_debtor is False:
-            debtor_name = _owner_display_names(db, {debt.owner_account_id}).get(debt.owner_account_id)
-            if debtor_name:
-                update["counterparty_label"] = debtor_name
     return response.model_copy(update=update)
 
 
-def _owner_display_names(db: Session, owner_account_ids: set[int]) -> dict[int, str]:
-    """Batch-resolve ``{account_id: display_name}`` for the given debtor (owner) accounts.
+def _participant_updates(db: Session, debts: list[Debt], account_id: int | None) -> dict[str, dict]:
+    """Project the viewer's role and the other participant's name in one batch.
 
-    One ``WHERE id IN (...)`` (no N+1) for the receivables list; blank names are omitted
-    so the caller leaves ``counterparty_label`` ``None`` and the renderers fall back to the
-    generic member label (``Account.display_name`` is NOT NULL, so this is belt-and-suspenders).
-    The debtor's name is shared provenance — the creditor is the bill_split sender who named
-    this receiver at invite time — so surfacing it does NOT cross the §5.2/ADR-0029 boundary
-    (which redacts the debtor's LEDGER, not their identity).
+    A supplied owner-side label remains meaningful. For the counterparty viewer,
+    that stored label names themselves, so only the owner's name may replace it.
+    Third-party ledger readers retain the stored label and no participant role.
+    This shares participant identity, never the other participant's ledger.
     """
-    if not owner_account_ids:
-        return {}
-    rows = db.execute(select(Account.id, Account.display_name).where(Account.id.in_(owner_account_ids))).all()
-    return {acc_id: name for acc_id, name in rows if (name or "").strip()}
+    updates = {debt.public_id: {"viewer_is_debtor": _viewer_is_debtor(debt, account_id)} for debt in debts}
+    other_accounts: dict[str, int] = {}
+    for debt in debts:
+        if debt.counterparty_type != "member" or account_id is None:
+            continue
+        if account_id == debt.counterparty_account_id:
+            other_accounts[debt.public_id] = debt.owner_account_id
+        elif account_id == debt.owner_account_id and not (debt.counterparty_label or "").strip():
+            other_accounts[debt.public_id] = debt.counterparty_account_id
+    if other_accounts:
+        rows = db.execute(select(Account.id, Account.display_name).where(Account.id.in_(set(other_accounts.values()))))
+        names = {acc_id: name for acc_id, name in rows if (name or "").strip()}
+        for public_id, other_id in other_accounts.items():
+            updates[public_id]["counterparty_label"] = names.get(other_id)
+    return updates
 
 
-def _viewer_is_debtor(debt: Debt, account_id: int) -> bool | None:
+def _viewer_is_debtor(debt: Debt, account_id: int | None) -> bool | None:
     """The viewer's role on a member Debt: True=debtor, False=creditor, None=not a party.
 
     ``None`` for an external Debt (no member counterparty) and for a same-ledger member who is
@@ -251,12 +250,8 @@ def list_debts(db: Session, *, tenant_id: str, viewer_account_id: int | None = N
         Debt.id.asc(),
     )
     debts = list(db.scalars(statement))
-    items: list[DebtResponse] = []
-    for debt in debts:
-        response = _debt_response_with_fold(db, debt)
-        if viewer_account_id is not None:
-            response = response.model_copy(update={"viewer_is_debtor": _viewer_is_debtor(debt, viewer_account_id)})
-        items.append(response)
+    updates = _participant_updates(db, debts, viewer_account_id)
+    items = [_debt_response_with_fold(db, debt).model_copy(update=updates[debt.public_id]) for debt in debts]
     return DebtListResponse(
         items=items,
         home_currency_code=readable_or_initialization_home_currency_code(db),
@@ -298,22 +293,8 @@ def _list_personal_ledger_debts(
         .order_by(Debt.status.asc(), Debt.created_at.asc(), Debt.id.asc())
     )
     debts = list(db.scalars(statement))
-    # When the viewer is the member counterparty, the stored label names that
-    # counterparty (the viewer).  The relationship row must name the other side,
-    # which is the Debt owner. Resolve those names in one query.
-    counterparty_view_debts = [debt for debt in debts if debt.counterparty_account_id == account_id]
-    owner_names = _owner_display_names(
-        db,
-        {debt.owner_account_id for debt in counterparty_view_debts},
-    )
-    items: list[DebtResponse] = []
-    for debt in debts:
-        update: dict[str, object] = {"viewer_is_debtor": _viewer_is_debtor(debt, account_id)}
-        if debt.counterparty_account_id == account_id:
-            owner_name = owner_names.get(debt.owner_account_id)
-            if owner_name:
-                update["counterparty_label"] = owner_name
-        items.append(_debt_response_with_fold(db, debt).model_copy(update=update))
+    updates = _participant_updates(db, debts, account_id)
+    items = [_debt_response_with_fold(db, debt).model_copy(update=updates[debt.public_id]) for debt in debts]
     return DebtListResponse(
         items=items,
         home_currency_code=readable_or_initialization_home_currency_code(db),
@@ -433,23 +414,11 @@ def list_member_receivables_for_account(db: Session, *, account_id: int) -> Debt
         .order_by(Debt.status.asc(), Debt.created_at.asc(), Debt.id.asc())
     )
     debts = list(db.scalars(statement))
-    # Who owes the creditor: the debtor is the Debt OWNER (the bill_split receiver). The
-    # creditor must see WHO, so surface the debtor's live display name in counterparty_label
-    # (one batched lookup, no N+1). The stored counterparty_account_id is the creditor's own
-    # id and direction is owner-relative 'i_owe' — both left UNTOUCHED so the row stays
-    # byte-identical to the detail framing (list↔detail consistency); only the label is added.
-    debtor_names = _owner_display_names(db, {debt.owner_account_id for debt in debts})
+    updates = _participant_updates(db, debts, account_id)
     items: list[DebtResponse] = []
     for debt in debts:
-        response = _debt_response_with_fold(db, debt)
-        update: dict = {
-            "viewer_is_debtor": _viewer_is_debtor(debt, account_id),
-            "ledger_id": None,
-        }
-        debtor_name = debtor_names.get(debt.owner_account_id)
-        if debtor_name:
-            update["counterparty_label"] = debtor_name
-        items.append(response.model_copy(update=update))
+        update = updates[debt.public_id] | {"ledger_id": None}
+        items.append(_debt_response_with_fold(db, debt).model_copy(update=update))
     return DebtListResponse(
         items=items,
         home_currency_code=readable_or_initialization_home_currency_code(db),

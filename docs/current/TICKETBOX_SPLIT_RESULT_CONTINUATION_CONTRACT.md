@@ -58,5 +58,7 @@ existing membership queries; do not build per-page authorization rules.
 - Exact candidate CI/CodeQL/Connected, bounded review, isolated internal-device
   rehearsal as needed, protected merge and independent exact-main qualification.
 
-Qualification remains pending. Exact hashes/runs belong in the PR and external
-evidence, not the product atlas. Whole Goal and Windows lifecycle HOLD remain.
+CLOSED: candidate and merged main independently qualified; actual device navigation
+and original-intent preservation verified. Evidence: [#391](https://github.com/xxu29958-jpg/xpj/pull/391).
+Exact hashes/runs remain in the PR and external evidence. Whole Goal and Windows
+lifecycle HOLD remain.

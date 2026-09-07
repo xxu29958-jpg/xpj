@@ -432,6 +432,7 @@
     <!-- ADR-0049 §3 (slice 8c) 欠款详情 + 记还款 / 调整 / 作废管理。 -->
     <string name="debt_detail_back">返回</string>
     <string name="debt_detail_title">欠款详情</string>
+    <string name="debt_member_remaining_amount">剩余 %1$s</string>
     <string name="debt_detail_remaining">剩余</string>
     <string name="debt_detail_principal">本金</string>
     <string name="debt_detail_paid">已偿还</string>
@@ -541,6 +542,7 @@
     <string name="debt_proposal_reject_done">已经回复 TA「金额对不上」啦。</string>
     <string name="debt_proposal_action_failed">没成功，待会儿再试一下～</string>
     <string name="debt_proposal_load_failed">往来记录没加载出来，待会儿再看看～</string>
+    <string name="debt_proposal_refresh_after_action_failed">操作已完成，往来列表暂未更新。已确认的结果仍保留，请刷新后继续。</string>
     <!-- 状态徽章：成员债历史一律 neutral（§3.4）；confirmed→已两清、rejected→在对账（去 shame）。 -->
     <string name="debt_proposal_status_pending">待 TA 确认</string>
     <string name="debt_proposal_status_confirmed">已两清</string>

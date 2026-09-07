@@ -4,7 +4,7 @@
 {% block title %}欠款 · 往来 · 小票夹{% endblock %}
 
 {# C3a 往来核心 (product 正文栈):
-   - 首屏回答两件事: 正在进行的家人往来 (communal 关系行, 无金额主句 +
+   - 首屏回答两件事: 正在进行的家人往来 (关系行, 对方与剩余金额 +
      native progress + 永不红状态) 与外部应付/应收 (businesslike 会计行,
      剩余 editorial 拆分英雄 + 本金脚注); 已结清/作废沉降到各组末尾
      (服务端 active-first), 家人行再叠 is-receded 淡出;
@@ -37,10 +37,11 @@
     {% for debt in member_debts %}
     <a class="debt-row{% if debt.recede %} is-receded{% endif %}"
        href="/web/debts/{{ debt.public_id }}?ledger_id={{ selected_ledger_id }}"
-       aria-label="{{ debt.name }}，{{ debt.member_headline }}，{{ debt.member_status_label }}">
+       aria-label="{{ debt.name }}，{{ debt.member_headline }}，{{ debt.member_status_label }}，剩余 {{ debt.remaining_label }}">
       <div class="debt-row-main">
         <div class="debt-name">{{ debt.name }}</div>
         <div class="debt-member-line">{{ debt.member_headline }}</div>
+        <div class="debt-member-remaining">剩余 {{ debt.remaining_label }}</div>
         {% if debt.show_progress %}
         <progress class="debt-progress" value="{{ debt.ratio_percent }}" max="100" aria-label="{{ debt.progress_note }}"></progress>
         {% endif %}

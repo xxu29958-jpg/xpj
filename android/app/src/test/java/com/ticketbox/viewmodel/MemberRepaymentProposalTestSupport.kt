@@ -1,6 +1,11 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.DebtProposalActions
+import com.ticketbox.data.repository.LedgerAccessContext
+import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.DebtTask
+import com.ticketbox.data.repository.MemberSettlementCommand
+import com.ticketbox.data.repository.MemberSettlementResult
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
@@ -9,6 +14,10 @@ import com.ticketbox.domain.model.DebtSourceTypes
 import com.ticketbox.domain.model.MemberProposalStatuses
 import com.ticketbox.domain.model.MemberRepaymentProposal
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 
 internal data class ProposalCreateCall(
     val debtPublicId: String,
@@ -25,7 +34,7 @@ internal data class ProposalConfirmCall(
 )
 
 internal class ProposalTestActions(
-    private val canModify: Boolean = true,
+    canModify: Boolean = true,
     var listResult: Result<List<MemberRepaymentProposal>> = Result.success(emptyList()),
     var proposalResult: Result<MemberRepaymentProposal> = Result.success(sampleMemberProposal()),
     var confirmResult: Result<Debt> = Result.success(sampleMemberDebt()),
@@ -36,15 +45,19 @@ internal class ProposalTestActions(
     val confirmCalls = mutableListOf<ProposalConfirmCall>()
     val rejectCalls = mutableListOf<Pair<String, String>>()
     val forgiveCalls = mutableListOf<Pair<String, Long>>()
+    val access = MutableStateFlow<LedgerAccessContext?>(LedgerAccessContext(memberDebtTask("d1").binding, canModify))
+    val commandKeys = mutableListOf<String>()
     var listCalls = 0
 
     /** When set, listRepaymentProposals() stalls until completed — used to interleave a slow load. */
     var listGate: CompletableDeferred<Unit>? = null
     var proposeGate: CompletableDeferred<Unit>? = null
+    var nonCooperative = false
 
-    override fun canModifyLedger(): Boolean = canModify
+    override fun currentAccess(): LedgerAccessContext? = access.value
+    override fun observeAccess(): Flow<LedgerAccessContext?> = access
 
-    override suspend fun listRepaymentProposals(debtPublicId: String): Result<List<MemberRepaymentProposal>> {
+    override suspend fun listRepaymentProposals(task: DebtTask): Result<List<MemberRepaymentProposal>> {
         listCalls++
         // Capture the result at entry so a stalled load returns the snapshot it started with, even
         // if a newer load swaps listResult in the meantime.
@@ -53,49 +66,41 @@ internal class ProposalTestActions(
         return captured
     }
 
-    override suspend fun proposeRepayment(
-        debtPublicId: String,
-        proposedAmountCents: Long,
-        note: String?,
-        supersedesProposalPublicId: String?,
-    ): Result<MemberRepaymentProposal> {
-        proposeCalls += ProposalCreateCall(debtPublicId, proposedAmountCents, note, supersedesProposalPublicId)
-        val captured = proposalResult
-        proposeGate?.await()
-        return captured
-    }
-
-    override suspend fun withdrawRepaymentProposal(
-        debtPublicId: String,
-        proposalPublicId: String,
-    ): Result<MemberRepaymentProposal> {
-        withdrawCalls += debtPublicId to proposalPublicId
-        return proposalResult
-    }
-
-    override suspend fun confirmRepaymentProposal(
-        debtPublicId: String,
-        proposalPublicId: String,
-        expectedRowVersion: Long,
-        confirmedAmountCents: Long?,
-    ): Result<Debt> {
-        confirmCalls += ProposalConfirmCall(debtPublicId, proposalPublicId, expectedRowVersion, confirmedAmountCents)
-        return confirmResult
-    }
-
-    override suspend fun rejectRepaymentProposal(
-        debtPublicId: String,
-        proposalPublicId: String,
-    ): Result<MemberRepaymentProposal> {
-        rejectCalls += debtPublicId to proposalPublicId
-        return proposalResult
-    }
-
-    override suspend fun forgiveDebt(debtPublicId: String, expectedRowVersion: Long): Result<Debt> {
-        forgiveCalls += debtPublicId to expectedRowVersion
-        return forgiveResult
+    override suspend fun submit(
+        task: DebtTask,
+        command: MemberSettlementCommand,
+        idempotencyKey: String,
+    ): Result<MemberSettlementResult> {
+        commandKeys += idempotencyKey
+        return when (command) {
+            is MemberSettlementCommand.Propose -> {
+                proposeCalls += ProposalCreateCall(task.debtPublicId, command.amountCents, command.note, command.supersedesProposalPublicId)
+                val captured = proposalResult
+                if (nonCooperative) withContext(NonCancellable) { proposeGate?.await() } else proposeGate?.await()
+                captured.map { MemberSettlementResult.Proposal(it) }
+            }
+            is MemberSettlementCommand.Confirm -> {
+                confirmCalls += ProposalConfirmCall(task.debtPublicId, command.proposalPublicId, command.expectedRowVersion, command.amountCents)
+                confirmResult.map { MemberSettlementResult.DebtChanged(it) }
+            }
+            is MemberSettlementCommand.Withdraw -> {
+                withdrawCalls += task.debtPublicId to command.proposalPublicId
+                proposalResult.map { MemberSettlementResult.Proposal(it) }
+            }
+            is MemberSettlementCommand.Reject -> {
+                rejectCalls += task.debtPublicId to command.proposalPublicId
+                proposalResult.map { MemberSettlementResult.Proposal(it) }
+            }
+            is MemberSettlementCommand.Forgive -> {
+                forgiveCalls += task.debtPublicId to command.expectedRowVersion
+                forgiveResult.map { MemberSettlementResult.DebtChanged(it) }
+            }
+        }
     }
 }
+
+internal fun memberDebtTask(publicId: String) = DebtTask(
+    LogicalSessionBinding("https://member-test.example", "owner", "test-owner", "session", "revision"), publicId)
 
 internal fun sampleMemberProposal(
     publicId: String = "p1",

@@ -125,7 +125,7 @@ def _debt_view(debt) -> dict:
     """列表行视图模型 (slice 1A：按角色分轴)。
 
     外部债 = businesslike 会计行 (应付/应收 + 本位币剩余 editorial 拆分英雄 + 本金脚注 + 状态色含
-    danger)。成员债 = communal 关系行 (对手方名 + viewer-相对关系主句〔无金额、永不应付应收剩余〕 +
+    danger)。成员债 = communal 关系行 (对手方名 + viewer-相对关系主句与冻结币种下的剩余金额 +
     open 时细 success 进度条 + 状态徽章〔neutral/success **永不 danger** 红线②〕)，作废/已结清沉降。
 
     成员行的角色 (你帮我垫的/我帮你垫的/第三方) 读服务端权威 ``debt.viewer_is_debtor`` (由
@@ -146,6 +146,7 @@ def _debt_view(debt) -> dict:
         view.update(
             {
                 # 关系主句逐字复用详情 headline (无金额)；列表与详情同一句。
+                "remaining_label": _home_amount_label(debt.remaining_amount_cents, debt.home_currency_code),
                 "member_headline": _member_headline(
                     debt.viewer_is_debtor, debt.status, debt.is_forgiven, ratio
                 ),

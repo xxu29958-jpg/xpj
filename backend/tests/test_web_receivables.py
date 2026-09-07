@@ -185,7 +185,7 @@ def test_web_receivable_preserves_remaining_and_opens_redacted_detail(
     html = _page(web_client)
     assert "还剩 ¥15.00" in html
     assert f'href="/web/debts/{public_id}?ledger_id=owner"' in html
-    assert "还剩" in detail.text
+    assert '<div class="debt-member-remaining">剩余 ¥15.00</div>' in detail.text.split('<details class="debt-look">')[0]
     assert "¥15.00" in detail.text
 
 

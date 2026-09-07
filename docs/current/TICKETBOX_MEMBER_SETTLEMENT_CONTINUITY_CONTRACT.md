@@ -17,21 +17,25 @@ canonical queries, ledger binding and actual detail/history consumers. Preserve
 OCC, original command identity and frozen currency. Do not create a second fold,
 financial writer, generic workflow framework or parallel offline executor.
 
-## Impact closure before construction
+## Impact closure
 
-| Boundary | Actual entrance / consumer / current consequence |
+| Boundary | Before → implemented closure |
 |---|---|
-| Entrances | `StatsRoutes` personal/all-ledger debt detail and receivables detail; debt-goal linked detail; shared `DebtDetailScreen` / `MemberProposalSection`. Web proposal forms use their existing command adapter |
-| Identity | Host `DebtDetailViewModel` observes complete access, but proposal state keeps only debt ID plus a read generation. Proposal repository calls capture the then-current binding inside each suspended operation |
-| Commands | `DebtProposalActions` owns the Android adapter for propose, withdraw, confirm, reject and forgive. Each call currently mints a key; backend command services retain participant validation, replay fingerprints, OCC and atomic facts |
-| Old success exits | `onActionSucceeded` discards returned canonical data, clears the current form and refreshes. Read failure loses the acknowledged proposal; completion after another debt loads can clear its new draft. Repeated submits have no synchronous command guard |
-| Task understanding | Physical split debtor list/detail show a generic member instead of the known creditor, and hide the remaining amount. Existing name query and record-currency presentation must supply usable context without disclosing a private ledger |
-| Real result consumers | Proposal pending/history cards, parent detail fold, repayment history, personal/all-ledger lists, receivables and debt-goal linked detail must follow the appropriate canonical result |
-| Persistence and recovery | These actions are currently online and have no Room mutation family. Existing backend queries can recover canonical proposals/folds. Verify ACK loss and explicit continuation before changing command identity; never turn an unsent call into a durable success or add an offline owner merely for symmetry |
-| Protocol and other containers | API and Web already use the same financial commands. Any altered command semantics require both consumers and their schema/replay tests to migrate. No Windows lifecycle work is opened |
-| Direct verification | Existing proposal ViewModel/command regressions; new delayed-command, repeated-submit, acknowledged-result, creditor-identity and visible-remaining counterexamples; actual debtor/creditor task and parent/history refresh with original Room intent preserved |
+| Entrances | Personal/all-ledger and receivables detail in `StatsRoutes`, plus debt-goal linked detail, share `DebtDetailScreen`. Forms/actions capture the rendered `DebtTask`; proposal/history panels appear only for that binding and debt |
+| Identity | Debt-ID-only proposal/history targets → one immutable task containing the complete logical binding and debt ID. Repository reads/writes bind exactly to it; task replacement cancels old proposal work, revocation stops writes, and history cannot reuse a same-ID/version result from another binding |
+| Commands | Five repeated Android request methods that mint per-call keys → one typed `DebtProposalActions.submit(task, command, key)` adapter for the same five server commands. The ViewModel admits one active call and retains the original key for an unchanged explicit retry |
+| Old success exits | Discarded acknowledgements plus a fold-change counter → canonical proposal upsert or committed Debt adoption. A failed follow-up read retains the acknowledged result. Superseded completions cannot clear a new form or overwrite a newer parent fold |
+| Task understanding | Known creditor hidden as generic member and remaining amount concealed → existing batched participant query names the opposite party across API/Web list/detail. Android/Web show the frozen-currency remaining amount before supporting details; supplied meaningful labels and private-ledger redaction remain |
+| Result consumers | Parent summary adopts the canonical fold; its binding/debt/version refreshes repayment history. Back navigation retains existing personal/all-ledger, receivables and goal refresh paths. No local repayment/balance calculation is introduced |
+| Persistence/recovery | Commands remain explicitly online; an in-memory unchanged retry keeps its key. Reentry reconciles canonical proposal/fold/history through existing queries. No second Room family, offline executor or success claim for unsent work; existing durable intents remain byte-for-byte preserved in the real Room fixture |
+| Protocol/other containers | Endpoint bodies, API epoch, backend participant auth/OCC/idempotency/fact writers and database schema remain unchanged. Web keeps the same command services and gains the same participant/remaining projection. Windows lifecycle remains HOLD |
+| Direct validation | Executed original RED: repeated-submit, replaced-task and discarded-ACK tests; creditor identity API paths and Android visible remaining. Candidate adds original-key/binding/role/noncooperative response/parent-history tests and a real detail-screen + Room graph path: partial confirm with ACK loss, failed reads, history, reentry and forgiveness |
 
-The first change contains only direct tests and shared test fixtures. Admission and
-implementation follow executable results. After construction, replace this table
-with the final affected-consumer/retirement closure; keep CI hashes and logs in the
-PR and external evidence. Unknown impact is not an exemption.
+## Qualification state
+
+Implementation is under qualification. Short local source analysis passes; final
+candidate cloud checks, bounded review, physical debtor/creditor use and independent
+merge-main qualification are still required. The earlier split-save Connected
+waiting-receipt timeout remains an explicit final regression subject. Exact hashes,
+run IDs and logs belong in [PR #392](https://github.com/xxu29958-jpg/xpj/pull/392)
+and external evidence, not this product contract or the atlas.

@@ -87,6 +87,13 @@
     font-size: var(--type-caption-size);
 }
 
+.debt-member-remaining {
+    color: var(--text-default);
+    font-size: var(--type-subtitle-size);
+    font-weight: var(--type-title-weight);
+    font-variant-numeric: tabular-nums;
+}
+
 .debt-progress {
     width: min(100%, calc(var(--space-12) * 4));
     accent-color: var(--brand-primary);

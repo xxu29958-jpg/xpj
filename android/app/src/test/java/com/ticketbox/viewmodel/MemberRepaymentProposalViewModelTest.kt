@@ -42,7 +42,7 @@ class MemberRepaymentProposalViewModelTest {
             listResult = Result.success(listOf(sampleMemberProposal())),
         )
         val viewModel = MemberRepaymentProposalViewModel(repo)
-        viewModel.load("d1")
+        viewModel.load(memberDebtTask("d1"))
         advanceUntilIdle()
 
         assertEquals(1, viewModel.state.value.proposals.size)
@@ -55,12 +55,12 @@ class MemberRepaymentProposalViewModelTest {
     fun loadClearsStaleProposalsBeforeRefetch() = runTest(dispatcher) {
         val repo = ProposalTestActions(listResult = Result.success(listOf(sampleMemberProposal())))
         val viewModel = MemberRepaymentProposalViewModel(repo)
-        viewModel.load("d1")
+        viewModel.load(memberDebtTask("d1"))
         advanceUntilIdle()
         assertEquals(1, viewModel.state.value.proposals.size)
 
         // Switching to another Debt clears the previous收发箱 synchronously, before the refetch lands.
-        viewModel.load("d2")
+        viewModel.load(memberDebtTask("d2"))
         assertTrue(viewModel.state.value.proposals.isEmpty())
     }
 
@@ -68,7 +68,7 @@ class MemberRepaymentProposalViewModelTest {
     fun refreshFailureSurfacesError() = runTest(dispatcher) {
         val repo = ProposalTestActions(listResult = Result.failure(RuntimeException("offline")))
         val viewModel = MemberRepaymentProposalViewModel(repo)
-        viewModel.load("d1")
+        viewModel.load(memberDebtTask("d1"))
         advanceUntilIdle()
 
         assertTrue(viewModel.state.value.proposals.isEmpty())
@@ -78,7 +78,9 @@ class MemberRepaymentProposalViewModelTest {
     @Test
     fun openConfirmPrefillsProposedAmount() = runTest(dispatcher) {
         val viewModel = MemberRepaymentProposalViewModel(ProposalTestActions())
-        viewModel.openForm(ProposalForm.Confirm, sampleMemberProposal(proposedAmountCents = 20_050))
+        viewModel.load(memberDebtTask("d1"))
+        advanceUntilIdle()
+        viewModel.openForm(requireNotNull(viewModel.state.value.task), ProposalForm.Confirm, sampleMemberProposal(proposedAmountCents = 20_050))
 
         assertEquals(ProposalForm.Confirm, viewModel.state.value.activeForm)
         assertEquals("200.50", viewModel.state.value.amountInput)
@@ -88,13 +90,13 @@ class MemberRepaymentProposalViewModelTest {
     fun submitProposeSendsAmountAndNote() = runTest(dispatcher) {
         val repo = ProposalTestActions()
         val viewModel = MemberRepaymentProposalViewModel(repo)
-        viewModel.load("d1")
+        viewModel.load(memberDebtTask("d1"))
         advanceUntilIdle()
 
-        viewModel.openForm(ProposalForm.Propose)
-        viewModel.updateAmount("150")
-        viewModel.updateNote("微信转账")
-        viewModel.submit(expectedRowVersion = 7L, currency = CurrencyCode.CNY)
+        viewModel.openForm(requireNotNull(viewModel.state.value.task), ProposalForm.Propose)
+        viewModel.updateAmount(requireNotNull(viewModel.state.value.task), "150")
+        viewModel.updateNote(requireNotNull(viewModel.state.value.task), "微信转账")
+        viewModel.submit(requireNotNull(viewModel.state.value.task), expectedRowVersion = 7L, currency = CurrencyCode.CNY)
         advanceUntilIdle()
 
         val call = repo.proposeCalls.single()
@@ -103,7 +105,7 @@ class MemberRepaymentProposalViewModelTest {
         assertEquals("微信转账", call.note)
         assertNull(call.supersedesProposalPublicId)
         // Propose does NOT change the fold.
-        assertEquals(0, viewModel.state.value.foldChangedAt)
+        assertNull(viewModel.state.value.committedDebt)
         assertNull(viewModel.state.value.activeForm)
         assertTrue(viewModel.state.value.flashMessage != null)
     }
@@ -113,12 +115,12 @@ class MemberRepaymentProposalViewModelTest {
         // C07：1.230 精确等于 123 minor；不得在客户端做 HALF_UP。
         val repo = ProposalTestActions()
         val viewModel = MemberRepaymentProposalViewModel(repo)
-        viewModel.load("d1")
+        viewModel.load(memberDebtTask("d1"))
         advanceUntilIdle()
 
-        viewModel.openForm(ProposalForm.Propose)
-        viewModel.updateAmount("1.230")
-        viewModel.submit(expectedRowVersion = 7L, currency = CurrencyCode.CNY)
+        viewModel.openForm(requireNotNull(viewModel.state.value.task), ProposalForm.Propose)
+        viewModel.updateAmount(requireNotNull(viewModel.state.value.task), "1.230")
+        viewModel.submit(requireNotNull(viewModel.state.value.task), expectedRowVersion = 7L, currency = CurrencyCode.CNY)
         advanceUntilIdle()
 
         assertEquals(123L, repo.proposeCalls.single().proposedAmountCents)
@@ -128,12 +130,12 @@ class MemberRepaymentProposalViewModelTest {
     fun submitProposeValidatesNonPositiveWithoutCall() = runTest(dispatcher) {
         val repo = ProposalTestActions()
         val viewModel = MemberRepaymentProposalViewModel(repo)
-        viewModel.load("d1")
+        viewModel.load(memberDebtTask("d1"))
         advanceUntilIdle()
 
-        viewModel.openForm(ProposalForm.Propose)
-        viewModel.updateAmount("0")
-        viewModel.submit(expectedRowVersion = 1L, currency = CurrencyCode.CNY)
+        viewModel.openForm(requireNotNull(viewModel.state.value.task), ProposalForm.Propose)
+        viewModel.updateAmount(requireNotNull(viewModel.state.value.task), "0")
+        viewModel.submit(requireNotNull(viewModel.state.value.task), expectedRowVersion = 1L, currency = CurrencyCode.CNY)
         advanceUntilIdle()
 
         assertTrue(viewModel.state.value.validationError != null)
@@ -148,11 +150,11 @@ class MemberRepaymentProposalViewModelTest {
             listResult = Result.success(listOf(sampleMemberProposal(publicId = "p1", proposedAmountCents = 20_000))),
         )
         val viewModel = MemberRepaymentProposalViewModel(repo)
-        viewModel.load("d1")
+        viewModel.load(memberDebtTask("d1"))
         advanceUntilIdle()
 
-        viewModel.openForm(ProposalForm.Confirm, viewModel.state.value.pendingProposal)
-        viewModel.submit(expectedRowVersion = 5L, currency = CurrencyCode.CNY)
+        viewModel.openForm(requireNotNull(viewModel.state.value.task), ProposalForm.Confirm, viewModel.state.value.pendingProposal)
+        viewModel.submit(requireNotNull(viewModel.state.value.task), expectedRowVersion = 5L, currency = CurrencyCode.CNY)
         advanceUntilIdle()
 
         val call = repo.confirmCalls.single()
@@ -160,8 +162,8 @@ class MemberRepaymentProposalViewModelTest {
         assertEquals(5L, call.expectedRowVersion)
         // Amount equals the proposed amount → full confirm → confirmedAmountCents null.
         assertNull(call.confirmedAmountCents)
-        // Confirm changed the fold → the host detail screen is told to refresh.
-        assertEquals(1, viewModel.state.value.foldChangedAt)
+        // The acknowledged fold goes directly to the host detail projection.
+        assertEquals(repo.confirmResult.getOrThrow(), viewModel.state.value.committedDebt)
     }
 
     @Test
@@ -170,12 +172,12 @@ class MemberRepaymentProposalViewModelTest {
             listResult = Result.success(listOf(sampleMemberProposal(publicId = "p1", proposedAmountCents = 20_000))),
         )
         val viewModel = MemberRepaymentProposalViewModel(repo)
-        viewModel.load("d1")
+        viewModel.load(memberDebtTask("d1"))
         advanceUntilIdle()
 
-        viewModel.openForm(ProposalForm.Confirm, viewModel.state.value.pendingProposal)
-        viewModel.updateAmount("150")
-        viewModel.submit(expectedRowVersion = 5L, currency = CurrencyCode.CNY)
+        viewModel.openForm(requireNotNull(viewModel.state.value.task), ProposalForm.Confirm, viewModel.state.value.pendingProposal)
+        viewModel.updateAmount(requireNotNull(viewModel.state.value.task), "150")
+        viewModel.submit(requireNotNull(viewModel.state.value.task), expectedRowVersion = 5L, currency = CurrencyCode.CNY)
         advanceUntilIdle()
 
         // A lower amount than proposed → a partial confirm carries the explicit cents.
@@ -188,12 +190,12 @@ class MemberRepaymentProposalViewModelTest {
             listResult = Result.success(listOf(sampleMemberProposal(publicId = "p1", proposedAmountCents = 20_000))),
         )
         val viewModel = MemberRepaymentProposalViewModel(repo)
-        viewModel.load("d1")
+        viewModel.load(memberDebtTask("d1"))
         advanceUntilIdle()
 
-        viewModel.openForm(ProposalForm.Confirm, viewModel.state.value.pendingProposal)
-        viewModel.updateAmount("300")
-        viewModel.submit(expectedRowVersion = 5L, currency = CurrencyCode.CNY)
+        viewModel.openForm(requireNotNull(viewModel.state.value.task), ProposalForm.Confirm, viewModel.state.value.pendingProposal)
+        viewModel.updateAmount(requireNotNull(viewModel.state.value.task), "300")
+        viewModel.submit(requireNotNull(viewModel.state.value.task), expectedRowVersion = 5L, currency = CurrencyCode.CNY)
         advanceUntilIdle()
 
         assertTrue(viewModel.state.value.validationError != null)
@@ -206,15 +208,15 @@ class MemberRepaymentProposalViewModelTest {
             listResult = Result.success(listOf(sampleMemberProposal(publicId = "p1"))),
         )
         val viewModel = MemberRepaymentProposalViewModel(repo)
-        viewModel.load("d1")
+        viewModel.load(memberDebtTask("d1"))
         advanceUntilIdle()
 
-        viewModel.withdraw("p1")
+        viewModel.withdraw(requireNotNull(viewModel.state.value.task), "p1")
         advanceUntilIdle()
 
         assertEquals("d1" to "p1", repo.withdrawCalls.single())
         // No fold change on withdraw; a fresh list re-fetch + success flash.
-        assertEquals(0, viewModel.state.value.foldChangedAt)
+        assertNull(viewModel.state.value.committedDebt)
         assertEquals(2, repo.listCalls) // initial load + refresh after withdraw
         assertTrue(viewModel.state.value.flashMessage != null)
     }
@@ -225,14 +227,14 @@ class MemberRepaymentProposalViewModelTest {
             listResult = Result.success(listOf(sampleMemberProposal(publicId = "p1"))),
         )
         val viewModel = MemberRepaymentProposalViewModel(repo)
-        viewModel.load("d1")
+        viewModel.load(memberDebtTask("d1"))
         advanceUntilIdle()
 
-        viewModel.reject("p1")
+        viewModel.reject(requireNotNull(viewModel.state.value.task), "p1")
         advanceUntilIdle()
 
         assertEquals("d1" to "p1", repo.rejectCalls.single())
-        assertEquals(0, viewModel.state.value.foldChangedAt)
+        assertNull(viewModel.state.value.committedDebt)
         assertTrue(viewModel.state.value.flashMessage != null)
     }
 
@@ -243,10 +245,10 @@ class MemberRepaymentProposalViewModelTest {
             proposalResult = Result.failure(RuntimeException("boom")),
         )
         val viewModel = MemberRepaymentProposalViewModel(repo)
-        viewModel.load("d1")
+        viewModel.load(memberDebtTask("d1"))
         advanceUntilIdle()
 
-        viewModel.reject("p1")
+        viewModel.reject(requireNotNull(viewModel.state.value.task), "p1")
         advanceUntilIdle()
 
         assertTrue(viewModel.state.value.error != null)
@@ -262,11 +264,11 @@ class MemberRepaymentProposalViewModelTest {
             confirmResult = Result.failure(RuntimeException("boom")),
         )
         val viewModel = MemberRepaymentProposalViewModel(repo)
-        viewModel.load("d1")
+        viewModel.load(memberDebtTask("d1"))
         advanceUntilIdle()
 
-        viewModel.openForm(ProposalForm.Confirm, viewModel.state.value.pendingProposal)
-        viewModel.submit(expectedRowVersion = 5L, currency = CurrencyCode.CNY)
+        viewModel.openForm(requireNotNull(viewModel.state.value.task), ProposalForm.Confirm, viewModel.state.value.pendingProposal)
+        viewModel.submit(requireNotNull(viewModel.state.value.task), expectedRowVersion = 5L, currency = CurrencyCode.CNY)
         advanceUntilIdle()
 
         assertTrue(viewModel.state.value.validationError != null)
@@ -318,15 +320,15 @@ class MemberRepaymentProposalViewModelTest {
     fun forgiveCallsRepoBumpsFoldFlashesAndRefreshes() = runTest(dispatcher) {
         val repo = ProposalTestActions(listResult = Result.success(listOf(sampleMemberProposal(publicId = "p1"))))
         val viewModel = MemberRepaymentProposalViewModel(repo)
-        viewModel.load("d1")
+        viewModel.load(memberDebtTask("d1"))
         advanceUntilIdle()
 
-        viewModel.forgive(expectedRowVersion = 7L)
+        viewModel.forgive(requireNotNull(viewModel.state.value.task), expectedRowVersion = 7L)
         advanceUntilIdle()
 
         assertEquals("d1" to 7L, repo.forgiveCalls.single())
-        // Forgive clears the Debt → fold changed → the host detail screen is told to refresh.
-        assertEquals(1, viewModel.state.value.foldChangedAt)
+        // Forgive returns the canonical cleared fold for direct host adoption.
+        assertEquals(repo.forgiveResult.getOrThrow(), viewModel.state.value.committedDebt)
         assertEquals(2, repo.listCalls) // initial load + refresh after forgive
         assertTrue(viewModel.state.value.flashMessage != null)
         assertEquals(false, viewModel.state.value.isSubmitting)
@@ -340,16 +342,16 @@ class MemberRepaymentProposalViewModelTest {
             forgiveResult = Result.failure(RepositoryException("欠款或提案状态已变化，请刷新后再试。", errorCode = "state_conflict")),
         )
         val viewModel = MemberRepaymentProposalViewModel(repo)
-        viewModel.load("d1")
+        viewModel.load(memberDebtTask("d1"))
         advanceUntilIdle()
 
-        viewModel.forgive(expectedRowVersion = 1L)
+        viewModel.forgive(requireNotNull(viewModel.state.value.task), expectedRowVersion = 1L)
         advanceUntilIdle()
 
         val error = viewModel.state.value.error
         assertTrue(error is UiText.Res)
         assertEquals(R.string.debt_member_forgive_conflict, (error as UiText.Res).id)
-        assertEquals(0, viewModel.state.value.foldChangedAt)
+        assertNull(viewModel.state.value.committedDebt)
         assertEquals(false, viewModel.state.value.isSubmitting)
     }
 
@@ -359,16 +361,16 @@ class MemberRepaymentProposalViewModelTest {
         // forgive-specific failed copy, not the conflict copy.
         val repo = ProposalTestActions(forgiveResult = Result.failure(RuntimeException()))
         val viewModel = MemberRepaymentProposalViewModel(repo)
-        viewModel.load("d1")
+        viewModel.load(memberDebtTask("d1"))
         advanceUntilIdle()
 
-        viewModel.forgive(expectedRowVersion = 1L)
+        viewModel.forgive(requireNotNull(viewModel.state.value.task), expectedRowVersion = 1L)
         advanceUntilIdle()
 
         val error = viewModel.state.value.error
         assertTrue(error is UiText.Res)
         assertEquals(R.string.debt_member_forgive_failed, (error as UiText.Res).id)
-        assertEquals(0, viewModel.state.value.foldChangedAt)
+        assertNull(viewModel.state.value.committedDebt)
     }
 
     // ── ADR-0049 §2.1 stale-refresh 代际守卫（功能正确性加固 #2，镜像 DebtGoalViewModel）─────────────
@@ -379,7 +381,7 @@ class MemberRepaymentProposalViewModelTest {
         // refresh delivered the post-action (empty) list.
         val repo = ProposalTestActions(listResult = Result.success(listOf(sampleMemberProposal(publicId = "p1"))))
         val viewModel = MemberRepaymentProposalViewModel(repo)
-        viewModel.load("d1")
+        viewModel.load(memberDebtTask("d1"))
         advanceUntilIdle() // proposals = [p1]
 
         // A slow refresh stalls inside listRepaymentProposals() (it captured [p1])...
@@ -391,7 +393,7 @@ class MemberRepaymentProposalViewModelTest {
         // ...then the debtor withdraws; the action's success refresh delivers the empty 收发箱.
         repo.listGate = null
         repo.listResult = Result.success(emptyList())
-        viewModel.withdraw("p1")
+        viewModel.withdraw(requireNotNull(viewModel.state.value.task), "p1")
         advanceUntilIdle()
         assertTrue(viewModel.state.value.proposals.isEmpty())
 
@@ -406,7 +408,7 @@ class MemberRepaymentProposalViewModelTest {
         // Switching member debts: a slow prior refresh of d1 must not show d1's 收发箱 under d2.
         val repo = ProposalTestActions(listResult = Result.success(listOf(sampleMemberProposal(publicId = "pA"))))
         val viewModel = MemberRepaymentProposalViewModel(repo)
-        viewModel.load("d1")
+        viewModel.load(memberDebtTask("d1"))
         advanceUntilIdle()
 
         // A slow refresh of d1 stalls (it captured d1's proposals)...
@@ -418,7 +420,7 @@ class MemberRepaymentProposalViewModelTest {
         // ...then the user switches to d2.
         repo.listGate = null
         repo.listResult = Result.success(listOf(sampleMemberProposal(publicId = "pB")))
-        viewModel.load("d2")
+        viewModel.load(memberDebtTask("d2"))
         advanceUntilIdle()
         assertEquals("pB", viewModel.state.value.proposals.single().publicId)
 
@@ -439,17 +441,17 @@ class MemberRepaymentProposalViewModelTest {
             ),
         )
         val viewModel = MemberRepaymentProposalViewModel(repo)
-        viewModel.load("d1")
+        viewModel.load(memberDebtTask("d1"))
         advanceUntilIdle()
 
-        viewModel.openForm(ProposalForm.Confirm, viewModel.state.value.pendingProposal)
+        viewModel.openForm(requireNotNull(viewModel.state.value.task), ProposalForm.Confirm, viewModel.state.value.pendingProposal)
         assertEquals("1200", viewModel.state.value.amountInput)
-        viewModel.submit(expectedRowVersion = 5L, currency = CurrencyCode.JPY)
+        viewModel.submit(requireNotNull(viewModel.state.value.task), expectedRowVersion = 5L, currency = CurrencyCode.JPY)
         advanceUntilIdle()
 
         val call = repo.confirmCalls.single()
         assertNull(call.confirmedAmountCents) // 等于提出金额 → 全额确认
-        assertEquals(1, viewModel.state.value.foldChangedAt)
+        assertEquals(repo.confirmResult.getOrThrow(), viewModel.state.value.committedDebt)
     }
 
     @Test
@@ -463,12 +465,12 @@ class MemberRepaymentProposalViewModelTest {
             ),
         )
         val viewModel = MemberRepaymentProposalViewModel(repo)
-        viewModel.load("d1")
+        viewModel.load(memberDebtTask("d1"))
         advanceUntilIdle()
 
-        viewModel.openForm(ProposalForm.Confirm, viewModel.state.value.pendingProposal)
+        viewModel.openForm(requireNotNull(viewModel.state.value.task), ProposalForm.Confirm, viewModel.state.value.pendingProposal)
         assertEquals("500.00", viewModel.state.value.amountInput)
-        viewModel.submit(expectedRowVersion = 5L, currency = CurrencyCode.JPY)
+        viewModel.submit(requireNotNull(viewModel.state.value.task), expectedRowVersion = 5L, currency = CurrencyCode.JPY)
         advanceUntilIdle()
 
         assertTrue(viewModel.state.value.validationError != null)
@@ -486,12 +488,12 @@ class MemberRepaymentProposalViewModelTest {
             ),
         )
         val viewModel = MemberRepaymentProposalViewModel(repo)
-        viewModel.load("d1")
+        viewModel.load(memberDebtTask("d1"))
         advanceUntilIdle()
 
-        viewModel.openForm(ProposalForm.Confirm, viewModel.state.value.pendingProposal)
+        viewModel.openForm(requireNotNull(viewModel.state.value.task), ProposalForm.Confirm, viewModel.state.value.pendingProposal)
         assertEquals("", viewModel.state.value.amountInput)
-        viewModel.submit(expectedRowVersion = 5L, currency = CurrencyCode.CNY)
+        viewModel.submit(requireNotNull(viewModel.state.value.task), expectedRowVersion = 5L, currency = CurrencyCode.CNY)
         advanceUntilIdle()
 
         assertTrue(viewModel.state.value.validationError != null)

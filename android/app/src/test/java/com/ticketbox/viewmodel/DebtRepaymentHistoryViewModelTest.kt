@@ -31,9 +31,9 @@ class DebtRepaymentHistoryViewModelTest {
 
     @Test
     fun pageNavigationReplacesRatherThanMergesIndependentResponses() = runTest(dispatcher) {
-        val queries = DebtRepaymentQueries { id, page -> Result.success(historyPage(id, page)) }
+        val queries = DebtRepaymentQueries { id, page -> Result.success(historyPage(id.debtPublicId, page)) }
         val viewModel = DebtRepaymentHistoryViewModel(queries)
-        viewModel.loadDebt("A", 1)
+        viewModel.loadDebt(memberDebtTask("A"), 1)
         advanceUntilIdle()
         assertEquals(listOf("payment-1"), viewModel.state.value.items.map { it.publicId })
         assertEquals("JPY", viewModel.state.value.homeCurrencyCode)
@@ -53,10 +53,10 @@ class DebtRepaymentHistoryViewModelTest {
         var failed = true
         val queries = DebtRepaymentQueries { id, page ->
             if (page == 2 && failed) Result.failure(IOException("offline"))
-            else Result.success(historyPage(id, page))
+            else Result.success(historyPage(id.debtPublicId, page))
         }
         val viewModel = DebtRepaymentHistoryViewModel(queries)
-        viewModel.loadDebt("A", 1)
+        viewModel.loadDebt(memberDebtTask("A"), 1)
         advanceUntilIdle()
         viewModel.loadPage(2)
         advanceUntilIdle()
@@ -74,13 +74,13 @@ class DebtRepaymentHistoryViewModelTest {
     fun canonicalParentVersionChangeReloadsHistoryAndKeepsVoidedFactVisible() = runTest(dispatcher) {
         var page = historyPage("A", 1)
         val viewModel = DebtRepaymentHistoryViewModel(DebtRepaymentQueries { _, _ -> Result.success(page) })
-        viewModel.loadDebt("A", 1)
+        viewModel.loadDebt(memberDebtTask("A"), 1)
         advanceUntilIdle()
 
         page = page.copy(items = listOf(page.items.single().copy(
             status = "voided", voidFact = DebtRepaymentVoid("void-1", "重复记录", "2026-09-03T09:00:00Z"),
         )))
-        viewModel.loadDebt("A", 2)
+        viewModel.loadDebt(memberDebtTask("A"), 2)
         advanceUntilIdle()
         assertEquals("payment-1", viewModel.state.value.items.single().publicId)
         assertEquals("重复记录", viewModel.state.value.items.single().voidFact?.reason)
@@ -91,12 +91,12 @@ class DebtRepaymentHistoryViewModelTest {
     fun movingToAnotherDebtDoesNotPublishAnEarlierInFlightHistory() = runTest(dispatcher) {
         val oldLoad = CompletableDeferred<Result<DebtRepaymentPage>>()
         val queries = DebtRepaymentQueries { id, page ->
-            if (id == "A") oldLoad.await() else Result.success(historyPage(id, page))
+            if (id.debtPublicId == "A") oldLoad.await() else Result.success(historyPage(id.debtPublicId, page))
         }
         val viewModel = DebtRepaymentHistoryViewModel(queries)
-        viewModel.loadDebt("A", 1)
+        viewModel.loadDebt(memberDebtTask("A"), 1)
         runCurrent()
-        viewModel.loadDebt("B", 1)
+        viewModel.loadDebt(memberDebtTask("B"), 1)
         advanceUntilIdle()
         assertEquals("B", viewModel.state.value.debtPublicId)
 
@@ -105,6 +105,28 @@ class DebtRepaymentHistoryViewModelTest {
         assertEquals("B", viewModel.state.value.debtPublicId)
         assertFalse(viewModel.state.value.isLoading)
     }
+    @Test
+    fun sameDebtAndVersionUnderAnotherBindingCannotReuseEarlierHistory() = runTest(dispatcher) {
+        val original = memberDebtTask("A")
+        val replacement = original.copy(binding = original.binding.copy(bindingRevision = "replacement"))
+        val oldLoad = CompletableDeferred<Result<DebtRepaymentPage>>()
+        val queries = DebtRepaymentQueries { task, page ->
+            if (task == original) oldLoad.await() else Result.success(historyPage(task.debtPublicId, page)
+                .copy(items = emptyList(), total = 0))
+        }
+        val model = DebtRepaymentHistoryViewModel(queries)
+        model.loadDebt(original, 1)
+        runCurrent()
+        model.loadDebt(replacement, 1)
+        advanceUntilIdle()
+        oldLoad.complete(Result.success(historyPage("A", 1)))
+        advanceUntilIdle()
+        assertEquals(replacement.binding, model.state.value.binding)
+        assertTrue(model.state.value.items.isEmpty())
+        model.loadDebt(null, 0)
+        assertEquals(null, model.state.value.debtPublicId)
+    }
+
 }
 
 private fun historyPage(id: String, page: Int) = DebtRepaymentPage(

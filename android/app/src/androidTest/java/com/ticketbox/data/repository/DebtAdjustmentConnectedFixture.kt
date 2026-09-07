@@ -44,7 +44,7 @@ import kotlinx.coroutines.flow.flowOf
 import org.junit.Assert.assertEquals
 
 /** Disk Room and production graph; session and remote IO are synthetic. No real account or financial data. */
-internal class DebtAdjustmentConnectedFixture(private val context: Context) {
+internal class DebtAdjustmentConnectedFixture(private val context: Context, private val remote: ApiService? = null) {
     private val name = "debt-adjustment-continuity.db"
     private var database: AppDatabase? = null
     private val clock: Clock = Clock.fixed(Instant.parse("2026-09-30T15:30:00Z"), ZoneOffset.UTC)
@@ -68,7 +68,7 @@ internal class DebtAdjustmentConnectedFixture(private val context: Context) {
         } }
         val credentials = SessionCredentialAdapter(sessions)
         val factory = object : ApiServiceFactory {
-            override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = network.service
+            override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = remote ?: network.service
         }
         return RepositoryGraph(RepositoryGraphDependencies(db, ApiClient(),
             debtAdjustmentProxy<TicketboxSettingsStore> { error("Unexpected settings: $it") },
