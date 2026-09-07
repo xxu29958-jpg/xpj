@@ -72,12 +72,15 @@ internal fun MemberProposalSection(
         when {
             debt.isVoided -> DebtNoteCard(stringResource(R.string.debt_proposal_voided_note))
             debt.isCleared -> DebtNoteCard(stringResource(R.string.debt_proposal_cleared_note))
+            state.task == null -> Unit
             !state.canModify -> DebtNoteCard(stringResource(R.string.debt_proposal_readonly_note))
-            // Role is the server-authoritative Debt.viewerIsDebtor (§3.2); null = the viewer is not a
-            // party to this member Debt (a third ledger member), so neither action card applies.
+            debt.viewerIsDebtor == null -> DebtNoteCard(stringResource(R.string.debt_proposal_not_party_note))
+            state.isLoading && state.proposals.isEmpty() -> Unit
+            state.error != null && state.proposals.isEmpty() && state.committedDebt == null -> {
+                TextButton(onClick = viewModel::refresh) { Text(stringResource(R.string.common_retry)) }
+            }
             debt.viewerIsDebtor == true -> DebtorProposalCard(state = state, viewModel = viewModel)
-            debt.viewerIsDebtor == false -> CreditorProposalCard(debt = debt, state = state, viewModel = viewModel)
-            else -> DebtNoteCard(stringResource(R.string.debt_proposal_not_party_note))
+            else -> CreditorProposalCard(debt = debt, state = state, viewModel = viewModel)
         }
         // ③ 沉降：只已解决进历史 (空集时整卡不渲染，§3.2/3.6)；在途 pending 在上面的动作卡里。
         val resolved = state.proposals.filter { !it.isPending }

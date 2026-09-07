@@ -27,6 +27,7 @@ internal class MemberSettlementConnectedNetwork {
     val confirms = mutableListOf<Pair<MemberRepaymentProposalConfirmRequestDto, String>>()
     val accepted = mutableMapOf<String, DebtDto>()
     var failReads = false
+    var failProposalReads = false
     var loseFirstResponse = true
     private var payment: RepaymentFactDto? = null
     val service = object : ApiService by unexpectedMemberApi() {
@@ -38,7 +39,7 @@ internal class MemberSettlementConnectedNetwork {
 
         override suspend fun repaymentProposals(publicId: String): MemberRepaymentProposalListResponseDto {
             check(publicId == current.publicId)
-            if (failReads) throw IOException("Synthetic unavailable proposal read")
+            if (failReads || failProposalReads) throw IOException("Synthetic unavailable proposal read")
             return MemberRepaymentProposalListResponseDto(listOf(proposal))
         }
 

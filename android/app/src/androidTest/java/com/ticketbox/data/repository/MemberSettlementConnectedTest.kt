@@ -1,6 +1,7 @@
 package com.ticketbox.data.repository
 
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasSetTextAction
@@ -76,6 +77,24 @@ class MemberSettlementConnectedTest {
         assertEquals(0L, detail.value?.state?.value?.debt?.remainingAmountCents)
         assertEquals(450L, detail.value?.state?.value?.debt?.paidAmountCents)
         assertEquals(retained, fixture.stored())
+    }
+
+    @Test
+    fun failedProposalReadOffersRetryBeforeClaimingEmptyOrAllowingForgiveness() {
+        network.failProposalReads = true
+        installModels()
+        compose.setContent {
+            val model = detail.value ?: return@setContent
+            TicketboxTheme(skin = AppSkin.Paper) { DebtDetailScreen(model, proposals, history, {}) }
+        }
+        compose.waitUntil(10_000) { proposals.state.value.error != null }
+        compose.onNodeWithText("算了，不用还了").assertDoesNotExist()
+        compose.onNodeWithText("还没有新消息", substring = true).assertDoesNotExist()
+        network.failProposalReads = false
+        compose.onNodeWithText("重试").performScrollTo().performClick()
+        compose.waitUntil(10_000) { proposals.state.value.pendingProposal != null }
+        compose.onNodeWithText("收到啦，谢谢～").performScrollTo().assertIsDisplayed()
+        assertEquals(0, network.accepted.size)
     }
 
     private fun installModels() {
