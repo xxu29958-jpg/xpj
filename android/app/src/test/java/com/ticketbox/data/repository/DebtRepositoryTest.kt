@@ -591,9 +591,8 @@ class DebtRepositoryTest {
                 boundAt = "2026-05-01T00:00:00Z",
             ),
         ).apply { saveToken("session-token") }
-        val apiClient = DebtApiFactory(handler)
         return DebtRepository(
-            apiProvider = testApiServiceProvider(apiClient, tokenStore),
+            apiProvider = testApiServiceProvider(handler, tokenStore),
         )
     }
 }
@@ -622,10 +621,6 @@ private fun debtDto(
     rowVersion = 1,
     isForgiven = isForgiven,
 )
-
-private class DebtApiFactory(private val handler: DebtApiHandler) : ApiServiceFactory {
-    override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = handler.service()
-}
 
 private data class RepaymentCall(val publicId: String, val request: RepaymentCreateRequestDto, val idempotencyKey: String?)
 private data class VoidCall(val publicId: String, val request: DebtVoidCreateRequestDto, val idempotencyKey: String?)
@@ -657,7 +652,7 @@ private fun proposalDto(publicId: String = "p1", proposed: Long = 20_000L): Memb
         createdAt = "2026-06-16T00:00:00Z",
     )
 
-private class DebtApiHandler : InvocationHandler {
+private class DebtApiHandler : InvocationHandler, ApiServiceFactory {
     val listLenses = mutableListOf<String?>()
     val parseBillCalls = mutableListOf<MultipartBody.Part>()
     val repaymentCalls = mutableListOf<RepaymentCall>()
@@ -687,7 +682,7 @@ private class DebtApiHandler : InvocationHandler {
     // Fold-after Debt returned by the confirm route (a DebtResponse, like the slice-2 fact writes).
     var confirmResult: DebtDto? = null
 
-    fun service(): ApiService = Proxy.newProxyInstance(
+    override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = Proxy.newProxyInstance(
         ApiService::class.java.classLoader,
         arrayOf(ApiService::class.java),
         this,
