@@ -81,12 +81,9 @@ internal fun PendingRoute(
 
     val imagePickerLauncher = rememberSingleImageUploadLauncher(shellState)
     val launchImagePicker: () -> Boolean = {
-        if (state.canStartUpload) {
+        if (state.canStartUpload)
             imagePickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-            true
-        } else {
-            false
-        }
+        state.canStartUpload
     }
 
     // 待确认页负责的两个入口动作：「传小票」shortcut 拉起图片选择 / 系统分享图直传。
@@ -107,9 +104,7 @@ internal fun PendingRoute(
             onUploadScreenshot = { launchImagePicker() },
             navigation = PendingInboxNavigationActions(
                 onOpenRepaymentReview = shellState::openRepaymentDrafts,
-                onOpenDataQuality = {
-                    shellState.openSecondaryPage(ProductSecondaryPage.InsightsDataQuality)
-                },
+                onOpenDataQuality = { shellState.openSecondaryPage(ProductSecondaryPage.InsightsDataQuality) },
             ),
             filterRequest = shellState.pendingFilterRequest,
             uploadSelection = PendingUploadSelectionUiState(
