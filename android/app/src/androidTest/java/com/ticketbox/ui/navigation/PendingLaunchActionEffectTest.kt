@@ -100,12 +100,12 @@ class PendingLaunchActionEffectTest {
                 composeRule.setContent {
                     val state by owner.uiState.collectAsState()
                     if (visible.value) {
-                        PendingLaunchActionEffect(shell, state.canStartUpload, owner.currentUploadBinding(), { false }) { id, refs, binding ->
-                            owner.acceptUploads(id, refs, binding) { name ->
+                        PendingLaunchActionEffect(shell, state.canStartUpload, owner.currentUploadBinding(), { false }) { request ->
+                            owner.acceptUploads(request.copy(prepare = { name ->
                                 prepared += name
                                 if (name == "a.png") releaseA.await()
                                 preparedImage(name)
-                            }
+                            }))
                         }
                         TicketboxTheme(skin = AppSkin.Default) {
                             PendingScreen(state, pendingScreenChromeActions(
@@ -168,9 +168,8 @@ class PendingLaunchActionEffectTest {
                         shell = currentShell
                         DisposableEffect(store) { onDispose { store.clear() } }
                         val state by owner.uiState.collectAsState()
-                        PendingLaunchActionEffect(currentShell, state.canStartUpload, owner.currentUploadBinding(), { false }) { id, images, binding ->
-                            owner.acceptUploads(id, images, binding, pendingUploadSource(context))
-                        }
+                        PendingLaunchActionEffect(currentShell, state.canStartUpload, owner.currentUploadBinding(), { false },
+                            onUploadSharedImages = owner::acceptUploads)
                         TicketboxTheme(skin = AppSkin.Default) {
                             PendingScreen(state, pendingScreenChromeActions(
                                 owner, {}, PendingInboxNavigationActions({}, {}), currentShell.pendingFilterRequest, selectionUi(currentShell),
@@ -271,10 +270,10 @@ class PendingLaunchActionEffectTest {
                     openPicker = { launcher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                     PendingLaunchActionEffect(shell, ready.value,
                         LogicalSessionBinding("https://example.test", "family", "owner", "session", "revision"),
-                        onOpenPicker = { false }, onUploadSharedImages = { _, refs, _ ->
-                            assertEquals(listOf(original.toString()), refs)
+                        onOpenPicker = { false }, onUploadSharedImages = { request ->
+                            assertEquals(listOf(original.toString()), request.imageRefs)
                             assertTrue(resolver.persistedUriPermissions.any { it.uri == original && it.isReadPermission })
-                            assertNotNull(pendingUploadSource(context)(refs.single()))
+                            assertNotNull(request.prepare(request.imageRefs.single()))
                             ++attempts == 1
                         })
                 }

@@ -67,8 +67,9 @@ def readmit_orphaned_task(db: Session, task_id: int) -> BackgroundTask | None:
     task.started_at = task.completed_at = None
     task.last_progress_at = now_utc()
     task.error_code = task.error_message = None
-    task.progress_current = 0
-    task.progress_message = task.result_summary_json = None
+    if task.result_summary_json is None:
+        task.progress_current = 0
+        task.progress_message = None
     db.flush()
     return task
 

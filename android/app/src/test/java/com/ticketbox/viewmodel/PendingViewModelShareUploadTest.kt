@@ -1,5 +1,7 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.UploadBatchRequest
+
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.UploadAcceptance
@@ -30,7 +32,7 @@ internal class PendingViewModelShareUploadTest : PendingViewModelReviewTestBase(
         runCurrent()
         var consumed = false
         val prepare: suspend (String) -> PreparedUploadImage? = { error("VM must not prepare individual slots") }
-        val job = launch { consumed = vm.acceptUploads(UPLOAD_TEST_BATCH, listOf("a", "b", "c"), uploadTestBinding(), prepare) }
+        val job = launch { consumed = vm.acceptUploads(UploadBatchRequest(UPLOAD_TEST_BATCH, listOf("a", "b", "c"), uploadTestBinding(), "Asia/Shanghai", prepare)) }
         runCurrent()
         assertFalse(consumed)
         assertTrue(vm.uiState.value.uploading)

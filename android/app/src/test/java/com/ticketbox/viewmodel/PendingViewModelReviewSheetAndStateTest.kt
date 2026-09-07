@@ -1,5 +1,7 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.UploadBatchRequest
+
 import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
@@ -36,7 +38,7 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
         advanceUntilIdle()
 
         assertTrue(vm.uiState.value.readOnly)
-        assertFalse(vm.acceptUploads(UPLOAD_TEST_BATCH, listOf("blocked"), uploadTestBinding()) { error("viewer must not prepare") })
+        assertFalse(vm.acceptUploads(UploadBatchRequest(UPLOAD_TEST_BATCH, listOf("blocked"), uploadTestBinding(), "Asia/Shanghai") { error("viewer must not prepare") }))
         vm.openQuickCategory(target)
         vm.saveQuickCategory(target.id, "交通")
         vm.confirm(target)
@@ -258,7 +260,7 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
         val vm = pendingViewModel(fake)
         advanceUntilIdle()
         fake.uploadIntents.currentBinding = uploadTestBinding().copy(ledgerId = "family")
-        assertFalse(vm.acceptUploads(UPLOAD_TEST_BATCH, listOf("receipt.jpg"), uploadTestBinding()) { error("stale binding") })
+        assertFalse(vm.acceptUploads(UploadBatchRequest(UPLOAD_TEST_BATCH, listOf("receipt.jpg"), uploadTestBinding(), "Asia/Shanghai") { error("stale binding") }))
         assertTrue(fake.uploadIntents.accepted.isEmpty())
     }
 }

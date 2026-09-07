@@ -50,6 +50,7 @@ internal class LaunchActionState {
             } else {
                 val previous = actions[index] as LaunchAction.UploadSharedImages
                 check(previous.selection.uris == action.selection.uris) { "Original upload selection changed" }
+                check(previous.selection.timezone == action.selection.timezone) { "Original upload timezone changed" }
                 check(action.selection.expectedBinding == null || previous.selection.expectedBinding == null ||
                     action.selection.expectedBinding == previous.selection.expectedBinding) { "Original upload binding changed" }
                 previous.selection.expectedBinding?.let(action.selection::freezeBinding)

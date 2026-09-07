@@ -116,7 +116,8 @@ internal class UploadIntentRepositoryFixture : Closeable {
 
     fun request(names: List<String> = listOf("a.png", "b.png", "c.png")): UploadBatchRequest = UploadBatchRequest(
         id = UUID.randomUUID().toString(), imageRefs = names,
-        expectedBinding = requireNotNull(repository.currentUploadBinding()), prepare = { image(it) },
+        expectedBinding = requireNotNull(repository.currentUploadBinding()),
+        timezone = java.util.TimeZone.getDefault().id, prepare = { image(it) },
     )
 
     fun image(name: String): PreparedUploadImage = PreparedUploadImage(
