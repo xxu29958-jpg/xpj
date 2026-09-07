@@ -161,3 +161,9 @@ Keyed receipt 的 `duration_ms/timing_ms` 随成功收据在 commit 前冻结，
 删除方向相反：既有原行 Drop、明确停止整个未完成批次、clearAll、quarantine 清理或 Done GC 的条件删除成功后，才释放其原件；取消准备、VM dispose、断网、容量拒绝、协议不匹配、换绑定与过期均不删除已接受的文件。孤文件回收只能在此专属目录内，与所有绑定的实际原行引用核对并与接受互斥；存在无法解读其文件引用的原行时不能假定无引用。`onClearAll` 是调度通知而非删除证据，不能作为文件清理 hook。文件锁与 Outbox lease 的次序在真实批量接受/清理接线时必须统一，不能在持有 Outbox lease 时反向等待文件接受锁。
 
 直接生产者继续为原真实 Room 重开反例以及新增窄文件/迁移/原 batch 接受与 engine 续传控制。上述数值与生命周期是施工决定，尚未实现或运行资格化；不得把辅助文件 owner 的存在当成用户恢复任务完成。
+
+### eeabfedb 实际协议正控与协商入口收口
+
+Android fast `101583536322` 的实际 XML artifact `10000063383` 共 2161 tests / 0 failures / 0 errors / 0 skips。能力的六个参数用例全部独立通过，四拒绝场景的零上传、实际 409 与协商断言均越过原首失败，两个允许场景仍保留原 key/body/headers。完整 upload DTO 往返与真实 schema gate 同轮通过。Backend ordinary 2/2 实际 1863 passed / 3 skipped，原 runtime 精确 JSON 及其后的隐私断言通过；三个 real-db 分片为 98/101/110 passed、均无失败/skips，原八个 receipt 控制按实际源码分片 producer 对齐。以上行为证据不等于整轮 CI 通过：实际 Detekt 对 `RuntimeNegotiationInterceptor.intercept` 报 CC 15，超过 14。
+
+施工前后影响只涉及同一个协商入口决定：之前 caller 先判断 keyed upload，再另问 `requiresRuntimeNegotiation` 旧规则，两个位置共同决定是否绕过协商；现在既有 `requiresRuntimeNegotiation` 接收两个明确请求属性，并独自表达 keyed upload 强制协商或原 ordinary/income 规则。caller 只消费这个完整决定。布尔规则、实际 runtime GET、版本与能力拒绝顺序、body/key/headers 和所有原六用例不变，没有新 helper/file/owner 或门禁豁免。此窄修正还需下一 exact 候选真实 Detekt 验证；此前 Lizard 未解析出该函数，不能用其空记录声称复杂度已合格。

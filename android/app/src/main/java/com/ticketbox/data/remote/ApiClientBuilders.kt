@@ -146,7 +146,7 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
         val keyedUpload = request.method == "POST" &&
             request.url.encodedPath.endsWith("/api/app/upload-screenshot") && request.header("Idempotency-Key") != null
         // An API date, including one already attached to this request, does not prove receipt replay support.
-        if (!keyedUpload && !request.requiresRuntimeNegotiation(incomeForecastRead)) {
+        if (!request.requiresRuntimeNegotiation(incomeForecastRead, keyedUpload)) {
             return chain.proceed(request)
         }
         val compatibility = readCompatibility(chain, request)
@@ -187,10 +187,10 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
         return response.use { runtimeCompatibilityAdapter.fromJson(it.body.string())?.toWriteCompatibility() }
     }
 
-    private fun Request.requiresRuntimeNegotiation(incomeForecastRead: Boolean): Boolean =
-        (incomeForecastRead || method in MUTATING_HTTP_METHODS) &&
+    private fun Request.requiresRuntimeNegotiation(incomeForecastRead: Boolean, keyedUpload: Boolean): Boolean =
+        keyedUpload || ((incomeForecastRead || method in MUTATING_HTTP_METHODS) &&
             header("Authorization") != null && !url.encodedPath.startsWith("/api/auth/") &&
-            header(TICKETBOX_API_VERSION_HEADER) == null
+            header(TICKETBOX_API_VERSION_HEADER) == null)
 
     private fun compatibilityRequest(request: Request): Request {
         val url = request.url.newBuilder()
