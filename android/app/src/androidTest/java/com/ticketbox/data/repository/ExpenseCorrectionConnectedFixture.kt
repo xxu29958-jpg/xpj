@@ -62,6 +62,7 @@ internal class ExpenseCorrectionConnectedFixture(private val context: Context) {
     private val adapters = OutboxAdapterGraph()
     lateinit var outbox: OutboxRepository
     lateinit var graph: RepositoryGraph
+    val expenseDao get() = requireNotNull(database).expenseDao()
     var failCachePublication = false
     var confirmedCallbacks = 0
     var adviceCallbacks = 0
@@ -142,6 +143,7 @@ internal class ExpenseCorrectionConnectedFixture(private val context: Context) {
 /** Response-loss model deduplicates by the actual original key and full request; not a PostgreSQL substitute. */
 internal class CorrectionConnectedNetwork {
     var current = correctionExpense()
+    var confirmedStreamItems: ((ExpenseDto) -> List<ConfirmedExpenseStreamItemDto>)? = null
     var failReads = false
     var loseResponse = true
     var refusalCode: String? = null
@@ -158,10 +160,12 @@ internal class CorrectionConnectedNetwork {
             uploadStorageBytes = 0, latestUploadAt = null)
         override suspend fun confirmedExpenses(query: Map<String, String>): PaginatedExpensesDto {
             readable()
-            return PaginatedExpensesDto(listOf(ConfirmedExpenseStreamItemDto(ConfirmedStreamEntryKindDto.Expense,
+            val items = confirmedStreamItems?.invoke(current)?.filter { item ->
+                query["month"].isNullOrBlank() || item.streamDate.startsWith(requireNotNull(query["month"]))
+            } ?: listOf(ConfirmedExpenseStreamItemDto(ConfirmedStreamEntryKindDto.Expense,
                 "2026-09-06", current.createdAt, current.id, current.amountCents ?: 0, current,
-                lineageStatus = ExpenseLineageStatusDto.Confirmed, lineageHomeNetCents = current.amountCents ?: 0)),
-                query.getValue("page").toInt(), query.getValue("page_size").toInt(), 1)
+                lineageStatus = ExpenseLineageStatusDto.Confirmed, lineageHomeNetCents = current.amountCents ?: 0))
+            return PaginatedExpensesDto(items, query.getValue("page").toInt(), query.getValue("page_size").toInt(), items.size)
         }
         override suspend fun recurringItems(status: String?, includeArchived: Boolean, month: String?, timezone: String?) =
             RecurringItemListResponseDto(listOf(correctionRecurringItem()))
@@ -208,6 +212,7 @@ internal class CorrectionConnectedNetwork {
                 current = current.copy(merchant = request.merchant ?: current.merchant,
                     originalAmountMinor = request.originalAmountMinor ?: current.originalAmountMinor,
                     amountCents = request.originalAmountMinor ?: current.amountCents, rowVersion = current.rowVersion + 1,
+                    expenseTime = if (request.expenseTime.changed) request.expenseTime.value else current.expenseTime,
                     factRevision = current.factRevision + 1)
                 ExpenseCorrectionResponseDto(current, ExpenseRevisionDto("correction-1", current.factRevision, "correction",
                     request.reason, listOf("original_amount_minor"), null, emptyMap(), "家庭成员", "手机", "2026-09-06T00:00:00Z"))
