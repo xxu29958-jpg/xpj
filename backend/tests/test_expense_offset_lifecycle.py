@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from tests.expense_correction_support import idem, manual_confirmed
-from tests.test_bill_split import _seed_receiver
+from tests.test_bill_split import _seed_receiver, _split_headers
 
 
 def _seed_usd_rate(client: TestClient, identity, rate_date: str, rate: str) -> None:
@@ -198,8 +198,9 @@ def test_void_offset_restores_net_but_never_resurrects_cancelled_invites(
     )
     invited = client.post(
         f"/api/expenses/{expense['id']}/split-invite",
-        headers=identity.app_headers,
-        json={"receiver_account_id": receiver_account_id, "amount_cents": 500},
+        headers=_split_headers(client, identity.app_headers),
+        json={"receiver_account_id": receiver_account_id, "amount_cents": 500,
+              "expected_row_version": expense["row_version"]},
     )
     assert invited.status_code == 200, invited.text
     invitation_public_id = invited.json()["public_id"]

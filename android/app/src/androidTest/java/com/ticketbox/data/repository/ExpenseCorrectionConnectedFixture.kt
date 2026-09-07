@@ -153,6 +153,7 @@ internal class ExpenseCorrectionConnectedFixture(private val context: Context) {
 /** Response-loss model deduplicates by the actual original key and full request; not a PostgreSQL substitute. */
 internal class CorrectionConnectedNetwork {
     var current = correctionExpense()
+    var splitMembers = emptyList<com.ticketbox.data.remote.dto.LedgerMemberDto>()
     var confirmedStreamItems: ((ExpenseDto) -> List<ConfirmedExpenseStreamItemDto>)? = null
     var beforeStreamResponse: (suspend () -> Unit)? = null
     var failReads = false
@@ -230,7 +231,7 @@ internal class CorrectionConnectedNetwork {
                 current.publicId, 1000, null, expenseId = current.id)
         }
         override suspend fun categories() = CategoriesDto(listOf("餐饮", "购物"))
-        override suspend fun ledgerMembers(ledgerId: String) = LedgerMemberListResponseDto(emptyList())
+        override suspend fun ledgerMembers(ledgerId: String) = LedgerMemberListResponseDto(splitMembers)
         override suspend fun listBillSplitSent() = BillSplitSentListResponseDto(emptyList())
         override suspend fun expenseItems(id: Long): ExpenseItemsResponseDto {
             readable()

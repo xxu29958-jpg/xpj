@@ -57,6 +57,7 @@ internal data class ExpenseBillSplitInvitePanelState(
     val message: UiText?,
     val messageTone: MessageTone,
     val canStartInvite: Boolean,
+    val hasPendingSubmission: Boolean = false,
 )
 
 internal data class ExpenseBillSplitInvitePanelActions(
@@ -355,7 +356,8 @@ internal fun ExpenseBillSplitInvitePanel(
     actions: ExpenseBillSplitInvitePanelActions,
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
-    val hasSentDataOrPendingTruth = state.sent.isNotEmpty() || state.loadState != BillSplitSentLoadState.Loaded
+    val hasSentDataOrPendingTruth = state.sent.isNotEmpty() || state.hasPendingSubmission ||
+        state.loadState != BillSplitSentLoadState.Loaded
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
@@ -393,7 +395,7 @@ internal fun ExpenseBillSplitInvitePanel(
         ExpenseDetailActionButtonRow(
             text = stringResource(R.string.expense_edit_bill_split_start_button),
             icon = Icons.Filled.GroupAdd,
-            enabled = state.canStartInvite && !state.loading,
+            enabled = state.canStartInvite && !state.loading && !state.hasPendingSubmission,
             onClick = actions.onStartInvite,
         )
         ExpenseDetailDivider()
