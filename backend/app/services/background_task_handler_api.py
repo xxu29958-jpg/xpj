@@ -1,7 +1,10 @@
-"""Stable progress and cancellation API used by background-task handlers."""
+"""Shared task progress, cancellation and conditional failure publication."""
 
 from __future__ import annotations
 
+from typing import Literal
+
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.models import BackgroundTask
@@ -42,4 +45,17 @@ def check_cancellation_requested(db: Session, task_id: int) -> bool:
     return task.cancellation_requested_at is not None
 
 
-__all__ = ["TaskCancelledError", "check_cancellation_requested", "update_progress"]
+def mark_failed(
+    db: Session, task_id: int, *, expected_status: Literal["queued", "running"],
+    error_code: str, error_message: str,
+) -> None:
+    """Publish failure only while the caller still owns the expected task phase."""
+    db.execute(
+        update(BackgroundTask)
+        .where(BackgroundTask.id == task_id, BackgroundTask.status == expected_status)
+        .values(status="failed", completed_at=now_utc(), error_code=error_code, error_message=error_message)
+    )
+    db.commit()
+
+
+__all__ = ["TaskCancelledError", "check_cancellation_requested", "mark_failed", "update_progress"]

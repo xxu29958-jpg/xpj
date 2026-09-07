@@ -16,8 +16,8 @@ from app.services.background_task_admission import BackgroundTaskCapacityFullErr
 from app.services.background_task_handler_api import (
     TaskCancelledError,
     check_cancellation_requested,
+    mark_failed,
 )
-from app.services.background_task_worker import mark_failed
 from app.services.expense_service import enrich_pending_expense
 
 PENDING_EXPENSE_ENRICHMENT_TASK_TYPE = "expense_enrichment"
