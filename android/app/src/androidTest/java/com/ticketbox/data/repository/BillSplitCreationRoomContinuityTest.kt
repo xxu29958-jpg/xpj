@@ -52,7 +52,7 @@ class BillSplitCreationRoomContinuityTest {
         assertTrue(calls.isEmpty())
         val original = repository.observeBillSplitCreations().first().submissions.single()
         assertEquals(source.rowVersion, original.row.expectedRowVersion)
-        assertEquals(1, engine().drainOnce().failed)
+        assertEquals(1, engine().drainOnce().failures)
 
         val restarted = fixture.reopen().expenseRepository
         val interrupted = restarted.observeBillSplitCreations().first().submissions.single()
@@ -82,7 +82,7 @@ class BillSplitCreationRoomContinuityTest {
         val binding = requireNotNull(repository.captureDeferredLedgerBinding())
         repository.createBillSplitInvitation(binding, fixture.network.current.toDomain(), 22, "Receiver", 400).getOrThrow()
         refusal = "client_upgrade_required"
-        assertEquals(1, engine().drainOnce().failed)
+        assertEquals(1, engine().drainOnce().failures)
         val original = fixture.reopen().expenseRepository.observeBillSplitCreations().first().submissions.single()
         assertEquals(PendingMutationStatus.Failed, original.row.status)
         assertEquals("client_upgrade_required", original.row.lastError)
