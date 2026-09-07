@@ -234,34 +234,13 @@ interface PendingMutationDao {
         cutoffCreatedAtIso: String,
     ): Int
 
-    @Query(
-        """
-        UPDATE pending_mutations
-        SET status = :pendingStatus,
-            expectedRowVersion = :freshToken,
-            lastError = NULL
-        WHERE id = :id
-        """,
-    )
-    suspend fun refreshToken(id: Long, pendingStatus: String, freshToken: Long): Int
-
     /**
-     * Atomic ``CONFLICT → PENDING`` token refresh for Keep Mine. The fixed source
-     * state makes a stale action a no-op rather than a generic state-machine write.
-     *
-     * codex P1 #7: ``retryCount = 0`` 重置——两条路径都是用户显式"重试", 都该拿到完整
-     * 的 max_attempts 预算, 而不是接着之前的失败次数继续撞 cap。
-     *
-     * [codex round-4 P2] fix: prevents a stale UI banner from
-     * flipping a DONE / dropped row back to PENDING.
-     *
-     * ADR-0042 §4.8: refreshing ``expectedRowVersion`` is the "overwrite the new
-     * server version after seeing the conflict/failure" NEW intent, so a
-     * key-bearing row (PatchExpense) must ROTATE its ``idempotencyKey`` here —
-     * otherwise the replay's fingerprint (which folds in the token) would
-     * mismatch the original key, or we'd have to drop the token from the
-     * fingerprint and dirty OCC. The ``CASE`` rotates only rows that already
-     * carry a key; keyless mutation types stay null. Callers pass a fresh UUID.
+     * Atomic CONFLICT to PENDING replacement after reviewing the current fact.
+     * Identity, owner, ledger and source status must still match; stale actions are no-ops.
+     * A replacement command takes the fresh OCC token and rotates an existing key
+     * to the caller's new UUID; keyless commands remain keyless (ADR-0042 section 4.8).
+     * Correction, refund and upload originals cannot take this replacement path.
+     * Successful replacement resets the retry budget and restores normal queue blocking.
      */
     @Query(
         """

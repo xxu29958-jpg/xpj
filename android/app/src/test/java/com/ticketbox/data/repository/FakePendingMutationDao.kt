@@ -140,21 +140,6 @@ class FakePendingMutationDao : PendingMutationDao {
         return 1
     }
 
-    override suspend fun refreshToken(
-        id: Long,
-        pendingStatus: String,
-        freshToken: Long,
-    ): Int {
-        val current = rows[id] ?: return 0
-        rows[id] = current.copy(
-            status = pendingStatus,
-            expectedRowVersion = freshToken,
-            lastError = null,
-        )
-        refreshObservables()
-        return 1
-    }
-
     override suspend fun cascadeFreshTokenForTarget(
         ownerKey: String,
         ledgerId: String,
