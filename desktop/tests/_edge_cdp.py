@@ -388,6 +388,48 @@ def evaluate_page(
     ) from last_failure
 
 
+def app_window_snapshot(process_id: int, marker: str) -> dict[str, object]:
+    """Independently observe native windows; return only counts and fixed probe stages."""
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    user32.EnumWindows.argtypes = (callback_type, wintypes.LPARAM)
+    user32.EnumWindows.restype = wintypes.BOOL
+    user32.IsWindowVisible.argtypes = (wintypes.HWND,)
+    user32.IsWindowVisible.restype = wintypes.BOOL
+    user32.GetWindowThreadProcessId.argtypes = (wintypes.HWND, ctypes.POINTER(wintypes.DWORD))
+    user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+    user32.GetWindowTextW.argtypes = (wintypes.HWND, wintypes.LPWSTR, ctypes.c_int)
+    user32.GetWindowTextW.restype = ctypes.c_int
+    result: dict[str, object] = {"ownedVisible": 0, "otherProbeVisible": 0, "stages": []}
+    stages: list[str] = []
+
+    @callback_type
+    def observe(handle, _context):
+        if not user32.IsWindowVisible(handle):
+            return True
+        owner = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(handle, ctypes.byref(owner))
+        title = ctypes.create_unicode_buffer(256)
+        user32.GetWindowTextW(handle, title, len(title))
+        if owner.value == process_id:
+            result["ownedVisible"] += 1
+        for stage in ("loaded", "closing", "returned", "stalled"):
+            if title.value.startswith(f"{marker} {stage}"):
+                stages.append(stage)
+                if owner.value != process_id:
+                    result["otherProbeVisible"] += 1
+                break
+        return True
+
+    if not user32.EnumWindows(observe, 0):
+        raise ctypes.WinError(ctypes.get_last_error())
+    result["stages"] = sorted(stages)
+    return result
+
+
 def wait_for_app_window_close(edge: str, *, profile: Path, url: str) -> None:
     """Verify that a real Edge app target closes itself after rendering the page."""
     profile.mkdir(parents=True)
