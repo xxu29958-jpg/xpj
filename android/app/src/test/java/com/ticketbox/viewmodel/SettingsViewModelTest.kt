@@ -4,6 +4,7 @@ import com.ticketbox.data.local.PersistedLedgerIdentity
 
 import com.ticketbox.R
 import com.ticketbox.data.repository.SettingsActions
+import com.ticketbox.data.repository.LocalBindingInfo
 import com.ticketbox.data.repository.boundSettingsStore
 import com.ticketbox.domain.model.ConnectionDiagnostics
 import com.ticketbox.domain.model.DiagnosticCheck
@@ -197,6 +198,43 @@ class SettingsViewModelTest {
         assertEquals(MessageTone.Info, state.messageTone)
     }
 
+    @Test
+    fun changingServerWithTheSameLedgerIdClearsThePreviousDiagnosis() = runTest(dispatcher) {
+        val repo = FakeSettingsActions()
+        val vm = SettingsViewModel(repo, boundSettingsStore())
+        runCurrent()
+        vm.runDiagnostics()
+        runCurrent()
+        assertEquals(repo.diagnostics, vm.uiState.value.diagnostics)
+
+        repo.binding = repo.binding.copy(serverUrl = "https://other.example.com", ledgerName = "Other ledger")
+        vm.refreshLocalBindingState()
+
+        assertEquals(null, vm.uiState.value.diagnostics)
+        assertFalse(vm.uiState.value.serverSettingsFresh)
+        assertEquals("Other ledger", vm.uiState.value.ledgerName)
+    }
+
+    @Test
+    fun lateDiagnosticSuccessCannotDescribeTheReplacementBinding() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        val repo = FakeSettingsActions().apply { diagnosticsGate = gate }
+        val vm = SettingsViewModel(repo, boundSettingsStore())
+        runCurrent()
+        vm.runDiagnostics()
+        runCurrent()
+        assertTrue(vm.uiState.value.busy)
+
+        repo.binding = repo.binding.copy(serverUrl = "https://other.example.com")
+        vm.refreshLocalBindingState()
+        gate.complete(Unit)
+        runCurrent()
+
+        assertEquals(null, vm.uiState.value.diagnostics)
+        assertEquals(null, vm.uiState.value.message)
+        assertFalse(vm.uiState.value.busy)
+    }
+
     private class FakeSettingsActions(
         private var lastConfirmedSyncAtValue: String? = null,
         private val clearLocalCacheGate: CompletableDeferred<Unit>? = null,
@@ -208,8 +246,12 @@ class SettingsViewModelTest {
         var diagnostics: ConnectionDiagnostics = ConnectionDiagnostics(checks = emptyList())
         var diagnosticsFailure: Throwable? = null
         var serverSettingsValue: ServerSettings? = null
+        var diagnosticsGate: CompletableDeferred<Unit>? = null
+        var binding = LocalBindingInfo(
+            "https://api.example.com", "Account", "owner", "Ledger", "Pixel", "owner", "2026-05-01T00:00:00Z",
+        )
 
-        override fun localBinding(): com.ticketbox.data.repository.LocalBindingInfo? = null
+        override fun localBinding(): LocalBindingInfo = binding
 
         override fun currentLedgerRole(): String? = currentLedgerRoleValue
 
@@ -224,8 +266,10 @@ class SettingsViewModelTest {
         override suspend fun testConnection(): Result<Unit> =
             testConnectionFailure?.let { Result.failure(it) } ?: Result.success(Unit)
 
-        override suspend fun runConnectionDiagnostics(): Result<ConnectionDiagnostics> =
-            diagnosticsFailure?.let { Result.failure(it) } ?: Result.success(diagnostics)
+        override suspend fun runConnectionDiagnostics(): Result<ConnectionDiagnostics> {
+            diagnosticsGate?.await()
+            return diagnosticsFailure?.let { Result.failure(it) } ?: Result.success(diagnostics)
+        }
 
         override suspend fun serverSettings(): Result<ServerSettings> =
             Result.success(serverSettingsValue ?: defaultServerSettings())
