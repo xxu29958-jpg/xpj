@@ -56,6 +56,7 @@ internal data class ExpenseBillSplitInvitePanelState(
     val loading: Boolean,
     val message: UiText?,
     val messageTone: MessageTone,
+    val canStartInvite: Boolean,
 )
 
 internal data class ExpenseBillSplitInvitePanelActions(
@@ -361,7 +362,10 @@ internal fun ExpenseBillSplitInvitePanel(
     ) {
         DetailHeader(
             title = stringResource(R.string.expense_edit_bill_split_card_title),
-            subtitle = stringResource(R.string.expense_edit_bill_split_card_subtitle),
+            subtitle = stringResource(
+                if (state.canStartInvite) R.string.expense_edit_bill_split_card_subtitle
+                else R.string.expense_fact_snapshot_actions_unavailable,
+            ),
             trailing = null,
         )
         DetailStateSlot(
@@ -389,7 +393,7 @@ internal fun ExpenseBillSplitInvitePanel(
         ExpenseDetailActionButtonRow(
             text = stringResource(R.string.expense_edit_bill_split_start_button),
             icon = Icons.Filled.GroupAdd,
-            enabled = !state.loading,
+            enabled = state.canStartInvite && !state.loading,
             onClick = actions.onStartInvite,
         )
         ExpenseDetailDivider()

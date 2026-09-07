@@ -34,15 +34,19 @@ data class DebtDetailUiState(
     val locallyAcceptedAdjustmentId: Long? = null,
     /** Original OCC of a confirmed adjustment whose newer canonical fold has not been installed. */
     val adjustmentRefreshAfterVersion: Long? = null,
+    /** A local stop allows the same RV, but only after a post-observation canonical read. */
+    val adjustmentRefreshAtVersion: Long? = null,
 ) {
     val canWriteActions: Boolean
         get() = canModify && debt != null && !isSubmitting && adjustmentSnapshotLoaded &&
-            pendingAdjustments.isEmpty() && locallyAcceptedAdjustmentId == null && adjustmentRefreshAfterVersion == null
+            pendingAdjustments.none { it.isUnresolved } && locallyAcceptedAdjustmentId == null &&
+            adjustmentRefreshAfterVersion == null && adjustmentRefreshAtVersion == null
 
     val adjustmentWriteMessage: UiText?
         get() = when {
-            adjustmentRefreshAfterVersion != null -> UiText.res(R.string.debt_adjustment_refresh_required)
-            pendingAdjustments.isNotEmpty() || locallyAcceptedAdjustmentId != null ->
+            adjustmentRefreshAfterVersion != null || adjustmentRefreshAtVersion != null ->
+                UiText.res(R.string.debt_adjustment_refresh_required)
+            pendingAdjustments.any { it.isUnresolved } || locallyAcceptedAdjustmentId != null ->
                 UiText.res(R.string.debt_adjustment_write_waiting)
             !adjustmentSnapshotLoaded && debt != null -> UiText.res(R.string.debt_adjustment_checking)
             else -> null
@@ -73,16 +77,21 @@ enum class DebtAction { Repayment, Adjustment, Void, RepaymentVoid }
 /** Updates the existing detail projection; Room rows remain the command authority. */
 internal fun DebtDetailUiState.withAdjustmentRows(
     rows: List<PendingDebtAdjustment>,
-    newlyDone: Boolean,
+    newlyTerminal: Boolean,
+    initial: Boolean,
 ): DebtDetailUiState {
     val confirmedVersion = rows.filter { it.row.status == PendingMutationStatus.Done }
         .mapNotNull { it.row.expectedRowVersion }.maxOrNull()
-    val needsRefresh = newlyDone || confirmedVersion != null && (debt?.rowVersion ?: 0) <= confirmedVersion
+    val stoppedVersion = rows.filter { it.row.status == PendingMutationStatus.Abandoned }
+        .mapNotNull { it.row.expectedRowVersion }.maxOrNull()
+    val needsRefresh = newlyTerminal || confirmedVersion != null && (debt?.rowVersion ?: 0) <= confirmedVersion
     return copy(
         pendingAdjustments = rows.filter { it.row.status != PendingMutationStatus.Done },
         adjustmentSnapshotLoaded = true,
         locallyAcceptedAdjustmentId = locallyAcceptedAdjustmentId?.takeUnless { id -> rows.any { it.row.id == id } },
-        adjustmentRefreshAfterVersion = if (needsRefresh) maxOf(adjustmentRefreshAfterVersion ?: 0, confirmedVersion ?: 0)
+        adjustmentRefreshAfterVersion = if (needsRefresh && confirmedVersion != null) maxOf(adjustmentRefreshAfterVersion ?: 0, confirmedVersion)
             else adjustmentRefreshAfterVersion,
+        adjustmentRefreshAtVersion = if (initial || newlyTerminal) maxOf(adjustmentRefreshAtVersion ?: 0, stoppedVersion ?: 0)
+            else adjustmentRefreshAtVersion,
     )
 }

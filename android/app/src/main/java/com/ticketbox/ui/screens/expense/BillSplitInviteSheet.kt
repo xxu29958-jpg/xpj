@@ -44,6 +44,7 @@ internal data class BillSplitInviteSheetState(
     val selectedMemberId: Long?,
     val amountText: String,
     val sending: Boolean,
+    val canSend: Boolean,
     val message: UiText?,
     val messageTone: MessageTone,
     // 票据 record 口径的 display context（R14-1）：剩余额显示与邀请金额解析同源（零小数
@@ -88,11 +89,14 @@ internal fun BillSplitInviteSheet(
                 sending = state.sending,
                 onUpdateAmount = actions.onUpdateAmount,
             )
-            AppStatusBanner(message = state.message, tone = state.messageTone)
+            AppStatusBanner(
+                message = if (state.canSend) state.message else UiText.res(R.string.expense_fact_snapshot_actions_unavailable),
+                tone = if (state.canSend) state.messageTone else MessageTone.Neutral,
+            )
             ExpenseEditSheetActions(
                 state = ExpenseEditSheetActionState(
                     saving = state.sending,
-                    primaryEnabled = state.selectedMemberId != null && state.members.isNotEmpty(),
+                    primaryEnabled = state.canSend && state.selectedMemberId != null && state.members.isNotEmpty(),
                     savingText = stringResource(R.string.expense_edit_bill_split_sheet_sending_button),
                     primaryText = stringResource(R.string.expense_edit_bill_split_sheet_send_button),
                 ),

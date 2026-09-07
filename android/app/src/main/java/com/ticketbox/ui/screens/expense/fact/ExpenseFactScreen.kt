@@ -136,6 +136,7 @@ private fun FactContentSections(
                             loading = state.billSplitLoading,
                             message = state.billSplitMessage,
                             messageTone = state.billSplitMessageTone,
+                            canStartInvite = state.authoritativeRootReady,
                         ),
                         actions = ExpenseBillSplitInvitePanelActions(
                             onStartInvite = viewModel::openBillSplitInviteSheet,
@@ -146,6 +147,7 @@ private fun FactContentSections(
                 if (expense.canCreateRepaymentDraft(state.readOnly)) {
                     ExpenseRepaymentDraftPanel(
                         creating = state.repaymentDraftCreating,
+                        canCreate = state.authoritativeRootReady,
                         onCreate = viewModel::createRepaymentDraftFromExpense,
                     )
                 }

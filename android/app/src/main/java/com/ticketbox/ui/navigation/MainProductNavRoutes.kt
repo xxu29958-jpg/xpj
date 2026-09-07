@@ -69,7 +69,7 @@ internal fun NavGraphBuilder.addWorkspaceRoute(
     with(dependencies) {
         composable(WORKSPACE_ROUTE) {
             SettingsRoute(
-                navigation = SettingsDestinationNavigation(onOpenExpense = navController::openExpense,
+                navigation = SettingsDestinationNavigation(onOpenExpense = runtime.navController::openExpense,
                     onOpenInbox = { shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox) }, onCloseRoot = onBack),
                 screenFactory = screenFactory,
                 preferenceControls = workspaceControls.preferences,
@@ -112,7 +112,7 @@ internal fun NavGraphBuilder.addPlanRoutes(
             RecurringRoute(
                 screenFactory = screenFactory,
                 onBack = onBack,
-                onOpenExpense = navController::openExpense,
+                onOpenExpense = runtime.navController::openExpense,
                 onDataChanged = {
                     markPlanWriteCompleted(shellState, invalidatesAdvice = true) {
                         screenFactory.budgetRepository.invalidateBudgetAdvice()
@@ -240,7 +240,7 @@ internal fun NavGraphBuilder.addObligationRoutes(
                         screenFactory.debtAdjustmentRepository),
                 ),
             )
-            SyncStatusScreen(viewModel = vm, onBack = onBack, onOpenExpense = navController::openExpense,
+            SyncStatusScreen(viewModel = vm, onBack = onBack, onOpenExpense = runtime.navController::openExpense,
                 onOpenInbox = { shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox) })
         }
         composable(

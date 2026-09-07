@@ -6,6 +6,7 @@
 <resources>
     <string name="sync_status_upload_recovery_body">原上传记录已保留。请到收件箱查看原截图，并继续或停止原批次。</string>
     <string name="sync_status_open_uploads">查看待上传截图</string>
+    <string name="sync_status_overview_caption_refresh_required">%1$d 笔更正已送达，仍需刷新并核对账单。</string>
 
     <!-- 设置 根屏（SettingsRootScreen）：分组标题、入口标题/副标题、连接入口动态文案 -->
     <string name="settings_root_connection_title_advanced">连接与同步</string>
@@ -201,6 +202,8 @@
 
     <!-- 离线同步页（SyncStatusScreen） -->
     <string name="sync_status_page_title">离线同步</string>
+    <string name="sync_status_binding_loading">正在读取当前账本的同步状态…</string>
+    <string name="sync_status_binding_unavailable">账本连接已变化，请重新打开同步状态。</string>
     <string name="sync_status_page_subtitle">联网后会自动把离线改动同步到账本；有冲突或失败时在这里处理。</string>
     <string name="sync_status_section_needs_action">需要你确认</string>
     <string name="sync_status_section_failed">同步失败</string>

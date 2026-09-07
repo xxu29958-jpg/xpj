@@ -195,9 +195,7 @@ class AppContainer(context: Context) {
             CorrectExpenseDispatcher(
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.correctionAdapter,
-                cacheAuthoritativeExpense = { ledgerId, expense ->
-                    database.expenseDao().upsertByServerIdForLedger(ledgerId, expense.toEntity(ledgerId))
-                },
+                publishAuthoritativeProjection = { row, expense -> expenseRepository.publishDeliveredCorrection(row, expense) },
                 onConfirmedCommitted = { ledgerId -> expenseRepository.onConfirmedCommitted(ledgerId) },
             ),
             // issue #65 slice 4: POST /api/expenses/manual via outbox (offline manual

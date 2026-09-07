@@ -316,7 +316,8 @@ class OutboxRepositoryTest {
         // re-reaps it (dead action + double-apply risk). resolveFailed must expire it.
         val dao = FakePendingMutationDao()
         val now = "2026-05-04T12:00:00Z"
-        val repo = testOutboxRepository(dao = dao, clock = fixedClock(now))
+        var scheduled = 0
+        val repo = testOutboxRepository(dao = dao, clock = fixedClock(now), onEnqueued = { scheduled++ })
 
         val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
         repo.markFailed(id, "max_attempts_exceeded(10/10): server 503")
@@ -328,6 +329,7 @@ class OutboxRepositoryTest {
         val row = dao.rows[id]!!
         assertEquals(PendingMutationStatus.Failed.wireValue, row.status, "stays terminal, not re-queued")
         assertEquals("outbox_row_expired", row.lastError)
+        assertEquals(1, scheduled, "Expiring the original must not schedule a replay")
     }
 
     @Test
@@ -336,7 +338,8 @@ class OutboxRepositoryTest {
         // committed-but-unseen original whose server key the retention purged.
         val dao = FakePendingMutationDao()
         val now = "2026-05-04T12:00:00Z"
-        val repo = testOutboxRepository(dao = dao, clock = fixedClock(now))
+        var scheduled = 0
+        val repo = testOutboxRepository(dao = dao, clock = fixedClock(now), onEnqueued = { scheduled++ })
 
         val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
         repo.markConflict(id, "stale token")
@@ -348,6 +351,7 @@ class OutboxRepositoryTest {
         val row = dao.rows[id]!!
         assertEquals(PendingMutationStatus.Failed.wireValue, row.status, "expired, not re-queued to PENDING")
         assertEquals("outbox_row_expired", row.lastError)
+        assertEquals(1, scheduled, "Expiring the original must not schedule a replay")
     }
 
     @Test

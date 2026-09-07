@@ -189,6 +189,7 @@ class CreateDebtGoalViewModelTest {
         advanceUntilIdle()
 
         val call = reports.createDebtGoalCalls.single()
+        assertEquals(adjustmentBinding(), reports.createDebtGoalBindings.single())
         assertEquals("还清欠款", call.name)
         assertEquals(listOf("open-a", "open-c"), call.debtPublicIds)
         assertEquals("new-goal", viewModel.state.value.createdPublicId)
@@ -347,11 +348,13 @@ private class FakeCreateReportsActions(
     private val createResult: Result<Goal> = Result.failure(UnsupportedOperationException()),
 ) : ReportsActions {
     val createDebtGoalCalls = mutableListOf<CreateDebtGoalCall>()
+    val createDebtGoalBindings = mutableListOf<com.ticketbox.data.repository.LogicalSessionBinding>()
 
     override fun canModifyLedger(): Boolean = canModify
 
-    override suspend fun createDebtGoal(name: String, debtPublicIds: List<String>): Result<Goal> {
+    override suspend fun createDebtGoal(name: String, debtPublicIds: List<String>, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding): Result<Goal> {
         createDebtGoalCalls += CreateDebtGoalCall(name, debtPublicIds)
+        createDebtGoalBindings += expectedBinding
         return createResult
     }
 

@@ -155,7 +155,7 @@ class UploadIntentRepositoryTest {
         UploadIntentRepositoryFixture().use { fixture ->
             val request = fixture.request()
             val accepted = fixture.repository.acceptUploadBatch(request).getOrThrow()
-            fixture.outbox.markDone(accepted.rowIds[0], fixture.adapters.uploadReceiptAdapter.toJson(UploadIntentRepositoryFixture.RECEIPT))
+            fixture.outbox.markDone(accepted.rowIds[0], receiptJson = fixture.adapters.uploadReceiptAdapter.toJson(UploadIntentRepositoryFixture.RECEIPT))
             fixture.outbox.markFailed(accepted.rowIds[1], UPLOAD_CAPACITY_FULL)
             val original = fixture.dao.allRows()
             val reopened = fixture.reopen()
@@ -184,7 +184,7 @@ class UploadIntentRepositoryTest {
             assertEquals(original[0], retried[0])
             assertEquals(original[2], retried[2])
             for (row in retried) fixture.outbox.markDone(row.id,
-                fixture.adapters.uploadReceiptAdapter.toJson(UploadIntentRepositoryFixture.RECEIPT))
+                receiptJson = fixture.adapters.uploadReceiptAdapter.toJson(UploadIntentRepositoryFixture.RECEIPT))
             val next = fixture.request(listOf("f.png"))
             assertEquals(next.id, reopened.acceptUploadBatch(next).getOrThrow().groupId)
         }

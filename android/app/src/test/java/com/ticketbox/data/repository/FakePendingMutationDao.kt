@@ -13,7 +13,6 @@ class FakePendingMutationDao : PendingMutationDao {
     var beforeNextRunnableBatchReturn: (suspend () -> Unit)? = null
     private var nextId = 1L
     private val queueDepth = MutableStateFlow(0)
-    private val conflictRows = MutableStateFlow<List<PendingMutationEntity>>(emptyList())
 
     override suspend fun insert(row: PendingMutationEntity): Long {
         return insertBatch(listOf(row)).single()
@@ -73,12 +72,12 @@ class FakePendingMutationDao : PendingMutationDao {
         return 1
     }
 
-    override suspend fun markDone(id: Long, status: String, completedAt: String, receiptJson: String?): Int {
+    override suspend fun markDone(id: Long, status: String, completedAt: String, lastError: String?, receiptJson: String?): Int {
         val current = rows[id] ?: return 0
         rows[id] = current.copy(
             status = status,
             completedAt = completedAt,
-            lastError = null,
+            lastError = lastError,
             receiptJson = receiptJson,
         )
         refreshObservables()
@@ -188,16 +187,17 @@ class FakePendingMutationDao : PendingMutationDao {
             .sortedWith(compareBy({ it.createdAt }, { it.id }))
             .take(limit)
 
-    override suspend fun requeueConflictWithFreshToken(
+    override suspend fun requeueWithFreshToken(
         id: Long,
         ownerKey: String,
         ledgerId: String,
         freshToken: Long,
         rotatedIdempotencyKey: String?,
+        expectedStatus: String,
     ): Int {
         val current = rows[id] ?: return 0
-        if (current.type in setOf("correct_expense", "upload_screenshot")) return 0
-        if (current.ownerKey != ownerKey || current.ledgerId != ledgerId || current.status != "conflict") return 0
+        if (current.type in setOf("correct_expense", "create_expense_offset", "upload_screenshot")) return 0
+        if (current.ownerKey != ownerKey || current.ledgerId != ledgerId || current.status != expectedStatus || expectedStatus !in setOf("conflict", "failed")) return 0
         // codex P1 #7: 同步真实 DAO 的 retryCount = 0 重置, 否则 fake 看不到用户 retry
         // 重置预算的语义。
         rows[id] = current.copy(
@@ -213,27 +213,6 @@ class FakePendingMutationDao : PendingMutationDao {
         return 1
     }
 
-    override suspend fun requeueFailedWithFreshToken(
-        id: Long,
-        ownerKey: String,
-        ledgerId: String,
-        freshToken: Long,
-        rotatedIdempotencyKey: String?,
-    ): Int {
-        val current = rows[id] ?: return 0
-        if (current.type in setOf("correct_expense", "upload_screenshot")) return 0
-        if (current.ownerKey != ownerKey || current.ledgerId != ledgerId || current.status != "failed") return 0
-        rows[id] = current.copy(
-            status = "pending",
-            expectedRowVersion = freshToken,
-            idempotencyKey = if (current.idempotencyKey != null) rotatedIdempotencyKey else null,
-            retryCount = 0,
-            lastError = null,
-            blocksFollowing = true,
-        )
-        refreshObservables()
-        return 1
-    }
 
     override suspend fun retryFailed(id: Long, ownerKey: String, ledgerId: String): Int {
         val current = rows[id] ?: return 0
@@ -276,6 +255,30 @@ class FakePendingMutationDao : PendingMutationDao {
             return 0
         }
         rows.remove(id)
+        refreshObservables()
+        return 1
+    }
+
+    override suspend fun abandonDebtAdjustment(
+        id: Long,
+        ownerKey: String,
+        ledgerId: String,
+        expectedStatus: String,
+        stoppedAt: String,
+    ): Int {
+        val current = rows[id] ?: return 0
+        if (current.ownerKey != ownerKey || current.ledgerId != ledgerId || current.status != expectedStatus ||
+            current.type != "record_debt_adjustment" || current.status !in setOf("failed", "conflict")
+        ) return 0
+        rows[id] = current.copy(status = "abandoned", completedAt = stoppedAt)
+        refreshObservables()
+        return 1
+    }
+
+    override suspend fun clearCorrectionRefresh(id: Long, expectedError: String): Int {
+        val current = rows[id] ?: return 0
+        if (current.type != "correct_expense" || current.status != "done" || current.lastError != expectedError) return 0
+        rows[id] = current.copy(lastError = null)
         refreshObservables()
         return 1
     }
@@ -408,7 +411,7 @@ class FakePendingMutationDao : PendingMutationDao {
         ledgerId: String,
         conflictStatus: String,
     ): Flow<List<PendingMutationEntity>> =
-        conflictRows.map { _ ->
+        queueDepth.map { _ ->
             rows.values
                 .filter { it.ownerKey == ownerKey && it.ledgerId == ledgerId && it.status == conflictStatus }
                 .sortedWith(compareBy({ it.createdAt }, { it.id }))
@@ -419,7 +422,7 @@ class FakePendingMutationDao : PendingMutationDao {
         ledgerId: String,
         failedStatus: String,
     ): Flow<List<PendingMutationEntity>> =
-        conflictRows.map { _ ->
+        queueDepth.map { _ ->
             rows.values
                 .filter { it.ownerKey == ownerKey && it.ledgerId == ledgerId && it.status == failedStatus }
                 .sortedWith(compareBy({ it.createdAt }, { it.id }))
@@ -448,7 +451,8 @@ class FakePendingMutationDao : PendingMutationDao {
         val victims = rows.values.filter {
             it.status == doneStatus &&
                 it.completedAt != null &&
-                it.completedAt < cutoffIso
+                it.completedAt < cutoffIso &&
+                !(it.type == "correct_expense" && it.lastError?.startsWith("correction_refresh_required:") == true)
         }.map { it.id }
         victims.forEach { rows.remove(it) }
         refreshObservables()
@@ -495,6 +499,5 @@ class FakePendingMutationDao : PendingMutationDao {
 
     private fun refreshObservables() {
         queueDepth.value++
-        conflictRows.value = conflictRows.value
     }
 }

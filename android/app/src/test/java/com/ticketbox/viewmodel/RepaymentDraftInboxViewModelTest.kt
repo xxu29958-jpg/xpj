@@ -1,6 +1,7 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.DebtActions
+import com.ticketbox.data.repository.DebtAdjustmentFixture
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.data.repository.RepaymentDraftActions
@@ -14,6 +15,8 @@ import com.ticketbox.domain.model.RepaymentDraft
 import com.ticketbox.domain.model.RepaymentDraftStatuses
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -66,6 +69,71 @@ class RepaymentDraftInboxViewModelTest {
     }
 
     @Test
+    fun unresolvedAdjustmentsExcludeSuggestedAndManualRepaymentTargets() = runTest(dispatcher) {
+        for (status in listOf(PendingMutationStatus.Pending, PendingMutationStatus.InFlight,
+            PendingMutationStatus.Failed, PendingMutationStatus.Conflict)) {
+            val adjustments = DebtAdjustmentFixture()
+            val id = adjustments.save().getOrThrow()
+            val original = adjustments.dao.rows.getValue(id).copy(status = status.wireValue)
+            adjustments.dao.rows[id] = original
+            val blocked = adjustments.debt
+            val available = debt("unrelated-debt", rowVersion = 9L)
+            val pendingDraft = draft("draft-1", suggestedDebtPublicId = blocked.publicId)
+            val drafts = FakeRepaymentDraftActions(listResult = Result.success(listOf(pendingDraft)))
+            val model = RepaymentDraftInboxViewModel(drafts,
+                FakeRepayableDebtActions(listResult = Result.success(listOf(blocked, available))), adjustments.repository)
+            try {
+                advanceUntilIdle()
+                assertEquals(listOf(pendingDraft), model.state.value.drafts)
+                assertEquals(listOf(available), model.state.value.targetDebts, status.toString())
+                assertNull(model.state.value.suggestedDebtByDraftId[pendingDraft.publicId])
+                model.confirm(pendingDraft.publicId, blocked)
+                advanceUntilIdle()
+                assertTrue(drafts.confirmCalls.isEmpty())
+                assertNull(model.state.value.flashMessage)
+                assertEquals(original, adjustments.dao.rows.getValue(id))
+                assertTrue(adjustments.api.calls.isEmpty())
+            } finally {
+                model.viewModelScope.cancel()
+            }
+        }
+    }
+
+    @Test
+    fun previouslySelectedRepaymentTargetCannotRaceANewUnresolvedAdjustment() = runTest(dispatcher) {
+        val adjustments = DebtAdjustmentFixture()
+        val blocked = adjustments.debt
+        val available = debt("unrelated-debt", rowVersion = 9L)
+        val pendingDraft = draft("draft-1", suggestedDebtPublicId = blocked.publicId)
+        val drafts = FakeRepaymentDraftActions(listResult = Result.success(listOf(pendingDraft)))
+        val model = RepaymentDraftInboxViewModel(drafts,
+            FakeRepayableDebtActions(listResult = Result.success(listOf(blocked, available))), adjustments.repository)
+        try {
+            advanceUntilIdle()
+            val selected = model.state.value.suggestedDebtByDraftId.getValue(pendingDraft.publicId)
+            assertEquals(2L, selected.rowVersion)
+            val id = adjustments.save().getOrThrow()
+            val original = adjustments.dao.rows.getValue(id)
+            // The picker already holds this Debt. Do not deliver the next Room notification first.
+            model.confirm(pendingDraft.publicId, selected)
+            advanceUntilIdle()
+            assertTrue(drafts.confirmCalls.isEmpty())
+            assertEquals(listOf(pendingDraft), model.state.value.drafts)
+            assertNull(model.state.value.flashMessage)
+            assertEquals(original, adjustments.dao.rows.getValue(id))
+            assertEquals(listOf(available), model.state.value.targetDebts)
+
+            model.confirm(pendingDraft.publicId, available)
+            advanceUntilIdle()
+            assertEquals(listOf(ConfirmCall(pendingDraft.publicId, available.publicId, 9L)), drafts.confirmCalls)
+            assertEquals(original, adjustments.dao.rows.getValue(id))
+            assertTrue(adjustments.api.calls.isEmpty())
+        } finally {
+            model.viewModelScope.cancel()
+        }
+    }
+
+    @Test
     fun draftsAndTargetDebtsCarryRecordHomeCurrencyForDisplayLens() = runTest(dispatcher) {
         // PR#255 R5 P1：草稿行金额与选债面板 remaining 走 CurrencyDisplay.forRecord(
         // record.homeCurrencyCode) —— 钉死 VM 数据通路：两类 record 的 homeCurrencyCode
@@ -109,6 +177,7 @@ class RepaymentDraftInboxViewModelTest {
         advanceUntilIdle()
 
         val call = draftsRepo.confirmCalls.single()
+        assertEquals(adjustmentBinding(), draftsRepo.confirmBindings.single())
         assertEquals("d1", call.draftPublicId)
         assertEquals("debt-9", call.targetDebtPublicId)
         // The chosen Debt's row_version is the §2.1 OCC token.
@@ -364,8 +433,18 @@ class RepaymentDraftInboxViewModelTest {
     fun staleRefreshDoesNotClobberReloadedLedger() = runTest(dispatcher) {
         // Ledger switch: a slow prior refresh must not show the old ledger's drafts under the new one.
         val draftsRepo = FakeRepaymentDraftActions(listResult = Result.success(listOf(draft("ledgerA"))))
-        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, FakeRepayableDebtActions(), adjustments = FakeDebtAdjustmentActions())
+        val target = debt("debt-a", rowVersion = 5L)
+        val debtsRepo = FakeRepayableDebtActions(listResult = Result.success(listOf(target)))
+        val adjustments = FakeDebtAdjustmentActions()
+        val viewModel = RepaymentDraftInboxViewModel(draftsRepo, debtsRepo, adjustments)
         advanceUntilIdle()
+        val confirmGate = CompletableDeferred<Unit>()
+        draftsRepo.confirmGate = confirmGate
+        viewModel.confirm("ledgerA", target)
+        runCurrent()
+        assertEquals(ConfirmCall("ledgerA", "debt-a", 5L), draftsRepo.confirmCalls.single())
+        assertEquals(adjustmentBinding(), draftsRepo.confirmBindings.single())
+        assertEquals("ledgerA", viewModel.state.value.pendingActionDraftId)
 
         // A slow refresh stalls (it captured ledger A's drafts)...
         val gate = CompletableDeferred<Unit>()
@@ -376,15 +455,23 @@ class RepaymentDraftInboxViewModelTest {
         // ...then a ledger switch reloads with ledger B's drafts.
         draftsRepo.listGate = null
         draftsRepo.listResult = Result.success(listOf(draft("ledgerB")))
-        viewModel.reload()
+        debtsRepo.listResult = Result.success(emptyList())
+        adjustments.access.value = com.ticketbox.data.repository.LedgerAccessContext(
+            adjustmentBinding().copy(ledgerId = "ledger-b", bindingRevision = "binding-b"), canModify = true,
+        )
         advanceUntilIdle()
         assertEquals("ledgerB", viewModel.state.value.drafts.single().publicId)
+        assertNull(viewModel.state.value.pendingActionDraftId)
 
-        // Release the stale refresh; ledger A's drafts must NOT leak back under ledger B.
+        // Neither a stale read nor a late successful write may publish into the replacement binding.
         gate.complete(Unit)
+        confirmGate.complete(Unit)
         advanceUntilIdle()
         assertEquals("ledgerB", viewModel.state.value.drafts.single().publicId)
         assertEquals(false, viewModel.state.value.isLoading)
+        assertNull(viewModel.state.value.flashMessage)
+        assertNull(viewModel.state.value.pendingActionDraftId)
+        viewModel.viewModelScope.cancel()
     }
 }
 
@@ -398,10 +485,12 @@ private class FakeRepaymentDraftActions(
 ) : RepaymentDraftActions {
     var listCalls = 0
     val confirmCalls = mutableListOf<ConfirmCall>()
+    val confirmBindings = mutableListOf<com.ticketbox.data.repository.LogicalSessionBinding>()
     val dismissCalls = mutableListOf<String>()
 
     /** When set, listPendingDrafts() stalls until completed — used to interleave a slow load. */
     var listGate: CompletableDeferred<Unit>? = null
+    var confirmGate: CompletableDeferred<Unit>? = null
 
     override fun canModifyLedger(): Boolean = canModify
 
@@ -417,9 +506,13 @@ private class FakeRepaymentDraftActions(
         draftPublicId: String,
         targetDebtPublicId: String,
         expectedRowVersion: Long,
+        expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding,
     ): Result<RepaymentDraft> {
         confirmCalls += ConfirmCall(draftPublicId, targetDebtPublicId, expectedRowVersion)
-        return confirmResult
+        confirmBindings += expectedBinding
+        val captured = confirmResult
+        confirmGate?.await()
+        return captured
     }
 
     override suspend fun dismissDraft(draftPublicId: String): Result<RepaymentDraft> {

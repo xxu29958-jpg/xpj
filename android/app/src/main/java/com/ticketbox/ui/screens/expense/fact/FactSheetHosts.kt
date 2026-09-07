@@ -1,6 +1,7 @@
 package com.ticketbox.ui.screens.expense.fact
 
 import androidx.compose.runtime.Composable
+import com.ticketbox.domain.model.canInitiateBillSplit
 import com.ticketbox.domain.model.recordCurrencyDisplay
 import com.ticketbox.ui.screens.expense.BillSplitInviteSheet
 import com.ticketbox.ui.screens.expense.BillSplitInviteSheetActions
@@ -74,12 +75,14 @@ private fun FactBillSplitInviteHost(
             selectedMemberId = state.billSplitInviteSelectedMemberId,
             amountText = state.billSplitInviteAmountText,
             sending = state.billSplitInviteSending,
+            canSend = state.authoritativeRootReady && expense.canInitiateBillSplit(state.readOnly),
             message = state.billSplitInviteMessage,
             messageTone = state.billSplitInviteMessageTone,
             display = expense.recordCurrencyDisplay(),
         ),
-        remainingCents = remainingCents,
-        remainingUnavailable = state.billSplitSentLoadState != BillSplitSentLoadState.Loaded,
+        remainingCents = remainingCents.takeIf { state.authoritativeRootReady },
+        remainingUnavailable = !state.authoritativeRootReady ||
+            state.billSplitSentLoadState != BillSplitSentLoadState.Loaded,
         actions = BillSplitInviteSheetActions(
             onSelectMember = viewModel::selectBillSplitInviteMember,
             onUpdateAmount = viewModel::updateBillSplitInviteAmount,

@@ -268,6 +268,57 @@ class ExpenseCorrectionRoomContinuityTest {
         assertEquals(0, fixture.network.calls.size)
     }
 
+    @Test
+    fun deliveredCorrectionWithFailedStreamRemainsRecoverableAfterRoomReopenWithoutDetail() = runBlocking {
+        val firstGraph = fixture.reopen()
+        val repository = firstGraph.expenseRepository
+        val binding = requireNotNull(repository.observeCorrections().first().access).binding
+        val originalFact = repository.fetchExpense(42).getOrThrow()
+        repository.submitCorrection(binding, originalFact,
+            ExpenseCorrectionDraft("全局核对已送达更正", originalAmountMinor = 1_200L)).getOrThrow()
+        val original = fixture.stored().single()
+        fixture.network.loseResponse = false
+        fixture.network.failStreamReads = true
+        assertEquals(1, fixture.drain().done)
+        assertEquals(1, fixture.network.results.size)
+        assertEquals(1_200L, fixture.network.current.amountCents)
+        assertEquals(1_000L, repository.fetchExpenseFromLocalCache(42).getOrThrow().amountCents)
+        assertEquals("done", fixture.stored().single()["status"])
+
+        val graph = fixture.reopen()
+        var opened: Long? = null
+        compose.runOnIdle {
+            global = outboxStatusViewModelFactory(fixture.outbox, graph.expenseRepository,
+                OutboxRecoveryRepositories(graph.debtCreationRepository, graph.recurringRepository.occurrences,
+                    graph.incomePlanRepository, graph.debtAdjustmentRepository)).create(OutboxStatusViewModel::class.java)
+        }
+        compose.setContent { TicketboxTheme(skin = AppSkin.Paper) {
+            SyncStatusScreen(requireNotNull(global), {}, onOpenExpense = { opened = it })
+        } }
+        compose.waitUntil(10_000) { global?.uiState?.value?.correctionObservation?.corrections?.singleOrNull()?.delivered == true }
+        compose.onNodeWithText("更正已送达；部分事实尚待刷新。").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("原因：全局核对已送达更正").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("重试原提交").assertDoesNotExist()
+        compose.onNodeWithText("刷新并核对当前事实").performScrollTo().performClick()
+        assertEquals(42L, opened)
+        assertEquals(1_200L, graph.expenseRepository.fetchExpenseFactBundle(42).getOrThrow().root.amountCents)
+        assertTrue(requireNotNull(fixture.stored().single()["lastError"]).startsWith("correction_refresh_required:"))
+        assertTrue(graph.expenseRepository.fetchExpense(42).isFailure)
+        assertEquals("done", fixture.stored().single()["status"])
+        compose.onNodeWithText("更正已送达；部分事实尚待刷新。").performScrollTo().assertIsDisplayed()
+
+        fixture.network.failStreamReads = false
+        assertEquals(1_200L, graph.expenseRepository.fetchExpense(42).getOrThrow().amountCents)
+        compose.waitUntil(10_000) { compose.onAllNodes(hasText("原因：全局核对已送达更正")).fetchSemanticsNodes().isEmpty() }
+        for (column in listOf("payload", "idempotencyKey", "expectedRowVersion", "ownerKey", "ledgerId")) {
+            assertEquals(original[column], fixture.stored().single()[column])
+        }
+        assertEquals("done", fixture.stored().single()["status"])
+        assertEquals(1, fixture.network.calls.size)
+        assertEquals(1, fixture.network.results.size)
+        assertEquals(0, fixture.drain().done)
+    }
+
     private fun finishOriginalReplay(original: Map<String, String?>) {
         fixture.network.loseResponse = false
         fixture.failCachePublication = true

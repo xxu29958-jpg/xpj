@@ -22,7 +22,11 @@ import com.ticketbox.data.remote.dto.RepaymentFactListDto
 import com.ticketbox.data.remote.dto.RepaymentDraftDto
 import com.ticketbox.data.remote.dto.RepaymentDraftListResponseDto
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.ticketbox.viewmodel.CreateDebtGoalViewModel
+import com.ticketbox.viewmodel.DebtGoalViewModel
+import com.ticketbox.viewmodel.DebtListViewModel
+import com.ticketbox.viewmodel.ReceivablesViewModel
 import com.ticketbox.viewmodel.RepaymentDraftInboxViewModel
 import com.ticketbox.security.LocalSessionIdentity
 import com.ticketbox.security.LocalSessionRecord
@@ -34,6 +38,8 @@ import java.lang.reflect.Proxy
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.flowOf
 import org.junit.Assert.assertEquals
 
@@ -89,26 +95,26 @@ internal class DebtAdjustmentConnectedNetwork {
         homeCurrencyCode = "CNY", createdAt = "2026-09-01T00:00:00Z", updatedAt = "2026-09-01T00:00:00Z", rowVersion = 2,
     )
     var failReads = false
+    var readGate: CompletableDeferred<Unit>? = null
     var loseResponse = true
     val calls = mutableListOf<Pair<DebtAdjustmentCreateRequestDto, String>>()
     val results = mutableMapOf<String, DebtDto>()
     val service = object : ApiService by debtAdjustmentProxy<ApiService>({ error("Unexpected remote method: $it") }) {
         override suspend fun debt(publicId: String): DebtDto {
             check(publicId == current.publicId)
-            if (failReads) throw IOException("Synthetic unavailable debt read")
-            return current
+            return readCanonicalDebt()
         }
 
-        override suspend fun debts(lens: String?) = DebtListResponseDto(listOf(current), "CNY")
+        override suspend fun debts(lens: String?) = DebtListResponseDto(listOf(readCanonicalDebt()), "CNY")
 
         override suspend fun debtReceivables() = DebtListResponseDto(
-            listOf(current).filter { it.direction == "owed_to_me" }, "CNY",
+            listOf(readCanonicalDebt()).filter { it.direction == "owed_to_me" }, "CNY",
         )
 
         override suspend fun goals(month: String?, includeArchived: Boolean,
             goalType: String?, timezone: String?): GoalListResponseDto {
             check(goalType == "debt_repayment")
-            return GoalListResponseDto(listOf(adjustmentConnectedGoal(current)))
+            return GoalListResponseDto(listOf(adjustmentConnectedGoal(readCanonicalDebt())))
         }
 
         override suspend fun debtRepayments(publicId: String, page: Int) =
@@ -132,6 +138,14 @@ internal class DebtAdjustmentConnectedNetwork {
             if (loseResponse) throw IOException("Synthetic lost response after commit")
             return response
         }
+    }
+
+    private suspend fun readCanonicalDebt(): DebtDto {
+        val snapshot = current
+        val unavailable = failReads
+        readGate?.await()
+        if (unavailable) throw IOException("Synthetic unavailable debt read")
+        return snapshot
     }
 }
 
@@ -175,5 +189,37 @@ internal fun assertRetainedAdjustmentSelection(model: ViewModel, publicId: Strin
             assertEquals(3L, model.state.value.targetDebts.single().rowVersion)
             assertEquals(3L, model.state.value.suggestedDebtByDraftId.getValue("draft-original").rowVersion)
         }
+    }
+}
+
+/** The five retained production projections share one real Room/repository graph. */
+internal class RetainedAdjustmentConsumers(graph: RepositoryGraph) {
+    val list = DebtListViewModel(graph.debtRepository, graph.debtCreationRepository, graph.debtAdjustmentRepository)
+    val receivables = ReceivablesViewModel(graph.debtRepository, graph.debtAdjustmentRepository)
+    val goal = DebtGoalViewModel(graph.reportsRepository, graph.debtAdjustmentRepository)
+    val createGoal = CreateDebtGoalViewModel(graph.reportsRepository, graph.debtRepository, graph.debtAdjustmentRepository)
+    val inbox = RepaymentDraftInboxViewModel(graph.repaymentDraftRepository, graph.debtRepository, graph.debtAdjustmentRepository)
+
+    fun balances(): List<Long?> = listOf(
+        list.state.value.debts.singleOrNull()?.remainingAmountCents,
+        receivables.state.value.receivables.singleOrNull()?.remainingAmountCents,
+        goal.state.value.goals.singleOrNull()?.debtRepayment?.linkedDebts?.singleOrNull()?.remainingAmountCents,
+        createGoal.state.value.candidates.singleOrNull()?.remainingAmountCents,
+        inbox.state.value.targetDebts.singleOrNull()?.remainingAmountCents,
+    )
+
+    fun allReadsFailed() = listOf(list.state.value.error, receivables.state.value.error,
+        goal.state.value.error, createGoal.state.value.loadError, inbox.state.value.error).all { it != null }
+
+    fun refresh() {
+        list.refresh()
+        receivables.refresh()
+        goal.refresh()
+        createGoal.refreshCandidates()
+        inbox.refresh()
+    }
+
+    fun close() {
+        listOf<ViewModel>(list, receivables, goal, createGoal, inbox).forEach { it.viewModelScope.cancel() }
     }
 }

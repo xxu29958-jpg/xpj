@@ -119,12 +119,18 @@ interface PendingMutationDao {
         UPDATE pending_mutations
         SET status = :status,
             completedAt = :completedAt,
-            lastError = NULL,
+            lastError = :lastError,
             receiptJson = :receiptJson
         WHERE id = :id
         """,
     )
-    suspend fun markDone(id: Long, status: String, completedAt: String, receiptJson: String? = null): Int
+    suspend fun markDone(id: Long, status: String, completedAt: String, lastError: String? = null, receiptJson: String? = null): Int
+
+    @Query("""
+        UPDATE pending_mutations SET lastError = NULL
+        WHERE id = :id AND type = 'correct_expense' AND status = 'done' AND lastError = :expectedError
+    """)
+    suspend fun clearCorrectionRefresh(id: Long, expectedError: String): Int
 
     @Query(
         """
@@ -272,50 +278,23 @@ interface PendingMutationDao {
         WHERE id = :id
           AND ownerKey = :ownerKey
           AND ledgerId = :ledgerId
-          AND status = 'conflict'
-          AND type NOT IN ('correct_expense', 'upload_screenshot')
+          AND status = :expectedStatus AND status IN ('conflict', 'failed')
+          AND type NOT IN ('correct_expense', 'create_expense_offset', 'upload_screenshot')
         """,
     )
-    suspend fun requeueConflictWithFreshToken(
+    suspend fun requeueWithFreshToken(
         id: Long,
         ownerKey: String,
         ledgerId: String,
         freshToken: Long,
         rotatedIdempotencyKey: String?,
-    ): Int
-
-    /** Atomic ``FAILED → PENDING`` retry with a newly fetched row token. */
-    @Query(
-        """
-        UPDATE pending_mutations
-        SET status = 'pending',
-            expectedRowVersion = :freshToken,
-            idempotencyKey = CASE
-                WHEN idempotencyKey IS NOT NULL THEN :rotatedIdempotencyKey
-                ELSE idempotencyKey
-            END,
-            retryCount = 0,
-            lastError = NULL,
-            blocksFollowing = 1
-        WHERE id = :id
-          AND ownerKey = :ownerKey
-          AND ledgerId = :ledgerId
-          AND status = 'failed'
-          AND type NOT IN ('correct_expense', 'upload_screenshot')
-        """,
-    )
-    suspend fun requeueFailedWithFreshToken(
-        id: Long,
-        ownerKey: String,
-        ledgerId: String,
-        freshToken: Long,
-        rotatedIdempotencyKey: String?,
+        expectedStatus: String,
     ): Int
 
     /**
      * Atomic ``FAILED → PENDING`` manual retry (no token refresh).
      * Same race-protection rationale as
-     * [requeueFailedWithFreshToken] / [markInFlightIfPending].
+     * [requeueWithFreshToken] / [markInFlightIfPending].
      *
      * codex P1 #7: 用户手动 retry 时 ``retryCount = 0``。否则用户点 Retry → 立刻被
      * max_attempts 拦住 → 再点 Retry → 再被拦, 退化成永远困在 FAILED。重置 retryCount
@@ -389,6 +368,23 @@ interface PendingMutationDao {
         ownerKey: String,
         ledgerId: String,
         expectedStatus: String,
+    ): Int
+
+    /** Debt-only local stop. The original command and failure context remain intact. */
+    @Query(
+        """
+        UPDATE pending_mutations SET status = 'abandoned', completedAt = :stoppedAt
+        WHERE id = :id AND ownerKey = :ownerKey AND ledgerId = :ledgerId
+          AND type = 'record_debt_adjustment' AND status = :expectedStatus
+          AND status IN ('failed', 'conflict')
+        """,
+    )
+    suspend fun abandonDebtAdjustment(
+        id: Long,
+        ownerKey: String,
+        ledgerId: String,
+        expectedStatus: String,
+        stoppedAt: String,
     ): Int
 
     /**
@@ -728,6 +724,7 @@ interface PendingMutationDao {
         WHERE status = :doneStatus
           AND completedAt IS NOT NULL
           AND completedAt < :cutoffIso
+          AND (type != 'correct_expense' OR lastError IS NULL OR lastError NOT GLOB 'correction_refresh_required:*')
         """,
     )
     suspend fun deleteResolvedBefore(

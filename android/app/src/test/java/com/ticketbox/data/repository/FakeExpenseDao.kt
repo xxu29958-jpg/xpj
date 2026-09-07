@@ -191,26 +191,11 @@ internal class FakeExpenseDao(
         offsets: List<ExpenseOffsetStreamEntity>,
         replaceCache: Boolean,
         pruneScope: ConfirmedStreamPruneScope,
-    ) {
+    ): Set<Long> {
         beforeApplyConfirmedSync?.invoke()
-        if (replaceCache) {
-            clearForLedger(ledgerId)
-            clearConfirmedStreamOffsetsForLedger(ledgerId)
-        }
-        roots.forEach { upsertByServerIdForLedger(ledgerId, it) }
-        upsertConfirmedStreamOffsets(offsets)
-        if (pruneScope.rootServerIds != null) {
-            val remoteIds = roots.mapNotNull { it.serverId }.toSet()
-            deleteConfirmedByServerIds(ledgerId, pruneScope.rootServerIds.filter { it !in remoteIds })
-        }
-        if (pruneScope.offsetPublicIds != null) {
-            val remoteIds = offsets.map { it.publicId }.toSet()
-            deleteConfirmedStreamOffsetsByPublicIds(
-                ledgerId,
-                pruneScope.offsetPublicIds.filter { it !in remoteIds },
-            )
-        }
+        val accepted = super<ExpenseDao>.applyConfirmedStreamSyncForLedger(ledgerId, roots, offsets, replaceCache, pruneScope)
         onAfterApplyConfirmedSync?.invoke()
+        return accepted
     }
 
     private fun flowFor(ledgerId: String): MutableStateFlow<List<ExpenseEntity>> =

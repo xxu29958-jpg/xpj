@@ -20,7 +20,7 @@ class PendingMutationUploadQueueTest {
             val original = fixture.row("first")
             val id = fixture.dao.insertBatch(listOf(original)).single()
             assertEquals(1, fixture.dao.markInFlightIfPending(id, "pending", "in_flight", ATTEMPTED))
-            fixture.dao.markDone(id, "done", COMPLETED, RECEIPT)
+            fixture.dao.markDone(id, "done", COMPLETED, receiptJson = RECEIPT)
 
             val stored = fixture.reopen().allRows().single()
             assertEquals(id, stored.id)
@@ -41,7 +41,7 @@ class PendingMutationUploadQueueTest {
             val ids = fixture.dao.insertBatch(originals)
             assertEquals(listOf(ids[0]), runnable(fixture.dao).map { it.id })
             assertEquals(1, fixture.dao.markInFlightIfPending(ids[0], "pending", "in_flight", ATTEMPTED))
-            fixture.dao.markDone(ids[0], "done", COMPLETED, RECEIPT)
+            fixture.dao.markDone(ids[0], "done", COMPLETED, receiptJson = RECEIPT)
             assertEquals(1, fixture.dao.markInFlightIfPending(ids[1], "pending", "in_flight", ATTEMPTED))
             fixture.dao.markFailed(ids[1], "failed", "ordinary_upload_failure", blocksFollowing = false)
 
@@ -128,11 +128,11 @@ class PendingMutationUploadQueueTest {
             val legacy = upload.copy(type = "patch_expense", targetId = "expense:42", idempotencyKey = "old-key")
             val ids = fixture.dao.insertBatch(listOf(upload, conflict, legacy))
 
-            assertEquals(0, fixture.dao.requeueFailedWithFreshToken(ids[0], OWNER, LEDGER, 9L, "replacement"))
-            assertEquals(0, fixture.dao.requeueConflictWithFreshToken(ids[1], OWNER, LEDGER, 9L, "replacement"))
+            assertEquals(0, fixture.dao.requeueWithFreshToken(ids[0], OWNER, LEDGER, 9L, "replacement", expectedStatus = "failed"))
+            assertEquals(0, fixture.dao.requeueWithFreshToken(ids[1], OWNER, LEDGER, 9L, "replacement", expectedStatus = "conflict"))
             val unchanged = fixture.dao.allRows().first()
             assertEquals(upload.copy(id = ids[0]), unchanged)
-            assertEquals(1, fixture.dao.requeueFailedWithFreshToken(ids[2], OWNER, LEDGER, 9L, "replacement"))
+            assertEquals(1, fixture.dao.requeueWithFreshToken(ids[2], OWNER, LEDGER, 9L, "replacement", expectedStatus = "failed"))
             val oldRecovery = fixture.dao.allRows().last()
             assertEquals(9L, oldRecovery.expectedRowVersion)
             assertEquals("replacement", oldRecovery.idempotencyKey)
