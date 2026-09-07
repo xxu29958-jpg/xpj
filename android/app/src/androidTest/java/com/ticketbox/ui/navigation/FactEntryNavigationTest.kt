@@ -11,6 +11,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -19,6 +20,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTextReplacement
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
@@ -140,6 +142,27 @@ class FactEntryNavigationTest {
         compose.runOnIdle { outer.navigate(expenseRoute(42L)) }
         waitForText(context.getString(R.string.expense_fact_title))
         compose.waitForIdle()
+    }
+
+    @Test fun externalCaptureKeepsTheUnsubmittedEditorOnTheReturnStack() {
+        val network = harness.fixture.network
+        network.current = network.current.copy(status = "pending", confirmedAt = null)
+        installMainGraph()
+        compose.runOnIdle { outer.openExpense(42L) }
+        waitForText(context.getString(R.string.expense_edit_confirm_button))
+        compose.onNode(hasSetTextAction() and hasText(requireNotNull(network.current.merchant)))
+            .performTextReplacement("未提交的商家")
+        compose.runOnIdle { launchRequest.value = LaunchIntentRequest.Navigate(ShortcutTarget.ReviewPending) }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertEquals(MAIN_ROUTE, outer.currentBackStackEntry?.destination?.route)
+            assertEquals(EXPENSE_ROUTE, outer.previousBackStackEntry?.destination?.route)
+            outer.popBackStack()
+        }
+        waitForText("未提交的商家")
+        compose.onNode(hasSetTextAction() and hasText("未提交的商家")).assertExists()
+        assertTrue(network.editCalls.isEmpty())
+        assertEquals("家庭午餐", network.current.merchant)
     }
 
     @Test fun workspaceRecoveryOpensTheRealFactAndReturnsToItsOriginalSubmission() {
