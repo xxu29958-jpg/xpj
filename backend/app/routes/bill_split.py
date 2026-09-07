@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_app_context, get_current_protocol_writer_context
 from app.database import get_db
+from app.models import BillSplitInvitation
 from app.schemas import (
     BillSplitAcceptRequest,
     BillSplitInboxListResponse,
@@ -24,6 +25,7 @@ from app.schemas import (
     BillSplitSentResponse,
 )
 from app.services import bill_split_service as bsplit
+from app.services.ledger_service import list_ledgers_for_account
 from app.tenants import AuthContext
 
 # Sender-side endpoint lives under the expense it splits from.
@@ -31,6 +33,24 @@ sender_router = APIRouter(prefix="/api/expenses", tags=["bill-splits"])
 
 # Receiver + sender list / state transitions live under their own prefix.
 inbox_router = APIRouter(prefix="/api/bill-splits", tags=["bill-splits"])
+
+
+def _inbox_responses(
+    db: Session, rows: list[BillSplitInvitation], receiver_account_id: int,
+) -> list[BillSplitInboxResponse]:
+    ledger_names = {
+        ledger.ledger_id: ledger.name
+        for ledger in list_ledgers_for_account(db, account_id=receiver_account_id)
+    } if any(row.status == "accepted" for row in rows) else {}
+    return [
+        BillSplitInboxResponse.model_validate(bsplit.to_inbox_response_dict(
+            row,
+            received_bill=bsplit.to_received_bill_reference(
+                row, receiver_account_id=receiver_account_id, visible_ledger_names=ledger_names,
+            ),
+        ))
+        for row in rows
+    ]
 
 
 @sender_router.post(
@@ -66,7 +86,7 @@ def list_my_inbox(
 ) -> BillSplitInboxListResponse:
     rows = bsplit.list_inbox(db, receiver_account_id=auth.account_id, status=status)
     return BillSplitInboxListResponse(
-        items=[BillSplitInboxResponse.model_validate(bsplit.to_inbox_response_dict(r)) for r in rows]
+        items=_inbox_responses(db, rows, auth.account_id)
     )
 
 
@@ -114,7 +134,7 @@ def accept_split_invitation(
         target_ledger_id=payload.target_ledger_id,
         accepting_device_id=auth.device_id,
     )
-    return BillSplitInboxResponse.model_validate(bsplit.to_inbox_response_dict(inv))
+    return _inbox_responses(db, [inv], auth.account_id)[0]
 
 
 @inbox_router.post(
@@ -129,7 +149,7 @@ def reject_split_invitation(
     inv = bsplit.reject_invitation(
         db, public_id=public_id, rejecting_account_id=auth.account_id
     )
-    return BillSplitInboxResponse.model_validate(bsplit.to_inbox_response_dict(inv))
+    return _inbox_responses(db, [inv], auth.account_id)[0]
 
 
 @inbox_router.post(

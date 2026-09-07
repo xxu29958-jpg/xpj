@@ -242,7 +242,7 @@ internal class ExpenseFactViewModelBillSplitTest : ExpenseFactViewModelTestBase(
         val vm = viewModel(fake)
 
         failNextLoad = true
-        vm.cancelBillSplitInvitation("mine")
+        vm.cancelBillSplitInvitation(requireNotNull(vm.uiState.value.correctionAccess).binding, "mine")
         advanceUntilIdle()
 
         assertEquals(listOf("mine"), vm.uiState.value.billSplitSent.map { it.publicId })
@@ -282,7 +282,7 @@ private suspend fun assertInvitationActionsRespectCorrection(scope: TestScope, f
     vm.sendBillSplitInvite()
     scope.advanceUntilIdle()
     val sentWhilePending = fake.createBillSplitCalls
-    vm.cancelBillSplitInvitation("existing")
+    vm.cancelBillSplitInvitation(requireNotNull(vm.uiState.value.correctionAccess).binding, "existing")
     scope.advanceUntilIdle()
     assertEquals(listOf("existing"), cancelled)
     assertEquals(BillSplitStatusValues.CANCELLED, vm.uiState.value.billSplitSent.single().status)

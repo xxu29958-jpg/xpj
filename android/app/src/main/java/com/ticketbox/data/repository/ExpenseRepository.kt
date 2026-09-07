@@ -244,22 +244,23 @@ class ExpenseRepository(
     override suspend fun recoverBillSplitCreation(expectedBinding: LogicalSessionBinding, id: Long, drop: Boolean): Result<Unit> =
         billSplitRepository.recover(expectedBinding, id, drop)
 
-    suspend fun fetchBillSplitInbox(): Result<List<BillSplitInbox>> =
-        billSplitRepository.fetchBillSplitInbox()
+    suspend fun fetchBillSplitInbox(binding: LogicalSessionBinding): Result<List<BillSplitInbox>> =
+        billSplitRepository.fetchBillSplitInbox(binding)
 
-    override suspend fun fetchBillSplitSent(): Result<List<BillSplitSent>> =
-        billSplitRepository.fetchBillSplitSent()
+    override suspend fun fetchBillSplitSent(binding: LogicalSessionBinding): Result<List<BillSplitSent>> =
+        billSplitRepository.fetchBillSplitSent(binding)
 
     suspend fun acceptBillSplitInvitation(
+        binding: LogicalSessionBinding,
         publicId: String,
         targetLedgerId: String,
-    ): Result<BillSplitInbox> = billSplitRepository.acceptBillSplitInvitation(publicId, targetLedgerId)
+    ): Result<BillSplitInbox> = billSplitRepository.acceptBillSplitInvitation(binding, publicId, targetLedgerId)
 
-    suspend fun rejectBillSplitInvitation(publicId: String): Result<BillSplitInbox> =
-        billSplitRepository.rejectBillSplitInvitation(publicId)
+    suspend fun rejectBillSplitInvitation(binding: LogicalSessionBinding, publicId: String): Result<BillSplitInbox> =
+        billSplitRepository.rejectBillSplitInvitation(binding, publicId)
 
-    override suspend fun cancelBillSplitInvitation(publicId: String): Result<BillSplitSent> =
-        billSplitRepository.cancelBillSplitInvitation(publicId)
+    override suspend fun cancelBillSplitInvitation(binding: LogicalSessionBinding, publicId: String): Result<BillSplitSent> =
+        billSplitRepository.cancelBillSplitInvitation(binding, publicId)
 
     suspend fun fetchBackgroundTasks(binding: LogicalSessionBinding): Result<List<BackgroundTask>> =
         backgroundTaskRepository.fetchBackgroundTasks(binding)

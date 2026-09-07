@@ -130,7 +130,7 @@ slice. Full Internal Beta RC completion is still outstanding.
 | Recycle recovery | `STRONG_SLICE`; #375 CLOSED. Canonical Web query/dispatcher owns business restore; duplicate Owner surface retired; ledger governance restore remains local | [Recycle journey](TICKETBOX_USER_JOURNEYS_CONTRACT.md#recycle-recovery) |
 | Public admin exposure | `RETIRED`; #383 CLOSED. Local governance boundary integrated and main-qualified; lawful remote ledger consumers remain | [Governance contract](TICKETBOX_LOCAL_GOVERNANCE_BOUNDARY_CONTRACT.md) |
 | Advisor readiness and FX worker recovery | `STRONG_SLICE`; #376/#374 CLOSED. Existing factory/consent/role and worker/lease owners; configuration and observed results stay distinct | [Migrated evidence](../qualification/2026-09-07-product-atlas-history.md) |
-| Runtime diagnostics and task recovery | `PARTIAL`; #389 CLOSED, original-bill continuation integrated and main-qualified. Ordinary connection diagnosis/recovery #390 is merged; independent main qualification is in progress | [#389](https://github.com/xxu29958-jpg/xpj/pull/389), Backstage delivery below |
+| Runtime diagnostics and task recovery | `PARTIAL`; #389 CLOSED, original-bill continuation integrated and main-qualified. Ordinary connection diagnosis/recovery #390 CLOSED, integrated and main-qualified | [#389](https://github.com/xxu29958-jpg/xpj/pull/389), Backstage delivery below |
 | Android offline publication across mutation families | `STRONG_SLICE`; preserve dispatcher/label coverage, original context and explicit recovery; never show raw keys or silently discard intent | Cross-client delivery below and affected slice contracts |
 | Consumer visual art and convenience | `PARTIAL`; selected art/frame/forms integrated. Full consumer art and real cross-screen interaction acceptance remain required | [Art / convenience plan](../superpowers/plans/2026-09-05-consumer-art-convenience.md) |
 | Windows Fresh G2 | `CLOSED`; preserve qualification boundary | Executable current-product counterexample required to reopen minimal host work |
@@ -172,13 +172,12 @@ Do not drop these or open full lifecycle work while handling other journeys.
 remaining art/interaction details, then the exact full RC. Keep useful state
 feedback and efficient actions within each active capability change.
 
-**Active work:** #385–#389 are CLOSED, integrated and independently main-qualified.
-[#390](https://github.com/xxu29958-jpg/xpj/pull/390) is merged; independent main
-qualification remains in progress. The next Relationships slice completes frozen
+**Active work:** #385–#390 are CLOSED, integrated and independently main-qualified.
+[#391](https://github.com/xxu29958-jpg/xpj/pull/391) completes frozen
 split amounts and canonical acceptance results using the existing invitation,
 membership, ledger-switch and fact owners.
 
-**Next action:** close #390 qualification and implement the
+**Next action:** implement and qualify the
 [split-result continuation](TICKETBOX_SPLIT_RESULT_CONTINUATION_CONTRACT.md),
 including acknowledgement/refresh feedback, private result access and real navigation.
 Physical budget/income creation works; simplify Android's first-budget optional

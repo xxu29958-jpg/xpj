@@ -1,5 +1,6 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.data.repository.ExpenseFactActions
 import com.ticketbox.data.repository.ExpenseCorrectionObservation
@@ -74,7 +75,7 @@ internal class ExpenseFactCorrectionBundleTest : ExpenseFactViewModelTestBase() 
                 reads += "members:$old"
                 return if (old) oldMembers.await() else Result.success(listOf(fake.member(3L, displayName = "新家庭成员")))
             }
-            override suspend fun fetchBillSplitSent(): Result<List<BillSplitSent>> {
+            override suspend fun fetchBillSplitSent(binding: LogicalSessionBinding): Result<List<BillSplitSent>> {
                 val old = observations.value.access?.binding == first
                 reads += "sent:$old"
                 return if (old) oldSent.await() else Result.success(listOf(fake.sentInvite(publicId = "new-family")))

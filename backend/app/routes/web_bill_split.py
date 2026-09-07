@@ -30,7 +30,6 @@ from app.services.currency_common import (
     major_amount_to_minor,
 )
 from app.services.ledger_service import (
-    get_ledger_for_account,
     list_ledgers_for_account,
     list_writer_ledger_ids_for_account,
 )
@@ -48,34 +47,28 @@ def _accepted_receipt(
     *,
     public_id: str | None,
     receiver_account_id: int,
+    visible_ledger_names: dict[str, str],
 ) -> dict | None:
     """Hydrate a receiver-authorized receipt from the accepted invitation."""
     if not public_id:
         return None
     try:
         inv = bsplit.get_invitation(db, public_id)
-        if (
-            inv.receiver_account_id != receiver_account_id
-            or inv.status != "accepted"
-            or inv.received_expense_id is None
-            or inv.receiver_ledger_id is None
-        ):
-            return None
-        ledger, _role = get_ledger_for_account(
-            db,
-            account_id=receiver_account_id,
-            ledger_id=inv.receiver_ledger_id,
-        )
     except AppError:
+        return None
+    received = bsplit.to_received_bill_reference(
+        inv, receiver_account_id=receiver_account_id, visible_ledger_names=visible_ledger_names,
+    )
+    if received is None:
         return None
     return {
         "amount_label": (
             f"{currency_symbol(inv.home_currency_code)}{_cents_to_yuan(inv.amount_cents, inv.home_currency_code)}"
         ),
-        "ledger_name": ledger.name,
+        "ledger_name": received["ledger_name"],
         "fact_href": flow_href(
-            f"/web/expenses/{inv.received_expense_id}/edit",
-            ledger_id=inv.receiver_ledger_id,
+            f"/web/expenses/{received['expense_id']}/edit",
+            ledger_id=received["ledger_id"],
             return_to="bill_splits_inbox",
         ),
     }
@@ -160,6 +153,7 @@ def web_bill_split_inbox(
         db,
         public_id=accepted,
         receiver_account_id=account_id,
+        visible_ledger_names=ledger_names,
     )
     return templates.TemplateResponse(request=request, name="bill_splits_inbox.html", context=ctx)
 

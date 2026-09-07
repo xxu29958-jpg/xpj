@@ -20,19 +20,22 @@ already make canonical replay idempotent. The UI must not invent an offline enqu
 receipt or automatically retry a command against a newly selected identity/target.
 The existing durable split-creation intent and its recovery remain unchanged.
 
-## Impact before construction
+## Impact closure after implementation
 
-| Responsibility | Actual consumer and required closure |
+The test-first PR records the before-impact counterexamples. The current closure is:
+
+| Responsibility | Consumer / retirement |
 |---|---|
-| Entrances | Relationships split center; source bill invitation card; receiver Web inbox and sender Web sent list |
-| Facts/commands | Existing bill-split acceptance owns the invitation claim, received Expense, revision and applicable Debt in one transaction; no replacement owner |
-| Queries | Receiver inbox is account-scoped; sent list is selected-ledger-scoped. Web already hydrates a receiver-authorized accepted result; API currently drops it |
-| Currency | Backend freezes `home_currency_code`; Sent DTO reads it but mapper drops it, Inbox DTO omits it, both center rows format as CNY. Original submission recovery already uses frozen currency |
-| Old success exits | Accept/reject/cancel only start another refresh. An acknowledged result can remain visually invited if that refresh fails. Accepted and sent rows lack fact continuation |
-| Identity and role | Center retains lists/target choices without observing complete binding. Async reads/actions must capture the original binding; acceptance authority belongs to the chosen target's current membership |
-| Persistence and protocol | Optional accepted-result projection needs no API epoch or migration. Keep Room rows, creation payload/key/OCC/receipt and server transition idempotency intact |
-| Recovery | Query canonical accepted history after interruption/ACK loss; an inaccessible/archived target must not expose a usable fact reference. No background retry loop |
-| Other containers | Web consumes the shared authorized result; Owner/Desktop/Shortcut do not own split acceptance or private ledger queries. Their financial/host writers are outside this unchanged command surface |
+| Entrances | Relationships split center and source-fact cancellation capture the rendered binding; receiver Web inbox and sender Web sent retain their native entries |
+| Facts/commands | Existing acceptance still owns invitation claim, received Expense, revision and applicable Debt atomically; no command or idempotency rewrite |
+| Queries | `to_received_bill_reference` is shared by API and Web. Existing `list_ledgers_for_account` supplies current readable ledger names; API batches that membership read and Web reuses its existing map |
+| Currency | Required frozen currency now reaches Inbox/Sent DTOs, domain models, both center lists and the source-fact sent panel; existing record currency formatting handles supported/unknown codes. CNY-only row formatting and ambient-currency dependence are retired |
+| Command result | The same ViewModel adopts a canonical response before refreshing. Refresh failure retains its status/reference with separate feedback. Repeated taps cannot start another active command |
+| Identity and role | Center reads/transitions and source-fact sent/cancel consume explicit complete bindings. Old callbacks without the rendered context are removed; replacement clears stale rows/targets and drops late results. Target membership still authorizes acceptance, independently of the current ledger role |
+| Navigation | Existing ledger switch/fact route open the authorized received result; sent entries open their own source. Reference navigation supplies an optional exact-binding precondition inside the existing switch lock; ordinary serialized ledger selection retains its current behavior |
+| Persistence/protocol | Optional `received_bill` adds no API epoch, migration or durable state. Room creation payload/key/OCC/receipts and server acceptance replay are unchanged; navigation tests compare the original failed row across a real ledger transition |
+| Recovery | Account inbox reentry exposes the same canonical accepted record after ACK loss. Current disabled membership or archived target omits its reference; no automatic command retry or fabricated offline acceptance |
+| Other containers | Owner/Desktop/Shortcut have no split-acceptance/private-result writer; Windows lifecycle remains held. Web receives the same authorized projection, without a parallel financial owner |
 
 A receiver may follow its own received fact only while it has current access to
 that ledger. Sender responses never disclose the receiver's ledger or received
@@ -53,6 +56,5 @@ existing membership queries; do not build per-page authorization rules.
 - Exact candidate CI/CodeQL/Connected, bounded review, isolated internal-device
   rehearsal as needed, protected merge and independent exact-main qualification.
 
-After construction, replace stale statements above with final affected consumers
-and retirement evidence. Qualification hashes/runs belong in the PR and external
+Qualification remains pending. Exact hashes/runs belong in the PR and external
 evidence, not the product atlas. Whole Goal and Windows lifecycle HOLD remain.

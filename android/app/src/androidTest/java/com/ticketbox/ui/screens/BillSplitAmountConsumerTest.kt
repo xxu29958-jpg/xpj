@@ -1,5 +1,9 @@
 package com.ticketbox.ui.screens
 
+import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.LedgerAccessContext
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -38,7 +42,8 @@ class BillSplitAmountConsumerTest {
         models.put("splits", viewModel)
         compose.setContent {
             TicketboxTheme(skin = AppSkin.Default) {
-                BillSplitScreen(viewModel = viewModel, onBack = {})
+                BillSplitScreen(viewModel = viewModel, onBack = {},
+                    navigation = BillSplitNavigation(openBill = { _, _, _ -> error("Amount read must not navigate") }))
             }
         }
         assertFrozenAmounts()
@@ -60,6 +65,11 @@ private class EmptySplitLedgers : BillSplitLedgerActions {
 }
 
 private class CurrencySplitActions : BillSplitActions {
+    val access = MutableStateFlow<LedgerAccessContext?>(LedgerAccessContext(
+        LogicalSessionBinding("https://split-test.example", "owner", "test-owner", "session", "revision"), true))
+    override fun currentAccess(): LedgerAccessContext? = access.value
+    override fun observeAccess(): Flow<LedgerAccessContext?> = access
+
     private val moshi = Moshi.Builder().addLast(KotlinJsonAdapterFactory()).build()
     private val payloads = listOf("JPY", "USD", "VND").map { currency ->
         """{
@@ -73,20 +83,20 @@ private class CurrencySplitActions : BillSplitActions {
         }""".trimIndent()
     }
 
-    override suspend fun fetchBillSplitInbox(): Result<List<BillSplitInbox>> = Result.success(
+    override suspend fun fetchBillSplitInbox(binding: LogicalSessionBinding): Result<List<BillSplitInbox>> = Result.success(
         payloads.map { requireNotNull(moshi.adapter(BillSplitInboxDto::class.java).fromJson(it)).toDomain() },
     )
 
-    override suspend fun fetchBillSplitSent(): Result<List<BillSplitSent>> = Result.success(
+    override suspend fun fetchBillSplitSent(binding: LogicalSessionBinding): Result<List<BillSplitSent>> = Result.success(
         payloads.map { requireNotNull(moshi.adapter(BillSplitSentDto::class.java).fromJson(it)).toDomain() },
     )
 
-    override suspend fun acceptBillSplitInvitation(publicId: String, targetLedgerId: String): Result<BillSplitInbox> =
+    override suspend fun acceptBillSplitInvitation(binding: LogicalSessionBinding, publicId: String, targetLedgerId: String): Result<BillSplitInbox> =
         error("This read-only consumer must not accept a split")
 
-    override suspend fun rejectBillSplitInvitation(publicId: String): Result<BillSplitInbox> =
+    override suspend fun rejectBillSplitInvitation(binding: LogicalSessionBinding, publicId: String): Result<BillSplitInbox> =
         error("This read-only consumer must not reject a split")
 
-    override suspend fun cancelBillSplitInvitation(publicId: String): Result<BillSplitSent> =
+    override suspend fun cancelBillSplitInvitation(binding: LogicalSessionBinding, publicId: String): Result<BillSplitSent> =
         error("This read-only consumer must not cancel a split")
 }

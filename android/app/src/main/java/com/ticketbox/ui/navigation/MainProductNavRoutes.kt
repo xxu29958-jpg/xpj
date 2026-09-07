@@ -203,10 +203,8 @@ internal fun NavGraphBuilder.addObligationRoutes(
 ) {
     with(dependencies) {
         composable(ProductSecondaryPage.BillSplits.route) {
-            BillSplitRoute(
-                screenFactory = screenFactory,
-                onBack = onBack,
-            )
+            BillSplitRoute(screenFactory = screenFactory, onBack = onBack,
+                onOpenExpense = runtime.navController::openExpense)
         }
         composable(ProductSecondaryPage.DebtGoals.route) {
             DebtGoalRoute(

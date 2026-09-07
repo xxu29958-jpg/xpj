@@ -182,4 +182,12 @@
     <string name="income_plan_edit_drop">放弃本机提交</string>
     <string name="income_plan_edit_drop_explanation">这只移除本机保存的提交，不会撤销可能已在服务端完成的修改。请核对当前计划后再提交新操作。</string>
     <string name="income_plan_edit_expired">这条修改已超过重试期限。请先刷新核对计划，再决定是否重新修改；本机记录仍然保留。</string>
+    <string name="bill_split_action_accepted">已接受拆账。</string>
+    <string name="bill_split_action_rejected">已拒绝拆账。</string>
+    <string name="bill_split_action_cancelled">已撤回拆账。</string>
+    <string name="bill_split_refresh_after_action_failed">操作已完成；列表暂时无法更新，请刷新查看。</string>
+    <string name="bill_split_received_ledger">已记入「%1$s」</string>
+    <string name="bill_split_open_received">查看入账记录</string>
+    <string name="bill_split_open_source">查看原账单</string>
+    <string name="bill_split_open_failed">暂时无法打开这笔记录，请重试。</string>
 </resources>
