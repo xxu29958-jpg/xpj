@@ -50,6 +50,8 @@ internal class ExpensePendingRepositoryOutboxSplitsTest : ExpensePendingReposito
             outbox = outbox,
             replaceSplitsAdapter = moshi().adapter(ExpenseSplitReplaceRequestDto::class.java),
             correctionAdapter = com.ticketbox.OutboxAdapterGraph().correctionAdapter,
+            billSplitReceiptAdapter = com.ticketbox.OutboxAdapterGraph().billSplitReceiptAdapter,
+            billSplitCreateAdapter = com.ticketbox.OutboxAdapterGraph().billSplitCreateAdapter,
             legacyCorrectionAdapter = com.ticketbox.OutboxAdapterGraph().legacyCorrectionAdapter,
         ),
     )

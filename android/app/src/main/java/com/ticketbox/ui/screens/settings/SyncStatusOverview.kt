@@ -176,3 +176,13 @@ internal val syncStatusExactErrorMessageResources = mapOf(
     "debt_create_response_pending" to R.string.debt_create_sync_uncertain,
     "debt_create_connection_interrupted" to R.string.debt_create_sync_uncertain,
 )
+
+@Composable
+internal fun SyncStatusBillSplitSection(state: com.ticketbox.viewmodel.OutboxStatusUiState, actions: SyncStatusActions) {
+    state.billSplitCreations.values.forEach { pending ->
+        com.ticketbox.ui.screens.expense.fact.BillSplitSubmissionCard(pending, state.correctionObservation.access?.canModify == true,
+            state.busyRowId == pending.row.id, recover = { drop ->
+                if (drop) actions.onDropFailed(pending.row) else actions.onRetry(pending.row)
+            })
+    }
+}

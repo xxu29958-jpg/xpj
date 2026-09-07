@@ -364,7 +364,7 @@ def test_money_schemas_enforce_documented_c07_bounds_and_signs() -> None:
 
 def test_validation_error_code_allows_only_split_amount_domain_error() -> None:
     with pytest.raises(ValidationError) as exc_info:
-        BillSplitInviteRequest(receiver_account_id=1, amount_cents=0)
+        BillSplitInviteRequest(receiver_account_id=1, amount_cents=0, expected_row_version=1)
     assert _validation_error_code(RequestValidationError(exc_info.value.errors())) == "split_amount_invalid"
 
     unknown = RequestValidationError(

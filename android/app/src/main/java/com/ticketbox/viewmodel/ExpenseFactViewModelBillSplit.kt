@@ -22,7 +22,7 @@ enum class BillSplitSentLoadState {
 /**
  * A1: 拆账邀请域 —— 从已退役的确认后编辑责任迁移到事实页 Owner，
  * 能力不丢：已发列表 / 发起 sheet / 撤回。
- * 语义不变：ADR-0029 跨账本拆账，**在线-only**（直连失败直接报错，不入 outbox）。
+ * 创建意图由 Room 接收，发送和重试只由已注册的 dispatcher 执行。
  */
 internal fun List<BillSplitSent>.factActiveSplitCentsFor(expenseId: Long): Long =
     filter { it.senderExpenseId == expenseId && it.isActiveSplit }
@@ -32,11 +32,11 @@ private val BillSplitSent.isActiveSplit: Boolean
     get() = status == BillSplitStatusValues.INVITED || status == BillSplitStatusValues.ACCEPTED
 
 private data class FactBillSplitInviteRequest(
-    val expenseId: Long,
+    val expense: com.ticketbox.domain.model.Expense,
     val receiverAccountId: Long,
+    val receiverName: String,
     val amountCents: Long,
     val binding: LogicalSessionBinding,
-    val sourceRowVersion: Long,
 )
 
 /** 拉取本票已发出的拆账邀请（账号维度返回后按 senderExpenseId 客户端过滤）。 */
@@ -83,6 +83,7 @@ fun ExpenseFactViewModel.loadBillSplitSent(onlyIfUnknown: Boolean = false) {
 
 /** 打开发起 sheet 并加载本账本成员（收件人候选）。仅在可发起时生效。 */
 fun ExpenseFactViewModel.openBillSplitInviteSheet() {
+    if (hasPendingBillSplitCreation()) return
     if (blockUnreadyFactWrite()) return
     val expense = _uiState.value.expense ?: return
     val binding = _uiState.value.correctionAccess?.binding ?: return
@@ -154,6 +155,7 @@ fun ExpenseFactViewModel.updateBillSplitInviteAmount(amountText: String) {
 }
 
 fun ExpenseFactViewModel.closeBillSplitInviteSheet() {
+    if (_uiState.value.billSplitInviteSending) return
     _uiState.update {
         it.copy(
             billSplitInviteSheetOpen = false,
@@ -179,28 +181,24 @@ fun ExpenseFactViewModel.sendBillSplitInvite() {
     }
     viewModelScope.launch {
         if (request.binding != _uiState.value.correctionAccess?.binding) return@launch
-        if (blockUnreadyFactWrite(request.sourceRowVersion)) {
+        if (blockUnreadyFactWrite(request.expense.rowVersion)) {
             _uiState.update { it.copy(billSplitInviteSending = false) }
             return@launch
         }
-        repository.createBillSplitInvitation(request.binding, request.expenseId, request.receiverAccountId, request.amountCents)
-            .onSuccess { sent ->
+        repository.createBillSplitInvitation(request.binding, request.expense, request.receiverAccountId, request.receiverName, request.amountCents)
+            .onSuccess {
                 if (request.binding != _uiState.value.correctionAccess?.binding) return@onSuccess
                 _uiState.update {
                     it.copy(
-                        billSplitSent = it.billSplitSent.upsertBillSplitSent(sent, request.expenseId),
-                        billSplitSentLoadState = BillSplitSentLoadState.Loading,
-                        billSplitLoading = true,
                         billSplitInviteSheetOpen = false,
                         billSplitInviteSelectedMemberId = null,
                         billSplitInviteAmountText = "",
                         billSplitInviteMembers = emptyList(),
                         billSplitInviteSending = false,
-                        message = UiText.res(R.string.expense_edit_bill_split_sent),
-                        messageTone = MessageTone.Success,
+                        message = UiText.res(R.string.bill_split_submission_saved),
+                        messageTone = MessageTone.Neutral,
                     )
                 }
-                loadBillSplitSent()
             }
             .onFailure { error ->
                 if (request.binding != _uiState.value.correctionAccess?.binding) return@onFailure
@@ -216,7 +214,7 @@ fun ExpenseFactViewModel.sendBillSplitInvite() {
 }
 
 private fun ExpenseFactViewModel.currentBillSplitInviteRequest(): FactBillSplitInviteRequest? {
-    if (blockUnreadyFactWrite()) return null
+    if (blockUnreadyFactWrite() || hasPendingBillSplitCreation()) return null
     val binding = _uiState.value.correctionAccess?.binding ?: return null
     fun reject(message: UiText): FactBillSplitInviteRequest? {
         _uiState.update {
@@ -250,7 +248,7 @@ private fun ExpenseFactViewModel.currentBillSplitInviteRequest(): FactBillSplitI
             return reject(UiText.res(R.string.expense_edit_bill_split_amount_exceeds))
         }
     }
-    return FactBillSplitInviteRequest(expense.id, member.accountId, amountCents, binding, expense.rowVersion)
+    return FactBillSplitInviteRequest(expense, member.accountId, member.displayName, amountCents, binding)
 }
 
 /** 撤回一条 invited 状态的拆账邀请。成功后刷新本票已发列表。 */

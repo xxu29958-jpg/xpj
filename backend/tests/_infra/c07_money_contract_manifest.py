@@ -206,6 +206,7 @@ def _assert_bill_split_schema_contract() -> None:
     request = BillSplitInviteRequest(
         receiver_account_id=1,
         amount_cents=MONEY_MINOR_MAX,
+        expected_row_version=1,
     )
     assert request.amount_cents == MONEY_MINOR_MAX
     for value in (0, -1, MONEY_MINOR_MAX + 1, True, 1.0, "1"):
@@ -213,6 +214,7 @@ def _assert_bill_split_schema_contract() -> None:
             BillSplitInviteRequest(
                 receiver_account_id=1,
                 amount_cents=value,
+                expected_row_version=1,
             )
 
 

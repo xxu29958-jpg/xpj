@@ -87,7 +87,9 @@ internal class ExpenseCorrectionQueueContinuationTest(private val status: Pendin
         return ExpenseRepository(cache, testServerSessionBinding(TestApiServiceFactory(api), seededSettingsStore(),
             seededTokenStore()), offlineMutations = ExpenseOfflineMutationWiring(outbox = outbox,
             offsetVoidAdapter = moshi().adapter(ExpenseOffsetVoidOutboxPayload::class.java),
-            correctionAdapter = adapters.correctionAdapter, legacyCorrectionAdapter = adapters.legacyCorrectionAdapter))
+            correctionAdapter = adapters.correctionAdapter, billSplitReceiptAdapter = adapters.billSplitReceiptAdapter,
+            billSplitCreateAdapter = adapters.billSplitCreateAdapter,
+            legacyCorrectionAdapter = adapters.legacyCorrectionAdapter))
     }
 
     companion object {

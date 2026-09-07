@@ -1,6 +1,6 @@
 package com.ticketbox.data.repository
 
-import com.ticketbox.domain.model.BillSplitSent
+
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import com.ticketbox.domain.model.ExpenseFactBundle
@@ -66,15 +66,8 @@ interface ExpenseFactCommandActions {
         expectedBinding: LogicalSessionBinding,
         expense: Expense,
     ): Result<RepaymentDraft>
-    suspend fun createBillSplitInvitation(
-        expectedBinding: LogicalSessionBinding,
-        expenseId: Long,
-        receiverAccountId: Long,
-        amountCents: Long,
-    ): Result<BillSplitSent>
-    suspend fun fetchBillSplitSent(): Result<List<BillSplitSent>>
-    suspend fun cancelBillSplitInvitation(publicId: String): Result<BillSplitSent>
+
 }
 
 /** Page-level port composed from independently bounded read and command responsibilities. */
-interface ExpenseFactActions : ExpenseFactReadActions, ExpenseFactCommandActions
+interface ExpenseFactActions : ExpenseFactReadActions, ExpenseFactCommandActions, BillSplitSourceActions

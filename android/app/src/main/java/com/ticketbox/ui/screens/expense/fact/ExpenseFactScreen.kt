@@ -28,6 +28,7 @@ import com.ticketbox.viewmodel.openBillSplitInviteSheet
 import com.ticketbox.viewmodel.openCorrectionSheet
 import com.ticketbox.viewmodel.toggleTimelineExpanded
 import com.ticketbox.viewmodel.recoverCorrection
+import com.ticketbox.viewmodel.recoverBillSplitCreation
 import com.ticketbox.viewmodel.refreshCorrectionFact
 import com.ticketbox.viewmodel.currentCorrectionItems
 import com.ticketbox.viewmodel.currentCorrectionSplits
@@ -57,6 +58,7 @@ fun ExpenseFactScreen(
     ) {
         AppStatusBanner(message = state.message, tone = state.messageTone)
         FactCorrectionSubmissions(state, viewModel)
+        if (state.expense == null) FactBillSplitSubmissions(state, viewModel)
         when {
             // 首载：骨架占位（成熟产品的加载形态，不是白屏）。
             state.expense == null && state.expenseLoadState != ExpenseDetailDataLoadState.Failed -> {
@@ -91,6 +93,15 @@ private fun FactCorrectionSubmissions(state: ExpenseFactUiState, viewModel: Expe
                 actions = CorrectionSubmissionActions(recover = { drop -> viewModel.recoverCorrection(pending.row.id, drop) },
                     reviewFact = viewModel::refreshCorrectionFact))
         }
+}
+
+/** Keep the original beside the split action; failed source reads still expose recovery. */
+@Composable
+private fun FactBillSplitSubmissions(state: ExpenseFactUiState, viewModel: ExpenseFactViewModel) {
+    state.billSplitSubmissions.forEach { pending ->
+        BillSplitSubmissionCard(pending, !state.readOnly, state.billSplitRecoveryBusy,
+            recover = { drop -> viewModel.recoverBillSplitCreation(pending.row.id, drop) })
+    }
 }
 
 /** 已知内容时的正文段（stale 提示 + 各事实段 + 关联动作）。 */
@@ -128,6 +139,7 @@ private fun FactContentSections(
                     onToggleExpanded = viewModel::toggleTimelineExpanded,
                     onLoadOlder = viewModel::loadOlderExpenseRevisions,
                 )
+                FactBillSplitSubmissions(state, viewModel)
                 if (expense.canInitiateBillSplit(state.readOnly)) {
                     ExpenseBillSplitInvitePanel(
                         state = ExpenseBillSplitInvitePanelState(
@@ -137,6 +149,7 @@ private fun FactContentSections(
                             message = state.billSplitMessage,
                             messageTone = state.billSplitMessageTone,
                             canStartInvite = state.authoritativeRootReady,
+                            hasPendingSubmission = state.billSplitSubmissions.isNotEmpty(),
                         ),
                         actions = ExpenseBillSplitInvitePanelActions(
                             onStartInvite = viewModel::openBillSplitInviteSheet,

@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from tests.expense_correction_support import idem, manual_confirmed
-from tests.test_bill_split import _seed_receiver
+from tests.test_bill_split import _seed_receiver, _split_headers
 from tests.test_bill_split_security_regressions import _bearer_for_account_ledger
 
 
@@ -125,8 +125,9 @@ def test_refund_cancels_pending_split_and_publishes_relationship_receipt(
     )
     invited = client.post(
         f"/api/expenses/{expense['id']}/split-invite",
-        headers=identity.app_headers,
-        json={"receiver_account_id": receiver_account_id, "amount_cents": 500},
+        headers=_split_headers(client, identity.app_headers),
+        json={"receiver_account_id": receiver_account_id, "amount_cents": 500,
+              "expected_row_version": expense["row_version"]},
     )
     assert invited.status_code == 200, invited.text
     invitation_public_id = invited.json()["public_id"]
@@ -183,8 +184,9 @@ def test_refund_keeps_accepted_split_fact_and_publishes_review_suggestion(
     )
     invited = client.post(
         f"/api/expenses/{expense['id']}/split-invite",
-        headers=identity.app_headers,
-        json={"receiver_account_id": receiver_account_id, "amount_cents": 500},
+        headers=_split_headers(client, identity.app_headers),
+        json={"receiver_account_id": receiver_account_id, "amount_cents": 500,
+              "expected_row_version": expense["row_version"]},
     )
     assert invited.status_code == 200, invited.text
     invitation_public_id = invited.json()["public_id"]

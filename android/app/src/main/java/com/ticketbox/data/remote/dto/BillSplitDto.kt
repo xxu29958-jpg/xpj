@@ -7,11 +7,14 @@ import com.squareup.moshi.Json
  * See backend ``schemas/_bill_split.py`` for canonical reference.
  */
 
+@com.squareup.moshi.JsonClass(generateAdapter = true)
 data class BillSplitInviteRequestDto(
     @param:Json(name = "receiver_account_id")
     val receiverAccountId: Long,
     @param:Json(name = "amount_cents")
     val amountCents: Long,
+    @param:Json(name = "expected_row_version")
+    val expectedRowVersion: Long,
 )
 
 data class BillSplitAcceptRequestDto(
@@ -20,6 +23,7 @@ data class BillSplitAcceptRequestDto(
 )
 
 /** Sender view DTO — receiver_ledger_id absent by design (privacy). */
+@com.squareup.moshi.JsonClass(generateAdapter = true)
 data class BillSplitSentDto(
     @param:Json(name = "public_id")
     val publicId: String,
@@ -50,6 +54,8 @@ data class BillSplitSentDto(
     val receiverDisplayNameSnapshot: String?,
     @param:Json(name = "sender_expense_id")
     val senderExpenseId: Long,
+    @param:Json(name = "home_currency_code")
+    val homeCurrencyCode: String,
 )
 
 /** Receiver view DTO — sender_ledger_id / sender_expense_id absent. */

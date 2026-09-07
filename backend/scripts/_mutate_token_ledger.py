@@ -196,7 +196,6 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /api/repayment-drafts": Exempt("create_row", "debts", _REPAYMENT_DRAFTS),
     "POST /api/expenses/manual": Exempt("create_row", "expenses", ("expenses",)),
     "POST /api/expenses/notification-drafts": Exempt("create_row", "expenses", ("expenses",)),
-    "POST /api/expenses/{expense_id}/split-invite": Exempt("create_row", "bill_split", _BILL_SPLIT),
     "POST /api/goals": Exempt("create_row", "goals", ("goals",)),
     "POST /api/imports/csv": Exempt("create_row", "imports", _IMPORT_CREATE),
     "POST /api/income-plans": Exempt("create_row", "budget", _INCOME_PLAN),
@@ -342,7 +341,6 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /web/categories/uncategorized/bulk-set": Exempt("batch_db_write", "expenses", ("expenses",)),
     "POST /web/dashboard/cards/reset": Exempt("upsert_bucket", "budget", _DASHBOARD),
     "POST /web/dashboard/cards/save": Exempt("upsert_bucket", "budget", _DASHBOARD),
-    "POST /web/expenses/{expense_id}/split-invite": Exempt("create_row", "bill_split", _BILL_SPLIT),
     "POST /web/family/invitations": Exempt("create_row", "identity", ("invitations",)),
     "POST /web/family/invitations/{public_id}/revoke": Exempt(
         "governance_action", "identity", ("invitations",)

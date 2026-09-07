@@ -86,6 +86,7 @@ class OutboxStatusViewModel(
                     val state = previous.takeIf { it.binding == binding } ?: OutboxStatusUiState()
                     state.copy(binding = binding, bindingReady = ready,
                     correctionObservation = currentCorrections, status = status, failedDebtCreations = descriptions,
+                    billSplitCreations = status.failed.mapNotNull { row -> expenseRepository.describeBillSplitCreation(row)?.let { row.id to it } }.toMap(),
                     debtAdjustments = adjustmentDescriptions,
                     waitingDebtAdjustments = adjustmentDescriptions.values.filter {
                         it.row.status in setOf(com.ticketbox.data.local.PendingMutationStatus.Pending,
@@ -101,6 +102,7 @@ class OutboxStatusViewModel(
 
     /** "用我的覆盖" — re-apply my change on top of the server's latest. */
     fun keepMine(row: OutboxRow) {
+        if (row.type == PendingMutationType.CreateBillSplitInvitation) return
         val binding = expenseRepository.captureDeferredLedgerBinding()
         if (!_uiState.value.accepts(row, binding)) return
         if (row.type in setOf(PendingMutationType.CorrectExpense, PendingMutationType.UploadScreenshot)) return
@@ -133,20 +135,21 @@ class OutboxStatusViewModel(
     fun dropMine(row: OutboxRow) {
         if (!_uiState.value.accepts(row, expenseRepository.captureDeferredLedgerBinding())) return
         if (row.type == PendingMutationType.UploadScreenshot) return
-        if (row.type == PendingMutationType.CorrectExpense) recoverCorrection(row, true)
+        if (row.type == PendingMutationType.CorrectExpense) recoverFactSubmission(row, true)
         else if (row.type == PendingMutationType.RecordDebtAdjustment) recoverAdjustment(row, true)
         else resolve(row) { outbox.resolveConflict(row.id, ConflictResolution.DropMine) }
     }
 
     /** "重试" — flip a FAILED row back to PENDING for the next drain. */
     fun retry(row: OutboxRow) {
+        if (row.type == PendingMutationType.CreateBillSplitInvitation) { recoverFactSubmission(row, false); return }
         if (!_uiState.value.accepts(row, expenseRepository.captureDeferredLedgerBinding())) return
         if (row.type == PendingMutationType.UploadScreenshot) {
             _uiState.update { it.copy(message = UiText.res(R.string.sync_status_upload_recovery_body), messageTone = MessageTone.Info) }
             return
         }
         if (row.type == PendingMutationType.CorrectExpense) {
-            recoverCorrection(row, false)
+            recoverFactSubmission(row, false)
             return
         }
         if (row.type == PendingMutationType.CreateExpenseOffset && !expenseRepository.canReplayExpenseOffset(row)) {
@@ -166,9 +169,10 @@ class OutboxStatusViewModel(
 
     /** "放弃" — drop a FAILED row. */
     fun dropFailed(row: OutboxRow) {
+        if (row.type == PendingMutationType.CreateBillSplitInvitation) { recoverFactSubmission(row, true); return }
         if (!_uiState.value.accepts(row, expenseRepository.captureDeferredLedgerBinding())) return
         if (row.type == PendingMutationType.UploadScreenshot) return
-        if (row.type == PendingMutationType.CorrectExpense) recoverCorrection(row, true)
+        if (row.type == PendingMutationType.CorrectExpense) recoverFactSubmission(row, true)
         else if (row.type == PendingMutationType.RecordDebtAdjustment) recoverAdjustment(row, true)
         else resolve(row) { outbox.resolveFailed(row.id, FailedResolution.Drop) }
     }
@@ -194,10 +198,14 @@ class OutboxStatusViewModel(
         }
     }
 
-    private fun recoverCorrection(row: OutboxRow, drop: Boolean) {
-        val binding = _uiState.value.correctionObservation.access?.binding ?: return
+    private fun recoverFactSubmission(row: OutboxRow, drop: Boolean) {
+        if (!_uiState.value.accepts(row, expenseRepository.captureDeferredLedgerBinding())) return
+        val binding = _uiState.value.binding ?: return
         resolve(row) {
-            expenseRepository.recoverCorrection(binding, row.id, drop).onFailure { error ->
+            val result = if (row.type == PendingMutationType.CreateBillSplitInvitation) {
+                expenseRepository.recoverBillSplitCreation(binding, row.id, drop)
+            } else expenseRepository.recoverCorrection(binding, row.id, drop)
+            result.onFailure { error ->
                 if (expenseRepository.captureDeferredLedgerBinding() == binding) {
                     _uiState.update { it.copy(message = error.toUiText(R.string.expense_correction_failed), messageTone = MessageTone.Danger) }
                 }
@@ -275,6 +283,7 @@ data class OutboxStatusUiState(
     val correctionObservation: com.ticketbox.data.repository.ExpenseCorrectionObservation =
         com.ticketbox.data.repository.ExpenseCorrectionObservation(null, emptyList()),
     val status: OutboxStatus = OutboxStatus(queueDepth = 0, conflicts = emptyList(), failed = emptyList()),
+    val billSplitCreations: Map<Long, com.ticketbox.data.repository.PendingBillSplitCreation> = emptyMap(),
     val failedDebtCreations: Map<Long, PendingDebtCreation> = emptyMap(),
     val recurringOccurrences: Map<Long, com.ticketbox.data.repository.PendingOccurrencePayment> = emptyMap(),
     val incomeEdits: Map<Long, com.ticketbox.data.repository.PendingIncomePlanEdit> = emptyMap(),

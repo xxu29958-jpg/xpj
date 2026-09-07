@@ -41,6 +41,8 @@ internal class ExpensePendingRepositoryOutboxRecognizeTextTest : ExpensePendingR
             outbox = outbox,
             recognizeTextAdapter = moshi().adapter(ExpenseRecognizeTextRequestDto::class.java),
             correctionAdapter = com.ticketbox.OutboxAdapterGraph().correctionAdapter,
+            billSplitReceiptAdapter = com.ticketbox.OutboxAdapterGraph().billSplitReceiptAdapter,
+            billSplitCreateAdapter = com.ticketbox.OutboxAdapterGraph().billSplitCreateAdapter,
             legacyCorrectionAdapter = com.ticketbox.OutboxAdapterGraph().legacyCorrectionAdapter,
         ),
     )

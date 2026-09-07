@@ -316,6 +316,8 @@ class ExpenseRepositoryConfirmedSyncTest {
             sessionCoordinator = coordinator,
             offlineMutations = ExpenseOfflineMutationWiring(outbox = outbox,
             correctionAdapter = com.ticketbox.OutboxAdapterGraph().correctionAdapter,
+            billSplitReceiptAdapter = com.ticketbox.OutboxAdapterGraph().billSplitReceiptAdapter,
+            billSplitCreateAdapter = com.ticketbox.OutboxAdapterGraph().billSplitCreateAdapter,
             legacyCorrectionAdapter = com.ticketbox.OutboxAdapterGraph().legacyCorrectionAdapter,
         ),
         )

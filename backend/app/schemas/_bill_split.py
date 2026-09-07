@@ -52,6 +52,7 @@ class BillSplitInviteRequest(BaseModel):
 
     receiver_account_id: int
     amount_cents: PositiveMoneyMinor
+    expected_row_version: int = Field(ge=1)
 
     @field_validator("amount_cents", mode="before")
     @classmethod

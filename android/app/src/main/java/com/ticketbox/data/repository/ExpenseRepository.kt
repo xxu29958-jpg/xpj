@@ -227,15 +227,22 @@ class ExpenseRepository(
 
     override suspend fun createBillSplitInvitation(
         expectedBinding: LogicalSessionBinding,
-        expenseId: Long,
+        expense: Expense,
         receiverAccountId: Long,
+        receiverName: String,
         amountCents: Long,
-    ): Result<BillSplitSent> = billSplitRepository.createBillSplitInvitation(
+    ): Result<Long> = billSplitRepository.createBillSplitInvitation(
         expectedBinding = expectedBinding,
-        expenseId = expenseId,
+        expense = expense,
         receiverAccountId = receiverAccountId,
+        receiverName = receiverName,
         amountCents = amountCents,
     )
+
+    override fun observeBillSplitCreations(): Flow<BillSplitCreationObservation> = billSplitRepository.observeCreations()
+    fun describeBillSplitCreation(row: OutboxRow): PendingBillSplitCreation? = billSplitRepository.describeCreation(row)
+    override suspend fun recoverBillSplitCreation(expectedBinding: LogicalSessionBinding, id: Long, drop: Boolean): Result<Unit> =
+        billSplitRepository.recover(expectedBinding, id, drop)
 
     suspend fun fetchBillSplitInbox(): Result<List<BillSplitInbox>> =
         billSplitRepository.fetchBillSplitInbox()

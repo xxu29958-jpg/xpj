@@ -132,6 +132,8 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
             patchExpenseAdapter = adapter.takeIf { outbox != null },
             expenseStateTokenAdapter = stateTokenAdapter.takeIf { outbox != null },
             correctionAdapter = com.ticketbox.OutboxAdapterGraph().correctionAdapter,
+            billSplitReceiptAdapter = com.ticketbox.OutboxAdapterGraph().billSplitReceiptAdapter,
+            billSplitCreateAdapter = com.ticketbox.OutboxAdapterGraph().billSplitCreateAdapter,
             legacyCorrectionAdapter = com.ticketbox.OutboxAdapterGraph().legacyCorrectionAdapter,
         ),
     )
@@ -208,6 +210,8 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
             outbox = outbox,
             replaceItemsAdapter = moshi().adapter(ExpenseItemReplaceRequestDto::class.java),
             correctionAdapter = com.ticketbox.OutboxAdapterGraph().correctionAdapter,
+            billSplitReceiptAdapter = com.ticketbox.OutboxAdapterGraph().billSplitReceiptAdapter,
+            billSplitCreateAdapter = com.ticketbox.OutboxAdapterGraph().billSplitCreateAdapter,
             legacyCorrectionAdapter = com.ticketbox.OutboxAdapterGraph().legacyCorrectionAdapter,
         ),
     )

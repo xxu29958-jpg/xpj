@@ -15,20 +15,26 @@
   {% else %}
   <form method="post" action="/web/expenses/{{ expense.id }}/split-invite" class="split-invite-form">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <input type="hidden" name="idempotency_key" value="{{ split_invite.idempotency_key }}">
+    <input type="hidden" name="expected_row_version" value="{{ split_invite.expected_row_version }}">
     <div class="split-invite-fields">
       <div class="product-field">
         <label for="split-invite-receiver">分摊给</label>
         <select id="split-invite-receiver" name="receiver_account_id" required>
           {% for member in split_invite.members %}
-          <option value="{{ member.account_id }}">{{ member.account_name }} · {% if member.role == 'owner' %}拥有者{% elif member.role == 'member' %}成员{% else %}只读{% endif %}</option>
+          <option value="{{ member.account_id }}" {% if member.account_id == split_invite.receiver_account_id %}selected{% endif %}>{{ member.account_name }} · {% if member.role == 'owner' %}拥有者{% elif member.role == 'member' %}成员{% else %}只读{% endif %}</option>
           {% endfor %}
         </select>
       </div>
       <div class="product-field">
         <label for="split-invite-amount">分摊金额（{{ home_currency_symbol }}）</label>
-        <input id="split-invite-amount" type="number" name="amount_yuan" value="{{ split_invite.remaining_yuan }}" min="{{ currency_input.positive_amount_min }}" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="例如 {{ currency_input.amount_example }}" required>
+        <input id="split-invite-amount" type="number" name="amount_yuan" value="{{ split_invite.amount_yuan|default(split_invite.remaining_yuan) }}" min="{{ currency_input.positive_amount_min }}" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="例如 {{ currency_input.amount_example }}" required>
       </div>
+      {% if split_invite.requires_review %}
+      <a href="/web/expenses/{{ expense.id }}/edit?ledger_id={{ selected_ledger_id|urlencode }}" class="product-button product-button--primary">重新核对账单后发起</a>
+      {% else %}
       <button type="submit" class="product-button product-button--primary">发起拆账</button>
+      {% endif %}
     </div>
     <p class="meta">本张账单还可分摊 {{ home_currency_symbol }}{{ split_invite.remaining_yuan }}。</p>
   </form>

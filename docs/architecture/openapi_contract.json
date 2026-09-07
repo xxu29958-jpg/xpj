@@ -840,6 +840,11 @@
             "title": "Amount Cents",
             "type": "integer"
           },
+          "expected_row_version": {
+            "minimum": 1.0,
+            "title": "Expected Row Version",
+            "type": "integer"
+          },
           "receiver_account_id": {
             "title": "Receiver Account Id",
             "type": "integer"
@@ -847,7 +852,8 @@
         },
         "required": [
           "receiver_account_id",
-          "amount_cents"
+          "amount_cents",
+          "expected_row_version"
         ],
         "title": "BillSplitInviteRequest",
         "type": "object"
@@ -3960,6 +3966,16 @@
         "properties": {
           "amount_yuan": {
             "title": "Amount Yuan",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": 0,
+            "title": "Expected Row Version",
+            "type": "integer"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
             "type": "string"
           },
           "ledger_id": {
@@ -24361,6 +24377,34 @@
           },
           {
             "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "default": "",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
+            "in": "header",
             "name": "authorization",
             "required": false,
             "schema": {
@@ -24390,9 +24434,6 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
-          },
-          {
-            "$ref": "#/components/parameters/TicketboxApiVersion"
           },
           {
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"

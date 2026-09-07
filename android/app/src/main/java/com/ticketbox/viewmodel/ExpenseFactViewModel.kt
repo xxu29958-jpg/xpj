@@ -89,6 +89,8 @@ data class ExpenseFactUiState(
     /** A 409 raised this root's OCC gate; only an adopted authoritative bundle clears it. */
     val offsetCommandsBlockedUntilRefresh: Boolean = false,
     // 拆账邀请（bill-split 扩展拥有逻辑；字段名与旧编辑 VM 同构，便于组件复用）。
+    val billSplitSubmissions: List<com.ticketbox.data.repository.PendingBillSplitCreation> = emptyList(),
+    val billSplitRecoveryBusy: Boolean = false,
     val billSplitSent: List<com.ticketbox.domain.model.BillSplitSent> = emptyList(),
     val billSplitSentLoadState: BillSplitSentLoadState = BillSplitSentLoadState.Unknown,
     val billSplitLoading: Boolean = false,
@@ -178,6 +180,7 @@ class ExpenseFactViewModel(
     val uiState: StateFlow<ExpenseFactUiState> = _uiState.asStateFlow()
 
     init {
+        observeBillSplitSubmissions()
         var verifyInitialCache = preferLocalCache
         observeCorrectionSubmissions {
             if (verifyInitialCache) {

@@ -63,11 +63,11 @@ internal class ExpenseFactViewModelBillSplitTest : ExpenseFactViewModelTestBase(
     }
 
     @Test
-    fun `send uses member account id and refreshes the fact projection`() = edit { fake ->
+    fun `save keeps the chosen recipient without claiming server delivery`() = edit { fake ->
         fake.splitMembersResult = {
             Result.success(listOf(fake.member(memberId = 3L, accountId = 333L)))
         }
-        fake.createBillSplitResult = { _, _, _ -> Result.success(fake.sentInvite(publicId = "new")) }
+        fake.createBillSplitResult = { _, _, _ -> Result.success(11L) }
         val vm = viewModel(fake)
 
         vm.openBillSplitInviteSheet()
@@ -81,13 +81,13 @@ internal class ExpenseFactViewModelBillSplitTest : ExpenseFactViewModelTestBase(
         assertEquals(1, fake.createBillSplitCalls)
         assertEquals(Triple(7L, 333L, 400L), fake.lastCreateBillSplitArgs)
         assertFalse(vm.uiState.value.billSplitInviteSheetOpen)
-        assertEquals(UiText.res(R.string.expense_edit_bill_split_sent), vm.uiState.value.message)
-        assertEquals(MessageTone.Success, vm.uiState.value.messageTone)
-        assertEquals(fetchesBeforeSend + 1, fake.fetchBillSplitSentCalls)
+        assertEquals(UiText.res(R.string.bill_split_submission_saved), vm.uiState.value.message)
+        assertEquals(MessageTone.Neutral, vm.uiState.value.messageTone)
+        assertEquals(fetchesBeforeSend, fake.fetchBillSplitSentCalls)
     }
 
     @Test
-    fun `successful send stays visible when refresh fails`() = edit { fake ->
+    fun `durable delivery receipt stays visible when the sent list refresh fails`() = edit { fake ->
         var failNextLoad = false
         fake.billSplitSentResult = {
             if (failNextLoad) Result.failure(RuntimeException("refresh failed")) else Result.success(emptyList())
@@ -95,7 +95,7 @@ internal class ExpenseFactViewModelBillSplitTest : ExpenseFactViewModelTestBase(
         fake.splitMembersResult = {
             Result.success(listOf(fake.member(memberId = 3L, accountId = 333L)))
         }
-        fake.createBillSplitResult = { _, _, _ -> Result.success(fake.sentInvite(publicId = "new")) }
+        fake.createBillSplitResult = { _, _, _ -> Result.success(11L) }
         val vm = viewModel(fake)
 
         vm.openBillSplitInviteSheet()
@@ -104,6 +104,14 @@ internal class ExpenseFactViewModelBillSplitTest : ExpenseFactViewModelTestBase(
         vm.updateBillSplitInviteAmount("4.00")
         failNextLoad = true
         vm.sendBillSplitInvite()
+        advanceUntilIdle()
+
+        val binding = requireNotNull(vm.uiState.value.correctionAccess).binding
+        val row = com.ticketbox.data.repository.OutboxRow(11L, binding.serverUrl, binding.ledgerId, binding.ownerKey,
+            com.ticketbox.data.local.PendingMutationType.CreateBillSplitInvitation, "expense:7", "original-payload", 1L,
+            PendingMutationStatus.Done, 1, null, "2026-09-06T00:00:00Z", null, "2026-09-06T00:01:00Z", "original-key")
+        fake.billSplitSubmissions.value = listOf(com.ticketbox.data.repository.PendingBillSplitCreation(row, null,
+            fake.sentInvite(publicId = "new")))
         advanceUntilIdle()
 
         assertEquals(listOf("new"), vm.uiState.value.billSplitSent.map { it.publicId })
@@ -142,7 +150,7 @@ internal class ExpenseFactViewModelBillSplitTest : ExpenseFactViewModelTestBase(
         fake.splitMembersResult = {
             Result.success(listOf(fake.member(memberId = 3L, accountId = 333L)))
         }
-        fake.createBillSplitResult = { _, _, _ -> Result.success(fake.sentInvite(publicId = "server-checked")) }
+        fake.createBillSplitResult = { _, _, _ -> Result.success(11L) }
         val vm = viewModel(fake)
         assertEquals(BillSplitSentLoadState.Failed, vm.uiState.value.billSplitSentLoadState)
 
@@ -158,7 +166,7 @@ internal class ExpenseFactViewModelBillSplitTest : ExpenseFactViewModelTestBase(
     }
 
     @Test
-    fun `online send failure stays in the sheet`() = edit { fake ->
+    fun `local publication failure preserves the form`() = edit { fake ->
         fake.splitMembersResult = {
             Result.success(listOf(fake.member(memberId = 3L, accountId = 333L)))
         }
@@ -330,7 +338,7 @@ private fun prepareCorrectionInvitations(fake: FakeExpenseFactActions, cancelled
     var existing = fake.sentInvite(publicId = "existing", amountCents = 100L)
     fake.billSplitSentResult = { Result.success(listOf(existing)) }
     fake.splitMembersResult = { Result.success(listOf(fake.member(memberId = 3L, accountId = 333L))) }
-    fake.createBillSplitResult = { _, _, _ -> Result.success(fake.sentInvite(publicId = "new")) }
+    fake.createBillSplitResult = { _, _, _ -> Result.success(11L) }
     fake.cancelBillSplitResult = { publicId ->
         cancelled += publicId
         existing = existing.copy(status = BillSplitStatusValues.CANCELLED)

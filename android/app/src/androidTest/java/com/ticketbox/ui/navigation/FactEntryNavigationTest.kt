@@ -6,6 +6,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasClickAction
@@ -119,6 +120,30 @@ class FactEntryNavigationTest {
         compose.onNodeWithContentDescription(context.getString(R.string.components_async_image_content_description))
             .performScrollTo().assertIsDisplayed()
         assertEquals(listOf(42L), harness.fixture.network.imageReads)
+    }
+
+    @Test fun splitSaveShowsTheOriginalAtItsActionWithoutScrollingBackToThePageTop() {
+        harness.fixture.network.splitMembers = listOf(com.ticketbox.data.remote.dto.LedgerMemberDto(
+            memberId = 22, accountId = 22, accountPublicId = "split-peer", accountName = "接收家人",
+            role = "member", createdAt = null, disabledAt = null, isSelf = false))
+        installMainGraph()
+        openFact()
+        val start = context.getString(R.string.expense_edit_bill_split_start_button)
+        waitForText(start)
+        compose.onNodeWithText(start).performScrollTo().performClick()
+        waitForText("接收家人")
+        compose.onNodeWithText("接收家人").performClick()
+        compose.onNode(hasSetTextAction()).performTextReplacement("4")
+        compose.onNodeWithText(context.getString(R.string.expense_edit_bill_split_sheet_send_button))
+            .performScrollTo().performClick()
+        val waiting = context.getString(R.string.bill_split_submission_waiting)
+        waitForText(waiting)
+        compose.waitForIdle()
+        // The user remains where they submitted; no scroll is used to find the receipt.
+        compose.onNodeWithText(waiting).assertIsDisplayed()
+        compose.onNodeWithText(start).assertIsNotEnabled()
+        assertEquals("create_bill_split_invitation", harness.fixture.stored().single()["type"])
+        assertEquals("pending", harness.fixture.stored().single()["status"])
     }
 
     @Test fun confirmedReceiptDoesNotReturnToPendingWhenTheRefreshFails() {
