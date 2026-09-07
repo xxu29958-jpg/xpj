@@ -39,7 +39,7 @@ private data class FactBillSplitInviteRequest(
     val binding: LogicalSessionBinding,
 )
 
-/** 拉取本票已发出的拆账邀请（账号维度返回后按 senderExpenseId 客户端过滤）。 */
+/** 拉取本票已发出的拆账邀请（当前账本返回后按 senderExpenseId 过滤）。 */
 fun ExpenseFactViewModel.loadBillSplitSent(onlyIfUnknown: Boolean = false) {
     val expense = _uiState.value.expense ?: return
     val binding = _uiState.value.correctionAccess?.binding ?: return
@@ -55,7 +55,7 @@ fun ExpenseFactViewModel.loadBillSplitSent(onlyIfUnknown: Boolean = false) {
     }
     viewModelScope.launch {
         if (binding != _uiState.value.correctionAccess?.binding) return@launch
-        val result = repository.fetchBillSplitSent()
+        val result = repository.fetchBillSplitSent(binding)
         if (binding != _uiState.value.correctionAccess?.binding) return@launch
         result
             .onSuccess { sent ->
@@ -252,8 +252,9 @@ private fun ExpenseFactViewModel.currentBillSplitInviteRequest(): FactBillSplitI
 }
 
 /** 撤回一条 invited 状态的拆账邀请。成功后刷新本票已发列表。 */
-fun ExpenseFactViewModel.cancelBillSplitInvitation(publicId: String) {
+fun ExpenseFactViewModel.cancelBillSplitInvitation(expectedBinding: LogicalSessionBinding, publicId: String) {
     val binding = _uiState.value.correctionAccess?.binding ?: return
+    if (binding != expectedBinding) return
     viewModelScope.launch {
         if (binding != _uiState.value.correctionAccess?.binding) return@launch
         _uiState.update {
@@ -263,7 +264,7 @@ fun ExpenseFactViewModel.cancelBillSplitInvitation(publicId: String) {
                 billSplitMessageTone = MessageTone.Neutral,
             )
         }
-        repository.cancelBillSplitInvitation(publicId)
+        repository.cancelBillSplitInvitation(binding, publicId)
             .onSuccess { cancelled ->
                 if (binding != _uiState.value.correctionAccess?.binding) return@onSuccess
                 _uiState.update { state ->

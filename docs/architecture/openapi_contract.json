@@ -796,6 +796,16 @@
             "title": "Public Id",
             "type": "string"
           },
+          "received_bill": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BillSplitReceivedBillResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "rejected_at": {
             "anyOf": [
               {
@@ -868,6 +878,29 @@
           "expected_row_version"
         ],
         "title": "BillSplitInviteRequest",
+        "type": "object"
+      },
+      "BillSplitReceivedBillResponse": {
+        "properties": {
+          "expense_id": {
+            "title": "Expense Id",
+            "type": "integer"
+          },
+          "ledger_id": {
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "ledger_name": {
+            "title": "Ledger Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expense_id",
+          "ledger_id",
+          "ledger_name"
+        ],
+        "title": "BillSplitReceivedBillResponse",
         "type": "object"
       },
       "BillSplitSentListResponse": {

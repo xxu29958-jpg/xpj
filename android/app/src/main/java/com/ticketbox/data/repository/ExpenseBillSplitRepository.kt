@@ -78,21 +78,22 @@ internal class ExpenseBillSplitRepository(
         }
     }
 
-    suspend fun fetchBillSplitInbox(): Result<List<BillSplitInbox>> = core.errorHandler.safeCall {
-        val bound = core.ledgerRequestGuard.bind()
+    suspend fun fetchBillSplitInbox(binding: LogicalSessionBinding): Result<List<BillSplitInbox>> = core.errorHandler.safeCall {
+        val bound = core.ledgerRequestGuard.bindExact(binding)
         bound.call { it.listBillSplitInbox() }.items.map { it.toDomain() }
     }
 
-    suspend fun fetchBillSplitSent(): Result<List<BillSplitSent>> = core.errorHandler.safeCall {
-        val bound = core.ledgerRequestGuard.bind()
+    suspend fun fetchBillSplitSent(binding: LogicalSessionBinding): Result<List<BillSplitSent>> = core.errorHandler.safeCall {
+        val bound = core.ledgerRequestGuard.bindExact(binding)
         bound.call { it.listBillSplitSent() }.items.map { it.toDomain() }
     }
 
     suspend fun acceptBillSplitInvitation(
+        binding: LogicalSessionBinding,
         publicId: String,
         targetLedgerId: String,
     ): Result<BillSplitInbox> = core.errorHandler.safeCall {
-        val bound = core.ledgerRequestGuard.bind()
+        val bound = core.ledgerRequestGuard.bindExact(binding)
         bound.call {
             it.acceptBillSplitInvitation(
                 publicId,
@@ -101,16 +102,16 @@ internal class ExpenseBillSplitRepository(
         }.toDomain()
     }
 
-    suspend fun rejectBillSplitInvitation(publicId: String): Result<BillSplitInbox> = core.errorHandler.safeCall {
-        val bound = core.ledgerRequestGuard.bind()
+    suspend fun rejectBillSplitInvitation(binding: LogicalSessionBinding, publicId: String): Result<BillSplitInbox> = core.errorHandler.safeCall {
+        val bound = core.ledgerRequestGuard.bindExact(binding)
         bound.call { it.rejectBillSplitInvitation(publicId) }.toDomain()
     }
 
-    suspend fun cancelBillSplitInvitation(publicId: String): Result<BillSplitSent> = core.errorHandler.safeCall {
+    suspend fun cancelBillSplitInvitation(binding: LogicalSessionBinding, publicId: String): Result<BillSplitSent> = core.errorHandler.safeCall {
         if (!core.canModifyLedger()) {
             throw RepositoryException("当前角色为只读，无法修改账本。")
         }
-        val bound = core.ledgerRequestGuard.bind()
+        val bound = core.ledgerRequestGuard.bindExact(binding)
         bound.call { it.cancelBillSplitInvitation(publicId) }.toDomain()
     }
 }

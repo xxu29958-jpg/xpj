@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime
 from decimal import Decimal
 from typing import TypedDict
@@ -55,6 +56,35 @@ class BillSplitSentPayload(_BillSplitCommonPayload):
 class BillSplitInboxPayload(_BillSplitCommonPayload):
     sender_account_id: int
     sender_display_name: str
+    received_bill: BillSplitReceivedBillPayload | None
+
+
+class BillSplitReceivedBillPayload(TypedDict):
+    expense_id: int
+    ledger_id: str
+    ledger_name: str
+
+
+def to_received_bill_reference(
+    inv: BillSplitInvitation,
+    *,
+    receiver_account_id: int,
+    visible_ledger_names: Mapping[str, str],
+) -> BillSplitReceivedBillPayload | None:
+    """Project the receiver's canonical result through current membership visibility."""
+    if (
+        inv.receiver_account_id != receiver_account_id
+        or inv.status != "accepted"
+        or inv.received_expense_id is None
+        or inv.receiver_ledger_id is None
+        or inv.receiver_ledger_id not in visible_ledger_names
+    ):
+        return None
+    return {
+        "expense_id": inv.received_expense_id,
+        "ledger_id": inv.receiver_ledger_id,
+        "ledger_name": visible_ledger_names[inv.receiver_ledger_id],
+    }
 
 
 def to_sent_response_dict(
@@ -90,10 +120,12 @@ def to_sent_response_dict(
     }
 
 
-def to_inbox_response_dict(inv: BillSplitInvitation) -> BillSplitInboxPayload:
-    """Receiver view dict. Deliberately omits sender's expense_id /
-    ledger_id / member_id and receiver's own ledger_id (which is also
-    private — receiver may have multiple ledgers)."""
+def to_inbox_response_dict(
+    inv: BillSplitInvitation,
+    *,
+    received_bill: BillSplitReceivedBillPayload | None,
+) -> BillSplitInboxPayload:
+    """Keep sender internals private; include only the authorized receiver result."""
     return {
         "public_id": inv.public_id,
         "status": inv.status,
@@ -116,4 +148,5 @@ def to_inbox_response_dict(inv: BillSplitInvitation) -> BillSplitInboxPayload:
         "expired_at": inv.expired_at,
         "sender_account_id": inv.sender_account_id,
         "sender_display_name": receiver_sender_presentation(inv.sender_display_name)[0],
+        "received_bill": received_bill,
     }

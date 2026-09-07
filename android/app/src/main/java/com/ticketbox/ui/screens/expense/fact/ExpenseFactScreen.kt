@@ -153,7 +153,7 @@ private fun FactContentSections(
                         ),
                         actions = ExpenseBillSplitInvitePanelActions(
                             onStartInvite = viewModel::openBillSplitInviteSheet,
-                            onCancelInvite = viewModel::cancelBillSplitInvitation,
+                            onCancelInvite = { id -> state.correctionAccess?.binding?.let { viewModel.cancelBillSplitInvitation(it, id) } },
                         ),
                     )
                 }

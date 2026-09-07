@@ -232,6 +232,7 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
         publicId = publicId,
         status = status,
         amountCents = amountCents,
+        homeCurrencyCode = "CNY",
         merchantSnapshot = null,
         categorySuggestion = null,
         expenseTimeSnapshot = null,
@@ -366,12 +367,12 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
         return createBillSplitResult(expense.id, receiverAccountId, amountCents)
     }
 
-    override suspend fun fetchBillSplitSent(): Result<List<BillSplitSent>> {
+    override suspend fun fetchBillSplitSent(binding: LogicalSessionBinding): Result<List<BillSplitSent>> {
         fetchBillSplitSentCalls++
         return billSplitSentResult()
     }
 
-    override suspend fun cancelBillSplitInvitation(publicId: String): Result<BillSplitSent> =
+    override suspend fun cancelBillSplitInvitation(binding: LogicalSessionBinding, publicId: String): Result<BillSplitSent> =
         cancelBillSplitResult(publicId)
 
     override suspend fun fetchExpenseFactBundle(id: Long): Result<ExpenseFactBundle> {

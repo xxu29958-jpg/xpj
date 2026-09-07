@@ -275,6 +275,23 @@ class LedgerRepositoryMutationTest {
         assertEquals("新账号", repo.currentAccountName())
     }
 
+    @Test
+    fun referencedFactCannotSwitchFromAnOutdatedBinding() = runTest {
+        val api = StubApi(LedgerStubApiState())
+        val tokens = LedgerFakeTokenStore().apply { saveToken("original-token") }
+        val original = requireNotNull(tokens.sessionStore.currentSession())
+        val binding = requireNotNull(original.toBoundSessionSnapshotOrNull()).logicalBinding
+        val repo = testLedgerRepository(apiClient = LedgerStubApiFactory(api),
+            settingsStore = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.example.com") },
+            tokenStore = tokens, expenseDao = LedgerFakeDao())
+
+        val result = repo.switchLedger("L_house", expectedBinding = binding.copy(sessionGeneration = "old-session"))
+
+        assertTrue(result.isFailure)
+        assertTrue(api.switchRequests.isEmpty())
+        assertEquals(original, tokens.sessionStore.currentSession())
+    }
+
     private fun makeRepo(): LedgerRepository {
         val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.example.com") }
         val tokenStore = LedgerFakeTokenStore().apply { saveToken("t") }

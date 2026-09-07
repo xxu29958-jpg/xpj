@@ -390,6 +390,7 @@ internal class FakeApiService(
             publicId = "test-public",
             status = "invited",
             amountCents = 2500,
+            homeCurrencyCode = "CNY",
             merchantSnapshot = null,
             categorySuggestion = null,
             expenseTimeSnapshot = null,

@@ -133,6 +133,12 @@ class BillSplitSentResponse(_BillSplitCommon):
     source_impact_pending: bool = False
 
 
+class BillSplitReceivedBillResponse(BaseModel):
+    expense_id: int
+    ledger_id: str
+    ledger_name: str
+
+
 class BillSplitInboxResponse(_BillSplitCommon):
     """Receiver's view of an invitation addressed to them.
 
@@ -143,6 +149,7 @@ class BillSplitInboxResponse(_BillSplitCommon):
 
     sender_account_id: int
     sender_display_name: str
+    received_bill: BillSplitReceivedBillResponse | None = None
 
 
 class BillSplitSentListResponse(BaseModel):

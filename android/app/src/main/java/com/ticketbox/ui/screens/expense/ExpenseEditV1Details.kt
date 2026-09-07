@@ -355,7 +355,6 @@ internal fun ExpenseBillSplitInvitePanel(
     state: ExpenseBillSplitInvitePanelState,
     actions: ExpenseBillSplitInvitePanelActions,
 ) {
-    val currencyDisplay = LocalCurrencyDisplay.current
     val hasSentDataOrPendingTruth = state.sent.isNotEmpty() || state.hasPendingSubmission ||
         state.loadState != BillSplitSentLoadState.Loaded
     Column(
@@ -387,7 +386,6 @@ internal fun ExpenseBillSplitInvitePanel(
         if (state.sent.isNotEmpty()) {
             BillSplitSentList(
                 sent = state.sent,
-                currencyDisplay = currencyDisplay,
                 actionsEnabled = !state.loading,
                 onCancelInvite = actions.onCancelInvite,
             )
@@ -405,7 +403,6 @@ internal fun ExpenseBillSplitInvitePanel(
 @Composable
 private fun BillSplitSentList(
     sent: List<BillSplitSent>,
-    currencyDisplay: CurrencyDisplay,
     actionsEnabled: Boolean,
     onCancelInvite: (publicId: String) -> Unit,
 ) {
@@ -413,7 +410,6 @@ private fun BillSplitSentList(
         sent.forEach { row ->
             BillSplitSentRow(
                 row = row,
-                currencyDisplay = currencyDisplay,
                 actionsEnabled = actionsEnabled,
                 onCancel = { onCancelInvite(row.publicId) },
             )
@@ -424,7 +420,6 @@ private fun BillSplitSentList(
 @Composable
 private fun BillSplitSentRow(
     row: BillSplitSent,
-    currencyDisplay: CurrencyDisplay,
     actionsEnabled: Boolean,
     onCancel: () -> Unit,
 ) {
@@ -435,7 +430,7 @@ private fun BillSplitSentRow(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
         AppAdaptiveEditAmountRow(
-            amount = formatDisplayAmount(row.amountCents, currencyDisplay),
+            amount = formatDisplayAmount(row.amountCents, CurrencyDisplay.forRecord(row.homeCurrencyCode)),
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
                 val receiverName = row.receiverDisplayNameSnapshot?.takeIf { it.isNotBlank() }

@@ -75,15 +75,19 @@ internal class ExpenseCorrectionConnectedFixture(private val context: Context) {
     var adviceCallbacks = 0
     var schedules = 0
     private var lastSyncAt: String? = null
+    private var availableLedgers: String? = null
     val settingsStore = object : TicketboxSettingsStore by correctionProxy<TicketboxSettingsStore>({ method ->
         when (method) {
             "getBackgroundSettingsFlow" -> flowOf(BackgroundSettings())
             "notificationPreferences" -> NotificationPreferences()
             "lastConfirmedSyncAt", "lastConfirmedSyncAtForLedger" -> lastSyncAt
-            "monthlyBudgetCents", "lastUploadAt", "lastUploadAtForLedger", "availableLedgersJson" -> null
+            "monthlyBudgetCents", "lastUploadAt", "lastUploadAtForLedger" -> null
+            "availableLedgersJson" -> availableLedgers
             else -> error("Unexpected settings: $method")
         }
     }) {
+        override fun saveAvailableLedgersJson(json: String?) { availableLedgers = json }
+        override fun clearLastConfirmedSyncAtForLedger(ledgerId: String) { lastSyncAt = null }
         override fun saveLastConfirmedSyncAtForLedger(ledgerId: String, value: String) {
             check(ledgerId == session.value.identity.ledgerId)
             lastSyncAt = value
@@ -156,6 +160,11 @@ internal class CorrectionConnectedNetwork {
     var diagnosticApiVersion = com.ticketbox.data.remote.CURRENT_TICKETBOX_API_VERSION
     val diagnosticReads = CopyOnWriteArrayList<String>()
     var backgroundTasks = com.ticketbox.data.remote.dto.BackgroundTaskListResponseDto()
+    var splitInbox = com.ticketbox.data.remote.dto.BillSplitInboxListResponseDto(emptyList())
+    var splitSent = BillSplitSentListResponseDto(emptyList())
+    var splitLedgers: com.ticketbox.data.remote.dto.LedgerListResponseDto? = null
+    val splitAcceptCalls = CopyOnWriteArrayList<Pair<String, String>>()
+    val ledgerSwitchRequests = CopyOnWriteArrayList<String>()
     var splitMembers = emptyList<com.ticketbox.data.remote.dto.LedgerMemberDto>()
     var confirmedStreamItems: ((ExpenseDto) -> List<ConfirmedExpenseStreamItemDto>)? = null
     var beforeStreamResponse: (suspend () -> Unit)? = null
@@ -258,7 +267,27 @@ internal class CorrectionConnectedNetwork {
         }
         override suspend fun categories() = CategoriesDto(listOf("餐饮", "购物"))
         override suspend fun ledgerMembers(ledgerId: String) = LedgerMemberListResponseDto(splitMembers)
-        override suspend fun listBillSplitSent() = BillSplitSentListResponseDto(emptyList())
+        override suspend fun listBillSplitSent() = splitSent
+        override suspend fun listBillSplitInbox(status: String?) = splitInbox
+        override suspend fun listLedgers() = requireNotNull(splitLedgers)
+        override suspend fun switchLedger(ledgerId: String): com.ticketbox.data.remote.dto.LedgerSwitchResponseDto {
+            ledgerSwitchRequests += ledgerId
+            val session = correctionSession()
+            return com.ticketbox.data.remote.dto.LedgerSwitchResponseDto(
+                sessionToken = session.credential.token, serverId = session.serverId, dataGeneration = session.dataGeneration,
+                accountPublicId = session.identity.accountPublicId, devicePublicId = session.identity.devicePublicId,
+                ledger = requireNotNull(splitLedgers).ledgers.single { it.ledgerId == ledgerId },
+                accountName = session.identity.accountName, deviceName = session.identity.deviceName)
+        }
+        override suspend fun acceptBillSplitInvitation(publicId: String, request: com.ticketbox.data.remote.dto.BillSplitAcceptRequestDto): com.ticketbox.data.remote.dto.BillSplitInboxDto {
+            splitAcceptCalls += publicId to request.targetLedgerId
+            val target = requireNotNull(splitLedgers).ledgers.single { it.ledgerId == request.targetLedgerId }
+            current = current.copy(id = 84L, merchant = "已接受的分摊")
+            val accepted = splitInbox.items.single { it.publicId == publicId }.copy(status = "accepted",
+                receivedBill = com.ticketbox.data.remote.dto.BillSplitReceivedBillDto(current.id, target.ledgerId, target.name))
+            splitInbox = com.ticketbox.data.remote.dto.BillSplitInboxListResponseDto(listOf(accepted))
+            return accepted
+        }
         override suspend fun expenseItems(id: Long): ExpenseItemsResponseDto {
             readable()
             return ExpenseItemsResponseDto(id, current.rowVersion, current.amountCents, null, null, items = emptyList())

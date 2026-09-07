@@ -157,7 +157,7 @@ def test_inbox_response_omits_sender_internal_ids(client: TestClient, *, identit
     with SessionLocal() as db:
         rows = bsplit.list_inbox(db, receiver_account_id=receiver_account_id)
         assert len(rows) == 1
-        inbox_dict = bsplit.to_inbox_response_dict(rows[0])
+        inbox_dict = bsplit.to_inbox_response_dict(rows[0], received_bill=None)
 
     assert "sender_expense_id" not in inbox_dict
     assert "sender_ledger_id" not in inbox_dict
