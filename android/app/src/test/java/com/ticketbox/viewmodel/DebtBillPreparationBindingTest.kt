@@ -1,12 +1,16 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.upload.PreparedUploadImage
+
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.repository.DebtCreationQueueSnapshot
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlin.test.AfterTest
@@ -40,7 +44,7 @@ class DebtBillPreparationBindingTest {
         repo.listCapability = "CNY"
         viewModel = DebtListViewModel(repo, repo.creation, repo.adjustments)
         advanceUntilIdle()
-        assertTrue(viewModel.markBillParsePreparing())
+        val attempt = requireNotNull(viewModel.markBillParsePreparing())
 
         // Real UI preparation is still in IO while the live session changes.
         val original = requireNotNull(repo.creation.currentAccess())
@@ -53,11 +57,54 @@ class DebtBillPreparationBindingTest {
         viewModel.updateDraftAmount("88.00")
 
         // The original launcher's suspended preparation now returns the original bytes.
-        viewModel.parseDebtBillImage("original.jpg", "image/jpeg", byteArrayOf(1, 2, 3))
+        viewModel.parseDebtBillImage(attempt, PreparedUploadImage("original.jpg", "image/jpeg", byteArrayOf(1, 2, 3), 3L))
         advanceUntilIdle()
 
         assertTrue(repo.parseBillCalls.isEmpty(), "Original bytes must not reach a request bound to the new household")
         assertEquals("New household draft", viewModel.state.value.addDraft.counterpartyLabel)
+        assertEquals("88.00", viewModel.state.value.addDraft.amountYuanInput)
+        assertFalse(viewModel.state.value.pendingBillParsePrefill)
+        assertFalse(viewModel.state.value.isParsingBill)
+        assertTrue(repo.creation.createDrafts.isEmpty())
+    }
+
+    @Test
+    fun oldPreparationFailureCannotClearTheNextAttempt() = runTest(dispatcher) {
+        val repo = FakeDebtActions().apply { listCapability = "CNY" }
+        viewModel = DebtListViewModel(repo, repo.creation, repo.adjustments)
+        advanceUntilIdle()
+        val old = requireNotNull(viewModel.markBillParsePreparing())
+        viewModel.reload()
+        advanceUntilIdle()
+        val next = requireNotNull(viewModel.markBillParsePreparing())
+
+        viewModel.parseDebtBillImage(old, null)
+        assertTrue(viewModel.state.value.isParsingBill)
+        assertEquals(null, viewModel.state.value.error)
+        viewModel.parseDebtBillImage(next, null)
+        assertFalse(viewModel.state.value.isParsingBill)
+        assertTrue(viewModel.state.value.error != null)
+        assertTrue(repo.parseBillCalls.isEmpty())
+    }
+
+    @Test
+    fun earlierResponseCannotReplaceTheNewDraftAfterReentry() = runTest(dispatcher) {
+        val repo = FakeDebtActions(parseBillResult = Result.success(blankBillSuggestion().copy(merchant = "Old bill")))
+            .apply { listCapability = "CNY"; parseBillGate = CompletableDeferred() }
+        viewModel = DebtListViewModel(repo, repo.creation, repo.adjustments)
+        advanceUntilIdle()
+        val attempt = requireNotNull(viewModel.markBillParsePreparing())
+        viewModel.parseDebtBillImage(attempt, PreparedUploadImage("old.jpg", "image/jpeg", byteArrayOf(1), 1L))
+        runCurrent()
+        assertEquals(listOf("old.jpg"), repo.parseBillCalls)
+        viewModel.reload()
+        advanceUntilIdle()
+        viewModel.updateDraftCounterparty("New draft")
+        viewModel.updateDraftAmount("88.00")
+
+        requireNotNull(repo.parseBillGate).complete(Unit)
+        advanceUntilIdle()
+        assertEquals("New draft", viewModel.state.value.addDraft.counterpartyLabel)
         assertEquals("88.00", viewModel.state.value.addDraft.amountYuanInput)
         assertFalse(viewModel.state.value.pendingBillParsePrefill)
         assertFalse(viewModel.state.value.isParsingBill)

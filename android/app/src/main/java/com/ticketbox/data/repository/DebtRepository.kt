@@ -27,7 +27,8 @@ interface DebtActions {
     fun canModifyLedger(): Boolean
     suspend fun listDebts(lens: DebtListLens = DebtListLens.Ledger): Result<DebtListPage>
     suspend fun getDebt(publicId: String): Result<Debt>
-    suspend fun parseDebtBillImage(fileName: String, contentType: String?, bytes: ByteArray): Result<DebtBillSuggestion>
+    suspend fun parseDebtBillImage(expectedBinding: LogicalSessionBinding, fileName: String,
+        contentType: String?, bytes: ByteArray): Result<DebtBillSuggestion>
     // ADR-0049 §3 (slice 8c) direct fact writes on an external/manual Debt. [expectedRowVersion]
     // is the §2.1 OCC carrier (the local Debt's row_version); the response is the fold-after Debt
     // (status / remaining / paid / a fresh row_version) the detail screen swaps in.
@@ -184,6 +185,7 @@ class DebtRepository(
         }
 
     override suspend fun parseDebtBillImage(
+        expectedBinding: LogicalSessionBinding,
         fileName: String,
         contentType: String?,
         bytes: ByteArray,
@@ -198,7 +200,7 @@ class DebtRepository(
             val mediaType = (contentType?.takeIf { it.isNotBlank() } ?: "image/jpeg").toMediaTypeOrNull()
             val body = bytes.toRequestBody(mediaType)
             val filePart = MultipartBody.Part.createFormData("file", cleanName, body)
-            ledgerRequestGuard.guardedCall { api ->
+            ledgerRequestGuard.bindExact(expectedBinding).call { api ->
                 api.parseDebtBill(filePart).toDomain()
             }
         }

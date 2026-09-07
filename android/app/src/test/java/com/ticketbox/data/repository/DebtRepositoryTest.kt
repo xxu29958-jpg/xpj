@@ -97,7 +97,12 @@ class DebtRepositoryTest {
             )
         }
 
-        val suggestion = repository(handler).parseDebtBillImage(
+        val sessionFixture = TestSessionFixture().apply { saveToken("session-token") }
+        val originalSession = requireNotNull(sessionFixture.sessionStore.currentSession())
+        val binding = requireNotNull(originalSession.toBoundSessionSnapshotOrNull()).logicalBinding
+        val repository = repository(handler, sessionFixture = sessionFixture)
+        val suggestion = repository.parseDebtBillImage(
+            expectedBinding = binding,
             fileName = """bad:name?.png""",
             contentType = "image/png",
             bytes = byteArrayOf(1, 2, 3),
@@ -107,14 +112,24 @@ class DebtRepositoryTest {
         assertEquals("花呗", suggestion.merchant)
         assertEquals(120_000L, suggestion.principalAmountCents)
         assertEquals(12L, suggestion.installmentCount)
+
+        sessionFixture.sessionStore.replaceForFixture(originalSession.copy(bindingRevision = "next-binding",
+            identity = originalSession.identity.copy(ledgerId = "next-ledger")))
+        val stale = repository.parseDebtBillImage(binding, "original.png", "image/png", byteArrayOf(1, 2, 3))
+        assertTrue(stale.isFailure)
+        assertEquals(1, handler.parseBillCalls.size)
     }
 
     @Test
     fun parseDebtBillViewerShortCircuitsWithoutApiCall() = runTest {
         val handler = DebtApiHandler()
 
-        val result = repository(handler, role = "viewer")
-            .parseDebtBillImage("bill.jpg", "image/jpeg", byteArrayOf(1))
+        val sessionFixture = TestSessionFixture().apply { saveToken("session-token") }
+        val current = requireNotNull(sessionFixture.sessionStore.currentSession())
+        sessionFixture.sessionStore.replaceForFixture(current.copy(identity = current.identity.copy(role = "viewer")))
+        val binding = requireNotNull(current.toBoundSessionSnapshotOrNull()).logicalBinding
+        val result = repository(handler, sessionFixture = sessionFixture)
+            .parseDebtBillImage(binding, "bill.jpg", "image/jpeg", byteArrayOf(1))
 
         assertTrue(result.isFailure)
         assertEquals("当前角色为只读，无法修改账本。", result.exceptionOrNull()?.message)
@@ -564,8 +579,9 @@ class DebtRepositoryTest {
     private fun repository(
         handler: DebtApiHandler,
         role: String = "owner",
+        sessionFixture: TestSessionFixture? = null,
     ): DebtRepository {
-        val tokenStore = TestSessionFixture(
+        val tokenStore = sessionFixture ?: TestSessionFixture(
             identity = LocalSessionIdentity(
                 accountName = "我",
                 ledgerId = "owner",
