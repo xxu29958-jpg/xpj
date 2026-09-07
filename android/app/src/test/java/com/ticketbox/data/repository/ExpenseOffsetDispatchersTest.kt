@@ -77,7 +77,7 @@ class ExpenseOffsetDispatchersTest {
         assertEquals(false, outbox.resolveFailed(id, FailedResolution.Retry(freshToken = 8)))
         assertEquals(original, dao.rows.getValue(id))
         assertEquals(true, outbox.resolveFailed(id, FailedResolution.Retry()))
-        assertEquals(original.copy(status = "pending", retryCount = 0, lastError = null), dao.rows.getValue(id))
+        assertEquals(original.copy(status = "pending", retryCount = 0, lastError = "manual_retry"), dao.rows.getValue(id))
         outbox.markFailed(id, "network unavailable")
         assertEquals(true, outbox.resolveFailed(id, FailedResolution.Drop))
         assertEquals(null, dao.rows[id])

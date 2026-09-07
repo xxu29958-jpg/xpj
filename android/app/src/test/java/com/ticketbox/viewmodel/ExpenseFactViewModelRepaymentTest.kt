@@ -81,8 +81,10 @@ internal class ExpenseFactViewModelRepaymentTest : ExpenseFactViewModelTestBase(
 
     private suspend fun assertCaptureWaitsForAuthoritativeRefresh(scope: TestScope, fake: FakeExpenseFactActions) {
         val refresh = CompletableDeferred<Result<Expense>>()
+        val cachedBeforeCorrection = fake.baseExpense
         var holdRefresh = false
         val repository = object : ExpenseFactActions by fake {
+            override suspend fun fetchExpenseFromLocalCache(id: Long): Result<Expense> = Result.success(cachedBeforeCorrection)
             override suspend fun fetchExpense(id: Long): Result<Expense> =
                 if (holdRefresh) refresh.await() else fake.fetchExpense(id)
         }

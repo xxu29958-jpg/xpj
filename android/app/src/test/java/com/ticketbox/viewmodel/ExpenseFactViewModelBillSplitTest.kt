@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.ExpenseFactActions
+import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.BillSplitStatusValues
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.MessageTone
@@ -258,6 +259,7 @@ private suspend fun assertInvitationActionsRespectCorrection(scope: TestScope, f
     val refresh = CompletableDeferred<Result<Expense>>()
     var holdRefresh = false
     val repository = object : ExpenseFactActions by fake {
+        override suspend fun fetchExpenseFromLocalCache(id: Long): Result<Expense> = Result.failure(RepositoryException("Cache unavailable"))
         override suspend fun fetchExpense(id: Long): Result<Expense> =
             if (holdRefresh) refresh.await() else fake.fetchExpense(id)
     }
