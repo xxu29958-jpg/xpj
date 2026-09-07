@@ -74,7 +74,7 @@ Contract：Account/Device/app session/Web session/UploadLink/admin/bootstrap/rec
 不能替代 ledger authorization。独立 recovery principal 不随数据库 generation 回滚，只能经受审计 ceremony 为 canonical owner
 签发一次短期 re-enrollment，不能变成长期 admin 或账本写入口。Related：[[0028]], [[0059]], [[0063]], [[0068]]。
 
-Current：**nonconformant**。日常 app/upload scope 大体分离；public-admin escape hatch、Owner Console 隐式 owner、restore sanitation未闭环。
+Current：**nonconformant**。日常 app/upload scope 大体分离；Owner Console 隐式 owner、restore sanitation未闭环。
 
 ### INV-ID-002 撤销、过期、transfer 和 restore 不得复活旧能力
 

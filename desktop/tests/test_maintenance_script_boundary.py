@@ -17,6 +17,11 @@ _ALLOWED = (
     "http://[::1]:8765",
 )
 _REJECTED = (
+    "http://127.0.0.2:8000",
+    "http://127.255.255.254:8765",
+    "http://127.1:8765",
+    "http://[0:0:0:0:0:0:0:1]:8765",
+    "http://[::ffff:127.0.0.1]:8765",
     "https://maintenance.invalid",
     "http://192.0.2.1:8000",
     "http://localhost.maintenance.invalid",
