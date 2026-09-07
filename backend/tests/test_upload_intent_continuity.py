@@ -272,6 +272,65 @@ def test_android_upload_lost_commit_ack_recovers_its_original_task_and_receipt(
 
 
 @pytest.mark.real_db
+@pytest.mark.parametrize("blocker", ["capacity", "cancellation", "handler_failure", "completed"])
+def test_restart_replay_respects_capacity_cancellation_and_terminal_outcomes(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, *, identity, blocker: str,
+) -> None:
+    from app.config import reset_settings_cache
+    from app.services.time_service import now_utc
+
+    monkeypatch.setattr("app.services.background_task_service._submit_task", lambda *_args, **_kwargs: None)
+    headers = {**identity.app_headers, "Idempotency-Key": "70000000-0000-4000-8000-000000000025",
+        "Content-Type": "image/png"}
+    first = client.post("/api/app/upload-screenshot", headers=headers, content=PNG_BYTES)
+    assert first.status_code == 200
+    receipt = first.json()
+    with SessionLocal() as db:
+        task = db.scalar(select(BackgroundTask).where(BackgroundTask.public_id == receipt["enrichment_task_public_id"]))
+        task.status, task.error_code, task.completed_at = "failed", "orphaned_after_restart", now_utc()
+        task_id, original_input = task.id, task.input_payload_json
+        if blocker == "capacity":
+            other = BackgroundTask(task_type="expense_enrichment", tenant_id="owner", status="queued")
+            db.add(other)
+            db.flush()
+            other_id = other.id
+        elif blocker == "cancellation":
+            task.cancellation_requested_at = now_utc()
+        elif blocker == "handler_failure":
+            task.error_code = "PendingEnrichmentTaskError"
+        else:
+            task.status = "completed"
+        db.commit()
+    executions = _capture_enrichment_execution(monkeypatch)
+    rows, files = _ledger_upload_row_counts("owner"), _stored_upload_files()
+    monkeypatch.setenv("BACKGROUND_TASK_MAX_ACTIVE", "1")
+    reset_settings_cache()
+    try:
+        replay = client.post("/api/app/upload-screenshot", headers=headers, content=PNG_BYTES)
+        assert replay.status_code == (503 if blocker == "capacity" else 200)
+        assert executions == []
+        if blocker == "capacity":
+            assert replay.json()["error"] == "enrichment_capacity_full"
+            with SessionLocal() as db:
+                task = db.get(BackgroundTask, task_id)
+                assert (task.status, task.error_code) == ("failed", "orphaned_after_restart")
+                db.get(BackgroundTask, other_id).status = "cancelled"
+                db.commit()
+            for _ in range(2):
+                replay = client.post("/api/app/upload-screenshot", headers=headers, content=PNG_BYTES)
+                assert replay.status_code == 200
+                assert replay.json() == receipt
+            assert executions == [(task_id, json.loads(original_input))]
+        else:
+            assert replay.json() == receipt
+        assert _ledger_upload_row_counts("owner") == rows
+        assert _stored_upload_files() == files
+    finally:
+        monkeypatch.delenv("BACKGROUND_TASK_MAX_ACTIVE")
+        reset_settings_cache()
+
+
+@pytest.mark.real_db
 @pytest.mark.parametrize("task_status,invalid_input", [
     ("running", None), ("completed", None), ("failed", None), ("cancelled", None),
     ("queued", None), ("queued", "invalid-json"), ("queued", "wrong-expense"),
