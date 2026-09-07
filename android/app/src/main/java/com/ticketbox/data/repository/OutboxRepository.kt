@@ -565,7 +565,12 @@ class OutboxRepository private constructor(
     internal suspend fun acknowledgeCorrectionRefresh(boundRequest: BoundLedgerRequest, versions: Map<Long, Long>) =
         bindingTransitionLease.withLock {
             val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
-            boundRequest.requireStillActiveFor(binding)
+            try {
+                boundRequest.requireStillActiveFor(binding)
+            } catch (_: RepositoryException) {
+                // Adoption already completed. A later transition leaves its marker for the next bound read.
+                return@withLock
+            }
             val rows = dao.observeActiveByTypes(binding.ownerStorageKey, binding.ledgerId,
                 listOf(PendingMutationType.CorrectExpense.wireValue), listOf(PendingMutationStatus.Done.wireValue)).first()
             for (row in rows) {

@@ -7,8 +7,9 @@ import com.ticketbox.domain.model.DebtKinds
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.job
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -74,7 +75,7 @@ class DebtAdjustmentRecoveryViewModelTest {
         } finally {
             oldRead.complete(Unit)
             newRead.complete(Unit)
-            model.viewModelScope.cancel()
+            model.viewModelScope.coroutineContext.job.cancelAndJoin()
         }
     }
 
@@ -102,7 +103,9 @@ class DebtAdjustmentRecoveryViewModelTest {
             repo.getResult = Result.failure(IllegalStateException("Synthetic unavailable canonical read"))
             repo.getGate = gate
 
+            val priorJobs = model.viewModelScope.coroutineContext.job.children.toSet()
             model.recoverAdjustment(original, drop = true)
+            model.viewModelScope.coroutineContext.job.children.single { it !in priorJobs }.join()
             runCurrent()
             assertTrue(adjustments.outbox.observeStatus().first().failed.none { it.id == id })
             assertTrue(adjustments.outbox.dequeueNextRunnable().isEmpty())
@@ -135,7 +138,7 @@ class DebtAdjustmentRecoveryViewModelTest {
             assertTrue(adjustments.api.calls.isEmpty())
         } finally {
             gate.complete(Unit)
-            model.viewModelScope.cancel()
+            model.viewModelScope.coroutineContext.job.cancelAndJoin()
         }
     }
 
@@ -153,7 +156,9 @@ class DebtAdjustmentRecoveryViewModelTest {
             val id = adjustments.save().getOrThrow()
             adjustments.outbox.markFailed(id, "debt_adjustment_response_unverified")
             advanceUntilIdle()
+            val priorJobs = model.viewModelScope.coroutineContext.job.children.toSet()
             model.recoverAdjustment(adjustments.pending(), drop = true)
+            model.viewModelScope.coroutineContext.job.children.single { it !in priorJobs }.join()
             advanceUntilIdle()
             assertTrue(adjustments.outbox.observeStatus().first().failed.none { it.id == id })
             assertTrue(adjustments.outbox.dequeueNextRunnable().isEmpty())
@@ -161,7 +166,7 @@ class DebtAdjustmentRecoveryViewModelTest {
             assertEquals(canonical, model.state.value.debt)
             assertTrue(model.state.value.canWriteActions)
             assertNull(model.state.value.error)
-            model.viewModelScope.cancel()
+            model.viewModelScope.coroutineContext.job.cancelAndJoin()
 
             repo.getResult = Result.failure(IllegalStateException("Synthetic unavailable first read"))
             repo.getGate = gate
@@ -183,8 +188,8 @@ class DebtAdjustmentRecoveryViewModelTest {
             assertTrue(repo.mutations.isEmpty())
         } finally {
             gate.complete(Unit)
-            model.viewModelScope.cancel()
-            reopened?.viewModelScope?.cancel()
+            model.viewModelScope.coroutineContext.job.cancelAndJoin()
+            reopened?.viewModelScope?.coroutineContext?.job?.cancelAndJoin()
         }
     }
 }
