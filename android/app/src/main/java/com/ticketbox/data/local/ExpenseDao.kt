@@ -357,7 +357,7 @@ interface ExpenseDao {
         }
     }
 
-    /** Atomically applies the server-owned typed confirmed stream projection. */
+    /** Atomically applies the server-owned typed stream and returns the roots actually accepted. */
     @Transaction
     suspend fun applyConfirmedStreamSyncForLedger(
         ledgerId: String,
@@ -365,7 +365,7 @@ interface ExpenseDao {
         offsets: List<ExpenseOffsetStreamEntity>,
         replaceCache: Boolean,
         pruneScope: ConfirmedStreamPruneScope,
-    ) {
+    ): Set<Long> {
         if (replaceCache) {
             clearForLedger(ledgerId)
             clearConfirmedStreamOffsetsForLedger(ledgerId)
@@ -401,6 +401,7 @@ interface ExpenseDao {
                 if (chunk.isNotEmpty()) deleteConfirmedStreamOffsetsByPublicIds(ledgerId, chunk)
             }
         }
+        return acceptedRootIds
     }
 
     /**

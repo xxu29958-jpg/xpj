@@ -27,6 +27,27 @@ import kotlin.test.assertTrue
 
 internal class ExpenseCorrectionRefreshRecoveryTest {
     @Test
+    fun aReadRejectedByTheCacheCannotAcknowledgeItsIncomingStreamVersion() = runTest {
+        val fixture = CorrectionRefreshFixture()
+        val original = fixture.seed(42L)
+        fixture.read = { fixture.expense(it, 11L) }
+        fixture.streamVersions[42L] = 11L
+        fixture.cache.beforeApplyConfirmedSync = {
+            fixture.cache.upsertByServerIdForLedger("owner", fixture.expense(42L, 12L).toEntity("owner"))
+        }
+
+        fixture.repository.fetchExpense(42L).getOrThrow()
+
+        assertEquals(12L, fixture.repository.fetchExpenseFromLocalCache(42L).getOrThrow().rowVersion)
+        assertEquals(original, fixture.queue.rows[original.id], "An incoming response is not proof of cache acceptance")
+        fixture.cache.beforeApplyConfirmedSync = null
+        fixture.streamVersions[42L] = 12L
+        fixture.repository.syncConfirmed().getOrThrow()
+        assertEquals(original.copy(lastError = null), fixture.queue.rows[original.id])
+        assertTrue(fixture.outbox.dequeueNextRunnable().isEmpty())
+    }
+
+    @Test
     fun failedLocalAcknowledgmentKeepsRecoveryWithoutFailingAnAdoptedRead() = runTest {
         var failAcknowledgment = false
         val fixture = CorrectionRefreshFixture { failAcknowledgment }

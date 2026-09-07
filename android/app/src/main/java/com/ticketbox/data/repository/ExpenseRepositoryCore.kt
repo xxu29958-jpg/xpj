@@ -51,7 +51,9 @@ internal data class ConfirmedSyncRequest(
     val tag: String? = null,
     val replaceCache: Boolean = false,
     val recordSyncTimestamp: Boolean = true,
-)
+) {
+    val isFullLedger: Boolean get() = month == null && category == null && tag == null
+}
 
 private fun ConfirmedSyncRequest.matchesCachedOffset(
     offset: ExpenseOffsetStreamEntity,
@@ -279,7 +281,6 @@ internal class ExpenseRepositoryCore(
     private suspend fun confirmedStreamPruneScope(
         bound: BoundLedgerRequest,
         request: ConfirmedSyncRequest,
-        isFullLedgerSync: Boolean,
     ): ConfirmedStreamPruneScope {
         if (request.replaceCache) return ConfirmedStreamPruneScope(null, null)
         return withActiveBindingCommit(bound) {
@@ -288,7 +289,7 @@ internal class ExpenseRepositoryCore(
                 .mapNotNull { root -> root.serverId?.let { it to root.toDomain() } }
                 .toMap()
             ConfirmedStreamPruneScope(
-                rootServerIds = if (isFullLedgerSync) rootsByServerId.keys else null,
+                rootServerIds = if (request.isFullLedger) rootsByServerId.keys else null,
                 offsetPublicIds = expenseDao.getConfirmedStreamOffsets(ledgerId)
                     .filter { offset -> request.matchesCachedOffset(offset, rootsByServerId[offset.rootServerId]) }
                     .mapTo(mutableSetOf()) { it.publicId },
@@ -334,10 +335,9 @@ internal class ExpenseRepositoryCore(
         requiredCorrection: ExpenseDto? = null,
     ): List<Expense> {
         val ledgerIdAtRequest = bound.ledgerId
-        val isFullLedgerSync = request.month == null && request.category == null && request.tag == null
         // Snapshot prune eligibility before the first page request. Rows cached
         // during pagination must survive until the next reconciliation.
-        val pruneScope = confirmedStreamPruneScope(bound, request, isFullLedgerSync)
+        val pruneScope = confirmedStreamPruneScope(bound, request)
         val collectedDtos = fetchConfirmedStream(bound, request)
 
         val cacheItems = collectedDtos.map { it.toConfirmedStreamCacheItem(ledgerIdAtRequest) }
@@ -353,23 +353,27 @@ internal class ExpenseRepositoryCore(
                     it.rowVersion >= requiredCorrection.rowVersion && it.streamDate != null
             }) throw RepositoryException("更正已送达，流水投影尚待刷新。")
         val collected = roots.map { it.toDomain() }
-        withActiveBindingCommit(bound) {
-            expenseDao.applyConfirmedStreamSyncForLedger(
+        val acceptedRootIds = withActiveBindingCommit(bound) {
+            val accepted = expenseDao.applyConfirmedStreamSyncForLedger(
                 ledgerId = ledgerIdAtRequest,
                 roots = roots,
                 offsets = offsets,
                 replaceCache = request.replaceCache,
                 pruneScope = pruneScope,
             )
-            if (request.recordSyncTimestamp && isFullLedgerSync) {
+            if (requiredCorrection != null && requiredCorrection.id !in accepted) {
+                throw RepositoryException("更正已送达，流水投影尚待刷新。")
+            }
+            if (request.recordSyncTimestamp && request.isFullLedger) {
                 settingsStore.saveLastConfirmedSyncAtForLedger(ledgerIdAtRequest, Instant.now().toString())
             }
+            accepted
         }
-        acknowledgeCorrectionRefresh(bound, roots.filter { it.streamDate != null }
+        acknowledgeCorrectionRefresh(bound, roots.filter { it.streamDate != null && it.serverId in acceptedRootIds }
             .associate { requireNotNull(it.serverId) to it.rowVersion })
         // Only a full-ledger sync delivers the confirmed set the budget
         // advisor consumes; filtered syncs fingerprint a subset and would flap.
-        if (isFullLedgerSync) {
+        if (request.isFullLedger) {
             onFullConfirmedSyncSnapshot(
                 "entries=${collectedDtos.size};roots=${roots.size};" +
                     "rv=${roots.maxOfOrNull { it.rowVersion } ?: 0};" +

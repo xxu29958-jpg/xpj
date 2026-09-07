@@ -34,7 +34,7 @@ data class PendingExpenseCorrection(
     val delivered: Boolean get() = hasSupportedIntent && row.status == PendingMutationStatus.Done
     val refreshRequired: Boolean get() = delivered && row.lastError?.startsWith(CORRECTION_REFRESH_PREFIX) == true
     val canRetry: Boolean get() = hasSupportedIntent && row.status == PendingMutationStatus.Failed &&
-        row.lastError != "outbox_row_expired" && row.lastError != "correction_target_unavailable"
+        row.lastError !in setOf("outbox_row_expired", "correction_target_unavailable", "correction_requires_review")
     val canDiscard: Boolean get() = row.status == PendingMutationStatus.Failed ||
         row.status == PendingMutationStatus.Conflict || (!hasSupportedIntent && row.status in setOf(PendingMutationStatus.Done, PendingMutationStatus.Pending))
 }

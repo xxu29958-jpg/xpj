@@ -69,6 +69,7 @@ private fun correctionStatusText(pending: PendingExpenseCorrection, refreshPendi
     val fallback = stringResource(when {
         !pending.hasSupportedIntent -> R.string.correction_submission_unsupported
         pending.row.lastError == "outbox_row_expired" -> R.string.correction_submission_expired
+        pending.row.status == PendingMutationStatus.Failed && !pending.canRetry -> R.string.correction_submission_review_required
         pending.delivered -> if (refreshPending) R.string.expense_correction_saved_refresh_pending else R.string.expense_correction_saved
         pending.row.status == PendingMutationStatus.Conflict -> R.string.correction_submission_conflict
         pending.row.status == PendingMutationStatus.InFlight -> R.string.correction_submission_sending

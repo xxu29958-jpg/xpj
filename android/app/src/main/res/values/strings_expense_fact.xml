@@ -213,6 +213,7 @@
     <string name="correction_submission_conflict">账单已变化，原提交未被确认送达。请核对当前事实；重新更正需要一次明确的新提交。</string>
     <string name="correction_submission_sending">正在发送原提交，内容已经保存在手机上。</string>
     <string name="correction_submission_failed">原提交尚未确认送达，内容已保留。可重试原提交或核对当前事实。</string>
+    <string name="correction_submission_review_required">这份原提交不能直接重试，内容仍保留。请核对当前事实，或放弃这份本地提交。</string>
     <string name="correction_submission_clear">清空</string>
     <string name="correction_submission_original">提交时原金额：%1$s</string>
     <string name="correction_submission_amount">更正后的原币金额：%1$s</string>

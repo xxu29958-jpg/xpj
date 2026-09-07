@@ -139,7 +139,16 @@ internal class CorrectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
         for (request in listOf(ExpenseCorrectionRequestDto(7, "Clear note", note = ""),
                 ExpenseCorrectionRequestDto(7, "Clear items", items = emptyList()),
                 ExpenseCorrectionRequestDto(7, "Clear time", expenseTime =
-                    com.ticketbox.data.remote.dto.CorrectionOptionalString.changed(null)))) {
+                    com.ticketbox.data.remote.dto.CorrectionOptionalString.changed(null)),
+                ExpenseCorrectionRequestDto(7, "Legal boundaries", originalCurrencyCode = "CNY",
+                    originalAmountMinor = com.ticketbox.domain.model.MONEY_MINOR_MAX,
+                    valueScore = com.ticketbox.data.remote.dto.CorrectionOptionalInt.changed(1),
+                    regretScore = com.ticketbox.data.remote.dto.CorrectionOptionalInt.changed(5),
+                    items = listOf(com.ticketbox.data.remote.dto.ExpenseItemRequestDto("Item", "discount",
+                        quantityText = "x".repeat(64), unitPriceCents = 0, amountCents = -com.ticketbox.domain.model.MONEY_MINOR_MAX,
+                        category = "x".repeat(64), rawText = "x".repeat(1000), confidence = 0.0)),
+                    splits = listOf(com.ticketbox.data.remote.dto.ExpenseSplitRequestDto(1,
+                        com.ticketbox.domain.model.MONEY_MINOR_MAX, "x".repeat(200)))))) {
             val changed = empty.copy(payloadJson = adapter.toJson(intent.copy(request = request)))
             assertEquals(request, adapter.readSupportedCorrection(changed)?.request)
         }

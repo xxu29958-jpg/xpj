@@ -74,7 +74,7 @@ internal class ExpenseCorrectionRepository(
         bound.requireStillActive()
         val changed = when {
             drop && pending.canDiscard -> {
-                if (pending.hasSupportedIntent && pending.row.lastError != "correction_target_unavailable") {
+                if (pending.hasSupportedIntent && pending.row.lastError !in setOf("correction_target_unavailable", "correction_requires_review")) {
                     core.fetchAuthoritativeExpense(bound, requireNotNull(pending.expenseId))
                 }
                 outbox.discardCorrection(bound, pending.row)

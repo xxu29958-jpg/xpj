@@ -23,6 +23,7 @@ class CorrectExpenseDispatcher(
         val response = try {
             apiProvider(row).correctExpense(intent.expenseId.toString(), intent.request, requireNotNull(row.idempotencyKey))
         } catch (e: HttpException) {
+            if (e.code() == 422) return DispatchResult.Failure("correction_requires_review")
             val result = mapOutboxHttpException(e)
             return if (result is DispatchResult.Discarded) DispatchResult.Failure("correction_target_unavailable") else result
         } catch (_: IOException) {

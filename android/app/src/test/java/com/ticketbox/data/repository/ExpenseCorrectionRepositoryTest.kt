@@ -81,39 +81,42 @@ internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxT
     }
 
     @Test
-    fun `definitive missing target keeps original command for review without futile retry`() = runTest {
-        val queue = FakePendingMutationDao()
-        val outbox = testOutboxRepository(queue)
-        var requests = 0
-        val api = object : ApiService by FakeApiService(mutableListOf(), 0) {
-            override suspend fun correctExpense(id: String, request: ExpenseCorrectionRequestDto,
-                idempotencyKey: String?): ExpenseCorrectionResponseDto {
-                requests++
-                throw httpException(404, """{"error":"not_found"}""")
+    fun `definitive refusals keep original commands for review without futile retry`() = runTest {
+        for ((status, marker) in listOf(404 to "correction_target_unavailable", 422 to "correction_requires_review")) {
+            val queue = FakePendingMutationDao()
+            val outbox = testOutboxRepository(queue)
+            var requests = 0
+            val api = object : ApiService by FakeApiService(mutableListOf(), 0) {
+                override suspend fun expense(id: Long): com.ticketbox.data.remote.dto.ExpenseDto = error("Refused original can be discarded offline")
+                override suspend fun correctExpense(id: String, request: ExpenseCorrectionRequestDto,
+                    idempotencyKey: String?): ExpenseCorrectionResponseDto {
+                    requests++
+                    throw httpException(status, """{"error":"not_found"}""")
+                }
             }
+            val repo = harness.buildCorrectionRepository(api, outbox = outbox)
+            val id = harness.submit(repo, baselineExpense().copy(status = "confirmed", rowVersion = 7),
+                ExpenseCorrectionDraft("原更正", note = "保留内容")).getOrThrow()
+            val binding = assertNotNull(repo.observeCorrections().first().access).binding
+            val dispatcher = CorrectExpenseDispatcher({ api }, OutboxAdapterGraph().correctionAdapter,
+                publishAuthoritativeProjection = { _, _ -> error("A refusal cannot publish a fact") },
+                onConfirmedCommitted = { error("A refusal is not committed") })
+            assertEquals(1, OutboxDrainEngine(outbox, listOf(dispatcher)).drainOnce().failures)
+            assertEquals(1, requests)
+            val pending = repo.observeCorrections().first().corrections.single()
+            val original = queue.rows.getValue(id)
+            assertEquals(marker, pending.row.lastError)
+            assertTrue(pending.hasSupportedIntent)
+            assertFalse(pending.delivered)
+            assertFalse(pending.canRetry)
+            assertTrue(pending.canDiscard)
+            assertTrue(repo.recoverCorrection(binding, id, drop = false).isFailure)
+            assertEquals(original, queue.rows.getValue(id))
+            assertEquals(0, OutboxDrainEngine(outbox, listOf(dispatcher)).drainOnce().attempted)
+            assertEquals(1, requests)
+            repo.recoverCorrection(binding, id, drop = true).getOrThrow()
+            assertTrue(queue.rows.isEmpty())
         }
-        val repo = harness.buildCorrectionRepository(api, outbox = outbox)
-        val id = harness.submit(repo, baselineExpense().copy(status = "confirmed", rowVersion = 7),
-            ExpenseCorrectionDraft("原更正", note = "保留内容")).getOrThrow()
-        val binding = assertNotNull(repo.observeCorrections().first().access).binding
-        val dispatcher = CorrectExpenseDispatcher({ api }, OutboxAdapterGraph().correctionAdapter,
-            publishAuthoritativeProjection = { _, _ -> error("A refusal cannot publish a fact") },
-            onConfirmedCommitted = { error("A refusal is not committed") })
-        assertEquals(1, OutboxDrainEngine(outbox, listOf(dispatcher)).drainOnce().failures)
-        assertEquals(1, requests)
-        val pending = repo.observeCorrections().first().corrections.single()
-        val original = queue.rows.getValue(id)
-        assertEquals("correction_target_unavailable", pending.row.lastError)
-        assertTrue(pending.hasSupportedIntent)
-        assertFalse(pending.delivered)
-        assertFalse(pending.canRetry)
-        assertTrue(pending.canDiscard)
-        assertTrue(repo.recoverCorrection(binding, id, drop = false).isFailure)
-        assertEquals(original, queue.rows.getValue(id))
-        assertEquals(0, OutboxDrainEngine(outbox, listOf(dispatcher)).drainOnce().attempted)
-        assertEquals(1, requests)
-        repo.recoverCorrection(binding, id, drop = true).getOrThrow()
-        assertTrue(queue.rows.isEmpty())
     }
 
     @Test
