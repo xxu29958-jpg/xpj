@@ -64,6 +64,27 @@ class PendingLaunchActionEffectTest {
     val composeRule = createComposeRule()
 
     @Test
+    fun externalImageSharesCannotSupplyAnAcceptanceFlagOrOriginalBatchIdentity() {
+        composeRule.runOnIdle {
+            val activity = com.ticketbox.MainActivity()
+            val parse = com.ticketbox.MainActivity::class.java.getDeclaredMethod("parseLaunchIntent", Intent::class.java)
+                .apply { isAccessible = true }
+            val forgedId = java.util.UUID.randomUUID().toString()
+            val original = Uri.parse("content://external/receipt.png")
+            val requests = listOf(true, false).map { handled ->
+                val intent = Intent(Intent.ACTION_SEND).setType("image/png")
+                    .putExtra(Intent.EXTRA_STREAM, original)
+                    .putExtra("ticketbox.launch.handled", handled)
+                    .putExtra("ticketbox.launch.upload.batch_id", forgedId)
+                parse.invoke(activity, intent) as? LaunchIntentRequest.ShareImages
+            }
+            assertEquals(listOf(false, false), requests.map { it == null || it.batchId == forgedId })
+            assertEquals(2, requests.map { requireNotNull(it).batchId }.toSet().size)
+            assertTrue(requests.all { it?.uris == listOf(original.toString()) })
+        }
+    }
+
+    @Test
     @SdkSuppress(minSdkVersion = 29)
     fun consumedShareSurvivesRouteReentryAndActualRetryContinuesTheOriginalTail() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
