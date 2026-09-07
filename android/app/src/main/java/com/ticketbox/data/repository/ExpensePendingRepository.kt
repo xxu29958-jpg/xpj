@@ -34,6 +34,8 @@ internal class ExpensePendingRepository(
         core.getCachedPending()
     }
 
+    override fun observeConfirmed(): Flow<List<Expense>> = core.observeConfirmed()
+
     override suspend fun syncPending(): Result<List<Expense>> = core.errorHandler.safeCall {
         val ledgerId = core.ledgerRequestGuard.bind().ledgerId
         pendingSyncCoordinator.sync(ledgerId) {

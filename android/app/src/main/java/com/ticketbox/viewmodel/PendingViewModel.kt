@@ -23,6 +23,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -271,7 +273,7 @@ class PendingViewModel(
     fun refresh() {
         // Issued synchronously (not inside the launch) so call order always
         // matches sequence order even if the coroutine body runs later.
-        if (uploadObservation?.access == null) return
+        val binding = uploadObservation?.access?.binding ?: return
         val sequence = ++refreshSequence
         val generation = requestGeneration
         viewModelScope.launch {
@@ -307,17 +309,20 @@ class PendingViewModel(
                     loadThumbnails(expenses, generation)
                 }
                 .onFailure { error ->
+                    val knownConfirmed = repository.observeConfirmed().catch { emit(emptyList()) }.firstOrNull().orEmpty()
                     if (sequence != refreshSequence) return@onFailure
                     if (requestGeneration != generation) return@onFailure
                     if (refreshSkipEpoch != skipEpoch) return@onFailure
+                    if (uploadIntents.currentUploadBinding() != binding) return@onFailure
                     _uiState.update {
-                        it.copy(
+                        PendingUiStateReducer.afterKnownConfirmed(it, knownConfirmed).copy(
                             hasLoadedOnce = true,
                             loading = false,
                             listLoadState = PendingListLoadState.Failed,
                             message = error.toUiText(R.string.pending_msg_load_failed),
                         )
                     }
+                    recomputeReviewRemaining()
                 }
         }
     }

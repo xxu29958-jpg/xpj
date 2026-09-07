@@ -24,6 +24,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.ticketbox.BuildConfig
@@ -303,7 +304,7 @@ private fun MainShell(
     val shellState = rememberMainShellState()
     val navController = rememberNavController()
 
-    LaunchRequestEffect(launchConsumer.request, shellState, launchConsumer.onHandled)
+    LaunchRequestEffect(launchConsumer.request, shellState, navController, launchConsumer.onHandled)
 
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -418,13 +419,18 @@ private fun ShellBodyWithBanner(
  * 热分享仍是后续独立请求；重入使用原 selection id，不能通过再次路由产生另一批命令。
  */
 @Composable
-private fun LaunchRequestEffect(
+internal fun LaunchRequestEffect(
     launchRequest: LaunchIntentRequest?,
     shellState: MainShellState,
+    navController: NavHostController,
     onLaunchRequestHandled: (LaunchIntentRequest) -> Unit,
 ) {
     LaunchedEffect(launchRequest) {
         val request = launchRequest ?: return@LaunchedEffect
+        if (request !is LaunchIntentRequest.JoinInvitation) {
+            // An external task must leave the unfinished editor available on Back.
+            navController.navigate(MAIN_ROUTE) { launchSingleTop = true }
+        }
         dispatchLaunchRequest(request, shellState)
         if (request is LaunchIntentRequest.ShareImages) {
             snapshotFlow { shellState.launchAction.containsUpload(request.batchId) }.first { pending -> !pending }

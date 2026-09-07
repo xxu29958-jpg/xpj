@@ -1,6 +1,7 @@
 package com.ticketbox.data.repository
 
 import android.content.Context
+import android.graphics.Bitmap
 import androidx.room.Room
 import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.RepositoryGraph
@@ -14,6 +15,8 @@ import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto
 import com.ticketbox.data.remote.dto.ExpenseCorrectionResponseDto
 import com.ticketbox.data.remote.dto.ExpenseDto
+import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
+import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.ExpenseRevisionDto
 import com.ticketbox.data.remote.dto.ExpenseRevisionPageDto
 import com.ticketbox.data.remote.dto.ExpenseItemsResponseDto
@@ -41,6 +44,7 @@ import com.ticketbox.security.LocalSessionStore
 import com.ticketbox.security.SessionCredentialAdapter
 import com.ticketbox.security.StoredSessionToken
 import java.io.IOException
+import java.io.ByteArrayOutputStream
 import java.lang.reflect.Proxy
 import java.time.Clock
 import java.time.Instant
@@ -50,6 +54,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
+import okhttp3.ResponseBody
+import retrofit2.Response
 import retrofit2.HttpException
 
 /** Real disk Room and repository graph; only remote transport and session storage are synthetic. */
@@ -151,15 +157,54 @@ internal class CorrectionConnectedNetwork {
     var beforeStreamResponse: (suspend () -> Unit)? = null
     var failReads = false
     var failStreamReads = false
+    var stopPendingReadsAfterConfirm = false
+    var failedPendingReads = 0
     var loseResponse = true
     var refusalCode: String? = null
     val calls = mutableListOf<Pair<ExpenseCorrectionRequestDto, String>>()
     val results = mutableMapOf<String, ExpenseCorrectionResponseDto>()
     val expenseReads = CopyOnWriteArrayList<Long>()
     val occurrenceReads = CopyOnWriteArrayList<Pair<String, String>>()
+    val editCalls = CopyOnWriteArrayList<String>()
+    val imageReads = CopyOnWriteArrayList<Long>()
+    val originalImage: ByteArray by lazy {
+        val bitmap = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
+        ByteArrayOutputStream().use { output ->
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+            bitmap.recycle()
+            output.toByteArray()
+        }
+    }
     val service = object : ApiService by correctionProxy<ApiService>({ throw IOException("Synthetic unavailable $it") }) {
         override suspend fun expense(id: Long): ExpenseDto { readable(); expenseReads += id; return current }
-        override suspend fun pendingExpenses(): List<ExpenseDto> = emptyList()
+        override suspend fun pendingExpenses(): List<ExpenseDto> {
+            readable()
+            if (stopPendingReadsAfterConfirm && current.status == "confirmed") {
+                failedPendingReads++
+                throw IOException("Synthetic pending refresh unavailable after confirmation")
+            }
+            return listOf(current).filter { it.status == "pending" }
+        }
+        override suspend fun updateExpense(id: String, request: ExpenseUpdateRequest, idempotencyKey: String?): ExpenseDto {
+            check(id == current.id.toString() && request.expectedRowVersion == current.rowVersion)
+            check(!idempotencyKey.isNullOrBlank())
+            editCalls += "save"
+            return current.copy(rowVersion = current.rowVersion + 1).also { current = it }
+        }
+        override suspend fun confirmExpense(id: String, request: ExpenseStateTokenRequest, idempotencyKey: String?): ExpenseDto {
+            check(id == current.id.toString() && request.expectedRowVersion == current.rowVersion)
+            check(!idempotencyKey.isNullOrBlank())
+            editCalls += "confirm"
+            return current.copy(status = "confirmed", rowVersion = current.rowVersion + 1,
+                confirmedAt = "2026-09-07T00:00:00Z").also { current = it }
+        }
+        override suspend fun expenseThumbnail(id: Long): Response<ResponseBody> = Response.error(404,
+            """{"error":"not_found","message":"图片不存在。"}""".toResponseBody("application/json".toMediaType()))
+        override suspend fun expenseImage(id: Long): Response<ResponseBody> {
+            readable()
+            imageReads += id
+            return Response.success(originalImage.toResponseBody("image/png".toMediaType()))
+        }
         override suspend fun serverSettings() = ServerSettingsDto(accountName = "家庭成员", ledgerId = "correction-ledger",
             ledgerName = "家庭账本", deviceName = "测试手机", role = "member", status = "ok", storageStatus = "ok",
             pendingCount = 0, confirmedCount = 1, rejectedCount = 0, suspectedDuplicateCount = 0,

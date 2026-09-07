@@ -2,7 +2,7 @@
 
 ## Working contract
 
-Goal and the three final product contracts require original user work to stay with its logical household identity. This slice begins at source `d22511909553edf3f6c09055c32f60b9fc26fb48` in the isolated `codex/debt-bill-binding-20260907` worktree. The parent upload slice is still under exact cloud qualification; this preparation does not qualify it or authorize an early protected merge. Root is the sole writer; the two existing independent agents are unavailable because their calls reached the account limit.
+Goal and the three final product contracts require original user work to stay with its logical household identity. This slice begins at source `d22511909553edf3f6c09055c32f60b9fc26fb48` in the isolated `codex/debt-bill-binding-20260907` worktree. Parent upload #385 and this slice are now independently main-qualified; see the qualification state below. Root is the sole writer; the two existing independent agents are unavailable because their calls reached the account limit.
 
 The outcome is bounded: a debt-bill image accepted for preparation under household A must not be sent or applied under a subsequently selected household B. Recognition remains a suggestion. The existing Debt creation command, durable Outbox, financial interpretation and explicit Save remain the only publication chain. No new draft persistence policy, automatic command, API wire field, Windows lifecycle action or visual redesign is included.
 
@@ -17,7 +17,7 @@ The outcome is bounded: a debt-bill image accepted for preparation under househo
 
 ## Qualification state
 
-The first cloud counterexample now has an observed behavioral RED, recorded below. The original identity and new-household draft postconditions remain the acceptance criteria. The candidate implementation has passed a complete light scan of 51 changed production and 50 changed JVM files against their actual baselines; Kotlin compilation, executed regression, Connected and protected-main qualification are still pending.
+CLOSED for this bounded slice: [#386](https://github.com/xxu29958-jpg/xpj/pull/386) is protected-merged at `5313439432f3772bd49d47c7d5f993d3298a3bc3`; CI, CodeQL and Connected independently passed on that exact main. Original household, draft and explicit Save remain the acceptance boundary. Historical evidence below describes prior candidates; the Atlas retains the remaining Relationships delivery.
 
 
 ## Observed RED and after-impact closure

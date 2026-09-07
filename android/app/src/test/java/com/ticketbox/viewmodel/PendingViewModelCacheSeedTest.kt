@@ -62,6 +62,28 @@ internal class PendingViewModelCacheSeedTest : PendingViewModelReviewTestBase() 
     }
 
     @Test
+    fun failedRefreshRemovesOnlyTheSameFactWithANonOlderConfirmedVersion() = review {
+        val rows = (1L..4L).map { expense(it).copy(rowVersion = 5L) }
+        val fake = FakeReviewActions(pending = rows)
+        val vm = pendingViewModel(fake)
+        advanceUntilIdle()
+        fake.cachedConfirmed = listOf(
+            rows[0].copy(status = "confirmed", rowVersion = 6L),
+            rows[1].copy(status = "confirmed", publicId = "different-fact", rowVersion = 6L),
+            rows[2].copy(status = "confirmed", rowVersion = 4L),
+        )
+        fake.fetchPendingResponder = { Result.failure(IOException("offline after confirmation")) }
+
+        vm.refresh()
+        advanceUntilIdle()
+
+        assertEquals(rows.drop(1), vm.uiState.value.items)
+        assertEquals(PendingListLoadState.Failed, vm.uiState.value.listLoadState)
+        assertTrue(vm.uiState.value.message != null)
+        assertFalse(vm.uiState.value.loading)
+    }
+
+    @Test
     fun emptyCacheWithInitialSyncFailureDoesNotLookLikeLoadedEmpty() = review {
         val fake = FakeReviewActions()
         fake.cachedPending = emptyList()

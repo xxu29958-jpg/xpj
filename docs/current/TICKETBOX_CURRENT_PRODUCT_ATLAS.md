@@ -113,10 +113,10 @@ slice. Full Internal Beta RC completion is still outstanding.
 
 | Capability | State and current boundary | Detail / evidence |
 |---|---|---|
-| Upload links, Shortcut and pending review | `EXISTING`; upload/Expense owners serve actual intake consumers. Durable upload continuation #385 is active | [Upload contract](TICKETBOX_UPLOAD_INTENT_CONTINUITY_CONTRACT.md) |
+| Upload links, Shortcut and pending review | `EXISTING`; upload/Expense owners serve actual intake consumers. Durable upload continuation #385 CLOSED, integrated and main-qualified; actual capture consumer closure #387 is active | [Upload contract](TICKETBOX_UPLOAD_INTENT_CONTINUITY_CONTRACT.md) |
 | Batch remainder and saved CSV continuation | `STRONG_SLICE`; #381 and #384 CLOSED, integrated and main-qualified. Full capture journey remains | [Batch](TICKETBOX_CAPTURE_BATCH_CONTINUATION_CONTRACT.md), [CSV](TICKETBOX_CSV_IMPORT_CONTINUATION_CONTRACT.md) |
 | Confirmed facts and composite correction | `STRONG_SLICE`; #382 CLOSED, durable correction owner integrated and main-qualified; actual OS interruption remains to rehearse | [Correction contract](TICKETBOX_EXPENSE_CORRECTION_CONTINUITY_CONTRACT.md) |
-| Recognition and assisted entry | `STRONG_SLICE`; #353 CLOSED. Shared configured suggestions remain drafts. Debt image/binding continuity #386 is active | [Journeys](TICKETBOX_USER_JOURNEYS_CONTRACT.md#recognition-and-assisted-entry), [Debt image contract](TICKETBOX_DEBT_BILL_BINDING_CONTRACT.md) |
+| Recognition and assisted entry | `STRONG_SLICE`; #353 CLOSED. Shared configured suggestions remain drafts. Debt image/binding continuity #386 CLOSED, integrated and main-qualified | [Journeys](TICKETBOX_USER_JOURNEYS_CONTRACT.md#recognition-and-assisted-entry), [Debt image contract](TICKETBOX_DEBT_BILL_BINDING_CONTRACT.md) |
 | Currency adoption | `STRONG_SLICE`; #354 CLOSED. Installation claim / Desktop consumer; old maintenance API retired | [Adoption journey](TICKETBOX_USER_JOURNEYS_CONTRACT.md#currency-adoption) |
 | One-bill manual FX recovery | `STRONG_SLICE`; #355 CLOSED. Shared pending Expense editor, canonical review and Android PatchExpense intent | [FX journey](TICKETBOX_USER_JOURNEYS_CONTRACT.md#missing-fx-rate-recovery) |
 | Manual expense and browser draft | `STRONG_SLICE`; #359/#368 CLOSED. Native shared command and scoped draft; old-Device drafts readable for reconciliation, without automatic replay | [Manual entry](TICKETBOX_USER_JOURNEYS_CONTRACT.md#manual-expense-entry), [Convenience plan](../superpowers/plans/2026-09-05-consumer-art-convenience.md) |
@@ -146,8 +146,8 @@ completion percentages.
 | Package | Remaining user outcome / exit |
 |---|---|
 | First use and household | Owner/member/viewer enter the intended household, understand where data lives and recover expired/failed connection without losing intent or changing identity |
-| Capture, facts and reference | Finish #385; rehearse capture/import → review → confirm → search/detail/original/reference/correction with real roles, recoverable errors and one fact owner |
-| Relationships | Finish #386; complete splits/proposals/repayment/adjustment/forgiveness/void, original-intent retry/discard and canonical totals across clients |
+| Capture, facts and reference | Close actual capture consumer gaps #387; rehearse capture/import → review → confirm → search/detail/original/reference/correction with real roles, recoverable errors and one fact owner |
+| Relationships | Complete splits/proposals/repayment/adjustment/forgiveness/void, original-intent retry/discard and canonical totals across clients |
 | Planning and insights | Complete supported budget/goal/income/recurring/debt-plan tasks; overview/period review/data health reflect authoritative facts/corrections with useful empty/error/read-only states |
 | Backstage | Ordinary household can configure applicable capabilities, understand actual health and resume failed work; local governance, secrets and host authority retain their owners |
 | Consumer art and convenience | Actual Web 360/768/1440 and Android journeys meet the selected modern consumer design and reduce interaction burden; replaced visual owners physically retire |
@@ -172,16 +172,16 @@ Do not drop these or open full lifecycle work while handling other journeys.
 remaining art/interaction details, then the exact full RC. Keep useful state
 feedback and efficient actions within each active capability change.
 
-**Active work:** #385 is merged; independent main qualification is running.
-#386's combined candidate passed qualification and its review threads are resolved.
-It is integrating the merged main while real-device task validation begins. Details belong in their
-[upload](TICKETBOX_UPLOAD_INTENT_CONTINUITY_CONTRACT.md) and
-[debt-bill](TICKETBOX_DEBT_BILL_BINDING_CONTRACT.md) contracts.
+**Active work:** #385 and #386 are merged and independently main-qualified.
+Real-device upload recovery passed process termination and external-source loss.
+#387 closes the capture consumer gaps found during that rehearsal: external entry
+with retained drafts, editor completion, offline pending reconciliation, original
+access and keyboard-reachable review.
+Evidence belongs in the [upload](TICKETBOX_UPLOAD_INTENT_CONTINUITY_CONTRACT.md),
+[debt-bill](TICKETBOX_DEBT_BILL_BINDING_CONTRACT.md) contracts and [#387](https://github.com/xxu29958-jpg/xpj/pull/387).
 
-**Next action:** finish Capture main qualification, qualify the Debt integration
-and close it through protected merge and independent main qualification.
-Continue the real capture/facts/reference task using
-its existing consumers. Preserve draft #372 for the later detail wave. The full
+**Next action:** complete #387's direct regressions and real-device task replay,
+then continue capture/facts/reference and the remaining delivery packages. Preserve draft #372 for the later detail wave. The full
 Goal and all remaining packages above stay active.
 
 After a slice's agreed user postcondition, targeted regression, bounded review
