@@ -51,7 +51,7 @@ private fun UploadScreenshotPayload.isSupportedOriginal(row: OutboxRow): Boolean
 }
 
 private fun UploadBatchPosition.isSupported(): Boolean =
-    isUploadIntentFileKey(id) && isUploadIntentFileKey(groupId) && count in 1..100 && index in 0 until count
+    isUploadIntentFileKey(id) && isUploadIntentFileKey(groupId) && count in 1..MAX_UPLOAD_BATCH_ITEMS && index in 0 until count
 
 private fun LogicalSessionBinding.matchesUploadOwner(row: OutboxRow): Boolean =
     ownerKey.isNotBlank() && ownerKey == row.ownerKey && ledgerId.isNotBlank() && ledgerId == row.ledgerId &&

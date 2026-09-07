@@ -334,7 +334,11 @@ def test_restart_replay_respects_capacity_cancellation_and_terminal_outcomes(
 def test_original_task_replay_wakes_a_concurrently_readmitted_original(
     client: TestClient, monkeypatch: pytest.MonkeyPatch, *, identity,
 ) -> None:
-    from app.services import background_task_service, pending_enrichment_task_service
+    from dataclasses import replace
+    from datetime import timedelta
+
+    from app.services import background_task_recovery_service, background_task_service, pending_enrichment_task_service
+    from app.services.time_service import now_utc
 
     monkeypatch.setattr(background_task_service, "_submit_task", lambda *_args, **_kwargs: None)
     headers = {**identity.app_headers, "Idempotency-Key": "70000000-0000-4000-8000-000000000026",
@@ -342,6 +346,10 @@ def test_original_task_replay_wakes_a_concurrently_readmitted_original(
     first = client.post("/api/app/upload-screenshot", headers=headers, content=PNG_BYTES)
     assert first.status_code == 200
     receipt = first.json()
+    with SessionLocal() as db:
+        task = db.scalar(select(BackgroundTask).where(BackgroundTask.public_id == receipt["enrichment_task_public_id"]))
+        task.created_at = now_utc() - timedelta(days=1)
+        db.commit()
     assert background_task_service.recover_orphaned_tasks() >= 1
     rows, files = _ledger_upload_row_counts("owner"), _stored_upload_files()
     executions = _capture_enrichment_execution(monkeypatch)
@@ -353,6 +361,15 @@ def test_original_task_replay_wakes_a_concurrently_readmitted_original(
         with SessionLocal() as concurrent_db:
             assert readmit(concurrent_db, task_id).status == "queued"
             concurrent_db.commit()
+        # A different worker starting within the configured admission grace must
+        # observe fresh activity, not mistake the original creation time for it.
+        settings = background_task_recovery_service.get_settings()
+        with monkeypatch.context() as recovery_context:
+            recovery_context.setattr(background_task_recovery_service, "get_settings",
+                lambda: replace(settings, background_task_orphan_grace_seconds=60))
+            background_task_recovery_service.recover_orphaned_tasks()
+        with SessionLocal() as observed_db:
+            assert observed_db.get(BackgroundTask, task_id).status == "queued"
         return readmit(db, task_id)
 
     monkeypatch.setattr(pending_enrichment_task_service, "readmit_orphaned_task", commit_concurrent_readmission)

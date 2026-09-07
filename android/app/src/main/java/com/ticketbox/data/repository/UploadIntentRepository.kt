@@ -233,7 +233,7 @@ private suspend fun <T> uploadIntentResult(block: suspend () -> T): Result<T> = 
     throw error
 } catch (error: UploadIntentFileException) {
     val message = when (error.failure) {
-        UploadIntentFileFailure.BATCH_LIMIT -> "一次最多选择 100 张截图，请减少数量后重试。"
+        UploadIntentFileFailure.BATCH_LIMIT -> "一次最多选择 $MAX_UPLOAD_BATCH_ITEMS 张截图，请取消这次选择后分批上传。"
         UploadIntentFileFailure.STAGING_LIMIT -> "待上传原件已达到本机暂存上限，请先处理原批次。"
         UploadIntentFileFailure.DISK_RESERVE -> "本机存储空间不足，截图尚未全部保存，请释放空间后重试。"
         UploadIntentFileFailure.CONTENT_MISMATCH -> "原上传文件与记录不一致，请保留原批次并核对。"

@@ -31,8 +31,8 @@ enum class PendingEnrichmentFeedbackKind {
 
 /**
  * Observes server-owned tasks from durable upload receipts. A reopened consumer
- * probes only receipts still present in its authoritative Pending list; terminal
- * history is not replayed, while queued/running tasks resume the existing poller.
+ * probes only receipts still present in its authoritative Pending list. Successful
+ * history stays quiet; unfinished outcomes stay visible and active tasks resume polling.
  */
 internal class PendingEnrichmentObserver(
     private val scope: CoroutineScope,
@@ -104,8 +104,9 @@ internal class PendingEnrichmentObserver(
                 delay(pollIntervalMs)
                 continue
             }
-            if (notifyTerminal) {
-                finish(receipt, task.toPendingEnrichmentFeedbackKind())
+            val kind = task.toPendingEnrichmentFeedbackKind()
+            if (notifyTerminal || kind != PendingEnrichmentFeedbackKind.Updated && kind != PendingEnrichmentFeedbackKind.NoResult) {
+                finish(receipt, kind)
             } else {
                 discard(receipt.enrichmentTaskPublicId)
                 // The Pending GET may have preceded this task's commit. Read once after that

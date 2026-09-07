@@ -61,11 +61,14 @@ class UploadScreenshotDispatcher(
 
     private fun refusal(error: HttpException): DispatchResult {
         val parsed = errors.parseHttpError(error)
-        return when (val code = parsed.errorCode) {
-            UPLOAD_CAPACITY_FULL, "runtime_version_mismatch", "client_upgrade_required", "idempotency_key_reused" ->
-                DispatchResult.Failure(code)
-            "idempotency_key_in_progress" -> DispatchResult.RetryableFailure(code)
-            else -> DispatchResult.Failure(parsed.message, blocksFollowing = error.code() in setOf(401, 403, 409))
+        val code = parsed.errorCode
+        return when {
+            code in NON_RETRYABLE_UPLOAD_ERRORS ->
+                DispatchResult.Failure(requireNotNull(code), blocksFollowing = code == "idempotency_key_reused")
+            code in setOf(UPLOAD_CAPACITY_FULL, "runtime_version_mismatch", "client_upgrade_required") ->
+                DispatchResult.Failure(requireNotNull(code))
+            code == "idempotency_key_in_progress" -> DispatchResult.RetryableFailure(code)
+            else -> DispatchResult.Failure(code ?: parsed.message, blocksFollowing = error.code() in setOf(401, 403, 409))
         }
     }
 }

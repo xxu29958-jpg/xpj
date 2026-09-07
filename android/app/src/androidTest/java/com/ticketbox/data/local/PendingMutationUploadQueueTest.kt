@@ -1,5 +1,6 @@
 package com.ticketbox.data.local
 
+import com.ticketbox.data.repository.NON_RETRYABLE_UPLOAD_ERRORS
 import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.Closeable
@@ -84,7 +85,7 @@ class PendingMutationUploadQueueTest {
             val ids = fixture.dao.insertBatch(listOf(original, fixture.row("c")))
             val dequeued = runnable(fixture.dao).single()
             assertEquals(ids[1], dequeued.id)
-            assertEquals(1, fixture.dao.retryFailed(ids[0], OWNER, LEDGER))
+            assertEquals(1, fixture.dao.retryFailed(ids[0], OWNER, LEDGER, NON_RETRYABLE_UPLOAD_ERRORS))
 
             assertEquals(0, fixture.dao.markInFlightIfPending(dequeued.id, "pending", "in_flight", ATTEMPTED))
             val tail = fixture.dao.allRows().single { it.id == dequeued.id }
@@ -97,6 +98,28 @@ class PendingMutationUploadQueueTest {
             assertEquals(original.idempotencyKey, earlier.idempotencyKey)
             assertEquals(original.payload, earlier.payload)
             assertEquals(original.expectedRowVersion, earlier.expectedRowVersion)
+        }
+    }
+
+    @Test
+    fun refusedUploadOriginalsCannotRequeueButOrdinaryFailureAndOtherCommandsCan() = runBlocking<Unit> {
+        UploadQueueFixture().use { fixture ->
+            val refused = listOf("idempotency_key_reused", "unsupported_file_type", "file_too_large", "invalid_request")
+            val rows = refused.flatMap { code -> listOf(code, "$code:original refused") }.map { code ->
+                fixture.row(code).copy(status = "failed", lastError = code, blocksFollowing = false)
+            }
+            val ids = fixture.dao.insertBatch(rows)
+            for (id in ids) assertEquals(0, fixture.dao.retryFailed(id, OWNER, LEDGER, NON_RETRYABLE_UPLOAD_ERRORS))
+            assertEquals(rows.mapIndexed { index, row -> row.copy(id = ids[index]) }, fixture.reopen().allRows())
+            for (row in listOf(
+                fixture.row("network").copy(lastError = "upload_connection_failed"),
+                fixture.row("capacity").copy(lastError = "enrichment_capacity_full"),
+                fixture.row("protocol").copy(lastError = "client_upgrade_required"),
+                fixture.row("ordinary").copy(type = "patch_expense", lastError = "invalid_request"),
+            )) {
+                val id = fixture.dao.insert(row.copy(status = "failed"))
+                assertEquals(1, fixture.dao.retryFailed(id, OWNER, LEDGER, NON_RETRYABLE_UPLOAD_ERRORS))
+            }
         }
     }
 

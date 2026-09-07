@@ -5,6 +5,13 @@ import com.ticketbox.data.remote.dto.UploadResponseDto
 import com.ticketbox.upload.PreparedUploadImage
 import kotlinx.coroutines.flow.Flow
 
+internal const val MAX_UPLOAD_BATCH_ITEMS = 100
+
+/** These refusals cannot be corrected by replaying the same immutable request. */
+internal val NON_RETRYABLE_UPLOAD_ERRORS = setOf(
+    "idempotency_key_reused", "unsupported_file_type", "file_too_large", "invalid_request",
+)
+
 /** One original selection. Its UUID must survive an uncertain local acceptance result. */
 data class UploadBatchRequest(
     val id: String,
@@ -27,7 +34,7 @@ data class PendingUploadIntent(
         get() = row.status == PendingMutationStatus.Failed && payload?.file != null &&
             row.lastError?.startsWith("outbox_row_expired") != true &&
             row.lastError?.startsWith("upload_original_unavailable") != true &&
-            row.lastError?.substringBefore(':') != "idempotency_key_reused"
+            row.lastError?.substringBefore(':') !in NON_RETRYABLE_UPLOAD_ERRORS
 }
 
 interface UploadIntentActions {

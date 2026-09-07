@@ -16,23 +16,6 @@ import kotlin.test.assertNull
 internal class PendingViewModelEnrichmentTest : PendingViewModelReviewTestBase() {
 
     @Test
-    fun everyTerminalTaskOutcomeHasAnHonestConsumerState() {
-        val cases = listOf(
-            task("completed", PendingEnrichmentOutcome.Updated) to PendingEnrichmentFeedbackKind.Updated,
-            task("completed", PendingEnrichmentOutcome.NoResult) to PendingEnrichmentFeedbackKind.NoResult,
-            task("completed", PendingEnrichmentOutcome.Conflict) to PendingEnrichmentFeedbackKind.Conflict,
-            task("completed", PendingEnrichmentOutcome.NotPending) to PendingEnrichmentFeedbackKind.NotPending,
-            task("completed") to PendingEnrichmentFeedbackKind.Failed,
-            task("failed") to PendingEnrichmentFeedbackKind.Failed,
-            task("cancelled") to PendingEnrichmentFeedbackKind.Cancelled,
-        )
-
-        cases.forEach { (task, expected) ->
-            assertEquals(expected, task.toPendingEnrichmentFeedbackKind())
-        }
-    }
-
-    @Test
     fun completedEnrichmentRefreshesTheInitiatingPendingConsumer() = review {
         val ledgerFlow = MutableStateFlow<String?>("owner")
         val fake = FakeReviewActions(

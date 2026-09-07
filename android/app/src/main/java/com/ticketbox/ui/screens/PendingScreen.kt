@@ -19,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
+import com.ticketbox.data.repository.MAX_UPLOAD_BATCH_ITEMS
 import com.ticketbox.domain.model.DuplicateStatusValues
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppDataAuthorityStrip
@@ -327,12 +328,14 @@ fun PendingScreen(
             item {
                 val selection = chromeActions.uploadSelection
                 PendingMessageCard(
-                    message = stringResource(
+                    message = if (selection.pendingCount > MAX_UPLOAD_BATCH_ITEMS) {
+                        stringResource(R.string.pending_upload_selection_too_many, MAX_UPLOAD_BATCH_ITEMS)
+                    } else stringResource(
                         if (selection.accepting) R.string.pending_upload_selection_saving
                         else R.string.pending_upload_selection_waiting,
                         selection.pendingCount,
                     ),
-                    action = if (!selection.accepting && !readOnly) {
+                    action = if (selection.canRetry && !readOnly) {
                         PendingMessageCardAction(
                             label = stringResource(R.string.pending_upload_selection_retry),
                             enabled = !state.uploadActionInProgress,

@@ -1,8 +1,11 @@
 package com.ticketbox.ui.navigation
 
 import android.app.Activity
+import android.content.ContentValues
 import android.content.Intent
+import android.graphics.Bitmap
 import android.net.Uri
+import android.provider.MediaStore
 import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.result.ActivityResultRegistry
 import androidx.activity.result.ActivityResultRegistryOwner
@@ -26,6 +29,7 @@ import androidx.core.app.ActivityOptionsCompat
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.filters.SdkSuppress
 import com.ticketbox.RepositoryGraph
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.UploadIntentConnectedFixture
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.ui.screens.PendingScreen
@@ -50,6 +54,7 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -218,37 +223,58 @@ class PendingLaunchActionEffectTest {
     }
 
     @Test
+    @SdkSuppress(minSdkVersion = 29)
     fun actualPickerResultCancellationIsEmptyAndSelectionUsesTheSharedHandoff() {
-        val shell = MainShellState()
-        var selected: Uri? = null
-        val registry = object : ActivityResultRegistry() {
-            override fun <I, O> onLaunch(
-                requestCode: Int, contract: ActivityResultContract<I, O>, input: I, options: ActivityOptionsCompat?,
-            ) {
-                dispatchResult(requestCode, if (selected == null) Activity.RESULT_CANCELED else Activity.RESULT_OK,
-                    Intent().setData(selected))
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        withMediaStoreUploadOriginal(context) { original ->
+            val shell = MainShellState()
+            val resolver = context.contentResolver
+            val ready = mutableStateOf(false)
+            var attempts = 0
+            var selected: Uri? = null
+            val registry = object : ActivityResultRegistry() {
+                override fun <I, O> onLaunch(
+                    requestCode: Int, contract: ActivityResultContract<I, O>, input: I, options: ActivityOptionsCompat?,
+                ) {
+                    dispatchResult(requestCode, if (selected == null) Activity.RESULT_CANCELED else Activity.RESULT_OK,
+                        Intent().setData(selected))
+                }
             }
-        }
-        val registryOwner = object : ActivityResultRegistryOwner {
-            override val activityResultRegistry = registry
-        }
-        lateinit var openPicker: () -> Unit
-        composeRule.setContent {
-            CompositionLocalProvider(LocalActivityResultRegistryOwner provides registryOwner) {
-                val launcher = rememberSingleImageUploadLauncher(shell)
-                openPicker = { launcher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+            val registryOwner = object : ActivityResultRegistryOwner {
+                override val activityResultRegistry = registry
             }
-        }
-        composeRule.runOnIdle { openPicker() }
-        composeRule.runOnIdle {
+            lateinit var openPicker: () -> Unit
+            composeRule.setContent {
+                CompositionLocalProvider(LocalActivityResultRegistryOwner provides registryOwner) {
+                    val launcher = rememberSingleImageUploadLauncher(shell)
+                    openPicker = { launcher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+                    PendingLaunchActionEffect(shell, ready.value,
+                        LogicalSessionBinding("https://example.test", "family", "owner", "session", "revision"),
+                        onOpenPicker = { false }, onUploadSharedImages = { _, refs, _ ->
+                            assertEquals(listOf(original.toString()), refs)
+                            assertTrue(resolver.persistedUriPermissions.any { it.uri == original && it.isReadPermission })
+                            assertNotNull(pendingUploadSource(context)(refs.single()))
+                            ++attempts == 1
+                        })
+                }
+            }
+            composeRule.runOnIdle { openPicker() }
+            composeRule.runOnIdle {
+                assertNull(shell.launchAction.pending)
+                selected = original
+                openPicker()
+            }
+            composeRule.runOnIdle {
+                assertTrue(resolver.persistedUriPermissions.any { it.uri == original && it.isReadPermission })
+                val restored = LaunchActionState.restore(shell.launchAction.snapshot())
+                assertEquals(listOf(original.toString()), restored.pendingUpload!!.selection.uris)
+                shell.launchAction.post(sharedAction(listOf(original.toString())))
+                ready.value = true
+            }
+            composeRule.waitUntil(5_000) { shell.launchAction.awaitingUploadRetry && attempts == 2 }
+            composeRule.runOnIdle { cancelPendingUploadSelection(context, shell.launchAction) }
             assertNull(shell.launchAction.pending)
-            selected = Uri.parse("content://ticketbox/picked-receipt")
-            openPicker()
-        }
-        composeRule.runOnIdle {
-            val accepted = shell.launchAction.consume() as LaunchAction.UploadSharedImages
-            assertEquals(listOf(requireNotNull(selected).toString()), accepted.selection.uris)
-            assertNull(shell.launchAction.consume())
+            assertFalse(resolver.persistedUriPermissions.any { it.uri == original })
         }
     }
 
@@ -256,7 +282,7 @@ class PendingLaunchActionEffectTest {
         pendingCount = shell.launchAction.pendingUpload?.selection?.uris?.size ?: 0,
         accepting = shell.launchAction.acceptingUpload,
         onRetry = shell.launchAction::retryUpload,
-        onStop = shell.launchAction::cancelUploadSelection,
+        onStop = { cancelPendingUploadSelection(ApplicationProvider.getApplicationContext(), shell.launchAction) },
     )
 
     private fun sharedAction(refs: List<String>) = LaunchAction.UploadSharedImages(
@@ -291,4 +317,24 @@ class PendingLaunchActionEffectTest {
     private fun unusedSheetActions() = PendingReviewSheetHostActions(
         { _, _ -> }, { _, _ -> }, { _, _ -> }, { _, _ -> }, {}, {}, {}, {}, {},
     )
+}
+
+/** Owns one disposable platform image and its temporary/persisted grants, including failed assertions. */
+private fun withMediaStoreUploadOriginal(context: android.content.Context, test: (Uri) -> Unit) {
+    val resolver = context.contentResolver
+    val original = requireNotNull(resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, ContentValues().apply {
+        put(MediaStore.Images.Media.DISPLAY_NAME, "ticketbox-picker-${java.util.UUID.randomUUID()}.png")
+        put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+    }))
+    val read = Intent.FLAG_GRANT_READ_URI_PERMISSION
+    try {
+        requireNotNull(resolver.openOutputStream(original)).use {
+            assertTrue(Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888).compress(Bitmap.CompressFormat.PNG, 100, it))
+        }
+        context.grantUriPermission(context.packageName, original, read or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        test(original)
+    } finally {
+        context.revokeUriPermission(original, read)
+        resolver.delete(original, null, null)
+    }
 }

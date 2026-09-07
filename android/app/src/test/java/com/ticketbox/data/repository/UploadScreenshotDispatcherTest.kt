@@ -70,6 +70,33 @@ class UploadScreenshotDispatcherTest {
     }
 
     @Test
+    fun rejectedOriginalsKeepTheirReasonAndCannotRepeatTheSameRequest() = runTest {
+        for ((status, code) in listOf(400 to "unsupported_file_type", 413 to "file_too_large", 422 to "invalid_request")) {
+            val dao = FakePendingMutationDao()
+            val outbox = testOutboxRepository(dao)
+            val payload = originalPayload()
+            val id = outbox.enqueue(PendingMutationType.UploadScreenshot, "upload_batch:${payload.batch.groupId}",
+                adapters.uploadPayloadAdapter.toJson(payload), 0L, payload.file!!.key)
+            var sends = 0
+            val engine = OutboxDrainEngine(outbox, listOf(dispatcher(uploadApi { _, _, _ ->
+                sends++
+                throw refusal(status, code)
+            })))
+            assertEquals(1, engine.drainOnce().failures)
+            val rejected = dao.rows.getValue(id)
+            assertEquals(code, rejected.lastError)
+            assertFalse(rejected.blocksFollowing)
+            assertFalse(PendingUploadIntent(originalRow().copy(status = PendingMutationStatus.Failed,
+                lastError = rejected.lastError), payload, null).canRetry)
+            assertFalse(outbox.resolveFailed(id, FailedResolution.Retry()))
+            assertEquals(0, engine.drainOnce().attempted)
+            assertEquals(1, sends)
+            assertEquals(rejected, dao.rows.getValue(id))
+            assertNull(rejected.receiptJson)
+        }
+    }
+
+    @Test
     fun unreadableAndUnsupportedOriginalsDoNotReadOrSend() = runTest {
         var reads = 0
         val dispatch = UploadScreenshotDispatcher({ error("must not bind HTTP") }, adapters.uploadPayloadAdapter,

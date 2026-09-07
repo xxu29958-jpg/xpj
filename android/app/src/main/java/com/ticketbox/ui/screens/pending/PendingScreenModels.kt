@@ -1,6 +1,7 @@
 package com.ticketbox.ui.screens.pending
 
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.data.repository.MAX_UPLOAD_BATCH_ITEMS
 import com.ticketbox.viewmodel.PendingListLoadState
 import com.ticketbox.viewmodel.PendingSheet
 
@@ -105,7 +106,9 @@ data class PendingUploadSelectionUiState(
     val accepting: Boolean,
     val onRetry: () -> Unit,
     val onStop: () -> Unit,
-)
+) {
+    val canRetry: Boolean get() = !accepting && pendingCount in 1..MAX_UPLOAD_BATCH_ITEMS
+}
 
 data class PendingScreenChromeActions(
     val onRefresh: () -> Unit,

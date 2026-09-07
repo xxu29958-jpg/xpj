@@ -38,6 +38,9 @@ internal class PendingViewModelUploadFailureTest : PendingViewModelReviewTestBas
             observedUpload(1, PendingMutationStatus.Failed, "outbox_row_expired"),
             observedUpload(1, PendingMutationStatus.Failed, "upload_original_unavailable"),
             observedUpload(1, PendingMutationStatus.Failed, "idempotency_key_reused:original request refused"),
+            observedUpload(1, PendingMutationStatus.Failed, "unsupported_file_type"),
+            observedUpload(1, PendingMutationStatus.Failed, "file_too_large"),
+            observedUpload(1, PendingMutationStatus.Failed, "invalid_request"),
         )
         for (row in cases) {
             val fake = FakeReviewActions()
