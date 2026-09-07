@@ -14,6 +14,7 @@ import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -27,6 +28,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
 import com.ticketbox.R
+import com.ticketbox.BuildConfig
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.data.remote.dto.BackgroundTaskListResponseDto
@@ -204,6 +206,36 @@ class FactEntryNavigationTest {
         openRecoveryFactAndReturn()
         assertEquals(original, harness.fixture.stored().single())
         assertEquals(MainProductDestination.Workspace, harness.shell.activeDestination)
+    }
+
+    @Test fun incompatibleConnectionLeadsToTheExistingIntentWithoutSettlingOrReplayingIt() {
+        val original = runBlocking { harness.saveFailedCorrection() }
+        val binding = harness.fixture.graph.expenseRepository.captureDeferredLedgerBinding()
+        harness.fixture.network.diagnosticApiVersion = "different-protocol"
+        installMainGraph()
+        compose.runOnIdle { harness.shell.openAccount() }
+        val entry = context.getString(
+            if (BuildConfig.SHOW_ADVANCED_TOOLS) R.string.settings_root_connection_title_advanced
+            else R.string.settings_root_connection_title_basic,
+        )
+        waitForText(entry)
+        compose.onNodeWithText(entry).performScrollTo().performClick()
+        waitForText("检查连接")
+        compose.waitUntil(5_000) {
+            compose.onAllNodes(hasText("检查连接") and isEnabled()).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText("检查连接").performScrollTo().performClick()
+
+        val nextStep = "请将手机应用与服务端更新到配套版本，再重新检测。"
+        waitForText(nextStep)
+        compose.onNodeWithText(nextStep).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("查看未发送的操作").performScrollTo().performClick()
+        openRecoveryFactAndReturn()
+
+        assertEquals(listOf("auth", "compatibility"), harness.fixture.network.diagnosticReads)
+        assertEquals(binding, harness.fixture.graph.expenseRepository.captureDeferredLedgerBinding())
+        assertEquals(original, harness.fixture.stored().single())
+        assertTrue(harness.fixture.network.calls.isEmpty())
     }
 
     @Test fun failedRecognitionTaskOpensItsOriginalBillThroughTheRealWorkspace() {

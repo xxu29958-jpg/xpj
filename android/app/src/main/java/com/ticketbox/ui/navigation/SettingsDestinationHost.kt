@@ -93,8 +93,8 @@ internal data class SettingsDestinationNavigation(
 )
 
 internal data class SettingsRouteActions(
-    val onTestConnection: () -> Unit,
     val onRunDiagnostics: () -> Unit,
+    val onCancelConnectionWork: () -> Unit,
     val onRefreshServerSettings: () -> Unit,
     val onSync: () -> Unit,
     val onClearCache: () -> Unit,
@@ -217,10 +217,11 @@ internal fun SettingsDestinationHost(
             ),
             actions = ServerSettingsScreenActions(
                 onBack = { route = SettingsDestination.Root },
-                onTestConnection = actions.onTestConnection,
                 onRunDiagnostics = actions.onRunDiagnostics,
+                onCancelConnectionWork = actions.onCancelConnectionWork,
                 onRefreshServerSettings = actions.onRefreshServerSettings,
                 onSync = actions.onSync,
+                onOpenSyncStatus = { route = SettingsDestination.SyncStatus },
             ),
         )
 

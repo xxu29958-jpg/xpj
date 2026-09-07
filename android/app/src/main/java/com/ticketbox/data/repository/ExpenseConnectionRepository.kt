@@ -1,13 +1,18 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.data.remote.ConfirmedExpensesApiQuery
+import com.ticketbox.data.remote.CURRENT_TICKETBOX_API_VERSION
 import com.ticketbox.data.remote.PageQuery
+import com.ticketbox.data.remote.UPLOAD_ORIGINAL_RECEIPT_VERSION
+import com.ticketbox.data.remote.dto.RuntimeWriteCompatibility
+import com.ticketbox.data.remote.dto.toWriteCompatibility
 import com.ticketbox.domain.model.ConnectionDiagnostics
 import com.ticketbox.domain.model.DiagnosticCheck
 import com.ticketbox.domain.model.DiagnosticCheckKind
 import com.ticketbox.domain.model.DiagnosticStatus
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ServerSettings
+import kotlinx.coroutines.CancellationException
 import kotlin.system.measureTimeMillis
 
 internal class ExpenseConnectionRepository(
@@ -50,43 +55,30 @@ internal class ExpenseConnectionRepository(
         return if (owner == null) testConnection() else null
     }
 
-    suspend fun runConnectionDiagnostics(): Result<ConnectionDiagnostics> = core.errorHandler.safeCall {
-        val bound = core.ledgerRequestGuard.bind()
+    suspend fun runConnectionDiagnostics(binding: LogicalSessionBinding): Result<ConnectionDiagnostics> = core.errorHandler.safeCall {
+        val bound = core.ledgerRequestGuard.bindExact(binding)
         bound.call { service ->
             val checks = mutableListOf<DiagnosticCheck>()
 
             suspend fun record(
                 kind: DiagnosticCheckKind,
                 block: suspend () -> Unit,
-            ) {
-                var failure: Throwable? = null
-                val elapsedMs = measureTimeMillis {
-                    try {
-                        block()
-                    } catch (error: Throwable) {
-                        failure = error
-                    }
-                }
-                val error = failure
-                checks += if (error == null) {
-                    DiagnosticCheck(
-                        kind = kind,
-                        status = DiagnosticStatus.Pass,
-                        elapsedMs = elapsedMs,
-                    )
-                } else {
-                    DiagnosticCheck(
-                        kind = kind,
-                        status = DiagnosticStatus.Fail,
-                        detail = core.diagnosticErrorMessage(error),
-                        elapsedMs = elapsedMs,
-                    )
-                }
+            ): Boolean {
+                bound.requireStillActive()
+                val check = diagnosticCheck(kind, block)
+                checks += check
+                return check.status != DiagnosticStatus.Fail
             }
 
             var pending = emptyList<Expense>()
 
-            record(DiagnosticCheckKind.Auth) { service.checkAuth() }
+            if (!record(DiagnosticCheckKind.Auth) {
+                val snapshot = core.sessionCoordinator.currentSnapshot()
+                core.persistAuthCheck(service.checkAuth(), snapshot)
+            }) return@call ConnectionDiagnostics(checks)
+            record(DiagnosticCheckKind.WriteCompatibility) {
+                service.runtimeCompatibility().toWriteCompatibility().requireSubmissionCompatibility()
+            }
             record(DiagnosticCheckKind.ServerSettings) { service.serverSettings() }
             record(DiagnosticCheckKind.PendingExpenses) {
                 pending = service.pendingExpenses().map { it.toDomain() }
@@ -125,6 +117,26 @@ internal class ExpenseConnectionRepository(
         }
     }
 
+    private suspend fun diagnosticCheck(kind: DiagnosticCheckKind, block: suspend () -> Unit): DiagnosticCheck {
+        var failure: Exception? = null
+        val elapsedMs = measureTimeMillis {
+            try {
+                block()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                failure = error
+            }
+        }
+        return DiagnosticCheck(
+            kind = kind,
+            status = if (failure == null) DiagnosticStatus.Pass else DiagnosticStatus.Fail,
+            detail = failure?.let(core::diagnosticErrorMessage),
+            elapsedMs = elapsedMs,
+        )
+    }
+
+
     suspend fun serverSettings(): Result<ServerSettings> = core.errorHandler.safeCall {
         core.ledgerRequestGuard.guardedCall { api ->
             val requestSnapshot = core.sessionCoordinator.currentSnapshot()
@@ -157,4 +169,23 @@ internal class ExpenseConnectionRepository(
     suspend fun clearLocalCache() {
         core.clearLocalCache()
     }
+}
+
+private fun RuntimeWriteCompatibility.requireSubmissionCompatibility() {
+    val matchingReceipt = uploadOriginalReceiptVersion == UPLOAD_ORIGINAL_RECEIPT_VERSION
+    if (canWrite && matchingReceipt) return
+    val message = when {
+        apiVersion != CURRENT_TICKETBOX_API_VERSION ->
+            "请将手机应用与服务端更新到配套版本，再重新检测。"
+        conclusion == "owner_action_required" ->
+            "请让安装拥有者在电脑端确认本位币，再重新检测。未发送的操作仍保留在本机。"
+        conclusion == "configuration_required" ->
+            "请让管理员在电脑端检查小票夹的本位币配置，再重新检测。"
+        conclusion == "server_upgrade_required" ->
+            "请让管理员更新电脑上的小票夹服务，再重新检测。"
+        conclusion == "client_upgrade_required" || !matchingReceipt ->
+            "请将手机应用与服务端更新到配套版本，再重新检测。"
+        else -> "尚未确认保存条件，请重新检测；如果仍未恢复，请联系管理员检查服务端。"
+    }
+    throw RepositoryException(message)
 }

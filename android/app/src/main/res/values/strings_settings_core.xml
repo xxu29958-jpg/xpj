@@ -96,11 +96,13 @@
     <string name="settings_account_button_check_connection">检查连接</string>
     <string name="settings_account_button_update_ledger">更新账本</string>
     <string name="settings_account_diagnostics_failed">发现 %1$d 个问题</string>
-    <string name="settings_account_diagnostics_warning">可用，有 %1$d 个提醒</string>
-    <string name="settings_account_diagnostics_ok">连接检测正常</string>
+    <string name="settings_account_diagnostics_warning">检查已完成，有 %1$d 项未检查</string>
+    <string name="settings_account_diagnostics_ok">本次检查通过</string>
     <string name="settings_account_diagnostics_not_run">尚未运行检测</string>
     <string name="settings_account_diagnostics_elapsed">%1$d ms</string>
     <string name="settings_diagnostics_check_auth_name">身份验证</string>
+    <string name="settings_diagnostics_check_write_name">版本与保存条件</string>
+    <string name="settings_diagnostics_check_write_pass">版本匹配，服务端允许提交；能否修改仍取决于账本角色。</string>
     <string name="settings_diagnostics_check_server_name">账本状态</string>
     <string name="settings_diagnostics_check_pending_name">待确认账单</string>
     <string name="settings_diagnostics_check_confirmed_name">已入账记录</string>
@@ -111,7 +113,7 @@
     <string name="settings_diagnostics_check_auth_pass">访问凭证有效</string>
     <string name="settings_diagnostics_check_server_pass">小票夹服务正常</string>
     <string name="settings_diagnostics_check_pending_pass">可以读取待确认账单</string>
-    <string name="settings_diagnostics_check_confirmed_pass">可以更新账本</string>
+    <string name="settings_diagnostics_check_confirmed_pass">可以读取已入账记录</string>
     <string name="settings_diagnostics_check_stats_pass">可以读取月度统计</string>
     <string name="settings_diagnostics_check_categories_pass">可以读取分类和月份</string>
     <string name="settings_diagnostics_check_duplicates_pass">可以读取疑似重复账单</string>
@@ -130,10 +132,10 @@
     <string name="settings_server_page_title_advanced">连接与同步</string>
     <string name="settings_server_page_title_basic">账本连接</string>
     <string name="settings_server_page_subtitle_advanced">查看连接状态、更新账本，并运行连接检测。</string>
-    <string name="settings_server_page_subtitle_basic">确认此设备连接的账本，并手动更新账本状态。</string>
-    <string name="settings_server_section_internal_tools">连接检测</string>
-    <string name="settings_server_internal_tools_hint">用于检查账本连接、授权和同步状态；仅内部版显示检测明细。</string>
-    <string name="settings_server_button_run_diagnostics">运行检测</string>
+    <string name="settings_server_page_subtitle_basic">检查连接和保存条件，查看结果并继续未完成的操作。</string>
+    <string name="settings_server_section_diagnostics">连接检测</string>
+    <string name="settings_server_diagnostics_hint">检查连接会读取账本状态，不会试写账单。未发送的操作保留在本机，可在离线同步中查看和继续。</string>
+    <string name="settings_server_open_pending_operations">查看未发送的操作</string>
     <string name="settings_server_button_refresh_settings">刷新设置</string>
 
     <!-- 数据与导出页（DataExportScreen） -->
@@ -256,8 +258,7 @@
     <string name="sync_status_drop_dialog_confirm_remove">确定移除</string>
 
     <!-- SettingsViewModel 用户可见反馈消息。 -->
-    <string name="settings_vm_connection_ok">连接正常</string>
-    <string name="settings_vm_connection_failed">暂时连不上小票夹，请稍后再试。</string>
+    <string name="settings_vm_sync_state_unavailable">账单已更新；连接状态暂时不可用，可再次检查连接。</string>
     <string name="settings_vm_sync_done">更新完成</string>
     <string name="settings_vm_sync_failed">暂时更新不了，请稍后再试。</string>
     <string name="settings_vm_diagnostics_passed">连接检测通过</string>

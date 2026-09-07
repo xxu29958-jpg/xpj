@@ -129,8 +129,8 @@ class ExpenseRepository(
 
     suspend fun testConnection(): Result<Unit> = connectionRepository.testConnection()
 
-    suspend fun runConnectionDiagnostics(): Result<ConnectionDiagnostics> =
-        connectionRepository.runConnectionDiagnostics()
+    suspend fun runConnectionDiagnostics(binding: LogicalSessionBinding): Result<ConnectionDiagnostics> =
+        connectionRepository.runConnectionDiagnostics(binding)
 
     override suspend fun fetchPending(): Result<List<Expense>> =
         pendingRepository.fetchPending()
