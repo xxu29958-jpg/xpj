@@ -18,6 +18,30 @@ from urllib.parse import urlsplit
 
 _WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 _EVALUATE_PAGE_ATTEMPTS = 2
+_PAGE_READY_DIAGNOSTIC = """
+(() => {
+  const protocols = ["about:", "file:", "http:", "https:", "chrome-error:", "edge-error:"];
+  const protocol = protocols.includes(location.protocol) ? location.protocol : "other";
+  let route = "other";
+  if (protocol === "about:") route = "about";
+  else if (protocol === "file:") route = "file";
+  else if (location.pathname === "/api/bootstrap") route = "bootstrap";
+  else if (location.pathname === "/web") route = "web";
+  else if (location.pathname === "/web/pending") route = "pending";
+  else if (location.pathname === "/" || location.pathname === "/index.html") route = "manager";
+  return {
+    protocol, route, readyState: document.readyState,
+    mainContent: Boolean(document.querySelector("#main-content")),
+    renderProbeStarted: globalThis.__probeStarted === true,
+    renderProbeResultReady: typeof globalThis.__probeResult === "string"
+  };
+})()
+"""
+_READY_DIAGNOSTIC_VALUES = {
+    "protocol": {"about:", "file:", "http:", "https:", "chrome-error:", "edge-error:", "other"},
+    "route": {"about", "file", "bootstrap", "web", "pending", "manager", "other"},
+    "readyState": {"loading", "interactive", "complete"},
+}
 
 
 class _DevToolsTransportError(RuntimeError):
@@ -233,6 +257,40 @@ def _stop_edge(
         _reap_edge_process(process)
 
 
+def _layout_timeout_diagnostic(
+    page: _WebSocket, navigation: dict[str, object], last_remote: object,
+) -> dict[str, object]:
+    """Observe only fixed enums/booleans; never include browser strings or URLs."""
+    remote_type = last_remote.get("type") if isinstance(last_remote, dict) else None
+    diagnostic: dict[str, object] = {
+        "navigateErrorTextPresent": "errorText" in navigation,
+        "navigateIsDownload": navigation.get("isDownload") is True,
+        "probeReturnType": remote_type if remote_type in (
+            "undefined", "string", "object", "boolean", "number", "function", "symbol", "bigint",
+        ) else "unknown",
+    }
+    try:
+        evaluated = page.request(
+            "Runtime.evaluate", {"expression": _PAGE_READY_DIAGNOSTIC, "returnByValue": True},
+        )
+    except (AssertionError, OSError, ValueError, _DevToolsTransportError):
+        return {**diagnostic, "snapshot": "unavailable"}
+    if "exceptionDetails" in evaluated:
+        return {**diagnostic, "snapshot": "javascript_exception"}
+    result = evaluated.get("result")
+    snapshot = result.get("value") if isinstance(result, dict) else None
+    if not isinstance(snapshot, dict):
+        return {**diagnostic, "snapshot": "unavailable"}
+    diagnostic["snapshot"] = "available"
+    for name, allowed in _READY_DIAGNOSTIC_VALUES.items():
+        value = snapshot.get(name)
+        diagnostic[name] = value if isinstance(value, str) and value in allowed else "unknown"
+    for name in ("mainContent", "renderProbeStarted", "renderProbeResultReady"):
+        value = snapshot.get(name)
+        diagnostic[name] = value if isinstance(value, bool) else "unknown"
+    return diagnostic
+
+
 def _evaluate_page_once(
     edge: str,
     *,
@@ -269,8 +327,9 @@ def _evaluate_page_once(
             "Emulation.setDeviceMetricsOverride",
             {"width": width, "height": height, "deviceScaleFactor": 1, "mobile": False},
         )
-        page.request("Page.navigate", {"url": url})
+        navigation = page.request("Page.navigate", {"url": url})
         deadline = time.monotonic() + 10.0
+        remote: object = None
         while time.monotonic() < deadline:
             evaluated = page.request(
                 "Runtime.evaluate",
@@ -290,7 +349,10 @@ def _evaluate_page_once(
             if isinstance(remote, dict) and remote.get("type") != "undefined":
                 return remote.get("value")
             time.sleep(0.05)
-        raise AssertionError("layout probe did not become available")
+        diagnostic = _layout_timeout_diagnostic(page, navigation, remote)
+        raise AssertionError(
+            "layout probe did not become available; " + json.dumps(diagnostic, sort_keys=True),
+        )
     finally:
         _stop_edge(process, page=page, browser_endpoint=browser_endpoint)
 
@@ -324,6 +386,48 @@ def evaluate_page(
         f"{_EVALUATE_PAGE_ATTEMPTS} fresh sessions: "
         f"{type(last_failure).__name__}: {last_failure}",
     ) from last_failure
+
+
+def app_window_snapshot(process_id: int, marker: str) -> dict[str, object]:
+    """Independently observe native windows; return only counts and fixed probe stages."""
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    user32.EnumWindows.argtypes = (callback_type, wintypes.LPARAM)
+    user32.EnumWindows.restype = wintypes.BOOL
+    user32.IsWindowVisible.argtypes = (wintypes.HWND,)
+    user32.IsWindowVisible.restype = wintypes.BOOL
+    user32.GetWindowThreadProcessId.argtypes = (wintypes.HWND, ctypes.POINTER(wintypes.DWORD))
+    user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+    user32.GetWindowTextW.argtypes = (wintypes.HWND, wintypes.LPWSTR, ctypes.c_int)
+    user32.GetWindowTextW.restype = ctypes.c_int
+    result: dict[str, object] = {"ownedVisible": 0, "otherProbeVisible": 0, "stages": []}
+    stages: list[str] = []
+
+    @callback_type
+    def observe(handle, _context):
+        if not user32.IsWindowVisible(handle):
+            return True
+        owner = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(handle, ctypes.byref(owner))
+        title = ctypes.create_unicode_buffer(256)
+        user32.GetWindowTextW(handle, title, len(title))
+        if owner.value == process_id:
+            result["ownedVisible"] += 1
+        for stage in ("loaded", "closing", "returned", "stalled"):
+            if title.value.startswith(f"{marker} {stage}"):
+                stages.append(stage)
+                if owner.value != process_id:
+                    result["otherProbeVisible"] += 1
+                break
+        return True
+
+    if not user32.EnumWindows(observe, 0):
+        raise ctypes.WinError(ctypes.get_last_error())
+    result["stages"] = sorted(stages)
+    return result
 
 
 def wait_for_app_window_close(edge: str, *, profile: Path, url: str) -> None:

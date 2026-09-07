@@ -5,6 +5,9 @@ Public API used by ``routes/imports.py`` and ``routes/web_import_export.py``:
 - ``create_csv_import_batch`` — parse uploaded CSV into a CsvImportBatch
   with one CsvImportRow per data line
 - ``get_csv_import_batch`` — fetch a batch by public_id, scoped to tenant
+- ``build_csv_import_batch_response`` — project current row counts into the API receipt
+- ``get_csv_import_batch_progress`` — read a batch's actual row counts and result actions
+- ``list_csv_import_batches`` — paginate saved batch receipts with the same progress
 - ``list_csv_import_rows`` — paginate rows of a batch
 - ``apply_csv_import_batch`` — promote ``valid`` rows to Expense records
 - ``build_csv_import_errors_csv`` — return a CSV string of failed rows
@@ -28,8 +31,8 @@ Internal layout (one concern per submodule):
                        claim + insert + finalize + 3-branch rollback
                        ladder
 
-Dependency rule: ``_common`` is a leaf; ``_csv_io`` depends on _common
-only; ``_row_claim`` is independent of _csv_io but uses _common;
+Dependency rule: ``_common`` is a leaf; ``_csv_io`` uses _common and
+the read-only _queries count owner; ``_row_claim`` is independent of _csv_io;
 ``_lifecycle`` depends on _csv_io; ``_apply_lease`` depends on
 _row_claim + _csv_io and lazily on _lifecycle; ``_idempotency`` depends
 on _apply_lease and lazily on _lifecycle; ``_apply`` sits on top.
@@ -70,6 +73,11 @@ from app.services.csv_import_batch_service._lifecycle import (
     get_csv_import_batch,
     list_csv_import_rows,
 )
+from app.services.csv_import_batch_service._queries import (
+    build_csv_import_batch_response,
+    get_csv_import_batch_progress,
+    list_csv_import_batches,
+)
 from app.services.csv_import_batch_service._row_claim import (
     _claim_csv_import_rows,
     _refresh_claimed_csv_import_row,
@@ -85,8 +93,11 @@ __all__ = [
     "_refresh_claimed_csv_import_row",
     "_resolve_csv_import_idempotency_conflict",
     "apply_csv_import_batch",
+    "build_csv_import_batch_response",
     "build_csv_import_errors_csv",
     "create_csv_import_batch",
     "get_csv_import_batch",
+    "get_csv_import_batch_progress",
+    "list_csv_import_batches",
     "list_csv_import_rows",
 ]

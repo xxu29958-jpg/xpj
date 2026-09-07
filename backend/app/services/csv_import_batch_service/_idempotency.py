@@ -15,10 +15,11 @@ from sqlalchemy.orm import Session
 
 from app.ledger_scope import ledger_scoped_select
 from app.models import CsvImportBatch, CsvImportRow, Expense
-from app.schemas import CsvImportApplyResponse, CsvImportBatchResponse
+from app.schemas import CsvImportApplyResponse
 from app.services.csv_import_batch_service._apply_lease import (
     _finalize_csv_import_apply_success,
 )
+from app.services.csv_import_batch_service._queries import build_csv_import_batch_response
 from app.services.time_service import now_utc
 
 
@@ -92,7 +93,7 @@ def _resolve_csv_import_idempotency_conflict(
     db.commit()
     db.refresh(batch)
     return CsvImportApplyResponse(
-        batch=CsvImportBatchResponse.model_validate(batch),
+        batch=build_csv_import_batch_response(db, batch=batch),
         inserted_count=0,
         remaining_valid_rows=remaining_rows,
     )

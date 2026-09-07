@@ -37,7 +37,7 @@ from app.config import get_settings
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import CsvImportBatch, CsvImportRow, Expense
-from app.schemas import CsvImportApplyResponse, CsvImportBatchResponse
+from app.schemas import CsvImportApplyResponse
 from app.services.csv_import_batch_service._apply_lease import (
     _claim_apply_lease,
     _finalize_csv_import_apply_success,
@@ -49,13 +49,16 @@ from app.services.csv_import_batch_service._idempotency import (
     _existing_csv_import_expense_id,
     _resolve_csv_import_idempotency_conflict,
 )
-from app.services.csv_import_batch_service._queries import get_csv_import_batch
+from app.services.csv_import_batch_service._queries import (
+    _remaining_importable_rows,
+    build_csv_import_batch_response,
+    get_csv_import_batch,
+)
 from app.services.csv_import_batch_service._row_claim import (
     _applying_row_count,
     _claim_csv_import_rows,
     _recover_stale_csv_import_rows,
     _refresh_claimed_csv_import_row,
-    _remaining_importable_rows,
     _reset_claimed_csv_import_rows,
 )
 from app.services.currency_binding_service import (
@@ -403,7 +406,7 @@ def _attempt_csv_import_apply(
     db.commit()
     db.refresh(batch)
     return CsvImportApplyResponse(
-        batch=CsvImportBatchResponse.model_validate(batch),
+        batch=build_csv_import_batch_response(db, batch=batch),
         inserted_count=inserted,
         remaining_valid_rows=remaining_rows,
     )

@@ -11,7 +11,6 @@ import csv
 from io import StringIO
 from pathlib import Path
 
-from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -19,6 +18,7 @@ from app.ledger_scope import ledger_scoped_select
 from app.models import CsvImportBatch, CsvImportRow
 from app.money_contract import MoneySign, ensure_optional_money_minor
 from app.services.csv_import_batch_service._common import DEFAULT_BATCH_FILE_NAME
+from app.services.csv_import_batch_service._queries import _csv_import_batch_counts
 from app.services.csv_security import safe_csv_cell
 from app.services.import_service import DEFAULT_SOURCE
 from app.services.time_service import now_utc
@@ -76,17 +76,10 @@ def _row_from_parsed(batch: CsvImportBatch, parsed) -> CsvImportRow:
 
 
 def _refresh_batch_counts(db: Session, batch: CsvImportBatch) -> None:
-    counts = dict(
-        db.execute(
-            select(CsvImportRow.status, func.count())
-            .where(CsvImportRow.tenant_id == batch.tenant_id)
-            .where(CsvImportRow.batch_id == batch.id)
-            .group_by(CsvImportRow.status)
-        ).all()
-    )
-    batch.applied_rows = int(counts.get("applied", 0))
+    counts = _csv_import_batch_counts(db, tenant_id=batch.tenant_id, batch_id=batch.id)
+    batch.applied_rows = counts.applied_rows
     batch.inserted_count = batch.applied_rows
-    batch.error_rows = int(counts.get("error", 0)) + int(counts.get("insert_failed", 0))
+    batch.error_rows = counts.error_rows
 
 
 def build_csv_import_errors_csv(

@@ -10,15 +10,9 @@
    时间戳走路由 created_label/updated_label (spending_contract_service 口径)。
    kpi-strip 随本页迁移零消费者, pages/reports.css 整文件退役。 #}
 {% block content %}
-{% set _batch_status = {
-  'applied': ('已完成', 'product-status--success'),
-  'applied_with_errors': ('已完成', 'product-status--success'),
-  'parsed_with_errors': ('有错误', 'product-status--warning'),
-  'applying': ('导入中', 'product-status--warning')
-} %}
-{% set _status_label, _status_tone = _batch_status.get(batch.status, ('待导入', '')) %}
-{% set _row_label = {'valid': '可导入', 'applied': '已导入', 'insert_failed': '写入失败'} %}
-{% set _row_tone = {'valid': '', 'applied': 'product-status--success', 'insert_failed': 'product-status--danger'} %}
+{% set _status_label, _status_tone = progress.display_status %}
+{% set _row_label = {'valid': '可导入', 'applying': '处理中', 'applied': '已导入', 'insert_failed': '写入失败'} %}
+{% set _row_tone = {'valid': '', 'applying': 'product-status--warning', 'applied': 'product-status--success', 'insert_failed': 'product-status--danger'} %}
 <header class="product-page-header">
   <div class="product-page-heading">
     <span class="product-eyebrow">流水 / 导入 / 批次</span>
@@ -32,24 +26,23 @@
 </header>
 
 {% if flash_message %}
-<div class="product-feedback product-feedback--success" role="status">{{ flash_message }}</div>
+<div class="product-feedback product-feedback--{{ 'error' if flash_type == 'error' else 'success' }}"
+     role="{{ 'alert' if flash_type == 'error' else 'status' }}">{{ flash_message }}</div>
 {% endif %}
 
 <section class="import-metrics import-metrics--pair" aria-label="批次概况">
   <div class="import-metric is-primary"><span>总行数</span><strong>{{ batch.total_rows }}</strong></div>
-  <div class="import-metric is-success"><span>可导入</span><strong>{{ batch.valid_rows }}</strong></div>
-  <div class="import-metric is-warning"><span>错误行</span><strong>{{ batch.error_rows }}</strong></div>
-  <div class="import-metric"><span>已导入</span><strong>{{ batch.applied_rows }}</strong></div>
+  <div class="import-metric is-success"><span>剩余可导入</span><strong>{{ progress.row_counts.remaining_valid_rows }}</strong></div>
+  <div class="import-metric is-warning"><span>错误行</span><strong>{{ progress.row_counts.error_rows }}</strong></div>
+  <div class="import-metric"><span>已导入</span><strong>{{ progress.row_counts.applied_rows }}</strong></div>
 </section>
 
 <section class="product-panel product-panel--padded" aria-label="下一步">
   <div class="product-panel-header">
     <h2 class="product-panel-title">下一步</h2>
   </div>
-  {# 主行动三态并列诚实表达: 还有可导入行→导入下一批 (只进待确认, 不入账);
-     可导入行已全部进队列→查看待确认 (与旧版同条件 valid_rows<=applied_rows,
-     不因有错误行藏起这个出口); 错误行→下载 CSV 修正后重新上传。 #}
-  {% if can_write and batch.valid_rows > batch.applied_rows %}
+  {# 剩余行取真实 valid/applying；已经导入与错误下载分别保留原结果入口。 #}
+  {% if can_write and progress.row_counts.remaining_valid_rows > 0 %}
   <form method="post" action="/web/import/{{ batch.public_id }}/apply" class="product-form-grid import-apply-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
@@ -62,13 +55,16 @@
   <p class="import-export-note">导入的账单只进「待确认」队列复核，不会直接入账。</p>
   {% elif not can_write %}
   <p class="text-meta">只读角色只能查看导入批次。</p>
-  {% else %}
+  {% endif %}
+  {% if progress.row_counts.applied_rows > 0 %}
   <div class="import-batch-done">
     <a href="/web/pending{{ q }}" class="product-button product-button--primary">查看待确认</a>
-    <p class="text-meta">本批次的可导入行已全部进入「待确认」队列，复核后才入账。</p>
+    <p class="text-meta">本批次已导入 {{ progress.row_counts.applied_rows }} 行，可前往「待确认」队列复核；复核后才入账。</p>
   </div>
+  {% elif progress.row_counts.remaining_valid_rows == 0 %}
+  <p class="text-meta">本批次没有进入待确认队列的账单，也没有可继续导入的行。</p>
   {% endif %}
-  {% if batch.error_rows > 0 %}
+  {% if progress.row_counts.error_rows > 0 %}
   <p class="import-export-note"><a href="/web/import/{{ batch.public_id }}/errors.csv{{ q }}">下载错误行 CSV</a>，修正后重新上传即可。</p>
   {% endif %}
   {% if batch.last_error %}

@@ -614,8 +614,9 @@ def test_production_edge_process_tracks_the_visible_window_lifetime(tmp_path: Pa
     assert discover_edge_executable() is not None
     page = tmp_path / "close-window.html"
     page.write_text(
-        "<!doctype html><title>Ticketbox close test</title>"
-        "<script>setTimeout(() => window.close(), 2000)</script>",
+        "<!doctype html><title>Ticketbox lifetime loaded</title>"
+        "<script>setTimeout(() => {document.title = 'Ticketbox lifetime closing';"
+        "window.close(); document.title = 'Ticketbox lifetime returned';}, 2000)</script>",
         encoding="utf-8",
     )
 
@@ -625,18 +626,33 @@ def test_production_edge_process_tracks_the_visible_window_lifetime(tmp_path: Pa
     )
 
     assert window is not None
-    assert window.is_open()
-    time.sleep(0.75)
-    assert window.is_open(), "Edge launcher exited before the visible app window"
-    window.process.wait(timeout=10)
-    assert window.is_open() is False
+    observations: list[dict[str, object]] = []
+    try:
+        assert window.is_open()
+        time.sleep(0.75)
+        assert window.is_open(), "Edge launcher exited before the visible app window"
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            snapshot = _edge_cdp.app_window_snapshot(window.process.pid, "Ticketbox lifetime")
+            snapshot["processOpen"] = window.is_open()
+            if not observations or observations[-1] != snapshot:
+                observations.append(snapshot)
+            if not window.is_open():
+                break
+            time.sleep(0.05)
+        assert window.is_open() is False, observations
+        assert any(row["stages"] for row in observations), observations
+        assert observations[-1]["ownedVisible"] == 0, observations
+        assert observations[-1]["otherProbeVisible"] == 0, observations
+    finally:
+        window.close()
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows Edge app-window gate")
 def test_host_can_close_real_edge_when_the_page_never_acknowledges(tmp_path: Path) -> None:
     assert discover_edge_executable() is not None
     page = tmp_path / "stalled-window.html"
-    page.write_text("<!doctype html><title>Ticketbox stalled test</title>", encoding="utf-8")
+    page.write_text("<!doctype html><title>Ticketbox lifetime control stalled</title>", encoding="utf-8")
 
     window = desktop_shell.open_app_window(
         page.as_uri(),
@@ -644,9 +660,23 @@ def test_host_can_close_real_edge_when_the_page_never_acknowledges(tmp_path: Pat
     )
 
     assert window is not None
-    assert window.is_open()
-    assert window.close(timeout=5) is True
-    assert window.is_open() is False
+    try:
+        deadline = time.monotonic() + 10
+        snapshot: dict[str, object] = {}
+        while time.monotonic() < deadline:
+            snapshot = _edge_cdp.app_window_snapshot(window.process.pid, "Ticketbox lifetime control")
+            if snapshot["stages"] == ["stalled"]:
+                break
+            time.sleep(0.05)
+        assert snapshot["stages"] == ["stalled"], snapshot
+        assert snapshot["ownedVisible"] > 0, snapshot
+        assert snapshot["otherProbeVisible"] == 0, snapshot
+        assert window.is_open()
+        assert window.close(timeout=5) is True
+        assert window.is_open() is False
+        assert _edge_cdp.app_window_snapshot(window.process.pid, "Ticketbox lifetime control")["stages"] == []
+    finally:
+        window.close()
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows Edge app-window gate")
@@ -799,14 +829,22 @@ def test_served_web_layout_through_manager_bff(
                 monkeypatch, bootstrap_path=bootstrap_dir / "bootstrap-1.html",
                 profile=profile, record_property=record_property,
             )
-        value = evaluate_page(
-            edge,
-            profile=profile,
-            prepare_url=prepare_url,
-            width=width,
-            height=height,
-            expression=_SERVED_WEB_PROBE,
-        )
+        try:
+            value = evaluate_page(
+                edge,
+                profile=profile,
+                prepare_url=prepare_url,
+                width=width,
+                height=height,
+                expression=_SERVED_WEB_PROBE,
+            )
+        except AssertionError as exc:
+            try:
+                remaining = str(sum(path.exists() for path in bootstrap_paths))
+            except OSError:
+                remaining = "unavailable"
+            exc.add_note(f"bootstrap_files_created={len(bootstrap_paths)}; remaining={remaining}")
+            raise
 
     assert bootstrap_paths
     assert all(not path.exists() for path in bootstrap_paths)
