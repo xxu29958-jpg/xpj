@@ -29,7 +29,21 @@ internal data class PendingMutationIntent(
     val payloadJson: String,
     val expectedRowVersion: Long,
     val idempotencyKey: String? = null,
-)
+) {
+    /** Single and batch acceptance encode the same immutable command under the verified binding. */
+    fun toEntity(binding: OutboxBinding, createdAt: String): PendingMutationEntity = PendingMutationEntity(
+        serverUrl = binding.serverUrl,
+        ledgerId = binding.ledgerId,
+        ownerKey = requireNotNull(binding.owner).storageKey,
+        type = type.wireValue,
+        targetId = targetId,
+        payload = payloadJson,
+        expectedRowVersion = expectedRowVersion,
+        idempotencyKey = idempotencyKey,
+        status = PendingMutationStatus.Pending.wireValue,
+        createdAt = createdAt,
+    )
+}
 
 /**
  * ADR-0038 PR-2g: offline outbox queue.
@@ -386,18 +400,7 @@ class OutboxRepository private constructor(
             val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
             boundRequest?.requireStillActiveFor(binding)
             binding.requireReadyForEnqueue()
-            val row = PendingMutationEntity(
-                serverUrl = binding.serverUrl,
-                ledgerId = binding.ledgerId,
-                ownerKey = requireNotNull(binding.owner).storageKey,
-                type = intent.type.wireValue,
-                targetId = intent.targetId,
-                payload = intent.payloadJson,
-                expectedRowVersion = intent.expectedRowVersion,
-                idempotencyKey = intent.idempotencyKey,
-                status = PendingMutationStatus.Pending.wireValue,
-                createdAt = nowIso(),
-            )
+            val row = intent.toEntity(binding, nowIso())
             val insertedId = dao.insert(row)
             afterPersisted()
             insertedId
@@ -441,12 +444,7 @@ class OutboxRepository private constructor(
                 }
             } else {
                 val createdAt = nowIso()
-                dao.insertBatch(intents.map { intent -> PendingMutationEntity(
-                    serverUrl = binding.serverUrl, ledgerId = binding.ledgerId, ownerKey = binding.ownerStorageKey,
-                    type = intent.type.wireValue, targetId = intent.targetId, payload = intent.payloadJson,
-                    expectedRowVersion = intent.expectedRowVersion, idempotencyKey = intent.idempotencyKey,
-                    status = PendingMutationStatus.Pending.wireValue, createdAt = createdAt,
-                ) })
+                dao.insertBatch(intents.map { it.toEntity(binding, createdAt) })
             }
         }
         schedulePending()
