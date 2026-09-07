@@ -13,6 +13,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -36,6 +37,7 @@ internal class PendingViewModelUploadFailureTest : PendingViewModelReviewTestBas
             observedUpload(1, PendingMutationStatus.Failed, "upload_source_unreadable").let { it.copy(payload = it.payload!!.copy(file = null)) },
             observedUpload(1, PendingMutationStatus.Failed, "outbox_row_expired"),
             observedUpload(1, PendingMutationStatus.Failed, "upload_original_unavailable"),
+            observedUpload(1, PendingMutationStatus.Failed, "idempotency_key_reused:original request refused"),
         )
         for (row in cases) {
             val fake = FakeReviewActions()
@@ -53,6 +55,39 @@ internal class PendingViewModelUploadFailureTest : PendingViewModelReviewTestBas
             advanceUntilIdle()
             assertEquals(listOf(Triple(uploadTestBinding(), UPLOAD_TEST_BATCH, true)), fake.uploadIntents.recoveries)
         }
+    }
+
+    @Test
+    fun pendingUnreadableSlotsAreVisibleBeforeAnyNetworkConstrainedDrain() = review {
+        val unreadable = observedUpload(2).let { it.copy(payload = it.payload!!.copy(file = null)) }
+        for (group in listOf(listOf(unreadable), listOf(observedUpload(1), unreadable))) {
+            val fake = FakeReviewActions()
+            fake.uploadIntents.publish(*group.toTypedArray())
+            val vm = pendingViewModel(fake)
+            advanceUntilIdle()
+            assertEquals(UiText.res(R.string.pending_msg_upload_unreadable), vm.uiState.value.uploadMessage)
+            assertEquals(1, vm.uiState.value.uploadFailedCount)
+            assertFalse(vm.uiState.value.canRetryUpload)
+            assertTrue(vm.uiState.value.canStopUpload)
+            assertEquals(group, fake.uploadIntents.snapshots.value.uploads)
+            assertTrue(fake.uploadIntents.recoveries.isEmpty())
+        }
+    }
+
+    @Test
+    fun acceptanceDoesNotPublishAnUnconditionalSavedBytesMessage() = review {
+        val fake = FakeReviewActions()
+        val vm = pendingViewModel(fake)
+        advanceUntilIdle()
+        assertTrue(vm.acceptUploads(UPLOAD_TEST_BATCH, listOf("unreadable"), uploadTestBinding()) { null })
+        // Acceptance may arrive before the required Room observation; only that observation describes the originals.
+        assertNull(vm.uiState.value.message)
+        val unreadable = observedUpload(1).let { it.copy(payload = it.payload!!.copy(file = null)) }
+        fake.uploadIntents.publish(unreadable)
+        advanceUntilIdle()
+        assertEquals(UiText.res(R.string.pending_msg_upload_unreadable), vm.uiState.value.uploadMessage)
+        assertNull(vm.uiState.value.message)
+        assertTrue(vm.uiState.value.canStopUpload)
     }
 
     @Test
