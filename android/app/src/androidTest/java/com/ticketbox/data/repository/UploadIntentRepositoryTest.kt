@@ -251,6 +251,8 @@ class UploadIntentRepositoryTest {
             assertEquals(originals[0].payload, refused[0].payload)
             assertEquals(originals[0].idempotencyKey, refused[0].idempotencyKey)
             assertEquals("failed", refused[0].status)
+            assertFalse(fixture.outbox.resolveFailed(refused[0].id, FailedResolution.Retry()))
+            assertEquals(refused, fixture.dao.allRows())
             assertFalse(fixture.repository.observeUploadIntents().first().uploads.first().canRetry)
             assertTrue(fixture.repository.recoverUploadGroup(request.expectedBinding, accepted.groupId, false).isFailure)
             assertEquals(refused, fixture.dao.allRows())

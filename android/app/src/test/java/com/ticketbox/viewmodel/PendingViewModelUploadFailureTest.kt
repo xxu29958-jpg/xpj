@@ -47,6 +47,9 @@ internal class PendingViewModelUploadFailureTest : PendingViewModelReviewTestBas
             assertFalse(vm.uiState.value.canRetryUpload)
             assertTrue(vm.uiState.value.canStopUpload)
             assertTrue(vm.uiState.value.uploadMessage != null)
+            if (row.row.lastError?.substringBefore(':') == "idempotency_key_reused") {
+                assertEquals(UiText.res(R.string.pending_msg_upload_key_refused), vm.uiState.value.uploadMessage)
+            }
             assertEquals(row.payload?.file?.metadata?.fileName, vm.uiState.value.upload.originals.single().fileName)
             vm.retryCapacityUpload()
             advanceUntilIdle()

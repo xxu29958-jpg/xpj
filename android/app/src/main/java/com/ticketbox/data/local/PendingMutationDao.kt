@@ -317,6 +317,8 @@ interface PendingMutationDao {
           AND ownerKey = :ownerKey
           AND ledgerId = :ledgerId
           AND status = 'failed'
+          AND (type != 'upload_screenshot' OR
+            COALESCE(substr(lastError, 1, instr(lastError || ':', ':') - 1), '') != 'idempotency_key_reused')
         """,
     )
     suspend fun retryFailed(

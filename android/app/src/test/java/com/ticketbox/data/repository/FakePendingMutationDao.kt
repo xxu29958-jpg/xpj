@@ -225,6 +225,7 @@ class FakePendingMutationDao : PendingMutationDao {
     override suspend fun retryFailed(id: Long, ownerKey: String, ledgerId: String): Int {
         val current = rows[id] ?: return 0
         if (current.ownerKey != ownerKey || current.ledgerId != ledgerId || current.status != "failed") return 0
+        if (current.type == "upload_screenshot" && current.lastError?.substringBefore(':') == "idempotency_key_reused") return 0
         rows[id] = current.copy(status = "pending", retryCount = 0, lastError = "manual_retry", blocksFollowing = true)
         refreshObservables()
         return 1

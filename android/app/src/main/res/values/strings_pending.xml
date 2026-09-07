@@ -127,6 +127,7 @@
     <string name="pending_msg_upload_ledger_switched">账本或账号已切换，已保存的上传保留在原账本中。</string>
     <string name="pending_msg_upload_saved">上传记录已保存在本机。同步后仍需确认才会入账。</string>
     <string name="pending_msg_upload_unsupported">当前版本无法继续这批原上传。原记录仍保留，可更新应用后核对，或停止余下上传。</string>
+    <string name="pending_msg_upload_key_refused">原上传与服务器记录不一致，不能重试。请先核对待确认账单；原记录仍保留，也可停止余下上传。</string>
     <string name="pending_msg_upload_succeeded">截图已上传，待确认后入账。</string>
     <string name="pending_msg_upload_failed">没有上传成功，请稍后再试。</string>
     <string name="pending_msg_share_partial_failure">有 %1$d 张小票尚未上传。可读取的原件已保留；重试将继续原上传，或停止余下上传后重新选择。</string>
