@@ -14,6 +14,8 @@ import java.time.format.DateTimeParseException
 import java.util.TimeZone
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -59,32 +61,39 @@ class UploadIntentRepository(
         val keys = original.imageRefs.indices.map { uploadItemKey(original.id, it) }
         var groupId = original.id
         var timezone = ""
-        files.acceptBatch(
-            sources = original.imageRefs.mapIndexed { index, reference ->
-                UploadIntentFileSource(keys[index]) { prepareUploadOriginal(original, reference) }
-            },
-            beforePrepare = {
-                val existing = outbox.originalUploadRows(bound, keys)
-                originalUploadAcceptance(original, existing, payloadAdapter)?.also {
-                    if (existing.any { row -> row.status == PendingMutationStatus.Pending }) outbox.schedulePending()
-                } ?: run {
-                    groupId = continuationGroup(bound, original.expectedBinding) ?: original.id
-                    timezone = TimeZone.getDefault().id
-                    null
-                }
-            },
-            persist = { descriptors ->
-                requireUploadWriter(apiProvider)
-                val intents = descriptors.mapIndexed { index, file ->
-                    val payload = UploadScreenshotPayload(1,
-                        UploadBatchPosition(original.id, index, descriptors.size, groupId),
-                        original.expectedBinding, timezone, file)
-                    PendingMutationIntent(type = PendingMutationType.UploadScreenshot, targetId = "upload_batch:$groupId",
-                        payloadJson = payloadAdapter.toJson(payload), expectedRowVersion = 0L, idempotencyKey = keys[index])
-                }
-                UploadAcceptance(groupId, outbox.enqueueUploadBatch(bound, intents))
-            },
-        )
+        try {
+            files.acceptBatch(
+                sources = original.imageRefs.mapIndexed { index, reference ->
+                    UploadIntentFileSource(keys[index]) { prepareUploadOriginal(original, reference) }
+                },
+                beforePrepare = {
+                    val existing = outbox.originalUploadRows(bound, keys)
+                    originalUploadAcceptance(original, existing, payloadAdapter)?.also {
+                        if (existing.any { row -> row.status == PendingMutationStatus.Pending }) outbox.schedulePending()
+                    } ?: run {
+                        groupId = continuationGroup(bound, original.expectedBinding) ?: original.id
+                        timezone = TimeZone.getDefault().id
+                        null
+                    }
+                },
+                persist = { descriptors ->
+                    requireUploadWriter(apiProvider)
+                    val intents = descriptors.mapIndexed { index, file ->
+                        val payload = UploadScreenshotPayload(1,
+                            UploadBatchPosition(original.id, index, descriptors.size, groupId),
+                            original.expectedBinding, timezone, file)
+                        PendingMutationIntent(type = PendingMutationType.UploadScreenshot, targetId = "upload_batch:$groupId",
+                            payloadJson = payloadAdapter.toJson(payload), expectedRowVersion = 0L, idempotencyKey = keys[index])
+                    }
+                    UploadAcceptance(groupId, outbox.enqueueUploadBatch(bound, intents))
+                },
+            )
+        } catch (error: Exception) {
+            // The file lock is released. Only all-row reference proof may reclaim a failed prefix;
+            // an uncertain committed Room acceptance and other bindings keep their originals.
+            withContext(NonCancellable) { runCatching { collectOrphans() }.onFailure(error::addSuppressed) }
+            throw error
+        }
     }
 
     override suspend fun recoverUploadGroup(

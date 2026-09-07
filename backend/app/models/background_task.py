@@ -42,6 +42,9 @@ class BackgroundTask(Base):
     because the in-process executor that owned them died with the old process.
     Cloud / multi-worker deployments can configure a grace window for fresh
     heartbeating rows; every runner still has to atomically claim ``queued``.
+    An explicit original upload receipt replay may readmit its restart-orphaned
+    enrichment from validated durable input through bounded task admission.
+    Other failed/completed/cancelled outcomes are not restart instructions.
     """
 
     __tablename__ = "background_tasks"

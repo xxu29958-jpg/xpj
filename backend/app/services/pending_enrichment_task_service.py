@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.models import BackgroundTask
 from app.services import background_task_service
-from app.services.background_task_admission import BackgroundTaskCapacityFullError
+from app.services.background_task_admission import BackgroundTaskCapacityFullError, readmit_orphaned_task
 from app.services.background_task_handler_api import (
     TaskCancelledError,
     check_cancellation_requested,
@@ -98,14 +98,14 @@ def _enrichment_payload(
 def resume_pending_expense_enrichment(
     db: Session, *, task_public_id: str, expense_id: int, tenant_id: str,
 ) -> None:
-    """Wake an original queued upload task from its durable input, preserving its receipt."""
+    """Continue original queued/restart-orphaned enrichment from its durable input."""
     task = db.scalar(select(BackgroundTask).where(
         BackgroundTask.public_id == task_public_id,
         BackgroundTask.tenant_id == tenant_id,
         BackgroundTask.task_type == PENDING_EXPENSE_ENRICHMENT_TASK_TYPE,
-        BackgroundTask.status == "queued",
     ))
-    if task is None:
+    if task is None or not (task.status == "queued" or
+            task.status == "failed" and task.error_code == "orphaned_after_restart"):
         return
     try:
         payload = json.loads(task.input_payload_json or "null")
@@ -115,6 +115,14 @@ def resume_pending_expense_enrichment(
         mark_failed(db, task.id, expected_status="queued", error_code="task_input_unavailable",
             error_message="原识别任务缺少可恢复输入，请从待确认账单重新识别。")
         return
+    if task.status == "failed":
+        try:
+            task = readmit_orphaned_task(db, task.id)
+        except BackgroundTaskCapacityFullError as exc:
+            raise AppError("enrichment_capacity_full", status_code=503) from exc
+        if task is None:
+            return
+        db.commit()
     # The original receipt remains accepted; task status exposes refusal.
     with suppress(background_task_service.BackgroundTaskSubmissionError):
         background_task_service.submit_existing(db, task, payload)

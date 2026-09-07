@@ -132,6 +132,7 @@ class OutboxStatusViewModel(
     /** "放弃我的改动" — discard the queued change; the server's version wins. */
     fun dropMine(row: OutboxRow) {
         if (!_uiState.value.accepts(row, expenseRepository.captureDeferredLedgerBinding())) return
+        if (row.type == PendingMutationType.UploadScreenshot) return
         if (row.type == PendingMutationType.CorrectExpense) recoverCorrection(row, true)
         else if (row.type == PendingMutationType.RecordDebtAdjustment) recoverAdjustment(row, true)
         else resolve(row) { outbox.resolveConflict(row.id, ConflictResolution.DropMine) }
@@ -166,6 +167,7 @@ class OutboxStatusViewModel(
     /** "放弃" — drop a FAILED row. */
     fun dropFailed(row: OutboxRow) {
         if (!_uiState.value.accepts(row, expenseRepository.captureDeferredLedgerBinding())) return
+        if (row.type == PendingMutationType.UploadScreenshot) return
         if (row.type == PendingMutationType.CorrectExpense) recoverCorrection(row, true)
         else if (row.type == PendingMutationType.RecordDebtAdjustment) recoverAdjustment(row, true)
         else resolve(row) { outbox.resolveFailed(row.id, FailedResolution.Drop) }
