@@ -429,6 +429,7 @@ dependencies {
     // Worker/request checks and the isolated scheduler-continuation test
     // share the production WorkManager version.
     testImplementation(libs.androidx.work.testing)
+    testImplementation(libs.androidx.concurrent.futures)
     // ADR-0041 follow-up: in-memory SQLite for the fast, emulator-free JVM
     // Room-migration SQL test — a local floor complementing the instrumented
     // MigrationTestHelper test below.

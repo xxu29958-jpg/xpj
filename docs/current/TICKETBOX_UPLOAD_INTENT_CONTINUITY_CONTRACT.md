@@ -216,3 +216,13 @@ Connected `34072964199` 的原 artifact `10001343267` 为 147 tests / 1 failure 
 | 两处 SyncStatus / 通用旧恢复 | Workspace Settings 与 Obligations 同步页都连接原收件箱入口；上传从通用 Retry/KeepMine 消费集合移出，VM 同步禁止该旁路。原行 Drop 仍先确认并经过实际删行回收；收件箱按 typed original 提供文件名/顺序及专属恢复，不解析 raw JSON 冒充上下文。 | 新实际 UI 入口控制要求没有通用 Retry，点击查看待上传截图才进入原组；VM 原行快照控制禁止 fresh token 或通用 Retry 改写。其它更正/往来控制只迁移必填导航参数，未改业务断言。 |
 
 全体 Outbox 构造者显式迁移新的删除 callback；不使用文件的纯持久测试显式空 hook，真实上传 fixture 与生产组合接实际 collector。DataQuality 的修复跳转会真实建立 Pending VM，故它使用同一 UploadIntentRepository/Room 观察，不能保留会在首次订阅即抛错的未实现 proxy。原 SQL 静态消费者与 dispatcher callsite 登记已按实际 source 修正，未增加 allowlist 或放宽阈值。此段仅源码/直接验证生产者闭合记录，PR 仍 Draft，未合并，整个 Capture 与总 Goal 均未完成。
+
+### 2c84d60f 实际反例与接受入口闭合
+
+source `2c84d60f5e5bc502d43691eb14cacefb2c46271c` / tree `161bace602953a6d9db02a6a43d0b42908a4ddcf` 的 Connected `34076984982` 实际 XML artifact `10002669482` 为 166 tests / 2 failures / 0 errors / 0 skips。失败恰为下一次接受未回收无行孤文件、原 Room 已接受但 ACK 丢失后重入未唤醒 Pending。其它 164 项包括真实 Room 重开、来源 URI 撤回、原 A/B/B/C 恢复及全部删除回收入口通过。
+
+对应此前 before-impact 两条 FIX，全部 share/picker/shortcut/显式重试仍进入唯一 `acceptUploadBatch`。该入口在原绑定及写权限核准后调用既有完整引用 collector，再进入既有文件锁下的接受事务。collector 继续保护所有账本/owner 的引用，未知原行禁止回收；未增加后台清理 owner。完整原批次重入仍在读取 URI 前返回原接受收据，同时仅在原行含 Pending 时补发既有调度通知；Failed/Done 不自动重试，原文件/body/key/timezone 不变。原接受后持久化、Activity ACK、receipt 观察、显式恢复与七条删除路径继续复用原链。上述两条实际失败测试及未知引用、跨绑定原件控制负责下一 exact candidate 验证；本段不宣称新源码通过。
+
+CI `34076984994` 的 Android fast 在新 Scheduler 测试编译阶段缺少 `CallbackToFutureAdapter`，没有执行 JVM 行为反例。按照官方 WorkManager 2.11.2 POM 所用 concurrent-futures 1.1.0，仅补直接 testImplementation 依赖及版本目录；生产 KEEP、约束、backoff 与周期 owner 不变，仍待真实调度反例执行。
+
+同一 CI 的 Windows 浏览器 12 项实际执行中有 1 项在 layout probe 产生结果前超时，尚未到 response-loss 注入。与 CSV b9d8f67b 的另一实际超时都不能认定根因或偶发。施工前追踪现有 `evaluate_page` 的所有测试调用者；仅给原超时出口增加固定枚举/布尔的页面阶段观察，并在两条真实 bootstrap 测试补创建/剩余文件计数。原 10 秒判定、两次仅 transport 重试、故障注入与业务断言不变；不输出 URL、路径、cookie、token 或原错误文本。此为测试诊断，不修改 Manager/Backend/Windows 生命周期；下一云端 native 结果才能判定实际停留阶段。

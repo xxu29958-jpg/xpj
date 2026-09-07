@@ -55,6 +55,7 @@ class UploadIntentRepository(
         require(original.imageRefs.isNotEmpty()) { "请选择至少一张截图。" }
         val bound = guard.bindExact(original.expectedBinding, LedgerRequestGuard.UPLOAD_LEDGER_CHANGED_MESSAGE)
         requireUploadWriter(apiProvider)
+        collectOrphans()
         val keys = original.imageRefs.indices.map { uploadItemKey(original.id, it) }
         var groupId = original.id
         var timezone = ""
@@ -64,7 +65,9 @@ class UploadIntentRepository(
             },
             beforePrepare = {
                 val existing = outbox.originalUploadRows(bound, keys)
-                originalUploadAcceptance(original, existing, payloadAdapter) ?: run {
+                originalUploadAcceptance(original, existing, payloadAdapter)?.also {
+                    if (existing.any { row -> row.status == PendingMutationStatus.Pending }) outbox.schedulePending()
+                } ?: run {
                     groupId = continuationGroup(bound, original.expectedBinding) ?: original.id
                     timezone = TimeZone.getDefault().id
                     null

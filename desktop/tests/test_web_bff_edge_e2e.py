@@ -477,14 +477,22 @@ def test_real_backend_bootstrap_pair_bridge_render_probe(
             assert _INSTANCE_SECRET not in bootstrap_url
             return bootstrap_url
 
-        value = evaluate_page(
-            edge,
-            profile=tmp_path / f"edge-real-{width}x{height}",
-            prepare_url=prepare_url,
-            width=width,
-            height=height,
-            expression=_REAL_RENDER_PROBE,
-        )
+        try:
+            value = evaluate_page(
+                edge,
+                profile=tmp_path / f"edge-real-{width}x{height}",
+                prepare_url=prepare_url,
+                width=width,
+                height=height,
+                expression=_REAL_RENDER_PROBE,
+            )
+        except AssertionError as exc:
+            try:
+                remaining = str(sum(path.exists() for path in bootstrap_paths))
+            except OSError:
+                remaining = "unavailable"
+            exc.add_note(f"bootstrap_files_created={len(bootstrap_paths)}; remaining={remaining}")
+            raise
 
     assert bootstrap_paths
     assert all(not path.exists() for path in bootstrap_paths)
