@@ -36,7 +36,10 @@ internal fun FactMediaSection(
     ) {
         when {
             state.fullImage != null || state.thumbnail != null -> {
-                FactReceiptImageBranch(state = state, onLoadFullImage = onLoadFullImage)
+                AppAsyncImage(
+                    image = state.fullImage ?: state.thumbnail,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
             state.thumbnailLoadState == ExpenseDetailDataLoadState.Loading -> {
                 Text(
@@ -48,8 +51,8 @@ internal fun FactMediaSection(
             }
             state.thumbnailLoadState == ExpenseDetailDataLoadState.Failed -> {
                 Text(
-                    text = state.thumbnailMessage?.asString()
-                        ?: stringResource(R.string.expense_fact_media_failed),
+                    text = stringResource(R.string.expense_fact_media_failed) +
+                        (state.thumbnailMessage?.asString()?.let { "：$it" } ?: ""),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -72,27 +75,16 @@ internal fun FactMediaSection(
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun FactReceiptImageBranch(
-    state: ExpenseFactUiState,
-    onLoadFullImage: () -> Unit,
-) {
-    AppAsyncImage(
-        image = state.fullImage ?: state.thumbnail,
-        modifier = Modifier.fillMaxWidth(),
-    )
-    if (state.fullImage == null) {
-        QuietOutlinedButton(
-            text = if (state.imageLoading) {
-                stringResource(R.string.expense_edit_large_image_loading)
-            } else {
-                stringResource(R.string.expense_fact_image_view_full)
-            },
-            onClick = onLoadFullImage,
-            enabled = !state.imageLoading,
-        )
+        if (expense.hasImage && expense.imageDeletedAt == null && state.fullImage == null) {
+            QuietOutlinedButton(
+                text = if (state.imageLoading) {
+                    stringResource(R.string.expense_edit_large_image_loading)
+                } else {
+                    stringResource(R.string.expense_fact_image_view_full)
+                },
+                onClick = onLoadFullImage,
+                enabled = !state.imageLoading,
+            )
+        }
     }
 }

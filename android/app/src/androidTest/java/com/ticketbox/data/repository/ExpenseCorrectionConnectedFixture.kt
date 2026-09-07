@@ -157,6 +157,8 @@ internal class CorrectionConnectedNetwork {
     var beforeStreamResponse: (suspend () -> Unit)? = null
     var failReads = false
     var failStreamReads = false
+    var stopPendingReadsAfterConfirm = false
+    var failedPendingReads = 0
     var loseResponse = true
     var refusalCode: String? = null
     val calls = mutableListOf<Pair<ExpenseCorrectionRequestDto, String>>()
@@ -177,6 +179,10 @@ internal class CorrectionConnectedNetwork {
         override suspend fun expense(id: Long): ExpenseDto { readable(); expenseReads += id; return current }
         override suspend fun pendingExpenses(): List<ExpenseDto> {
             readable()
+            if (stopPendingReadsAfterConfirm && current.status == "confirmed") {
+                failedPendingReads++
+                throw IOException("Synthetic pending refresh unavailable after confirmation")
+            }
             return listOf(current).filter { it.status == "pending" }
         }
         override suspend fun updateExpense(id: String, request: ExpenseUpdateRequest, idempotencyKey: String?): ExpenseDto {

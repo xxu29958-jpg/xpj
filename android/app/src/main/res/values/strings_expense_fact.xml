@@ -115,7 +115,7 @@
     <string name="expense_fact_retry">重试</string>
     <string name="expense_fact_stale_banner">内容可能不是最新。</string>
     <string name="expense_fact_media_loading">凭证加载中…</string>
-    <string name="expense_fact_media_failed">凭证图片加载失败</string>
+    <string name="expense_fact_media_failed">缩略图加载失败</string>
     <string name="expense_fact_field_score">评价</string>
     <string name="expense_fact_score_format">%1$d/5</string>
     <string name="expense_fact_score_pair">值回 %1$s · 后悔 %2$s</string>

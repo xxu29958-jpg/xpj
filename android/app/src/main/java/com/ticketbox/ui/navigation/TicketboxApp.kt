@@ -24,6 +24,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.ticketbox.BuildConfig
@@ -303,7 +304,7 @@ private fun MainShell(
     val shellState = rememberMainShellState()
     val navController = rememberNavController()
 
-    LaunchRequestEffect(launchConsumer.request, shellState, launchConsumer.onHandled)
+    LaunchRequestEffect(launchConsumer.request, shellState, navController, launchConsumer.onHandled)
 
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -421,10 +422,14 @@ private fun ShellBodyWithBanner(
 internal fun LaunchRequestEffect(
     launchRequest: LaunchIntentRequest?,
     shellState: MainShellState,
+    navController: NavHostController,
     onLaunchRequestHandled: (LaunchIntentRequest) -> Unit,
 ) {
     LaunchedEffect(launchRequest) {
         val request = launchRequest ?: return@LaunchedEffect
+        if (request !is LaunchIntentRequest.JoinInvitation) {
+            navController.popBackStack(MAIN_ROUTE, inclusive = false)
+        }
         dispatchLaunchRequest(request, shellState)
         if (request is LaunchIntentRequest.ShareImages) {
             snapshotFlow { shellState.launchAction.containsUpload(request.batchId) }.first { pending -> !pending }

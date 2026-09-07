@@ -7,6 +7,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollToIndexAction
@@ -118,6 +119,23 @@ class FactEntryNavigationTest {
         assertEquals(listOf(42L), harness.fixture.network.imageReads)
     }
 
+    @Test fun confirmedReceiptDoesNotReturnToPendingWhenTheRefreshFails() {
+        val network = harness.fixture.network
+        network.current = network.current.copy(status = "pending", confirmedAt = null)
+        network.stopPendingReadsAfterConfirm = true
+        installMainGraph()
+        waitForText(requireNotNull(network.current.merchant))
+        compose.runOnIdle { outer.navigate(expenseRoute(42L)) }
+        val confirm = context.getString(R.string.expense_edit_confirm_button)
+        waitForText(confirm)
+        compose.onNodeWithText(confirm).performClick()
+        compose.waitUntil(5_000) { harness.shell.expenseEditCompletionRevision == 1 && network.failedPendingReads > 0 }
+        compose.waitForIdle()
+        compose.onAllNodesWithText(requireNotNull(network.current.merchant)).assertCountEquals(0)
+        assertEquals("confirmed", network.current.status)
+        assertEquals(1, runBlocking { harness.fixture.expenseDao.getConfirmed("correction-ledger") }.size)
+    }
+
     private fun openFact() {
         compose.runOnIdle { outer.navigate(expenseRoute(42L)) }
         waitForText(context.getString(R.string.expense_fact_title))
@@ -213,7 +231,7 @@ class FactEntryNavigationTest {
                     TicketboxTheme(skin = AppSkin.Paper) {
                         val controller = rememberNavController()
                         outer = controller
-                        LaunchRequestEffect(launchRequest.value, harness.shell) { handledLaunches += it }
+                        LaunchRequestEffect(launchRequest.value, harness.shell, controller) { handledLaunches += it }
                         MainNavGraph(
                             MainNavigationRuntime(controller, harness.shell, harness.screenFactory),
                             remember { SnackbarHostState() },
