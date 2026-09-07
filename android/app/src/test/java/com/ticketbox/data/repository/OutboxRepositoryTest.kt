@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
@@ -612,7 +613,7 @@ class OutboxRepositoryTest {
         repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
         val initialObserved = CompletableDeferred<Unit>()
         val observed = async(start = CoroutineStart.UNDISPATCHED) {
-            repo.observeQueueDepth()
+            repo.observeStatus().map { it.queueDepth }
                 .onEach { initialObserved.complete(Unit) }
                 .take(2)
                 .toList()
@@ -654,7 +655,7 @@ class OutboxRepositoryTest {
 
         val initialObserved = CompletableDeferred<Unit>()
         val finalDepth = async(start = CoroutineStart.UNDISPATCHED) {
-            repo.observeQueueDepth()
+            repo.observeStatus().map { it.queueDepth }
                 .onEach { depth -> if (depth == 1) initialObserved.complete(Unit) }
                 .first { depth -> depth == 2 }
         }

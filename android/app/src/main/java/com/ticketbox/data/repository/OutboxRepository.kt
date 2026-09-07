@@ -211,10 +211,8 @@ class OutboxRepository private constructor(
 
     private suspend fun currentBinding(): OutboxBinding =
         bindingTransitionLease.withLock {
-            canonicalBindingWithAliasesMigratedLocked(rawBinding())
+            canonicalBindingWithAliasesMigratedLocked(bindingProvider())
         }
-
-    private fun rawBinding(): OutboxBinding = bindingProvider()
 
     private suspend fun canonicalBindingWithAliasesMigratedLocked(
         binding: OutboxBinding,
@@ -255,7 +253,7 @@ class OutboxRepository private constructor(
         boundRequest: BoundLedgerRequest,
         block: suspend () -> T,
     ): T = bindingTransitionLease.withLock {
-        val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
+        val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
         boundRequest.requireStillActiveFor(binding)
         block()
     }
@@ -288,7 +286,7 @@ class OutboxRepository private constructor(
                             dao.clearAll()
                         }
                         serverAliasMigration?.let { migration ->
-                            rawBinding().owner?.storageKey?.let { ownerKey ->
+                            bindingProvider().owner?.storageKey?.let { ownerKey ->
                                 dao.migrateServerUrlAlias(
                                     ownerKey = ownerKey,
                                     oldServerUrl = migration.oldServerUrl,
@@ -378,7 +376,7 @@ class OutboxRepository private constructor(
         afterPersisted: suspend () -> Unit = {},
     ): Long {
         val id = bindingTransitionLease.withLock {
-            val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
+            val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
             boundRequest?.requireStillActiveFor(binding)
             binding.requireReadyForEnqueue()
             val row = PendingMutationEntity(
@@ -410,33 +408,25 @@ class OutboxRepository private constructor(
         }
     }
 
-    suspend fun pauseForBindingTransition() {
-        withBindingTransition(clearExistingRows = false) {}
-    }
-
     /**
      * Drop every queued mutation. Used for explicit sign-out or
      * internal debug rebind paths where preserving offline edits
      * would keep private data after credentials are intentionally
-     * removed. Ledger/server switches use [pauseForBindingTransition]
+     * removed. Ledger/server switches use [withBindingTransition]
      * instead; durable binding columns keep old rows from replaying
      * under the wrong session.
      *
      * @return the number of rows dropped.
      */
     suspend fun clearAll(): Int {
-        var removed = 0
-        withBindingTransition(clearExistingRows = false) {
-            removed = dao.clearAll()
-        }
-        return removed
+        return withBindingTransition(clearExistingRows = false) { dao.clearAll() }
     }
 
     /** Remove only legacy or foreign-owner rows after explicit user confirmation. */
     suspend fun clearQuarantined(): Int {
         val removed = dispatchLease.withLock {
             bindingTransitionLease.withLock {
-                val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
+                val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
                 binding.requireReadyForEnqueue()
                 dao.deleteQuarantined(binding.ownerStorageKey)
             }
@@ -543,7 +533,7 @@ class OutboxRepository private constructor(
     }
 
     internal suspend fun discardCorrection(boundRequest: BoundLedgerRequest, row: OutboxRow): Boolean = bindingTransitionLease.withLock {
-        val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
+        val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
         boundRequest.requireStillActiveFor(binding)
         check(row.type == PendingMutationType.CorrectExpense && row.status in setOf(
             PendingMutationStatus.Failed, PendingMutationStatus.Conflict, PendingMutationStatus.Done, PendingMutationStatus.Pending,
@@ -564,7 +554,7 @@ class OutboxRepository private constructor(
     /** Acknowledges adopted roots without changing delivery, original OCC or command bytes. */
     internal suspend fun acknowledgeCorrectionRefresh(boundRequest: BoundLedgerRequest, versions: Map<Long, Long>) =
         bindingTransitionLease.withLock {
-            val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
+            val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
             try {
                 boundRequest.requireStillActiveFor(binding)
             } catch (_: RepositoryException) {
@@ -677,7 +667,7 @@ class OutboxRepository private constructor(
     ): Boolean {
         var expired = false
         val changed = bindingTransitionLease.withLock {
-            val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
+            val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
             // [codex round-4 P2] Atomic status-checked updates so a
             // stale UI banner click can't flip a DONE / re-resolved row
             // back to PENDING (or delete a row a parallel keep-mine
@@ -738,7 +728,7 @@ class OutboxRepository private constructor(
     ): Boolean {
         var expired = false
         val changed = bindingTransitionLease.withLock {
-            val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
+            val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
             // [codex round-4 P2] Same atomic-status guard as
             // resolveConflict — stale banner click on a row that's
             // already been retried + DONE elsewhere must be a no-op.
@@ -799,57 +789,6 @@ class OutboxRepository private constructor(
             .map { currentBinding() }
             .distinctUntilChanged()
     }
-
-    /**
-     * Live queue-depth surface for the global "你有 N 笔待同步"
-     * status pill. Re-subscribes to the new binding when the active ledger
-     * changes (see [bindingFlow]).
-     */
-    @OptIn(ExperimentalCoroutinesApi::class)
-    fun observeQueueDepth(): Flow<Int> =
-        bindingFlow().flatMapLatest { binding ->
-            dao.observeQueueDepth(
-                ownerKey = binding.ownerStorageKey,
-                ledgerId = binding.ledgerId,
-                pendingStatus = PendingMutationStatus.Pending.wireValue,
-                inFlightStatus = PendingMutationStatus.InFlight.wireValue,
-            )
-        }
-
-    /**
-     * Live stream of rows in CONFLICT state. The conflict-banner
-     * UI in PR-2g subscribes to this and renders one banner per
-     * row with "keep mine / drop mine" buttons.
-     *
-     * Status string is converted back to the enum on read so the
-     * UI layer doesn't have to know wire values.
-     */
-    @OptIn(ExperimentalCoroutinesApi::class)
-    fun observeConflicts(): Flow<List<OutboxRow>> =
-        bindingFlow().flatMapLatest { binding ->
-            dao.observeConflictRows(
-                ownerKey = binding.ownerStorageKey,
-                ledgerId = binding.ledgerId,
-                conflictStatus = PendingMutationStatus.Conflict.wireValue,
-            )
-        }
-            .map { rows -> rows.map { it.toDomain() } }
-
-    /**
-     * Live stream of FAILED rows for the "manual retry / drop"
-     * banner. Counterpart of [observeConflicts]; both states block
-     * same-target later mutations and need a UI surface to clear.
-     */
-    @OptIn(ExperimentalCoroutinesApi::class)
-    fun observeFailed(): Flow<List<OutboxRow>> =
-        bindingFlow().flatMapLatest { binding ->
-            dao.observeFailedRows(
-                ownerKey = binding.ownerStorageKey,
-                ledgerId = binding.ledgerId,
-                failedStatus = PendingMutationStatus.Failed.wireValue,
-            )
-        }
-            .map { rows -> rows.map { it.toDomain() } }
 
     /**
      * Product-surface view of durable, unresolved intents for selected mutation
@@ -917,7 +856,7 @@ class OutboxRepository private constructor(
     /** Only the Debt adjustment owner can turn an unresolved command into a local stop. */
     internal suspend fun abandonDebtAdjustment(boundRequest: BoundLedgerRequest, row: OutboxRow): Boolean =
         bindingTransitionLease.withLock {
-            val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
+            val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
             boundRequest.requireStillActiveFor(binding)
             require(row.type == PendingMutationType.RecordDebtAdjustment)
             dao.abandonDebtAdjustment(row.id, binding.ownerStorageKey, binding.ledgerId,
@@ -940,7 +879,7 @@ class OutboxRepository private constructor(
         boundRequest: BoundLedgerRequest,
         targetId: String,
     ): List<OutboxRow> = bindingTransitionLease.withLock {
-        val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
+        val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
         boundRequest.requireStillActiveFor(binding)
         activeForTarget(binding, targetId)
     }
@@ -981,7 +920,7 @@ class OutboxRepository private constructor(
      * has likely purged it — see [OUTBOX_PENDING_AGE_CAP_MILLIS]), so replaying it
      * risks a double-apply. Flipping it to FAILED here means [dequeueNextRunnable]
      * will never hand it to a dispatcher; instead it surfaces in the
-     * "manual retry / drop" banner via [observeFailed] with the
+     * "manual retry / drop" banner via [observeStatus] with the
      * ``outbox_row_expired`` marker, and the user redoes the action by hand
      * against fresh server state.
      *
