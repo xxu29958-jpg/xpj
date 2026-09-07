@@ -247,6 +247,24 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+        // Robolectric's isolated scheduler test uses the existing Java 17 runtime.
+        unitTests.all {
+            it.jvmArgs(
+                "--add-opens=java.base/java.lang=ALL-UNNAMED",
+                "--add-opens=java.base/java.util=ALL-UNNAMED",
+                "--add-opens=java.base/java.io=ALL-UNNAMED",
+                "--add-opens=java.base/java.net=ALL-UNNAMED",
+                "--add-opens=java.base/java.security=ALL-UNNAMED",
+                "--add-opens=java.base/java.text=ALL-UNNAMED",
+                "--add-opens=java.base/jdk.internal.access=ALL-UNNAMED",
+                "--add-opens=java.desktop/java.awt.font=ALL-UNNAMED",
+                "--add-opens=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED",
+            )
+        }
+    }
+
     buildFeatures {
         buildConfig = true
         compose = true
@@ -407,15 +425,19 @@ dependencies {
 
     testImplementation(libs.kotlin.test)
     testImplementation(libs.coroutines.test)
-    // WorkManager TestDriver / TestListenableWorkerBuilder for the
-    // outbox drain worker unit tests (Robolectric-free).
+    testImplementation(libs.robolectric)
+    // Worker/request checks and the isolated scheduler-continuation test
+    // share the production WorkManager version.
     testImplementation(libs.androidx.work.testing)
+    testImplementation(libs.androidx.concurrent.futures)
     // ADR-0041 follow-up: in-memory SQLite for the fast, emulator-free JVM
     // Room-migration SQL test — a local floor complementing the instrumented
     // MigrationTestHelper test below.
     testImplementation(libs.sqlite.jdbc)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    // SdkSuppress is used by our test source; Compose brings this runner only at runtime.
+    androidTestImplementation(libs.androidx.test.runner)
     // ADR-0041 follow-up: real Room v10→v11 MigrationTestHelper coverage,
     // unblocked by aligning kotlinx-serialization to 1.10.0 (configurations
     // force above). Test-only artifact of the adopted Room library (same 2.8.4).

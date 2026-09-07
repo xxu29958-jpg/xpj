@@ -24,8 +24,7 @@ internal fun SettingsRoute(
     screenFactory: MainScreenFactory,
     preferenceControls: SettingsPreferenceControls,
     onBindingCleared: () -> Unit,
-    onClose: () -> Unit,
-    onOpenExpense: (Long) -> Unit,
+    navigation: SettingsDestinationNavigation,
 ) {
     val settingsViewModel: SettingsViewModel = viewModel(
         factory = screenFactory.settingsViewModelFactory,
@@ -48,7 +47,7 @@ internal fun SettingsRoute(
             currentCurrency = preferenceControls.currentCurrency,
             showAdvancedTools = BuildConfig.SHOW_ADVANCED_TOOLS,
         ),
-        navigation = SettingsDestinationNavigation(onCloseRoot = onClose, onOpenExpense = onOpenExpense),
+        navigation = navigation,
         actions = SettingsRouteActions(
             onTestConnection = settingsViewModel::testConnection,
             onRunDiagnostics = settingsViewModel::runDiagnostics,

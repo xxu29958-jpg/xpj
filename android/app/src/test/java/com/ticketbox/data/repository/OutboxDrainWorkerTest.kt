@@ -82,12 +82,10 @@ class OutboxDrainWorkerTest {
     }
 
     @Test
-    fun `mixed retryable plus done → SUCCESS`() {
-        // At least one row moved forward. SUCCESS lets the next
-        // periodic tick start fresh on the existing schedule rather
-        // than waiting out a backoff window.
+    fun `mixed retryable plus done → RETRY for remaining originals`() {
+        // A completed sibling cannot make the still-pending work wait for the periodic tick.
         assertEquals(
-            DrainOutcome.SUCCESS,
+            DrainOutcome.RETRY,
             OutboxDrainWorker.classify(
                 summary(DrainSummaryFixture(attempted = 4, done = 1, retryable = 3)),
             ),
@@ -162,12 +160,10 @@ class OutboxDrainWorkerTest {
     }
 
     @Test
-    fun `mixed done plus aborted → SUCCESS`() {
-        // At least one row resolved cleanly. SUCCESS keeps the normal periodic
-        // cadence — the aborted rows will be picked up by the next tick under
-        // the post-binding-transition state.
+    fun `mixed done plus aborted → RETRY for remaining originals`() {
+        // The next bound attempt must retain a wakeup for the commands that did not run.
         assertEquals(
-            DrainOutcome.SUCCESS,
+            DrainOutcome.RETRY,
             OutboxDrainWorker.classify(summary(DrainSummaryFixture(attempted = 4, done = 1, aborted = 3))),
         )
     }

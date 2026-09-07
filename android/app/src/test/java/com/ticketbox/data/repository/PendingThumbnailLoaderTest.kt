@@ -2,7 +2,6 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
-import com.ticketbox.domain.model.PendingUploadReceipt
 import com.ticketbox.domain.model.ProtectedImage
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -73,7 +72,6 @@ private class ThumbnailFakeReviewActions(
     private val thumbnails: Map<Long, ProtectedImage> = emptyMap(),
     private val failures: Set<Long> = emptySet(),
 ) : PendingReviewActions {
-    override fun currentUploadBinding(): LogicalSessionBinding = error("Upload is not exercised by thumbnail tests")
     val thumbnailCalls = mutableListOf<Long>()
 
     override suspend fun fetchPending(): Result<List<Expense>> = Result.success(emptyList())
@@ -123,8 +121,6 @@ private class ThumbnailFakeReviewActions(
 
     override suspend fun categories(): Result<List<String>> = Result.success(emptyList())
 
-    override suspend fun uploadScreenshot(request: ScreenshotUploadRequest): Result<PendingUploadReceipt> =
-        Result.failure(IllegalStateException("not exercised"))
 }
 
 private fun image(label: String): ProtectedImage =

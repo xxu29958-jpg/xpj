@@ -26,6 +26,7 @@ import org.junit.Test
  * explicit confirm word (确定放弃 / 确定移除) fires the drop.
  */
 class SyncStatusScreenConfirmTest {
+    private var openedUploads = 0
     @JvmField
     @Rule
     val composeRule = createComposeRule()
@@ -102,7 +103,7 @@ class SyncStatusScreenConfirmTest {
         var dropped: OutboxRow? = null
         composeRule.setContent { TicketboxTheme(skin = AppSkin.Default) {
             SyncStatusScreenContent(state.value, SyncStatusActions(onOpenExpense = {}, onKeepMine = {},
-                onDropMine = { dropped = it }, onRetry = {}, onDropFailed = {}, onClearQuarantined = {}), {})
+                onDropMine = { dropped = it }, onRetry = {}, onDropFailed = {}, onClearQuarantined = {}), {}, onOpenInbox = {})
         } }
         composeRule.onNodeWithText("放弃我的改动").performScrollTo().performClick()
         composeRule.onNodeWithText("放弃我的改动？").assertIsDisplayed()
@@ -225,6 +226,21 @@ class SyncStatusScreenConfirmTest {
         composeRule.runOnIdle { assertEquals(original, retried) }
     }
 
+    @Test
+    fun failedUploadOpensItsOriginalInboxGroupInsteadOfUsingGenericRetry() {
+        val original = outboxRow(PendingMutationStatus.Failed, "upload_payload_unsupported")
+            .copy(type = PendingMutationType.UploadScreenshot, targetId = "upload_batch:original")
+        setScreenContent(failed = listOf(original), actions = SyncStatusActions(
+            onOpenExpense = {}, onKeepMine = {}, onDropMine = {},
+            onRetry = { error("An upload must use the original group's recovery") },
+            onDropFailed = {}, onClearQuarantined = {},
+        ))
+        composeRule.onNodeWithText("重试").assertDoesNotExist()
+        composeRule.onNodeWithText("放弃").assertDoesNotExist()
+        composeRule.onNodeWithText("查看待上传截图").performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(1, openedUploads) }
+    }
+
     private fun setScreenContent(
         conflicts: List<OutboxRow> = emptyList(),
         failed: List<OutboxRow> = emptyList(),
@@ -247,6 +263,7 @@ class SyncStatusScreenConfirmTest {
                     ),
                     actions = actions,
                     onBack = {},
+                    onOpenInbox = { openedUploads += 1 },
                 )
             }
         }

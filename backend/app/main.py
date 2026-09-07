@@ -238,8 +238,10 @@ def _apply_protocol_header_contract(operation: dict, parameter_components: dict,
     for parameter in operation.get("parameters", []):
         # A runtime optional declaration preserves the custom refusal envelope;
         # consume the guard's metadata here so clients see its real requirement.
-        runtime_required = parameter.get("schema", {}).pop("x-ticketbox-runtime-required", False)
-        if parameter.get("in") == "header" and (runtime_required or parameter.get("name") == "Idempotency-Key"):
+        runtime_required = parameter.get("schema", {}).pop(
+            "x-ticketbox-runtime-required", parameter.get("name") == "Idempotency-Key",
+        )
+        if parameter.get("in") == "header" and runtime_required:
             parameter["required"] = True
 
 
@@ -260,9 +262,9 @@ def _custom_openapi() -> dict:
     infer ``required: false``, which would tell a generated client the header is
     optional — callers would omit it and hit the runtime 422. The header IS
     contractually required, so we post-process the generated schema to say so
-    without changing the runtime 422 body shape (ADR-0042 §4.4). The flip is
-    safe blanket-wide: every ``Idempotency-Key`` parameter in this app belongs to
-    an outbox-routed mutate route that runtime-requires it.
+    without changing the runtime 422 body shape (ADR-0042 §4.4). Screenshot
+    upload explicitly opts out through the same runtime-required metadata:
+    existing headerless callers remain valid while keyed callers get replay.
     """
     if app.openapi_schema:
         return app.openapi_schema

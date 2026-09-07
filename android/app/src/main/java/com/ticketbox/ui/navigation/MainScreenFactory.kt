@@ -14,6 +14,7 @@ import com.ticketbox.data.repository.RecurringRepository
 import com.ticketbox.data.repository.RepaymentDraftRepository
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.data.repository.TagRepository
+import com.ticketbox.data.repository.UploadIntentActions
 import com.ticketbox.viewmodel.RepositoryViewModelRepositories
 import com.ticketbox.viewmodel.repositoryViewModelFactory as createRepositoryViewModelFactory
 
@@ -46,6 +47,7 @@ internal class MainScreenFactory(
     val repositoryViewModelFactory: ViewModelProvider.Factory = createRepositoryViewModelFactory(
         RepositoryViewModelRepositories(
             repository = repositories.repository,
+            uploads = repositories.uploadIntents,
             budgetRepository = repositories.budgetRepository,
             reportsRepository = repositories.reportsRepository,
             debtRepository = repositories.debtRepository,
@@ -57,6 +59,7 @@ internal class MainScreenFactory(
     ): ViewModelProvider.Factory = createRepositoryViewModelFactory(
         RepositoryViewModelRepositories(
             repository = repositories.repository,
+            uploads = repositories.uploadIntents,
             budgetRepository = repositories.budgetRepository,
             reportsRepository = repositories.reportsRepository,
             debtRepository = repositories.debtRepository,
@@ -67,6 +70,7 @@ internal class MainScreenFactory(
 
 internal data class MainFeatureRepositories(
     val repository: ExpenseRepository,
+    val uploadIntents: UploadIntentActions,
     val ledgerRepository: LedgerRepository,
     val recurringRepository: RecurringRepository,
     val budgetRepository: BudgetRepository,

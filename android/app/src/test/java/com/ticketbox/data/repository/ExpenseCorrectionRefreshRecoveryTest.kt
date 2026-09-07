@@ -131,7 +131,7 @@ internal class ExpenseCorrectionRefreshRecoveryTest {
         val original = fixture.seed(42L)
         val future = OutboxRepository(fixture.queue,
             Clock.fixed(Instant.parse("2026-09-20T00:00:00Z"), ZoneOffset.UTC),
-            bindingProvider = { fixture.binding.sessionStore.currentSession().toOutboxBinding() })
+            bindingProvider = { fixture.binding.sessionStore.currentSession().toOutboxBinding() }, onRowsDeleted = {})
 
         assertEquals(0, future.gcCompleted())
         assertEquals(original, fixture.queue.rows[original.id])
@@ -173,7 +173,7 @@ private class CorrectionRefreshFixture(failAcknowledgment: () -> Boolean = { fal
     }
     val outbox = OutboxRepository(dao,
         Clock.fixed(Instant.parse("2026-09-06T00:00:00Z"), ZoneOffset.UTC),
-        bindingProvider = { binding.sessionStore.currentSession().toOutboxBinding() })
+        bindingProvider = { binding.sessionStore.currentSession().toOutboxBinding() }, onRowsDeleted = {})
     val repository = ExpenseRepository(cache, binding, deviceNameProvider = { "Synthetic Android" },
         offlineMutations = testExpenseOfflineMutationWiring(outbox))
 

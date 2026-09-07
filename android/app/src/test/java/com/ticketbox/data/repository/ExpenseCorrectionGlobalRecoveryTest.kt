@@ -323,7 +323,8 @@ private class CorrectionRecoveryHarness : ExpensePendingRepositoryOutboxTestBase
     ): RecoveryFixture {
         val queue = FakePendingMutationDao()
         val binding = testServerSessionBinding(TestApiServiceFactory(api), seededSettingsStore(), token)
-        val outbox = OutboxRepository(queue, bindingProvider = { binding.sessionStore.currentSession().toOutboxBinding() })
+        val outbox = OutboxRepository(queue, bindingProvider = { binding.sessionStore.currentSession().toOutboxBinding() },
+            onRowsDeleted = {})
         val repository = ExpenseRepository(cache, binding, deviceNameProvider = { "Android Test" },
             offlineMutations = testExpenseOfflineMutationWiring(outbox))
         val adapters = OutboxAdapterGraph()

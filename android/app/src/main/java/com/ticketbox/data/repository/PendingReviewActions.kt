@@ -2,19 +2,9 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
-import com.ticketbox.domain.model.PendingUploadReceipt
 import com.ticketbox.domain.model.ProtectedImage
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
-
-data class ScreenshotUploadRequest(
-    val fileName: String,
-    val contentType: String?,
-    val bytes: ByteArray,
-    val preparationDurationMs: Long? = null,
-    val sourceSizeBytes: Long? = null,
-    val expectedBinding: LogicalSessionBinding,
-)
 
 /**
  * v0.4-alpha4 M1：PendingViewModel 依赖反转用接口。
@@ -30,7 +20,6 @@ interface PendingReviewActions {
     fun canModifyLedger(): Boolean = true
     fun observeActiveLedgerId(): Flow<String?> = emptyFlow()
     fun currentActiveLedgerId(): String? = null
-    fun currentUploadBinding(): LogicalSessionBinding?
     suspend fun fetchPending(): Result<List<Expense>>
 
     /**
@@ -160,7 +149,6 @@ interface PendingReviewActions {
      */
     suspend fun markNotDuplicateAllowingOffline(expense: Expense): Result<ExpenseStateOutcome>
     suspend fun categories(): Result<List<String>>
-    suspend fun uploadScreenshot(request: ScreenshotUploadRequest): Result<PendingUploadReceipt>
 }
 
 /**

@@ -1,6 +1,5 @@
 package com.ticketbox.ui.screens.settings
 
-import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -48,6 +47,7 @@ fun SyncStatusScreen(
     viewModel: OutboxStatusViewModel,
     onBack: () -> Unit,
     onOpenExpense: (Long) -> Unit,
+    onOpenInbox: () -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val actions = remember(viewModel, onOpenExpense) {
@@ -60,7 +60,7 @@ fun SyncStatusScreen(
             onClearQuarantined = viewModel::clearQuarantined,
         )
     }
-    SyncStatusScreenContent(state = state, actions = actions, onBack = onBack)
+    SyncStatusScreenContent(state = state, actions = actions, onBack = onBack, onOpenInbox = onOpenInbox)
 }
 
 /** Row callbacks grouped to keep the content API small and testable. */
@@ -85,6 +85,7 @@ internal fun SyncStatusScreenContent(
     state: OutboxStatusUiState,
     actions: SyncStatusActions,
     onBack: () -> Unit,
+    onOpenInbox: () -> Unit,
 ) {
     // Dropping an offline edit is irreversible, so both paths require confirmation.
     var confirmingDrop by remember(state.binding) { mutableStateOf<SyncStatusDropSelection?>(null) }
@@ -121,6 +122,7 @@ internal fun SyncStatusScreenContent(
     ) {
         SyncStatusPageBody(
             state = state,
+            onOpenInbox = onOpenInbox,
             actions = actions.copy(
                 onDropMine = { confirmingDrop = SyncStatusDropSelection(it, failed = false, debtCreation = null,
                     recurringOccurrence = state.recurringOccurrences[it.id], incomeEdit = state.incomeEdits[it.id], debtAdjustment = state.debtAdjustments[it.id]) },
@@ -139,6 +141,7 @@ internal fun SyncStatusScreenContent(
 private fun SyncStatusPageBody(
     state: OutboxStatusUiState,
     actions: SyncStatusActions,
+    onOpenInbox: () -> Unit,
 ) {
     if (!state.bindingReady) {
         Text(stringResource(if (state.binding == null) R.string.sync_status_binding_unavailable else R.string.sync_status_binding_loading))
@@ -147,6 +150,7 @@ private fun SyncStatusPageBody(
     val status = state.status
     SyncStatusOverviewSection(status, state.correctionObservation.corrections, state.debtAdjustments.values.toList())
     SyncStatusCorrectionSection(state, actions)
+    SyncStatusUploadSection(state, onOpenInbox)
 
     SyncStatusQuarantineSection(
         count = status.quarantinedCount,
@@ -156,7 +160,7 @@ private fun SyncStatusPageBody(
 
     SyncStatusDebtSections(state)
 
-    val conflicts = status.conflicts.filter { it.type != PendingMutationType.CorrectExpense }
+    val conflicts = status.conflicts.filter { it.type !in SEPARATE_RECOVERY_TYPES }
     if (conflicts.isNotEmpty()) {
         SettingsSection(title = stringResource(R.string.sync_status_section_needs_action), icon = Icons.Filled.SyncProblem) {
             conflicts.forEach { row ->
@@ -170,7 +174,7 @@ private fun SyncStatusPageBody(
         }
     }
 
-    val failures = status.failed.filter { it.type != PendingMutationType.CorrectExpense }
+    val failures = status.failed.filter { it.type !in SEPARATE_RECOVERY_TYPES }
     if (failures.isNotEmpty()) {
         SettingsSection(title = stringResource(R.string.sync_status_section_failed), icon = Icons.Filled.ErrorOutline) {
             failures.forEach { row ->
@@ -188,6 +192,19 @@ private fun SyncStatusPageBody(
                 )
             }
         }
+    }
+}
+
+private val SEPARATE_RECOVERY_TYPES = setOf(PendingMutationType.CorrectExpense, PendingMutationType.UploadScreenshot)
+
+@Composable
+private fun SyncStatusUploadSection(state: OutboxStatusUiState, onOpenInbox: () -> Unit) {
+    val rows = (state.status.conflicts + state.status.failed).filter { it.type == PendingMutationType.UploadScreenshot }
+    if (rows.isEmpty()) return
+    SettingsSection(title = stringResource(R.string.sync_status_mutation_upload_screenshot), icon = Icons.Filled.CloudUpload) {
+        Text(stringResource(R.string.sync_status_upload_recovery_body), style = MaterialTheme.typography.bodyMedium)
+        AppPrimaryButton(text = stringResource(R.string.sync_status_open_uploads), icon = Icons.Filled.CloudUpload,
+            onClick = onOpenInbox)
     }
 }
 
@@ -254,7 +271,7 @@ private fun ConflictCard(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ) {
             Text(
-                text = stringResource(R.string.sync_status_conflict_offline_prefix, stringResource(syncStatusMutationLabelRes(row.type))),
+                text = stringResource(R.string.sync_status_conflict_offline_prefix, stringResource(syncStatusMutationLabelResources.getValue(row.type))),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -304,8 +321,8 @@ private fun FailedCard(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ) {
             Text(
-                text = if (row.type == PendingMutationType.CreateDebt) stringResource(syncStatusMutationLabelRes(row.type))
-                else stringResource(R.string.sync_status_failed_offline_prefix, stringResource(syncStatusMutationLabelRes(row.type))),
+                text = if (row.type == PendingMutationType.CreateDebt) stringResource(syncStatusMutationLabelResources.getValue(row.type))
+                else stringResource(R.string.sync_status_failed_offline_prefix, stringResource(syncStatusMutationLabelResources.getValue(row.type))),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -415,11 +432,8 @@ private fun SyncStatusRecoveryActions(
 internal fun isExpiredFailure(lastError: String?): Boolean =
     lastError?.startsWith("outbox_row_expired") == true
 
-@StringRes
-internal fun syncStatusMutationLabelRes(type: PendingMutationType): Int =
-    syncStatusMutationLabelResources.getValue(type)
-
 internal val syncStatusMutationLabelResources = mapOf(
+    PendingMutationType.UploadScreenshot to R.string.sync_status_mutation_upload_screenshot,
     PendingMutationType.PatchExpense to R.string.sync_status_mutation_patch_expense,
     PendingMutationType.CorrectExpense to R.string.sync_status_mutation_correct_expense,
     PendingMutationType.CreateExpense to R.string.sync_status_mutation_create_expense,

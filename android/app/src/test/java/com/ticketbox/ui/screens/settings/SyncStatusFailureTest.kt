@@ -202,7 +202,7 @@ class SyncStatusFailureTest {
         )
         assertEquals(
             R.string.sync_status_mutation_unknown,
-            syncStatusMutationLabelRes(PendingMutationType.Unknown),
+            syncStatusMutationLabelResources.getValue(PendingMutationType.Unknown),
         )
     }
 

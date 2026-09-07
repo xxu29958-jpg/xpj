@@ -298,4 +298,41 @@ class AppDatabaseMigrationTest {
             assertTrue("URL-only ownership must remain quarantined", cursor.isNull(2))
         }
     }
+
+    @Test
+    fun migrate17To18KeepsOriginalIntentAndDefaultsToNoReceiptAndBlockingFailure() {
+        val name = "migration-17-18-upload-test.db"
+        helper.createDatabase(name, 17).use { db ->
+            db.execSQL(
+                """
+                INSERT INTO pending_mutations (
+                    serverUrl, ledgerId, ownerKey, type, targetId, payload, expectedRowVersion,
+                    idempotencyKey, status, retryCount, lastError, createdAt
+                ) VALUES (
+                    'https://example.test', 'family', NULL, 'patch_expense', 'expense:9',
+                    '{"original":true}', 7, 'original-key', 'failed', 2,
+                    'original_failure', '2026-08-01T00:00:00.000Z'
+                )
+                """.trimIndent(),
+            )
+        }
+
+        helper.runMigrationsAndValidate(name, 18, true, AppDatabase.Migration17To18).use { db ->
+            db.query(
+                "SELECT receiptJson, blocksFollowing, ownerKey, payload, idempotencyKey, " +
+                    "expectedRowVersion, status, retryCount, lastError FROM pending_mutations",
+            ).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertTrue(cursor.isNull(0))
+                assertEquals(1L, cursor.getLong(1))
+                assertTrue(cursor.isNull(2))
+                assertEquals("{\"original\":true}", cursor.getString(3))
+                assertEquals("original-key", cursor.getString(4))
+                assertEquals(7L, cursor.getLong(5))
+                assertEquals("failed", cursor.getString(6))
+                assertEquals(2L, cursor.getLong(7))
+                assertEquals("original_failure", cursor.getString(8))
+            }
+        }
+    }
 }

@@ -425,7 +425,7 @@ internal class ExpenseRepositoryCore(
             bound.requireStillActive()
             block()
         } else {
-            outboxRef.withActiveBinding(bound, block)
+            outboxRef.withActiveBinding(bound) { block() }
         }
     }
 

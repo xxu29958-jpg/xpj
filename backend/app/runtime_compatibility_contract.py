@@ -15,6 +15,8 @@ from typing import Literal
 RUNTIME_COMPATIBILITY_CONTRACT = "ticketbox-runtime-compatibility-v1"
 # Income commands now carry their original accounting month explicitly.
 CURRENT_API_VERSION = "2026-09-06"
+# Optional keyed app uploads can replay their complete original committed receipt.
+UPLOAD_ORIGINAL_RECEIPT_VERSION = 1
 
 # RFC 6648 discourages new ``X-`` names.  The application prefix keeps these
 # limited-use fields unambiguous, as recommended for new HTTP fields by RFC
@@ -89,6 +91,7 @@ __all__ = [
     "RuntimeCompatibilityRequest",
     "TICKETBOX_API_VERSION_HEADER",
     "TICKETBOX_CURRENCY_BINDING_HEADER",
+    "UPLOAD_ORIGINAL_RECEIPT_VERSION",
     "format_currency_binding",
     "parse_currency_binding",
 ]

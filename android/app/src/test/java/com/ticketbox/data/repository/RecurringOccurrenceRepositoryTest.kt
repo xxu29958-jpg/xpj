@@ -117,7 +117,7 @@ private class OccurrenceFixture(role: String = "owner") {
     val draft = OccurrencePaymentDraft(occurrenceFixture(), "房租",
         RecurringOccurrencePaymentRequestDto("link", 0, 7, "payment-1", 3), "房租付款", 10_000, CurrencyCode.CNY)
 
-    fun newOutbox(clock: Clock) = OutboxRepository(dao, clock,
+    fun newOutbox(clock: Clock) = OutboxRepository(onRowsDeleted = {}, dao = dao, clock = clock,
         bindingProvider = { provider.currentSession().toOutboxBinding() },
         onEnqueued = { scheduledDepths += dao.rows.size })
 

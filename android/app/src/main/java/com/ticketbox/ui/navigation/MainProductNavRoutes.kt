@@ -69,11 +69,11 @@ internal fun NavGraphBuilder.addWorkspaceRoute(
     with(dependencies) {
         composable(WORKSPACE_ROUTE) {
             SettingsRoute(
-                onOpenExpense = runtime.navController::openExpense,
+                navigation = SettingsDestinationNavigation(onOpenExpense = runtime.navController::openExpense,
+                    onOpenInbox = { shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox) }, onCloseRoot = onBack),
                 screenFactory = screenFactory,
                 preferenceControls = workspaceControls.preferences,
                 onBindingCleared = workspaceControls.onBindingCleared,
-                onClose = onBack,
             )
         }
     }
@@ -240,7 +240,8 @@ internal fun NavGraphBuilder.addObligationRoutes(
                         screenFactory.debtAdjustmentRepository),
                 ),
             )
-            SyncStatusScreen(viewModel = vm, onBack = onBack, onOpenExpense = runtime.navController::openExpense)
+            SyncStatusScreen(viewModel = vm, onBack = onBack, onOpenExpense = runtime.navController::openExpense,
+                onOpenInbox = { shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox) })
         }
         composable(
             route = REPAYMENT_DRAFT_ROUTE,

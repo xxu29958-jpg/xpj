@@ -24,7 +24,6 @@ import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MonthlyStats
-import com.ticketbox.domain.model.PendingUploadReceipt
 import com.ticketbox.domain.model.NotificationDraft
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.RepaymentDraft
@@ -115,7 +114,6 @@ class ExpenseRepository(
 
     override fun currentActiveLedgerId(): String? = pendingRepository.currentActiveLedgerId()
 
-    override fun currentUploadBinding(): LogicalSessionBinding? = pendingRepository.currentUploadBinding()
 
     override suspend fun bindServer(serverUrl: String, pairingCode: String): Result<BindServerResult> =
         bindingRepository.bindServer(serverUrl, pairingCode)
@@ -185,8 +183,6 @@ class ExpenseRepository(
         reason: String,
     ): Result<ExpenseOffsetMutationOutcome> = offsetRepository.voidAllowingOffline(expense, offset, reason)
 
-    override suspend fun uploadScreenshot(request: ScreenshotUploadRequest): Result<PendingUploadReceipt> =
-        pendingRepository.uploadScreenshot(request)
 
     override suspend fun updateExpense(
         id: Long,

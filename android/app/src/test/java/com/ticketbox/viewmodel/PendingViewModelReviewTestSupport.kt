@@ -1,19 +1,21 @@
 package com.ticketbox.viewmodel
 
+import androidx.lifecycle.ViewModelStore
 import com.ticketbox.data.repository.PendingReviewActions
+import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.UploadIntentActions
 import com.ticketbox.data.repository.PendingEnrichmentTaskReader
-import com.ticketbox.data.repository.ScreenshotUploadRequest
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.PendingEnrichmentOutcome
 import com.ticketbox.domain.model.PendingEnrichmentTask
-import com.ticketbox.domain.model.PendingUploadReceipt
 import com.ticketbox.domain.model.ProtectedImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -38,6 +40,20 @@ import kotlinx.coroutines.test.setMain
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 internal abstract class PendingViewModelReviewTestBase {
+    private val viewModels = ViewModelStore()
+    private var nextViewModel = 0
+
+    protected fun pendingViewModel(
+        fake: FakeReviewActions,
+        uploadIntents: UploadIntentActions = fake.uploadIntents,
+        enrichmentTaskReader: PendingEnrichmentTaskReader? = null,
+        onDataChanged: () -> Unit = {},
+    ): PendingViewModel = PendingViewModel(
+        fake, uploadIntents, enrichmentTaskReader = enrichmentTaskReader, onDataChanged = onDataChanged,
+    ).also { viewModels.put("pending-${nextViewModel++}", it) }
+
+    protected fun clearPendingViewModels() = viewModels.clear()
+
 
     protected fun review(block: suspend TestScope.() -> Unit) = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
@@ -52,6 +68,7 @@ internal abstract class PendingViewModelReviewTestBase {
             // it through Dispatchers.Main (now unset) and throw
             // DispatchException → "Dispatchers.Main was accessed when ...
             // test dispatcher was unset". Drain pending work first.
+            viewModels.clear()
             advanceUntilIdle()
             Dispatchers.resetMain()
         }
@@ -145,7 +162,6 @@ internal class FakeReviewActions(
     // W1: drives [uploadScreenshot] so the share-multi-image path can be unit
     // tested. Default (unset) keeps the historical "upload not exercised"
     // failure so existing tests are unaffected. Receives the file name per call.
-    var uploadResponder: (suspend (String) -> Result<PendingUploadReceipt>)? = null
 
     var updateCalls: Int = 0
         private set
@@ -154,8 +170,6 @@ internal class FakeReviewActions(
     var rejectCalls: Int = 0
         private set
     var markNotDuplicateCalls: Int = 0
-        private set
-    var uploadCalls: Int = 0
         private set
     var fetchPendingCalls: Int = 0
         private set
@@ -167,11 +181,9 @@ internal class FakeReviewActions(
 
     override fun currentActiveLedgerId(): String? = activeLedgerIdProvider()
 
-    var uploadBinding: LogicalSessionBinding? = null
-
-    override fun currentUploadBinding(): LogicalSessionBinding = uploadBinding ?: LogicalSessionBinding(
-        serverUrl = "https://test.local", ledgerId = currentActiveLedgerId() ?: "test-ledger",
-        ownerKey = "test-owner", sessionGeneration = "test-generation", bindingRevision = "test-revision",
+    val uploadIntents = FakeUploadIntentActions(
+        LedgerAccessContext(uploadTestBinding().copy(ledgerId = activeLedgerIdProvider() ?: (activeLedgerFlow as? StateFlow<String?>)?.value ?: "test-ledger"), canModifyLedger),
+        activeLedgerFlow,
     )
 
     override suspend fun fetchPending(): Result<List<Expense>> {
@@ -276,22 +288,7 @@ internal class FakeReviewActions(
 
     override suspend fun categories(): Result<List<String>> = Result.success(categoryOptions)
 
-    // Each uploadScreenshot call records the file name it was given so multi-image
-    // share tests can assert order + count without leaking bytes.
-    val uploadedFileNames = mutableListOf<String>()
-    val uploadedLedgerIds = mutableListOf<String?>()
-    val uploadedBindings = mutableListOf<LogicalSessionBinding>()
-    val uploadedBytes = mutableListOf<ByteArray>()
 
-    override suspend fun uploadScreenshot(request: ScreenshotUploadRequest): Result<PendingUploadReceipt> {
-        uploadCalls += 1
-        uploadedFileNames += request.fileName
-        uploadedLedgerIds += request.expectedBinding.ledgerId
-        uploadedBindings += request.expectedBinding
-        uploadedBytes += request.bytes
-        uploadResponder?.let { return it(request.fileName) }
-        return Result.failure(IllegalStateException("upload not exercised in tests"))
-    }
 }
 
 internal class FakePendingEnrichmentTaskReader : PendingEnrichmentTaskReader {
@@ -299,10 +296,15 @@ internal class FakePendingEnrichmentTaskReader : PendingEnrichmentTaskReader {
     var calls: Int = 0
         private set
     val fetchedTaskIds = mutableListOf<String>()
+    val fetchedBindings = mutableListOf<LogicalSessionBinding>()
 
-    override suspend fun fetchPendingEnrichmentTask(publicId: String): Result<PendingEnrichmentTask> {
+    override suspend fun fetchPendingEnrichmentTask(
+        publicId: String,
+        expectedBinding: LogicalSessionBinding,
+    ): Result<PendingEnrichmentTask> {
         calls += 1
         fetchedTaskIds += publicId
+        fetchedBindings += expectedBinding
         responder?.let { return it(publicId) }
         return Result.success(
             PendingEnrichmentTask(

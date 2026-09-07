@@ -108,11 +108,17 @@ class DebtAdjustmentRepositoryTest {
         )
         val following = fixture.dao.rows.getValue(followingId)
 
-        assertEquals(1, fixture.engine().drainOnce().done)
-
-        assertEquals(1, fixture.api.calls.size)
+        val summary = fixture.engine().drainOnce()
+        assertEquals(1, summary.done)
+        assertEquals(1, summary.conflicts)
+        assertEquals(2, fixture.api.calls.size)
+        assertEquals(7L, fixture.api.calls[1].request.expectedRowVersion)
+        assertEquals("synthetic-following-adjustment", fixture.api.calls[1].idempotencyKey)
         assertEquals(PendingMutationStatus.Done.wireValue, fixture.dao.rows.getValue(id).status)
-        assertEquals(following, fixture.dao.rows.getValue(followingId))
+        val retained = fixture.dao.rows.getValue(followingId)
+        assertEquals(PendingMutationStatus.Conflict.wireValue, retained.status)
+        assertEquals(following, retained.copy(status = following.status, retryCount = following.retryCount,
+            attemptedAt = following.attemptedAt, lastError = following.lastError))
     }
 
     @Test
@@ -366,6 +372,7 @@ internal class DebtAdjustmentFixture(role: String = "owner") {
     val repository = newRepository(outbox)
 
     fun newOutbox(clock: Clock) = OutboxRepository(
+    onRowsDeleted = {},
         dao = dao,
         clock = clock,
         bindingProvider = { provider.currentSession().toOutboxBinding() },

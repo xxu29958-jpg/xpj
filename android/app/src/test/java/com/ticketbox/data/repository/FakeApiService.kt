@@ -290,7 +290,11 @@ internal class FakeApiService(
         )
     }
 
-    override suspend fun uploadScreenshot(file: MultipartBody.Part, timezone: String?): UploadResponseDto = unsupported()
+    override suspend fun uploadScreenshot(
+        file: MultipartBody.Part,
+        timezone: String?,
+        idempotencyKey: String?,
+    ): UploadResponseDto = unsupported()
 
     override suspend fun expense(id: Long): ExpenseDto {
         expenseFetchIds += id

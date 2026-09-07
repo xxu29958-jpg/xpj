@@ -103,7 +103,7 @@ class OutboxStatusViewModel(
     fun keepMine(row: OutboxRow) {
         val binding = expenseRepository.captureDeferredLedgerBinding()
         if (!_uiState.value.accepts(row, binding)) return
-        if (row.type == PendingMutationType.CorrectExpense) return
+        if (row.type in setOf(PendingMutationType.CorrectExpense, PendingMutationType.UploadScreenshot)) return
         if (row.type == PendingMutationType.CreateExpenseOffset) {
             explainOffsetReview()
             return
@@ -132,6 +132,7 @@ class OutboxStatusViewModel(
     /** "放弃我的改动" — discard the queued change; the server's version wins. */
     fun dropMine(row: OutboxRow) {
         if (!_uiState.value.accepts(row, expenseRepository.captureDeferredLedgerBinding())) return
+        if (row.type == PendingMutationType.UploadScreenshot) return
         if (row.type == PendingMutationType.CorrectExpense) recoverCorrection(row, true)
         else if (row.type == PendingMutationType.RecordDebtAdjustment) recoverAdjustment(row, true)
         else resolve(row) { outbox.resolveConflict(row.id, ConflictResolution.DropMine) }
@@ -140,6 +141,10 @@ class OutboxStatusViewModel(
     /** "重试" — flip a FAILED row back to PENDING for the next drain. */
     fun retry(row: OutboxRow) {
         if (!_uiState.value.accepts(row, expenseRepository.captureDeferredLedgerBinding())) return
+        if (row.type == PendingMutationType.UploadScreenshot) {
+            _uiState.update { it.copy(message = UiText.res(R.string.sync_status_upload_recovery_body), messageTone = MessageTone.Info) }
+            return
+        }
         if (row.type == PendingMutationType.CorrectExpense) {
             recoverCorrection(row, false)
             return
@@ -162,6 +167,7 @@ class OutboxStatusViewModel(
     /** "放弃" — drop a FAILED row. */
     fun dropFailed(row: OutboxRow) {
         if (!_uiState.value.accepts(row, expenseRepository.captureDeferredLedgerBinding())) return
+        if (row.type == PendingMutationType.UploadScreenshot) return
         if (row.type == PendingMutationType.CorrectExpense) recoverCorrection(row, true)
         else if (row.type == PendingMutationType.RecordDebtAdjustment) recoverAdjustment(row, true)
         else resolve(row) { outbox.resolveFailed(row.id, FailedResolution.Drop) }

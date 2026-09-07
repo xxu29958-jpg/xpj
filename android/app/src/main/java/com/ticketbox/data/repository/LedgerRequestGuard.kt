@@ -1,5 +1,6 @@
 package com.ticketbox.data.repository
 
+import com.squareup.moshi.JsonClass
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.security.LocalSessionRecord
 import com.ticketbox.security.LocalSessionVersion
@@ -92,6 +93,7 @@ internal data class BoundSessionSnapshot(
         )
 }
 
+@JsonClass(generateAdapter = true)
 data class LogicalSessionBinding(
     val serverUrl: String,
     val ledgerId: String,

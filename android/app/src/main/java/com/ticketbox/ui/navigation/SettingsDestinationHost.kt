@@ -87,6 +87,7 @@ internal data class SettingsDestinationChromeState(
 
 internal data class SettingsDestinationNavigation(
     val onOpenExpense: (Long) -> Unit,
+    val onOpenInbox: () -> Unit,
     val onSecondaryActiveChange: (Boolean) -> Unit = {},
     val onCloseRoot: () -> Unit = {},
 )
@@ -382,6 +383,7 @@ internal fun SettingsDestinationHost(
             )
             SyncStatusScreen(
                 onOpenExpense = navigation.onOpenExpense,
+                onOpenInbox = navigation.onOpenInbox,
                 viewModel = vm,
                 onBack = { route = SettingsDestination.Root },
             )

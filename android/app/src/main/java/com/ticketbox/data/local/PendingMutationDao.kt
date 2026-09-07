@@ -7,46 +7,25 @@ import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
 /**
- * ADR-0038 PR-2f outbox DAO.
+ * Room persistence for original commands and their delivery state.
  *
- * Read-side responsibilities:
- *   - [nextRunnableBatch] is the drain worker's queue: returns
- *     PENDING rows in ``createdAt`` ASC order, excluding any row
- *     whose target already has an unresolved sibling (IN_FLIGHT /
- *     CONFLICT / FAILED). The exclusion is in SQL (``NOT EXISTS``)
- *     so ``LIMIT`` applies AFTER blocked targets are skipped.
- *   - [nextPendingBatch] is a simpler PENDING-only pull used by
- *     tests and the stale-IN_FLIGHT recovery sweep, neither of
- *     which needs the unresolved-target filter.
- *   - [hasUnresolvedRowForTarget] / [activeForTarget] / [isTargetBusy]
- *     let the repository check target state for cascade / banner
- *     queries.
- *   - [observeQueueDepth] / [observeConflictRows] / [observeFailedRows]
- *     feed the queue-depth pill + the conflict and FAILED banners
- *     in PR-2g; all Flow so the UI re-renders without polling.
+ * [nextRunnableBatch] returns the oldest PENDING row per target in each
+ * selection. The engine can select again after a predecessor settles.
+ * Shared SQL predicates exclude blocking siblings before LIMIT and make
+ * [markInFlightIfPending] recheck that same ordering at the actual claim.
+ * [nextPendingBatch] remains a plain read; it does not authorize dispatch.
  *
- * Write-side responsibilities:
- *   - [insert] is fire-and-forget from the mutation call sites.
- *   - [markInFlightIfPending] / [markDone] / [markConflict] /
- *     [markFailed] / [markRetryable] are the drain worker's status
- *     transitions. ``IfPending`` and the ``...IfStatus`` family
- *     all carry a ``status = :fromStatus`` predicate so concurrent
- *     drains / stale UI banners can't move a row out of the state
- *     the caller thought it was in.
- *   - [requeueConflictWithFreshToken] / [retryFailed] /
- *     [deleteIfStatus] are the user-facing resolveConflict /
- *     resolveFailed building blocks; each is rowcount-checked so
- *     a stale banner click is a no-op rather than a stomp.
- *   - [cascadeFreshTokenForTarget] propagates a server-returned
- *     ``updated_at`` to other PENDING rows of the same target
- *     after a successful dispatch.
- *   - [recoverStaleInFlight] / [deleteResolvedBefore] are the
- *     periodic cleanup operations.
+ * [insert] / [insertBatch] persist before the repository schedules work;
+ * [markDone] commits a receipt with its delivery status. Explicit recovery
+ * uses bound, status-checked updates. [deleteUnfinishedUploadGroup] applies
+ * one bound Stop under the repository's dispatch and binding leases,
+ * retaining delivered receipts and unrelated commands.
  *
- * Why a single DAO instead of a Repository: the outbox surface is
- * small and the Repository in PR-2g will compose DAO calls with
- * Moshi adapters and the ApiService call. Splitting now would just
- * push trivial pass-through methods up a layer.
+ * Observable queue/conflict/failure reads keep original rows visible even
+ * when an ordinary FAILED upload no longer blocks its sibling. [allRows]
+ * includes every binding and raw type for the file owner's reference proof.
+ * [recoverStaleInFlight] and [deleteResolvedBefore] retain their existing
+ * recovery and completed-row retention responsibilities.
  */
 @Dao
 interface PendingMutationDao {
@@ -58,10 +37,30 @@ interface PendingMutationDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(row: PendingMutationEntity): Long
 
+    /** Room commits a collection insert as one transaction, preserving input order in the returned ids. */
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertBatch(rows: List<PendingMutationEntity>): List<Long>
+
+    @Query(
+        "SELECT * FROM pending_mutations WHERE ownerKey = :ownerKey AND ledgerId = :ledgerId " +
+            "AND type = :type AND idempotencyKey IN (:keys) ORDER BY createdAt ASC, id ASC",
+    )
+    suspend fun findByIdempotencyKeys(
+        ownerKey: String,
+        ledgerId: String,
+        type: String,
+        keys: Collection<String>,
+    ): List<PendingMutationEntity>
+
+    /** Reference proof must include other bindings, null owners and unrecognized raw types/statuses. */
+    @Query("SELECT * FROM pending_mutations ORDER BY createdAt ASC, id ASC")
+    suspend fun allRows(): List<PendingMutationEntity>
+
     /**
      * Atomic claim: flip a row to IN_FLIGHT only when it's still
-     * PENDING. ``rowcount = 0`` means another drain pass already
-     * grabbed this row; the caller MUST not dispatch in that case.
+     * PENDING and still the runnable head of its target. A user can
+     * retry an earlier failure after dequeue; that invalidates the stale
+     * tail claim without changing its retryCount or attemptedAt.
      *
      * [codex finding P1#2] fix: without the ``status = :fromStatus``
      * predicate, two concurrent drains (two WorkManager workers, a
@@ -76,6 +75,15 @@ interface PendingMutationDao {
             attemptedAt = :attemptedAt,
             retryCount = retryCount + 1
         WHERE id = :id AND status = :fromStatus
+          AND NOT EXISTS (
+            SELECT 1 FROM pending_mutations AS sib
+            WHERE sib.ownerKey = pending_mutations.ownerKey
+              AND sib.ledgerId = pending_mutations.ledgerId
+              AND sib.targetId = pending_mutations.targetId
+              AND sib.status IN (:inFlightStatus, 'conflict', 'failed')
+              AND $OUTBOX_FAILED_ROW_BLOCKS
+          )
+          AND $OUTBOX_NO_EARLIER_PENDING_SIBLING
         """,
     )
     suspend fun markInFlightIfPending(
@@ -111,11 +119,12 @@ interface PendingMutationDao {
         UPDATE pending_mutations
         SET status = :status,
             completedAt = :completedAt,
-            lastError = :lastError
+            lastError = :lastError,
+            receiptJson = :receiptJson
         WHERE id = :id
         """,
     )
-    suspend fun markDone(id: Long, status: String, completedAt: String, lastError: String?): Int
+    suspend fun markDone(id: Long, status: String, completedAt: String, lastError: String? = null, receiptJson: String? = null): Int
 
     @Query("""
         UPDATE pending_mutations SET lastError = NULL
@@ -137,11 +146,12 @@ interface PendingMutationDao {
         """
         UPDATE pending_mutations
         SET status = :status,
-            lastError = :lastError
+            lastError = :lastError,
+            blocksFollowing = :blocksFollowing
         WHERE id = :id
         """,
     )
-    suspend fun markFailed(id: Long, status: String, lastError: String): Int
+    suspend fun markFailed(id: Long, status: String, lastError: String, blocksFollowing: Boolean = true): Int
 
     /**
      * ADR-0042 §4.10 reaper: flip every still-PENDING row enqueued before
@@ -178,7 +188,8 @@ interface PendingMutationDao {
         """
         UPDATE pending_mutations
         SET status = :status,
-            lastError = :lastError
+            lastError = :lastError,
+            blocksFollowing = 1
         WHERE status = 'pending'
           AND createdAt < :cutoffCreatedAtIso
         """,
@@ -206,7 +217,8 @@ interface PendingMutationDao {
         """
         UPDATE pending_mutations
         SET status = 'failed',
-            lastError = 'outbox_row_expired'
+            lastError = 'outbox_row_expired',
+            blocksFollowing = 1
         WHERE id = :id
           AND ownerKey = :ownerKey
           AND ledgerId = :ledgerId
@@ -222,34 +234,13 @@ interface PendingMutationDao {
         cutoffCreatedAtIso: String,
     ): Int
 
-    @Query(
-        """
-        UPDATE pending_mutations
-        SET status = :pendingStatus,
-            expectedRowVersion = :freshToken,
-            lastError = NULL
-        WHERE id = :id
-        """,
-    )
-    suspend fun refreshToken(id: Long, pendingStatus: String, freshToken: Long): Int
-
     /**
-     * Atomic ``CONFLICT → PENDING`` token refresh for Keep Mine. The fixed source
-     * state makes a stale action a no-op rather than a generic state-machine write.
-     *
-     * codex P1 #7: ``retryCount = 0`` 重置——两条路径都是用户显式"重试", 都该拿到完整
-     * 的 max_attempts 预算, 而不是接着之前的失败次数继续撞 cap。
-     *
-     * [codex round-4 P2] fix: prevents a stale UI banner from
-     * flipping a DONE / dropped row back to PENDING.
-     *
-     * ADR-0042 §4.8: refreshing ``expectedRowVersion`` is the "overwrite the new
-     * server version after seeing the conflict/failure" NEW intent, so a
-     * key-bearing row (PatchExpense) must ROTATE its ``idempotencyKey`` here —
-     * otherwise the replay's fingerprint (which folds in the token) would
-     * mismatch the original key, or we'd have to drop the token from the
-     * fingerprint and dirty OCC. The ``CASE`` rotates only rows that already
-     * carry a key; keyless mutation types stay null. Callers pass a fresh UUID.
+     * Atomic CONFLICT to PENDING replacement after reviewing the current fact.
+     * Identity, owner, ledger and source status must still match; stale actions are no-ops.
+     * A replacement command takes the fresh OCC token and rotates an existing key
+     * to the caller's new UUID; keyless commands remain keyless (ADR-0042 section 4.8).
+     * Correction, refund and upload originals cannot take this replacement path.
+     * Successful replacement resets the retry budget and restores normal queue blocking.
      */
     @Query(
         """
@@ -261,12 +252,13 @@ interface PendingMutationDao {
                 ELSE idempotencyKey
             END,
             retryCount = 0,
-            lastError = NULL
+            lastError = NULL,
+            blocksFollowing = 1
         WHERE id = :id
           AND ownerKey = :ownerKey
           AND ledgerId = :ledgerId
           AND status = 'conflict'
-          AND type NOT IN ('correct_expense', 'create_expense_offset')
+          AND type NOT IN ('correct_expense', 'create_expense_offset', 'upload_screenshot')
         """,
     )
     suspend fun requeueConflictWithFreshToken(
@@ -277,7 +269,7 @@ interface PendingMutationDao {
         rotatedIdempotencyKey: String?,
     ): Int
 
-    /** Atomic ``FAILED → PENDING`` retry with a newly fetched row token. */
+    /** Atomic FAILED to PENDING replacement after an explicit current-fact review. */
     @Query(
         """
         UPDATE pending_mutations
@@ -288,12 +280,13 @@ interface PendingMutationDao {
                 ELSE idempotencyKey
             END,
             retryCount = 0,
-            lastError = NULL
+            lastError = NULL,
+            blocksFollowing = 1
         WHERE id = :id
           AND ownerKey = :ownerKey
           AND ledgerId = :ledgerId
           AND status = 'failed'
-          AND type NOT IN ('correct_expense', 'create_expense_offset')
+          AND type NOT IN ('correct_expense', 'create_expense_offset', 'upload_screenshot')
         """,
     )
     suspend fun requeueFailedWithFreshToken(
@@ -318,17 +311,21 @@ interface PendingMutationDao {
         UPDATE pending_mutations
         SET status = 'pending',
             retryCount = 0,
-            lastError = 'manual_retry'
+            lastError = 'manual_retry',
+            blocksFollowing = 1
         WHERE id = :id
           AND ownerKey = :ownerKey
           AND ledgerId = :ledgerId
           AND status = 'failed'
+          AND (type != 'upload_screenshot' OR
+            COALESCE(substr(lastError, 1, instr(lastError || ':', ':') - 1), '') NOT IN (:nonRetryableUploadErrors))
         """,
     )
     suspend fun retryFailed(
         id: Long,
         ownerKey: String,
         ledgerId: String,
+        nonRetryableUploadErrors: Set<String>,
     ): Int
 
     /**
@@ -438,7 +435,7 @@ interface PendingMutationDao {
 
     /**
      * Drain worker entry point: oldest PENDING rows whose target
-     * has NO unresolved sibling (IN_FLIGHT / CONFLICT / FAILED),
+     * has NO blocking sibling (IN_FLIGHT / CONFLICT / blocking FAILED),
      * capped at [limit].
      *
      * The unresolved-sibling exclusion is in the SQL — not a Kotlin
@@ -450,45 +447,37 @@ interface PendingMutationDao {
      * IDLE forever even though there's real work available.
      *
      * Same-target dedup (only the oldest PENDING row per target
-     * runs in a given pass) is also pushed into SQL so ``LIMIT`` is
+     * is returned by each query) is also pushed into SQL so ``LIMIT`` is
      * applied after duplicate targets are removed. Otherwise 25 queued
      * edits for one expense can consume the whole batch and starve
      * other runnable targets until later drain passes.
      */
     @Query(
         """
-        SELECT * FROM pending_mutations AS pm
-        WHERE pm.ownerKey = :ownerKey
-          AND pm.ledgerId = :ledgerId
-          AND pm.status = :pendingStatus
+        SELECT * FROM pending_mutations
+        WHERE ownerKey = :ownerKey
+          AND ledgerId = :ledgerId
+          AND status = 'pending'
+          AND id NOT IN (:excludedIds)
           AND NOT EXISTS (
             SELECT 1 FROM pending_mutations AS sib
-            WHERE sib.ownerKey = pm.ownerKey
-              AND sib.ledgerId = pm.ledgerId
-              AND sib.targetId = pm.targetId
+            WHERE sib.ownerKey = pending_mutations.ownerKey
+              AND sib.ledgerId = pending_mutations.ledgerId
+              AND sib.targetId = pending_mutations.targetId
               AND sib.status IN (:unresolvedStatuses)
+              AND $OUTBOX_FAILED_ROW_BLOCKS
           )
-          AND NOT EXISTS (
-            SELECT 1 FROM pending_mutations AS older
-            WHERE older.ownerKey = pm.ownerKey
-              AND older.ledgerId = pm.ledgerId
-              AND older.targetId = pm.targetId
-              AND older.status = :pendingStatus
-              AND (
-                older.createdAt < pm.createdAt
-                OR (older.createdAt = pm.createdAt AND older.id < pm.id)
-              )
-          )
-        ORDER BY pm.createdAt ASC, pm.id ASC
+          AND $OUTBOX_NO_EARLIER_PENDING_SIBLING
+        ORDER BY createdAt ASC, id ASC
         LIMIT :limit
         """,
     )
     suspend fun nextRunnableBatch(
         ownerKey: String,
         ledgerId: String,
-        pendingStatus: String,
         unresolvedStatuses: Collection<String>,
         limit: Int,
+        excludedIds: List<Long> = emptyList(),
     ): List<PendingMutationEntity>
 
     /**
@@ -543,8 +532,8 @@ interface PendingMutationDao {
     /**
      * True if any non-terminal row for [targetId] exists — IN_FLIGHT
      * (another drain already running it), CONFLICT (user hasn't
-     * picked "keep mine / drop mine" yet), or FAILED (terminal
-     * failure waiting for manual retry or dismissal).
+     * picked "keep mine / drop mine" yet), or FAILED with its
+     * blocking flag still set while awaiting retry or dismissal.
      *
      * [codex round-2 finding P1#1] fix: dequeue must NOT advance
      * past an unresolved row for the same target. Otherwise:
@@ -558,11 +547,12 @@ interface PendingMutationDao {
      */
     @Query(
         """
-        SELECT COUNT(*) > 0 FROM pending_mutations
-        WHERE ownerKey = :ownerKey
-          AND ledgerId = :ledgerId
-          AND targetId = :targetId
-          AND status IN (:unresolvedStatuses)
+        SELECT COUNT(*) > 0 FROM pending_mutations AS sib
+        WHERE sib.ownerKey = :ownerKey
+          AND sib.ledgerId = :ledgerId
+          AND sib.targetId = :targetId
+          AND sib.status IN (:unresolvedStatuses)
+          AND $OUTBOX_FAILED_ROW_BLOCKS
         """,
     )
     suspend fun hasUnresolvedRowForTarget(
@@ -721,6 +711,16 @@ interface PendingMutationDao {
      */
     @Query("DELETE FROM pending_mutations WHERE id = :id")
     suspend fun deleteById(id: Long): Int
+
+    /** One bound Stop; the repository holds dispatch and binding leases across this statement. */
+    @Query(
+        """
+        DELETE FROM pending_mutations
+        WHERE ownerKey = :ownerKey AND ledgerId = :ledgerId AND targetId = :targetId
+          AND type = 'upload_screenshot' AND status != 'done'
+        """,
+    )
+    suspend fun deleteUnfinishedUploadGroup(ownerKey: String, ledgerId: String, targetId: String): Int
 
     /**
      * Prune DONE rows older than [cutoffIso] (ISO-Z). FAILED rows are

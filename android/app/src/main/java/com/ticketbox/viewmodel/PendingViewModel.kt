@@ -9,18 +9,20 @@ import com.ticketbox.data.repository.PendingThumbnailLoader
 import com.ticketbox.data.repository.PendingEnrichmentTaskReader
 import com.ticketbox.data.repository.PendingReviewActions
 import com.ticketbox.data.repository.RepositoryException
+import com.ticketbox.data.repository.UploadBatchRequest
+import com.ticketbox.data.repository.UploadIntentActions
+import com.ticketbox.data.repository.UploadIntentObservation
+import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.toPendingUploadReceipt
+import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.domain.model.Expense
-import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.upload.PreparedUploadImage
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -62,11 +64,11 @@ data class PendingUiState(
     val listLoadState: PendingListLoadState = PendingListLoadState.Unknown,
     val hasLoadedOnce: Boolean = false,
     val loading: Boolean = false,
-    val uploading: Boolean = false,
+    val upload: PendingUploadUiState = PendingUploadUiState(),
+    val uploadBinding: LogicalSessionBinding? = null,
+    val uploadActionInProgress: Boolean = false,
     val enrichment: PendingEnrichmentUiState = PendingEnrichmentUiState(),
     val message: UiText? = null,
-    /** Whether an in-memory image rejected before commit can be retried. */
-    val canRetryUpload: Boolean = false,
     val activeSheet: PendingSheet = PendingSheet.None,
     val categoryOptions: List<String> = emptyList(),
     val bulkConfirm: BulkConfirmRunState = BulkConfirmRunState(),
@@ -108,14 +110,13 @@ data class PendingUiState(
     val showPageRefresh: Boolean
         get() = loading && items.isEmpty() && !showingCachedSnapshot
 
-    val canStartUpload: Boolean
-        get() = !readOnly && !uploading && !canRetryUpload
+    val uploading: Boolean get() = uploadActionInProgress || upload.inFlight
+    val canStartUpload: Boolean get() = !readOnly && !uploading
+    val canRetryUpload: Boolean get() = !readOnly && !uploadActionInProgress && upload.retryable
+    val canStopUpload: Boolean get() = !uploadActionInProgress && upload.groupId != null
+    val uploadMessage: UiText? get() = upload.message
+    val uploadFailedCount: Int get() = upload.failedCount
 
-    internal val preserveUploadMessageDuringRefresh: Boolean
-        get() = canRetryUpload ||
-            (message as? UiText.Res)?.id in setOf(
-                R.string.pending_msg_share_partial_failure, R.string.pending_msg_upload_ledger_switched,
-            )
 }
 
 private data class PendingStateTransitionOperation(
@@ -145,6 +146,7 @@ private data class PendingStateTransitionResultHandler(
 
 class PendingViewModel(
     internal val repository: PendingReviewActions,
+    private val uploadIntents: UploadIntentActions,
     private val thumbnailLoader: PendingThumbnailLoader = PendingThumbnailLoader(repository),
     private val enrichmentTaskReader: PendingEnrichmentTaskReader? = null,
     internal val onDataChanged: () -> Unit = {},
@@ -169,7 +171,7 @@ class PendingViewModel(
     // 第一次 refresh 从 Room 缓存铺列表（消空白间隙）；之后的下拉刷新不再回种，避免
     // 在用户已乐观移除（confirm/reject 只改内存不写 Room）后又从陈旧缓存把行复活
     // ——撞 issue 红线「review action 执行器行为不变」。换账本时在
-    // observeLedgerChanges 重置为 false 以便对新账本重新种一次。
+    // 原绑定初始化重置为 false 以便对新账本重新种一次。
     private var pendingCacheSeeded = false
     // VM-owned 5s auto-dismiss timer for the 撤销 banner. Lives here rather
     // than in a Compose LaunchedEffect so it isn't restarted every time the
@@ -178,20 +180,8 @@ class PendingViewModel(
     // retention window.
     private var undoTimerJob: Job? = null
     private var enrichmentObserver: PendingEnrichmentObserver? = null
-    private val uploads = PendingUploadSession(
-        scope = viewModelScope,
-        repository = repository,
-        currentGeneration = { requestGeneration },
-        canWrite = { !blockReadOnlyWrite() },
-        onState = { uploading, retryable, message ->
-            _uiState.update { it.copy(uploading = uploading, canRetryUpload = retryable, message = message) }
-        },
-        onReceipt = { receipt ->
-            onDataChanged()
-            refresh()
-            enrichmentObserver()?.track(receipt)
-        },
-    )
+    private var uploadObservation: UploadIntentObservation? = null
+    private val observedUploadReceipts = mutableSetOf<Long>()
 
     // 连续审阅（批量过堆积待确认票）本轮已「跳过」的票 id。快补 sheet 的
     // 保存并下一笔 / 跳过都朝列表后方推进，跳过的票留在 pending 列表里、不出队、
@@ -201,51 +191,53 @@ class PendingViewModel(
     internal val reviewSkippedIds = mutableSetOf<Long>()
 
     init {
-        val readOnly = !repository.canModifyLedger()
-        _uiState.update { it.copy(readOnly = readOnly, message = if (readOnly) readOnlyMessage() else it.message) }
-        observeLedgerChanges()
-        refresh()
-        loadCategoryOptions()
-    }
-
-    private fun observeLedgerChanges() {
+        _uiState.update { it.copy(readOnly = true) }
         viewModelScope.launch {
-            repository.observeActiveLedgerId()
-                .distinctUntilChanged()
-                .drop(1)
-                .collect {
-                    requestGeneration += 1
-                    val interruptedUpload = uploads.invalidate() ||
-                        _uiState.value.message == UiText.res(R.string.pending_msg_upload_ledger_switched)
-                    enrichmentObserver?.clear()
-                    reviewSkippedIds.clear()
-                    // A3: 新账本要重新种一次首屏缓存。
-                    pendingCacheSeeded = false
-                    val readOnly = isReadOnly()
-                    _uiState.value = PendingUiState(
-                        readOnly = readOnly,
-                        loading = true,
-                        listLoadState = PendingListLoadState.Loading,
-                        message = when {
-                            readOnly -> readOnlyMessage()
-                            interruptedUpload -> UiText.res(R.string.pending_msg_upload_ledger_switched)
-                            else -> null
-                        },
-                    )
-                    refresh()
-                    loadCategoryOptions()
-                }
+            uploadIntents.observeUploadIntents().collect { installUploadObservation(it) }
         }
     }
 
-    private fun isReadOnly(): Boolean = !repository.canModifyLedger()
+    private fun installUploadObservation(observation: UploadIntentObservation) {
+        if (observation.access != null && observation.access.binding != uploadIntents.currentUploadBinding()) return
+        val initialize = uploadObservation == null || uploadObservation?.access != observation.access
+        uploadObservation = observation
+        val completed = observation.uploads.filter { it.row.status == PendingMutationStatus.Done && it.receipt != null }
+        if (initialize) {
+            requestGeneration += 1
+            observedUploadReceipts.clear()
+            observedUploadReceipts.addAll(completed.map { it.row.id })
+            enrichmentObserver?.clear()
+            enrichmentObserver = null
+            cancelUndoTimer()
+            reviewSkippedIds.clear()
+            pendingCacheSeeded = false
+            _uiState.value = PendingUiState(
+                readOnly = isReadOnly(), upload = observation.toPendingUploadUiState(),
+                uploadBinding = observation.access?.binding,
+            )
+            if (observation.access != null) {
+                refresh()
+                loadCategoryOptions()
+            }
+            return
+        }
+        _uiState.update { it.copy(readOnly = isReadOnly(), upload = observation.toPendingUploadUiState()) }
+        val newlyCompleted = completed.filter { observedUploadReceipts.add(it.row.id) }
+        newlyCompleted.forEach {
+            onDataChanged()
+            enrichmentObserver()?.track(requireNotNull(it.receipt).toPendingUploadReceipt())
+        }
+        if (newlyCompleted.isNotEmpty()) refresh()
+    }
+
+    private fun isReadOnly(): Boolean =
+        uploadObservation?.access?.canModify != true || !repository.canModifyLedger()
 
     internal fun blockReadOnlyWrite(closeSheet: Boolean = false): Boolean {
         if (!isReadOnly()) {
             _uiState.update { it.copy(readOnly = false) }
             return false
         }
-        uploads.invalidate()
         enrichmentObserver?.clear()
         // Demoted to viewer mid-banner: the snackbar is now a dead affordance
         // (the user can't 撤销 anything regardless of server retention), and
@@ -256,8 +248,6 @@ class PendingViewModel(
         _uiState.update {
             it.copy(
                 readOnly = true,
-                uploading = false,
-                canRetryUpload = false,
                 undoableExpense = null,
                 activeSheet = if (closeSheet) PendingSheet.None else it.activeSheet,
                 message = readOnlyMessage(),
@@ -267,9 +257,11 @@ class PendingViewModel(
     }
 
     private fun loadCategoryOptions() {
+        val generation = requestGeneration
         viewModelScope.launch {
             repository.categories()
                 .onSuccess { options ->
+                    if (generation != requestGeneration) return@onSuccess
                     _uiState.update { it.copy(categoryOptions = options) }
                 }
                 .onFailure { /* 静默失败：用户仍可手动输入分类 */ }
@@ -279,15 +271,17 @@ class PendingViewModel(
     fun refresh() {
         // Issued synchronously (not inside the launch) so call order always
         // matches sequence order even if the coroutine body runs later.
+        if (uploadObservation?.access == null) return
         val sequence = ++refreshSequence
+        val generation = requestGeneration
         viewModelScope.launch {
-            val generation = requestGeneration
+            if (generation != requestGeneration) return@launch
             val skipEpoch = refreshSkipEpoch
             _uiState.update {
                 it.copy(
                     loading = true,
                     listLoadState = PendingListLoadState.Loading,
-                    message = if (it.preserveUploadMessageDuringRefresh) it.message else null,
+                    message = null,
                 )
             }
             // A3: 先用本地缓存铺首屏（仅首次 / 换账本后那次），再走网络 write-through。
@@ -309,6 +303,7 @@ class PendingViewModel(
                     // 后台刷新可能改变 items / 经 reconcile 关闭已离开的快补 sheet，
                     // 「还剩 N 条」随之重算（sheet 没开则归 0）。
                     recomputeReviewRemaining()
+                    restorePendingEnrichment(expenses)
                     loadThumbnails(expenses, generation)
                 }
                 .onFailure { error ->
@@ -320,11 +315,7 @@ class PendingViewModel(
                             hasLoadedOnce = true,
                             loading = false,
                             listLoadState = PendingListLoadState.Failed,
-                            message = if (it.preserveUploadMessageDuringRefresh) {
-                                it.message
-                            } else {
-                                error.toUiText(R.string.pending_msg_load_failed)
-                            },
+                            message = error.toUiText(R.string.pending_msg_load_failed),
                         )
                     }
                 }
@@ -354,20 +345,61 @@ class PendingViewModel(
         }
     }
 
-    internal fun acceptUploads(
-        imageRefs: List<String>,
-        prepare: suspend (String) -> PreparedUploadImage?,
-    ): Boolean = uploads.accept(imageRefs, prepare)
+    internal fun currentUploadBinding(): LogicalSessionBinding? = uploadObservation?.access?.binding
+        ?.takeIf { it == uploadIntents.currentUploadBinding() }
 
-    fun retryCapacityUpload() = uploads.retry()
+    internal suspend fun acceptUploads(request: UploadBatchRequest): Boolean {
+        if (_uiState.value.uploadActionInProgress || blockReadOnlyWrite()) return false
+        val binding = request.expectedBinding
+        if (currentUploadBinding() != binding) {
+            _uiState.update { it.copy(message = UiText.res(R.string.pending_msg_upload_ledger_switched)) }
+            return false
+        }
+        val generation = requestGeneration
+        _uiState.update { it.copy(uploadActionInProgress = true, message = null) }
+        return try {
+            val result = uploadIntents.acceptUploadBatch(request)
+            if (generation != requestGeneration || uploadIntents.currentUploadBinding() != binding) return false
+            result.onFailure { error ->
+                _uiState.update { it.copy(message = error.toUiText(R.string.pending_msg_upload_failed)) }
+            }.isSuccess
+        } finally {
+            if (generation == requestGeneration) _uiState.update { it.copy(uploadActionInProgress = false) }
+        }
+    }
 
-    fun discardCapacityUpload() {
-        if (!_uiState.value.canRetryUpload) return
-        uploads.invalidate(UiText.res(R.string.pending_msg_upload_stopped))
+    fun retryCapacityUpload() = recoverUploads(drop = false)
+
+    fun discardCapacityUpload() = recoverUploads(drop = true)
+
+    private fun recoverUploads(drop: Boolean) {
+        val state = _uiState.value
+        if (if (drop) !state.canStopUpload else !state.canRetryUpload || blockReadOnlyWrite()) return
+        val groupId = state.upload.groupId ?: return
+        val binding = uploadObservation?.access?.binding ?: return
+        if (binding != uploadIntents.currentUploadBinding()) return
+        val generation = requestGeneration
+        _uiState.update { it.copy(uploadActionInProgress = true) }
+        viewModelScope.launch {
+            try {
+                uploadIntents.recoverUploadGroup(binding, groupId, drop).onFailure { error ->
+                    if (generation == requestGeneration) {
+                        _uiState.update { it.copy(message = error.toUiText(R.string.pending_msg_upload_failed)) }
+                    }
+                }.onSuccess {
+                    if (drop && generation == requestGeneration) {
+                        _uiState.update { it.copy(message = UiText.res(R.string.pending_msg_upload_stopped)) }
+                    }
+                }
+            } finally {
+                if (generation == requestGeneration) _uiState.update { it.copy(uploadActionInProgress = false) }
+            }
+        }
     }
 
     override fun onCleared() {
-        uploads.invalidate()
+        requestGeneration += 1
+        enrichmentObserver?.clear()
         super.onCleared()
     }
 
@@ -375,16 +407,27 @@ class PendingViewModel(
         enrichmentObserver?.retryPaused()
     }
 
+    private fun restorePendingEnrichment(expenses: List<Expense>) {
+        val pendingIds = expenses.map { it.id }.toSet()
+        val receipts = uploadObservation?.uploads.orEmpty()
+            .filter { it.row.status == PendingMutationStatus.Done }
+            .mapNotNull { it.receipt?.toPendingUploadReceipt() }
+            .filter { it.expenseId in pendingIds }
+        if (receipts.isNotEmpty()) enrichmentObserver()?.restore(receipts)
+    }
+
     private fun enrichmentObserver(): PendingEnrichmentObserver? {
         val taskReader = enrichmentTaskReader ?: return null
+        val generation = requestGeneration
+        val binding = uploadObservation?.access?.binding ?: return null
         return enrichmentObserver ?: PendingEnrichmentObserver(
             scope = viewModelScope,
-            fetchTask = taskReader::fetchPendingEnrichmentTask,
-            canObserve = { !isReadOnly() },
+            fetchTask = { taskReader.fetchPendingEnrichmentTask(it, binding) },
+            canObserve = { generation == requestGeneration && uploadIntents.currentUploadBinding() == binding && !isReadOnly() },
             onStateChanged = { enrichment ->
-                _uiState.update { it.copy(enrichment = enrichment) }
+                if (generation == requestGeneration) _uiState.update { it.copy(enrichment = enrichment) }
             },
-            onTerminal = ::refresh,
+            onTerminal = { if (generation == requestGeneration) refresh() },
         ).also { enrichmentObserver = it }
     }
 

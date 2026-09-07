@@ -101,11 +101,15 @@ internal class DataQualityConnectedHarness : AutoCloseable {
             apiProvider = apiProvider,
         )
         val outbox = OutboxRepository(
+            onRowsDeleted = {},
             dao = database.pendingMutationDao(),
             bindingProvider = { sessionRecord.toOutboxBinding() },
         )
         val adapters = OutboxAdapterGraph()
         val repositories = MainFeatureRepositories(
+            uploadIntents = com.ticketbox.data.repository.UploadIntentRepository(apiProvider, outbox,
+                com.ticketbox.data.repository.UploadIntentFileStore(context), adapters.uploadPayloadAdapter,
+                adapters.uploadReceiptAdapter, settingsStore),
             repository = ExpenseRepository(database.expenseDao(), binding, offlineMutations =
                 com.ticketbox.data.repository.ExpenseOfflineMutationWiring(outbox, adapters.correctionAdapter, adapters.legacyCorrectionAdapter)),
             ledgerRepository = LedgerRepository(

@@ -14,6 +14,7 @@ import com.ticketbox.data.repository.LocalBackgroundImageRepository
 import com.ticketbox.security.BiometricAuthManager
 import com.ticketbox.ui.navigation.EXTRA_SHORTCUT_TARGET
 import com.ticketbox.ui.navigation.LaunchIntentRequest
+import com.ticketbox.ui.navigation.LaunchSharedContent
 import com.ticketbox.ui.navigation.MainFeatureRepositories
 import com.ticketbox.ui.navigation.MainScreenViewModelFactories
 import com.ticketbox.ui.navigation.TicketboxApp
@@ -22,6 +23,8 @@ import com.ticketbox.ui.navigation.TicketboxAppViewModelFactories
 import com.ticketbox.ui.navigation.resolveLaunchIntent
 import com.ticketbox.ui.navigation.mergeLaunchRequest
 import com.ticketbox.ui.navigation.remainingLaunchRequest
+import com.ticketbox.ui.navigation.restoreLaunchRequest
+import com.ticketbox.ui.navigation.savedFields
 import kotlinx.coroutines.runBlocking
 import com.ticketbox.viewmodel.appViewModelFactory
 import com.ticketbox.viewmodel.appearanceViewModelFactory
@@ -30,12 +33,9 @@ import com.ticketbox.viewmodel.merchantAliasViewModelFactory
 import com.ticketbox.viewmodel.settingsViewModelFactory
 
 class MainActivity : FragmentActivity() {
-    // 系统分享 / 启动器 shortcut 带进来的待处理请求。Activity 是 singleTask，
-    // 在前台时新分享走 onNewIntent，更新此 state；MainShell 的 LaunchedEffect
-    // 消费后置回 null。冷启动则由 onCreate 用 getIntent() 填充。
-    // 纯内存持有(不进 savedInstanceState):分享到达时若未绑定/锁屏,请求挂着等
-    // 过门;期间进程被杀则请求丢失——分享动作用户可重发,语义可接受。
-    private val launchRequest = mutableStateOf<LaunchIntentRequest?>(null)
+    // URI references stay here until their original files and Room batch are durably accepted.
+    // Each hot share remains a separate selection; saved state preserves its id and frozen binding.
+    private val launchRequests = mutableStateOf<List<LaunchIntentRequest>>(emptyList())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -43,12 +43,19 @@ class MainActivity : FragmentActivity() {
         val biometricAuthManager = BiometricAuthManager(this)
         bindFromDebugIntentIfPresent(container)
         val appDependencies = container.ticketboxAppDependencies(biometricAuthManager)
-        launchRequest.value = parseLaunchIntent(intent)
+        launchRequests.value = if (savedInstanceState?.containsKey(SAVED_REQUEST_COUNT) == true) {
+            val restored = List(savedInstanceState.getInt(SAVED_REQUEST_COUNT)) { index ->
+                restoreLaunchRequest(requireNotNull(savedInstanceState.getStringArrayList("$SAVED_REQUEST_COUNT.$index")))
+            }
+            // Invitation text retains its existing OS-intent lifetime; do not add it to saved navigation state.
+            val invitation = parseLaunchIntent(intent) as? LaunchIntentRequest.JoinInvitation
+            listOfNotNull(invitation) + restored
+        } else listOfNotNull(parseLaunchIntent(intent))
 
         setContent {
             TicketboxApp(
                 dependencies = appDependencies,
-                launchRequest = launchRequest.value,
+                launchRequest = launchRequests.value.firstOrNull(),
                 onLaunchRequestHandled = ::clearHandledLaunchIntent,
             )
         }
@@ -62,7 +69,16 @@ class MainActivity : FragmentActivity() {
         // singleTask: 前台时的分享/快捷方式都从这里来。更新 Activity 的 intent 以保持
         // getIntent() 一致，再喂给 state；为 null（普通 re-launch）则不覆盖已有待处理请求。
         setIntent(intent)
-        parseLaunchIntent(intent)?.let { launchRequest.value = mergeLaunchRequest(launchRequest.value, it) }
+        parseLaunchIntent(intent)?.let { launchRequests.value = mergeLaunchRequest(launchRequests.value, it) }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        val requests = launchRequests.value.filterNot { it is LaunchIntentRequest.JoinInvitation }
+        outState.putInt(SAVED_REQUEST_COUNT, requests.size)
+        requests.forEachIndexed { index, request ->
+            outState.putStringArrayList("$SAVED_REQUEST_COUNT.$index", request.savedFields())
+        }
+        super.onSaveInstanceState(outState)
     }
 
     /**
@@ -75,24 +91,21 @@ class MainActivity : FragmentActivity() {
         return resolveLaunchIntent(
             action = intent.action,
             mimeType = intent.type,
-            streamUris = collectStreamUris(intent),
+            shared = LaunchSharedContent(
+                uris = collectStreamUris(intent),
+                text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString() ?: firstClipText(intent),
+            ),
             shortcutTarget = intent.getStringExtra(EXTRA_SHORTCUT_TARGET),
-            sharedText = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
-                ?: firstClipText(intent),
         )
-    }
-
-    private fun firstClipText(intent: Intent): String? {
-        val clip = intent.clipData ?: return null
-        return (0 until clip.itemCount)
-            .firstNotNullOfOrNull { index -> clip.getItemAt(index)?.text?.toString() }
     }
 
     /** Clear a handled request while preserving shares arriving during its handoff. */
     private fun clearHandledLaunchIntent(handled: LaunchIntentRequest) {
-        launchRequest.value = remainingLaunchRequest(launchRequest.value, handled)
-        if (launchRequest.value == null) {
-            setIntent(Intent(Intent.ACTION_MAIN).setClass(this, MainActivity::class.java))
+        launchRequests.value = remainingLaunchRequest(launchRequests.value, handled)
+        // Navigation/text can finish while an earlier image still awaits Room.
+        // Retire that consumed OS input too, so recreation cannot offer it again.
+        if (launchRequests.value.isEmpty() || parseLaunchIntent(intent) == handled) {
+            setIntent(Intent(this, MainActivity::class.java).setAction(Intent.ACTION_MAIN))
         }
     }
 
@@ -103,11 +116,6 @@ class MainActivity : FragmentActivity() {
         IntentCompat.getParcelableArrayListExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
             ?.forEach { add(it.toString()) }
         addAll(clipDataUris(intent))
-    }
-
-    private fun clipDataUris(intent: Intent): List<String> {
-        val clip = intent.clipData ?: return emptyList()
-        return (0 until clip.itemCount).mapNotNull { clip.getItemAt(it)?.uri?.toString() }
     }
 
     private fun bindFromDebugIntentIfPresent(container: AppContainer) {
@@ -149,6 +157,7 @@ class MainActivity : FragmentActivity() {
     )
 
     private fun AppContainer.mainFeatureRepositories(): MainFeatureRepositories = MainFeatureRepositories(
+        uploadIntents = uploadIntentRepository,
         repository = expenseRepository,
         ledgerRepository = ledgerRepository,
         recurringRepository = recurringRepository,
@@ -191,7 +200,20 @@ class MainActivity : FragmentActivity() {
         )
 
     private companion object {
+        const val SAVED_REQUEST_COUNT = "ticketbox.launch.pending.count"
         const val DEBUG_SERVER_URL_EXTRA = "ticketbox.debug.server_url"
         const val DEBUG_SESSION_TOKEN_EXTRA = "ticketbox.debug.session_token"
     }
+}
+
+/** Read-only Intent extraction; neither helper owns Activity state or consumes a request. */
+private fun firstClipText(intent: Intent): String? {
+    val clip = intent.clipData ?: return null
+    return (0 until clip.itemCount)
+        .firstNotNullOfOrNull { index -> clip.getItemAt(index)?.text?.toString() }
+}
+
+private fun clipDataUris(intent: Intent): List<String> {
+    val clip = intent.clipData ?: return emptyList()
+    return (0 until clip.itemCount).mapNotNull { clip.getItemAt(it)?.uri?.toString() }
 }

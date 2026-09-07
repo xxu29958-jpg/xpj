@@ -4,6 +4,8 @@
   只放用户可见中文；每处一个 key，不按中文值去重。
 -->
 <resources>
+    <string name="sync_status_upload_recovery_body">原上传记录已保留。请到收件箱查看原截图，并继续或停止原批次。</string>
+    <string name="sync_status_open_uploads">查看待上传截图</string>
     <string name="sync_status_overview_caption_refresh_required">%1$d 笔更正已送达，仍需刷新并核对账单。</string>
 
     <!-- 设置 根屏（SettingsRootScreen）：分组标题、入口标题/副标题、连接入口动态文案 -->
@@ -274,6 +276,7 @@
     <!-- 离线同步卡改动类型标签。 -->
     <string name="sync_status_mutation_patch_expense">修改账单</string>
     <string name="sync_status_mutation_correct_expense">更正已入账记录</string>
+    <string name="sync_status_mutation_upload_screenshot">上传小票</string>
     <string name="sync_status_mutation_create_expense">新建账单</string>
     <string name="sync_status_mutation_confirm_expense">确认入账</string>
     <string name="sync_status_mutation_reject_expense">删除账单</string>

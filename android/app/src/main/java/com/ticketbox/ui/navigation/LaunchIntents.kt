@@ -1,5 +1,12 @@
 package com.ticketbox.ui.navigation
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import com.ticketbox.data.repository.LogicalSessionBinding
+import java.util.TimeZone
+import java.util.UUID
+
 /**
  * 启动器/系统分享进入 App 的「意图请求」领域模型 + 纯解析逻辑。
  *
@@ -9,7 +16,7 @@ package com.ticketbox.ui.navigation
  * 的单测里覆盖（unit test 下 `android.net.Uri` 会抛 not-mocked）。
  *
  * 解析结果交给 `MainShell` 的 LaunchedEffect 消费：
- *  - [LaunchIntentRequest.ShareImages] → 待确认 tab + 走现有上传链（在线-only，多图顺序上传）。
+ *  - [LaunchIntentRequest.ShareImages] → 待确认页，等待原文件与 Room 批次持久接受。
  *  - [LaunchIntentRequest.Navigate] → 切到目标 tab（必要时附带一次性动作，如自动打开记一笔表单）。
  */
 // public（非 internal）：作为公开 composable [TicketboxApp] 的参数类型出现，
@@ -17,7 +24,18 @@ package com.ticketbox.ui.navigation
 // 故 public 与 internal 实际等效，这里取 public 仅为满足该可见性约束。
 sealed interface LaunchIntentRequest {
     /** 系统分享（ACTION_SEND / ACTION_SEND_MULTIPLE，image 类 MIME）带进来的一张或多张图。 */
-    data class ShareImages(val uris: List<String>) : LaunchIntentRequest
+    data class ShareImages(
+        val batchId: String,
+        val uris: List<String>,
+        val timezone: String = TimeZone.getDefault().id,
+    ) : LaunchIntentRequest {
+        var expectedBinding by mutableStateOf<LogicalSessionBinding?>(null)
+            private set
+
+        /** The first actual attempt owns this selection, including an uncertain Room acknowledgement. */
+        fun freezeBinding(binding: LogicalSessionBinding): LogicalSessionBinding =
+            expectedBinding ?: binding.also { expectedBinding = it }
+    }
 
     /** Explicit text share routed to the invitation screen, including invalid text so it can explain the failure. */
     data class JoinInvitation(val sharedText: String) : LaunchIntentRequest
@@ -26,25 +44,50 @@ sealed interface LaunchIntentRequest {
     data class Navigate(val target: ShortcutTarget) : LaunchIntentRequest
 }
 
-/** Preserve ordered shares that arrive before the shell accepts the previous request. */
-internal fun mergeLaunchRequest(pending: LaunchIntentRequest?, incoming: LaunchIntentRequest): LaunchIntentRequest =
-    if (pending is LaunchIntentRequest.ShareImages && incoming is LaunchIntentRequest.ShareImages) {
-        LaunchIntentRequest.ShareImages(pending.uris + incoming.uris)
-    } else {
-        incoming
-    }
-
-/** Remove only the share prefix actually handed to the shell, retaining a later hot share. */
-internal fun remainingLaunchRequest(
-    pending: LaunchIntentRequest?,
-    handled: LaunchIntentRequest,
-): LaunchIntentRequest? = when {
-    pending === handled -> null
-    pending is LaunchIntentRequest.ShareImages && handled is LaunchIntentRequest.ShareImages &&
-        pending.uris.take(handled.uris.size) == handled.uris ->
-        LaunchIntentRequest.ShareImages(pending.uris.drop(handled.uris.size))
-    else -> pending
+/** A hot share is another original selection; navigation cannot discard an unaccepted share. */
+internal fun mergeLaunchRequest(
+    pending: List<LaunchIntentRequest>,
+    incoming: LaunchIntentRequest,
+): List<LaunchIntentRequest> = if (incoming is LaunchIntentRequest.ShareImages) {
+    pending + incoming
+} else {
+    listOf(incoming) + pending.filterIsInstance<LaunchIntentRequest.ShareImages>()
 }
+
+/** Acknowledge exactly one durable acceptance (or explicit cancelled selection), retaining hot shares. */
+internal fun remainingLaunchRequest(
+    pending: List<LaunchIntentRequest>,
+    handled: LaunchIntentRequest,
+): List<LaunchIntentRequest> {
+    val index = pending.indexOfFirst { current -> current == handled }
+    return pending.filterIndexed { position, _ -> position != index }
+}
+
+/** Saved-state fields contain original identity and URI references, never credential tokens or image bytes. */
+internal fun LaunchIntentRequest.savedFields(): ArrayList<String> = ArrayList(when (this) {
+    is LaunchIntentRequest.ShareImages -> listOf("share", batchId,
+        expectedBinding?.serverUrl.orEmpty(), expectedBinding?.ledgerId.orEmpty(), expectedBinding?.ownerKey.orEmpty(),
+        expectedBinding?.sessionGeneration.orEmpty(), expectedBinding?.bindingRevision.orEmpty(), timezone) + uris
+    is LaunchIntentRequest.Navigate -> listOf("navigate", target.id)
+    is LaunchIntentRequest.JoinInvitation -> error("Invitation input retains its original Intent lifetime")
+})
+
+internal fun restoreLaunchRequest(fields: List<String>): LaunchIntentRequest = when (fields.first()) {
+    "share" -> LaunchIntentRequest.ShareImages(fields[1], fields.drop(SAVED_SHARE_HEADER_SIZE), fields[7]).apply {
+        if (fields[2].isNotEmpty()) freezeBinding(LogicalSessionBinding(fields[2], fields[3], fields[4], fields[5], fields[6]))
+    }
+    "navigate" -> LaunchIntentRequest.Navigate(requireNotNull(resolveShortcutTarget(fields[1])))
+    else -> error("Unsupported saved launch request")
+}
+
+private const val SAVED_SHARE_HEADER_SIZE = 8
+
+/** One OS share payload, captured at arrival; its id survives parsing and Activity restoration. */
+internal data class LaunchSharedContent(
+    val uris: List<String?>,
+    val text: String? = null,
+    val batchId: String = UUID.randomUUID().toString(),
+)
 
 /** 启动器静态 shortcut 的三个目标（与 `res/xml/shortcuts.xml` 一一对应）。
  *  public 同 [LaunchIntentRequest]：经 Navigate 间接出现在公开 composable 签名里。 */
@@ -86,7 +129,7 @@ internal const val ACTION_SHORTCUT = "com.ticketbox.action.SHORTCUT"
  *
  * @param action          Intent.action（可空）。
  * @param mimeType        Intent.type（可空）；只处理 image 类 MIME。
- * @param streamUris      从 EXTRA_STREAM（单/多）+ clipData 抽出的 uri 字符串（边界层已 null/空过滤前的原始集）。
+ * @param shared          EXTRA_STREAM / clipData 原 URI、文本与首次入口编号。
  * @param shortcutTarget  shortcut extra 携带的目标标识（可空）。
  *
  * 裁决顺序：先看 shortcut（启动器静态入口优先、确定性最强）；再看分享 action + image 图。
@@ -95,18 +138,17 @@ internal const val ACTION_SHORTCUT = "com.ticketbox.action.SHORTCUT"
 internal fun resolveLaunchIntent(
     action: String?,
     mimeType: String?,
-    streamUris: List<String?>,
+    shared: LaunchSharedContent,
     shortcutTarget: String?,
-    sharedText: String? = null,
 ): LaunchIntentRequest? {
     resolveShortcutTarget(shortcutTarget)?.let { return LaunchIntentRequest.Navigate(it) }
 
     if (isTextShareAction(action, mimeType)) {
-        return LaunchIntentRequest.JoinInvitation(sharedText.orEmpty())
+        return LaunchIntentRequest.JoinInvitation(shared.text.orEmpty())
     }
     if (isImageShareAction(action, mimeType)) {
-        val cleanUris = sanitizeUriList(streamUris)
-        if (cleanUris.isNotEmpty()) return LaunchIntentRequest.ShareImages(cleanUris)
+        val cleanUris = sanitizeUriList(shared.uris)
+        if (cleanUris.isNotEmpty()) return LaunchIntentRequest.ShareImages(shared.batchId, cleanUris)
     }
     return null
 }

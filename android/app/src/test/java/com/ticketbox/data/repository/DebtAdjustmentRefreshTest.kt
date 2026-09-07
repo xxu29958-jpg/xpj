@@ -34,7 +34,7 @@ class DebtAdjustmentRefreshTest {
                 emitAll(fixture.dao.observeActiveByTypes(ownerKey, ledgerId, types, activeStatuses))
             }
         }
-        val outbox = OutboxRepository(delayed, fixture.clock,
+        val outbox = OutboxRepository(onRowsDeleted = {}, dao = delayed, clock = fixture.clock,
             bindingProvider = { fixture.provider.currentSession().toOutboxBinding() }, onEnqueued = {})
         val events = mutableListOf<DebtAdjustmentObservation>()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {

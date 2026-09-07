@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
@@ -101,7 +102,7 @@ internal sealed interface MainNavigationRequest {
     data object Back : MainNavigationRequest
 }
 
-internal class MainShellState {
+internal class MainShellState(val launchAction: LaunchActionState = LaunchActionState()) {
     var selectedDomain by mutableStateOf(PrimaryDomain.Inbox)
         private set
 
@@ -128,10 +129,6 @@ internal class MainShellState {
     var expenseEditCompletionRevision by mutableStateOf(0)
 
     var transactionVocabularyRevision by mutableStateOf(0)
-
-    // 系统分享 / 启动器 shortcut 的一次性入口动作（W1），单独成类（见 LaunchActionState）：
-    // MainShellState 已贴着 detekt 每文件函数上限，把那两个 post/consume 方法外置避免触顶。
-    val launchAction = LaunchActionState()
 
     // §三报表钻取：统计分类行 → 账本带筛选打开的一次性请求（同上外置成类）。
     val ledgerDrill = LedgerDrillState()
@@ -268,7 +265,10 @@ internal fun MainShellState.markRecycleBinRestoreCompleted() {
 }
 
 @Composable
-internal fun rememberMainShellState(): MainShellState = remember { MainShellState() }
+internal fun rememberMainShellState(): MainShellState {
+    val launchAction = rememberSaveable(saver = LaunchActionState.Saver) { LaunchActionState() }
+    return remember(launchAction) { MainShellState(launchAction) }
+}
 
 internal val PrimaryDomain.surfaceRole: SurfaceRole
     get() = when (this) {

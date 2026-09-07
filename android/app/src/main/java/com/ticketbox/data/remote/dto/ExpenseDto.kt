@@ -3,6 +3,7 @@ package com.ticketbox.data.remote.dto
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 
+@JsonClass(generateAdapter = true)
 data class UploadResponseDto(
     val id: Long,
     @param:Json(name = "public_id")
@@ -11,6 +12,14 @@ data class UploadResponseDto(
     val enrichmentTaskPublicId: String,
     val status: String,
     val message: String,
+    @param:Json(name = "image_hash")
+    val imageHash: String,
+    @param:Json(name = "thumbnail_path")
+    val thumbnailPath: String?,
+    @param:Json(name = "duplicate_status")
+    val duplicateStatus: String,
+    @param:Json(name = "duplicate_of_id")
+    val duplicateOfId: Long?,
     @param:Json(name = "upload_size_bytes")
     val uploadSizeBytes: Long? = null,
     @param:Json(name = "duration_ms")

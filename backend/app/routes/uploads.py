@@ -77,6 +77,10 @@ async def upload_screenshot_legacy_gone(
 async def app_upload_screenshot(
     request: Request,
     timezone: str | None = Header(default=None, alias="X-Timezone"),
+    idempotency_key: str | None = Header(
+        default=None, alias="Idempotency-Key", min_length=1, max_length=64,
+        json_schema_extra={"x-ticketbox-runtime-required": False},
+    ),
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> UploadResponse:
@@ -89,6 +93,7 @@ async def app_upload_screenshot(
         initiator_account_id=auth.account_id,
         initiator_device_id=auth.device_id,
         timezone_name=timezone,
+        idempotency_key=idempotency_key,
     )
 
 

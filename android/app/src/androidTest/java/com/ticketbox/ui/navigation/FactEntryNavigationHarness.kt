@@ -26,6 +26,7 @@ internal class FactEntryNavigationHarness(context: Context) : Closeable {
     val screenFactory = MainScreenFactory(
         MainFeatureRepositories(
             repository = graph.expenseRepository,
+            uploadIntents = fixture.uploadIntents,
             ledgerRepository = graph.ledgerRepository,
             recurringRepository = graph.recurringRepository,
             budgetRepository = graph.budgetRepository,

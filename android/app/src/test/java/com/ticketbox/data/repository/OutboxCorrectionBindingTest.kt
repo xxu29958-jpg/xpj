@@ -127,7 +127,7 @@ private class CorrectionBindingFixture(private val delayedType: PendingMutationT
         seededSettingsStore(), session)
     val outbox = OutboxRepository(dao,
         bindingProvider = { binding.sessionStore.currentSession().toOutboxBinding() },
-        bindingChanges = binding.sessionStore.observeSession().map { it.toOutboxBinding() })
+        bindingChanges = binding.sessionStore.observeSession().map { it.toOutboxBinding() }, onRowsDeleted = {})
     val repository = ExpenseRepository(FakeExpenseDao(), binding, deviceNameProvider = { "Test device" },
         offlineMutations = testExpenseOfflineMutationWiring(outbox))
     private val adapters = OutboxAdapterGraph()

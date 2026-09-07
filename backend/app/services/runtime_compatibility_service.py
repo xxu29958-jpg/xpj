@@ -23,6 +23,7 @@ from app.runtime_compatibility_contract import (
     RUNTIME_COMPATIBILITY_CONTRACT,
     TICKETBOX_API_VERSION_HEADER,
     TICKETBOX_CURRENCY_BINDING_HEADER,
+    UPLOAD_ORIGINAL_RECEIPT_VERSION,
     format_currency_binding,
 )
 from app.services.currency_binding_service import CurrencyCapability, get_capability
@@ -60,6 +61,7 @@ class RuntimeCompatibilitySnapshot:
     read_compatibility: CompatibilityConclusion
     write_compatibility: CompatibilityConclusion
     legacy_write_compatibility: Literal["compatible", "client_upgrade_required"]
+    upload_original_receipt_version: int
     currency: RuntimeCurrencyCapability
 
 
@@ -144,6 +146,7 @@ def runtime_compatibility_snapshot(db: Session) -> RuntimeCompatibilitySnapshot:
             capability,
             write_compatibility,
         ),
+        upload_original_receipt_version=UPLOAD_ORIGINAL_RECEIPT_VERSION,
         currency=RuntimeCurrencyCapability(
             home_currency_code=product_home_currency,
             minor_unit_exponent=product_minor_unit_exponent,

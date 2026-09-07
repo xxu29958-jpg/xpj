@@ -41,9 +41,9 @@ import kotlinx.coroutines.CancellationException
  * second Worker arrives.
  *
  * The doWork contract:
- *  - Queue idle OR at least one row moved forward → SUCCESS.
- *  - All attempted rows came back [DispatchResult.RetryableFailure]
- *    → RETRY (WorkManager applies backoff and re-enqueues).
+ *  - No remaining runnable/transient/aborted work in this pass → SUCCESS.
+ *  - A bounded continuation, transient failure or aborted original → RETRY,
+ *    even when another sibling succeeded (WorkManager applies backoff).
  *  - The worker never returns FAILURE on a per-row error — failed
  *    rows are surfaced via the outbox repository's
  *    ``observeStatus`` flow, NOT as worker-level failures.
@@ -162,36 +162,10 @@ class OutboxDrainWorker(
         internal fun canDrain(session: LocalSessionRecord?): Boolean =
             session.isBusinessReady()
 
-        internal fun classify(summary: DrainSummary): DrainOutcome =
-            when {
-                // Idle queue → nothing for us to do; the periodic
-                // tick fires again on schedule.
-                summary.attempted == 0 -> DrainOutcome.SUCCESS
-
-                // Mixed-outcome batch — at least one row resolved
-                // (done / conflict / failed / discarded / unsupported).
-                // SUCCESS so the next periodic tick starts fresh
-                // rather than waiting out a backoff window.
-                summary.done > 0 ||
-                    summary.conflicts > 0 ||
-                    summary.failures > 0 ||
-                    summary.discarded > 0 ||
-                    summary.unsupported > 0 -> DrainOutcome.SUCCESS
-
-                // Pure transient-failure batch (every row came back
-                // RetryableFailure) OR aborted-only batch (epoch flipped
-                // mid-drain, rows reverted to PENDING by
-                // revertClaimWithoutAttempt). Tell WorkManager to back off
-                // and retry. PR review #2: pre-PR aborted didn't write to DB
-                // so SUCCESS made sense; post-PR aborted rows ARE actionable
-                // PENDING work for the next drain, treating them as SUCCESS
-                // means a 15-min wait for the periodic tick.
-                summary.retryable > 0 || summary.aborted > 0 -> DrainOutcome.RETRY
-
-                // All-raced (every row lost the atomic claim to a
-                // concurrent drain). Treat as SUCCESS; the winning
-                // drain handled them.
-                else -> DrainOutcome.SUCCESS
-            }
+        internal fun classify(summary: DrainSummary): DrainOutcome = when {
+            // A completed sibling does not discharge the remaining original work.
+            summary.continuationRequired || summary.retryable > 0 || summary.aborted > 0 -> DrainOutcome.RETRY
+            else -> DrainOutcome.SUCCESS
+        }
     }
 }

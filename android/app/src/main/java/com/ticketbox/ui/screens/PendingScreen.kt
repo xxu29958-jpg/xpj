@@ -19,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
+import com.ticketbox.data.repository.MAX_UPLOAD_BATCH_ITEMS
 import com.ticketbox.domain.model.DuplicateStatusValues
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppDataAuthorityStrip
@@ -87,6 +88,7 @@ import com.ticketbox.domain.model.pendingNeedsCategory
 import com.ticketbox.ui.screens.pending.pendingListBodyState
 import com.ticketbox.ui.screens.pending.shouldShowNeedsReviewFilterBar
 import com.ticketbox.viewmodel.PendingUiState
+import com.ticketbox.viewmodel.PendingUploadOriginalUi
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
@@ -128,14 +130,12 @@ fun PendingScreen(
         hasRows = state.items.isNotEmpty(),
         loadState = state.listLoadState,
     )
-    // Keep the capacity message and its retained-image action as one UI unit.
-    val showCapacityRetry = state.canRetryUpload && !readOnly
-    val capacityRetryActionLabel = stringResource(R.string.pending_upload_retry_action)
-    val messageCardText = if (showCapacityRetry) {
-        stringResource(R.string.pending_msg_upload_capacity_full)
-    } else {
-        state.message?.asString()
-    }
+    val showUploadRetry = state.canRetryUpload
+    val uploadRetryActionLabel = stringResource(R.string.pending_upload_retry_action)
+    val messageCardText = listOfNotNull(
+        state.uploadMessage?.asString(), pendingUploadOriginalSummary(state.upload.originals), state.message?.asString(),
+    )
+        .distinct().takeIf { it.isNotEmpty() }?.joinToString("\n\n")
     val haptics = rememberAppHaptics()
     val adaptivePolicy = LocalAppAdaptiveLayoutPolicy.current
     val uploadEntrySlot = pendingUploadEntrySlot(
@@ -324,23 +324,48 @@ fun PendingScreen(
             }
         }
 
+        if (chromeActions.uploadSelection.pendingCount > 0) {
+            item {
+                val selection = chromeActions.uploadSelection
+                PendingMessageCard(
+                    message = if (selection.pendingCount > MAX_UPLOAD_BATCH_ITEMS) {
+                        stringResource(R.string.pending_upload_selection_too_many, MAX_UPLOAD_BATCH_ITEMS)
+                    } else stringResource(
+                        if (selection.accepting) R.string.pending_upload_selection_saving
+                        else R.string.pending_upload_selection_waiting,
+                        selection.pendingCount,
+                    ),
+                    action = if (selection.canRetry && !readOnly) {
+                        PendingMessageCardAction(
+                            label = stringResource(R.string.pending_upload_selection_retry),
+                            enabled = !state.uploadActionInProgress,
+                            onClick = selection.onRetry,
+                        )
+                    } else null,
+                )
+                TextButton(onClick = selection.onStop, enabled = !selection.accepting) {
+                    Text(stringResource(R.string.pending_upload_selection_stop))
+                }
+            }
+        }
+
         messageCardText
-            ?.takeIf { showCapacityRetry || bodyState != PendingListBodyState.LoadFailed }
+            ?.takeIf { state.uploadMessage != null || bodyState != PendingListBodyState.LoadFailed }
             ?.let { message ->
             item {
                 PendingMessageCard(
                     message = message,
-                    action = if (showCapacityRetry) {
+                    action = if (showUploadRetry) {
                         PendingMessageCardAction(
-                            label = capacityRetryActionLabel,
-                            enabled = !state.uploading,
+                            label = uploadRetryActionLabel,
+                            enabled = !state.uploadActionInProgress,
                             onClick = chromeActions.onRetryCapacityUpload,
                         )
                     } else {
                         null
                     },
                 )
-                if (showCapacityRetry) {
+                if (state.canStopUpload) {
                     TextButton(onClick = chromeActions.onDiscardCapacityUpload) {
                         Text(stringResource(R.string.pending_upload_stop_action))
                     }
@@ -474,6 +499,21 @@ private data class PendingTriagePaneActions(
     val onOpenDataQuality: () -> Unit,
     val onOpenBulkConfirm: () -> Unit,
 )
+
+@Composable
+private fun pendingUploadOriginalSummary(originals: List<PendingUploadOriginalUi>): String? {
+    if (originals.isEmpty()) return null
+    val labels = originals.take(3).map { original ->
+        stringResource(
+            R.string.pending_upload_original,
+            original.position,
+            original.fileName ?: stringResource(R.string.pending_upload_original_unknown),
+        )
+    }
+    val remaining = originals.size - labels.size
+    val more = if (remaining > 0) listOf(stringResource(R.string.pending_upload_original_more, remaining)) else emptyList()
+    return (labels + more).joinToString("\n")
+}
 
 @Composable
 private fun PendingTriagePane(

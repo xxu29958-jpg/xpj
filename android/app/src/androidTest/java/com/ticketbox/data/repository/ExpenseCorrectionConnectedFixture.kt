@@ -62,6 +62,7 @@ internal class ExpenseCorrectionConnectedFixture(private val context: Context) {
     private val adapters = OutboxAdapterGraph()
     lateinit var outbox: OutboxRepository
     lateinit var graph: RepositoryGraph
+    lateinit var uploadIntents: UploadIntentRepository
     val expenseDao get() = requireNotNull(database).expenseDao()
     var failCachePublication = false
     var confirmedCallbacks = 0
@@ -86,7 +87,7 @@ internal class ExpenseCorrectionConnectedFixture(private val context: Context) {
     fun reopen(): RepositoryGraph {
         database?.close()
         val db = Room.databaseBuilder(context, AppDatabase::class.java, name).build().also { database = it }
-        outbox = OutboxRepository(db.pendingMutationDao(), clock, bindingProvider = { session.value.toOutboxBinding() },
+        outbox = OutboxRepository(db.pendingMutationDao(), clock, onRowsDeleted = {}, bindingProvider = { session.value.toOutboxBinding() },
             onEnqueued = { schedules++ })
         val sessions = object : LocalSessionStore by correctionProxy<LocalSessionStore>({ method -> when (method) {
             "currentSession" -> session.value
@@ -111,8 +112,11 @@ internal class ExpenseCorrectionConnectedFixture(private val context: Context) {
         val factory = object : ApiServiceFactory {
             override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = network.service
         }
+        val provider = ApiServiceProvider(factory, sessions, credentials)
         graph = RepositoryGraph(RepositoryGraphDependencies(db, ApiClient(), settingsStore, sessions, credentials,
-            ApiServiceProvider(factory, sessions, credentials), RepositoryGraphOutbox(outbox, adapters)))
+            provider, RepositoryGraphOutbox(outbox, adapters)))
+        uploadIntents = UploadIntentRepository(provider, outbox, UploadIntentFileStore(context),
+            adapters.uploadPayloadAdapter, adapters.uploadReceiptAdapter, settingsStore)
         graph.expenseRepository.onConfirmedCommitted = { confirmedCallbacks++ }
         return graph
     }

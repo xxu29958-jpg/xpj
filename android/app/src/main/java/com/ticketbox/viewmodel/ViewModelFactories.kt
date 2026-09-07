@@ -22,6 +22,7 @@ import com.ticketbox.data.repository.RepaymentDraftActions
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.data.repository.RuleRepository
 import com.ticketbox.data.repository.TagActions
+import com.ticketbox.data.repository.UploadIntentActions
 import com.ticketbox.domain.model.DebtListLens
 
 @Suppress("UNCHECKED_CAST")
@@ -37,6 +38,7 @@ fun appViewModelFactory(
 /** [repositoryViewModelFactory] 的仓库打包（保持工厂签名在 detekt 参数门内）。 */
 data class RepositoryViewModelRepositories(
     val repository: ExpenseRepository,
+    val uploads: UploadIntentActions,
     val budgetRepository: BudgetActions? = null,
     val reportsRepository: ReportsActions? = null,
     val debtRepository: DebtActions? = null,
@@ -52,6 +54,7 @@ fun repositoryViewModelFactory(
         return when (modelClass) {
             PendingViewModel::class.java -> PendingViewModel(
                 repository = repository,
+                uploadIntents = repositories.uploads,
                 enrichmentTaskReader = repository.pendingEnrichmentTasks,
                 onDataChanged = onExpenseDataChanged,
             )

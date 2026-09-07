@@ -4,6 +4,7 @@ import com.squareup.moshi.Moshi
 import com.ticketbox.data.remote.dto.addExpenseCorrectionWireAdapters
 import com.ticketbox.data.remote.dto.addRecurringWireAdapters
 import com.ticketbox.data.remote.dto.RuntimeCompatibilityDto
+import com.ticketbox.data.remote.dto.RuntimeWriteCompatibility
 import com.ticketbox.data.remote.dto.ErrorDto
 import com.ticketbox.data.remote.dto.toWriteCompatibility
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -32,6 +33,7 @@ internal const val LEDGER_ID_HEADER = "X-Ticketbox-Ledger-ID"
 internal const val TICKETBOX_API_VERSION_HEADER = "Ticketbox-Api-Version"
 internal const val TICKETBOX_CURRENCY_BINDING_HEADER = "Ticketbox-Currency-Binding"
 internal const val CURRENT_TICKETBOX_API_VERSION = "2026-09-06"
+internal const val UPLOAD_ORIGINAL_RECEIPT_VERSION = 1
 private val MUTATING_HTTP_METHODS = setOf("POST", "PUT", "PATCH", "DELETE")
 private val runtimeMoshi = Moshi.Builder()
     .add(KotlinJsonAdapterFactory())
@@ -141,18 +143,17 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
         // Income forecasts require the declared month and separate expected/scheduled fields.
         // Check their read protocol before Retrofit decodes a response from another epoch.
         val incomeForecastRead = request.method == "GET" && request.url.encodedPath == "/api/income-plans"
-        if (!request.requiresRuntimeNegotiation(incomeForecastRead)) {
+        val keyedUpload = request.method == "POST" &&
+            request.url.encodedPath.endsWith("/api/app/upload-screenshot") && request.header("Idempotency-Key") != null
+        // An API date, including one already attached to this request, does not prove receipt replay support.
+        if (!request.requiresRuntimeNegotiation(incomeForecastRead, keyedUpload)) {
             return chain.proceed(request)
         }
-        val compatibilityResponse = chain.proceed(compatibilityRequest(request))
-        if (!compatibilityResponse.isSuccessful) {
-            compatibilityResponse.close()
-            throw IOException("Runtime compatibility is temporarily unavailable.")
-        }
-        val compatibility = compatibilityResponse.use { response ->
-            response.body.string().let(runtimeCompatibilityAdapter::fromJson)?.toWriteCompatibility()
-        }
+        val compatibility = readCompatibility(chain, request)
         if (compatibility != null && compatibility.apiVersion != CURRENT_TICKETBOX_API_VERSION) {
+            return incompatibleProtocolResponse(request)
+        }
+        if (keyedUpload && compatibility?.uploadOriginalReceiptVersion != UPLOAD_ORIGINAL_RECEIPT_VERSION) {
             return incompatibleProtocolResponse(request)
         }
         // A readable forecast does not require writer permission or an activated currency binding.
@@ -176,10 +177,20 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
         return response
     }
 
-    private fun Request.requiresRuntimeNegotiation(incomeForecastRead: Boolean): Boolean =
-        (incomeForecastRead || method in MUTATING_HTTP_METHODS) &&
+    /** The same runtime query supplies evidence for ordinary writes, income reads and keyed uploads. */
+    private fun readCompatibility(chain: Interceptor.Chain, request: Request): RuntimeWriteCompatibility? {
+        val response = chain.proceed(compatibilityRequest(request))
+        if (!response.isSuccessful) {
+            response.close()
+            throw IOException("Runtime compatibility is temporarily unavailable.")
+        }
+        return response.use { runtimeCompatibilityAdapter.fromJson(it.body.string())?.toWriteCompatibility() }
+    }
+
+    private fun Request.requiresRuntimeNegotiation(incomeForecastRead: Boolean, keyedUpload: Boolean): Boolean =
+        keyedUpload || ((incomeForecastRead || method in MUTATING_HTTP_METHODS) &&
             header("Authorization") != null && !url.encodedPath.startsWith("/api/auth/") &&
-            header(TICKETBOX_API_VERSION_HEADER) == null
+            header(TICKETBOX_API_VERSION_HEADER) == null)
 
     private fun compatibilityRequest(request: Request): Request {
         val url = request.url.newBuilder()

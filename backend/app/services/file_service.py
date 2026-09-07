@@ -171,12 +171,12 @@ def _average_hash_from_pixels(pixels: list[int]) -> str:
     return f"{bits:016x}"
 
 
-async def save_upload(
+async def read_upload_bytes(
     file: UploadFile,
-    tenant_id: str,
     *,
     max_size_bytes: int | None = None,
-) -> SavedUpload:
+) -> bytes:
+    """Read and close one upload under the existing per-image byte limit."""
     limit = get_settings().max_upload_size_bytes
     if max_size_bytes is not None:
         limit = max(0, min(limit, int(max_size_bytes)))
@@ -189,13 +189,7 @@ async def save_upload(
     finally:
         await file.close()
 
-    return save_upload_bytes(
-        bytes(data),
-        tenant_id=tenant_id,
-        filename=file.filename,
-        content_type=file.content_type,
-        max_size_bytes=limit,
-    )
+    return bytes(data)
 
 
 def save_upload_bytes(

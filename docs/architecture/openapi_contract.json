@@ -16170,9 +16170,15 @@
         "properties": {
           "currency": {
             "$ref": "#/components/schemas/RuntimeCurrencyCapabilityResponse"
+          },
+          "upload_original_receipt_version": {
+            "minimum": 1.0,
+            "title": "Upload Original Receipt Version",
+            "type": "integer"
           }
         },
         "required": [
+          "upload_original_receipt_version",
           "currency"
         ],
         "title": "RuntimeProductCapabilitiesResponse",
@@ -17270,6 +17276,24 @@
                 }
               ],
               "title": "X-Timezone"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
             }
           },
           {
