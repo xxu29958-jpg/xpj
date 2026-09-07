@@ -1,21 +1,27 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.domain.model.BackgroundTask
+import kotlinx.coroutines.flow.Flow
 
 interface BackgroundTaskActions {
-    fun canModifyLedger(): Boolean
-    suspend fun fetchBackgroundTasks(): Result<List<BackgroundTask>>
-    suspend fun cancelBackgroundTask(publicId: String): Result<BackgroundTask>
+    fun currentAccess(): LedgerAccessContext?
+    fun observeAccess(): Flow<LedgerAccessContext?>
+    suspend fun fetchBackgroundTasks(binding: LogicalSessionBinding): Result<List<BackgroundTask>>
+    suspend fun cancelBackgroundTask(binding: LogicalSessionBinding, publicId: String): Result<BackgroundTask>
 }
 
 class ExpenseRepositoryBackgroundTaskActions(
     private val repository: ExpenseRepository,
 ) : BackgroundTaskActions {
-    override fun canModifyLedger(): Boolean = repository.canModifyLedger()
+    override fun currentAccess(): LedgerAccessContext? = repository.captureDeferredLedgerBinding()?.let {
+        LedgerAccessContext(it, repository.canModifyLedger())
+    }
 
-    override suspend fun fetchBackgroundTasks(): Result<List<BackgroundTask>> =
-        repository.fetchBackgroundTasks()
+    override fun observeAccess(): Flow<LedgerAccessContext?> = repository.observeLedgerAccess()
 
-    override suspend fun cancelBackgroundTask(publicId: String): Result<BackgroundTask> =
-        repository.cancelBackgroundTask(publicId)
+    override suspend fun fetchBackgroundTasks(binding: LogicalSessionBinding): Result<List<BackgroundTask>> =
+        repository.fetchBackgroundTasks(binding)
+
+    override suspend fun cancelBackgroundTask(binding: LogicalSessionBinding, publicId: String): Result<BackgroundTask> =
+        repository.cancelBackgroundTask(binding, publicId)
 }

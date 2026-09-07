@@ -20,7 +20,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import com.ticketbox.R
-import com.ticketbox.domain.model.BackgroundTask
+import com.ticketbox.viewmodel.BackgroundTasksUiState
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
@@ -58,17 +58,15 @@ internal fun BackgroundTasksOverview(summary: BackgroundTasksSummaryModel) {
 
 @Composable
 internal fun BackgroundTasksRows(
-    tasks: List<BackgroundTask>,
-    loading: Boolean,
-    busyTaskId: String?,
-    canModify: Boolean,
+    state: BackgroundTasksUiState,
     onCancel: (String) -> Unit,
+    onOpenSource: (String) -> Unit,
 ) {
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
     SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.none)) {
         when {
-            tasks.isEmpty() -> SettingsListStateSlot(
-                loading = loading,
+            state.tasks.isEmpty() -> SettingsListStateSlot(
+                loading = state.loading,
                 hasData = false,
                 copy = SettingsStateSlotCopy(
                     loadingTitle = stringResource(R.string.background_tasks_loading_title),
@@ -78,15 +76,16 @@ internal fun BackgroundTasksRows(
                     emptyBody = stringResource(R.string.background_tasks_empty),
                 ),
             )
-            else -> tasks.forEachIndexed { index, task ->
+            else -> state.tasks.forEachIndexed { index, task ->
                 if (index > 0) {
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
                 }
                 BackgroundTaskRow(
                     task = task,
-                    busy = busyTaskId == task.publicId,
-                    canModify = canModify,
+                    busy = state.busyTaskId == task.publicId,
+                    canModify = state.canModify,
                     onCancel = { onCancel(task.publicId) },
+                    onOpenSource = { onOpenSource(task.publicId) },
                 )
             }
         }

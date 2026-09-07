@@ -27,6 +27,9 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
 import com.ticketbox.R
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import com.ticketbox.data.remote.dto.BackgroundTaskListResponseDto
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.AppThemeMode
 import com.ticketbox.domain.model.CurrencyCode
@@ -200,6 +203,33 @@ class FactEntryNavigationTest {
             .performScrollTo().performClick()
         openRecoveryFactAndReturn()
         assertEquals(original, harness.fixture.stored().single())
+        assertEquals(MainProductDestination.Workspace, harness.shell.activeDestination)
+    }
+
+    @Test fun failedRecognitionTaskOpensItsOriginalBillThroughTheRealWorkspace() {
+        val network = harness.fixture.network
+        network.current = network.current.copy(status = "pending", confirmedAt = null)
+        network.backgroundTasks = requireNotNull(Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
+            .adapter(BackgroundTaskListResponseDto::class.java).fromJson("""
+                {"items":[{"public_id":"original-recognition","task_type":"expense_enrichment",
+                "status":"failed","source_expense_id":42,"error_code":"RuntimeError",
+                "error_message":"recognition unavailable","created_at":"2026-09-07T00:00:00Z"}]}
+            """.trimIndent()))
+        installMainGraph()
+        compose.runOnIdle { harness.shell.openAccount() }
+        val entry = context.getString(R.string.settings_root_entry_background_tasks_title)
+        waitForText(entry)
+        compose.onNodeWithText(entry).performScrollTo().performClick()
+        waitForText("打开原账单")
+        compose.onNodeWithText("打开原账单").performScrollTo().performClick()
+        waitForText(context.getString(R.string.expense_edit_confirm_button))
+        compose.runOnIdle {
+            assertEquals(EXPENSE_ROUTE, outer.currentBackStackEntry?.destination?.route)
+            assertEquals(42L, outer.currentBackStackEntry?.arguments?.getLong(EXPENSE_ID_ARG))
+            assertTrue(network.editCalls.isEmpty())
+            outer.popBackStack()
+        }
+        waitForText("打开原账单")
         assertEquals(MainProductDestination.Workspace, harness.shell.activeDestination)
     }
 

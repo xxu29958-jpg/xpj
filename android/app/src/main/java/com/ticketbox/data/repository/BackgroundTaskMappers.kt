@@ -16,4 +16,5 @@ fun BackgroundTaskDto.toDomain(): BackgroundTask = BackgroundTask(
     startedAt = startedAt,
     completedAt = completedAt,
     cancellationRequestedAt = cancellationRequestedAt,
+    sourceExpenseId = sourceExpenseId?.takeIf { taskType == "expense_enrichment" && it > 0 },
 )

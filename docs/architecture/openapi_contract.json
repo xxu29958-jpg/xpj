@@ -545,6 +545,18 @@
             ],
             "title": "Result Summary"
           },
+          "source_expense_id": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Expense Id"
+          },
           "started_at": {
             "anyOf": [
               {

@@ -9,6 +9,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.viewmodel.BackgroundTasksViewModel
 
@@ -16,10 +17,11 @@ import com.ticketbox.viewmodel.BackgroundTasksViewModel
 fun BackgroundTasksScreen(
     viewModel: BackgroundTasksViewModel,
     onBack: () -> Unit,
+    onOpenExpense: (Long) -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(state.access?.binding) {
         viewModel.refresh()
     }
 
@@ -33,14 +35,15 @@ fun BackgroundTasksScreen(
             val summary = remember(state.tasks, state.loading) {
                 backgroundTasksSummaryModel(tasks = state.tasks, loading = state.loading)
             }
-            BackgroundTasksOverview(summary)
-            BackgroundTasksRows(
-                tasks = state.tasks,
-                loading = state.loading,
-                busyTaskId = state.busyTaskId,
-                canModify = state.canModify,
-                onCancel = viewModel::cancel,
-            )
+            val failedWithoutData = state.tasks.isEmpty() && !state.loading && state.messageTone == MessageTone.Danger
+            if (!failedWithoutData) {
+                BackgroundTasksOverview(summary)
+                BackgroundTasksRows(
+                    state = state,
+                    onCancel = viewModel::cancel,
+                    onOpenSource = { id -> viewModel.sourceExpenseId(id)?.let(onOpenExpense) },
+                )
+            }
             BackgroundTasksRefreshAction(
                 loading = state.loading,
                 busy = state.busyTaskId != null,
