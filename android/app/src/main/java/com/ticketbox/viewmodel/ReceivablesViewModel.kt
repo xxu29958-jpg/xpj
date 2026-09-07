@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.DebtAdjustmentActions
+import com.ticketbox.data.repository.DebtAdjustmentObservation
 import com.ticketbox.data.repository.ReceivablesActions
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtLinkStatuses
@@ -35,7 +36,7 @@ class ReceivablesViewModel(
 ) : ViewModel() {
 
     private var adjustmentBinding = adjustments.currentAccess()?.binding
-    private var adjustmentSnapshotReady = false
+    private var adjustmentObservation: DebtAdjustmentObservation? = null
 
     private val _state = MutableStateFlow(ReceivablesUiState())
     val state: StateFlow<ReceivablesUiState> = _state.asStateFlow()
@@ -47,14 +48,14 @@ class ReceivablesViewModel(
 
     init {
         viewModelScope.launch {
-            adjustments.observeCompletionRefreshes().collect { change ->
+            adjustments.observeAdjustments().collect { change ->
                 val changedBinding = adjustmentBinding != change.binding
                 adjustmentBinding = change.binding
-                adjustmentSnapshotReady = change.binding != null
+                adjustmentObservation = change
                 if (change.binding == null) {
                     loadGeneration++
                     _state.value = ReceivablesUiState()
-                } else if (changedBinding) reload() else refresh()
+                } else if (changedBinding) reload() else if (change.requiresRefresh) refresh()
             }
         }
     }
@@ -65,7 +66,8 @@ class ReceivablesViewModel(
     }
 
     fun refresh() {
-        if (!adjustmentSnapshotReady) {
+        val observation = adjustmentObservation
+        if (observation?.binding == null) {
             _state.update { it.copy(isLoading = adjustments.currentAccess() != null) }
             return
         }
@@ -74,9 +76,15 @@ class ReceivablesViewModel(
         viewModelScope.launch {
             val result = repository.listReceivables()
             // Drop a load superseded by a newer refresh (which set isLoading and owns clearing it).
-            if (gen != loadGeneration) return@launch
+            if (gen != loadGeneration || observation.binding != adjustments.currentAccess()?.binding) return@launch
             result.fold(
                 onSuccess = { debts ->
+                    if (!debts.filterNot { "debt:${it.publicId}" in observation.unresolvedTargetIds }
+                            .all(observation::acceptsCanonical)) {
+                        _state.update { it.copy(isLoading = false,
+                            error = UiText.res(R.string.debt_adjustment_canonical_refresh_required)) }
+                        return@launch
+                    }
                     _state.update {
                         it.copy(
                             isLoading = false,

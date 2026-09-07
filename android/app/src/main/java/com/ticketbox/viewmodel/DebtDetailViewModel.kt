@@ -8,6 +8,7 @@ import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.DebtAdjustmentActions
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.PendingDebtAdjustment
+import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.isDebtAdjustmentReasonValid
 import com.ticketbox.data.repository.isDebtAdjustmentWithinBalance
@@ -58,6 +59,7 @@ class DebtDetailViewModel(
     private var adjustmentObservation: Job? = null
     private var completedAdjustments: Set<Long>? = null
     private val refreshedAdjustments = mutableSetOf<Long>()
+    private val observedTerminals = mutableSetOf<Long>()
 
     // Monotonic load token (mirrors DebtGoalViewModel): a refresh applies its result only if it is
     // still the latest. Reopening the reusable detail VM with another Debt ([loadDebt]), pull-to-
@@ -100,20 +102,9 @@ class DebtDetailViewModel(
         adjustmentObservation?.cancel()
         completedAdjustments = null
         refreshedAdjustments.clear()
-        _state.update { it.copy(pendingAdjustments = emptyList(), adjustmentSnapshotLoaded = false,
-            locallyAcceptedAdjustmentId = null, adjustmentRefreshAfterVersion = null) }
-        loadedBinding?.let { binding ->
-            adjustmentObservation = viewModelScope.launch {
-                adjustments.observeAdjustments(binding, publicId).collect { rows ->
-                    if (loadedBinding != binding || loadedPublicId != publicId) return@collect
-                    val done = rows.filter { it.row.status == PendingMutationStatus.Done }.mapTo(mutableSetOf()) { it.row.id }
-                    val newlyDone = completedAdjustments?.let { done - it }.orEmpty()
-                    completedAdjustments = done
-                    _state.update { it.withAdjustmentRows(rows, newlyDone.isNotEmpty()) }
-                    if (newlyDone.isNotEmpty()) { refreshedAdjustments += newlyDone; refresh() }
-                }
-            }
-        }
+        observedTerminals.clear()
+        _state.update { it.copy(isLoading = loadedBinding != null, pendingAdjustments = emptyList(), adjustmentSnapshotLoaded = false,
+            locallyAcceptedAdjustmentId = null, adjustmentRefreshAfterVersion = null, adjustmentRefreshAtVersion = null) }
         if (previousPublicId != publicId || previousBinding != loadedBinding) {
             _state.update {
                 it.copy(
@@ -130,12 +121,27 @@ class DebtDetailViewModel(
                 )
             }
         }
-        refresh()
+        loadedBinding?.let { binding ->
+            adjustmentObservation = viewModelScope.launch {
+                adjustments.observeAdjustments(binding, publicId).collect { rows ->
+                    if (loadedBinding != binding || loadedPublicId != publicId || adjustments.currentAccess()?.binding != binding) return@collect
+                    val done = rows.filter { it.row.status == PendingMutationStatus.Done }.mapTo(mutableSetOf()) { it.row.id }
+                    val initial = completedAdjustments == null
+                    val terminal = rows.filter { it.isTerminal }.mapTo(mutableSetOf()) { it.row.id }
+                    val arrived = if (initial) emptySet() else terminal - observedTerminals
+                    observedTerminals += terminal
+                    completedAdjustments = completedAdjustments.orEmpty() + done
+                    _state.update { it.withAdjustmentRows(rows, arrived.isNotEmpty(), initial) }
+                    if (initial || arrived.isNotEmpty()) { refreshedAdjustments += done; refresh() }
+                }
+            }
+        }
     }
 
     fun refresh() {
         val publicId = loadedPublicId ?: return
         val binding = loadedBinding ?: return
+        if (!_state.value.adjustmentSnapshotLoaded) return
         val gen = ++loadGeneration
         latestRefreshGeneration = gen
         _state.update { it.copy(isLoading = true, error = null) }
@@ -160,6 +166,7 @@ class DebtDetailViewModel(
                             isLoading = false,
                             debt = debt,
                             adjustmentRefreshAfterVersion = it.adjustmentRefreshAfterVersion?.takeIf { version -> debt.rowVersion <= version },
+                            adjustmentRefreshAtVersion = it.adjustmentRefreshAtVersion?.takeIf { version -> debt.rowVersion < version },
                             canModify = repository.canModifyLedger() && adjustments.currentAccess()?.canModify == true,
                             error = null,
                         )
@@ -167,7 +174,9 @@ class DebtDetailViewModel(
                 },
                 onFailure = { err ->
                     _state.update {
-                        it.copy(isLoading = false, error = err.toUiText(R.string.debt_detail_load_failed))
+                        it.copy(isLoading = false,
+                            debt = if ((err as? RepositoryException)?.errorCode == "debt_not_found") null else it.debt,
+                            error = err.toUiText(R.string.debt_detail_load_failed))
                     }
                 },
             )

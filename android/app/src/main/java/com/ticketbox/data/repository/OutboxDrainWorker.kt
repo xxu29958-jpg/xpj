@@ -46,7 +46,7 @@ import kotlinx.coroutines.CancellationException
  *    → RETRY (WorkManager applies backoff and re-enqueues).
  *  - The worker never returns FAILURE on a per-row error — failed
  *    rows are surfaced via the outbox repository's
- *    ``observeFailed`` flow, NOT as worker-level failures.
+ *    ``observeStatus`` flow, NOT as worker-level failures.
  *    WorkManager FAILURE would suppress retries for the WHOLE drain
  *    on the OS side, which is wrong when one row is dead but ten
  *    others are healthy and waiting.

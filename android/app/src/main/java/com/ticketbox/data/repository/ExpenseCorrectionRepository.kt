@@ -4,6 +4,7 @@ import com.squareup.moshi.JsonAdapter
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto
+import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import com.ticketbox.domain.model.ExpenseRevisionPage
@@ -21,6 +22,12 @@ internal class ExpenseCorrectionRepository(
     private val adapter: JsonAdapter<ExpenseCorrectionPayload>,
     private val legacyAdapter: JsonAdapter<ExpenseCorrectionRequestDto>,
 ) {
+    suspend fun publishDelivered(row: OutboxRow, expense: ExpenseDto) {
+        val bound = core.ledgerRequestGuard.bind(expectedLedgerId = row.ledgerId)
+        bound.serviceFor(row.bindingOrNull() ?: throw RepositoryException("原提交身份不可核对。"))
+        core.syncConfirmedFromService(bound, requiredCorrection = expense)
+    }
+
     suspend fun fetchRevisions(id: Long, page: Int, pageSize: Int, snapshotRevision: Long? = null): Result<ExpenseRevisionPage> =
         core.errorHandler.safeCall {
             core.ledgerRequestGuard.bind().call { it.expenseRevisions(id, page, pageSize, snapshotRevision) }.toDomain()
@@ -48,16 +55,19 @@ internal class ExpenseCorrectionRepository(
             }
             val bound = core.ledgerRequestGuard.bindExact(expectedBinding)
             val target = "expense:${expense.id}"
-            if (outbox.activeForTarget(bound, target).isNotEmpty() || observe().first().corrections.any {
-                    it.row.targetId == target && !it.hasSupportedIntent
-                }) throw RepositoryException("这笔账单有待处理的提交，请先查看原提交。")
             val payload = ExpenseCorrectionPayload(1, expense.id, expense.merchant,
                 expense.originalCurrencyCodeRaw ?: expense.originalCurrencyCode.storageKey, expense.originalAmountMinor, expense.homeCurrencyCode ?: expense.homeCurrency.storageKey,
                 expectedBinding.ownerKey, expectedBinding.ledgerId, expectedBinding.sessionGeneration, expectedBinding.bindingRevision,
                 correction.toRequest(expense.rowVersion))
             outbox.enqueue(boundRequest = bound, intent = PendingMutationIntent(
                 type = PendingMutationType.CorrectExpense, targetId = target, payloadJson = adapter.toJson(payload),
-                expectedRowVersion = expense.rowVersion, idempotencyKey = UUID.randomUUID().toString()))
+                expectedRowVersion = expense.rowVersion, idempotencyKey = UUID.randomUUID().toString()),
+                validateTargetRows = { rows ->
+                    if (rows.any { row -> row.status != PendingMutationStatus.Done ||
+                        (row.type == PendingMutationType.CorrectExpense &&
+                            (adapter.readSupportedCorrection(row) == null || row.lastError?.startsWith(CORRECTION_REFRESH_PREFIX) == true))
+                    }) throw RepositoryException("这笔账单有待处理的提交，请先查看原提交。")
+                })
         }
 
     suspend fun recover(expectedBinding: LogicalSessionBinding, rowId: Long, drop: Boolean): Result<Unit> = core.errorHandler.safeCall {
@@ -67,15 +77,15 @@ internal class ExpenseCorrectionRepository(
         val pending = current.corrections.singleOrNull { it.row.id == rowId } ?: throw RepositoryException("原提交状态已变化，请重新查看。")
         bound.requireStillActive()
         val changed = when {
-            drop && pending.canDiscard -> when (pending.row.status) {
-                PendingMutationStatus.Conflict -> outbox.resolveConflict(rowId, ConflictResolution.DropMine)
-                PendingMutationStatus.Done, PendingMutationStatus.Pending -> outbox.discardUnprovenCorrection(rowId, pending.row.status)
-                else -> outbox.resolveFailed(rowId, FailedResolution.Drop)
+            drop && pending.canDiscard -> {
+                if (pending.hasSupportedIntent && pending.row.lastError !in setOf("correction_target_unavailable", "correction_requires_review")) {
+                    core.fetchAuthoritativeExpense(bound, requireNotNull(pending.expenseId))
+                }
+                outbox.discardCorrection(bound, pending.row)
             }
             !drop && current.access?.canModify == true && pending.canRetry -> outbox.resolveFailed(rowId, FailedResolution.Retry())
             else -> throw RepositoryException("请核对当前事实后明确重新提交；原提交不能直接重试或覆盖。")
         }
         if (!changed) throw RepositoryException("原提交状态已变化，请重新查看。")
-        if (!drop) outbox.schedulePending()
     }
 }

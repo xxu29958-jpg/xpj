@@ -1,6 +1,8 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto
+import com.ticketbox.data.remote.dto.ExpenseItemRequestDto
+import com.ticketbox.data.remote.dto.ExpenseSplitRequestDto
 import com.ticketbox.data.remote.dto.ExpenseRevisionDto
 import com.ticketbox.data.remote.dto.ExpenseRevisionPageDto
 import com.ticketbox.data.remote.dto.CorrectionOptionalInt
@@ -9,6 +11,7 @@ import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import com.ticketbox.domain.model.ExpenseRevision
 import com.ticketbox.domain.model.ExpenseRevisionPage
+import com.ticketbox.domain.model.MONEY_MINOR_MAX
 import java.util.Locale
 
 fun ExpenseRevisionDto.toDomain(): ExpenseRevision = ExpenseRevision(
@@ -63,7 +66,6 @@ fun ExpenseCorrectionDraft.toRequest(expectedRowVersion: Long): ExpenseCorrectio
         splits = splits?.map { it.toRequest() },
     ).also { request ->
         request.correctionAdmissionError()?.let { throw RepositoryException(it) }
-        if (!hasMutationFields()) throw RepositoryException("没有需要保存的更正。")
     }
 }
 
@@ -76,7 +78,29 @@ internal fun ExpenseCorrectionRequestDto.correctionAdmissionError(): String? = w
     tags.exceedsCorrectionLimit(500) -> "标签合计最多 500 个字符，请缩短后再保存。"
     tags?.hasOversizedCorrectionTag() == true -> "单个标签标准化后最多 64 个字符，请缩短后再保存。"
     items != null && items.size > 200 -> "一次更正最多保存 200 条明细，请减少后再保存。"
-    items?.any { it.name.exceedsCorrectionLimit(255) } == true -> "明细名称最多 255 个字符，请缩短后再保存。"
+    splits != null && splits.size > 100 -> "一次更正最多保存 100 条分摊，请减少后再保存。"
+    else -> correctionValueAdmissionError() ?: items?.firstNotNullOfOrNull { it.correctionAdmissionError() }
+        ?: splits?.firstNotNullOfOrNull { it.correctionAdmissionError() }
+}
+
+private fun ExpenseItemRequestDto.correctionAdmissionError(): String? = when {
+    name.codePointCount(0, name.length) !in 1..255 -> "请填写明细名称，最多 255 个字符。"
+    kind !in setOf("product", "discount", "tax", "service_fee") -> "明细类型无法识别，请核对后再保存。"
+    quantityText.exceedsCorrectionLimit(64) -> "明细数量说明最多 64 个字符。"
+    category.exceedsCorrectionLimit(64) -> "明细分类名称最多 64 个字符。"
+    rawText.exceedsCorrectionLimit(1000) -> "明细原文最多 1000 个字符。"
+    confidence?.let { it !in 0.0..1.0 } == true -> "明细识别可信度超出范围，请核对后再保存。"
+    unitPriceCents?.let { it !in 0L..MONEY_MINOR_MAX } == true -> "明细单价超出范围，请核对后再保存。"
+    amountCents?.let { it !in if (kind == "discount") -MONEY_MINOR_MAX..0L else 0L..MONEY_MINOR_MAX } == true ->
+        "明细金额超出该类型允许的范围，请核对后再保存。"
+    else -> null
+}
+
+private fun ExpenseSplitRequestDto.correctionAdmissionError(): String? = when {
+    memberId <= 0 -> "分摊成员无效，请核对当前成员后再保存。"
+    amountCents <= 0 -> "每条分摊金额必须大于零，请核对后再保存。"
+    amountCents > MONEY_MINOR_MAX -> "分摊金额超出范围，请核对后再保存。"
+    note.exceedsCorrectionLimit(200) -> "分摊备注最多 200 个字符，请缩短后再保存。"
     else -> null
 }
 
@@ -105,10 +129,19 @@ private fun String.hasOversizedCorrectionTag(): Boolean = split(',', '，', ';',
         name.lowercase(Locale.ROOT).uppercase(Locale.ROOT).lowercase(Locale.ROOT).exceedsCorrectionLimit(64)
 }
 
-private fun ExpenseCorrectionDraft.hasMutationFields(): Boolean =
-    amountCents != null || originalCurrencyCode != null || originalAmountMinor != null ||
-        merchant != null || category != null || note != null || expenseTimeChanged ||
-        tags != null || valueScoreChanged || regretScoreChanged || items != null || splits != null
+private fun ExpenseCorrectionRequestDto.correctionValueAdmissionError(): String? {
+    val hasMutation = listOf(amountCents, originalCurrencyCode, originalAmountMinor, merchant, category,
+        note, tags, items, splits).any { it != null } || expenseTime.changed || valueScore.changed || regretScore.changed
+    return when {
+        listOfNotNull(amountCents, originalAmountMinor).any { it !in 0L..MONEY_MINOR_MAX } ->
+            "更正金额超出范围，请核对后再保存。"
+        originalCurrencyCode?.let { it.codePointCount(0, it.length) != 3 } == true -> "币种代码须为 3 个字符。"
+        listOf(valueScore, regretScore).any { it.changed && it.value?.let { score -> score !in 1..5 } == true } ->
+            "评价分数须为 1 至 5，或明确清除评价。"
+        !hasMutation -> "没有需要保存的更正。"
+        else -> null
+    }
+}
 
 /**
  * Mirrors the advisor input owner: confirmed amount/original currency,

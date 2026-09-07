@@ -52,7 +52,7 @@ interface ReportsActions : DashboardCardsActions {
      * rules (≥1 debt id, no month/target/category) — the repository validates the
      * shape it can (non-blank name, ≥1 id) so a bad form fails fast without a call.
      */
-    suspend fun createDebtGoal(name: String, debtPublicIds: List<String>): Result<Goal>
+    suspend fun createDebtGoal(name: String, debtPublicIds: List<String>, expectedBinding: LogicalSessionBinding): Result<Goal>
     suspend fun goal(publicId: String): Result<Goal>
     suspend fun updateGoal(publicId: String, update: GoalUpdate): Result<Goal>
     suspend fun archiveGoal(publicId: String): Result<Goal>
@@ -174,7 +174,7 @@ class ReportsRepository(
         }
     }
 
-    override suspend fun createDebtGoal(name: String, debtPublicIds: List<String>): Result<Goal> {
+    override suspend fun createDebtGoal(name: String, debtPublicIds: List<String>, expectedBinding: LogicalSessionBinding): Result<Goal> {
         if (!canModifyLedger()) {
             return Result.failure(RepositoryException("当前角色为只读，无法修改账本。"))
         }
@@ -183,7 +183,7 @@ class ReportsRepository(
         val cleanIds = debtPublicIds.cleanDebtPublicIds()
             .getOrElse { return Result.failure(it) }
         return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
+            ledgerRequestGuard.bindExact(expectedBinding).call { api ->
                 // No Idempotency-Key: POST /api/goals declares none (in-line create, not an
                 // outbox replay surface). Debt-goal shape = name + goal_type + debt_public_ids;
                 // month/target/category omitted (Moshi drops nulls — the backend 422s a debt

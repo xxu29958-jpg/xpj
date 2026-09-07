@@ -1,5 +1,7 @@
 package com.ticketbox.viewmodel
 
+import androidx.lifecycle.viewModelScope
+import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.ReceivablesActions
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtCounterpartyTypes
@@ -8,6 +10,9 @@ import com.ticketbox.domain.model.DebtLinkStatuses
 import com.ticketbox.domain.model.DebtSourceTypes
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.job
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -19,6 +24,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class ReceivablesViewModelTest {
@@ -90,6 +96,41 @@ class ReceivablesViewModelTest {
         advanceUntilIdle()
         assertEquals("second", viewModel.state.value.receivables.single().publicId)
         assertEquals(false, viewModel.state.value.isLoading)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun terminalRefreshFailureCannotBeClearedByAnEarlierReceivablesRead() = runTest(dispatcher) {
+        for (terminal in listOf(PendingMutationStatus.Done, PendingMutationStatus.Abandoned)) {
+            val original = sampleReceivable("debt-1").copy(rowVersion = 7, ledgerId = "owner")
+            val repo = FakeReceivablesActions(Result.success(listOf(original)))
+            val adjustments = FakeDebtAdjustmentActions()
+            val vm = ReceivablesViewModel(repo, adjustments)
+            try {
+                advanceUntilIdle()
+                val oldRead = CompletableDeferred<Unit>()
+                repo.gate = oldRead
+                vm.refresh()
+                runCurrent()
+                repo.gate = null
+                repo.result = Result.failure(IllegalStateException("terminal refresh failed"))
+                adjustments.rows.value = listOf(pendingAdjustment(status = terminal))
+                advanceUntilIdle()
+                assertNotNull(vm.state.value.error)
+                oldRead.complete(Unit)
+                advanceUntilIdle()
+                assertNotNull(vm.state.value.error)
+                assertEquals(listOf(original), vm.state.value.receivables)
+                val current = original.copy(rowVersion = if (terminal == PendingMutationStatus.Done) 8L else 7L)
+                repo.result = Result.success(listOf(current))
+                vm.refresh()
+                advanceUntilIdle()
+                assertNull(vm.state.value.error)
+                assertEquals(listOf(current), vm.state.value.receivables)
+            } finally {
+                vm.viewModelScope.coroutineContext.job.cancelAndJoin()
+            }
+        }
     }
 
     @Test

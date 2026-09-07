@@ -1,5 +1,6 @@
 package com.ticketbox.viewmodel
 
+import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.PendingMutationStatus
@@ -26,6 +27,8 @@ import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.job
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -69,6 +72,30 @@ class OutboxStatusViewModelTest {
         assertEquals(UiText.res(R.string.sync_status_vm_keep_mine_unavailable), vm.uiState.value.message)
         assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
         assertNull(vm.uiState.value.busyRowId)
+    }
+
+    @Test
+    fun originalOffsetCannotBeRebasedByGlobalKeepMine() = runTest(dispatcher) {
+        val harness = harness()
+        val id = harness.outbox.enqueue(PendingMutationType.CreateExpenseOffset, "expense:7",
+            "{\"kind\":\"refund\",\"original_amount_minor\":1000,\"accounting_date\":\"2026-09-03\",\"reason\":\"Original refund\",\"expected_row_version\":7}",
+            7, "original-refund-key")
+        harness.outbox.markConflict(id, "state_conflict")
+        val original = harness.outbox.observeStatus().first().conflicts.single()
+        val vm = outboxStatusViewModelFactory(harness.outbox, harness.expenseRepository,
+            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments))
+            .create(OutboxStatusViewModel::class.java)
+        try {
+            runCurrent()
+            vm.keepMine(original)
+            runCurrent()
+            assertEquals(original, harness.outbox.observeStatus().first().conflicts.single())
+            assertEquals(UiText.res(R.string.expense_offset_original_requires_review), vm.uiState.value.message)
+            assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
+            assertNull(vm.uiState.value.busyRowId)
+        } finally {
+            vm.viewModelScope.coroutineContext.job.cancelAndJoin()
+        }
     }
 
     @Test
@@ -156,10 +183,20 @@ class OutboxStatusViewModelTest {
                 else R.string.debt_adjustment_unsupported), vm.uiState.value.message)
             assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
 
+            val priorJobs = vm.viewModelScope.coroutineContext.job.children.toSet()
             vm.dropFailed(original)
+            val dropJob = vm.viewModelScope.coroutineContext.job.children.single { it !in priorJobs }
+            dropJob.join()
             runCurrent()
+            assertNull(vm.uiState.value.busyRowId)
+            assertNull(vm.uiState.value.message)
             assertEquals(emptyList(), harness.outbox.observeStatus().first().failed)
-            assertNull(vm.uiState.value.debtAdjustments[id])
+            val stopped = assertNotNull(vm.uiState.value.debtAdjustments[id])
+            assertEquals(PendingMutationStatus.Abandoned, stopped.row.status)
+            assertEquals(original.payloadJson, stopped.row.payloadJson)
+            assertEquals(original.idempotencyKey, stopped.row.idempotencyKey)
+            assertEquals(original.expectedRowVersion, stopped.row.expectedRowVersion)
+            assertEquals(false, stopped.canRetry)
         }
     }
 

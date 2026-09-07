@@ -17,6 +17,7 @@
     <string name="expense_fact_value_empty">—</string>
     <string name="expense_fact_correct_cta">更正这笔账单</string>
     <string name="expense_fact_readonly_hint">只读角色可查看事实与变更记录。</string>
+    <string name="expense_fact_snapshot_actions_unavailable">请先处理更正或刷新并核对账单，再创建还款关联或拆账邀请。</string>
     <string name="expense_fact_items_title">小票明细</string>
     <string name="expense_fact_items_hint">只记录本张小票的商品行，修改请使用更正。</string>
     <string name="expense_fact_items_empty">没有记录明细行。</string>
@@ -212,6 +213,7 @@
     <string name="correction_submission_conflict">账单已变化，原提交未被确认送达。请核对当前事实；重新更正需要一次明确的新提交。</string>
     <string name="correction_submission_sending">正在发送原提交，内容已经保存在手机上。</string>
     <string name="correction_submission_failed">原提交尚未确认送达，内容已保留。可重试原提交或核对当前事实。</string>
+    <string name="correction_submission_review_required">这份原提交不能直接重试，内容仍保留。请核对当前事实，或放弃这份本地提交。</string>
     <string name="correction_submission_clear">清空</string>
     <string name="correction_submission_original">提交时原金额：%1$s</string>
     <string name="correction_submission_amount">更正后的原币金额：%1$s</string>
@@ -229,4 +231,8 @@
     <string name="correction_field_regret">后悔度</string>
     <string name="correction_field_items">替换后的明细条数</string>
     <string name="correction_field_splits">替换后的分摊条数</string>
+    <string name="expense_offset_original_requires_review">原提交已保留。请打开账单核对原币和金额；如需修改，放弃原提交后重新登记。放弃不会撤销已生效的事实。</string>
+    <string name="expense_offset_review_current">打开账单核对</string>
+    <string name="expense_offset_draft_root_changed">账单已更新，原输入仍按打开时的币种保留。请核对当前账单；币种变化后需重新填写金额。</string>
+    <string name="expense_offset_review_draft">按当前账单核对</string>
 </resources>

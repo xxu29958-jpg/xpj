@@ -160,6 +160,7 @@ class ReportsRepositoryTest {
             val created = repository.createDebtGoal(
                 name = " 还清欠款 ",
                 debtPublicIds = listOf(" debt-a ", "", "debt-b", "debt-a"),
+                expectedBinding = requireNotNull(repository.dashboardAccess()).binding,
             ).getOrThrow()
 
             val call = api.createGoalCalls.single()
@@ -173,6 +174,9 @@ class ReportsRepositoryTest {
             assertNull(call.request.category)
             assertEquals("UTC", call.timezone)
             assertTrue(created.isDebtRepayment)
+            val stale = requireNotNull(repository.dashboardAccess()).binding.copy(sessionGeneration = "previous-session")
+            assertTrue(repository.createDebtGoal("原目标", listOf("debt-a"), stale).isFailure)
+            assertEquals(1, api.createGoalCalls.size)
         }
     }
 
@@ -181,7 +185,7 @@ class ReportsRepositoryTest {
         val api = ReportsApiHandler()
         val repository = repository(api, role = "viewer")
 
-        val result = repository.createDebtGoal("还清欠款", listOf("debt-a"))
+        val result = repository.createDebtGoal("还清欠款", listOf("debt-a"), requireNotNull(repository.dashboardAccess()).binding)
 
         assertTrue(result.isFailure)
         assertEquals("当前角色为只读，无法修改账本。", result.exceptionOrNull()?.message)
@@ -193,7 +197,7 @@ class ReportsRepositoryTest {
         val api = ReportsApiHandler()
         val repository = repository(api)
 
-        val result = repository.createDebtGoal("还清欠款", listOf("  ", ""))
+        val result = repository.createDebtGoal("还清欠款", listOf("  ", ""), requireNotNull(repository.dashboardAccess()).binding)
 
         assertTrue(result.isFailure)
         assertEquals("请至少关联一笔欠款。", result.exceptionOrNull()?.message)
@@ -205,7 +209,7 @@ class ReportsRepositoryTest {
         val api = ReportsApiHandler()
         val repository = repository(api)
 
-        val result = repository.createDebtGoal("   ", listOf("debt-a"))
+        val result = repository.createDebtGoal("   ", listOf("debt-a"), requireNotNull(repository.dashboardAccess()).binding)
 
         assertTrue(result.isFailure)
         assertEquals("请输入目标名称。", result.exceptionOrNull()?.message)

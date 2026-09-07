@@ -44,6 +44,7 @@ interface ExpenseFactCommandActions {
         correction: ExpenseCorrectionDraft): Result<Long>
     suspend fun recoverCorrection(expectedBinding: LogicalSessionBinding, rowId: Long, drop: Boolean): Result<Unit>
     suspend fun createExpenseOffsetAllowingOffline(
+        expectedBinding: LogicalSessionBinding,
         expense: Expense,
         draft: ExpenseOffsetDraft,
     ): Result<ExpenseOffsetMutationOutcome>
@@ -61,8 +62,12 @@ interface ExpenseFactCommandActions {
         expense: Expense,
         currentItems: ExpenseItems,
     ): Result<ItemsAckOutcome>
-    suspend fun createRepaymentDraftFromExpense(expense: Expense): Result<RepaymentDraft>
+    suspend fun createRepaymentDraftFromExpense(
+        expectedBinding: LogicalSessionBinding,
+        expense: Expense,
+    ): Result<RepaymentDraft>
     suspend fun createBillSplitInvitation(
+        expectedBinding: LogicalSessionBinding,
         expenseId: Long,
         receiverAccountId: Long,
         amountCents: Long,

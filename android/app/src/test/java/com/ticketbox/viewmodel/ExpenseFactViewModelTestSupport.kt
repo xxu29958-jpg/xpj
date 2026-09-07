@@ -338,13 +338,17 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
         return ackResult(expense, currentItems)
     }
 
-    override suspend fun createRepaymentDraftFromExpense(expense: Expense): Result<RepaymentDraft> {
+    override suspend fun createRepaymentDraftFromExpense(
+        expectedBinding: LogicalSessionBinding,
+        expense: Expense,
+    ): Result<RepaymentDraft> {
         repaymentDraftCalls++
         repaymentDraftExpense = expense
         return repaymentDraftResult(expense)
     }
 
     override suspend fun createBillSplitInvitation(
+        expectedBinding: LogicalSessionBinding,
         expenseId: Long,
         receiverAccountId: Long,
         amountCents: Long,
@@ -368,9 +372,13 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
     }
 
     override suspend fun createExpenseOffsetAllowingOffline(
+        expectedBinding: LogicalSessionBinding,
         expense: Expense,
         draft: ExpenseOffsetDraft,
     ): Result<ExpenseOffsetMutationOutcome> {
+        if (expectedBinding != correctionObservations.value.access?.binding) {
+            return Result.failure(RepositoryException("The offset belongs to an obsolete binding"))
+        }
         createOffsetCalls++
         lastOffsetDraft = draft
         return createOffsetResult(expense, draft)
