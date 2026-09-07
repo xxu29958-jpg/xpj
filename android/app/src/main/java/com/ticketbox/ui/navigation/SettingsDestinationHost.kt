@@ -368,6 +368,7 @@ internal fun SettingsDestinationHost(
             BackgroundTasksScreen(
                 viewModel = vm,
                 onBack = { route = SettingsDestination.Root },
+                onOpenExpense = navigation.onOpenExpense,
             )
         }
 

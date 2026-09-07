@@ -20,7 +20,7 @@
     <string name="settings_root_entry_offline_sync_title">离线同步</string>
     <string name="settings_root_entry_offline_sync_subtitle">离线改动的同步状态，处理冲突与失败</string>
     <string name="settings_root_entry_background_tasks_title">后台任务</string>
-    <string name="settings_root_entry_background_tasks_subtitle">导入任务与处理进度</string>
+    <string name="settings_root_entry_background_tasks_subtitle">小票识别进度与原账单</string>
     <string name="settings_root_entry_ledgers_title">账本</string>
     <string name="settings_root_entry_ledgers_subtitle">查看、切换、新建账本</string>
     <string name="settings_root_section_bookkeeping_data">记账规则与数据</string>

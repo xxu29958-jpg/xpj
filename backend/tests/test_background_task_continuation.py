@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import BackgroundTask, Expense
+from app.models import BackgroundTask, Expense, Ledger
 from app.services import background_task_service, background_task_worker
 from app.services.background_task_registry import TaskHandlerRegistry
 from tests._infra.assets import PNG_BYTES
@@ -67,6 +67,26 @@ def test_task_with_unavailable_original_never_invents_a_bill_link(client, monkey
             BackgroundTask.public_id == receipt["enrichment_task_public_id"],
         ))
         task.input_payload_json = json.dumps(payload)
+        db.commit()
+    response = client.get(f"/api/tasks/{receipt['enrichment_task_public_id']}", headers=identity.app_headers)
+    assert response.status_code == 200, response.text
+    assert response.json()["source_expense_id"] is None
+
+
+@pytest.mark.parametrize("source_state", ["rejected", "other_ledger"])
+def test_task_link_requires_the_original_bill_to_remain_accessible(client, monkeypatch, source_state, *, identity):
+    receipt = _failed_upload(client, monkeypatch, identity)
+    with SessionLocal() as db:
+        task = db.scalar(select(BackgroundTask).where(
+            BackgroundTask.public_id == receipt["enrichment_task_public_id"],
+        ))
+        expense = db.get(Expense, receipt["id"])
+        if source_state == "other_ledger":
+            db.add(Ledger(ledger_id="other_ledger", name="Other", owner_account_id=task.initiated_by_account_id))
+            db.flush()
+            expense.tenant_id = "other_ledger"
+        else:
+            expense.status = "rejected"
         db.commit()
     response = client.get(f"/api/tasks/{receipt['enrichment_task_public_id']}", headers=identity.app_headers)
     assert response.status_code == 200, response.text

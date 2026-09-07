@@ -153,6 +153,7 @@ internal class ExpenseCorrectionConnectedFixture(private val context: Context) {
 /** Response-loss model deduplicates by the actual original key and full request; not a PostgreSQL substitute. */
 internal class CorrectionConnectedNetwork {
     var current = correctionExpense()
+    var backgroundTasks = com.ticketbox.data.remote.dto.BackgroundTaskListResponseDto()
     var splitMembers = emptyList<com.ticketbox.data.remote.dto.LedgerMemberDto>()
     var confirmedStreamItems: ((ExpenseDto) -> List<ConfirmedExpenseStreamItemDto>)? = null
     var beforeStreamResponse: (suspend () -> Unit)? = null
@@ -177,6 +178,7 @@ internal class CorrectionConnectedNetwork {
         }
     }
     val service = object : ApiService by correctionProxy<ApiService>({ throw IOException("Synthetic unavailable $it") }) {
+        override suspend fun listBackgroundTasks() = backgroundTasks
         override suspend fun expense(id: Long): ExpenseDto { readable(); expenseReads += id; return current }
         override suspend fun pendingExpenses(): List<ExpenseDto> {
             readable()

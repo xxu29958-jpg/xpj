@@ -22,6 +22,7 @@ data class BackgroundTask(
     val startedAt: String?,
     val completedAt: String?,
     val cancellationRequestedAt: String?,
+    val sourceExpenseId: Long? = null,
 ) {
     val isCancellable: Boolean
         get() = status in setOf(BACKGROUND_TASK_QUEUED, BACKGROUND_TASK_RUNNING) &&

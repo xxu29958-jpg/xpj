@@ -147,7 +147,7 @@ completion percentages.
 |---|---|
 | First use and household | Owner/member/viewer enter the intended household, understand where data lives and recover expired/failed connection without losing intent or changing identity |
 | Capture, facts and reference | Capture consumer gaps #387 closed; continue integrated search/reference/correction and remaining role/error journeys with one fact owner |
-| Relationships | Close split-creation retry counterexample #388; complete proposals/repayment/adjustment/forgiveness/void, original-intent retry/discard and canonical totals across clients |
+| Relationships | Split-creation retry #388 CLOSED; complete proposals/repayment/adjustment/forgiveness/void, original-intent retry/discard and canonical totals across clients |
 | Planning and insights | Complete supported budget/goal/income/recurring/debt-plan tasks; overview/period review/data health reflect authoritative facts/corrections with useful empty/error/read-only states |
 | Backstage | Ordinary household can configure applicable capabilities, understand actual health and resume failed work; local governance, secrets and host authority retain their owners |
 | Consumer art and convenience | Actual Web 360/768/1440 and Android journeys meet the selected modern consumer design and reduce interaction burden; replaced visual owners physically retire |
@@ -172,14 +172,14 @@ Do not drop these or open full lifecycle work while handling other journeys.
 remaining art/interaction details, then the exact full RC. Keep useful state
 feedback and efficient actions within each active capability change.
 
-**Active work:** #385, #386 and #387 are CLOSED, integrated and independently
-main-qualified. Physical capture/recovery/review evidence belongs in their
-contracts and PRs. [#388](https://github.com/xxu29958-jpg/xpj/pull/388) now closes
-the confirmed split-creation replay counterexample through the existing command,
-Room queue and recovery consumers; candidate qualification is in progress.
+**Active work:** #385–#388 are CLOSED, integrated and independently main-qualified.
+[#388](https://github.com/xxu29958-jpg/xpj/pull/388) includes physical offline,
+process-stop and canonical replay evidence. [#389](https://github.com/xxu29958-jpg/xpj/pull/389)
+connects actual recognition-task outcomes to their original bill and keeps
+Android task actions scoped to the active binding; implementation is in progress.
 
-**Next action:** close the split-creation intent through its existing command,
-protocol and recovery owners, then continue the remaining delivery packages.
+**Next action:** close task-to-bill continuation through existing task, binding
+and Expense owners, then continue the remaining delivery packages.
 Physical budget/income creation works; simplify Android's first-budget optional
 fields within Planning/convenience. Preserve draft #372 for the later detail wave.
 The full Goal and all remaining packages above stay active.

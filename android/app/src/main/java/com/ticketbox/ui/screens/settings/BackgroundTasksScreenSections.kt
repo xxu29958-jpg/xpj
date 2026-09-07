@@ -63,6 +63,7 @@ internal fun BackgroundTasksRows(
     busyTaskId: String?,
     canModify: Boolean,
     onCancel: (String) -> Unit,
+    onOpenSource: (String) -> Unit,
 ) {
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
     SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.none)) {
@@ -87,6 +88,7 @@ internal fun BackgroundTasksRows(
                     busy = busyTaskId == task.publicId,
                     canModify = canModify,
                     onCancel = { onCancel(task.publicId) },
+                    onOpenSource = { onOpenSource(task.publicId) },
                 )
             }
         }

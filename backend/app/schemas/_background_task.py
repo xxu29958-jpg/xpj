@@ -35,6 +35,7 @@ class BackgroundTaskResponse(BaseModel):
     error_code: str | None = None
     error_message: str | None = None
     result_summary: dict[str, Any] | None = None
+    source_expense_id: int | None = Field(default=None, gt=0)
 
     created_at: datetime
     started_at: datetime | None = None

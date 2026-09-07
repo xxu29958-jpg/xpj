@@ -261,11 +261,11 @@ class ExpenseRepository(
     override suspend fun cancelBillSplitInvitation(publicId: String): Result<BillSplitSent> =
         billSplitRepository.cancelBillSplitInvitation(publicId)
 
-    suspend fun fetchBackgroundTasks(): Result<List<BackgroundTask>> =
-        backgroundTaskRepository.fetchBackgroundTasks()
+    suspend fun fetchBackgroundTasks(binding: LogicalSessionBinding): Result<List<BackgroundTask>> =
+        backgroundTaskRepository.fetchBackgroundTasks(binding)
 
-    suspend fun cancelBackgroundTask(publicId: String): Result<BackgroundTask> =
-        backgroundTaskRepository.cancelBackgroundTask(publicId)
+    suspend fun cancelBackgroundTask(binding: LogicalSessionBinding, publicId: String): Result<BackgroundTask> =
+        backgroundTaskRepository.cancelBackgroundTask(binding, publicId)
 
     override suspend fun fetchExpenseSplits(id: Long): Result<ExpenseSplits> =
         detailRepository.fetchExpenseSplits(id)

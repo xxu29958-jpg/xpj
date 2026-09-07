@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,6 +31,7 @@ internal fun BackgroundTaskRow(
     busy: Boolean,
     canModify: Boolean,
     onCancel: () -> Unit,
+    onOpenSource: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -48,6 +50,12 @@ internal fun BackgroundTaskRow(
         BackgroundTaskProgress(task)
         BackgroundTaskMessage(task)
         BackgroundTaskError(task)
+        if (task.sourceExpenseId != null) {
+            TextButton(onClick = onOpenSource) { Text(stringResource(R.string.background_tasks_open_source)) }
+        } else if (task.taskType == "expense_enrichment") {
+            Text(stringResource(R.string.background_tasks_source_unavailable),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
