@@ -10,6 +10,8 @@ import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.job
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -18,6 +20,113 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class ExpenseFactViewModelRefreshRecoveryTest : ExpenseFactViewModelTestBase() {
+    @Test
+    fun liveDeliveryAdoptsTheCachedResponseWhenSubsequentReadsAreOffline() = edit { fake ->
+        var cached = fake.baseExpense
+        val repository = object : ExpenseFactActions by fake {
+            override suspend fun fetchExpenseFromLocalCache(id: Long): Result<Expense> = Result.success(cached)
+        }
+        val vm = ExpenseFactViewModel(fake.baseExpense.id, repository)
+        try {
+            advanceUntilIdle()
+            fake.submitCorrection(fake.correctionBinding, fake.baseExpense,
+                ExpenseCorrectionDraft("Correct the receipt", merchant = "Authoritative merchant")).getOrThrow()
+            advanceUntilIdle()
+            val original = vm.uiState.value.corrections.single().row
+            val fresh = fake.baseExpense.copy(rowVersion = 2, factRevision = 2, merchant = "Authoritative merchant")
+            cached = fresh
+            fake.fetchExpenseFailure = RepositoryException("Connection lost after the accepted response")
+            fake.settleCorrection(PendingMutationStatus.Done)
+            advanceUntilIdle()
+
+            assertEquals(original.copy(status = PendingMutationStatus.Done), vm.uiState.value.corrections.single().row)
+            assertFalse(vm.uiState.value.corrections.single().refreshRequired)
+            assertEquals(fresh, vm.uiState.value.expense)
+            assertTrue(vm.uiState.value.authoritativeRootReady)
+            assertFalse(vm.uiState.value.expenseStale)
+            assertEquals(1, fake.fetchExpenseCalls, "The accepted cache does not require another root GET")
+            assertEquals(ExpenseDetailDataLoadState.Failed, vm.uiState.value.factBundleLoadState)
+            vm.openCorrectionSheet()
+            assertTrue(vm.uiState.value.correction.open)
+            assertEquals(1, fake.correctCalls)
+        } finally {
+            vm.viewModelScope.coroutineContext.job.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun unchangedOrMissingCompletionCacheCannotReleaseTheOldRoot() = edit {
+        for (cacheMissing in listOf(false, true)) {
+            val fake = FakeExpenseFactActions()
+            val repository = object : ExpenseFactActions by fake {
+                override suspend fun fetchExpenseFromLocalCache(id: Long): Result<Expense> =
+                    if (cacheMissing) Result.failure(RepositoryException("Cache retired")) else Result.success(fake.baseExpense)
+            }
+            val vm = ExpenseFactViewModel(fake.baseExpense.id, repository)
+            try {
+                advanceUntilIdle()
+                fake.submitCorrection(fake.correctionBinding, fake.baseExpense,
+                    ExpenseCorrectionDraft("Correct the receipt", merchant = "Authoritative merchant")).getOrThrow()
+                advanceUntilIdle()
+                val original = vm.uiState.value.corrections.single().row
+                fake.fetchExpenseFailure = RepositoryException("Offline")
+                fake.settleCorrection(PendingMutationStatus.Done)
+                advanceUntilIdle()
+
+                assertEquals(fake.baseExpense, vm.uiState.value.expense)
+                assertFalse(vm.uiState.value.authoritativeRootReady)
+                assertEquals(ExpenseDetailDataLoadState.Failed, vm.uiState.value.expenseLoadState)
+                assertEquals(original.copy(status = PendingMutationStatus.Done), vm.uiState.value.corrections.single().row)
+                assertEquals(1, fake.correctCalls)
+            } finally {
+                vm.viewModelScope.coroutineContext.job.cancelAndJoin()
+            }
+        }
+    }
+
+    @Test
+    fun aBindingChangeRejectsTheLateCacheOfANewlyDeliveredCorrection() = edit { fake ->
+        fake.observeCorrections()
+        val originalRoot = fake.baseExpense
+        val started = CompletableDeferred<Unit>()
+        val cache = CompletableDeferred<Result<Expense>>()
+        val repository = object : ExpenseFactActions by fake {
+            override fun observeCorrections() = fake.correctionObservations
+            override suspend fun fetchExpenseFromLocalCache(id: Long): Result<Expense> {
+                started.complete(Unit)
+                return cache.await()
+            }
+        }
+        val vm = ExpenseFactViewModel(originalRoot.id, repository)
+        try {
+            advanceUntilIdle()
+            fake.submitCorrection(fake.correctionBinding, originalRoot,
+                ExpenseCorrectionDraft("Original correction", merchant = "Corrected merchant")).getOrThrow()
+            advanceUntilIdle()
+            fake.settleCorrection(PendingMutationStatus.Done)
+            advanceUntilIdle()
+            assertTrue(started.isCompleted)
+            assertFalse(vm.uiState.value.authoritativeRootReady)
+
+            val binding = fake.correctionBinding.copy(ledgerId = "another-ledger", bindingRevision = "new-binding")
+            fake.baseExpense = originalRoot.copy(merchant = "Current ledger root")
+            fake.correctionObservations.value = fake.correctionObservations.value.copy(
+                access = LedgerAccessContext(binding, true), corrections = emptyList())
+            advanceUntilIdle()
+            assertTrue(vm.uiState.value.authoritativeRootReady)
+            val current = vm.uiState.value
+            cache.complete(Result.success(originalRoot.copy(rowVersion = 2, merchant = "Corrected merchant")))
+            advanceUntilIdle()
+
+            assertEquals(current, vm.uiState.value)
+            assertEquals(binding, vm.uiState.value.correctionAccess?.binding)
+            assertEquals(1, fake.correctCalls)
+        } finally {
+            cache.complete(Result.success(originalRoot))
+            vm.viewModelScope.coroutineContext.job.cancelAndJoin()
+        }
+    }
+
     @Test
     fun aSuccessfulRootReadKeepsItsResultWhenItAcknowledgesItsOwnReceipt() = edit {
         for (acknowledgeWhileReading in listOf(true, false)) {

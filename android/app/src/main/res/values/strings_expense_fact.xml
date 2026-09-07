@@ -230,4 +230,8 @@
     <string name="correction_field_regret">后悔度</string>
     <string name="correction_field_items">替换后的明细条数</string>
     <string name="correction_field_splits">替换后的分摊条数</string>
+    <string name="expense_offset_original_requires_review">原提交已保留。请打开账单核对原币和金额；如需修改，放弃原提交后重新登记。放弃不会撤销已生效的事实。</string>
+    <string name="expense_offset_review_current">打开账单核对</string>
+    <string name="expense_offset_draft_root_changed">账单已更新，原输入仍按打开时的币种保留。请核对当前账单；币种变化后需重新填写金额。</string>
+    <string name="expense_offset_review_draft">按当前账单核对</string>
 </resources>

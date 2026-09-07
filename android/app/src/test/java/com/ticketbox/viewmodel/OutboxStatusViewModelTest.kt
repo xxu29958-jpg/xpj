@@ -27,6 +27,7 @@ import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.job
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -71,6 +72,30 @@ class OutboxStatusViewModelTest {
         assertEquals(UiText.res(R.string.sync_status_vm_keep_mine_unavailable), vm.uiState.value.message)
         assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
         assertNull(vm.uiState.value.busyRowId)
+    }
+
+    @Test
+    fun originalOffsetCannotBeRebasedByGlobalKeepMine() = runTest(dispatcher) {
+        val harness = harness()
+        val id = harness.outbox.enqueue(PendingMutationType.CreateExpenseOffset, "expense:7",
+            "{\"kind\":\"refund\",\"original_amount_minor\":1000,\"accounting_date\":\"2026-09-03\",\"reason\":\"Original refund\",\"expected_row_version\":7}",
+            7, "original-refund-key")
+        harness.outbox.markConflict(id, "state_conflict")
+        val original = harness.outbox.observeStatus().first().conflicts.single()
+        val vm = outboxStatusViewModelFactory(harness.outbox, harness.expenseRepository,
+            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments))
+            .create(OutboxStatusViewModel::class.java)
+        try {
+            runCurrent()
+            vm.keepMine(original)
+            runCurrent()
+            assertEquals(original, harness.outbox.observeStatus().first().conflicts.single())
+            assertEquals(UiText.res(R.string.expense_offset_original_requires_review), vm.uiState.value.message)
+            assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
+            assertNull(vm.uiState.value.busyRowId)
+        } finally {
+            vm.viewModelScope.coroutineContext.job.cancelAndJoin()
+        }
     }
 
     @Test

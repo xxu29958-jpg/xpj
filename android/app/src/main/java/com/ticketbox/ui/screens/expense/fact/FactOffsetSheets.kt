@@ -11,6 +11,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -41,6 +42,7 @@ import com.ticketbox.viewmodel.OffsetFormField
 import com.ticketbox.viewmodel.OffsetFormState
 import com.ticketbox.viewmodel.VoidOffsetFormState
 import com.ticketbox.viewmodel.canSubmitOffset
+import com.ticketbox.viewmodel.reviewOffsetDraft
 import com.ticketbox.viewmodel.canSubmitVoidOffset
 import com.ticketbox.viewmodel.closeOffsetSheet
 import com.ticketbox.viewmodel.closeVoidOffsetSheet
@@ -130,6 +132,9 @@ private fun OffsetFormContent(
             refreshFailed = state.factBundleLoadState == ExpenseDetailDataLoadState.Failed,
             onRetryRefresh = viewModel::loadExpenseFactBundle,
         )
+        if (!form.matchesRoot(state.expense)) {
+            OffsetDraftReview(state = state, viewModel = viewModel)
+        }
         if (reversal) {
             Text(
                 text = stringResource(R.string.expense_offset_reversal_explainer),
@@ -229,10 +234,11 @@ private fun OffsetAmountField(
     viewModel: ExpenseFactViewModel,
 ) {
     val form = state.offsetForm
-    val expense = state.expense ?: return
+    val expense = form.sourceExpense ?: return
     // remaining 提示只认真实 Loaded 的 bundle 快照；Failed/Loading 明示暂不可用。
     val summary = (state.factBundle?.financialSummary).takeIf {
-        state.factBundleLoadState == ExpenseDetailDataLoadState.Loaded
+        state.factBundleLoadState == ExpenseDetailDataLoadState.Loaded && form.matchesRoot(state.expense) &&
+            state.factBundle?.root?.rowVersion == expense.rowVersion
     }
     AppTextInput(
         state = AppTextInputState(
@@ -257,6 +263,16 @@ private fun OffsetAmountField(
             ),
         ),
     )
+}
+
+@Composable
+private fun OffsetDraftReview(state: ExpenseFactUiState, viewModel: ExpenseFactViewModel) {
+    Text(text = stringResource(R.string.expense_offset_draft_root_changed),
+        color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+    TextButton(onClick = viewModel::reviewOffsetDraft,
+        enabled = state.authoritativeRootReady && !state.offsetForm.saving) {
+        Text(stringResource(R.string.expense_offset_review_draft))
+    }
 }
 
 @Composable

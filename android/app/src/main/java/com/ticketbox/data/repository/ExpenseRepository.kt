@@ -91,7 +91,7 @@ class ExpenseRepository(
     private val detailRepository = ExpenseDetailRepository(core)
     private val correctionRepository = ExpenseCorrectionRepository(core, offlineMutations.outbox,
         offlineMutations.correctionAdapter, offlineMutations.legacyCorrectionAdapter)
-    private val offsetRepository = ExpenseOffsetRepository(core)
+    private val offsetRepository = ExpenseOffsetRepository(core, correctionRepository)
     private val billSplitRepository = ExpenseBillSplitRepository(core)
     private val backgroundTaskRepository = ExpenseBackgroundTaskRepository(core)
 
@@ -168,9 +168,13 @@ class ExpenseRepository(
         offsetRepository.fetch(id)
 
     override suspend fun createExpenseOffsetAllowingOffline(
+        expectedBinding: LogicalSessionBinding,
         expense: Expense,
         draft: ExpenseOffsetDraft,
-    ): Result<ExpenseOffsetMutationOutcome> = offsetRepository.createAllowingOffline(expense, draft)
+    ): Result<ExpenseOffsetMutationOutcome> = offsetRepository.createAllowingOffline(expectedBinding, expense, draft)
+
+    internal fun canReplayExpenseOffset(row: OutboxRow): Boolean =
+        row.lastError != "offset_create_requires_review" && core.offsetCreateAdapter?.readSupportedOffsetCreate(row) != null
 
     override suspend fun voidExpenseOffsetAllowingOffline(
         expense: Expense,

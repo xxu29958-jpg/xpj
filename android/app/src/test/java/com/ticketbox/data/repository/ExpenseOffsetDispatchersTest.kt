@@ -22,6 +22,67 @@ import kotlin.test.assertIs
 class ExpenseOffsetDispatchersTest {
     private val moshi = Moshi.Builder().build()
 
+    @Test
+    fun legacyNormalizedCreateRequiresReviewWithoutSending() = runTest {
+        val stub = Stub(Result.success(expenseFactBundleDtoFixture()))
+        val dispatcher = CreateExpenseOffsetDispatcher({ stub },
+            moshi.adapter(ExpenseOffsetCreateRequestDto::class.java), { _, _ -> })
+        val original = createRow().copy(payloadJson = createRow().payloadJson
+            .replace("\"expected_row_version\":7", "\"expected_row_version\":0"))
+
+        assertEquals(DispatchResult.Failure("offset_create_requires_review"), dispatcher.dispatch(original))
+        assertEquals(DispatchResult.Failure("offset_create_requires_review"),
+            dispatcher.dispatch(createRow().copy(expectedRowVersion = 8)))
+        assertEquals(DispatchResult.Failure("offset_create_requires_review"),
+            dispatcher.dispatch(createRow().copy(payloadJson = "{")))
+        assertEquals(null, stub.createRequest)
+        assertEquals(null, stub.createKey)
+    }
+
+    @Test
+    fun missingCreateTargetRequiresReviewInsteadOfClaimingDelivery() = runTest {
+        val stub = Stub(Result.failure(httpException(404, """{"error":"expense_not_found"}""")))
+        val dispatcher = CreateExpenseOffsetDispatcher({ stub },
+            moshi.adapter(ExpenseOffsetCreateRequestDto::class.java), { _, _ -> })
+
+        assertEquals(DispatchResult.Failure("offset_create_requires_review"), dispatcher.dispatch(createRow()))
+        assertEquals(7L, stub.createRequest?.expectedRowVersion)
+        assertEquals("offset-key", stub.createKey)
+    }
+
+    @Test
+    fun createConflictCannotRotateTheOriginalKeyOrParentVersion() = runTest {
+        val dao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(dao)
+        val row = createRow()
+        val id = outbox.enqueue(row.type, row.targetId, row.payloadJson, row.expectedRowVersion, row.idempotencyKey)
+        outbox.markConflict(id, "state_conflict")
+        val original = dao.rows.getValue(id)
+
+        assertEquals(false, outbox.resolveConflict(id, ConflictResolution.KeepMine(8)))
+        assertEquals(original, dao.rows.getValue(id))
+        assertEquals(true, outbox.resolveConflict(id, ConflictResolution.DropMine))
+        assertEquals(null, dao.rows[id])
+    }
+
+    @Test
+    fun failedCreateRetainsItsOriginalCommandForRetryAndDrop() = runTest {
+        val dao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(dao)
+        val row = createRow()
+        val id = outbox.enqueue(row.type, row.targetId, row.payloadJson, row.expectedRowVersion, row.idempotencyKey)
+        outbox.markFailed(id, "network unavailable")
+        val original = dao.rows.getValue(id)
+
+        assertEquals(false, outbox.resolveFailed(id, FailedResolution.Retry(freshToken = 8)))
+        assertEquals(original, dao.rows.getValue(id))
+        assertEquals(true, outbox.resolveFailed(id, FailedResolution.Retry()))
+        assertEquals(original.copy(status = "pending", retryCount = 0, lastError = null), dao.rows.getValue(id))
+        outbox.markFailed(id, "network unavailable")
+        assertEquals(true, outbox.resolveFailed(id, FailedResolution.Drop))
+        assertEquals(null, dao.rows[id])
+    }
+
     private class Stub(
         private val createResult: Result<ExpenseFactBundleDto>,
         private val voidResult: Result<ExpenseFactBundleDto>? = null,
@@ -61,7 +122,7 @@ class ExpenseOffsetDispatchersTest {
     }
 
     @Test
-    fun `create replay uses outbox OCC and key then publishes authoritative bundle`() = runTest {
+    fun `create replay sends the original body and key then publishes authoritative bundle`() = runTest {
         val bundle = expenseFactBundleDtoFixture(
             root = confirmedExpenseDtoFixture(ConfirmedExpenseFixture(rowVersion = 8)),
         )
@@ -78,6 +139,7 @@ class ExpenseOffsetDispatchersTest {
         assertEquals("42", stub.createId)
         assertEquals("offset-key", stub.createKey)
         assertEquals(7L, stub.createRequest?.expectedRowVersion)
+        assertEquals(moshi.adapter(ExpenseOffsetCreateRequestDto::class.java).fromJson(createRow().payloadJson), stub.createRequest)
         assertEquals("owner" to bundle, published)
         assertEquals(DispatchResult.Success(newRowVersion = 8), result)
     }
@@ -138,7 +200,7 @@ class ExpenseOffsetDispatchersTest {
                 originalAmountMinor = 300,
                 accountingDate = "2026-09-03",
                 reason = "退款到账",
-                expectedRowVersion = 0,
+                expectedRowVersion = 7,
             ),
         ),
         expectedRowVersion = 7,

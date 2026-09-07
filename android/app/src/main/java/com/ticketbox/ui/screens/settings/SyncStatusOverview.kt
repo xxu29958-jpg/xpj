@@ -160,6 +160,7 @@ internal fun friendlyLastError(raw: String?, fallback: String): String {
 
 internal val syncStatusExactErrorMessageResources = mapOf(
     "runtime_version_mismatch" to R.string.sync_status_error_protocol_mismatch,
+    "offset_create_requires_review" to R.string.expense_offset_original_requires_review,
     "client_upgrade_required" to R.string.sync_status_error_protocol_mismatch,
     "rule_category_deleted" to R.string.sync_status_error_rule_category_deleted,
     "debt_adjustment_payload_unsupported" to R.string.debt_adjustment_unsupported,

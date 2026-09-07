@@ -78,6 +78,9 @@ class OutboxStatusViewModel(
                         it.row.status in setOf(com.ticketbox.data.local.PendingMutationStatus.Pending,
                             com.ticketbox.data.local.PendingMutationStatus.InFlight)
                     },
+                    retryableOffsetIds = status.failed.filter { row ->
+                        row.type == PendingMutationType.CreateExpenseOffset && expenseRepository.canReplayExpenseOffset(row)
+                    }.map { it.id }.toSet(),
                     recurringOccurrences = occurrenceDescriptions, incomeEdits = incomeDescriptions) }
             }
         }
@@ -86,6 +89,10 @@ class OutboxStatusViewModel(
     /** "用我的覆盖" — re-apply my change on top of the server's latest. */
     fun keepMine(row: OutboxRow) {
         if (row.type == PendingMutationType.CorrectExpense) return
+        if (row.type == PendingMutationType.CreateExpenseOffset) {
+            explainOffsetReview()
+            return
+        }
         if (_uiState.value.busyRowId != null) return
         viewModelScope.launch {
             _uiState.update { it.copy(busyRowId = row.id, message = null, messageTone = MessageTone.Neutral) }
@@ -116,6 +123,10 @@ class OutboxStatusViewModel(
     fun retry(row: OutboxRow) {
         if (row.type == PendingMutationType.CorrectExpense) {
             recoverCorrection(row, false)
+            return
+        }
+        if (row.type == PendingMutationType.CreateExpenseOffset && !expenseRepository.canReplayExpenseOffset(row)) {
+            explainOffsetReview()
             return
         }
         if (row.type == PendingMutationType.RecordDebtAdjustment) {
@@ -195,6 +206,10 @@ class OutboxStatusViewModel(
 
     fun consumeMessage() = _uiState.update { it.copy(message = null, messageTone = MessageTone.Neutral) }
 
+    private fun explainOffsetReview() = _uiState.update {
+        it.copy(message = UiText.res(R.string.expense_offset_original_requires_review), messageTone = MessageTone.Danger)
+    }
+
     private fun resolve(row: OutboxRow, block: suspend () -> Unit) {
         if (_uiState.value.busyRowId != null) return
         viewModelScope.launch {
@@ -222,6 +237,7 @@ data class OutboxStatusUiState(
     val incomeEdits: Map<Long, com.ticketbox.data.repository.PendingIncomePlanEdit> = emptyMap(),
     val debtAdjustments: Map<Long, com.ticketbox.data.repository.PendingDebtAdjustment> = emptyMap(),
     val waitingDebtAdjustments: List<com.ticketbox.data.repository.PendingDebtAdjustment> = emptyList(),
+    val retryableOffsetIds: Set<Long> = emptySet(),
     val busyRowId: Long? = null,
     val isClearingQuarantine: Boolean = false,
     val message: UiText? = null,

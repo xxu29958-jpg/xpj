@@ -595,7 +595,8 @@ class OutboxRepository private constructor(
                 ownerKey = binding.ownerStorageKey,
                 ledgerId = binding.ledgerId,
                 targetId = targetId,
-                preservedTokenTypes = listOf(PendingMutationType.VoidExpenseOffset.wireValue, PendingMutationType.CorrectExpense.wireValue),
+                preservedTokenTypes = listOf(PendingMutationType.VoidExpenseOffset.wireValue,
+                    PendingMutationType.CorrectExpense.wireValue, PendingMutationType.CreateExpenseOffset.wireValue),
                 freshToken = newToken,
             )
         }

@@ -179,7 +179,7 @@ class FakePendingMutationDao : PendingMutationDao {
         rotatedIdempotencyKey: String?,
     ): Int {
         val current = rows[id] ?: return 0
-        if (current.type == "correct_expense") return 0
+        if (current.type in setOf("correct_expense", "create_expense_offset")) return 0
         if (current.ownerKey != ownerKey || current.ledgerId != ledgerId || current.status != "conflict") return 0
         // codex P1 #7: 同步真实 DAO 的 retryCount = 0 重置, 否则 fake 看不到用户 retry
         // 重置预算的语义。
@@ -203,7 +203,7 @@ class FakePendingMutationDao : PendingMutationDao {
         rotatedIdempotencyKey: String?,
     ): Int {
         val current = rows[id] ?: return 0
-        if (current.type == "correct_expense") return 0
+        if (current.type in setOf("correct_expense", "create_expense_offset")) return 0
         if (current.ownerKey != ownerKey || current.ledgerId != ledgerId || current.status != "failed") return 0
         rows[id] = current.copy(
             status = "pending",

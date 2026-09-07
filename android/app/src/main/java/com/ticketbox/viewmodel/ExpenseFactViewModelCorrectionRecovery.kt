@@ -5,6 +5,7 @@ import com.ticketbox.R
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.PendingExpenseCorrection
 import com.ticketbox.data.repository.correctionRefreshVersion
+import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.canInitiateBillSplit
@@ -90,11 +91,22 @@ private fun ExpenseFactViewModel.refreshNewCorrectionCompletions(
     }
     _uiState.update { it.copy(factBundle = null, message = null,
         doneAdviceInputsChanged = it.doneAdviceInputsChanged || changesAdvice) }
-    refreshCorrectionFact()
+    if (corrections.isNotEmpty() && corrections.none { it.refreshRequired }) {
+        verifyExpenseFromCache(afterRowVersion = corrections.maxOf { it.row.expectedRowVersion }) {
+            refreshCorrectionFact()
+        }
+    } else {
+        refreshCorrectionFact()
+    }
 }
 
 /** Reconcile a route's initial root with its existing bound Room projection without requiring a network read. */
 internal fun ExpenseFactViewModel.verifyInitialExpenseFromCache(onRefreshRequired: () -> Unit) {
+    verifyExpenseFromCache(afterRowVersion = null, onRefreshRequired = onRefreshRequired)
+}
+
+/** A newly delivered correction additionally requires a cached root beyond its original OCC. */
+private fun ExpenseFactViewModel.verifyExpenseFromCache(afterRowVersion: Long?, onRefreshRequired: () -> Unit) {
     val binding = _uiState.value.correctionAccess?.binding ?: return
     val generation = ++expenseLoadGeneration
     expenseReadInFlightGeneration = generation
@@ -102,34 +114,38 @@ internal fun ExpenseFactViewModel.verifyInitialExpenseFromCache(onRefreshRequire
         expenseLoadState = ExpenseDetailDataLoadState.Loading) }
     viewModelScope.launch {
         if (!isCurrentInitialRootRequest(binding, generation)) return@launch
-        val cached = repository.fetchExpenseFromLocalCache(expenseId)
+        val cached = repository.fetchExpenseFromLocalCache(expenseId).getOrNull()
         if (!isCurrentInitialRootRequest(binding, generation)) return@launch
         val currentBinding = repository.observeCorrections().first().access?.binding
         if (currentBinding != binding || !isCurrentInitialRootRequest(binding, generation)) return@launch
-        cached.onSuccess { expense ->
-            _uiState.update {
-                val current = it.expense
-                val adopted = if (current == null || expense.rowVersion >= current.rowVersion) expense else current
-                it.copy(expense = adopted, initialRootVerificationPending = false, expenseLoading = false,
-                    expenseLoadState = ExpenseDetailDataLoadState.Loaded, expenseStale = false,
-                    expenseLoadMessage = null)
-            }
-            if (_uiState.value.expense?.canInitiateBillSplit(_uiState.value.readOnly) == true) {
-                loadBillSplitSent(onlyIfUnknown = true)
-            }
-            if (_uiState.value.corrections.any { it.refreshRequired } ||
-                (_uiState.value.expense?.rowVersion ?: 0L) < _uiState.value.requiredRootRowVersion
-            ) onRefreshRequired()
-        }.onFailure {
+        if (cached == null || (afterRowVersion != null &&
+                (cached.rowVersion <= afterRowVersion || cached.rowVersion < _uiState.value.requiredRootRowVersion))) {
             _uiState.update { it.copy(initialRootVerificationPending = false, expenseLoading = true,
                 expenseLoadState = ExpenseDetailDataLoadState.Loading) }
-            // The old confirmed cache may have been retired by an authoritative non-confirmed read.
-            // Keep known content visible, but only the existing fresh-read owner can restore write eligibility.
             onRefreshRequired()
+            return@launch
         }
+        if (!adoptVerifiedCachedRoot(cached)) onRefreshRequired()
+        else if (afterRowVersion != null) refreshCorrectionDetails()
     }.invokeOnCompletion {
         if (expenseReadInFlightGeneration == generation) expenseReadInFlightGeneration = null
     }
+}
+
+private fun ExpenseFactViewModel.adoptVerifiedCachedRoot(cached: Expense): Boolean {
+    _uiState.update {
+        val current = it.expense
+        val adopted = if (current == null || cached.rowVersion >= current.rowVersion) cached else current
+        it.copy(expense = adopted, initialRootVerificationPending = false, expenseLoading = false,
+            expenseLoadState = ExpenseDetailDataLoadState.Loaded, expenseStale = false,
+            expenseLoadMessage = null)
+    }
+    if (_uiState.value.expense?.canInitiateBillSplit(_uiState.value.readOnly) == true) {
+        loadBillSplitSent(onlyIfUnknown = true)
+    }
+    val state = _uiState.value
+    return state.corrections.none { it.refreshRequired } &&
+        (state.expense?.rowVersion ?: 0L) >= state.requiredRootRowVersion
 }
 
 private fun ExpenseFactViewModel.isCurrentInitialRootRequest(binding: LogicalSessionBinding, generation: Long): Boolean =
@@ -153,6 +169,10 @@ internal fun ExpenseFactViewModel.blockUnreadyFactWrite(expectedRowVersion: Long
 
 fun ExpenseFactViewModel.refreshCorrectionFact() {
     retryLoadExpense()
+    refreshCorrectionDetails()
+}
+
+private fun ExpenseFactViewModel.refreshCorrectionDetails() {
     loadExpenseFactBundle()
     loadExpenseItems()
     loadExpenseSplits()
