@@ -103,7 +103,7 @@ class SyncStatusScreenConfirmTest {
         var dropped: OutboxRow? = null
         composeRule.setContent { TicketboxTheme(skin = AppSkin.Default) {
             SyncStatusScreenContent(state.value, SyncStatusActions(onOpenExpense = {}, onKeepMine = {},
-                onDropMine = { dropped = it }, onRetry = {}, onDropFailed = {}, onClearQuarantined = {}), {})
+                onDropMine = { dropped = it }, onRetry = {}, onDropFailed = {}, onClearQuarantined = {}), {}, onOpenInbox = {})
         } }
         composeRule.onNodeWithText("放弃我的改动").performScrollTo().performClick()
         composeRule.onNodeWithText("放弃我的改动？").assertIsDisplayed()

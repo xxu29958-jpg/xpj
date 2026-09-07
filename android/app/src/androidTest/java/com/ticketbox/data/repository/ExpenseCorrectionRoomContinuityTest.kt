@@ -293,7 +293,7 @@ class ExpenseCorrectionRoomContinuityTest {
                     graph.incomePlanRepository, graph.debtAdjustmentRepository)).create(OutboxStatusViewModel::class.java)
         }
         compose.setContent { TicketboxTheme(skin = AppSkin.Paper) {
-            SyncStatusScreen(requireNotNull(global), {}, onOpenExpense = { opened = it })
+            SyncStatusScreen(requireNotNull(global), {}, onOpenExpense = { opened = it }, onOpenInbox = {})
         } }
         compose.waitUntil(10_000) { global?.uiState?.value?.correctionObservation?.corrections?.singleOrNull()?.delivered == true }
         compose.onNodeWithText("更正已送达；部分事实尚待刷新。").performScrollTo().assertIsDisplayed()
