@@ -433,8 +433,7 @@ sealed interface DeleteOutcome {
      * Network failed; the DELETE is queued in the outbox. The UI
      * locally removes the row either way (the row is gone from the
      * user's perspective). PR-2g.5 banner UI will surface
-     * "未同步" hints via OutboxRepository.observeConflicts /
-     * observeFailed.
+     * "未同步" hints via OutboxRepository.observeStatus.
      */
     data object Queued : DeleteOutcome
 }
