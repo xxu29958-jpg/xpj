@@ -30,9 +30,9 @@ def test_invitation_retry_after_peer_acceptance_keeps_the_original_result(
 ) -> None:
     expense_id = _make_expense_for_owner(amount_cents=5000)
     receiver = _seed_receiver(name="B-lost-ack", ledger_id="receiver_lost_ack")
-    headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
+    headers = _split_headers(client, {**identity.app_headers, "Idempotency-Key": str(uuid4())})
     payload = {"receiver_account_id": receiver, "amount_cents": 2000, "expected_row_version": 1}
-    first = client.post(f"/api/expenses/{expense_id}/split-invite", headers=_split_headers(headers), json=payload)
+    first = client.post(f"/api/expenses/{expense_id}/split-invite", headers=headers, json=payload)
     assert first.status_code == 200, first.json()
     original = first.json()
 
@@ -49,11 +49,11 @@ def test_invitation_retry_after_peer_acceptance_keeps_the_original_result(
         db.execute(update(Expense).where(Expense.id == expense_id).values(merchant="Later correction", row_version=2))
         db.commit()
 
-    replay = client.post(f"/api/expenses/{expense_id}/split-invite", headers=_split_headers(headers), json=payload)
+    replay = client.post(f"/api/expenses/{expense_id}/split-invite", headers=headers, json=payload)
     assert replay.status_code == 200, replay.json()
     assert replay.json()["public_id"] == original["public_id"]
     assert replay.json()["status"] == "accepted"
-    changed = client.post(f"/api/expenses/{expense_id}/split-invite", headers=_split_headers(headers),
+    changed = client.post(f"/api/expenses/{expense_id}/split-invite", headers=headers,
         json={**payload, "amount_cents": 2100})
     assert changed.status_code == 422
     assert changed.json()["error"] == "idempotency_key_reused"
@@ -71,7 +71,7 @@ def test_split_creation_rejects_changed_source_without_publishing_an_invitation(
     with SessionLocal() as db:
         db.execute(update(Expense).where(Expense.id == expense_id).values(merchant="Corrected source", row_version=2))
         db.commit()
-    response = client.post(f"/api/expenses/{expense_id}/split-invite", headers=_split_headers(identity.app_headers),
+    response = client.post(f"/api/expenses/{expense_id}/split-invite", headers=_split_headers(client, identity.app_headers),
         json={"receiver_account_id": receiver, "amount_cents": 2000, "expected_row_version": 1})
     assert response.status_code == 409, response.json()
     assert response.json()["error"] == "state_conflict"
@@ -100,14 +100,14 @@ def test_active_split_invitation_total_cannot_exceed_parent_expense(
 
     first = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=_split_headers(identity.app_headers),
+        headers=_split_headers(client, identity.app_headers),
         json={"expected_row_version": 1, "receiver_account_id": receiver_a, "amount_cents": 3000},
     )
     assert first.status_code == 200, first.json()
 
     second = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=_split_headers(identity.app_headers),
+        headers=_split_headers(client, identity.app_headers),
         json={"expected_row_version": 1, "receiver_account_id": receiver_b, "amount_cents": 2500},
     )
     assert second.status_code == 422

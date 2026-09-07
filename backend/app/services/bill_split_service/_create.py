@@ -75,7 +75,7 @@ def create_invitation(
             BillSplitInvitation.sender_ledger_id == sender_ledger_id,
         ).execution_options(populate_existing=True))
         if invitation is None:
-            raise AppError("split_invitation_not_found", status_code=404)
+            raise AppError("invitation_not_found", status_code=404)
         return invitation
     expense = _load_split_parent_expense(db, sender_ledger_id=sender_ledger_id, expense_id=expense_id)
     if expense.row_version != expected_row_version:

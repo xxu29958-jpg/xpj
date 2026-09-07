@@ -1,15 +1,4 @@
-"""ADR-0029 cross-ledger bill split workflow tests.
-
-Covers Confirmation section of ADR-0029:
-- DTO separation (sent vs inbox; sender / receiver fields don't leak)
-- account-scoped inbox (B切 ledger 不影响 inbox)
-- accept idempotency
-- viewer target rejection
-- same-ledger target rejection
-- chain split rejection
-- received-expense immutable field guard
-- amount bounds (>0 and ≤sender expense)
-"""
+"""Cross-ledger split facts: privacy, parties, amount bounds and transitions."""
 
 from __future__ import annotations
 
@@ -27,15 +16,14 @@ from app.services import bill_split_service as bsplit
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.expense_correction_service import correct_expense
 from app.services.time_service import now_utc
+from tests._runtime_protocol import negotiated_headers
 
 # -------------------------------------------------------------------------
 # Helpers
 
 
-def _split_headers(headers: dict[str, str]) -> dict[str, str]:
-    from app.runtime_compatibility_contract import CURRENT_API_VERSION, TICKETBOX_API_VERSION_HEADER
-
-    return {"Idempotency-Key": str(uuid4()), TICKETBOX_API_VERSION_HEADER: CURRENT_API_VERSION, **headers}
+def _split_headers(client: TestClient, headers: dict[str, str]) -> dict[str, str]:
+    return negotiated_headers(client, {"Idempotency-Key": str(uuid4()), **headers})
 
 
 def _owner_account_id() -> int:
@@ -96,7 +84,7 @@ def test_invite_request_rejects_receiver_ledger_id(client: TestClient, *, identi
     receiver_account_id = _seed_receiver()
     response = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=_split_headers(identity.app_headers),
+        headers=_split_headers(client, identity.app_headers),
         json={"expected_row_version": 1,
             "receiver_account_id": receiver_account_id,
             "amount_cents": 2500,
@@ -112,7 +100,7 @@ def test_invite_request_rejects_receiver_ledger_id(client: TestClient, *, identi
     # never carries receiver_ledger_id.
     ok = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=_split_headers(identity.app_headers),
+        headers=_split_headers(client, identity.app_headers),
         json={"expected_row_version": 1, "receiver_account_id": receiver_account_id, "amount_cents": 2500},
     )
     assert ok.status_code == 200, ok.json()
@@ -131,7 +119,7 @@ def test_sent_response_omits_receiver_ledger_even_after_accept(
     # 1) sender creates
     create_resp = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=_split_headers(identity.app_headers),
+        headers=_split_headers(client, identity.app_headers),
         json={"expected_row_version": 1, "receiver_account_id": receiver_account_id, "amount_cents": 2500},
     )
     public_id = create_resp.json()["public_id"]
@@ -162,7 +150,7 @@ def test_inbox_response_omits_sender_internal_ids(client: TestClient, *, identit
     receiver_account_id = _seed_receiver()
     client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=_split_headers(identity.app_headers),
+        headers=_split_headers(client, identity.app_headers),
         json={"expected_row_version": 1, "receiver_account_id": receiver_account_id, "amount_cents": 2500},
     )
 
@@ -433,7 +421,7 @@ def test_invite_amount_must_be_positive(client: TestClient, *, identity) -> None
     receiver_account_id = _seed_receiver(name="B-zero", ledger_id="receiver_zero")
     response = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=_split_headers(identity.app_headers),
+        headers=_split_headers(client, identity.app_headers),
         json={"expected_row_version": 1, "receiver_account_id": receiver_account_id, "amount_cents": 0},
     )
     assert response.status_code == 422
@@ -445,7 +433,7 @@ def test_invite_amount_capped_at_sender_expense_total(client: TestClient, *, ide
     receiver_account_id = _seed_receiver(name="B-cap", ledger_id="receiver_cap")
     response = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=_split_headers(identity.app_headers),
+        headers=_split_headers(client, identity.app_headers),
         json={"expected_row_version": 1, "receiver_account_id": receiver_account_id, "amount_cents": 9999},
     )
     assert response.status_code == 422
@@ -461,7 +449,7 @@ def test_cancel_invited_invitation(client: TestClient, *, identity) -> None:
     receiver_account_id = _seed_receiver(name="B-cancel", ledger_id="receiver_cancel")
     create_resp = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=_split_headers(identity.app_headers),
+        headers=_split_headers(client, identity.app_headers),
         json={"expected_row_version": 1, "receiver_account_id": receiver_account_id, "amount_cents": 2500},
     )
     public_id = create_resp.json()["public_id"]

@@ -18,6 +18,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.routes._web_bill_split_context import build_split_invite_context
 from app.routes._web_expense_fact_pager import fact_timeline_page_context
 from app.routes._web_expense_helpers import web_edit_context
 from app.routes._web_expense_offset_fact import expense_offset_fact_view
@@ -29,7 +30,6 @@ from app.routes._web_expense_return_context import (
     return_label,
 )
 from app.routes._web_money_views import _minor_amount_label
-from app.routes.web_bill_split import build_split_invite_context
 from app.routes.web_common import _web_redirect, templates
 from app.services import invitation_members
 from app.services.expense_revision_service import list_expense_revisions

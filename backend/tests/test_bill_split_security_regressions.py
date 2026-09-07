@@ -106,7 +106,7 @@ def test_accept_route_allows_current_viewer_when_target_ledger_is_writer(
 
     create_resp = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=_split_headers(identity.app_headers),
+        headers=_split_headers(client, identity.app_headers),
         json={"expected_row_version": 1, "receiver_account_id": receiver_account_id, "amount_cents": 2500},
     )
     assert create_resp.status_code == 200, create_resp.json()
@@ -137,7 +137,7 @@ def test_accept_route_attributes_confirmation_revision_to_authenticated_device(
     )
     created = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=_split_headers(identity.app_headers),
+        headers=_split_headers(client, identity.app_headers),
         json={"expected_row_version": 1, "receiver_account_id": receiver_account_id, "amount_cents": 2500},
     )
     assert created.status_code == 200, created.json()
@@ -193,7 +193,7 @@ def test_reject_route_allows_current_viewer_ledger(
 
     create_resp = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=_split_headers(identity.app_headers),
+        headers=_split_headers(client, identity.app_headers),
         json={"expected_row_version": 1, "receiver_account_id": receiver_account_id, "amount_cents": 2500},
     )
     assert create_resp.status_code == 200, create_resp.json()
@@ -228,7 +228,7 @@ def test_cancel_route_checks_sender_ledger_not_current_ledger_writer_role(
 
     create_resp = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=_split_headers(identity.app_headers),
+        headers=_split_headers(client, identity.app_headers),
         json={"expected_row_version": 1, "receiver_account_id": receiver_account_id, "amount_cents": 2500},
     )
     assert create_resp.status_code == 200, create_resp.json()
@@ -358,7 +358,7 @@ def test_sender_cannot_invite_self(client: TestClient, *, identity) -> None:
     expense_id = _make_expense_for_owner()
     response = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=_split_headers(identity.app_headers),
+        headers=_split_headers(client, identity.app_headers),
         json={"expected_row_version": 1, "receiver_account_id": _owner_account_id(), "amount_cents": 2500},
     )
     assert response.status_code == 422
@@ -371,7 +371,7 @@ def test_unknown_receiver_does_not_enumerate_accounts(
     expense_id = _make_expense_for_owner()
     response = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=_split_headers(identity.app_headers),
+        headers=_split_headers(client, identity.app_headers),
         json={"expected_row_version": 1, "receiver_account_id": 999_999_999, "amount_cents": 2500},
     )
     assert response.status_code == 422
@@ -385,14 +385,14 @@ def test_duplicate_pending_invite_to_same_receiver_rejected(
     receiver_account_id = _seed_receiver(name="B-dupe", ledger_id="receiver_dupe")
     first = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=_split_headers(identity.app_headers),
+        headers=_split_headers(client, identity.app_headers),
         json={"expected_row_version": 1, "receiver_account_id": receiver_account_id, "amount_cents": 2500},
     )
     assert first.status_code == 200, first.json()
 
     second = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=_split_headers(identity.app_headers),
+        headers=_split_headers(client, identity.app_headers),
         json={"expected_row_version": 1, "receiver_account_id": receiver_account_id, "amount_cents": 2500},
     )
     assert second.status_code == 409

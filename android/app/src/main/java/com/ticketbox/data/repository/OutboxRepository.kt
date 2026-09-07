@@ -786,7 +786,7 @@ class OutboxRepository private constructor(
      *   caller is responsible for rolling back any optimistic UI
      *   update that was tied to this mutation.
      */
-    suspend fun resolveFailed(id: Long, resolution: FailedResolution, boundRequest: BoundLedgerRequest? = null): Boolean =
+    internal suspend fun resolveFailed(id: Long, resolution: FailedResolution, boundRequest: BoundLedgerRequest? = null): Boolean =
         resolveStatus(id, PendingMutationStatus.Failed, resolution == FailedResolution.Drop,
             (resolution as? FailedResolution.Retry)?.freshToken, boundRequest)
 

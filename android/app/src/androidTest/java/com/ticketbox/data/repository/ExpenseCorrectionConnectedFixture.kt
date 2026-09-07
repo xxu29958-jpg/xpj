@@ -62,7 +62,7 @@ import retrofit2.HttpException
 internal class ExpenseCorrectionConnectedFixture(private val context: Context) {
     private val name = "expense-correction-continuity.db"
     private var database: AppDatabase? = null
-    private val clock = Clock.fixed(Instant.parse("2026-09-06T00:00:00Z"), ZoneOffset.UTC)
+    val clock = Clock.fixed(Instant.parse("2026-09-06T00:00:00Z"), ZoneOffset.UTC)
     private val session = MutableStateFlow(correctionSession())
     val network = CorrectionConnectedNetwork()
     private val adapters = OutboxAdapterGraph()

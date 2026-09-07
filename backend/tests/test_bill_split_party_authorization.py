@@ -34,7 +34,7 @@ def _create_invited_split(
     expense_id = _make_expense_for_owner()
     resp = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=_split_headers(identity.app_headers),
+        headers=_split_headers(client, identity.app_headers),
         json={"expected_row_version": 1, "receiver_account_id": receiver_account_id, "amount_cents": amount_cents},
     )
     assert resp.status_code == 200, resp.json()

@@ -32,10 +32,9 @@ import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 
 /**
- * UI/UX 第三波 批 13：跨账本拆账发起 sheet（ADR-0029）。从一笔已确认账单向**本账本
- * 成员**单选一位发起拆账邀请：成员单选（只展示 displayName，不露任何 id）+ 分摊金额
- * （exact yuan）。**在线-only**：发送失败的错误直接在 sheet 内展示（[BillSplitInviteSheetState.message]），
- * 不入离线队列、不假装已发——该面无幂等键。镜像 [SplitsEditorSheet] 的 ModalBottomSheet 结构。
+ * Review the recipient and share in the source expense's home currency.
+ * Saving publishes the immutable original intent to the durable outbox; its delivery
+ * and recovery status remain visible on the source fact and in Sync Status.
  */
 @Immutable
 internal data class BillSplitInviteSheetState(

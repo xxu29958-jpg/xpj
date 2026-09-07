@@ -271,7 +271,7 @@ def test_build_split_invite_context_hidden_for_viewer_render() -> None:
     returns None so the卡 never renders (POST 403 is enforced separately by
     ``_require_selected_ledger_write`` — see test_web_route_inventory +
     test_web_session_write_gate)."""
-    from app.routes.web_bill_split import build_split_invite_context
+    from app.routes._web_bill_split_context import build_split_invite_context
 
     expense = {
         "id": 1,

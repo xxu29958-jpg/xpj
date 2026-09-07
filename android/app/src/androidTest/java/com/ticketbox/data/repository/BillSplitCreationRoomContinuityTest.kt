@@ -90,7 +90,20 @@ class BillSplitCreationRoomContinuityTest {
         assertTrue(original.row.idempotencyKey?.isNotBlank() == true)
     }
 
+    @Test fun lostWritePermissionOrChangedLedgerCannotPublishTheOriginalSource() = runBlocking {
+        val repository = fixture.reopen().expenseRepository
+        val binding = requireNotNull(repository.captureDeferredLedgerBinding())
+        val source = fixture.network.current.toDomain()
+        fixture.role("viewer")
+        assertTrue(repository.createBillSplitInvitation(binding, source, 22, "Receiver", 400).isFailure)
+        fixture.role("member")
+        fixture.switchLedger()
+        assertTrue(repository.createBillSplitInvitation(binding, source, 22, "Receiver", 400).isFailure)
+        assertTrue(fixture.stored().isEmpty())
+        assertTrue(calls.isEmpty())
+    }
+
     private fun engine() = OutboxDrainEngine(outbox = fixture.outbox,
         dispatchers = listOf(CreateBillSplitDispatcher({ service }, adapters.billSplitCreateAdapter, adapters.billSplitReceiptAdapter)),
-        maxAttempts = 1)
+        maxAttempts = 1, now = fixture.clock::millis)
 }

@@ -79,7 +79,7 @@ def _invite(client: TestClient, identity, receiver_account_id: int, *, amount_ce
     expense_id = _make_expense_for_owner()
     resp = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=_split_headers(identity.app_headers),
+        headers=_split_headers(client, identity.app_headers),
         json={"expected_row_version": 1, "receiver_account_id": receiver_account_id, "amount_cents": amount_cents},
     )
     assert resp.status_code in (200, 201), resp.json()
@@ -137,7 +137,7 @@ def _invite_foreign_parent(
         parent_id = parent.id
     resp = client.post(
         f"/api/expenses/{parent_id}/split-invite",
-        headers=_split_headers(identity.app_headers),
+        headers=_split_headers(client, identity.app_headers),
         json={"expected_row_version": 1, "receiver_account_id": receiver_account_id, "amount_cents": share_cents},
     )
     assert resp.status_code in (200, 201), resp.json()
