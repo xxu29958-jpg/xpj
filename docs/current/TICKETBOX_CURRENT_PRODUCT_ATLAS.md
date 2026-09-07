@@ -175,7 +175,8 @@ feedback and efficient actions within each active capability change.
 **Active work:** #385 and #386 are merged and independently main-qualified.
 Real-device upload recovery passed process termination and external-source loss.
 #387 closes the capture consumer gaps found during that rehearsal: external entry
-from detail, editor completion, original access and keyboard-reachable review.
+with retained drafts, editor completion, offline pending reconciliation, original
+access and keyboard-reachable review.
 Evidence belongs in the [upload](TICKETBOX_UPLOAD_INTENT_CONTINUITY_CONTRACT.md),
 [debt-bill](TICKETBOX_DEBT_BILL_BINDING_CONTRACT.md) contracts and [#387](https://github.com/xxu29958-jpg/xpj/pull/387).
 

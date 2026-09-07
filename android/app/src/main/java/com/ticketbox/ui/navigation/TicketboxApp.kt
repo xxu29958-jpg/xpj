@@ -428,7 +428,8 @@ internal fun LaunchRequestEffect(
     LaunchedEffect(launchRequest) {
         val request = launchRequest ?: return@LaunchedEffect
         if (request !is LaunchIntentRequest.JoinInvitation) {
-            navController.popBackStack(MAIN_ROUTE, inclusive = false)
+            // An external task must leave the unfinished editor available on Back.
+            navController.navigate(MAIN_ROUTE) { launchSingleTop = true }
         }
         dispatchLaunchRequest(request, shellState)
         if (request is LaunchIntentRequest.ShareImages) {
