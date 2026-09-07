@@ -14,6 +14,9 @@ compaction and final integration.
 The atlas owns boundaries, capability status, remaining delivery and next action.
 The [user journey contract](TICKETBOX_USER_JOURNEYS_CONTRACT.md) owns detailed task
 semantics; linked slice contracts and plans own impact closure and qualification.
+Maintain these by replacing stale current statements, repairing references and
+retiring superseded instructions. Keep only information needed for the document's
+responsibility; adding another paragraph is not a substitute for updating it.
 [Earlier qualification notes](../qualification/2026-09-07-product-atlas-history.md)
 are a frozen historical extraction. Candidate/main hashes, run IDs, test counts,
 RED/GREEN narratives and review dispositions belong in those evidence sources,
