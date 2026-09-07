@@ -38,6 +38,7 @@ internal class FakeDebtActions(
 
     /** When set, listDebts() stalls until completed — used to interleave a slow load. */
     var listGate: CompletableDeferred<Unit>? = null
+    var parseBillGate: CompletableDeferred<Unit>? = null
 
     /** 列表信封的安装级 currency capability（PR#255 R6）；null = 旧服务端不下发。 */
     var listCapability: String? = null
@@ -57,12 +58,15 @@ internal class FakeDebtActions(
     override suspend fun getDebt(publicId: String): Result<Debt> = Result.success(sampleDebt(publicId))
 
     override suspend fun parseDebtBillImage(
+        expectedBinding: LogicalSessionBinding,
         fileName: String,
         contentType: String?,
         bytes: ByteArray,
     ): Result<DebtBillSuggestion> {
         parseBillCalls += fileName
-        return parseBillResult
+        val captured = parseBillResult
+        parseBillGate?.await()
+        return captured
     }
 
     override suspend fun recordRepayment(

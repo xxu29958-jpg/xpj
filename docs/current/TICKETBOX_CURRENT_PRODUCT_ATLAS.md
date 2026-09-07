@@ -1,467 +1,191 @@
 # Ticketbox current product atlas
 
-> Derived implementation map, not a product authority. The authoritative subject is the Git commit that contains this file. Reverify after changes to registered routes, domain services, runtime settings, Room/Outbox, Desktop Manager, packaging, or consumer navigation.
+This map answers **what the system is, where it stands, and what remains**.
+Authority is the Goal and latest user rulings → three final Gmail contracts →
+exact current code/database/build/runtime. This document is derived navigation,
+not an independent product authority or an Internal Beta readiness claim.
 
-This atlas derives a current construction map from the Goal, latest user rulings and three 2026-08-26 contracts. It records what exists, what is only partially usable, what is genuinely missing, and what must retire. `COMPLETE` is intentionally absent until exact Internal Beta RC qualification.
+**Standing standard for the entire Goal:** “允许问题域复杂，不允许复杂性在代码里到处扩散。”
+ACK loss, OCC, binding changes, offline recovery and cross-client consistency
+remain necessary. Explicit owners and stable contracts must reduce the places
+that change together. This applies to implementation and documentation, through
+compaction and final integration.
 
-**Standing implementation standard for the entire Goal — Owner ruling, 2026-09-07:** “允许问题域复杂，不允许复杂性在代码里到处扩散。” ACK loss, OCC, binding changes, offline recovery and cross-client consistency remain necessary semantics. Compress their implementation into explicit owners and stable contracts so entrances and consumers do not duplicate the same rules or coordinate additional state. Encapsulation must reduce the places that change together, not merely move complexity behind wrappers. Apply this standard before and after every business-semantic or owner change, together with the Goal's impact closure, and carry it through compaction, subsequent slices and final integration. It is not a standard limited to the current upload slice.
+The atlas owns boundaries, capability status, remaining delivery and next action.
+The [user journey contract](TICKETBOX_USER_JOURNEYS_CONTRACT.md) owns detailed task
+semantics; linked slice contracts and plans own impact closure and qualification.
+Maintain these by replacing stale current statements, repairing references and
+retiring superseded instructions. Keep only information needed for the document's
+responsibility; adding another paragraph is not a substitute for updating it.
+[Earlier qualification notes](../qualification/2026-09-07-product-atlas-history.md)
+are a frozen historical extraction. Candidate/main hashes, run IDs, test counts,
+RED/GREEN narratives and review dispositions belong in those evidence sources,
+not here. Reverify affected map entries when their implementation changes.
 
-## 1. Product and container architecture
-
-```mermaid
-flowchart LR
-    Person[Household member]
-    Owner[Owner / operator]
-    Shortcut[iPhone Shortcut]
-    Android[Android app\nRoom + Outbox]
-    Web[Responsive Web\nfive work domains]
-    Console[Owner Console\nloopback only]
-    Desktop[Desktop Manager\nhost + lifecycle]
-
-    API[FastAPI modular monolith\ndomain command/query owners]
-    PG[(PostgreSQL\nfinancial + identity facts)]
-    Files[(Protected attachment store)]
-    Runtime[(Service-owned runtime settings)]
-    Providers[Local suggestion providers\nOCR / local vision / FX]
-
-    Person --> Shortcut -->|upload link| API
-    Person --> Android
-    Person --> Web
-    Owner --> Console
-    Owner --> Desktop
-    Android -->|API + idempotency/OCC| API
-    Android <-->|durable offline intent| Android
-    Web -->|session + CSRF/OCC| API
-    Console -->|local-only commands| API
-    Desktop -->|same-origin BFF / host status| API
-    API --> PG
-    API --> Files
-    API --> Runtime
-    API --> Providers
-```
-
-There is one backend runtime and one set of fact owners. Web, Android, Owner Console, Desktop Manager and Shortcut are consumers with different trust and interaction boundaries; none may become a second business owner.
-
-### Runtime lanes and tool boundaries
-
-```mermaid
-flowchart TB
-    subgraph Consumers[Production consumers]
-        W[Web SSR + progressive enhancement]
-        A[Android Compose + Room]
-        S[iPhone Shortcut]
-        O[Owner Console]
-        D[Desktop Manager]
-    end
-    subgraph Boundary[Transport and trust boundary]
-        Session[Session / app token / upload capability]
-        Guard[Ledger scope + permissions + CSRF]
-        Router[Web, API and local-owner routers]
-    end
-    subgraph Application[Application ownership]
-        CQ[Domain commands and queries]
-        OCC[OCC + idempotency + receipts]
-        Work[Background task catalog + scheduler]
-        Health[Capability health and diagnostics]
-    end
-    subgraph Facts[Durable owners]
-        DB[(PostgreSQL)]
-        Media[(Protected originals)]
-        Outbox[(Android Room / Outbox)]
-        Settings[(Runtime settings projection)]
-    end
-    subgraph Adapters[Replaceable tools]
-        OCR[RapidOCR / local vision]
-        FX[ECB / Frankfurter / manual FX]
-        Advisor[Budget advisor provider]
-        Import[CSV import/export]
-        Backup[Backup / restore adapters]
-        Tunnel[Public connectivity adapter]
-    end
-
-    Consumers --> Session --> Guard --> Router --> CQ
-    CQ --> OCC --> DB
-    A <--> Outbox
-    Outbox --> Router
-    CQ --> Media
-    O --> Settings --> CQ
-    CQ --> Work --> DB
-    Work --> OCR
-    Work --> FX
-    CQ --> Advisor
-    CQ --> Import
-    D --> Backup
-    D --> Tunnel
-    Health -. reads status, never steals ownership .-> Work
-    Health -.-> Settings
-    Health -.-> Adapters
-```
-
-The containers above are responsibilities, not a request to split the modular monolith into services. Adapters may change; commands, permissions, facts and user receipts remain owned by the application layer. A tool is not a product capability until a real consumer can configure or reach it, recover from failure, and observe the postcondition.
-
-## 2. User work and backstage
-
-```mermaid
-flowchart TB
-    Capture[Inbox\ncapture and review]
-    Facts[Transactions\nconfirmed facts and revisions]
-    Relations[Relationships\ndebts, splits, reimbursements]
-    Planning[Planning\nbudgets, goals, recurring, income]
-    Insights[Insights\nreports and projections]
-
-    Identity[Identity + capability]
-    Money[Money / currency / OCC / idempotency]
-    Offline[Android Room + Outbox]
-    Assets[Attachments + provenance]
-    Reference[Reference library]
-    Ops[Owner Console + Desktop Manager]
-
-    Capture --> Facts --> Relations
-    Facts --> Planning --> Insights
-    Relations --> Insights
-    Identity -.-> Capture
-    Identity -.-> Facts
-    Money -.-> Facts
-    Money -.-> Relations
-    Money -.-> Planning
-    Offline -.-> Capture
-    Offline -.-> Facts
-    Offline -.-> Relations
-    Assets -.-> Capture
-    Reference -.-> Capture
-    Reference -.-> Planning
-    Ops -.-> Identity
-    Ops -.-> Assets
-    Ops -.-> Offline
-```
-
-The five domains are the product. Backstage exists to make them installable, configurable, observable and recoverable; it is not a second product navigation.
-
-## 3. Capability control boundary
-
-Every capability is evaluated through the same five links:
+## 1. Five domains and their consumers
 
 ```mermaid
 flowchart LR
-    Configured[Configured\nvalid inputs exist] --> Enabled[Enabled\nowner intent permits use]
-    Enabled --> Reachable[Reachable\nconsumer has a lawful entry]
-    Reachable --> Operable[Operable\nloading/error/conflict/offline recovery]
-    Operable --> Observable[Observable\nstatus and postcondition are visible]
+    Person[Household member] --> Web[Responsive Web]
+    Person --> Android[Android app]
+    Person --> Shortcut[iPhone Shortcut]
+    Operator[Installation Owner] --> Console[Owner Console / loopback]
+    Operator --> Desktop[Desktop Manager]
+    Web -->|session + CSRF| Backend[One FastAPI modular monolith]
+    Android -->|API + OCC + idempotency| Backend
+    Android <--> Outbox[(Room / unsent intentions)]
+    Shortcut -->|upload capability| Backend
+    Console -->|local governance| Backend
+    Desktop -->|same-origin BFF / host status| Backend
+    Backend --> Facts[(PostgreSQL / financial and identity facts)]
+    Backend --> Originals[(Protected originals)]
+    Backend --> Runtime[(Service-owned runtime settings)]
+    Backend --> Tools[Recognition / FX / advisor / import adapters]
 ```
 
-| Setting kind | Fact owner | Product surface | Rule |
-|---|---|---|---|
-| Ledger/business preference | Domain service | Web and Android | Available where the household performs the task |
-| Safe live operator setting | Service-owned runtime projection | Owner Console | Atomic save, validated, immediately observable |
-| Secret, database, service or install boundary | Windows lifecycle | Desktop Manager or read-only diagnostics | Never exposed as a casual web toggle |
-| Internal maintenance policy | Owning service/scheduler | Health/status first | Add a manual control only for a real recovery task |
+Web, Android, Shortcut, Owner Console and Desktop Manager are consumers with
+different trust and interaction boundaries. They share one backend and one set
+of fact/command/query owners. Adapters are replaceable tools; the application
+owns permission, financial meaning and receipts. These are responsibility
+boundaries within the modular monolith, not a microservice construction plan.
 
-This replaces the old advice to edit the runtime projection or `backend/.env` from a web page. The projection is an implementation detail; lifecycle-owned settings stay lifecycle-owned.
-
-## 4. Current capability classification
-
-| Capability | State | Current owner and consumers | Required disposition |
-|---|---|---|---|
-| Upload links, Shortcut capture and pending review | `EXISTING` | Upload/expense services → Shortcut, Web, Android, Owner | Preserve and improve task feedback |
-| Confirmed financial facts, revisions and offsets | `STRONG_SLICE` | Financial fact services → Web and Android | Keep exact OCC/revision semantics; RC qualification remains |
-| Debts, splits and reimbursements | `STRONG_SLICE` | Relationship services → Web and Android | Preserve offline intent and lineage |
-| Budgets, goals, recurring and income plans | `STRONG_SLICE` | Planning services → Web and Android | Continue consumer-level completion and visual migration |
-| Reports, trends and projections | `STRONG_SLICE` | Insight read models → Web and Android | Continue information hierarchy and empty/error work |
-| Receipt and debt-bill recognition | `STRONG_SLICE`, merged in #353 | OCR/debt parse services → upload/review/debt consumers | Preserve Owner selection, enablement and shared-pipeline status; full product RC qualification remains |
-| Currency adoption when existing evidence requires it | `STRONG_SLICE`, merged in #354 at `684c0dd8` | Installation binding/adoption service → Desktop product bridge; Android compatibility guard | Candidate and exact merge-main cloud qualification passed; keep old maintenance API retired |
-| Manual FX recovery for one pending foreign-currency expense | `STRONG_SLICE`, merged in #355 at `06edbbde` | Expense snapshot owner → shared pending edit command, Web edit and Android PatchExpense | Candidate and exact merge-main CI/CodeQL/Connected passed; merged branch retired. Preserve explicit canonical review and offline intent |
-| First use, connection and household entry | `PARTIAL` / under current verification | Installation/account/ledger owners → Desktop, Web and Android | Simplify the role-specific first-use journey, explain data ownership, preserve entered setup and provide one actionable recovery step |
-| Manual expense entry on Web | `STRONG_SLICE`, native command in #359 and browser draft continuation in #368 | `create_manual_expense` → native Web form, API and Android manual-entry sheet/Outbox | Exact candidate and merge-main `f1b4ff4a` are cloud-qualified. The amount-first form retains browser-local drafts and immutable unknown-response retries, with canonical acknowledgement retirement. Re-enrolled Device drafts remain readable for reconciliation, never rebound. No full offline-browser startup or transparent new-Device replay claim |
-| External-debt context: remember why this obligation exists | `STRONG_SLICE`, merged in #361; current main qualified | Debt create/query owners → Web and Android entry/detail | Optional context persists through the shared create fingerprint and canonical responses, appears in both clients, and survives ordinary rejected submissions. The discarded Web field is retired. #363 resolved cloud shard capacity and current main passed its own complete cloud gates; the historical timed-out merge remains unqualified. Durable Android create recovery remains the separate gap below |
-| Android external-debt create recovery | `STRONG_SLICE`, #369 and #370 candidate and independent main qualified | `DebtCreationRepository` → bound Room Outbox → `CreateDebtDispatcher` → unchanged backend Debt owner | Original submitted payload/key/owner persist before network; local acceptance is not a Debt. #370 candidate `ba742454` and identical-tree main `5791d176` independently passed CI, CodeQL and actual Connected (109 tests, no failures/skips). Original-record recovery and explicit local-discard frames were inspected; one bounded review found no blocker. Keyboard-visible interaction, physical process restart and unsubmitted editing-text restoration remain open claims |
-| Recycle bin | `STRONG_SLICE`, #375 candidate and independent main qualified | Canonical Web recovery query/dispatcher → Owner entry, Web/API/Android; existing entity restore owners | Keep the duplicate Owner surface and dispatcher retired; preserve real business identity, ledger scope, OCC and ledger governance restore |
-| Public admin API exposure | `RETIRE`, own #383 candidate qualified; integration pending | Shared local governance boundary → Admin, maintenance and admin pairing; local Owner and remote ledger-scoped product consumers remain | Public opt-in is physically retired under the local governance contract. Source `401a9cd3` passed CI/CodeQL/Connected; the custom-port help finding has a correction, with new combined-head qualification and formal resolution pending. No remote admin UI or Windows lifecycle expansion |
-| AI advisor | `STRONG_SLICE`, #376 candidate and independent main qualified | Existing provider factory + consent/role readiness → Owner, Web, API and Android error recovery | Configuration validity and actual call history stay separate; secrets remain lifecycle-owned |
-| FX sync and maintenance schedulers | FX recovery `STRONG_SLICE`, #374 candidate and independent main qualified | Scheduler/service → truthful Owner status and existing manual recovery | Preserve bounded errors, actual worker liveness and lease semantics; other task health remains tied to a concrete user decision |
-| Runtime diagnostics | `EXISTING` but developer-heavy | Backend/Owner/Desktop | Replace raw paths/route inventory with task-oriented health, then retire developer surfaces |
-| Consumer visual art and brand completion | `PARTIAL` / visual acceptance outstanding | Shared tokens/assets and real Web/Android surfaces | A distinct delivery wave: art direction, brand/icon/illustration assets, background/texture, typography, motion and cross-screen finish; existing Paper/Midnight implementation is not design authority |
-| Android offline mutation publication | `STRONG_SLICE`; #370 external-debt recovery context qualified | Room Outbox → registered dispatchers → backend owners | Preserve full mutation-type/label/dispatcher coverage. #370 closed its two real-Room/consumer RED cases on candidate `ba742454` and independently qualified main `5791d176`. The existing typed Debt projection supplies original counterparty/amount/direction/note to both recovery entries and the shared explicit-discard preview; retry/drop owners are unchanged. Actual list/confirmation frames and bounded review are accepted for this slice only. Other same-type mutation families remain in the broader recovery journey; never expose raw keys or silently drop intents |
-| Windows Fresh G2 | `CLOSED` | Windows lifecycle | Do not reopen without an executable product counterexample |
-| Restore, upgrade/downgrade and complete lifecycle operations | `HOLD` | Windows lifecycle | Remain outside current product construction |
-
-### Horizontal foundation coverage
-
-| Foundation | Current reality | Strengthening rule |
+| Product domain | User task | Authoritative responsibility |
 |---|---|---|
-| Identity and household authority | Account, ledger membership, devices, invitations and session lineage exist | Every new journey reuses permission and ledger scope; no page-local authorization |
-| Money meaning | Minor units, original/home currency, binding and revision facts exist | Block ambiguous writes, but always provide a reachable recovery journey |
-| Concurrency and replay | Row OCC and idempotent commands exist on fact-changing paths | Preserve drafts on conflict; refresh owner facts before retry; do not bind command eligibility to a failed list query |
-| Offline delivery | Android Room/Outbox dispatch coverage exists | Every new Android mutation needs enqueue, dispatcher, label, settlement and recovery together |
-| Attachments and provenance | Protected originals, thumbnails and OCR facts exist | Suggestions stay drafts; confirmation owns the financial fact |
-| Background work | Task catalog, leases and schedulers exist | Surface queued/running/failed/succeeded truth where the user waits; no spinner without settlement |
-| Runtime capability control | Public URL and recognition groups are service-owned | Safe live settings use one atomic grouped command; secrets and install boundaries remain lifecycle-owned |
-| Diagnostics and recovery | Owner/Desktop diagnostics and maintenance actions exist | Prefer task health and one recovery action over raw paths, route dumps and implementation jargon |
-| Presentation system | Shared Web/Android semantic tokens and responsive shells exist | Migrate real journeys without capability loss; remove old component/CSS owners as consumers move |
+| Capture / Inbox | Capture or import, review suggestions, recover a remainder, confirm | Upload, import and Expense commands; protected originals and provenance |
+| Transactions / Facts | Search and inspect confirmed records, correct facts, follow references | Financial facts, revisions and offsets; canonical query and correction owners |
+| Relationships | Understand debts/splits/reimbursements, settle or correct an obligation | Relationship commands, lineage and derived totals |
+| Planning | Set budgets/goals, manage recurring and income plans, associate actual payments | Planning commands and their links to confirmed facts; a plan is not a payment |
+| Insights | Review periods, trends and projections; act on data-health results | Read models derived from authoritative facts, with exact navigation back to them |
 
-### Common user-operation state model
+Attachments and the reference library support Capture, Facts and Planning. Work
+crosses domains through these existing owners; a report, suggestion or client
+projection must not become a second financial authority.
 
-```mermaid
-stateDiagram-v2
-    [*] --> Ready
-    Ready --> Editing: user starts a task
-    Editing --> Submitting: validated command
-    Submitting --> Settled: success receipt
-    Submitting --> Conflict: owner revision changed
-    Submitting --> OfflineQueued: durable Android intent
-    Submitting --> RecoverableError: validation/provider/network failure
-    Conflict --> Editing: refresh owner facts + preserve draft
-    OfflineQueued --> Settled: replay accepted
-    OfflineQueued --> RecoverableError: replay needs user action
-    RecoverableError --> Editing: retry or correct input
-    Settled --> Ready: refresh affected query
-```
+## 2. Backstage and capability readiness
 
-Screens may express these states differently, but they may not collapse them into one generic failure. A successful command remains successful even when the following query refresh fails; the UI shows the receipt and offers a separate refresh retry.
+Backstage makes the five domains configurable, observable and recoverable. It is
+not a second household product navigation. A tool is usable only through the
+applicable chain: **configured → enabled → reachable → operable → observable**.
+Valid configuration alone proves neither reachability nor successful execution.
 
-## 5. Corrected operation journeys
-
-### Recognition and assisted entry
-
-```mermaid
-sequenceDiagram
-    actor O as Owner
-    participant C as Owner Console
-    participant R as Runtime settings owner
-    participant P as OCR/debt provider
-    participant U as Web/Android review
-    O->>C: Choose manual, RapidOCR, or local vision
-    C->>R: Validate and atomically publish one recognition profile
-    R-->>C: Saved and effective without restart
-    O->>U: Upload receipt or debt bill
-    U->>P: Run configured provider when enabled
-    alt usable result
-        P-->>U: Draft fields + confidence + provenance
-        U-->>O: Review before confirmation
-    else unavailable or low confidence
-        P-->>U: Stable error or fallback result
-        U-->>O: Preserve draft and offer retry/manual continuation
-    end
-```
-
-### Currency adoption
-
-```mermaid
-sequenceDiagram
-    actor O as Installation Owner
-    participant D as Desktop product bridge
-    participant C as Currency adoption service
-    participant B as Installation binding + audit
-    participant A as Android Outbox worker
-    O->>D: Open any money page
-    D->>C: Read adoption preview as paired Desktop owner
-    C-->>D: Evidence conclusion + binding revision
-    D-->>O: Explain one-time choice and consequences
-    O->>D: Confirm original home currency
-    D->>C: Form command + evidence token + OCC + idempotency
-    C->>B: Lock, revalidate owner/evidence, activate once
-    B-->>C: Durable receipt + audit actor
-    C-->>D: Active binding
-    D-->>O: Money features restored
-    A->>C: Read runtime compatibility before drain
-    alt compatible
-        C-->>A: compatible + API version + currency binding
-        A->>C: Replay existing durable intents with negotiated headers
-    else adoption still required or read unavailable
-        C-->>A: owner action required / unavailable
-        A-->>A: Preserve rows; show Owner action when required; retry later
-    end
-```
-
-The installation claim account is the authority; the browser form is only its Desktop consumer. A naked browser, a different account and the retired maintenance API cannot adopt. Evidence conflicts keep every amount unchanged and route the Owner to the existing Desktop diagnostics shortcut. Android reads the shared compatibility conclusion before draining and shows the installation Owner's next step in Sync Status. Immediate and queued writes negotiate the current API version and currency binding. A failed negotiation read or a binding activation race remains retryable, preserving the queued intent.
-
-### Missing FX rate recovery
-
-1. Pending review identifies the original currency/date and says why confirmation is blocked.
-2. The original Web and Android editors accept `1 original currency = N home currency`, explicitly for this bill only. A member can correct an entered rate before confirming.
-3. The existing pending edit command applies the rate and any edited amount/date in one Expense OCC/idempotency transaction. The backend records the manual source and effective transaction date, computes the home amount, and returns a still-pending bill. It never writes the shared daily ExchangeRate table for this task.
-4. The editor stays open to show the canonical conversion before the user confirms. Browser and Android do not create a competing FX calculator or treat an unreviewed local estimate as ready.
-5. Android queues the rate with the existing PatchExpense intent when offline. It explains that conversion awaits synchronization; ordinary already-ready offline confirmation remains available.
-6. Validation failure, conflict and response loss preserve the complete draft and stable retry identity. Web and API share the edit transaction owner; the old Web direct-commit bypass retires as its consumers move.
-
-The previous map confused an existing ledger-wide manual daily-rate endpoint with an existing single-bill recovery command. Current code established that distinction; the product task determines the new scope. Shared-rate administration and provider ingestion are not silently coupled to editing one bill.
-
-Current-slice evidence (revisit on the listed paths or a direct failing journey; retain only the load-bearing regression after this slice):
-
-| Claim and falsifier | Owner / consumers and trigger paths | Evidence and cost |
+| Responsibility | Owner / consumer | Boundary |
 |---|---|---|
-| Rate recovery remains pending, affects only one bill, and cannot overwrite stale facts; falsified by shared-rate mutation, early confirmation or stale overwrite | Expense snapshot + pending PATCH; schemas, currency/update services | Focused real PostgreSQL command journey; seconds locally, full PG on exact cloud candidate |
-| A user reviews the conversion without leaving the task; response loss cannot duplicate or lose the save | Shared edit command + Web full/drawer forms; edit routes/templates | Real authenticated form submission, idempotent replay and draft/error responses; focused local PG |
-| Offline save retains the rate intent without invented ready money | Android DTO/draft, PatchExpense and edit ViewModel/screen | Focused JVM payload, queue and settlement tests; connected execution on exact cloud candidate |
-| The public wire contract matches every changed consumer | API schema / Android DTOs | Generated OpenAPI check plus exact-head Backend/Android/Connected qualification; no new permanent audit registry |
+| Ledger and business preferences | Domain service → Web / Android | Available where the household performs the task |
+| Safe live operator settings | Service-owned runtime projection → Owner Console | One validated atomic save, with observable effect |
+| Identity, permissions and local governance | Identity / membership owners → all lawful entries | Backend enforces Account, Device, ledger and current role; loopback is not identity |
+| Task and provider health | Existing worker, scheduler and provider owners → Owner / task consumer | Separate configuration, worker liveness and actual outcomes; readable recovery |
+| Secrets, database, services and installation boundary | Windows lifecycle → Desktop Manager / read-only diagnostics | No casual Web toggle or alternate host writer |
+| Public connectivity | Existing connectivity adapter → Backstage status | Configured endpoint and tunnel health do not establish Ticketbox usability |
+| Backup / restore adapters | Windows lifecycle | Existing code does not open the held lifecycle program |
 
-### Manual expense entry — native command consumer qualified
+Runtime projection files, raw paths and route inventories are implementation
+details. Prefer ordinary task health and a useful recovery action; retire
+replaced developer surfaces when their real consumers migrate.
 
-Web has a native `/web/expenses/new` entry from the product shell, overview and transactions, plus the `N` shortcut outside active editing. It uses the existing `create_manual_expense` command, not a second writer. The command records the real Account/Device actor, uses device-scoped `client_ref` replay and retains the existing distinction between confirmed creation and a missing-FX pending bill. The latter continues into the existing single-bill exchange-rate recovery editor.
+## 3. Shared boundaries
 
-The original form carries its ledger, browser Device public identity and create identity. Validation or command refusal preserves the entered fields and the same binding. A changed ledger refuses instead of rewriting the destination; a re-enrolled browser cannot turn the old device-scoped retry into a new create. The shared command revalidates credential, membership and role under the existing identity-lifecycle transaction lock. Multi-currency amount input is parsed by the shared currency owner, without applying the home currency's browser step constraint to foreign money.
+| Foundation | Rule for every affected journey |
+|---|---|
+| Identity and household | Reuse backend Account/Device, membership and ledger scope; no page-local authorization |
+| Money and time | Preserve minor units, original/home currency, binding, intended dates/months and revisions; ambiguity needs a reachable recovery task |
+| OCC, idempotency and acknowledgement | Preserve original binding/key/body and the applicable OCC; distinguish refusal, uncertain submission and canonical success |
+| Offline intentions | Android enqueue, dispatcher, label, settlement and recovery move together; a local receipt is not a server fact |
+| Attachments and recognition | Keep protected originals and provenance; suggestions remain drafts until explicit confirmation |
+| Background work | Report queued/running/failed/succeeded honestly and preserve recoverable work; no endless spinner without a result |
+| Client feedback | Preserve drafts on conflict/refusal; a successful command stays successful when a later query refresh fails, with separate refresh retry |
+| Presentation | Share product meaning and semantic tokens without forcing identical layouts; retire replaced component, CSS and asset owners |
 
-Exact cloud candidate `6b746f7e96a8c163baf9ce171a0e944067a93a8d` exposed two real PostgreSQL failures: stale-ledger and revoked-role forms incorrectly returned success. Candidate `d4db13a810c5652dc2d02283f1f1132aaf61d225` additionally exposed the re-enrolled-browser form returning 303 instead of 409. Final candidate `efaae954e3d6a58d80f3eed50eff129c3682afb8` retains the original Device binding and passed exact cloud qualification; merge `6829b61317ff856b5ca80194ab078d3e4a38ffc7` independently passed CI, CodeQL and Connected workflows. Scope-skipped executions are not execution evidence. Refresh/session-expiry draft continuity remains a required completion task. No browser offline queue or whole-product visual completion is claimed.
+Before and after each business-semantic or owner change, record the impact in
+its slice contract: **all entries, consumers, old success exits, persistence,
+protocol/recovery paths and direct verification producers**. An unaffected claim
+needs source or execution evidence. Unknown impact remains open. Use the
+smallest sufficient TDD/gate map, bounded FIX/REJECT/HOLD review and exact-source
+cloud qualification; local tests must stay short. Auditing verifies the product
+and does not define it.
 
-Draft-continuation closure (#368): exact candidate `43d77dd01411f3e3aa6dc0e5955352fe4ecc5ae9` passed CI `33986217561`, CodeQL `33986217517` and Connected scope gate `33986217581` (actual Connected scope-skipped). Normal merge-main `f1b4ff4a3eda6a6a76eb938543c8d7fb411e7d01` independently passed CI `33986845297`, CodeQL `33986845319` and actual Connected `33986845322`. The browser stores only the six editable field strings, original create key/phase and Dataset/generation/Account/ledger/Device scope, never credentials. A Web Lock keeps another tab from overwriting the same draft. Unknown-response retry preserves the exact snapshot and key; only an actual saved manual Expense under the current authenticated Device acknowledges retirement. Validation rejection permits correction, while a changed binding cannot silently retarget the intent. Old-Device drafts stay readable for manual reconciliation. Native/no-JS command ownership remains unchanged. This supersedes the pending draft-continuity statement above, within these boundaries.
+## 4. Capability status
 
-Real cloud Edge covers localStorage, Web Locks, reload/navigation, native POST, unknown-response same-payload retry and acknowledgement consumption. Real PostgreSQL separately proves the canonical producer and financial owner. Physical BFCache admission and full browser-process restart were not independently exercised; the actual persisted-page event consumer has an observed pure-Node RED/GREEN. At 360 × 800, the empty form's Save ends at 485 px rather than 940 px, with no horizontal overflow. Whole-product visual acceptance and final RC remain open.
+`EXISTING` means present, with integrated usability still to establish;
+`STRONG_SLICE` means a bounded task is integrated and qualified, not the whole
+product. `PARTIAL` requires completion, `RETIRED` must stay retired, and `HOLD`
+requires its stated reactivation condition. `CLOSED` applies only to the named
+slice. Full Internal Beta RC completion is still outstanding.
 
-### External-debt context — implemented and current main qualified
-
-The user must be able to remember why a manually recorded external obligation exists, including when several obligations involve the same person. An optional plain-text note (maximum 500 characters) belongs to that Debt, is shared with the same authorized viewers as the Debt, and never changes principal, repayment, settlement or member-consent meaning. Web and Android creation carry it through the existing command; canonical detail responses and each client's detail surface display it safely. Blank input becomes no note; existing rows remain unannotated rather than receiving invented context. The original Web field silently discarded input and must no longer remain surface-only.
-
-This is create-time context, not a new editable financial fact, chat system or attachment store. A later context-edit task needs its own intent/OCC decision. At this context slice's base Android created Debt online only; its note-on-rejection proof does not claim durable offline publication. The separately tracked #369 successor implements submitted-intent continuity and must qualify independently. Backend PostgreSQL, Android transport/state tests and connected execution qualify the exact candidate in cloud; no local heavy test lanes.
-
-Test-first subject `6f1b4fe2a12de103c75e665983f2727f6cf8f308`, CI `33962984089`, reproduced missing context in the real native successful-create detail (ordinary 1/2) and validation-failure form (ordinary 2/2). The pure request boundary also rejected `note` as an extra field before implementation. Production changes cover the nullable migration, existing command/query, both clients and failure retention. Final candidate `5667a49de26498b2c9a9b617cbd65e7b2ce38674` passed CI `33966892365`, CodeQL `33966892372` and actual Connected execution `33966892400`, with no open bounded-review finding. Merge `1b0a7631e089264b38daeaa75ee75d999b4e4f07` independently passed CodeQL and Connected; CI `33967598659` real-db 2/2 was canceled at its 12-minute job cap in both attempts, first after 100% progress and then after 94%. No test failure was reported, but that historical merge remains unqualified. The bounded capacity repair #363 is merged at `690b28b4`: existing complete real-db selection now uses three isolated cloud clusters, still one serial worker each. Its candidate `4e565f26` passed all three workflows and 285 real-db tests (89/98/98); the slowest whole job was 8:06, with no timeout/assertion/database change. New exact merged-main qualification is independent and still required; candidate green cannot replace it. Full-product and held Windows lifecycle qualification are not implied.
-
-Current main `90a9bb19ae9b7edd024aa016b6991f44c4bcdc9e` independently passed CI `33974633849`, CodeQL `33974633790` and Connected `33974633805`, including actual Connected execution. This closes the current baseline's cloud qualification; it does not relabel the failed historical heads or qualify the full Internal Beta RC and held Windows lifecycle.
-
-Successor main `872c759a9b326746a38f9d87b14dc7a24080b255` (#365, test-only asynchronous completion) independently passed CI `33975834073`, CodeQL `33975833963` and Connected `33975833975`. Both the qualified budget behavior and external-debt context remain integrated. These are current-source cloud results, not RC dress-rehearsal evidence.
-
-### Budget first step — consumer convenience, qualified
-
-A first-time Web budget writer starts with one total and one native Save action in a single compact task region. Existing rollover, reserves, exclusions and category-budget capabilities remain in the same form under optional settings; configured budgets and rejected drafts expose those settings immediately. The existing Budget command, current month/ledger binding, authorization and fresh execution-versus-draft distinction are unchanged. No wizard, new financial default or second draft owner is introduced.
-
-Progressive enhancement closes only first-use options after installing the native validation-reveal handler. A browser-rejected input inside closed options reopens that section and receives native focus; without scripts all original inputs remain visible. Read-only production-template previews at 360/768/1440 demonstrate the first-screen action and keyboard/error visibility in both appearances. Final candidate `51ec47fc20079d61bfc44c4ee6e25f63080341fd` passed CI `33974019522`, CodeQL `33974019460` and Connected scope qualification `33974019529`; real PostgreSQL covers native save, rejection retention and permissions. Its #364 merge is the independently qualified main above. No local heavy lane was run. Durable refresh/session draft recovery and whole-product consumer visual completion remain separate required work.
-
-### Recycle recovery
-
-Owner Console now links to the canonical Web business recycle journey, using the actual business session and ledger permissions. Its narrower duplicate query/restore implementation is physically retired. Each restored entity retains its existing command owner; ledger governance restore remains on the Owner ledger page.
-
-### First use and binding — invitation handoff closed, local Web identity active
-
-The exact `8aca512a6fe6ac64e1fe7d76bece66fccc4be214` starting main baseline has working Account/Device/Member/Invitation/Session owners, Android durable enrollment, Desktop credential storage and a native Web invitation consumer. At that baseline, local Web still treated loopback location as an anonymous Owner projection. This slice closes that break by establishing a real browser Account/Device/Session before product work.
-
-```mermaid
-flowchart LR
-    Share[Open a shared family invitation] --> Invite[Preview household ledger and role]
-    Authorize[Authorize another device from an existing session] --> Device[Connect that device]
-    Device --> Identity[Verify identity and selected ledger]
-    Invite --> Member[Accept as existing member or enter a display name]
-    Identity --> Entry{Allowed work}
-    Member --> Entry
-    Entry -->|Writer| Capture[Upload a receipt or enter a bill]
-    Entry -->|Viewer| Read[Read recent transactions]
-```
-
-The family invitation handoff now uses existing enrollment/session owners on Web and Android. The entry itself carries intent; users do not choose a technical pairing/invitation category. A new person supplies only a display name, the device identity is product-owned, destination/role is shown before acceptance and failure recovery remains in the same task.
-
-The shared create-invitation result supplies an optional `https://configured-origin/web/auth/join#invite=...` URL. Its origin comes from the configured public endpoint, never the request Host. Without that configuration, the existing one-time token remains available for explicit paste. This is configured access, not proof of network reachability. No new token store is introduced.
-
-Web removes the fragment before submitting a native preview form; each acceptance form retains its own target, not a shared target cookie. Existing Web identity is checked independently of the old selected ledger, without dropping Web platform/expiry requirements. A new browser uses the existing recoverable enrollment proof and the same eight-hour policy as browser pairing. Android accepts the link through paste or explicit text sharing, previews anonymously, and compares server identity and data generation. For the same server it accepts only through its current authenticated binding. A different server opens the browser continuation and cannot replace the app's identity or Outbox. Arbitrary-domain verified Android App Links are not claimed.
-
-Follow-up identity binding: a native Web confirmation also retains the Account public identity shown in its preview. A different login in another tab refuses before invitation consumption and presents the new identity for explicit confirmation. An anonymous preview is explicitly unbound; existing enrollment/replay and two open anonymous invitations may establish and reuse one browser identity. The public form marker is only a stale-intent comparison, never authentication or membership authority. Exact test-only candidate `849ce9f7f0afe32ea4288203d76ac84a4d1cd53c` reproduced the wrong-account success in cloud PostgreSQL CI `33960293958`. Final candidate `31024edaff75aadb48adbe20d32cc47c9195c096` and merge `b3408fff332efb5dcbcaf0e80dc81d4edea0a430` independently passed their applicable cloud CI, CodeQL and Connected workflows; scope skips do not count as executed Android tests.
-
-These invitation consumers were merged and qualified on the exact main SHA above. The small gate map below remains only as semantic regression ownership; revisit it when the listed owners/consumers change or a direct user counterexample appears.
-
-| Claim and falsifier | Owner / real consumers and changed paths | Matching proof / cost |
+| Capability | State and current boundary | Detail / evidence |
 |---|---|---|
-| One invitation creates or joins the intended identity once; old membership availability cannot veto a valid identity join | Invitation/enrollment/session services; API and native Web join routes | Real public-session PostgreSQL forms: preview, new/existing identity, response loss and two-tab targets; seconds locally |
-| Shared links identify the configured destination without publishing bearer data in HTTP URLs/history | Shared invitation create result; Web family/share/fragment intake and Android share/paste | Configured-origin response tests plus actual Edge fragment/native/no-JS interaction; bounded browser run |
-| Same-server acceptance preserves the binding and pending intent; foreign server never receives the stored credential or replaces local identity | Android join repository, session coordinator, navigation and screens | Focused JVM transport/session/Outbox assertions; exact cloud Connected for real integration |
-| Public schemas match changed consumers and current candidate qualifies | Invitation DTO/OpenAPI; Web/Android/backend lanes | Generated schema and exact SHA cloud results; no new audit registry or fixed test-count claim |
+| Upload links, Shortcut and pending review | `EXISTING`; upload/Expense owners serve actual intake consumers. Durable upload continuation #385 is active | [Upload contract](TICKETBOX_UPLOAD_INTENT_CONTINUITY_CONTRACT.md) |
+| Batch remainder and saved CSV continuation | `STRONG_SLICE`; #381 and #384 CLOSED, integrated and main-qualified. Full capture journey remains | [Batch](TICKETBOX_CAPTURE_BATCH_CONTINUATION_CONTRACT.md), [CSV](TICKETBOX_CSV_IMPORT_CONTINUATION_CONTRACT.md) |
+| Confirmed facts and composite correction | `STRONG_SLICE`; #382 CLOSED, durable correction owner integrated and main-qualified; actual OS interruption remains to rehearse | [Correction contract](TICKETBOX_EXPENSE_CORRECTION_CONTINUITY_CONTRACT.md) |
+| Recognition and assisted entry | `STRONG_SLICE`; #353 CLOSED. Shared configured suggestions remain drafts. Debt image/binding continuity #386 is active | [Journeys](TICKETBOX_USER_JOURNEYS_CONTRACT.md#recognition-and-assisted-entry), [Debt image contract](TICKETBOX_DEBT_BILL_BINDING_CONTRACT.md) |
+| Currency adoption | `STRONG_SLICE`; #354 CLOSED. Installation claim / Desktop consumer; old maintenance API retired | [Adoption journey](TICKETBOX_USER_JOURNEYS_CONTRACT.md#currency-adoption) |
+| One-bill manual FX recovery | `STRONG_SLICE`; #355 CLOSED. Shared pending Expense editor, canonical review and Android PatchExpense intent | [FX journey](TICKETBOX_USER_JOURNEYS_CONTRACT.md#missing-fx-rate-recovery) |
+| Manual expense and browser draft | `STRONG_SLICE`; #359/#368 CLOSED. Native shared command and scoped draft; old-Device drafts readable for reconciliation, without automatic replay | [Manual entry](TICKETBOX_USER_JOURNEYS_CONTRACT.md#manual-expense-entry), [Convenience plan](../superpowers/plans/2026-09-05-consumer-art-convenience.md) |
+| External debt, split and reimbursement | `STRONG_SLICE`; existing relationship owners and #361 context integrated; complete settlement journeys remain | [Debt context](TICKETBOX_USER_JOURNEYS_CONTRACT.md#external-debt-context), [Plan](../superpowers/plans/2026-09-05-debt-context.md) |
+| Android external-debt creation and recovery | `STRONG_SLICE`; #369/#370 CLOSED. Original submitted intent and readable retry/discard; keyboard, OS interruption and unsubmitted editing restoration remain | [Convenience plan](../superpowers/plans/2026-09-05-consumer-art-convenience.md) |
+| Debt adjustment continuity | `STRONG_SLICE`; #379 CLOSED. Sole dispatcher preserves original submission and refreshes affected consumers | [Adjustment contract](TICKETBOX_DEBT_ADJUSTMENT_CONTINUITY_CONTRACT.md) |
+| Budgets and goals | `STRONG_SLICE`; existing owners and #364 first-step form integrated; complete outcomes and refresh/session draft recovery remain | [Budget journey](TICKETBOX_USER_JOURNEYS_CONTRACT.md#budget-first-step) |
+| Recurring occurrence and income plans | `STRONG_SLICE`; #373/#377 CLOSED. Actual payment association and server-month revision/recovery use shared owners; plans stay distinct from income accounting | [Recurring](TICKETBOX_RECURRING_OCCURRENCE_CONTRACT.md), [Income plans](TICKETBOX_INCOME_PLAN_CONTRACT.md) |
+| Reports, projections and data health | `STRONG_SLICE`; #380 CLOSED. Canonical unclassified scope and exact major-expense return navigation; integrated interpretation and state feedback remain | [Insight navigation contract](TICKETBOX_INSIGHT_FACT_NAVIGATION_CONTRACT.md) |
+| First use, connection and household entry | `STRONG_SLICE`; invitation, real local Web identity and #378 original-code continuation integrated; full Owner/member/viewer rehearsal remains | [Household journeys](TICKETBOX_USER_JOURNEYS_CONTRACT.md#household-invitation), [Desktop first use](TICKETBOX_DESKTOP_FIRST_USE_CONTRACT.md) |
+| Recycle recovery | `STRONG_SLICE`; #375 CLOSED. Canonical Web query/dispatcher owns business restore; duplicate Owner surface retired; ledger governance restore remains local | [Recycle journey](TICKETBOX_USER_JOURNEYS_CONTRACT.md#recycle-recovery) |
+| Public admin exposure | `RETIRED`; #383 CLOSED. Local governance boundary integrated and main-qualified; lawful remote ledger consumers remain | [Governance contract](TICKETBOX_LOCAL_GOVERNANCE_BOUNDARY_CONTRACT.md) |
+| Advisor readiness and FX worker recovery | `STRONG_SLICE`; #376/#374 CLOSED. Existing factory/consent/role and worker/lease owners; configuration and observed results stay distinct | [Migrated evidence](../qualification/2026-09-07-product-atlas-history.md) |
+| Runtime diagnostics and other task health | `EXISTING`, still developer-heavy. Complete ordinary household diagnosis/recovery through existing owners | Backstage delivery below |
+| Android offline publication across mutation families | `STRONG_SLICE`; preserve dispatcher/label coverage, original context and explicit recovery; never show raw keys or silently discard intent | Cross-client delivery below and affected slice contracts |
+| Consumer visual art and convenience | `PARTIAL`; selected art/frame/forms integrated. Full consumer art and real cross-screen interaction acceptance remain required | [Art / convenience plan](../superpowers/plans/2026-09-05-consumer-art-convenience.md) |
+| Windows Fresh G2 | `CLOSED`; preserve qualification boundary | Executable current-product counterexample required to reopen minimal host work |
+| Complete Windows lifecycle | `HOLD`; repair, preserved reinstall, complete uninstall, upgrade/downgrade, complete backup/restore and Cut C/D/E | Outside current delivery; no implicit lifecycle claim |
 
-#### Local Web identity
+## 5. Remaining delivery packages
 
-The loopback browser is a product client, not proof of identity. On an installed dataset it must consume the single `InstallationOwnerClaim.account_id`, show the real Account plus live ledger/role choices, and establish one recoverable eight-hour Web Device/session after one explicit confirmation. The claim's Windows source Device must still belong to that Account and remain live before it can authorize a new browser Device. It must not ask for a technical connection code or device name, require the Desktop Manager to be opened first, infer the first Account, or grant Owner because the request came from loopback. Development datasets without an installation claim retain their explicit development-only compatibility path; an installed dataset with a missing or ambiguous claim enters recovery instead of choosing an identity.
+These are the finite packages of the same full Goal. Existing functionality
+awaiting integrated proof is not a missing feature. Closed slices are revisited
+only for changed consumers or a current counterexample; PR/test counts are not
+completion percentages.
 
-The session principal is independent of its compatibility-default ledger. A live Account/Device credential may switch among that Account's active memberships without changing identity. Every read and write reuses the current membership role; a removed membership or archived ledger cannot be resurrected by the cookie. Invalid, revoked or expired cookies are cleared and sent back to the identity task, never to the anonymous Owner projection. Recovery drops a stale `ledger_id`; an expired unsafe form submission returns through its same-origin Web GET page, or `/web` when no safe referrer exists, rather than treating the mutation URL as a GET. An otherwise valid Web cookie for another Account is also cleared on installed loopback and cannot replace the installation claim. Local logout revokes the browser token and returns to the local confirmation task; public logout keeps the pairing entry. The first confirmation and a proven response-loss retry share the existing enrollment proof, Device and token; reusing the proof for another Account or ledger is refused and clears the spent proof so a fresh confirmation can recover.
+| Package | Remaining user outcome / exit |
+|---|---|
+| First use and household | Owner/member/viewer enter the intended household, understand where data lives and recover expired/failed connection without losing intent or changing identity |
+| Capture, facts and reference | Finish #385; rehearse capture/import → review → confirm → search/detail/original/reference/correction with real roles, recoverable errors and one fact owner |
+| Relationships | Finish #386; complete splits/proposals/repayment/adjustment/forgiveness/void, original-intent retry/discard and canonical totals across clients |
+| Planning and insights | Complete supported budget/goal/income/recurring/debt-plan tasks; overview/period review/data health reflect authoritative facts/corrections with useful empty/error/read-only states |
+| Backstage | Ordinary household can configure applicable capabilities, understand actual health and resume failed work; local governance, secrets and host authority retain their owners |
+| Consumer art and convenience | Actual Web 360/768/1440 and Android journeys meet the selected modern consumer design and reduce interaction burden; replaced visual owners physically retire |
+| Cross-client continuity and data safety | Rehearse role/revocation, token rotation, ledger switch, offline intent, actual OS interruption, reconnect/conflict/quarantine, originals/provenance and supported export outcomes; Room reopen is not process-death proof |
+| Exact RC freeze and delivery | Freeze final main/tree, Setup/APK and manifests; complete clean-Windows ordinary product and cross-client/reboot/data/identity rehearsal; publish accepted non-blocking limits and unchanged Windows HOLDs |
 
-| Claim and falsifier | Owner / real consumers and changed paths | Matching proof / cost |
-|---|---|---|
-| The installation Account is the browser actor even when it is only a member of another Account's ledger; falsified by an expense/audit row attributed to the ledger owner | Installation claim + identity enrollment; loopback auth entry, middleware and one real Web mutation | Real PostgreSQL browser form and canonical stored actor/device assertion; focused local lane |
-| Viewer can connect and read but cannot write; role removal or ledger archive takes effect before the next action | Live LedgerMember/Ledger state; session projection and write gate | Real browser GET plus native POST denial after live state mutation; focused local lane |
-| A bad cookie never falls through to local Owner, while a live identity can choose another active membership after its old default dies | Web credential owner + ledger switch service; middleware and ledger selector | Invalid/revoked/expired cookie redirects and clears; identity-level picker switches with the same Account/Device/token |
-| Response loss returns the same Device/token and the same proof cannot target a different Account or ledger | DeviceEnrollmentAttempt + internal installation pairing source | Two submissions with the same proof plus changed-target refusal; row-count and credential-hash assertions |
-| Public Owner pairing and Desktop bridge behavior do not change | Existing public `/web/auth/login`, pairing service and Desktop bridge middleware | Existing focused auth/public/desktop regressions; no Windows lifecycle or installer qualification claim |
+Visual delivery includes coherent icons/illustrations/empty states/backgrounds
+and textures, typography, color, hierarchy, controls, focus/motion and light/dark
+appearance. Custom backgrounds must work across applicable surfaces. Existing
+Paper/Midnight UI and the Owner reference photo are not design authority; the
+rejected green-hat direction must not return. Defaults, shortcuts, keyboard/touch,
+batches, fewer repeated inputs/page transitions and recoverable drafts are user
+outcomes. Inspect real tasks and states, not just assets, tokens or screenshots.
 
-Owner device inventory derives browser availability from live Web credentials, including expiry and revocation. Ended browser sessions stay in a collapsed history section and do not count as connected devices. Reconnection creates a separately accountable browser Device; listing and counting never delete or revoke historical Device records or another browser's session. The public Device API retains its existing device-revocation semantics.
+Restore-dependent identity limitations remain explicitly HOLD:
+[local Web expected preview identity and Android unbound invitation generation](TICKETBOX_USER_JOURNEYS_CONTRACT.md#restore-dependent-identity-holds).
+Do not drop these or open full lifecycle work while handling other journeys.
 
-Desktop first-use explanation and expired-code recovery links remain companion gaps after this identity slice. Web manual entry and bounded browser-local draft continuation are qualified as described above; re-enrollment does not transfer old Device intents. Installation currency adoption remains a Desktop-only ceremony. These facts do not authorize reopening installer, account recovery, upgrades or other Windows HOLD work.
+## 6. Construction order and next action
 
-Review carry-forward — `HOLD`: local Web identity confirmation does not bind the GET preview to its Account/dataset generation before the first POST. If a held restore replaces the installation identity between those requests and retains the chosen ledger ID, submission can issue a session for the replacement identity. Revisit with restore qualification: bind the expected identity to the confirmation proof and compare it under the issuance lock. No restore or repair action is opened by this finding. Evidence: `web_auth.local_web_identity_form`, `local_web_identity_submit` and `identity_service._local_web.connect_installation_web_identity` on `b47238db`.
+**Priority:** whole-system horizontal and vertical capability gaps first, then
+remaining art/interaction details, then the exact full RC. Keep useful state
+feedback and efficient actions within each active capability change.
 
-Review carry-forward — `HOLD`: an unbound Android invitation can be previewed before an in-place dataset restore and accepted after the restore has changed `client_generation`, if the restored backup contains the same unused invitation. Existing enrollment persists URL/token/name/device and validates the returned attempt, but does not persist the preview's dataset/generation. Closing this requires an expected-identity field in the durable enrollment intent/secure codec and validation before credential publication, including process-death recovery; a ViewModel-only check would be incomplete. The counterexample depends on the held restore lifecycle and is not a current invitation-consumer blocker. Revisit with the restore qualification or an independently scoped enrollment-identity change; do not silently drop it or reopen Windows lifecycle in this slice. Evidence: `dataset_restore_service.resolve_restored_dataset_plan`, Android `DeviceEnrollmentIntent.Invitation`, `SecureDeviceEnrollmentCodec` and `DeviceEnrollmentCoordinator.accept` on review subject `2a5425db`.
+**Active work:** #385 is merged; independent main qualification is running.
+#386's combined candidate passed qualification and its review threads are resolved.
+It is integrating the merged main while real-device task validation begins. Details belong in their
+[upload](TICKETBOX_UPLOAD_INTENT_CONTINUITY_CONTRACT.md) and
+[debt-bill](TICKETBOX_DEBT_BILL_BINDING_CONTRACT.md) contracts.
 
-## 6. Visual art and convenience — explicit delivery wave
+**Next action:** finish Capture main qualification, qualify the Debt integration
+and close it through protected merge and independent main qualification.
+Continue the real capture/facts/reference task using
+its existing consumers. Preserve draft #372 for the later detail wave. The full
+Goal and all remaining packages above stay active.
 
-Visual art remains a required product outcome. The Owner's latest September 6 ruling changes the order: first strengthen and complete the whole system's horizontal and vertical capability gaps, then resume visual and interaction details. Active capability work must still preserve usable states and reachable actions; the pending art wave no longer delays missing user tasks, cross-client integration, shared ownership or failure recovery.
-
-The Owner's September 5 photo is a reference, not a selected design or a requirement to preserve its palette or paper treatment. The main agent owns the final design direction: modern consumer software, not a dated desktop-management or government-service aesthetic. Existing themes, panels and assets have no visual authority; typography, spacing, hierarchy, controls and feedback must work together across real daily tasks.
-
-- Establish coherent art direction and brand assets: icons, illustrations, empty states, backgrounds and textures. The rejected mascot has no preservation requirement; the explicitly rejected green-hat direction must not return.
-- Complete the production visual system across typography, color, spacing, information hierarchy, semantic components, focus/motion and light/dark appearances. Global custom background preferences must work coherently across applicable surfaces, not just decorate one page.
-- Make frequent tasks easier through appropriate defaults, keyboard/touch actions, shortcuts, batch handling, fewer repeated inputs and recoverable drafts. Web and Android share product meaning, not forced identical layouts.
-- Migrate the existing valuable behavior into the chosen production system and physically remove replaced CSS, components, assets and duplicate entrances. No second runtime, detached demo or permanent old/new surface pair.
-
-Exit evidence is actual Web pages at 360/768/1440 and real Android journeys, including appearance preferences, forms and loading/empty/error/conflict states. Inspect their visual quality and perform the actions. A build, token inventory, screenshot count or successful API test does not establish consumer-grade visual completion. The wave is still pending; the current manual-FX browser probe qualifies only that editor's layout, not this whole-product claim.
-
-The wave is in construction through #362. Its first task aligns Web and Android genuine empty receipt states with quiet static receipt/coral-side-clip art, neutral state copy and useful native actions. Web removes zero-total filters and row/bulk controls with no rows; filtered-empty results retain the real return path. Android Inbox/Ledger consumers move off the old empty mascot wrapper, without altering loading, role, sync or publication owners. Ledger's empty action uses the same existing primary component as Inbox, with an actual manual-sheet entry assertion. Web 360/768/1440 previews, viewer/filtered states, keyboard focus and custom-background Paper/Midnight readability were inspected; the semantic solid surface has an observed browser RED/GREEN. Exact candidate `49cb0bed` passed CI `33975562003`, CodeQL `33975562007` and actual Connected `33975562011`; all three fresh Compose captures were retrieved and inspected, including the corrected Ledger button. Strict branch protection requires current main `872c759a`, so the candidate is updated normally despite the content-identical merge. The new head and its eventual merge require their own qualification. Evidence and historical failure dispositions remain in `docs/superpowers/plans/2026-09-05-consumer-art-convenience.md`. These are synthetic-state consumer frames, not complete application journeys. This task is not the whole five-domain visual system or durable-draft completion.
-
-The first art task (#362) is now closed: exact candidate `ada29913` and merge-main `fba121c9552d9dca4a03fe319da587d31f2bf2a9` independently passed CI, CodeQL and actual Connected workflows. Main's runs are `33977721474`, `33977721459` and `33977721470`; final candidate PNGs match the already inspected consumer frames. This supersedes the pending-integration status above, without relabeling historical failed candidates.
-
-The consumer workspace frame (#366) adds clean-default Web surfaces with preserved explicit preferences, synchronized light/dark neutral tokens, one icon-and-label primary navigation for desktop/mobile, fewer repeated headings and a single Android default-background palette. Actual 360 px populated-page inspection admitted and fixed Ledger batch-form overflow; actual theme switching admitted stale canvas colors in both existing chart consumers, covered by an observed pure-Node RED/GREEN. Exact candidate `78febc17` passed CI `33980002606`, CodeQL `33980002598` and actual Connected `33980002594`; its three fresh PNGs match inspected frames. Normal merge-main `d74ef57ea9794919783efe19ea2c052dba3d6e20` shares the candidate tree. Its CodeQL `33980781789` and Connected `33980781853` passed, but CI `33980781739` failed in the Desktop theme probe. The separate test-only readiness/exception-reporting correction (#367) is now closed: candidate `3b24f8a3` passed its scoped gates and review, and normal merge-main `9cf0754c6c95982fe5e8184aed70d1073d491677` independently passed CI `33982506046`, CodeQL `33982506028` and actual Connected `33982506039`. This does not relabel the historical d74 failure. Complete art, real Android journeys, form/draft convenience and the remaining product tasks stay open in the same wave. The manual-draft task (#368) is now independently qualified on candidate and merge-main as recorded above; the full wave remains open. Details are in the existing consumer-art plan.
-
-## 7. Construction order
-
-Owner discipline, September 6: before and after every business-semantics or owner change, close its impact across all entries, consumers, former success exits, persistence/protocol/recovery paths and direct verification producers. An unaffected claim needs source or execution evidence; unknown impact remains open. Keep the compact before/after evidence with the slice contract. For work already underway when this ruling arrived, reconstruct the actual baseline and compare the current implementation explicitly; do not claim the check happened before the original edit.
-
-1. **Reconfirm substantive gaps on the current system:** trace the five domains and Backstage through real user entry, fact/command/query owner, all affected clients, applicable identity/OCC/offline/failure recovery and observable outcome. Distinguish a missing capability from existing functionality awaiting integrated proof. Previously qualified recognition, currency, FX and other slices remain closed unless a current counterexample reopens them.
-2. **Complete capability chains by product impact:** prioritize missing core tasks, financial/identity/intent safety, broken cross-client consumers and genuine duplicated responsibility. Strengthen foundations together with their actual consumers and retire superseded writers/surfaces. Keep one production writer and bounded, independently adjudicated read-only roles.
-3. **Close the integrated functional packages below:** first use, capture/facts/reference, relationships, planning/insights, Backstage readiness and cross-client continuity. Complete one coherent responsibility at a time; do not replace missing outcomes with an API, page inventory or passing audit.
-4. **Resume visual and interaction details:** preserve the existing isolated work and evidence, including draft #372's keyboard action layout. Qualify these on their eventual exact candidate after the system capability priority is satisfied.
-5. **Freeze and rehearse the full Internal Beta RC:** actual product and data/identity outcomes on the exact release artifacts, with the unchanged Windows HOLD boundary.
-
-Each slice stops after its frozen user postcondition is true, targeted regression passes, and exact-head cloud evidence has a disposition. Neighboring gaps remain in this goal map, with the owning journey and a reactivation step, rather than disappearing through repeated HOLD decisions. Fewer repeated inputs, fewer unnecessary page transitions, clear keyboard/touch actions and recoverable drafts are product outcomes, not optional finishing polish.
-
-## 8. Remaining delivery checklist toward the full Internal Beta RC
-
-This is the finite delivery view of the same Goal and Product/G2 contracts, not a smaller replacement goal or a new authority. An existing capability that needs integrated qualification is not labeled a missing feature. Previously closed slices remain closed unless current changed consumers or an executable counterexample reopen them. Counts of PRs, tests or screenshots are not a completion percentage or a duration estimate.
-
-| Delivery package | Current evidence and remaining work | Exit, not an invitation to expand |
-|---|---|---|
-| First use and household entry | Invitation handoff and real local Web identity are integrated. Desktop original-code continuation (#378) is independently qualified on main `d52ec611`; the complete ordinary household entry task remains to be rehearsed | Owner/member/viewer can enter the intended household, understand where data lives and recover from an expired/failed connection without losing entered intent or gaining another identity |
-| Capture, confirmed facts and reference work | Manual draft continuation and batch-upload remainder recovery (#381, main `6376bde3`) are qualified. Composite correction (#382) and saved CSV continuation (#384) remain active; other reference/search/export owners need integrated task proof | Actual capture/import → review → confirmation → search/detail/reference/correction paths work with role restrictions and recoverable errors, preserving original commands and one fact owner |
-| Relationships and submitted-intent recovery | #369 submitted-intent continuity is qualified. #370 original-record recovery closed its real consumer RED cases on candidate `ba742454` and identical-tree main `5791d176`, with independent cloud qualification, actual recovery/confirmation frame inspection and bounded review | Submitted create keeps its original intent; a user can identify the intended failed record, retry it or explicitly discard its local intent. Existing splits/proposals/repayments/adjustment/forgiveness/void and their canonical totals survive the integrated journey |
-| Planning and insights | Budget first-step convenience and existing goal/income/recurring/report owners are integrated. Current end-user completion and visual acceptance remain | Supported budget/goal/income/recurring/debt-plan tasks have real outcomes; overview/period review/data health reflect authoritative facts and corrections, with useful empty/error/read-only states |
-| Backstage consolidation and capability readiness | Recycle consolidation, Advisor readiness and FX worker recovery are qualified. Public admin opt-in retirement passed its own candidate gates; custom-port help correction, combined-head qualification and protected integration remain | Preserve the canonical local governance owner and complete its actual maintenance entry. Existing health and recovery need ordinary household acceptance; do not invent controls or move secrets/host authority into Web |
-| Consumer visual and convenience completion | Shared art/frame and selected Web forms are qualified slices. Whole-page Android journeys, keyboard-visible actions and remaining cross-screen polish are not yet accepted | Actual Web 360/768/1440 and Android journeys meet the modern consumer direction across relevant themes/backgrounds, typography, controls, touch/keyboard, drafts and state feedback; superseded visual owners are physically retired |
-| Cross-client continuity and data safety | Identity, Money/Time, OCC/idempotency, attachments and Room/Outbox have existing owners and strong slices, not a current complete dress rehearsal | On the final candidate, role/revocation, token rotation, ledger switch, offline intent, actual process interruption, reconnect/conflict/quarantine, originals/provenance and supported export/data-safety outcomes remain correct. Room close/reopen alone does not prove process death |
-| Exact RC freeze and delivery | Not started as final qualification; no current `INTERNAL_BETA_READY` claim | Freeze the exact main/tree, Setup/APK and manifests, then complete the contract's clean-Windows, cross-client product and reboot/data/identity rehearsal. Record accepted non-blocking limits and the unchanged Windows HOLD boundary |
-
-**Current next action:** the Owner's September 6 priority remains whole-system capability completion before small interaction details. Monthly recurring fulfillment (#373) and FX recovery (#374) have passed candidate and independent merged-main qualification. Recovery consolidation (#375) also passed its final candidate and independent merged-main qualification. Shared Advisor readiness (#376) also passed its candidate and independent merged-main qualification. Income-plan month semantics, revision and actual edit continuity are CLOSED in #377: same-tree main `8ae144ef` independently passed CI, CodeQL and actual Connected qualification. Plans remain distinct from confirmed income accounting. Draft #372 stays preserved and unmerged for later detail qualification. The original full Goal and every delivery package below remain active.
-
-The bounded September 6 source map found the following substantive candidates.
-The rows record current dispositions against the original bounded source findings; closed slices are not outstanding feature work.
-Both independent read-only snapshots matched their original manifests on return.
-
-| Capability and owner | Consequence and next falsifier | Disposition |
-| --- | --- | --- |
-| Desktop first use → local device authorization → unknown-result continuation | The real local-code entry and original-code recovery preserve entered identity, expiry and ledger rebind semantics. | **CLOSED slice #378.** Main `d52ec6118c62aaf136aec9f43f6692532a0aa0f0` independently passed CI `34037804229`, CodeQL `34037804091` and Connected `34037804181`; formal threads were resolved/read back. This does not qualify WinCred process-death behavior or the final clean-Windows RC. |
-| Planning recurring occurrence → discretionary Web/API | Explicit monthly payment association now feeds outstanding reservations and derived reminders through one owner. Web/Android expose link, original-payment inspection and undo; Android persists original intent before dispatch and retains readable recovery. | Merged in #373. Final candidate `c50519b2` passed CI `34009632568`, CodeQL `34009632598` and actual Connected `34009632572` (111 emulator tests); bounded review fixes have focused regression coverage. Same-tree main `3f604d1d` independently passed CI `34010262230`, CodeQL `34010262245` and actual Connected `34010262247`. |
-| Income plan revision → forecast → actual edit recovery | Server-declared months, immutable/unknown history and legacy scheduled aggregates retain distinct meanings. API/Web/Android and recycle use the intended month. Room preserves the original body, binding, key and OCC before the sole dispatcher; both recovery entrances retain refused commands and unsupported old intents cannot replay. Same-status/OCC exits must match the original month; known receipts precede OCC. Shared negotiation carries actual version/binding evidence even when writing is blocked, leaving adoption and configuration decisions with the currency owner. Active consumers consistently describe an income plan rather than a confirmed payment. | **CLOSED slice #377.** Protected squash final candidate `ff060dc3` passed CI `34042608901`, CodeQL `34042608894` and actual Connected `34042608921` (execution `101512115880`). All formal threads were resolved and independently read back; the non-inline vocabulary finding is also corrected. Same-tree main `8ae144ef` independently passed CI `34044165774`, CodeQL `34044165770` and actual Connected `34044165785` (execution `101516150016`). See `TICKETBOX_INCOME_PLAN_CONTRACT.md`; no income-accounting or full RC claim. |
-| FX scheduler → Owner operational status | A transient lease/session failure now leaves the worker alive to attempt later scheduled ticks. An unexpired lease may skip a tick; successful work resumes when execution is admitted. Owner status separates enabled configuration from actual thread liveness and startup configuration failure; errors are bounded messages and the raw configured URL is retired from this surface. | Merged in #374. Exact candidate `d6600f8d` passed CI `34011614220`, CodeQL `34011614335` and backend-only Connected scope `34011614221` (no emulator execution). Both ordinary PostgreSQL shards and all real-db shards passed, alongside five targeted loop/thread cases. Bounded review corrected the overstrong next-tick promise and added held-lease recovery coverage. Same-tree main `5436e40d` independently passed CI `34012114331`, CodeQL `34012114268` and backend-only Connected scope `34012114175`. |
-| Owner recycle surface → canonical restore | Owner navigation now enters the existing Web recycle bin with actual business identity and ledger permissions, including merchant catalog. The separate Owner route, projection, restore dispatcher and sole money helper are retired. Ledger governance restore stays on `/owner/ledgers`. | Merged in #375. Final candidate `2bed71f0` passed CI `34013654451`, CodeQL `34013654479` and actual Connected `34013654445` (111 tests). The installed Owner → real Web identity → stale/valid merchant restore path passed in real-db 3/3; canonical role, retention, money and ledger-unarchive regressions remain. Exact count retirement and repository weight passed. One bounded review found no P1/P2 and its 2,998 files retained their hashes. Same-tree main `7f3089fa` independently passed CI `34014337613`, CodeQL `34014337597` and actual Connected `34014337581`. |
-| Advisor owner → Owner/Web/API readiness | Read-only readiness reuses the provider factory's model/URL/credential validation and the original consent/role rules. Owner status distinguishes valid configuration from the observed last call; Web requests require the same readiness, and API/Android expose an actionable terminal configuration error before financial input construction, quota reservation or outbound execution. Raw configured URLs are retired from status. | Closed in #376: candidate `4d406756` and same-tree main `5d460626` passed independently. Main CI `34015645876`, CodeQL `34015645914` and actual Connected `34015645899` passed. The 3,004-file snapshot remained unchanged and the reviewed source/tests are byte-identical after integration onto #375. A real Owner-template RED reproduced the callable claim with a missing model. Six invalid-configuration cases, consent/role checks and pre-input refusal pass without database/network access. API/Web correction and Android terminal-state regressions passed in the candidate and main cloud gates. No new configuration editor, external call, quota policy or AI budget writer. |
-
-The full-Goal pass below was fixed to qualified main `5d460626` and independently cross-checked against the direct consumers. FIX means admitted construction, not completed capability or executed acceptance. These are the same Capture/Facts, Relationships, Planning/Insights and Backstage delivery packages above; the larger product model, convenience/visual work and final RC remain in scope.
-
-| Complete user task / existing owner | Root disposition and minimum completion |
-| --- | --- |
-| Capture: resume a shared image batch after capacity refusal | **CLOSED slice #381.** Original A/B/C upload continuation retains the failed B and unattempted C through real Retry without retransmitting accepted A. Protected main `6376bde3b9d420fb56b0744343da1b110106014b` independently passed CI `34040207268`, CodeQL `34040207207` and actual Connected `34040207271`. Its worktree/branch were cleaned after qualification. Full household capture and process interruption remain integrated acceptance tasks. |
-| Facts: recover a submitted composite correction across interruption | **Active #382, full initialization and edit-cohort closure in progress.** Original payload/key/OCC/binding persist before Save; original Retry and delivered feedback remain. Earlier overview/real-editable fixes passed actual Connected at `f614ceef` (122 cases). Current test-first `1672a84d` completed 2,141 JVM cases with seven failures: the one new historical-Done case and six inherited Debt counterexamples. Reopening historical delivery must not report a new edit; initialization must recover current-binding categories, member names and necessary split invitations, rejecting old-binding returns. New formal P1 `ftsRf` identifies fresh root plus stale items/splits being reused with new OCC; the existing parent-version tags and entry/editor/submit owners must keep stale collections out of another correction while preserving valid scalar work. Formal P2 `ft6BV` also requires reason limits before publication and unsupported legacy payload handling. Test-first proof and final integrated qualification remain required. |
-| Planning/Insights: act on the unclassified records counted by Web data health | **CLOSED slice #380.** Canonical ledger/category scope spans all confirmed months, preserves pagination and viewer restrictions, and retires the mixed count -> new-rule exit. Candidate `d39953f4` passed CI `34049844750`, CodeQL `34049844734` and actual Connected `34049844779` (116 tests). Both formal threads were resolved and independently read back. Protected squash main `3a436add` has the identical tree; its own push CI `34051095379`, CodeQL `34051095463` and Connected `34051095425` independently passed. Actual main Connected finished 116 tests; native XML passed 12 and the explicit Desktop consumers passed three, without skips. Its clean worktree and local/remote branches were retired after exact-tip and same-tree proof. |
-| Planning/Insights: inspect an exact major expense from its monthly report and return | **CLOSED slice #380.** Exact identity and ledger/month survive 422/409/success; meaningful return feedback is consumed and stale one-time feedback is removed on scope changes. The original 23 short cases passed. Final candidate native XML proves 12 passed with no skips, including actual response loss after consumed bootstrap and per-attempt new material; all 16 original helper callers were migrated. Three formerly missed dynamic Windows consumers now execute in their actual Desktop lane (3 passed, no skips); original Desktop passed 461 cases with 10 skips. Natural earlier socket/Node stalls remain unexplained, and failed classifier size evidence is retained in the contract and PR. No historical failed head is relabeled qualified. |
-| Relationships: original debt-adjustment submission and recovery | **CLOSED slice #379.** Original signed amount/reason/key/OCC/binding persist before the sole dispatcher, original recovery remains visible, and post-Done detail/list/goal/candidate consumers refresh through the existing owner. Root read back candidate `71b229e0` → protected squash main `67f0f1cb0ec3a4eb41143b5af22dc2348684a671` with the same tree `1f12ef93…`; main independently passed CI `34056249021`, CodeQL `34056249020` and actual Connected `34056249107` (122 tests, zero failures or skips). All six formal threads were resolved and read back; root normally retired its clean worktree and local/remote branches and verified absence. Historical test-first failures remain in the slice contract; this status does not qualify other active slices or the full Goal. |
-| Backstage: local Owner first-use and uncertain pairing continuation | **CLOSED slice #378**, as recorded above. The remaining Backstage candidate is #383 local-governance retirement and its executable custom-port maintenance help; do not reopen first-use construction from an older map row. |
-| Capture: return to a saved CSV batch and finish its actual remainder | **Active #384; original eight CSV behavior cases executed GREEN at `cd05cda0`.** Existing batch/query/lease/row-idempotency owners now support saved history, actual remaining-row actions and recoverable refusal. One grouped row-count owner supplies both Web and all five API result exits without GET writes to cached counts/lease/status. Both ordinary PostgreSQL jobs in CI `34048522310` passed (1,858 and 1,862 cases, three non-CSV skips each), including the two previously failing interrupted-finalization receipts. Full-task/log evidence has no per-case XML. Final parent integration, exact candidate gates and protected main remain required. |
-
-**New same-Goal capability gap: Android accepted upload continuity across a new process.** Source mapping confirms that #381 retains the failed B and unattempted C only in `PendingUploadSession` memory; it did not qualify process persistence. The real launch path consumes the Activity action after posting another memory-held action, before durable acceptance. `ExpensePendingRepository` directly sends multipart bytes; neither Room payloads nor dispatchers own upload originals. Backend `routes/_upload_request.py` compensates files before commit on a capacity refusal, so rejected B and never-sent C cannot be reconstructed from server pending A. This is a source-confirmed missing capability, not a performed process-kill test or a claim that album originals were deleted. Next construction must bind durable original bytes/order to the accepted logical identity before consuming the launch intent, preserve explicit Retry/discard and binding-change behavior, and establish unknown-response replay through the existing command/idempotency owner. Non-capacity upload failures also advance the in-memory cursor and clear the prepared bytes; the durable recovery slice must account for these accepted-but-unconfirmed uploads. `stage_pending_expense` creates another row before marking matching images as suspected duplicates, so image duplicate classification is not command idempotency. Retain #381's accepted-A/no-retransmit behavior; no lifecycle HOLD is reopened. Root admitted FIX; [the current upload-intent slice contract](TICKETBOX_UPLOAD_INTENT_CONTINUITY_CONTRACT.md) records the before-impact closure and two test-first counterexamples on `61aa4f7e`, pending actual cloud execution after parent integration. No production fix or RED/GREEN is claimed by that preparation.
-
-Existing capture → confirm → search/original/correction and budget/category goal → confirmed expense → progress/report/data-health chains are **EXISTS, integrated qualification pending**. They require ordinary member/viewer and cross-client task rehearsal, not duplicate owners. Existing debt plans and background tasks likewise need integrated qualification. Dormant public-admin APIs alone do not authorize a new UI.
-
-The active rows and the explicit new capability gap remain work; closed rows retain their bounded qualification. Their evidence is tied to their own heads; each final candidate and protected merge-main must qualify independently. #372 stays deferred while substantive capability gaps remain.
-
-**Non-blocking optimization:** cosmetic alternatives that do not impair the selected consumer design, speculative abstractions, redundant tests and hypothetical unsupported-platform matrices do not delay RC. A genuine missing public task, data/identity/intent risk or required final evidence is not reclassified as optional merely to meet an estimate. New findings need a current owner, user consequence and decision, and enter the appropriate existing package.
-
-**Explicit HOLD, excluded from this delivery:** repair, preserved reinstall, complete uninstall, upgrade/downgrade, complete backup/restore and Cut C/D/E. Fresh G2 remains CLOSED. Only the Goal's executable current-product counterexample rule can reopen the minimum necessary host work; final product qualification must not silently claim held lifecycle actions.
+After a slice's agreed user postcondition, targeted regression, bounded review
+and exact-source qualification are satisfied, close it and proceed. Keep other
+real gaps in their package. Cosmetic alternatives, speculative abstractions,
+redundant tests and unsupported-platform matrices do not delay RC; a missing
+required task, data/identity/intent risk or required final evidence does.

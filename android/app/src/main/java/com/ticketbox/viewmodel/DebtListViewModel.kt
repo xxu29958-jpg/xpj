@@ -18,6 +18,7 @@ import com.ticketbox.domain.model.DebtListLens
 import com.ticketbox.domain.model.DebtSourceTypes
 import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.UiText
+import com.ticketbox.upload.PreparedUploadImage
 import com.ticketbox.ui.components.formatMinorAmountInput
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -66,7 +67,8 @@ class DebtListViewModel(
                     _state.value = DebtListUiState(canModify = access?.canModify == true, lens = lens)
                     refresh()
                 } else {
-                    _state.update { it.copy(canModify = access?.canModify == true) }
+                    _state.update { it.copy(canModify = access?.canModify == true,
+                        isParsingBill = it.isParsingBill && access?.canModify == true) }
                 }
                 // Keep the latest queue snapshot until its matching access arrives, in either order.
                 if (snapshot.binding != access?.binding) return@collect
@@ -123,6 +125,7 @@ class DebtListViewModel(
                 ledgerHomeCurrency = null,
                 // 账本切换即作废旧账本草稿：币种重绑前的兜底口径文本不得跨账本存活（PR#255 R5 P2）。
                 addDraft = DebtDraftUi(),
+                isParsingBill = false,
             )
         }
         refresh()
@@ -210,37 +213,38 @@ class DebtListViewModel(
                 isSubmitting = false,
                 addAccepted = false,
                 pendingBillParsePrefill = false,
+                isParsingBill = false,
             )
         }
     }
 
-    fun markBillParsePreparing(): Boolean {
+    fun markBillParsePreparing(): DebtBillParseAttempt? {
         val current = _state.value
+        val access = creation.currentAccess() ?: return null
         // homeCurrencyResolved 门与 submitDraft 对齐（PR#255 R5 P3）：币种未确认时预填必按
         // 兜底口径格式化，重绑后金额文本静默变义（JPY 账本的 "1200.00" 重绑后非法/变值）。
-        if (!current.canModify || current.isParsingBill || current.isSubmitting || !current.homeCurrencyResolved) {
-            return false
+        if (!access.canModify || access.binding != activeAccess?.binding || current.isParsingBill ||
+            current.isSubmitting || !current.homeCurrencyResolved) {
+            return null
         }
+        val currency = current.ledgerHomeCurrency ?: return null
+        val attempt = DebtBillParseAttempt(access.binding, currency, ++draftGeneration)
         _state.update { it.copy(isParsingBill = true, error = null) }
-        return true
+        return attempt
     }
 
-    fun billParsePreparationFailed() {
-        _state.update {
-            it.copy(
-                isParsingBill = false,
-                error = UiText.res(R.string.debt_bill_parse_failed),
-            )
+    fun parseDebtBillImage(attempt: DebtBillParseAttempt, image: PreparedUploadImage?) {
+        if (!continueBillParse(attempt)) return
+        if (image == null) {
+            _state.update { it.copy(isParsingBill = false, error = UiText.res(R.string.debt_bill_parse_failed)) }
+            return
         }
-    }
-
-    fun parseDebtBillImage(fileName: String, contentType: String?, bytes: ByteArray) {
-        val current = _state.value
-        if (!current.isParsingBill && !markBillParsePreparing()) return
         viewModelScope.launch {
-            repository.parseDebtBillImage(fileName, contentType, bytes).fold(
+            val result = repository.parseDebtBillImage(attempt.binding, image.fileName, image.contentType, image.bytes)
+            if (!continueBillParse(attempt)) return@launch
+            result.fold(
                 onSuccess = { suggestion ->
-                    val filled = DebtDraftUi(homeCurrency = _state.value.ledgerHomeCurrency ?: FxContract.HomeCurrency)
+                    val filled = DebtDraftUi(homeCurrency = attempt.homeCurrency)
                         .prefillFrom(suggestion)
                         .withInheritedModelFrom(_state.value.debts)
                     _state.update {
@@ -263,6 +267,18 @@ class DebtListViewModel(
                 },
             )
         }
+    }
+
+    private fun continueBillParse(attempt: DebtBillParseAttempt): Boolean {
+        val current = _state.value
+        if (attempt.generation != draftGeneration || !current.isParsingBill) return false
+        val access = creation.currentAccess()
+        if (access != null && access.binding == attempt.binding && access.canModify &&
+            current.ledgerHomeCurrency == attempt.homeCurrency) {
+            return true
+        }
+        _state.update { it.copy(isParsingBill = false) }
+        return false
     }
 
     fun ackBillParsePrefill() {

@@ -1,5 +1,7 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.upload.PreparedUploadImage
+
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtDraft
 import com.ticketbox.data.repository.DebtListPage
@@ -209,8 +211,8 @@ class DebtListViewModelTest {
         val viewModel = DebtListViewModel(repo, repo.creation, repo.adjustments)
         advanceUntilIdle()
 
-        assertTrue(viewModel.markBillParsePreparing())
-        viewModel.parseDebtBillImage("bill.jpg", "image/jpeg", byteArrayOf(1, 2, 3))
+        val attempt = requireNotNull(viewModel.markBillParsePreparing())
+        viewModel.parseDebtBillImage(attempt, PreparedUploadImage("bill.jpg", "image/jpeg", byteArrayOf(1, 2, 3), 3L))
         advanceUntilIdle()
 
         val draft = viewModel.state.value.addDraft
@@ -251,8 +253,8 @@ class DebtListViewModelTest {
         val viewModel = DebtListViewModel(repo, repo.creation, repo.adjustments)
         advanceUntilIdle()
 
-        assertTrue(viewModel.markBillParsePreparing())
-        viewModel.parseDebtBillImage("bill.jpg", "image/jpeg", byteArrayOf(1, 2, 3))
+        val attempt = requireNotNull(viewModel.markBillParsePreparing())
+        viewModel.parseDebtBillImage(attempt, PreparedUploadImage("bill.jpg", "image/jpeg", byteArrayOf(1, 2, 3), 3L))
         advanceUntilIdle()
 
         val draft = viewModel.state.value.addDraft

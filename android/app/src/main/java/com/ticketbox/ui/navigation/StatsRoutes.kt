@@ -285,18 +285,10 @@ internal fun rememberDebtBillImageLauncher(
 ): ManagedActivityResultLauncher<PickVisualMediaRequest, Uri?> =
     rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        if (!viewModel.markBillParsePreparing()) return@rememberLauncherForActivityResult
+        val attempt = viewModel.markBillParsePreparing() ?: return@rememberLauncherForActivityResult
         scope.launch {
             val selected = withContext(Dispatchers.IO) { context.prepareScreenshotUpload(uri) }
-            if (selected == null) {
-                viewModel.billParsePreparationFailed()
-                return@launch
-            }
-            viewModel.parseDebtBillImage(
-                fileName = selected.fileName,
-                contentType = selected.contentType,
-                bytes = selected.bytes,
-            )
+            viewModel.parseDebtBillImage(attempt, selected)
         }
     }
 

@@ -1,13 +1,13 @@
 # 已接受上传意图的跨实例恢复
 
-The opening test-first restrictions below describe that historical phase. Current implementation, qualification, protected merge and hygiene are authorized by the full Goal and subsequent Owner rulings. Current status is recorded in the latest dated evidence below and the same Product Atlas; earlier source results do not qualify a changed head.
+This is the current working contract for durable upload continuity. The full Goal and latest Owner rulings authorize implementation, qualification, protected merge and hygiene. Dated evidence below describes its exact subject and historical phase; it does not override this contract or qualify a changed head. The Atlas owns remaining product delivery.
 
-- Goal：完成总 Goal / 最终产品合同已要求的 Capture 离线、草稿与恢复任务。原 A/B/C 分享在 A 已保存、B 容量拒绝、C 未发送后，即使原 VM / graph 不再存在且来源 URI 不可再读，用户仍能找到并继续原 B/C，A 不重发。此处是 [Atlas 唯一已登记缺口](TICKETBOX_CURRENT_PRODUCT_ATLAS.md) 的下一纵向片；#381 的 VM 内容量续传仍保持 CLOSED。
+- Goal：完成总 Goal / 最终产品合同已要求的 Capture 离线、草稿与恢复任务。原 A/B/C 分享在 A 已保存、B 容量拒绝、C 未发送后，即使原 VM / graph 不再存在且来源 URI 不可再读，用户仍能找到并继续原 B/C，A 不重发。此处是 [Atlas Capture 交付包](TICKETBOX_CURRENT_PRODUCT_ATLAS.md#5-remaining-delivery-packages) 的当前纵向片；#381 的 VM 内容量续传仍保持 CLOSED。
 - Authority：总 Goal 与最新用户裁决 → 2026-08-26 最终产品合同 Capture 责任及离线意图条款（225–229、372–400），G2 后合同 Inbox 条款（242–249）→ exact source / 实际执行证据。旧代码的 online-only 注释不决定产品范围。
-- Allowed Changes：当前阶段只新增两个直接行为反例、必要的真实仓储 fixture、本合同和 Atlas 原 gap 链接。后续生产须复用现有上传、Room Outbox、幂等、身份与恢复 owner；本阶段没有生产实现授权。
-- Forbidden Surface：不新增 queue / status ledger / bus；不把图片相同当作命令幂等；不把本地保存冒充服务端 receipt；不清除未完成原意图来满足回归；不修改鉴权、金额 writer、容量政策或其它领域；不扩展任何 Windows 生命周期 HOLD。无本机 Gradle / PG / 长测，无 stage / commit / push。
+- Allowed Changes：完成原上传的接收、持久化、恢复及所有实际消费者，复用现有上传、Room Outbox、幂等、身份、文件与任务 owner；同步退役被替代出口。按 TDD、impact closure、bounded review 和 exact SHA 云端证据自主施工、正常提交与受保护合并。
+- Forbidden Surface：不新增 queue / status ledger / bus；不把图片相同当作命令幂等；不把本地保存冒充服务端 receipt；不清除未完成原意图来满足回归；不另造鉴权、金额 writer 或容量政策；不扩展任何 Windows 生命周期 HOLD。长测放云端，保护既有数据、身份、附件和用户工作树。
 - Done Checks：来源失效后重开的真实 Room / repository / VM 可读原恢复，原 Retry 最终只发送 A/B/B/C；同一原 key、文件及 timezone 重放返回同一 receipt，账单、任务、文件和执行器提交不增加；不同 key 同图仍新增 Pending 并进入重复核查；容量准入失败仍回滚 Expense / task / file。绑定、权限、未知 payload、协议拒绝与过期不得改绑、换 key 或静默结算；全部直接消费者和旧出口在生产施工后按下表重新闭合。
-- Evidence：准备基线 `61aa4f7e94667778e82584a3ba878e30eef9d38a`，隔离树 `codex/upload-intent-continuity-20260907`。test-first 经主控提交并整合父链后发布 `e22ff121e7cde6ab600a7f716fae0451fb691463`；实际云端已取得 PG 回执反例 RED，Android 新反例的原始退出原因被 fixture 清理异常覆盖，不能算恢复业务 RED。下文记录此证据及两处测试修正；没有生产 GREEN 或全 Goal 完成声明。
+- Evidence：各候选与合并主体的直接测试、云端结果及 formal review 状态见对应证据段；不以旧主体的通过替代当前资格化。#385 已合并，合并后主线独立资格化进行中；完整 Capture 任务、实际 OS 中断和总 Goal 仍未完成。
 
 ## 施工前 impact closure
 

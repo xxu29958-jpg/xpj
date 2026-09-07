@@ -1,5 +1,7 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.LogicalSessionBinding
+
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtAdjustmentFixture
 import com.ticketbox.data.local.PendingMutationStatus
@@ -537,6 +539,7 @@ private class FakeRepayableDebtActions(
     }
     override suspend fun getDebt(publicId: String): Result<Debt> = Result.success(debt(publicId))
     override suspend fun parseDebtBillImage(
+        expectedBinding: LogicalSessionBinding,
         fileName: String,
         contentType: String?,
         bytes: ByteArray,
