@@ -368,8 +368,6 @@ class PendingViewModel(
             if (generation != requestGeneration || uploadIntents.currentUploadBinding() != binding) return false
             result.onFailure { error ->
                 _uiState.update { it.copy(message = error.toUiText(R.string.pending_msg_upload_failed)) }
-            }.onSuccess {
-                _uiState.update { it.copy(message = UiText.res(R.string.pending_msg_upload_saved)) }
             }.isSuccess
         } finally {
             if (generation == requestGeneration) _uiState.update { it.copy(uploadActionInProgress = false) }

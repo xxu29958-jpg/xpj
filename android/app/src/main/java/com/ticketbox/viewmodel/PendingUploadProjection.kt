@@ -26,7 +26,7 @@ internal fun UploadIntentObservation.toPendingUploadUiState(): PendingUploadUiSt
     val group = unfinished.filter { it.row.targetId == first.row.targetId }
     val groupId = first.row.targetId.removePrefix("upload_batch:")
         .takeIf { first.row.targetId == "upload_batch:$it" && isUploadIntentFileKey(it) }
-    val failures = group.filter { it.row.status in UPLOAD_FAILURE_STATUSES }
+    val failures = group.filter { it.row.status in UPLOAD_FAILURE_STATUSES || it.payload?.file == null }
     return PendingUploadUiState(
         groupId = groupId,
         inFlight = group.any { it.row.status == PendingMutationStatus.InFlight },
@@ -50,9 +50,11 @@ private fun uploadGroupMessage(group: List<PendingUploadIntent>, failures: List<
             UiText.res(R.string.sync_status_error_expired)
         "upload_original_unavailable" in codes ->
             UiText.res(R.string.pending_msg_upload_unreadable)
+        "idempotency_key_reused" in codes ->
+            UiText.res(R.string.pending_msg_upload_key_refused)
         codes.any { it in PROTOCOL_REFUSALS } ->
             UiText.res(R.string.sync_status_error_protocol_mismatch)
-        failures.isNotEmpty() && group.all { it.payload?.file == null } ->
+        group.any { it.payload?.file == null } ->
             UiText.res(R.string.pending_msg_upload_unreadable)
         failures.isNotEmpty() -> UiText.res(R.string.pending_msg_share_partial_failure, failures.size)
         else -> UiText.res(R.string.pending_msg_upload_saved)

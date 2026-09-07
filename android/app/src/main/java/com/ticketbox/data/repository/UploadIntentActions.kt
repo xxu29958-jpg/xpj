@@ -26,7 +26,8 @@ data class PendingUploadIntent(
     val canRetry: Boolean
         get() = row.status == PendingMutationStatus.Failed && payload?.file != null &&
             row.lastError?.startsWith("outbox_row_expired") != true &&
-            row.lastError?.startsWith("upload_original_unavailable") != true
+            row.lastError?.startsWith("upload_original_unavailable") != true &&
+            row.lastError?.substringBefore(':') != "idempotency_key_reused"
 }
 
 interface UploadIntentActions {
