@@ -799,14 +799,22 @@ def test_served_web_layout_through_manager_bff(
                 monkeypatch, bootstrap_path=bootstrap_dir / "bootstrap-1.html",
                 profile=profile, record_property=record_property,
             )
-        value = evaluate_page(
-            edge,
-            profile=profile,
-            prepare_url=prepare_url,
-            width=width,
-            height=height,
-            expression=_SERVED_WEB_PROBE,
-        )
+        try:
+            value = evaluate_page(
+                edge,
+                profile=profile,
+                prepare_url=prepare_url,
+                width=width,
+                height=height,
+                expression=_SERVED_WEB_PROBE,
+            )
+        except AssertionError as exc:
+            try:
+                remaining = str(sum(path.exists() for path in bootstrap_paths))
+            except OSError:
+                remaining = "unavailable"
+            exc.add_note(f"bootstrap_files_created={len(bootstrap_paths)}; remaining={remaining}")
+            raise
 
     assert bootstrap_paths
     assert all(not path.exists() for path in bootstrap_paths)

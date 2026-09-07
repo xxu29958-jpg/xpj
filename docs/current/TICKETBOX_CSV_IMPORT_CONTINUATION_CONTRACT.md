@@ -306,3 +306,10 @@ behavior correction and that candidate's cloud gates; it does not resolve the ne
 Debt/Facts/governance findings inherited in its parent tree, qualify later integration,
 protected merge-main or the full household/RC journey. The final integrated CSV source
 still needs its own applicable cloud qualification.
+
+
+## Qualified Facts integration and pending native producer preservation
+
+Before integration, source b9d8f67b2397d1bb98bc15c451e98880f73a063c has exactly three known pending Desktop test changes: _edge_cdp.py, test_ui_browser_layout.py and test_web_bff_edge_e2e.py. Their full normalized source is identical to Capture e86e9cd42ffc8f3b47efdb956f051463956d2faa, whose exact CI/CodeQL/Connected completed successfully. Commit these existing owned improvements rather than discard them. Python AST parsing passes; no local Edge/native/PG/Gradle execution is performed and no prior result is substituted for this new candidate.
+
+The inherited Facts source will be integrated through qualified 847167f203d22feab66c1aa9afa41bf376293c58, whose tree is byte-identical to protected main acb8f70b486aadf723f75b35f826624268eaa3a0. The merge preview is clean. This preserves the CSV entry, mapping/review, partial import/savepoint receipt and continuation consumers, while replacing inherited obsolete correction admission, binding, projection and recovery paths with the qualified Facts owner. There is no new CSV command, schema, protocol or persistence decision. After that real source integration, record the identical squash-main tree as an ancestor without reapplying it. Original producer changes and all CSV assertions remain. The new combined candidate requires its own exact cloud CI/CodeQL/Connected; protected merge remains after independent main qualification and the preceding slice.
