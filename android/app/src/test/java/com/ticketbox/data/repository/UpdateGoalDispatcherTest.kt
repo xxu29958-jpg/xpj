@@ -115,6 +115,24 @@ class UpdateGoalDispatcherTest {
     }
 
     @Test
+    fun `an unreadable original target remains a visible failure`() = runTest {
+        val stub = Stub(Result.success(updatedGoalDto()))
+        val result = dispatcherFor(stub).dispatch(goalRow("original-key").copy(targetId = "goal:"))
+        assertTrue(result is DispatchResult.Failure, "an unsent intent cannot become done: $result")
+        assertEquals(null, stub.lastIdempotencyKey)
+    }
+
+    @Test
+    fun `accepted goal survives a failed following read in the durable receipt`() = runTest {
+        val canonical = updatedGoalDto()
+        val result = dispatcherFor(Stub(Result.success(canonical))).dispatch(goalRow("original-key"))
+        assertTrue(result is DispatchResult.Success)
+        val receipt = result.receiptJson
+        assertTrue(receipt != null, "the acknowledgement must survive Room reopen")
+        assertEquals(canonical, moshi().adapter(GoalDto::class.java).fromJson(receipt))
+    }
+
+    @Test
     fun `409 idempotency_key_in_progress is retried, not dropped`() = runTest {
         val body = """{"error":"idempotency_key_in_progress","message":"操作正在处理中，请稍后再试。"}"""
         val stub = Stub(Result.failure(httpException(409, body)))

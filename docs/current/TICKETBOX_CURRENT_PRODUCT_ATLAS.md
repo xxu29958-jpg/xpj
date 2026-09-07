@@ -147,7 +147,7 @@ completion percentages.
 |---|---|
 | First use and household | Owner/member/viewer enter the intended household, understand where data lives and recover expired/failed connection without losing intent or changing identity |
 | Capture, facts and reference | Capture consumer gaps #387 closed; continue integrated search/reference/correction and remaining role/error journeys with one fact owner |
-| Relationships | Split creation #388 CLOSED; accepted-result continuation #391 CLOSED. Member settlement continuity is active; complete proposals/repayment/adjustment/forgiveness/void, original-intent retry/discard and canonical totals across clients |
+| Relationships | Split creation #388, accepted-result continuation #391 and member settlement continuity #392 CLOSED. Continue integrated relationship journeys and remaining cross-client recovery evidence |
 | Planning and insights | Complete supported budget/goal/income/recurring/debt-plan tasks; overview/period review/data health reflect authoritative facts/corrections with useful empty/error/read-only states |
 | Backstage | Ordinary household can configure applicable capabilities, understand actual health and resume failed work; local governance, secrets and host authority retain their owners |
 | Consumer art and convenience | Actual Web 360/768/1440 and Android journeys meet the selected modern consumer design and reduce interaction burden; retire replaced visual owners. Replace raw split-source metadata; resolve the observed intermittent first bottom-navigation tap |
@@ -172,13 +172,12 @@ Do not drop these or open full lifecycle work while handling other journeys.
 remaining art/interaction details, then the exact full RC. Keep useful state
 feedback and efficient actions within each active capability change.
 
-**Active work:** #385–#391 are CLOSED, integrated and independently main-qualified.
-[#392](https://github.com/xxu29958-jpg/xpj/pull/392) strengthens member settlement
-with identifiable parties, visible remaining amounts and truthful command results.
+**Active work:** #385–#392 are CLOSED, integrated and independently main-qualified.
+[Member settlement evidence](TICKETBOX_MEMBER_SETTLEMENT_CONTINUITY_CONTRACT.md).
 
-**Next action:** complete [member settlement continuity](TICKETBOX_MEMBER_SETTLEMENT_CONTINUITY_CONTRACT.md):
-debtor proposal → creditor decision → canonical balance/history and recoverable
-feedback, with original task/identity retained across delayed operations.
+**Next action:** complete [spending-goal submission and recovery](TICKETBOX_PLANNING_GOAL_CONTINUITY_CONTRACT.md):
+authoritative currency → real Save → durable original intent → canonical progress
+and recoverable feedback. Retire the parallel direct writer and unused fallback.
 Physical budget/income creation works; simplify Android's first-budget optional
 fields within Planning/convenience. Preserve draft #372 for the later detail wave.
 The full Goal and all remaining packages above stay active.
