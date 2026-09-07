@@ -53,6 +53,7 @@ from app.services.background_task_executor import (
     shutdown_executor as _shutdown_executor,
 )
 from app.services.background_task_executor import submit_task as _submit_to_executor
+from app.services.background_task_handler_api import mark_failed as _mark_failed
 from app.services.background_task_recovery_service import (
     recover_orphaned_tasks as _recover_orphaned_tasks,
 )
@@ -60,7 +61,6 @@ from app.services.background_task_registry import TaskHandler, TaskHandlerRegist
 from app.services.background_task_registry import (
     runtime_handler_registry as _runtime_handler_registry,
 )
-from app.services.background_task_worker import mark_failed as _mark_failed
 from app.services.background_task_worker import run_task as _run_background_task
 from app.services.time_service import now_utc
 
@@ -233,6 +233,7 @@ def submit_committed(
             _mark_failed(
                 db,
                 prepared.task_id,
+                expected_status="queued",
                 error_code="task_submission_failed",
                 error_message="Task execution could not be started.",
             )
@@ -244,6 +245,14 @@ def submit_committed(
             logger.exception("background task %s failure status could not be persisted", prepared.task_id)
         raise BackgroundTaskSubmissionError(prepared.task_public_id) from exc
     return task
+
+
+def submit_existing(db: Session, task: BackgroundTask, payload: dict[str, object]) -> BackgroundTask:
+    """Reconstruct execution for a domain-validated durable task, without new admission."""
+    return submit_committed(db, PreparedBackgroundTask(
+        task=task, task_id=task.id, task_public_id=task.public_id,
+        payload=dict(payload), registry=_current_handler_registry(),
+    ))
 
 
 def enqueue_or_get_active(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from io import BytesIO
 
 import pytest
@@ -18,6 +19,21 @@ def _ledger_upload_row_counts(ledger_id: str) -> tuple[int, int]:
         expenses = db.scalar(select(func.count()).select_from(Expense).where(Expense.tenant_id == ledger_id))
         tasks = db.scalar(select(func.count()).select_from(BackgroundTask).where(BackgroundTask.tenant_id == ledger_id))
         return int(expenses or 0), int(tasks or 0)
+
+
+def _capture_enrichment_execution(monkeypatch: pytest.MonkeyPatch) -> list[tuple[int, dict]]:
+    from app.services import background_task_service, background_task_worker
+
+    executions: list[tuple[int, dict]] = []
+
+    def execute(task_id, payload, *, registry):
+        del registry
+        with SessionLocal() as db:
+            if background_task_worker.claim_queued_task(db, task_id) is not None:
+                executions.append((task_id, dict(payload)))
+
+    monkeypatch.setattr(background_task_service, "_submit_task", execute)
+    return executions
 
 
 def test_upload_receipt_key_is_optional_without_weakening_outbox_command_headers() -> None:
@@ -44,15 +60,7 @@ def test_android_upload_same_intent_returns_the_original_receipt_without_another
     *,
     identity,
 ) -> None:
-    from app.services import background_task_service
-
-    submissions: list[tuple[int, dict[str, object]]] = []
-
-    def capture_submit(task_id, payload, *, registry):
-        del registry
-        submissions.append((task_id, dict(payload)))
-
-    monkeypatch.setattr(background_task_service, "_submit_task", capture_submit)
+    submissions = _capture_enrichment_execution(monkeypatch)
     before_rows = _ledger_upload_row_counts("owner")
     before_files = set(_stored_upload_files())
     headers = {
@@ -184,15 +192,16 @@ def test_android_upload_receipt_claim_failure_rolls_back_its_expense_task_and_fi
 
 
 @pytest.mark.real_db
+@pytest.mark.parametrize("readback_available", [True, False])
 def test_android_upload_lost_commit_ack_recovers_its_original_task_and_receipt(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch, *, identity,
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, *, identity, readback_available: bool,
 ) -> None:
     from sqlalchemy.exc import SQLAlchemyError
     from sqlalchemy.orm import Session
 
-    submissions: list[tuple[int, dict]] = []
-    monkeypatch.setattr("app.services.background_task_service._submit_task",
-        lambda task_id, payload, **_kwargs: submissions.append((task_id, payload)))
+    from app.routes import _upload_request
+
+    submissions = _capture_enrichment_execution(monkeypatch)
     before_rows, before_files = _ledger_upload_row_counts("owner"), _stored_upload_files()
     key = "70000000-0000-4000-8000-000000000022"
     headers = {**identity.app_headers, "Idempotency-Key": key, "Content-Type": "image/png",
@@ -210,25 +219,41 @@ def test_android_upload_lost_commit_ack_recovers_its_original_task_and_receipt(
             raise SQLAlchemyError("upload commit acknowledgement lost")
 
     monkeypatch.setattr(Session, "commit", commit_then_lose_ack)
+    if not readback_available:
+        def unavailable_readback(*_args):
+            raise SQLAlchemyError("commit read-back temporarily unavailable")
+        monkeypatch.setattr(_upload_request, "upload_commit_is_durable", unavailable_readback)
     with TestClient(app, raise_server_exceptions=False) as no_raise_client:
         accepted = no_raise_client.post("/api/app/upload-screenshot", headers=headers, content=PNG_BYTES)
     assert lost_ack
-    assert accepted.status_code == 200, "A read-back-proven commit must retain its original task execution exit"
+    assert accepted.status_code == (200 if readback_available else 500)
     accepted_files = _stored_upload_files()
     assert set(accepted_files) > set(before_files)
     assert _ledger_upload_row_counts("owner") == (before_rows[0] + 1, before_rows[1] + 1)
-    assert len(submissions) == 1
+    assert len(submissions) == (1 if readback_available else 0)
     with SessionLocal() as db:
         claim = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == key))
         assert claim is not None and claim.status == "succeeded"
         receipt = claim.response_body
         task = db.scalar(select(BackgroundTask).where(BackgroundTask.public_id == receipt["enrichment_task_public_id"]))
         assert task is not None
-        assert submissions == [(task.id, {
+        expected_submission = (task.id, {
             "expense_id": receipt["id"], "tenant_id": "owner", "timezone_name": "America/Los_Angeles",
             "expected_row_version": 1,
-        })]
-        assert accepted.json() == receipt
+        })
+        assert json.loads(task.input_payload_json) == expected_submission[1]
+        if readback_available:
+            assert submissions == [expected_submission]
+            assert accepted.json() == receipt
+        else:
+            from app.services.currency_binding_service import resolve_write_capability
+            from app.services.optimistic_concurrency import bump_row_version
+
+            resolve_write_capability(db)
+            expense = db.get(Expense, receipt["id"])
+            expense.merchant = "用户在回执重试前修改"
+            bump_row_version(expense)
+            db.commit()
 
     monkeypatch.setattr(Session, "commit", original_commit)
     replay = client.post("/api/app/upload-screenshot", headers=headers, content=PNG_BYTES)
@@ -236,7 +261,47 @@ def test_android_upload_lost_commit_ack_recovers_its_original_task_and_receipt(
     assert replay.json() == receipt
     assert _ledger_upload_row_counts("owner") == (before_rows[0] + 1, before_rows[1] + 1)
     assert _stored_upload_files() == accepted_files
+    assert submissions == [expected_submission], "Receipt replay must recover an original task that was never submitted"
+
+
+@pytest.mark.real_db
+@pytest.mark.parametrize("task_status,invalid_input", [
+    ("running", None), ("completed", None), ("failed", None), ("cancelled", None),
+    ("queued", None), ("queued", "invalid-json"), ("queued", "wrong-expense"),
+])
+def test_receipt_replay_preserves_terminal_tasks_and_exposes_unrecoverable_original_input(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, *, identity, task_status, invalid_input,
+) -> None:
+    submissions = []
+    monkeypatch.setattr("app.services.background_task_service._submit_task",
+        lambda task_id, *_args, **_kwargs: submissions.append(task_id))
+    headers = {**identity.app_headers, "Idempotency-Key": "70000000-0000-4000-8000-000000000024",
+        "Content-Type": "image/png"}
+    first = client.post("/api/app/upload-screenshot", headers=headers, content=PNG_BYTES)
+    assert first.status_code == 200
+    receipt = first.json()
     assert len(submissions) == 1
+    rows, files = _ledger_upload_row_counts("owner"), _stored_upload_files()
+    with SessionLocal() as db:
+        task = db.scalar(select(BackgroundTask).where(BackgroundTask.public_id == receipt["enrichment_task_public_id"]))
+        task.status = task_status
+        if invalid_input == "wrong-expense":
+            payload = json.loads(task.input_payload_json)
+            payload["expense_id"] += 1
+            task.input_payload_json = json.dumps(payload)
+        else:
+            task.input_payload_json = invalid_input
+        db.commit()
+    replay = client.post("/api/app/upload-screenshot", headers=headers, content=PNG_BYTES)
+    assert replay.status_code == 200
+    assert replay.json() == receipt
+    assert len(submissions) == 1
+    assert _ledger_upload_row_counts("owner") == rows
+    assert _stored_upload_files() == files
+    with SessionLocal() as db:
+        task = db.scalar(select(BackgroundTask).where(BackgroundTask.public_id == receipt["enrichment_task_public_id"]))
+        assert task.status == ("failed" if task_status == "queued" else task_status)
+        assert task.error_code == ("task_input_unavailable" if task_status == "queued" else None)
 
 
 @pytest.mark.real_db

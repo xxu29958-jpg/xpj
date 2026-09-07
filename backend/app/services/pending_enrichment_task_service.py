@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+from contextlib import suppress
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -14,6 +16,7 @@ from app.services.background_task_admission import BackgroundTaskCapacityFullErr
 from app.services.background_task_handler_api import (
     TaskCancelledError,
     check_cancellation_requested,
+    mark_failed,
 )
 from app.services.expense_service import enrich_pending_expense
 
@@ -44,7 +47,7 @@ def prepare_pending_expense_enrichment(
     """Stage the upload's task in the caller-owned expense transaction."""
 
     try:
-        return background_task_service.prepare_enqueue(
+        prepared = background_task_service.prepare_enqueue(
             db,
             task_type=PENDING_EXPENSE_ENRICHMENT_TASK_TYPE,
             initiator_account_id=initiator_account_id,
@@ -58,6 +61,8 @@ def prepare_pending_expense_enrichment(
             ),
             progress_total=1,
         )
+        prepared.task.input_payload_json = json.dumps(prepared.payload, separators=(",", ":"), sort_keys=True)
+        return prepared
     except BackgroundTaskCapacityFullError as exc:
         raise AppError("enrichment_capacity_full", status_code=503) from exc
 
@@ -88,6 +93,31 @@ def _enrichment_payload(
         "timezone_name": timezone_name,
         "expected_row_version": expected_row_version,
     }
+
+
+def resume_pending_expense_enrichment(
+    db: Session, *, task_public_id: str, expense_id: int, tenant_id: str,
+) -> None:
+    """Wake an original queued upload task from its durable input, preserving its receipt."""
+    task = db.scalar(select(BackgroundTask).where(
+        BackgroundTask.public_id == task_public_id,
+        BackgroundTask.tenant_id == tenant_id,
+        BackgroundTask.task_type == PENDING_EXPENSE_ENRICHMENT_TASK_TYPE,
+        BackgroundTask.status == "queued",
+    ))
+    if task is None:
+        return
+    try:
+        payload = json.loads(task.input_payload_json or "null")
+        if not isinstance(payload, dict) or _task_payload(task, payload)[0] != expense_id:
+            raise ValueError("original enrichment input does not match its receipt")
+    except (TypeError, ValueError):
+        mark_failed(db, task.id, expected_status="queued", error_code="task_input_unavailable",
+            error_message="原识别任务缺少可恢复输入，请从待确认账单重新识别。")
+        return
+    # The original receipt remains accepted; task status exposes refusal.
+    with suppress(background_task_service.BackgroundTaskSubmissionError):
+        background_task_service.submit_existing(db, task, payload)
 
 
 def _task_payload(
@@ -158,6 +188,7 @@ def run_pending_expense_enrichment_task(
 __all__ = [
     "PENDING_EXPENSE_ENRICHMENT_TASK_TYPE",
     "prepare_pending_expense_enrichment",
+    "resume_pending_expense_enrichment",
     "run_pending_expense_enrichment_task",
     "submit_pending_expense_enrichment",
 ]
