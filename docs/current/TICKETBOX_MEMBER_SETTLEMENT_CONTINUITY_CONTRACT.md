@@ -34,7 +34,7 @@ financial writer, generic workflow framework or parallel offline executor.
 ## Qualification state
 
 Implementation is under qualification. Short local source analysis passes; final
-candidate cloud checks, bounded review, physical debtor/creditor use and independent
+candidate cloud checks, bounded review, VM/cloud debtor/creditor use and independent
 merge-main qualification are still required. The earlier split-save Connected
 waiting-receipt timeout remains an explicit final regression subject. Exact hashes,
 run IDs and logs belong in [PR #392](https://github.com/xxu29958-jpg/xpj/pull/392)
