@@ -497,6 +497,7 @@ enum class DiagnosticStatus {
 
 enum class DiagnosticCheckKind {
     Auth,
+    WriteCompatibility,
     ServerSettings,
     PendingExpenses,
     ConfirmedExpenses,

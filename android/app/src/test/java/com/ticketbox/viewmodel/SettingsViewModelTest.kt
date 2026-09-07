@@ -5,6 +5,8 @@ import com.ticketbox.data.local.PersistedLedgerIdentity
 import com.ticketbox.R
 import com.ticketbox.data.repository.SettingsActions
 import com.ticketbox.data.repository.LocalBindingInfo
+import com.ticketbox.data.repository.LedgerAccessContext
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.boundSettingsStore
 import com.ticketbox.domain.model.ConnectionDiagnostics
 import com.ticketbox.domain.model.DiagnosticCheck
@@ -18,6 +20,8 @@ import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
@@ -98,32 +102,32 @@ class SettingsViewModelTest {
     }
 
     @Test
-    fun testConnectionUsesSuccessAndDangerTones() = runTest(dispatcher) {
+    fun runDiagnosticsUsesSuccessAndDangerTones() = runTest(dispatcher) {
         val successVm = SettingsViewModel(repository = FakeSettingsActions(), settingsStore = boundSettingsStore())
         runCurrent()
 
-        successVm.testConnection()
+        successVm.runDiagnostics()
         runCurrent()
 
         val successState = successVm.uiState.value
         assertFalse(successState.busy)
-        assertEquals(UiText.res(R.string.settings_vm_connection_ok), successState.message)
+        assertEquals(UiText.res(R.string.settings_vm_diagnostics_passed), successState.message)
         assertEquals(MessageTone.Success, successState.messageTone)
 
         val failureVm = SettingsViewModel(
             repository = FakeSettingsActions().apply {
-                testConnectionFailure = RuntimeException()
+                diagnosticsFailure = RuntimeException()
             },
             settingsStore = boundSettingsStore(),
         )
         runCurrent()
 
-        failureVm.testConnection()
+        failureVm.runDiagnostics()
         runCurrent()
 
         val failureState = failureVm.uiState.value
         assertFalse(failureState.busy)
-        assertEquals(UiText.res(R.string.settings_vm_connection_failed), failureState.message)
+        assertEquals(UiText.res(R.string.settings_vm_diagnostics_incomplete), failureState.message)
         assertEquals(MessageTone.Danger, failureState.messageTone)
     }
 
@@ -153,6 +157,7 @@ class SettingsViewModelTest {
         assertEquals(diagnostics, state.diagnostics)
         assertEquals(UiText.res(R.string.settings_vm_diagnostics_failed_count, 1), state.message)
         assertEquals(MessageTone.Danger, state.messageTone)
+        assertFalse(state.serverSettingsFresh)
     }
 
     @Test
@@ -235,6 +240,73 @@ class SettingsViewModelTest {
         assertFalse(vm.uiState.value.busy)
     }
 
+    @Test
+    fun replacingTheSessionAtTheSameAddressClearsResultsWithoutAnExplicitRefresh() = runTest(dispatcher) {
+        val repo = FakeSettingsActions()
+        val vm = SettingsViewModel(repo, boundSettingsStore())
+        runCurrent()
+        vm.runDiagnostics()
+        runCurrent()
+
+        repo.sessionGenerationValue = "replacement-session"
+        runCurrent()
+
+        assertEquals(null, vm.uiState.value.diagnostics)
+        assertFalse(vm.uiState.value.serverSettingsFresh)
+        assertEquals(null, vm.uiState.value.message)
+    }
+
+    @Test
+    fun leavingTheConnectionPageCancelsItsPendingCheckAndAllowsAnotherAttempt() = runTest(dispatcher) {
+        val repo = FakeSettingsActions().apply { diagnosticsGate = CompletableDeferred() }
+        val vm = SettingsViewModel(repo, boundSettingsStore())
+        runCurrent()
+        vm.runDiagnostics()
+        runCurrent()
+
+        vm.cancelConnectionWork()
+        runCurrent()
+        assertFalse(vm.uiState.value.busy)
+        assertEquals(null, vm.uiState.value.diagnostics)
+
+        repo.diagnosticsGate = null
+        vm.runDiagnostics()
+        runCurrent()
+        assertEquals(repo.diagnostics, vm.uiState.value.diagnostics)
+        assertFalse(vm.uiState.value.busy)
+    }
+
+    @Test
+    fun roleRevocationBeforeTheNextFrameCannotKeepAutoCaptureEnabled() = runTest(dispatcher) {
+        val repo = FakeSettingsActions()
+        val store = boundSettingsStore()
+        val vm = SettingsViewModel(repo, store)
+        runCurrent()
+
+        repo.currentLedgerRoleValue = "viewer"
+        vm.saveNotificationPreferences(NotificationPreferences(autoCaptureEnabled = true, pendingDraftReminders = true))
+
+        assertFalse(store.notificationPreferences().autoCaptureEnabled)
+        assertTrue(store.notificationPreferences().pendingDraftReminders)
+        assertEquals(MessageTone.Info, vm.uiState.value.messageTone)
+    }
+
+    @Test
+    fun completedSyncWithAnUnavailableStatusRemainsAReadablePartialResult() = runTest(dispatcher) {
+        val repo = FakeSettingsActions()
+        val vm = SettingsViewModel(repo, boundSettingsStore())
+        runCurrent()
+        repo.serverSettingsFailure = RuntimeException()
+
+        vm.sync()
+        runCurrent()
+
+        assertEquals(UiText.res(R.string.settings_vm_sync_state_unavailable), vm.uiState.value.message)
+        assertEquals(MessageTone.Info, vm.uiState.value.messageTone)
+        assertFalse(vm.uiState.value.serverSettingsFresh)
+        assertFalse(vm.uiState.value.busy)
+    }
+
     private class FakeSettingsActions(
         private var lastConfirmedSyncAtValue: String? = null,
         private val clearLocalCacheGate: CompletableDeferred<Unit>? = null,
@@ -242,18 +314,28 @@ class SettingsViewModelTest {
     ) : SettingsActions {
         var clearLocalCacheCalls = 0
         var currentLedgerRoleValue: String? = "owner"
-        var testConnectionFailure: Throwable? = null
+            set(value) { field = value; accessUpdates.value = currentAccess() }
         var diagnostics: ConnectionDiagnostics = ConnectionDiagnostics(checks = emptyList())
         var diagnosticsFailure: Throwable? = null
         var serverSettingsValue: ServerSettings? = null
+        var serverSettingsFailure: Throwable? = null
         var diagnosticsGate: CompletableDeferred<Unit>? = null
         var binding = LocalBindingInfo(
             "https://api.example.com", "Account", "owner", "Ledger", "Pixel", "owner", "2026-05-01T00:00:00Z",
         )
+            set(value) { field = value; accessUpdates.value = currentAccess() }
+        var sessionGenerationValue = "session"
+            set(value) { field = value; accessUpdates.value = currentAccess() }
+        private val accessUpdates = MutableStateFlow(currentAccess())
 
-        override fun localBinding(): LocalBindingInfo = binding
+        override fun localBinding(): LocalBindingInfo = binding.copy(role = currentLedgerRoleValue ?: "viewer")
 
-        override fun currentLedgerRole(): String? = currentLedgerRoleValue
+        override fun currentAccess(): LedgerAccessContext = LedgerAccessContext(
+            LogicalSessionBinding(binding.serverUrl, binding.ledgerId, "test-owner", sessionGenerationValue, "binding"),
+            currentLedgerRoleValue != "viewer",
+        )
+
+        override fun observeAccess(): Flow<LedgerAccessContext?> = accessUpdates
 
         override fun lastConfirmedSyncAt(): String? = lastConfirmedSyncAtValue
 
@@ -263,16 +345,14 @@ class SettingsViewModelTest {
 
         override fun saveMonthlyBudgetCents(amountCents: Long?) = Unit
 
-        override suspend fun testConnection(): Result<Unit> =
-            testConnectionFailure?.let { Result.failure(it) } ?: Result.success(Unit)
-
-        override suspend fun runConnectionDiagnostics(): Result<ConnectionDiagnostics> {
+        override suspend fun runConnectionDiagnostics(binding: LogicalSessionBinding): Result<ConnectionDiagnostics> {
+            assertEquals(currentAccess().binding, binding)
             diagnosticsGate?.await()
             return diagnosticsFailure?.let { Result.failure(it) } ?: Result.success(diagnostics)
         }
 
         override suspend fun serverSettings(): Result<ServerSettings> =
-            Result.success(serverSettingsValue ?: defaultServerSettings())
+            serverSettingsFailure?.let { Result.failure(it) } ?: Result.success(serverSettingsValue ?: defaultServerSettings())
 
         override suspend fun syncConfirmed(
             month: String?,

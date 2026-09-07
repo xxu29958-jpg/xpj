@@ -5,12 +5,17 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.repository.SettingsActions
+import com.ticketbox.data.repository.LedgerAccessContext
+import com.ticketbox.data.repository.LogicalSessionBinding
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import com.ticketbox.domain.model.ConnectionDiagnostics
+import com.ticketbox.domain.model.DiagnosticCheckKind
+import com.ticketbox.domain.model.DiagnosticStatus
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.NotificationPreferences
 import com.ticketbox.domain.model.ServerSettings
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.domain.model.ledgerRoleCanModify
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,6 +35,7 @@ import kotlinx.coroutines.launch
  * so status feedback no longer bleeds across sub-screens.
  */
 data class SettingsUiState(
+    val access: LedgerAccessContext? = null,
     val serverUrl: String? = null,
     val accountName: String? = null,
     val ledgerName: String? = null,
@@ -54,197 +60,167 @@ class SettingsViewModel(
     private val repository: SettingsActions,
     private val settingsStore: TicketboxSettingsStore,
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(SettingsUiState().withLocalBindingFields())
+    private val _uiState = MutableStateFlow(SettingsUiState().withLocalBindingFields(repository, settingsStore))
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
+    private var connectionJob: Job? = null
 
     init {
+        viewModelScope.launch { repository.observeAccess().collect { refreshLocalBindingState() } }
         loadServerSettings()
     }
 
-    private fun canModifyCurrentLedger(): Boolean {
-        return ledgerRoleCanModify(_uiState.value.role ?: repository.currentLedgerRole())
-    }
-
-    private fun SettingsUiState.withLocalBindingFields(
-        busy: Boolean = this.busy,
-        message: UiText? = this.message,
-        messageTone: MessageTone = this.messageTone,
-    ): SettingsUiState {
-        val binding = repository.localBinding()
-        return copy(
-            serverUrl = binding?.serverUrl,
-            accountName = binding?.accountName,
-            ledgerName = binding?.ledgerName,
-            deviceName = binding?.deviceName,
-            role = binding?.role,
-            boundAt = binding?.boundAt,
-            monthlyBudgetCents = settingsStore.monthlyBudgetCents(),
-            notificationPreferences = settingsStore.notificationPreferences(),
-            lastUploadAt = repository.lastUploadAt(),
-            lastConfirmedSyncAt = repository.lastConfirmedSyncAt(),
-            busy = busy,
-            message = message,
-            messageTone = messageTone,
-        )
-    }
 
     fun refreshLocalBindingState() {
-        _uiState.update { it.withLocalBindingFields() }
-    }
-
-    fun testConnection() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(busy = true, message = null, messageTone = MessageTone.Neutral) }
-            repository.testConnection()
-                .onSuccess {
-                    _uiState.update {
-                        it.copy(
-                            busy = false,
-                            message = UiText.res(R.string.settings_vm_connection_ok),
-                            messageTone = MessageTone.Success,
-                        )
-                    }
-                }
-                .onFailure { error ->
-                    _uiState.update {
-                        it.copy(
-                            busy = false,
-                            message = error.toUiText(R.string.settings_vm_connection_failed),
-                            messageTone = MessageTone.Danger,
-                        )
-                    }
-                }
+        val access = repository.currentAccess()
+        if (_uiState.value.access?.binding != access?.binding) {
+            connectionJob?.cancel()
+            _uiState.value = SettingsUiState().withLocalBindingFields(repository, settingsStore, access)
+        } else {
+            _uiState.update { it.withLocalBindingFields(repository, settingsStore, access) }
         }
     }
 
-    fun sync() {
-        viewModelScope.launch {
-            _uiState.update { it.withLocalBindingFields(busy = true, message = null, messageTone = MessageTone.Neutral) }
-            repository.syncConfirmed(month = null, category = null, tag = null)
-                .onSuccess {
-                    _uiState.update {
-                        it.withLocalBindingFields(
-                            busy = false,
-                            message = UiText.res(R.string.settings_vm_sync_done),
-                            messageTone = MessageTone.Success,
-                        )
-                    }
-                }
-                .onFailure { error ->
-                    _uiState.update {
-                        it.withLocalBindingFields(
-                            busy = false,
-                            message = error.toUiText(R.string.settings_vm_sync_failed),
-                            messageTone = MessageTone.Danger,
-                        )
-                    }
-                }
-        }
+    private fun updateFor(binding: LogicalSessionBinding, transform: (SettingsUiState) -> SettingsUiState) {
+        refreshLocalBindingState()
+        if (_uiState.value.access?.binding == binding) _uiState.update(transform)
     }
 
-    fun runDiagnostics() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(busy = true, message = null, messageTone = MessageTone.Neutral, diagnostics = null) }
-            repository.runConnectionDiagnostics()
-                .onSuccess { diagnostics ->
-                    _uiState.update {
-                        it.copy(
-                            busy = false,
-                            diagnostics = diagnostics,
-                            message = if (diagnostics.isHealthy) {
-                                UiText.res(R.string.settings_vm_diagnostics_passed)
-                            } else {
-                                UiText.res(R.string.settings_vm_diagnostics_failed_count, diagnostics.failedCount)
-                            },
-                            messageTone = if (diagnostics.isHealthy) MessageTone.Success else MessageTone.Danger,
-                        )
-                    }
-                }
-                .onFailure { error ->
-                    _uiState.update {
-                        it.copy(
-                            busy = false,
-                            message = error.toUiText(R.string.settings_vm_diagnostics_incomplete),
-                            messageTone = MessageTone.Danger,
-                        )
-                    }
-                }
-        }
-    }
-
-    fun refreshServerSettings() {
-        loadServerSettings(showBusy = true)
-    }
-
-    private fun loadServerSettings(showBusy: Boolean = false) {
-        viewModelScope.launch {
-            val ledgerIdAtRequest = repository.localBinding()?.ledgerId
-            if (showBusy) {
-                _uiState.update { it.copy(busy = true, message = null, messageTone = MessageTone.Neutral) }
-            }
-            repository.serverSettings()
-                .onSuccess { settings ->
-                    _uiState.update {
-                        if (ledgerIdAtRequest != repository.localBinding()?.ledgerId) {
-                            it.withLocalBindingFields(
-                                busy = if (showBusy) false else it.busy,
-                                message = null,
-                                messageTone = MessageTone.Neutral,
-                            )
-                        } else {
-                            it.copy(
-                                serverSettings = settings,
-                                serverSettingsFresh = true,
-                                accountName = settings.accountName,
-                                ledgerName = settings.ledgerName,
-                                deviceName = settings.deviceName,
-                                role = settings.role,
-                                lastUploadAt = settings.latestUploadAt,
-                                message = null,
-                                messageTone = MessageTone.Neutral,
-                                busy = if (showBusy) false else it.busy,
-                            )
-                        }
-                    }
-                }
-                .onFailure {
-                    _uiState.update {
-                        it.copy(
-                            busy = if (showBusy) false else it.busy,
-                            serverSettingsFresh = false,
-                            message = UiText.res(R.string.settings_vm_server_settings_failed),
-                            messageTone = MessageTone.Danger,
-                        )
-                    }
-                }
-        }
-    }
-
-    fun clearLocalCache() {
+    /** One cancellable connection operation; replacing a binding retires its pending result. */
+    private fun launchBound(showBusy: Boolean = true, block: suspend (LogicalSessionBinding) -> Unit) {
+        refreshLocalBindingState()
+        val binding = _uiState.value.access?.binding ?: return
         if (_uiState.value.busy) return
-        viewModelScope.launch {
+        connectionJob?.cancel()
+        if (showBusy) {
             _uiState.update { it.copy(busy = true, message = null, messageTone = MessageTone.Neutral) }
-            runCatching { repository.clearLocalCache() }
-                .onSuccess {
-                    _uiState.update {
-                        it.copy(
-                            busy = false,
-                            lastConfirmedSyncAt = repository.lastConfirmedSyncAt(),
-                            message = UiText.res(R.string.settings_vm_cache_cleared),
-                            messageTone = MessageTone.Success,
-                        )
-                    }
-                }
-                .onFailure { error ->
-                    _uiState.update {
-                        it.copy(
-                            busy = false,
-                            message = error.toUiText(R.string.settings_vm_cache_clear_failed),
-                            messageTone = MessageTone.Danger,
-                        )
-                    }
-                }
         }
+        connectionJob = viewModelScope.launch {
+            refreshLocalBindingState()
+            if (_uiState.value.access?.binding == binding) block(binding)
+        }
+    }
+
+    fun sync() = launchBound { binding ->
+        val synced = repository.syncConfirmed(month = null, category = null, tag = null)
+        refreshLocalBindingState()
+        if (_uiState.value.access?.binding != binding) return@launchBound
+        if (synced.isFailure) {
+            updateFor(binding) {
+                it.copy(
+                    busy = false,
+                    message = requireNotNull(synced.exceptionOrNull()).toUiText(R.string.settings_vm_sync_failed),
+                    messageTone = MessageTone.Danger,
+                )
+            }
+            return@launchBound
+        }
+        val settings = repository.serverSettings()
+        updateFor(binding) {
+            it.withLocalBindingFields(repository, settingsStore).copy(
+                busy = false,
+                serverSettings = settings.getOrNull(),
+                serverSettingsFresh = settings.isSuccess,
+                message = UiText.res(
+                    if (settings.isSuccess) R.string.settings_vm_sync_done
+                    else R.string.settings_vm_sync_state_unavailable,
+                ),
+                messageTone = if (settings.isSuccess) MessageTone.Success else MessageTone.Info,
+            )
+        }
+    }
+
+    fun runDiagnostics() = launchBound { binding ->
+        updateFor(binding) { it.copy(diagnostics = null) }
+        repository.runConnectionDiagnostics(binding)
+            .onSuccess { diagnostics ->
+                val serverReadFailed = diagnostics.checks.any {
+                    it.status == DiagnosticStatus.Fail && it.kind in setOf(DiagnosticCheckKind.Auth, DiagnosticCheckKind.ServerSettings)
+                }
+                updateFor(binding) {
+                    it.copy(
+                        busy = false,
+                        diagnostics = diagnostics,
+                        serverSettingsFresh = it.serverSettingsFresh && !serverReadFailed,
+                        message = if (diagnostics.isHealthy) {
+                            UiText.res(R.string.settings_vm_diagnostics_passed)
+                        } else {
+                            UiText.res(R.string.settings_vm_diagnostics_failed_count, diagnostics.failedCount)
+                        },
+                        messageTone = if (diagnostics.isHealthy) MessageTone.Success else MessageTone.Danger,
+                    )
+                }
+            }
+            .onFailure { error ->
+                updateFor(binding) {
+                    it.copy(
+                        busy = false,
+                        serverSettingsFresh = false,
+                        message = error.toUiText(R.string.settings_vm_diagnostics_incomplete),
+                        messageTone = MessageTone.Danger,
+                    )
+                }
+            }
+    }
+
+    fun refreshServerSettings() = loadServerSettings(showBusy = true)
+
+    fun cancelConnectionWork() {
+        connectionJob?.cancel()
+        _uiState.update { it.copy(busy = false, message = null, messageTone = MessageTone.Neutral) }
+    }
+
+    private fun loadServerSettings(showBusy: Boolean = false) = launchBound(showBusy) { binding ->
+        repository.serverSettings()
+            .onSuccess { settings ->
+                updateFor(binding) {
+                    it.withLocalBindingFields(repository, settingsStore).copy(
+                        serverSettings = settings,
+                        serverSettingsFresh = true,
+                        accountName = settings.accountName,
+                        ledgerName = settings.ledgerName,
+                        deviceName = settings.deviceName,
+                        role = settings.role,
+                        lastUploadAt = settings.latestUploadAt,
+                        message = null,
+                        messageTone = MessageTone.Neutral,
+                        busy = false,
+                    )
+                }
+            }
+            .onFailure { error ->
+                updateFor(binding) {
+                    it.copy(
+                        busy = false,
+                        serverSettingsFresh = false,
+                        message = error.toUiText(R.string.settings_vm_server_settings_failed),
+                        messageTone = MessageTone.Danger,
+                    )
+                }
+            }
+    }
+
+    fun clearLocalCache() = launchBound { binding ->
+        runCatching { repository.clearLocalCache() }
+            .onSuccess {
+                updateFor(binding) {
+                    it.copy(
+                        busy = false,
+                        lastConfirmedSyncAt = repository.lastConfirmedSyncAt(),
+                        message = UiText.res(R.string.settings_vm_cache_cleared),
+                        messageTone = MessageTone.Success,
+                    )
+                }
+            }
+            .onFailure { error ->
+                if (error is CancellationException) throw error
+                updateFor(binding) {
+                    it.copy(
+                        busy = false,
+                        message = error.toUiText(R.string.settings_vm_cache_clear_failed),
+                        messageTone = MessageTone.Danger,
+                    )
+                }
+            }
     }
 
     fun saveMonthlyBudget(amountCents: Long?) {
@@ -263,7 +239,8 @@ class SettingsViewModel(
     }
 
     fun saveNotificationPreferences(preferences: NotificationPreferences) {
-        val savedPreferences = if (canModifyCurrentLedger()) {
+        refreshLocalBindingState()
+        val savedPreferences = if (repository.currentAccess()?.canModify == true) {
             preferences
         } else {
             preferences.copy(autoCaptureEnabled = false)
@@ -278,9 +255,32 @@ class SettingsViewModel(
                 } else {
                     UiText.res(R.string.settings_vm_notifications_saved)
                 },
-                // A viewer-blocked auto-capture toggle is informational, not a success.
                 messageTone = if (downgraded) MessageTone.Info else MessageTone.Success,
             )
         }
     }
+}
+
+private fun SettingsUiState.withLocalBindingFields(
+    repository: SettingsActions,
+    settingsStore: TicketboxSettingsStore,
+    access: LedgerAccessContext? = repository.currentAccess(),
+): SettingsUiState {
+    val binding = repository.localBinding()
+    return copy(
+        access = access,
+        serverUrl = binding?.serverUrl,
+        accountName = binding?.accountName,
+        ledgerName = binding?.ledgerName,
+        deviceName = binding?.deviceName,
+        role = binding?.role,
+        boundAt = binding?.boundAt,
+        serverSettings = serverSettings?.let { settings ->
+            binding?.role?.let { settings.copy(role = it) } ?: settings
+        },
+        monthlyBudgetCents = settingsStore.monthlyBudgetCents(),
+        notificationPreferences = settingsStore.notificationPreferences(),
+        lastUploadAt = repository.lastUploadAt(),
+        lastConfirmedSyncAt = repository.lastConfirmedSyncAt(),
+    )
 }

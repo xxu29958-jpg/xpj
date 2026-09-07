@@ -327,9 +327,10 @@ private fun AccountLedgerScopePill(text: String) {
 }
 
 @Composable
-internal fun AdvancedStatusCard(
+internal fun ConnectionDiagnosticsCard(
     diagnostics: ConnectionDiagnostics?,
     expanded: Boolean,
+    showTiming: Boolean,
     onToggleExpanded: () -> Unit,
 ) {
     val title = diagnostics?.let {
@@ -340,49 +341,43 @@ internal fun AdvancedStatusCard(
         }
     } ?: stringResource(R.string.settings_account_diagnostics_not_run)
 
-    SettingsOpenPanel(
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
-    ) {
-            Text(title, style = MaterialTheme.typography.titleSmall)
-            diagnostics?.let { result ->
-                if (expanded) {
-                    result.checks.forEach { check ->
-                        val color = when (check.status) {
-                            DiagnosticStatus.Pass -> MaterialTheme.colorScheme.primary
-                            DiagnosticStatus.Warn -> MaterialTheme.colorScheme.tertiary
-                            DiagnosticStatus.Fail -> MaterialTheme.colorScheme.error
-                        }
-                        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                            ) {
-                                Text(diagnosticCheckName(check), color = color)
-                                Text(
-                                    text = stringResource(R.string.settings_account_diagnostics_elapsed, check.elapsedMs),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
+    SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
+        Text(title, style = MaterialTheme.typography.titleSmall)
+        diagnostics?.let { result ->
+            result.checks.filter { expanded || it.status == DiagnosticStatus.Fail }.forEach { check ->
+                val color = when (check.status) {
+                    DiagnosticStatus.Pass -> MaterialTheme.colorScheme.primary
+                    DiagnosticStatus.Warn -> MaterialTheme.colorScheme.tertiary
+                    DiagnosticStatus.Fail -> MaterialTheme.colorScheme.error
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(diagnosticCheckName(check), color = color)
+                        if (showTiming) {
                             Text(
-                                text = diagnosticCheckDetail(check),
+                                text = stringResource(R.string.settings_account_diagnostics_elapsed, check.elapsedMs),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
-                }
-                OutlinedButton(
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = onToggleExpanded,
-                ) {
                     Text(
-                        if (expanded) {
-                            stringResource(R.string.settings_account_toggle_collapse)
-                        } else {
-                            stringResource(R.string.settings_account_toggle_expand)
-                        },
+                        text = diagnosticCheckDetail(check),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
+            OutlinedButton(modifier = Modifier.fillMaxWidth(), onClick = onToggleExpanded) {
+                Text(
+                    stringResource(
+                        if (expanded) R.string.settings_account_toggle_collapse
+                        else R.string.settings_account_toggle_expand,
+                    ),
+                )
+            }
+        }
     }
 }
 

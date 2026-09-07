@@ -3,6 +3,7 @@ package com.ticketbox.data.repository
 import com.ticketbox.domain.model.ConnectionDiagnostics
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ServerSettings
+import kotlinx.coroutines.flow.Flow
 
 data class LocalBindingInfo(
     val serverUrl: String,
@@ -16,13 +17,13 @@ data class LocalBindingInfo(
 
 interface SettingsActions {
     fun localBinding(): LocalBindingInfo?
-    fun currentLedgerRole(): String?
+    fun currentAccess(): LedgerAccessContext?
+    fun observeAccess(): Flow<LedgerAccessContext?>
     fun lastConfirmedSyncAt(): String?
     fun lastUploadAt(): String?
     fun monthlyBudgetCents(): Long?
     fun saveMonthlyBudgetCents(amountCents: Long?)
-    suspend fun testConnection(): Result<Unit>
-    suspend fun runConnectionDiagnostics(): Result<ConnectionDiagnostics>
+    suspend fun runConnectionDiagnostics(binding: LogicalSessionBinding): Result<ConnectionDiagnostics>
     suspend fun serverSettings(): Result<ServerSettings>
     suspend fun syncConfirmed(
         month: String?,
@@ -37,7 +38,11 @@ class ExpenseRepositorySettingsActions(
 ) : SettingsActions {
     override fun localBinding(): LocalBindingInfo? = repository.localBinding()
 
-    override fun currentLedgerRole(): String? = repository.currentLedgerRole()
+    override fun currentAccess(): LedgerAccessContext? = repository.captureDeferredLedgerBinding()?.let {
+        LedgerAccessContext(it, repository.canModifyLedger())
+    }
+
+    override fun observeAccess(): Flow<LedgerAccessContext?> = repository.observeLedgerAccess()
 
     override fun lastConfirmedSyncAt(): String? = repository.lastConfirmedSyncAt()
 
@@ -49,11 +54,8 @@ class ExpenseRepositorySettingsActions(
         repository.saveMonthlyBudgetCents(amountCents)
     }
 
-    override suspend fun testConnection(): Result<Unit> =
-        repository.testConnection()
-
-    override suspend fun runConnectionDiagnostics(): Result<ConnectionDiagnostics> =
-        repository.runConnectionDiagnostics()
+    override suspend fun runConnectionDiagnostics(binding: LogicalSessionBinding): Result<ConnectionDiagnostics> =
+        repository.runConnectionDiagnostics(binding)
 
     override suspend fun serverSettings(): Result<ServerSettings> =
         repository.serverSettings()

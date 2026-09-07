@@ -34,8 +34,8 @@ class ConnectionDiagnosticsEntryTest {
                         showAdvancedTools = false,
                     ),
                     actions = ServerSettingsScreenActions(
-                        onBack = {}, onTestConnection = {}, onRunDiagnostics = {},
-                        onRefreshServerSettings = {}, onSync = {},
+                        onBack = {}, onRunDiagnostics = {}, onCancelConnectionWork = {},
+                        onRefreshServerSettings = {}, onSync = {}, onOpenSyncStatus = {},
                     ),
                 )
             }

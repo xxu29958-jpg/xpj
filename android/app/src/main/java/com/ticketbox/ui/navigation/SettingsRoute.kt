@@ -49,8 +49,8 @@ internal fun SettingsRoute(
         ),
         navigation = navigation,
         actions = SettingsRouteActions(
-            onTestConnection = settingsViewModel::testConnection,
             onRunDiagnostics = settingsViewModel::runDiagnostics,
+            onCancelConnectionWork = settingsViewModel::cancelConnectionWork,
             onRefreshServerSettings = settingsViewModel::refreshServerSettings,
             onSync = settingsViewModel::sync,
             onClearCache = settingsViewModel::clearLocalCache,

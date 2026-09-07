@@ -23,7 +23,7 @@ class ExpenseConnectionDiagnosticsTest {
     fun readableLedgerCannotHideAnIncompatibleSubmissionProtocol() = runTest {
         val fixture = DiagnosticsFixture(apiVersion = "different-protocol")
 
-        val result = fixture.repository.runConnectionDiagnostics().getOrThrow()
+        val result = fixture.repository.runConnectionDiagnostics(requireNotNull(fixture.repository.captureDeferredLedgerBinding())).getOrThrow()
 
         assertFalse(result.isHealthy, "Successful reads do not qualify writes")
         assertEquals(1, fixture.compatibilityReads)
@@ -32,13 +32,14 @@ class ExpenseConnectionDiagnosticsTest {
 
     @Test
     fun canonicalConfigurationBlockExplainsWhoMustContinue() = runTest {
-        for (conclusion in listOf("owner_action_required", "configuration_required", "server_upgrade_required")) {
+        for ((conclusion, responsible) in mapOf("owner_action_required" to "安装拥有者",
+            "configuration_required" to "管理员", "server_upgrade_required" to "管理员")) {
             val fixture = DiagnosticsFixture(conclusion = conclusion)
 
-            val result = fixture.repository.runConnectionDiagnostics().getOrThrow()
+            val result = fixture.repository.runConnectionDiagnostics(requireNotNull(fixture.repository.captureDeferredLedgerBinding())).getOrThrow()
 
             assertFalse(result.isHealthy, conclusion)
-            assertTrue(result.checks.any { it.detail?.contains("管理员") == true }, conclusion)
+            assertTrue(result.checks.any { it.detail?.contains(responsible) == true }, conclusion)
         }
     }
 
@@ -46,7 +47,7 @@ class ExpenseConnectionDiagnosticsTest {
     fun compatibleViewerCanDiagnoseWithoutSendingAMutation() = runTest {
         val fixture = DiagnosticsFixture(role = "viewer")
 
-        val result = fixture.repository.runConnectionDiagnostics().getOrThrow()
+        val result = fixture.repository.runConnectionDiagnostics(requireNotNull(fixture.repository.captureDeferredLedgerBinding())).getOrThrow()
 
         assertTrue(result.isHealthy)
         assertEquals(1, fixture.compatibilityReads)
@@ -54,10 +55,20 @@ class ExpenseConnectionDiagnosticsTest {
     }
 
     @Test
+    fun matchingVersionWithoutOriginalUploadSupportStillRequiresCompatibleBuilds() = runTest {
+        val fixture = DiagnosticsFixture(receiptVersion = null)
+
+        val result = fixture.repository.runConnectionDiagnostics(requireNotNull(fixture.repository.captureDeferredLedgerBinding())).getOrThrow()
+
+        assertFalse(result.isHealthy)
+        assertTrue(result.checks.any { it.detail?.contains("版本") == true })
+    }
+
+    @Test
     fun failedAuthenticationStopsDependentProbes() = runTest {
         val fixture = DiagnosticsFixture(authFailure = RepositoryException("绑定已失效，请重新连接。"))
 
-        val result = fixture.repository.runConnectionDiagnostics().getOrThrow()
+        val result = fixture.repository.runConnectionDiagnostics(requireNotNull(fixture.repository.captureDeferredLedgerBinding())).getOrThrow()
 
         assertFalse(result.isHealthy)
         assertEquals(listOf("auth"), fixture.reads)
@@ -69,7 +80,7 @@ class ExpenseConnectionDiagnosticsTest {
         val fixture = DiagnosticsFixture(authFailure = CancellationException("leave diagnostics"))
 
         try {
-            fixture.repository.runConnectionDiagnostics()
+            fixture.repository.runConnectionDiagnostics(requireNotNull(fixture.repository.captureDeferredLedgerBinding()))
             fail("Cancellation must propagate")
         } catch (_: CancellationException) {
             assertEquals(listOf("auth"), fixture.reads)
@@ -83,6 +94,7 @@ private class DiagnosticsFixture(
     conclusion: String = "compatible",
     role: String = "owner",
     authFailure: Exception? = null,
+    receiptVersion: Int? = 1,
 ) {
     val reads = mutableListOf<String>()
     var compatibilityReads = 0
@@ -103,7 +115,7 @@ private class DiagnosticsFixture(
             compatibilityReads += 1
             return RuntimeCompatibilityDto(
                 apiVersion, conclusion,
-                RuntimeProductCapabilitiesDto(RuntimeCurrencyCapabilityDto("1:1:CNY"), 1),
+                RuntimeProductCapabilitiesDto(RuntimeCurrencyCapabilityDto("1:1:CNY"), receiptVersion),
             )
         }
 

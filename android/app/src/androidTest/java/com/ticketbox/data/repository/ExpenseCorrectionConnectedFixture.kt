@@ -153,6 +153,8 @@ internal class ExpenseCorrectionConnectedFixture(private val context: Context) {
 /** Response-loss model deduplicates by the actual original key and full request; not a PostgreSQL substitute. */
 internal class CorrectionConnectedNetwork {
     var current = correctionExpense()
+    var diagnosticApiVersion = com.ticketbox.data.remote.CURRENT_TICKETBOX_API_VERSION
+    val diagnosticReads = CopyOnWriteArrayList<String>()
     var backgroundTasks = com.ticketbox.data.remote.dto.BackgroundTaskListResponseDto()
     var splitMembers = emptyList<com.ticketbox.data.remote.dto.LedgerMemberDto>()
     var confirmedStreamItems: ((ExpenseDto) -> List<ConfirmedExpenseStreamItemDto>)? = null
@@ -178,6 +180,28 @@ internal class CorrectionConnectedNetwork {
         }
     }
     val service = object : ApiService by correctionProxy<ApiService>({ throw IOException("Synthetic unavailable $it") }) {
+        override suspend fun checkAuth(): com.ticketbox.data.remote.dto.AuthCheckDto {
+            readable()
+            diagnosticReads += "auth"
+            val session = correctionSession()
+            return com.ticketbox.data.remote.dto.AuthCheckDto(
+                status = "ok", serverId = session.serverId, dataGeneration = session.dataGeneration,
+                accountPublicId = session.identity.accountPublicId, devicePublicId = session.identity.devicePublicId,
+                accountName = session.identity.accountName, ledgerId = session.identity.ledgerId,
+                ledgerName = session.identity.ledgerName, deviceName = session.identity.deviceName,
+                role = session.identity.role, scope = "app",
+            )
+        }
+        override suspend fun runtimeCompatibility(): com.ticketbox.data.remote.dto.RuntimeCompatibilityDto {
+            diagnosticReads += "compatibility"
+            return com.ticketbox.data.remote.dto.RuntimeCompatibilityDto(diagnosticApiVersion, "compatible",
+                com.ticketbox.data.remote.dto.RuntimeProductCapabilitiesDto(
+                    com.ticketbox.data.remote.dto.RuntimeCurrencyCapabilityDto("1:1:CNY"), 1))
+        }
+        override suspend fun monthlyStats(month: String?, tag: String?, timezone: String?) =
+            com.ticketbox.data.remote.dto.MonthlyStatsDto("2026-09", 1000, 1, emptyList())
+        override suspend fun months(timezone: String?) = com.ticketbox.data.remote.dto.MonthsDto(listOf("2026-09"))
+        override suspend fun duplicates() = emptyList<ExpenseDto>()
         override suspend fun listBackgroundTasks() = backgroundTasks
         override suspend fun expense(id: Long): ExpenseDto { readable(); expenseReads += id; return current }
         override suspend fun pendingExpenses(): List<ExpenseDto> {
