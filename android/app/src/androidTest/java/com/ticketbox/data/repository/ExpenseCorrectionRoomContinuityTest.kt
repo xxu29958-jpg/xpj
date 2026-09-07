@@ -269,7 +269,7 @@ class ExpenseCorrectionRoomContinuityTest {
     }
 
     @Test
-    fun deliveredCorrectionWithFailedCacheRemainsRecoverableAfterRoomReopenWithoutDetail() = runBlocking {
+    fun deliveredCorrectionWithFailedStreamRemainsRecoverableAfterRoomReopenWithoutDetail() = runBlocking {
         val firstGraph = fixture.reopen()
         val repository = firstGraph.expenseRepository
         val binding = requireNotNull(repository.observeCorrections().first().access).binding
@@ -278,7 +278,7 @@ class ExpenseCorrectionRoomContinuityTest {
             ExpenseCorrectionDraft("全局核对已送达更正", originalAmountMinor = 1_200L)).getOrThrow()
         val original = fixture.stored().single()
         fixture.network.loseResponse = false
-        fixture.failCachePublication = true
+        fixture.network.failStreamReads = true
         assertEquals(1, fixture.drain().done)
         assertEquals(1, fixture.network.results.size)
         assertEquals(1_200L, fixture.network.current.amountCents)
@@ -286,7 +286,6 @@ class ExpenseCorrectionRoomContinuityTest {
         assertEquals("done", fixture.stored().single()["status"])
 
         val graph = fixture.reopen()
-        fixture.network.failReads = true
         var opened: Long? = null
         compose.runOnIdle {
             global = outboxStatusViewModelFactory(fixture.outbox, graph.expenseRepository,
@@ -302,12 +301,13 @@ class ExpenseCorrectionRoomContinuityTest {
         compose.onNodeWithText("重试原提交").assertDoesNotExist()
         compose.onNodeWithText("刷新并核对当前事实").performScrollTo().performClick()
         assertEquals(42L, opened)
+        assertEquals(1_200L, graph.expenseRepository.fetchExpenseFactBundle(42).getOrThrow().root.amountCents)
+        assertTrue(requireNotNull(fixture.stored().single()["lastError"]).startsWith("correction_refresh_required:"))
         assertTrue(graph.expenseRepository.fetchExpense(42).isFailure)
         assertEquals("done", fixture.stored().single()["status"])
         compose.onNodeWithText("更正已送达；部分事实尚待刷新。").performScrollTo().assertIsDisplayed()
 
-        fixture.network.failReads = false
-        fixture.failCachePublication = false
+        fixture.network.failStreamReads = false
         assertEquals(1_200L, graph.expenseRepository.fetchExpense(42).getOrThrow().amountCents)
         compose.waitUntil(10_000) { compose.onAllNodes(hasText("原因：全局核对已送达更正")).fetchSemanticsNodes().isEmpty() }
         for (column in listOf("payload", "idempotencyKey", "expectedRowVersion", "ownerKey", "ledgerId")) {

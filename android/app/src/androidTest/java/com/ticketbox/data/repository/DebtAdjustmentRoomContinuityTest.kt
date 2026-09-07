@@ -171,7 +171,7 @@ class DebtAdjustmentRoomContinuityTest {
             assertEquals(1, fixture.network.calls.size)
             assertEquals(original["idempotencyKey"], fixture.network.calls.single().second)
             assertEquals(1, fixture.network.results.size)
-            assertEquals(1, fixture.scheduleCalls)
+            assertEquals(2, fixture.scheduleCalls)
         } finally {
             gate.complete(Unit)
             compose.runOnIdle { retained?.close(); global?.viewModelScope?.cancel() }

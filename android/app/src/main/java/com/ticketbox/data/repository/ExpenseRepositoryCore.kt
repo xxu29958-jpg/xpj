@@ -34,6 +34,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import okhttp3.ResponseBody
 import retrofit2.HttpException
@@ -242,14 +243,21 @@ internal class ExpenseRepositoryCore(
                 expenseDao.upsertByServerIdForLedger(bound.ledgerId, dto.toEntity(bound.ledgerId))
                 onConfirmedCommitted(bound.ledgerId)
             }
-            acknowledgeCorrectionRefresh(bound, mapOf(dto.id to dto.rowVersion))
         }
         return dto
     }
 
     suspend fun fetchAuthoritativeExpense(bound: BoundLedgerRequest, id: Long): ExpenseDto {
         val dto = bound.call { it.expense(id) }
-        if (dto.status == "confirmed") return cacheIfConfirmed(dto, bound)
+        if (dto.status == "confirmed") {
+            cacheIfConfirmed(dto, bound)
+            val needsProjection = outbox?.observeActiveByTypes(setOf(PendingMutationType.CorrectExpense),
+                includeCompleted = true)?.first()?.any {
+                it.targetId == "expense:$id" && correctionRefreshVersion(it.lastError) != null
+            } == true
+            if (needsProjection) syncConfirmedFromService(bound)
+            return dto
+        }
         withActiveBindingCommit(bound) { expenseDao.retireConfirmedRoot(bound.ledgerId, id, dto.rowVersion) }
         acknowledgeCorrectionRefresh(bound, mapOf(id to dto.rowVersion))
         return dto
@@ -323,6 +331,7 @@ internal class ExpenseRepositoryCore(
     suspend fun syncConfirmedFromService(
         bound: BoundLedgerRequest,
         request: ConfirmedSyncRequest = ConfirmedSyncRequest(),
+        requiredCorrection: ExpenseDto? = null,
     ): List<Expense> {
         val ledgerIdAtRequest = bound.ledgerId
         val isFullLedgerSync = request.month == null && request.category == null && request.tag == null
@@ -339,6 +348,10 @@ internal class ExpenseRepositoryCore(
                 candidates.firstOrNull { it.root.streamDate != null }?.root ?: candidates.first().root
             }
         val offsets = cacheItems.mapNotNull { it.offset }
+        if (requiredCorrection != null && roots.none {
+                it.serverId == requiredCorrection.id && it.publicId == requiredCorrection.publicId &&
+                    it.rowVersion >= requiredCorrection.rowVersion && it.streamDate != null
+            }) throw RepositoryException("更正已送达，流水投影尚待刷新。")
         val collected = roots.map { it.toDomain() }
         withActiveBindingCommit(bound) {
             expenseDao.applyConfirmedStreamSyncForLedger(
@@ -352,7 +365,8 @@ internal class ExpenseRepositoryCore(
                 settingsStore.saveLastConfirmedSyncAtForLedger(ledgerIdAtRequest, Instant.now().toString())
             }
         }
-        acknowledgeCorrectionRefresh(bound, roots.associate { requireNotNull(it.serverId) to it.rowVersion })
+        acknowledgeCorrectionRefresh(bound, roots.filter { it.streamDate != null }
+            .associate { requireNotNull(it.serverId) to it.rowVersion })
         // Only a full-ledger sync delivers the confirmed set the budget
         // advisor consumes; filtered syncs fingerprint a subset and would flap.
         if (isFullLedgerSync) {

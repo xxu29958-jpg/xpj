@@ -94,7 +94,7 @@ internal class CorrectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
         val dispatcher = CorrectExpenseDispatcher(
             apiProvider = { stub },
             payloadAdapter = com.ticketbox.OutboxAdapterGraph().correctionAdapter,
-            cacheAuthoritativeExpense = { ledgerId, dto -> cached = ledgerId to dto.factRevision },
+            publishAuthoritativeProjection = { row, dto -> cached = row.ledgerId to dto.factRevision },
             onConfirmedCommitted = {},
         )
 
@@ -114,11 +114,35 @@ internal class CorrectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
         val dispatcher = CorrectExpenseDispatcher(
             apiProvider = { stub },
             payloadAdapter = com.ticketbox.OutboxAdapterGraph().correctionAdapter,
-            cacheAuthoritativeExpense = { _, _ -> },
+            publishAuthoritativeProjection = { _, _ -> },
             onConfirmedCommitted = {},
         )
 
         assertTrue(dispatcher.dispatch(row(key = null)) is DispatchResult.Failure)
+    }
+
+    @Test
+    fun `an empty persisted correction cannot dispatch or offer original retry`() = runTest {
+        val adapter = com.ticketbox.OutboxAdapterGraph().correctionAdapter
+        val original = row()
+        val intent = requireNotNull(adapter.fromJson(original.payloadJson))
+        val empty = original.copy(status = PendingMutationStatus.Failed,
+            payloadJson = adapter.toJson(intent.copy(request = ExpenseCorrectionRequestDto(7, "Reason without a change"))))
+        val stub = Stub(StubResult.Success(ExpenseCorrectionResponseDto(successExpenseDto(), revision())))
+        val dispatcher = CorrectExpenseDispatcher({ stub }, adapter, { _, _ -> }, {})
+
+        assertEquals(DispatchResult.Failure("correction_requires_review"), dispatcher.dispatch(empty))
+        assertEquals(0, stub.calls)
+        val pending = PendingExpenseCorrection(empty, adapter.readSupportedCorrection(empty))
+        assertEquals(false, pending.hasSupportedIntent)
+        assertEquals(false, pending.canRetry)
+        for (request in listOf(ExpenseCorrectionRequestDto(7, "Clear note", note = ""),
+                ExpenseCorrectionRequestDto(7, "Clear items", items = emptyList()),
+                ExpenseCorrectionRequestDto(7, "Clear time", expenseTime =
+                    com.ticketbox.data.remote.dto.CorrectionOptionalString.changed(null)))) {
+            val changed = empty.copy(payloadJson = adapter.toJson(intent.copy(request = request)))
+            assertEquals(request, adapter.readSupportedCorrection(changed)?.request)
+        }
     }
 
     @Test
@@ -134,7 +158,7 @@ internal class CorrectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
         val dispatcher = CorrectExpenseDispatcher(
             apiProvider = { stub },
             payloadAdapter = com.ticketbox.OutboxAdapterGraph().correctionAdapter,
-            cacheAuthoritativeExpense = { _, _ -> },
+            publishAuthoritativeProjection = { _, _ -> },
             onConfirmedCommitted = {},
         )
 
@@ -146,7 +170,7 @@ internal class CorrectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
         val stub = Stub(StubResult.Success(response))
         val budget = CheckerHarness().apply { activeLedgerId = "owner" }
         val dispatcher = CorrectExpenseDispatcher({ stub }, com.ticketbox.OutboxAdapterGraph().correctionAdapter,
-            cacheAuthoritativeExpense = { _, _ -> throw IOException("cache failure") },
+            publishAuthoritativeProjection = { _, _ -> throw IOException("cache failure") },
             onConfirmedCommitted = budget.checker::checkAfterConfirmedWrite)
         assertEquals(DispatchResult.Success(8, cacheRefreshVersion = 8), dispatcher.dispatch(row()))
         assertEquals(1, budget.sourceCalls)
@@ -164,7 +188,7 @@ internal class CorrectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
             val stub = Stub(StubResult.Success(response))
             var notificationAttempts = 0
             val dispatcher = CorrectExpenseDispatcher({ stub }, com.ticketbox.OutboxAdapterGraph().correctionAdapter,
-                cacheAuthoritativeExpense = { _, _ -> if (cacheFails) throw IOException("cache failure") },
+                publishAuthoritativeProjection = { _, _ -> if (cacheFails) throw IOException("cache failure") },
                 onConfirmedCommitted = { notificationAttempts++; throw IOException("notification failure") })
             assertEquals(DispatchResult.Success(8, cacheRefreshVersion = 8L.takeIf { cacheFails }), dispatcher.dispatch(row()))
             assertEquals(1, notificationAttempts)
@@ -180,7 +204,7 @@ internal class CorrectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
             val cancellation = CancellationException("publication cancelled")
             var notificationAttempts = 0
             val dispatcher = CorrectExpenseDispatcher({ stub }, com.ticketbox.OutboxAdapterGraph().correctionAdapter,
-                cacheAuthoritativeExpense = { _, _ -> if (cancelCache) throw cancellation else throw IOException("cache failure") },
+                publishAuthoritativeProjection = { _, _ -> if (cancelCache) throw cancellation else throw IOException("cache failure") },
                 onConfirmedCommitted = {
                     notificationAttempts++
                     if (cancelCache) throw IOException("notification failure") else throw cancellation
@@ -196,7 +220,7 @@ internal class CorrectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
         for (code in listOf(404, 409)) {
             val stub = Stub(StubResult.Throw(httpException(code, """{"error":"runtime_version_mismatch"}""")))
             val dispatcher = CorrectExpenseDispatcher({ stub }, com.ticketbox.OutboxAdapterGraph().correctionAdapter,
-                cacheAuthoritativeExpense = { _, _ -> }, onConfirmedCommitted = {})
+                publishAuthoritativeProjection = { _, _ -> }, onConfirmedCommitted = {})
             assertTrue(dispatcher.dispatch(row()) is DispatchResult.Failure)
         }
     }
@@ -205,7 +229,7 @@ internal class CorrectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
     fun `legacy unknown and mismatched command proof never call transport`() = runTest {
         val stub = Stub(StubResult.Throw(AssertionError("must not call")))
         val dispatcher = CorrectExpenseDispatcher({ stub }, com.ticketbox.OutboxAdapterGraph().correctionAdapter,
-            cacheAuthoritativeExpense = { _, _ -> }, onConfirmedCommitted = {})
+            publishAuthoritativeProjection = { _, _ -> }, onConfirmedCommitted = {})
         val valid = row()
         for (invalid in listOf(valid.copy(payloadJson = """{"expected_row_version":0,"reason":"old"}"""),
             valid.copy(payloadJson = "{}"), valid.copy(expectedRowVersion = 8), valid.copy(targetId = "expense:43"),

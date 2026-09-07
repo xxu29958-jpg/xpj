@@ -115,7 +115,7 @@ class DebtAdjustmentRefreshTest {
     }
 
     @Test
-    fun localStopPersistsOriginalAndReopenNeverClaimsDeliveryOrReschedules() = runTest {
+    fun localStopNotifiesContinuationButReopenNeverClaimsDeliveryOrReplays() = runTest {
         val fixture = DebtAdjustmentFixture()
         val events = mutableListOf<DebtAdjustmentObservation>()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
@@ -142,7 +142,7 @@ class DebtAdjustmentRefreshTest {
         assertEquals(0, later.reapExpiredPending(fixture.clock.millis() + Duration.ofDays(40).toMillis()))
         assertTrue(fixture.outbox.activeForTarget("debt:${fixture.debt.publicId}").isEmpty())
         assertEquals(0, fixture.engine().drainOnce().attempted)
-        assertEquals(listOf(1), fixture.queueDepthAtSchedule)
+        assertEquals(listOf(1, 1), fixture.queueDepthAtSchedule)
         assertTrue(fixture.api.calls.isEmpty())
     }
 

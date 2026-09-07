@@ -3,6 +3,7 @@ package com.ticketbox.data.repository
 import com.squareup.moshi.JsonAdapter
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto
+import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import com.ticketbox.domain.model.ExpenseRevisionPage
@@ -20,6 +21,12 @@ internal class ExpenseCorrectionRepository(
     private val adapter: JsonAdapter<ExpenseCorrectionPayload>,
     private val legacyAdapter: JsonAdapter<ExpenseCorrectionRequestDto>,
 ) {
+    suspend fun publishDelivered(row: OutboxRow, expense: ExpenseDto) {
+        val bound = core.ledgerRequestGuard.bind(expectedLedgerId = row.ledgerId)
+        bound.serviceFor(row.bindingOrNull() ?: throw RepositoryException("原提交身份不可核对。"))
+        core.syncConfirmedFromService(bound, requiredCorrection = expense)
+    }
+
     suspend fun fetchRevisions(id: Long, page: Int, pageSize: Int, snapshotRevision: Long? = null): Result<ExpenseRevisionPage> =
         core.errorHandler.safeCall {
             core.ledgerRequestGuard.bind().call { it.expenseRevisions(id, page, pageSize, snapshotRevision) }.toDomain()

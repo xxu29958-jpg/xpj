@@ -97,7 +97,7 @@ internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxT
             ExpenseCorrectionDraft("原更正", note = "保留内容")).getOrThrow()
         val binding = assertNotNull(repo.observeCorrections().first().access).binding
         val dispatcher = CorrectExpenseDispatcher({ api }, OutboxAdapterGraph().correctionAdapter,
-            cacheAuthoritativeExpense = { _, _ -> error("A refusal cannot publish a fact") },
+            publishAuthoritativeProjection = { _, _ -> error("A refusal cannot publish a fact") },
             onConfirmedCommitted = { error("A refusal is not committed") })
         assertEquals(1, OutboxDrainEngine(outbox, listOf(dispatcher)).drainOnce().failures)
         assertEquals(1, requests)

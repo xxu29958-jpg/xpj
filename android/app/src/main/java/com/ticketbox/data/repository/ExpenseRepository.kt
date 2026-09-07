@@ -158,6 +158,9 @@ class ExpenseRepository(
 
     override fun observeCorrections(): Flow<ExpenseCorrectionObservation> = correctionRepository.observe()
 
+    internal suspend fun publishDeliveredCorrection(row: OutboxRow, expense: com.ticketbox.data.remote.dto.ExpenseDto) =
+        correctionRepository.publishDelivered(row, expense)
+
     override suspend fun submitCorrection(expectedBinding: LogicalSessionBinding, expense: Expense,
         correction: ExpenseCorrectionDraft): Result<Long> = correctionRepository.submit(expectedBinding, expense, correction)
 

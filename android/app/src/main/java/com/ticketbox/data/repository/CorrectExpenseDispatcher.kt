@@ -12,7 +12,7 @@ import retrofit2.HttpException
 class CorrectExpenseDispatcher(
     private val apiProvider: (OutboxRow) -> ApiService,
     private val payloadAdapter: JsonAdapter<ExpenseCorrectionPayload>,
-    private val cacheAuthoritativeExpense: suspend (ledgerId: String, expense: ExpenseDto) -> Unit,
+    private val publishAuthoritativeProjection: suspend (row: OutboxRow, expense: ExpenseDto) -> Unit,
     private val onConfirmedCommitted: (ledgerId: String) -> Unit,
 ) : OutboxMutationDispatcher {
     override val type: PendingMutationType = PendingMutationType.CorrectExpense
@@ -37,7 +37,7 @@ class CorrectExpenseDispatcher(
         var cancellation: CancellationException? = null
         var cacheRefreshVersion: Long? = null
         try {
-            cacheAuthoritativeExpense(row.ledgerId, response.expense)
+            publishAuthoritativeProjection(row, response.expense)
         } catch (e: CancellationException) {
             cancellation = e
         } catch (_: Exception) {

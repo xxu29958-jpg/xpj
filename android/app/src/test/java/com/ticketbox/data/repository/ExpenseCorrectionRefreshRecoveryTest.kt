@@ -4,6 +4,12 @@ import com.ticketbox.data.local.PendingMutationEntity
 import com.ticketbox.data.local.PendingMutationDao
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.ExpenseDto
+import com.ticketbox.data.remote.dto.ConfirmedExpenseStreamItemDto
+import com.ticketbox.data.remote.dto.ConfirmedStreamEntryKindDto
+import com.ticketbox.data.remote.dto.PaginatedExpensesDto
+import com.ticketbox.data.remote.dto.ExpenseLineageStatusDto
+import com.ticketbox.data.remote.dto.ConfirmedOffsetStreamDto
+import com.ticketbox.data.remote.dto.ExpenseOffsetKindDto
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import java.time.Clock
 import java.time.Instant
@@ -26,6 +32,7 @@ internal class ExpenseCorrectionRefreshRecoveryTest {
         val fixture = CorrectionRefreshFixture { failAcknowledgment }
         val original = fixture.seed(42L)
         fixture.read = { fixture.expense(it, 11L) }
+        fixture.streamVersions[42L] = 11L
         failAcknowledgment = true
 
         assertEquals(11L, fixture.repository.fetchExpense(42L).getOrThrow().rowVersion)
@@ -42,6 +49,7 @@ internal class ExpenseCorrectionRefreshRecoveryTest {
         val original = fixture.seed(42L)
         val other = fixture.seed(43L)
         fixture.read = { fixture.expense(it, 8L) }
+        fixture.streamVersions[42L] = 8L
 
         val stale = fixture.repository.fetchExpense(42L).getOrThrow()
         assertEquals(8L, stale.rowVersion)
@@ -52,6 +60,7 @@ internal class ExpenseCorrectionRefreshRecoveryTest {
         assertEquals(2, fixture.queue.rows.size)
 
         fixture.read = { fixture.expense(it, 11L) }
+        fixture.streamVersions[42L] = 11L
         assertEquals(11L, fixture.repository.fetchExpense(42L).getOrThrow().rowVersion)
         assertEquals(original.copy(lastError = null), fixture.queue.rows[original.id])
         assertEquals(other, fixture.queue.rows[other.id])
@@ -77,6 +86,25 @@ internal class ExpenseCorrectionRefreshRecoveryTest {
     }
 
     @Test
+    fun anOffsetOnlyMonthCannotAcknowledgeTheRootsMissingStreamProjection() = runTest {
+        val fixture = CorrectionRefreshFixture()
+        val original = fixture.seed(42L)
+        fixture.streamVersions[42L] = 11L
+        fixture.streamItems = { items -> items.map { it.copy(entryKind = ConfirmedStreamEntryKindDto.Offset,
+            streamAmountCents = -100, offset = ConfirmedOffsetStreamDto("refund", ExpenseOffsetKindDto.Refund,
+                100, 100, "CNY", "CNY", "餐饮"), lineageStatus = ExpenseLineageStatusDto.PartiallyRefunded,
+            lineageHomeNetCents = requireNotNull(it.root.amountCents) - 100) } }
+
+        fixture.repository.syncConfirmed(month = "2026-09").getOrThrow()
+        assertEquals(11L, fixture.repository.fetchExpenseFromLocalCache(42).getOrThrow().rowVersion)
+        assertEquals(original, fixture.queue.rows[original.id], "An offset's root DTO carries no root accounting date")
+        fixture.streamItems = { it }
+        fixture.read = { fixture.expense(it, 11L) }
+        fixture.repository.fetchExpense(42L).getOrThrow()
+        assertEquals(original.copy(lastError = null), fixture.queue.rows[original.id])
+    }
+
+    @Test
     fun completedRowCleanupWaitsForCanonicalRecoveryWithoutChangingTheOriginal() = runTest {
         val fixture = CorrectionRefreshFixture()
         val original = fixture.seed(42L)
@@ -87,6 +115,7 @@ internal class ExpenseCorrectionRefreshRecoveryTest {
         assertEquals(0, future.gcCompleted())
         assertEquals(original, fixture.queue.rows[original.id])
         fixture.read = { fixture.expense(it, 11L) }
+        fixture.streamVersions[42L] = 11L
         fixture.repository.fetchExpense(42L).getOrThrow()
         assertEquals(original.copy(lastError = null), fixture.queue.rows[original.id])
         assertEquals(1, future.gcCompleted())
@@ -98,9 +127,21 @@ private class CorrectionRefreshFixture(failAcknowledgment: () -> Boolean = { fal
     val session = seededTokenStore()
     val queue = FakePendingMutationDao()
     val cache = FakeExpenseDao()
+    val streamVersions = mutableMapOf<Long, Long>()
+    var streamItems: (List<ConfirmedExpenseStreamItemDto>) -> List<ConfirmedExpenseStreamItemDto> = { it }
     var read: suspend (Long) -> ExpenseDto = { expense(it, 7L) }
     private val api = object : ApiService by FakeApiService(mutableListOf(), 0) {
         override suspend fun expense(id: Long): ExpenseDto = read(id)
+        override suspend fun confirmedExpenses(query: Map<String, String>): PaginatedExpensesDto {
+            val items = streamVersions.map { (id, version) ->
+                val root = this@CorrectionRefreshFixture.expense(id, version)
+                ConfirmedExpenseStreamItemDto(ConfirmedStreamEntryKindDto.Expense, "2026-09-06",
+                    root.createdAt, id, root.amountCents ?: 0, root,
+                    lineageStatus = ExpenseLineageStatusDto.Confirmed, lineageHomeNetCents = root.amountCents ?: 0)
+            }
+            val selected = streamItems(items)
+            return PaginatedExpensesDto(selected, 1, 200, selected.size)
+        }
     }
     val binding = testServerSessionBinding(TestApiServiceFactory(api), seededSettingsStore(), session)
     private val dao = object : PendingMutationDao by queue {
@@ -121,6 +162,7 @@ private class CorrectionRefreshFixture(failAcknowledgment: () -> Boolean = { fal
     )
 
     suspend fun seed(expenseId: Long): PendingMutationEntity {
+        streamVersions[expenseId] = 7L
         val fact = repository.fetchExpense(expenseId).getOrThrow()
         val access = assertNotNull(repository.observeCorrections().first().access)
         val id = repository.submitCorrection(access.binding, fact,

@@ -87,7 +87,7 @@ internal class ExpenseCorrectionConnectedFixture(private val context: Context) {
         database?.close()
         val db = Room.databaseBuilder(context, AppDatabase::class.java, name).build().also { database = it }
         outbox = OutboxRepository(db.pendingMutationDao(), clock, bindingProvider = { session.value.toOutboxBinding() },
-            onEnqueued = { check(stored().isNotEmpty()); schedules++ })
+            onEnqueued = { schedules++ })
         val sessions = object : LocalSessionStore by correctionProxy<LocalSessionStore>({ method -> when (method) {
             "currentSession" -> session.value
             "observeSession" -> session
@@ -126,9 +126,9 @@ internal class ExpenseCorrectionConnectedFixture(private val context: Context) {
         listOf(CorrectExpenseDispatcher(
             apiProvider = { network.service },
             payloadAdapter = adapters.correctionAdapter,
-            cacheAuthoritativeExpense = { ledgerId, dto ->
+            publishAuthoritativeProjection = { row, dto ->
                 if (failCachePublication) throw IOException("Synthetic cache publication failure")
-                requireNotNull(database).expenseDao().upsertByServerIdForLedger(ledgerId, dto.toEntity(ledgerId))
+                graph.expenseRepository.publishDeliveredCorrection(row, dto)
             },
             onConfirmedCommitted = { graph.expenseRepository.onConfirmedCommitted(it) },
         )), maxAttempts = maxAttempts, now = clock::millis)
@@ -145,6 +145,7 @@ internal class CorrectionConnectedNetwork {
     var current = correctionExpense()
     var confirmedStreamItems: ((ExpenseDto) -> List<ConfirmedExpenseStreamItemDto>)? = null
     var failReads = false
+    var failStreamReads = false
     var loseResponse = true
     var refusalCode: String? = null
     val calls = mutableListOf<Pair<ExpenseCorrectionRequestDto, String>>()
@@ -160,6 +161,7 @@ internal class CorrectionConnectedNetwork {
             uploadStorageBytes = 0, latestUploadAt = null)
         override suspend fun confirmedExpenses(query: Map<String, String>): PaginatedExpensesDto {
             readable()
+            if (failStreamReads) throw IOException("Synthetic failed stream read")
             val items = confirmedStreamItems?.invoke(current)?.filter { item ->
                 query["month"].isNullOrBlank() || item.streamDate.startsWith(requireNotNull(query["month"]))
             } ?: listOf(ConfirmedExpenseStreamItemDto(ConfirmedStreamEntryKindDto.Expense,
