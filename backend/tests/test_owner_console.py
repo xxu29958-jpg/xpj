@@ -1397,39 +1397,6 @@ def test_owner_console_remote_peer_rejected() -> None:
         require_owner_console_local(_FakeRequest("testclient", "testserver"))
 
 
-def test_admin_boundary_local_allowed() -> None:
-    from app.network_boundary import require_admin_network_boundary
-
-    require_admin_network_boundary(_FakeRequest("127.0.0.1", "127.0.0.1:8000"))
-
-
-def test_admin_boundary_public_host_rejected_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app import network_boundary
-    from app.errors import AppError
-
-    # Defensive: ensure the public-allow flag is not enabled by env leakage.
-    monkeypatch.setenv("ALLOW_PUBLIC_ADMIN_API", "false")
-    network_boundary.get_settings.cache_clear()  # type: ignore[attr-defined]
-    try:
-        with pytest.raises(AppError) as excinfo:
-            network_boundary.require_admin_network_boundary(_FakeRequest("127.0.0.1", "api.zen70.cn"))
-        assert excinfo.value.status_code == 403
-    finally:
-        network_boundary.get_settings.cache_clear()  # type: ignore[attr-defined]
-
-
-def test_admin_boundary_public_host_allowed_when_flag_true(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app import network_boundary
-
-    monkeypatch.setenv("ALLOW_PUBLIC_ADMIN_API", "true")
-    network_boundary.get_settings.cache_clear()  # type: ignore[attr-defined]
-    try:
-        network_boundary.require_admin_network_boundary(_FakeRequest("127.0.0.1", "api.zen70.cn"))
-    finally:
-        monkeypatch.setenv("ALLOW_PUBLIC_ADMIN_API", "false")
-        network_boundary.get_settings.cache_clear()  # type: ignore[attr-defined]
-
-
 # ── PUBLIC_BASE_URL origin-only validation ───────────────────────────────────
 
 

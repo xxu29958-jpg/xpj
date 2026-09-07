@@ -21,7 +21,6 @@ from ipaddress import ip_address
 
 from fastapi import Request
 
-from app.config import get_settings
 from app.errors import AppError
 
 logger = logging.getLogger(__name__)
@@ -154,13 +153,12 @@ def require_owner_console_local(request: Request) -> None:
 
 
 def require_admin_network_boundary(request: Request) -> None:
-    """``/api/admin/*`` gate. Loopback requests are always allowed. Public
-    Host headers are rejected unless ``ALLOW_PUBLIC_ADMIN_API=true`` is set
-    in the environment, in which case the admin token alone protects the
-    endpoint."""
+    """Admin, maintenance and admin pairing require a local peer and Host.
+
+    A valid maintenance session never authorizes a public network boundary.
+    Endpoint authentication and ledger permissions still apply on loopback.
+    """
     if is_loopback_request(request):
-        return
-    if get_settings().allow_public_admin_api:
         return
     raise AppError(
         "admin_api_local_only",

@@ -270,9 +270,9 @@ Cloudflare Tunnel 配置 ingress 时，下面两类路径互不重叠。**不要
 | 路径前缀 | 理由 |
 |---|---|
 | `/owner/*` | Owner Console 永远 loopback only；backend 自带 `require_owner_console_local`，Tunnel 路由层再 deny 一遍是 defense in depth |
-| `/api/admin/*` | 默认 `ALLOW_PUBLIC_ADMIN_API=false`，且 backend 挂 `require_admin_network_boundary`；Tunnel 不要建路由 |
+| `/api/admin/*` | backend 始终要求本机 peer + Host 和管理会话，没有公网放行开关；Tunnel 不要建路由 |
 | `/api/bootstrap/*` | `enable_http_bootstrap=false` 默认关；`/api/bootstrap/pairing-codes` 已挂 `require_admin_network_boundary`；Tunnel 不要建路由 |
-| `/api/maintenance/*` | 同 admin |
+| `/api/maintenance/*` | 与 Admin 共用不可放宽的本机网络边界；仅在后端所在电脑执行 |
 | `/api/status/private` | 私有运行状态（版本、DB、上传目录等），需要 Bearer token；默认不走公网 allowlist |
 | `/docs` `/redoc` `/openapi.json` | `ENABLE_API_DOCS=false` 默认关 |
 | `/static/owner/*` | Owner Console 静态资源跟随 `/owner` loopback only，不走公网 |

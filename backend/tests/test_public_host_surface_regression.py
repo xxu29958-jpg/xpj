@@ -62,13 +62,13 @@ def test_public_host_owner_console_403(client: TestClient) -> None:
         assert resp.status_code == 403, f"{path} should refuse public host, got {resp.status_code}"
 
 
-# ── /api/admin requires loopback unless ALLOW_PUBLIC_ADMIN_API ──────────────
+# ── /api/admin always requires loopback ────────────────────────────────────
 
 
 def test_public_host_admin_api_403(client: TestClient, *, identity) -> None:
     pub = _public_client()
     # Even with a valid admin token in the header, the network boundary
-    # refuses public Host requests by default.
+    # refuses public Host requests.
     with _real_admin_boundary():
         resp = pub.get("/api/admin/devices", headers=identity.admin_headers)
     assert resp.status_code == 403
