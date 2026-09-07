@@ -20,6 +20,12 @@ from app.services.bill_split_service._common import (
 )
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.currency_common import normalize_currency_code
+from app.services.idempotency import (
+    IdempotencyOutcomeKind,
+    claim_idempotency_key,
+    fingerprint_request,
+    mark_idempotency_succeeded,
+)
 from app.services.time_service import now_utc
 
 _PENDING_DUPLICATE_INDEX = "uq_bill_split_invitations_pending_receiver"
@@ -45,6 +51,8 @@ def create_invitation(
     expense_id: int,
     receiver_account_id: int,
     amount_cents: int,
+    idempotency_key: str,
+    expected_row_version: int,
 ) -> BillSplitInvitation:
     """Sender creates an invitation against an expense they own.
 
@@ -57,7 +65,21 @@ def create_invitation(
     )
     resolve_write_capability(db)
     sender_member = _load_writer_member(db, sender_ledger_id, sender_account_id)
+    claim = _claim_invitation(db, sender_account_id=sender_account_id, sender_ledger_id=sender_ledger_id,
+        expense_id=expense_id, receiver_account_id=receiver_account_id, amount_cents=amount_cents,
+        idempotency_key=idempotency_key, expected_row_version=expected_row_version)
+    if claim.kind is IdempotencyOutcomeKind.HIT:
+        invitation = db.scalar(select(BillSplitInvitation).where(
+            BillSplitInvitation.public_id == claim.row.resource_id,
+            BillSplitInvitation.sender_account_id == sender_account_id,
+            BillSplitInvitation.sender_ledger_id == sender_ledger_id,
+        ).execution_options(populate_existing=True))
+        if invitation is None:
+            raise AppError("split_invitation_not_found", status_code=404)
+        return invitation
     expense = _load_split_parent_expense(db, sender_ledger_id=sender_ledger_id, expense_id=expense_id)
+    if expense.row_version != expected_row_version:
+        raise AppError("state_conflict", status_code=409)
     _ensure_parent_can_be_split(expense, amount_cents=amount_cents)
     sender, receiver = _load_invitation_parties(
         db,
@@ -91,9 +113,27 @@ def create_invitation(
         target_account_id=receiver_account_id,
         invitation_public_id=invitation.public_id,
     )
+    mark_idempotency_succeeded(db, claim.row, resource_type="bill_split_invitation", resource_id=invitation.public_id)
     db.commit()
     db.refresh(invitation)
     return invitation
+
+
+def _claim_invitation(db: Session, *, sender_account_id: int, sender_ledger_id: str, expense_id: int,
+                      receiver_account_id: int, amount_cents: int, idempotency_key: str, expected_row_version: int):
+    if not idempotency_key or len(idempotency_key) > 128:
+        raise AppError("idempotency_key_required", status_code=422)
+    operation = "create_bill_split_invitation"
+    outcome = claim_idempotency_key(db, tenant_id=sender_ledger_id, idempotency_key=idempotency_key,
+        operation=operation, target_type="expense", target_id=str(expense_id),
+        request_fingerprint=fingerprint_request(operation=operation, target_id=str(expense_id),
+            body={"sender_account_id": sender_account_id, "receiver_account_id": receiver_account_id,
+                  "amount_cents": amount_cents}, expected_row_version=expected_row_version))
+    if outcome.kind is IdempotencyOutcomeKind.IN_PROGRESS:
+        raise AppError("idempotency_key_in_progress", status_code=409)
+    if outcome.kind is IdempotencyOutcomeKind.FINGERPRINT_MISMATCH:
+        raise AppError("idempotency_key_reused", status_code=422)
+    return outcome
 
 
 def _validate_invitation_request(*, sender_account_id: int, receiver_account_id: int, amount_cents: int) -> None:
@@ -112,7 +152,8 @@ def _load_split_parent_expense(db: Session, *, sender_ledger_id: str, expense_id
     # Row-lock the parent so active-split total + cap check + insert serialize
     # against concurrent invites on the same parent (PG locks, SQLite ignores).
     expense = db.scalar(
-        select(Expense).where(Expense.id == expense_id).where(Expense.tenant_id == sender_ledger_id).with_for_update()
+        select(Expense).where(Expense.id == expense_id).where(Expense.tenant_id == sender_ledger_id)
+        .with_for_update().execution_options(populate_existing=True)
     )
     if expense is None:
         raise AppError("expense_not_found", status_code=404)

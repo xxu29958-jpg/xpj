@@ -16,6 +16,7 @@ cross-connection commits.
 from __future__ import annotations
 
 from datetime import timedelta
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import select, update
@@ -57,6 +58,7 @@ def _create_invitation_for_race(*, receiver_account_id: int, amount_cents: int =
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
             amount_cents=amount_cents,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
         return inv.public_id
 

@@ -55,6 +55,8 @@ internal fun testExpenseOfflineMutationWiring(
 ): ExpenseOfflineMutationWiring {
     val adapters = com.ticketbox.OutboxAdapterGraph()
     return ExpenseOfflineMutationWiring(outbox = outbox, correctionAdapter = adapters.correctionAdapter,
+        billSplitReceiptAdapter = adapters.billSplitReceiptAdapter,
+        billSplitCreateAdapter = adapters.billSplitCreateAdapter,
         legacyCorrectionAdapter = adapters.legacyCorrectionAdapter)
 }
 

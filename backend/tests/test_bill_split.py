@@ -32,6 +32,12 @@ from app.services.time_service import now_utc
 # Helpers
 
 
+def _split_headers(headers: dict[str, str]) -> dict[str, str]:
+    from app.runtime_compatibility_contract import CURRENT_API_VERSION, TICKETBOX_API_VERSION_HEADER
+
+    return {"Idempotency-Key": str(uuid4()), TICKETBOX_API_VERSION_HEADER: CURRENT_API_VERSION, **headers}
+
+
 def _owner_account_id() -> int:
     with SessionLocal() as db:
         owner = db.query(Account).order_by(Account.id.asc()).first()
@@ -90,8 +96,8 @@ def test_invite_request_rejects_receiver_ledger_id(client: TestClient, *, identi
     receiver_account_id = _seed_receiver()
     response = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=identity.app_headers,
-        json={
+        headers=_split_headers(identity.app_headers),
+        json={"expected_row_version": 1,
             "receiver_account_id": receiver_account_id,
             "amount_cents": 2500,
             "receiver_ledger_id": "receiver_b",  # 不应出现在 schema 中
@@ -106,8 +112,8 @@ def test_invite_request_rejects_receiver_ledger_id(client: TestClient, *, identi
     # never carries receiver_ledger_id.
     ok = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=identity.app_headers,
-        json={"receiver_account_id": receiver_account_id, "amount_cents": 2500},
+        headers=_split_headers(identity.app_headers),
+        json={"expected_row_version": 1, "receiver_account_id": receiver_account_id, "amount_cents": 2500},
     )
     assert ok.status_code == 200, ok.json()
     body = ok.json()
@@ -125,8 +131,8 @@ def test_sent_response_omits_receiver_ledger_even_after_accept(
     # 1) sender creates
     create_resp = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=identity.app_headers,
-        json={"receiver_account_id": receiver_account_id, "amount_cents": 2500},
+        headers=_split_headers(identity.app_headers),
+        json={"expected_row_version": 1, "receiver_account_id": receiver_account_id, "amount_cents": 2500},
     )
     public_id = create_resp.json()["public_id"]
 
@@ -156,8 +162,8 @@ def test_inbox_response_omits_sender_internal_ids(client: TestClient, *, identit
     receiver_account_id = _seed_receiver()
     client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=identity.app_headers,
-        json={"receiver_account_id": receiver_account_id, "amount_cents": 2500},
+        headers=_split_headers(identity.app_headers),
+        json={"expected_row_version": 1, "receiver_account_id": receiver_account_id, "amount_cents": 2500},
     )
 
     with SessionLocal() as db:
@@ -187,6 +193,7 @@ def test_inbox_account_scoped_regardless_of_ledger() -> None:
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
             amount_cents=2500,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
 
     with SessionLocal() as db:
@@ -208,6 +215,7 @@ def test_accept_idempotent_returns_same_received_expense() -> None:
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
             amount_cents=2500,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
         public_id = inv.public_id
 
@@ -260,6 +268,7 @@ def test_accept_to_viewer_ledger_403() -> None:
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
             amount_cents=2500,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
         public_id = inv.public_id
 
@@ -295,6 +304,7 @@ def test_accept_to_sender_ledger_403() -> None:
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
             amount_cents=2500,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
         public_id = inv.public_id
 
@@ -325,6 +335,7 @@ def test_chain_split_on_received_expense_blocked() -> None:
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
             amount_cents=2500,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
         public_id = inv.public_id
 
@@ -347,6 +358,7 @@ def test_chain_split_on_received_expense_blocked() -> None:
             expense_id=received_id,
             receiver_account_id=_owner_account_id(),
             amount_cents=1000,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
     assert exc.value.error == "split_chain_not_allowed"
 
@@ -367,6 +379,7 @@ def test_received_expense_amount_cannot_be_corrected(client: TestClient, *, iden
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
             amount_cents=2500,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
         _i, received_expense = bsplit.accept_invitation(
             db,
@@ -420,8 +433,8 @@ def test_invite_amount_must_be_positive(client: TestClient, *, identity) -> None
     receiver_account_id = _seed_receiver(name="B-zero", ledger_id="receiver_zero")
     response = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=identity.app_headers,
-        json={"receiver_account_id": receiver_account_id, "amount_cents": 0},
+        headers=_split_headers(identity.app_headers),
+        json={"expected_row_version": 1, "receiver_account_id": receiver_account_id, "amount_cents": 0},
     )
     assert response.status_code == 422
     assert response.json()["error"] == "split_amount_invalid"
@@ -432,8 +445,8 @@ def test_invite_amount_capped_at_sender_expense_total(client: TestClient, *, ide
     receiver_account_id = _seed_receiver(name="B-cap", ledger_id="receiver_cap")
     response = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=identity.app_headers,
-        json={"receiver_account_id": receiver_account_id, "amount_cents": 9999},
+        headers=_split_headers(identity.app_headers),
+        json={"expected_row_version": 1, "receiver_account_id": receiver_account_id, "amount_cents": 9999},
     )
     assert response.status_code == 422
     assert response.json()["error"] == "split_amount_exceeds_parent"
@@ -448,8 +461,8 @@ def test_cancel_invited_invitation(client: TestClient, *, identity) -> None:
     receiver_account_id = _seed_receiver(name="B-cancel", ledger_id="receiver_cancel")
     create_resp = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=identity.app_headers,
-        json={"receiver_account_id": receiver_account_id, "amount_cents": 2500},
+        headers=_split_headers(identity.app_headers),
+        json={"expected_row_version": 1, "receiver_account_id": receiver_account_id, "amount_cents": 2500},
     )
     public_id = create_resp.json()["public_id"]
     cancel_resp = client.post(
@@ -473,6 +486,7 @@ def test_cancel_accepted_invitation_rejected() -> None:
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
             amount_cents=2500,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
         bsplit.accept_invitation(
             db,

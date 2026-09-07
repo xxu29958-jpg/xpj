@@ -180,7 +180,7 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
         )
     }
     var billSplitSentResult: () -> Result<List<BillSplitSent>> = { Result.success(emptyList()) }
-    var createBillSplitResult: (Long, Long, Long) -> Result<BillSplitSent> = { _, _, _ ->
+    var createBillSplitResult: (Long, Long, Long) -> Result<Long> = { _, _, _ ->
         Result.failure(RepositoryException(errorCode = "invalid_request", message = "not under test"))
     }
     var cancelBillSplitResult: (String) -> Result<BillSplitSent> = {
@@ -347,15 +347,23 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
         return repaymentDraftResult(expense)
     }
 
+    val billSplitSubmissions = kotlinx.coroutines.flow.MutableStateFlow<List<com.ticketbox.data.repository.PendingBillSplitCreation>>(emptyList())
+    override fun observeBillSplitCreations(): kotlinx.coroutines.flow.Flow<com.ticketbox.data.repository.BillSplitCreationObservation> =
+        kotlinx.coroutines.flow.combine(correctionObservations, billSplitSubmissions) { corrections, rows ->
+            com.ticketbox.data.repository.BillSplitCreationObservation(corrections.access, rows)
+        }
+    override suspend fun recoverBillSplitCreation(expectedBinding: LogicalSessionBinding, id: Long, drop: Boolean): Result<Unit> = Result.success(Unit)
+
     override suspend fun createBillSplitInvitation(
         expectedBinding: LogicalSessionBinding,
-        expenseId: Long,
+        expense: Expense,
         receiverAccountId: Long,
+        receiverName: String,
         amountCents: Long,
-    ): Result<BillSplitSent> {
+    ): Result<Long> {
         createBillSplitCalls++
-        lastCreateBillSplitArgs = Triple(expenseId, receiverAccountId, amountCents)
-        return createBillSplitResult(expenseId, receiverAccountId, amountCents)
+        lastCreateBillSplitArgs = Triple(expense.id, receiverAccountId, amountCents)
+        return createBillSplitResult(expense.id, receiverAccountId, amountCents)
     }
 
     override suspend fun fetchBillSplitSent(): Result<List<BillSplitSent>> {

@@ -28,6 +28,7 @@ import com.ticketbox.viewmodel.openBillSplitInviteSheet
 import com.ticketbox.viewmodel.openCorrectionSheet
 import com.ticketbox.viewmodel.toggleTimelineExpanded
 import com.ticketbox.viewmodel.recoverCorrection
+import com.ticketbox.viewmodel.recoverBillSplitCreation
 import com.ticketbox.viewmodel.refreshCorrectionFact
 import com.ticketbox.viewmodel.currentCorrectionItems
 import com.ticketbox.viewmodel.currentCorrectionSplits
@@ -57,6 +58,10 @@ fun ExpenseFactScreen(
     ) {
         AppStatusBanner(message = state.message, tone = state.messageTone)
         FactCorrectionSubmissions(state, viewModel)
+        state.billSplitSubmissions.forEach { pending ->
+            BillSplitSubmissionCard(pending, !state.readOnly, state.billSplitRecoveryBusy,
+                recover = { drop -> viewModel.recoverBillSplitCreation(pending.row.id, drop) })
+        }
         when {
             // 首载：骨架占位（成熟产品的加载形态，不是白屏）。
             state.expense == null && state.expenseLoadState != ExpenseDetailDataLoadState.Failed -> {

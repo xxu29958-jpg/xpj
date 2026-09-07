@@ -205,7 +205,7 @@ class OpenApiContractGateTest {
         // the backend's currency-code fields are intentionally not consumed — bill-split
         // does not surface original-currency detail (ADR-0029, pre-existing). The reverse
         // check surfaced this real omission; revisit if bill-split grows multi-currency UI.
-        "BillSplitSentResponse" to setOf("home_currency_code", "original_currency_code"),
+        "BillSplitSentResponse" to setOf("original_currency_code"),
         "BillSplitInboxResponse" to setOf("home_currency_code", "original_currency_code"),
         "RuntimeCompatibilitySnapshotResponse" to setOf(
             "contract",

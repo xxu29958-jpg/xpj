@@ -10,10 +10,10 @@ Two route prefixes:
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_app_context, get_current_writer_context
+from app.auth import get_current_app_context, get_current_protocol_writer_context
 from app.database import get_db
 from app.schemas import (
     BillSplitAcceptRequest,
@@ -41,7 +41,8 @@ inbox_router = APIRouter(prefix="/api/bill-splits", tags=["bill-splits"])
 def create_split_invite(
     expense_id: int,
     payload: BillSplitInviteRequest,
-    auth: AuthContext = Depends(get_current_writer_context),
+    auth: AuthContext = Depends(get_current_protocol_writer_context),
+    idempotency_key: str = Header(default="", alias="Idempotency-Key"),
     db: Session = Depends(get_db),
 ) -> BillSplitSentResponse:
     inv = bsplit.create_invitation(
@@ -51,6 +52,8 @@ def create_split_invite(
         expense_id=expense_id,
         receiver_account_id=payload.receiver_account_id,
         amount_cents=payload.amount_cents,
+        idempotency_key=idempotency_key,
+        expected_row_version=payload.expected_row_version,
     )
     return BillSplitSentResponse.model_validate(bsplit.to_sent_response_dict(inv))
 

@@ -113,7 +113,7 @@ slice. Full Internal Beta RC completion is still outstanding.
 
 | Capability | State and current boundary | Detail / evidence |
 |---|---|---|
-| Upload links, Shortcut and pending review | `EXISTING`; upload/Expense owners serve actual intake consumers. Durable upload continuation #385 CLOSED, integrated and main-qualified; actual capture consumer closure #387 is active | [Upload contract](TICKETBOX_UPLOAD_INTENT_CONTINUITY_CONTRACT.md) |
+| Upload links, Shortcut and pending review | `STRONG_SLICE`; #385 and #387 CLOSED, integrated and main-qualified. Real-device recovery, review completion, retained drafts and original access passed | [Upload contract](TICKETBOX_UPLOAD_INTENT_CONTINUITY_CONTRACT.md), [#387](https://github.com/xxu29958-jpg/xpj/pull/387) |
 | Batch remainder and saved CSV continuation | `STRONG_SLICE`; #381 and #384 CLOSED, integrated and main-qualified. Full capture journey remains | [Batch](TICKETBOX_CAPTURE_BATCH_CONTINUATION_CONTRACT.md), [CSV](TICKETBOX_CSV_IMPORT_CONTINUATION_CONTRACT.md) |
 | Confirmed facts and composite correction | `STRONG_SLICE`; #382 CLOSED, durable correction owner integrated and main-qualified; actual OS interruption remains to rehearse | [Correction contract](TICKETBOX_EXPENSE_CORRECTION_CONTINUITY_CONTRACT.md) |
 | Recognition and assisted entry | `STRONG_SLICE`; #353 CLOSED. Shared configured suggestions remain drafts. Debt image/binding continuity #386 CLOSED, integrated and main-qualified | [Journeys](TICKETBOX_USER_JOURNEYS_CONTRACT.md#recognition-and-assisted-entry), [Debt image contract](TICKETBOX_DEBT_BILL_BINDING_CONTRACT.md) |
@@ -146,8 +146,8 @@ completion percentages.
 | Package | Remaining user outcome / exit |
 |---|---|
 | First use and household | Owner/member/viewer enter the intended household, understand where data lives and recover expired/failed connection without losing intent or changing identity |
-| Capture, facts and reference | Close actual capture consumer gaps #387; rehearse capture/import → review → confirm → search/detail/original/reference/correction with real roles, recoverable errors and one fact owner |
-| Relationships | Complete splits/proposals/repayment/adjustment/forgiveness/void, original-intent retry/discard and canonical totals across clients |
+| Capture, facts and reference | Capture consumer gaps #387 closed; continue integrated search/reference/correction and remaining role/error journeys with one fact owner |
+| Relationships | Close split-creation retry counterexample #388; complete proposals/repayment/adjustment/forgiveness/void, original-intent retry/discard and canonical totals across clients |
 | Planning and insights | Complete supported budget/goal/income/recurring/debt-plan tasks; overview/period review/data health reflect authoritative facts/corrections with useful empty/error/read-only states |
 | Backstage | Ordinary household can configure applicable capabilities, understand actual health and resume failed work; local governance, secrets and host authority retain their owners |
 | Consumer art and convenience | Actual Web 360/768/1440 and Android journeys meet the selected modern consumer design and reduce interaction burden; replaced visual owners physically retire |
@@ -172,17 +172,17 @@ Do not drop these or open full lifecycle work while handling other journeys.
 remaining art/interaction details, then the exact full RC. Keep useful state
 feedback and efficient actions within each active capability change.
 
-**Active work:** #385 and #386 are merged and independently main-qualified.
-Real-device upload recovery passed process termination and external-source loss.
-#387 closes the capture consumer gaps found during that rehearsal: external entry
-with retained drafts, editor completion, offline pending reconciliation, original
-access and keyboard-reachable review.
-Evidence belongs in the [upload](TICKETBOX_UPLOAD_INTENT_CONTINUITY_CONTRACT.md),
-[debt-bill](TICKETBOX_DEBT_BILL_BINDING_CONTRACT.md) contracts and [#387](https://github.com/xxu29958-jpg/xpj/pull/387).
+**Active work:** #385, #386 and #387 are CLOSED, integrated and independently
+main-qualified. Physical capture/recovery/review evidence belongs in their
+contracts and PRs. [#388](https://github.com/xxu29958-jpg/xpj/pull/388) now closes
+the confirmed split-creation replay counterexample through the existing command,
+Room queue and recovery consumers; candidate qualification is in progress.
 
-**Next action:** complete #387's direct regressions and real-device task replay,
-then continue capture/facts/reference and the remaining delivery packages. Preserve draft #372 for the later detail wave. The full
-Goal and all remaining packages above stay active.
+**Next action:** close the split-creation intent through its existing command,
+protocol and recovery owners, then continue the remaining delivery packages.
+Physical budget/income creation works; simplify Android's first-budget optional
+fields within Planning/convenience. Preserve draft #372 for the later detail wave.
+The full Goal and all remaining packages above stay active.
 
 After a slice's agreed user postcondition, targeted regression, bounded review
 and exact-source qualification are satisfied, close it and proceed. Keep other

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from urllib.parse import parse_qs, urlparse
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -103,6 +104,7 @@ def test_web_sent_lists_invitations(web_client: TestClient) -> None:
             expense_id=expense_id,
             receiver_account_id=receiver_id,
             amount_cents=1500,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
 
     response = web_client.get("/web/bill-splits/sent?ledger_id=owner")
@@ -124,6 +126,7 @@ def test_web_sent_omits_receiver_ledger_id(web_client: TestClient) -> None:
             expense_id=expense_id,
             receiver_account_id=receiver_id,
             amount_cents=1500,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
         bsplit.accept_invitation(
             db,
@@ -159,6 +162,7 @@ def test_web_split_cancel_after_accept_flashes_conflict_not_json(
             expense_id=expense_id,
             receiver_account_id=receiver_id,
             amount_cents=1500,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
         public_id = inv.public_id
         bsplit.accept_invitation(
@@ -199,6 +203,7 @@ def test_web_split_accept_redirects_to_canonical_fact_receipt(
             expense_id=expense_id,
             receiver_account_id=_owner_account_id(),
             amount_cents=1200,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
         public_id = inv.public_id
         owner_ledger_name = db.query(Ledger).filter(Ledger.ledger_id == "owner").one().name
@@ -250,6 +255,7 @@ def test_web_split_receipt_does_not_leak_another_receivers_acceptance(
             expense_id=expense_id,
             receiver_account_id=receiver_id,
             amount_cents=900,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
         public_id = inv.public_id
         _, received = bsplit.accept_invitation(
@@ -279,7 +285,7 @@ def test_web_split_invite_duplicate_pending_flashes_message(
     expense_id = _make_owner_expense()
     first = web_client.post(
         f"/web/expenses/{expense_id}/split-invite",
-        data={
+        data={"idempotency_key": str(uuid4()), "expected_row_version": "1",
             "ledger_id": "owner",
             "receiver_account_id": str(receiver_id),
             "amount_yuan": "12.00",
@@ -290,17 +296,15 @@ def test_web_split_invite_duplicate_pending_flashes_message(
 
     second = web_client.post(
         f"/web/expenses/{expense_id}/split-invite",
-        data={
+        data={"idempotency_key": str(uuid4()), "expected_row_version": "1",
             "ledger_id": "owner",
             "receiver_account_id": str(receiver_id),
             "amount_yuan": "8.00",
         },
         follow_redirects=False,
     )
-    assert second.status_code == 303
-    followed = web_client.get(second.headers["location"])
-    assert followed.status_code == 200
-    assert "待处理拆账邀请" in followed.text
+    assert second.status_code == 409
+    assert "待处理拆账邀请" in second.text
 
 
 # --- audit P3 #4: ledger NAME in the accept dropdown + local-time display ---
@@ -340,6 +344,7 @@ def test_web_inbox_target_shows_ledger_name_and_local_time(
             expense_id=expense_id,
             receiver_account_id=_owner_account_id(),
             amount_cents=1200,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
         snapshot_expires = inv.expires_at
         owner_ledger_name = db.query(Ledger).filter(Ledger.ledger_id == "owner").one().name
@@ -368,6 +373,7 @@ def test_web_sent_renders_local_time_not_utc_repr(web_client: TestClient) -> Non
             expense_id=expense_id,
             receiver_account_id=receiver_id,
             amount_cents=1500,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
         snapshot_time = inv.expense_time_snapshot
 
@@ -392,6 +398,7 @@ def test_web_bill_split_pages_use_obligations_product_cards(web_client: TestClie
             expense_id=expense_id,
             receiver_account_id=receiver_id,
             amount_cents=1500,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
 
     sent = web_client.get("/web/bill-splits/sent?ledger_id=owner")
@@ -420,6 +427,7 @@ def test_web_bill_split_pages_use_obligations_product_cards(web_client: TestClie
             expense_id=inbound_expense,
             receiver_account_id=_owner_account_id(),
             amount_cents=900,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
 
     inbox = web_client.get("/web/bill-splits/inbox?ledger_id=owner")
@@ -443,6 +451,7 @@ def test_web_sent_treats_past_ttl_as_expired_and_hides_cancel(
             expense_id=expense_id,
             receiver_account_id=receiver_id,
             amount_cents=1500,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
         public_id = inv.public_id
         db.execute(

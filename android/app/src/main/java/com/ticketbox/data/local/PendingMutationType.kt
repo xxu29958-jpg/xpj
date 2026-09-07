@@ -49,6 +49,7 @@ enum class PendingMutationType(val wireValue: String) {
     CreateExpense("create_expense"),
     UploadScreenshot("upload_screenshot"),
     CreateDebt("create_debt"),
+    CreateBillSplitInvitation("create_bill_split_invitation"),
     RecordDebtAdjustment("record_debt_adjustment"),
     CreateExpenseOffset("create_expense_offset"),
     VoidExpenseOffset("void_expense_offset"),

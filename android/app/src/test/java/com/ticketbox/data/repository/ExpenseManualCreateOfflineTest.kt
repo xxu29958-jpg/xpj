@@ -80,6 +80,8 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
                 patchExpenseAdapter = moshi().adapter(ExpenseUpdateRequest::class.java),
                 manualCreateAdapter = moshi().adapter(ExpenseManualCreateRequestDto::class.java),
             correctionAdapter = com.ticketbox.OutboxAdapterGraph().correctionAdapter,
+            billSplitReceiptAdapter = com.ticketbox.OutboxAdapterGraph().billSplitReceiptAdapter,
+            billSplitCreateAdapter = com.ticketbox.OutboxAdapterGraph().billSplitCreateAdapter,
             legacyCorrectionAdapter = com.ticketbox.OutboxAdapterGraph().legacyCorrectionAdapter,
         ),
         )

@@ -127,7 +127,7 @@ internal fun SyncStatusScreenContent(
                 onDropMine = { confirmingDrop = SyncStatusDropSelection(it, failed = false, debtCreation = null,
                     recurringOccurrence = state.recurringOccurrences[it.id], incomeEdit = state.incomeEdits[it.id], debtAdjustment = state.debtAdjustments[it.id]) },
                 onDropFailed = { row ->
-                    if (row.type == PendingMutationType.CorrectExpense) actions.onDropFailed(row)
+                    if (row.type in setOf(PendingMutationType.CorrectExpense, PendingMutationType.CreateBillSplitInvitation)) actions.onDropFailed(row)
                     else confirmingDrop = SyncStatusDropSelection(row, failed = true, debtCreation = state.failedDebtCreations[row.id],
                         recurringOccurrence = state.recurringOccurrences[row.id], incomeEdit = state.incomeEdits[row.id], debtAdjustment = state.debtAdjustments[row.id])
                 },
@@ -149,6 +149,7 @@ private fun SyncStatusPageBody(
     }
     val status = state.status
     SyncStatusOverviewSection(status, state.correctionObservation.corrections, state.debtAdjustments.values.toList())
+    SyncStatusBillSplitSection(state, actions)
     SyncStatusCorrectionSection(state, actions)
     SyncStatusUploadSection(state, onOpenInbox)
 
@@ -195,7 +196,7 @@ private fun SyncStatusPageBody(
     }
 }
 
-private val SEPARATE_RECOVERY_TYPES = setOf(PendingMutationType.CorrectExpense, PendingMutationType.UploadScreenshot)
+private val SEPARATE_RECOVERY_TYPES = setOf(PendingMutationType.CreateBillSplitInvitation, PendingMutationType.CorrectExpense, PendingMutationType.UploadScreenshot)
 
 @Composable
 private fun SyncStatusUploadSection(state: OutboxStatusUiState, onOpenInbox: () -> Unit) {
@@ -262,7 +263,7 @@ private fun ConflictCard(
 ) {
     // Only expense mutations can refresh state and retry as "keep mine".
     val originalOffset = row.type == PendingMutationType.CreateExpenseOffset
-    val canKeep = !originalOffset && row.type != PendingMutationType.CorrectExpense && row.targetId.startsWith("expense:")
+    val canKeep = !originalOffset && row.type !in setOf(PendingMutationType.CorrectExpense, PendingMutationType.CreateBillSplitInvitation) && row.targetId.startsWith("expense:")
     SettingsOpenPanel(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
     ) {
@@ -437,6 +438,7 @@ internal val syncStatusMutationLabelResources = mapOf(
     PendingMutationType.PatchExpense to R.string.sync_status_mutation_patch_expense,
     PendingMutationType.CorrectExpense to R.string.sync_status_mutation_correct_expense,
     PendingMutationType.CreateExpense to R.string.sync_status_mutation_create_expense,
+    PendingMutationType.CreateBillSplitInvitation to R.string.sync_status_mutation_create_bill_split,
     PendingMutationType.CreateDebt to R.string.sync_status_mutation_create_debt,
     PendingMutationType.RecordDebtAdjustment to R.string.debt_action_adjustment_title,
     PendingMutationType.ConfirmExpense to R.string.sync_status_mutation_confirm_expense,

@@ -11,6 +11,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.flow.first
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -43,7 +44,7 @@ internal class ExpenseFactWriteBindingTest {
         val release = CompletableDeferred<Unit>()
         val queued = async(start = CoroutineStart.UNDISPATCHED) {
             release.await()
-            fixture.repository.createBillSplitInvitation(original, fixture.expense.id, 22L, 400L)
+            fixture.repository.createBillSplitInvitation(original, fixture.expense, 22L, "Receiver", 400L)
         }
         fixture.session.rebindToDifferentServerForFixture("https://other.test", "other-session")
         assertNotEquals(original, fixture.repository.captureDeferredLedgerBinding())
@@ -54,25 +55,29 @@ internal class ExpenseFactWriteBindingTest {
     }
 
     @Test
-    fun originalBindingStillSendsTheSelectedFactAndOcc() = runTest {
+    fun originalBindingSendsRepaymentAndDurablyQueuesTheSplit() = runTest {
         val fixture = FactWriteBindingFixture()
         val original = assertNotNull(fixture.repository.captureDeferredLedgerBinding())
 
         val repayment = fixture.repository.createRepaymentDraftFromExpense(original, fixture.expense)
-        val split = fixture.repository.createBillSplitInvitation(original, fixture.expense.id, 22L, 400L)
+        val split = fixture.repository.createBillSplitInvitation(original, fixture.expense, 22L, "Receiver", 400L)
 
         assertTrue(repayment.isSuccess)
         assertTrue(split.isSuccess)
+        val originalRow = fixture.repository.observeBillSplitCreations().first().submissions.single()
+        assertEquals(fixture.expense.rowVersion, originalRow.row.expectedRowVersion)
+        assertEquals(400L, originalRow.payload?.request?.amountCents)
+        assertEquals(22L, originalRow.payload?.request?.receiverAccountId)
+        assertNotNull(originalRow.row.idempotencyKey)
         assertEquals(listOf(
             "${original.serverUrl}:repayment:${fixture.expense.id}:${fixture.expense.rowVersion}",
-            "${original.serverUrl}:split:${fixture.expense.id}:22:400",
         ), fixture.calls)
     }
 }
 
 private class FactWriteBindingFixture {
     val session = TestSessionFixture().apply { saveToken("synthetic-session") }
-    val expense = confirmedExpenseDtoFixture().toDomain()
+    val expense = confirmedExpenseDtoFixture().copy(homeCurrency = "CNY").toDomain()
     val calls = mutableListOf<String>()
     val repository = expenseRepositoryFixture(
         expenseDao = FakeExpenseDao(),
@@ -103,9 +108,10 @@ private class FactWriteBindingFixture {
             override suspend fun createBillSplitInvitation(
                 id: Long,
                 request: BillSplitInviteRequestDto,
+                idempotencyKey: String,
             ): BillSplitSentDto {
                 calls += "$baseUrl:split:$id:${request.receiverAccountId}:${request.amountCents}"
-                return fallback.createBillSplitInvitation(id, request).copy(senderExpenseId = id)
+                return fallback.createBillSplitInvitation(id, request, idempotencyKey).copy(senderExpenseId = id)
             }
         }
     }

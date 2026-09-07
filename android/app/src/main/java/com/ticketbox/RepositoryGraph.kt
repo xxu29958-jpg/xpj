@@ -79,6 +79,8 @@ internal class RepositoryGraph(
             patchExpenseAdapter = outboxAdapters.patchExpenseAdapter,
             correctionAdapter = outboxAdapters.correctionAdapter,
             legacyCorrectionAdapter = outboxAdapters.legacyCorrectionAdapter,
+            billSplitCreateAdapter = outboxAdapters.billSplitCreateAdapter,
+            billSplitReceiptAdapter = outboxAdapters.billSplitReceiptAdapter,
             expenseStateTokenAdapter = outboxAdapters.expenseStateTokenAdapter,
             replaceItemsAdapter = outboxAdapters.replaceItemsAdapter,
             replaceSplitsAdapter = outboxAdapters.replaceSplitsAdapter,

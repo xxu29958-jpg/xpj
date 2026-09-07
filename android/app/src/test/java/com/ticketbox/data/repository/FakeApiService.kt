@@ -383,6 +383,7 @@ internal class FakeApiService(
             receiverAccountId = 2,
             receiverDisplayNameSnapshot = null,
             senderExpenseId = 1,
+            homeCurrencyCode = "CNY",
         )
     private fun stubBillSplitInbox(): com.ticketbox.data.remote.dto.BillSplitInboxDto =
         com.ticketbox.data.remote.dto.BillSplitInboxDto(
@@ -404,6 +405,7 @@ internal class FakeApiService(
     override suspend fun createBillSplitInvitation(
         id: Long,
         request: com.ticketbox.data.remote.dto.BillSplitInviteRequestDto,
+        idempotencyKey: String,
     ): com.ticketbox.data.remote.dto.BillSplitSentDto = stubBillSplitSent()
     override suspend fun listBillSplitInbox(
         status: String?,

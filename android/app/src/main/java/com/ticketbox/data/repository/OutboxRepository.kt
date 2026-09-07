@@ -690,6 +690,7 @@ class OutboxRepository private constructor(
                 ledgerId = binding.ledgerId,
                 targetId = targetId,
                 preservedTokenTypes = listOf(PendingMutationType.VoidExpenseOffset.wireValue,
+                    PendingMutationType.CreateBillSplitInvitation.wireValue,
                     PendingMutationType.CorrectExpense.wireValue, PendingMutationType.CreateExpenseOffset.wireValue, PendingMutationType.UploadScreenshot.wireValue),
                 freshToken = newToken,
             )
@@ -785,17 +786,18 @@ class OutboxRepository private constructor(
      *   caller is responsible for rolling back any optimistic UI
      *   update that was tied to this mutation.
      */
-    suspend fun resolveFailed(id: Long, resolution: FailedResolution): Boolean =
+    suspend fun resolveFailed(id: Long, resolution: FailedResolution, boundRequest: BoundLedgerRequest? = null): Boolean =
         resolveStatus(id, PendingMutationStatus.Failed, resolution == FailedResolution.Drop,
-            (resolution as? FailedResolution.Retry)?.freshToken)
+            (resolution as? FailedResolution.Retry)?.freshToken, boundRequest)
 
     /** One status-checked recovery owner; only an actual replay or deletion wakes successors. */
-    private suspend fun resolveStatus(id: Long, status: PendingMutationStatus, drop: Boolean, freshToken: Long?): Boolean {
+    private suspend fun resolveStatus(id: Long, status: PendingMutationStatus, drop: Boolean, freshToken: Long?, boundRequest: BoundLedgerRequest? = null): Boolean {
         val requeue = if (status == PendingMutationStatus.Conflict) dao::requeueConflictWithFreshToken
             else dao::requeueFailedWithFreshToken
         var expired = false
         val changed = bindingTransitionLease.withLock {
             val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
+            boundRequest?.requireStillActiveFor(binding)
             when {
                 drop -> dao.deleteIfStatus(id, binding.ownerStorageKey, binding.ledgerId, status.wireValue) > 0
                 expireOverAgeOnResolve(id, binding, status.wireValue) -> {

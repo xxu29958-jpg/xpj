@@ -34,6 +34,7 @@ from app.services import bill_split_service as bsplit
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.debt_service import create_bill_split_debt
 from app.services.time_service import now_utc
+from tests.test_bill_split import _split_headers
 
 
 def _owner_account_id() -> int:
@@ -81,8 +82,8 @@ def _invite(client: TestClient, identity, receiver_account_id: int, *, amount_ce
     expense_id = _make_expense_for_owner()
     resp = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=identity.app_headers,
-        json={"receiver_account_id": receiver_account_id, "amount_cents": amount_cents},
+        headers=_split_headers(identity.app_headers),
+        json={"expected_row_version": 1, "receiver_account_id": receiver_account_id, "amount_cents": amount_cents},
     )
     assert resp.status_code in (200, 201), resp.json()
     return resp.json()["public_id"]
@@ -259,8 +260,8 @@ def _invite_foreign_parent(
         parent_id = parent.id
     resp = client.post(
         f"/api/expenses/{parent_id}/split-invite",
-        headers=identity.app_headers,
-        json={"receiver_account_id": receiver_account_id, "amount_cents": share_cents},
+        headers=_split_headers(identity.app_headers),
+        json={"expected_row_version": 1, "receiver_account_id": receiver_account_id, "amount_cents": share_cents},
     )
     assert resp.status_code in (200, 201), resp.json()
     return resp.json()["public_id"]

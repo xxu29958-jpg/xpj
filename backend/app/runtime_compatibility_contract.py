@@ -14,7 +14,7 @@ from typing import Literal
 
 RUNTIME_COMPATIBILITY_CONTRACT = "ticketbox-runtime-compatibility-v1"
 # Income commands now carry their original accounting month explicitly.
-CURRENT_API_VERSION = "2026-09-06"
+CURRENT_API_VERSION = "2026-09-07"
 # Optional keyed app uploads can replay their complete original committed receipt.
 UPLOAD_ORIGINAL_RECEIPT_VERSION = 1
 

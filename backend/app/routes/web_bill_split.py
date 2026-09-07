@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
@@ -190,6 +192,8 @@ def build_split_invite_context(
 
     return {
         "members": members,
+        "idempotency_key": str(uuid4()),
+        "expected_row_version": expense["row_version"],
         "sent_rows": sent_rows,
         "remaining_yuan": _cents_to_yuan(remaining_cents, expense_currency),
         "has_capacity": remaining_cents > 0,
@@ -338,6 +342,8 @@ def web_split_invite(
     request: Request,
     receiver_account_id: int = Form(),
     amount_yuan: str = Form(),
+    idempotency_key: str = Form(default=""),
+    expected_row_version: int = Form(default=0),
     ledger_id: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
@@ -364,18 +370,37 @@ def web_split_invite(
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
             amount_cents=amount_cents,
+            idempotency_key=idempotency_key,
+            expected_row_version=expected_row_version,
         )
         msg = "已发起拆账邀请。"
         flash_type = "success"
     except AppError as exc:
-        msg = exc.message
-        flash_type = "error"
+        return _invite_error_response(db, request, options, selected_id, expense_id, exc,
+            draft={"receiver_account_id": receiver_account_id, "amount_yuan": amount_yuan,
+                   "idempotency_key": idempotency_key, "expected_row_version": expected_row_version})
     return _web_redirect(
         "/web/bill-splits/sent",
         selected_id,
         msg=msg,
         flash_type=flash_type,
     )
+
+
+def _invite_error_response(db, request, options, selected_id, expense_id, exc, *, draft):
+    from app.routes._web_expense_fact import web_fact_context
+
+    db.rollback()
+    try:
+        ctx = web_fact_context(db, request, options, selected_id, expense_id, error=exc.message)
+    except AppError:
+        return _web_redirect("/web/bill-splits/sent", selected_id, msg=exc.message, flash_type="error")
+    if ctx["split_invite"] is not None:
+        ctx["split_invite"].update(draft, requires_review=exc.error in {
+            "state_conflict", "idempotency_key_required", "idempotency_key_reused",
+        })
+    return templates.TemplateResponse(request=request, name="expense_fact.html", context=ctx,
+        status_code=exc.status_code)
 
 
 @router.post(

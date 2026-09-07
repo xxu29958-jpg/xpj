@@ -258,7 +258,7 @@ interface PendingMutationDao {
           AND ownerKey = :ownerKey
           AND ledgerId = :ledgerId
           AND status = 'conflict'
-          AND type NOT IN ('correct_expense', 'create_expense_offset', 'upload_screenshot')
+          AND type NOT IN ('correct_expense', 'create_expense_offset', 'upload_screenshot', 'create_bill_split_invitation')
         """,
     )
     suspend fun requeueConflictWithFreshToken(
@@ -286,7 +286,7 @@ interface PendingMutationDao {
           AND ownerKey = :ownerKey
           AND ledgerId = :ledgerId
           AND status = 'failed'
-          AND type NOT IN ('correct_expense', 'create_expense_offset', 'upload_screenshot')
+          AND type NOT IN ('correct_expense', 'create_expense_offset', 'upload_screenshot', 'create_bill_split_invitation')
         """,
     )
     suspend fun requeueFailedWithFreshToken(

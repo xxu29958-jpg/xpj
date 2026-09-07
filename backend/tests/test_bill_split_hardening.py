@@ -1,4 +1,4 @@
-﻿"""Additional bill split contract hardening tests."""
+"""Additional bill split contract hardening tests."""
 
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ from tests.test_bill_split import (
     _make_expense_for_owner,
     _owner_account_id,
     _seed_receiver,
+    _split_headers,
 )
 
 
@@ -30,8 +31,8 @@ def test_invitation_retry_after_peer_acceptance_keeps_the_original_result(
     expense_id = _make_expense_for_owner(amount_cents=5000)
     receiver = _seed_receiver(name="B-lost-ack", ledger_id="receiver_lost_ack")
     headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
-    payload = {"receiver_account_id": receiver, "amount_cents": 2000}
-    first = client.post(f"/api/expenses/{expense_id}/split-invite", headers=headers, json=payload)
+    payload = {"receiver_account_id": receiver, "amount_cents": 2000, "expected_row_version": 1}
+    first = client.post(f"/api/expenses/{expense_id}/split-invite", headers=_split_headers(headers), json=payload)
     assert first.status_code == 200, first.json()
     original = first.json()
 
@@ -45,16 +46,49 @@ def test_invitation_retry_after_peer_acceptance_keeps_the_original_result(
         )
         received_id = received.id
         assert accepted.status == "accepted"
+        db.execute(update(Expense).where(Expense.id == expense_id).values(merchant="Later correction", row_version=2))
+        db.commit()
 
-    replay = client.post(f"/api/expenses/{expense_id}/split-invite", headers=headers, json=payload)
+    replay = client.post(f"/api/expenses/{expense_id}/split-invite", headers=_split_headers(headers), json=payload)
     assert replay.status_code == 200, replay.json()
-    assert replay.json() == original
+    assert replay.json()["public_id"] == original["public_id"]
+    assert replay.json()["status"] == "accepted"
+    changed = client.post(f"/api/expenses/{expense_id}/split-invite", headers=_split_headers(headers),
+        json={**payload, "amount_cents": 2100})
+    assert changed.status_code == 422
+    assert changed.json()["error"] == "idempotency_key_reused"
     with SessionLocal() as db:
         invitations = db.scalars(select(BillSplitInvitation).where(
             BillSplitInvitation.sender_expense_id == expense_id,
         )).all()
         assert len(invitations) == 1
-        assert invitations[0].receiver_expense_id == received_id
+        assert invitations[0].received_expense_id == received_id
+
+
+def test_split_creation_rejects_changed_source_without_publishing_an_invitation(client: TestClient, *, identity) -> None:
+    expense_id = _make_expense_for_owner()
+    receiver = _seed_receiver(name="B-source-change", ledger_id="receiver_source_change")
+    with SessionLocal() as db:
+        db.execute(update(Expense).where(Expense.id == expense_id).values(merchant="Corrected source", row_version=2))
+        db.commit()
+    response = client.post(f"/api/expenses/{expense_id}/split-invite", headers=_split_headers(identity.app_headers),
+        json={"receiver_account_id": receiver, "amount_cents": 2000, "expected_row_version": 1})
+    assert response.status_code == 409, response.json()
+    assert response.json()["error"] == "state_conflict"
+    with SessionLocal() as db:
+        assert db.scalar(select(BillSplitInvitation).where(BillSplitInvitation.sender_expense_id == expense_id)) is None
+
+
+def test_previous_split_protocol_requires_upgrade_before_body_validation(client: TestClient, *, identity) -> None:
+    from app.runtime_compatibility_contract import TICKETBOX_API_VERSION_HEADER
+
+    expense_id = _make_expense_for_owner()
+    receiver = _seed_receiver(name="B-old-client", ledger_id="receiver_old_client")
+    response = client.post(f"/api/expenses/{expense_id}/split-invite",
+        headers={**identity.app_headers, TICKETBOX_API_VERSION_HEADER: "2026-09-06"},
+        json={"receiver_account_id": receiver, "amount_cents": 2000})
+    assert response.status_code == 409, response.json()
+    assert response.json()["error"] == "client_upgrade_required"
 
 
 def test_active_split_invitation_total_cannot_exceed_parent_expense(
@@ -66,15 +100,15 @@ def test_active_split_invitation_total_cannot_exceed_parent_expense(
 
     first = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=identity.app_headers,
-        json={"receiver_account_id": receiver_a, "amount_cents": 3000},
+        headers=_split_headers(identity.app_headers),
+        json={"expected_row_version": 1, "receiver_account_id": receiver_a, "amount_cents": 3000},
     )
     assert first.status_code == 200, first.json()
 
     second = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=identity.app_headers,
-        json={"receiver_account_id": receiver_b, "amount_cents": 2500},
+        headers=_split_headers(identity.app_headers),
+        json={"expected_row_version": 1, "receiver_account_id": receiver_b, "amount_cents": 2500},
     )
     assert second.status_code == 422
     assert second.json()["error"] == "split_total_exceeds_parent"
@@ -120,6 +154,7 @@ def test_create_invitation_row_locks_parent_expense(*, identity) -> None:
                 expense_id=expense_id,
                 receiver_account_id=receiver_account_id,
                 amount_cents=1000,
+                idempotency_key=str(uuid4()), expected_row_version=1,
             )
     finally:
         holder.rollback()
@@ -157,6 +192,7 @@ def test_reaccept_with_different_target_ledger_is_conflict() -> None:
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
             amount_cents=2500,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
         public_id = inv.public_id
         bsplit.accept_invitation(
@@ -221,6 +257,7 @@ def test_foreign_currency_split_lands_received_expense_in_home_currency() -> Non
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
             amount_cents=3500,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
         # Invitation snapshot keeps the parent's original-currency context.
         assert inv.original_currency_code == "USD"
@@ -279,6 +316,7 @@ def test_two_sessions_accept_race_creates_single_received_expense(*, identity) -
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
             amount_cents=2500,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
         public_id = inv.public_id
 
@@ -342,6 +380,7 @@ def test_accept_claim_update_is_guarded_by_invited_status(*, identity) -> None:
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
             amount_cents=2500,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
         public_id = inv.public_id
 
