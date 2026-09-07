@@ -192,9 +192,9 @@ def test_android_upload_receipt_claim_failure_rolls_back_its_expense_task_and_fi
 
 
 @pytest.mark.real_db
-@pytest.mark.parametrize("readback_available", [True, False])
+@pytest.mark.parametrize("readback_available,restart_before_retry", [(True, False), (False, False), (False, True)])
 def test_android_upload_lost_commit_ack_recovers_its_original_task_and_receipt(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch, *, identity, readback_available: bool,
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, *, identity, readback_available: bool, restart_before_retry: bool,
 ) -> None:
     from sqlalchemy.exc import SQLAlchemyError
     from sqlalchemy.orm import Session
@@ -256,6 +256,13 @@ def test_android_upload_lost_commit_ack_recovers_its_original_task_and_receipt(
             db.commit()
 
     monkeypatch.setattr(Session, "commit", original_commit)
+    if restart_before_retry:
+        from app.services.background_task_service import recover_orphaned_tasks
+
+        assert recover_orphaned_tasks() >= 1
+        with SessionLocal() as db:
+            task = db.get(BackgroundTask, expected_submission[0])
+            assert (task.status, task.error_code) == ("failed", "orphaned_after_restart")
     replay = client.post("/api/app/upload-screenshot", headers=headers, content=PNG_BYTES)
     assert replay.status_code == 200
     assert replay.json() == receipt

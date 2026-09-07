@@ -42,7 +42,8 @@ internal class UploadIntentRepositoryFixture : Closeable {
     private var database = openDatabase()
     val session = MutableStateFlow(repositoryUploadSession())
     val adapters = OutboxAdapterGraph()
-    var fileStore = UploadIntentFileStore(context)
+    var availableBytes: Long? = null
+    var fileStore = UploadIntentFileStore(context) { availableBytes ?: it.usableSpace }
         private set
     val savedTimestamps = mutableListOf<Pair<String, String>>()
     private val timestamps = mutableMapOf<String, String>()
@@ -108,7 +109,7 @@ internal class UploadIntentRepositoryFixture : Closeable {
     fun reopen(): UploadIntentRepository {
         database.close()
         database = openDatabase()
-        fileStore = UploadIntentFileStore(context)
+        fileStore = UploadIntentFileStore(context) { availableBytes ?: it.usableSpace }
         repository = newRepository()
         return repository
     }

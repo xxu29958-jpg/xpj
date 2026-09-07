@@ -26,6 +26,26 @@ import org.junit.Test
 
 class UploadIntentRepositoryTest {
     @Test
+    fun failedAcceptanceReclaimsStagedOrphansWithoutWaitingForAnotherUpload() = runBlocking<Unit> {
+        UploadIntentRepositoryFixture().use { fixture ->
+            fixture.repository.acceptUploadBatch(fixture.request(listOf("retained.png"))).getOrThrow()
+            val retained = fixture.dao.allRows().single()
+            fixture.outbox.markDone(retained.id)
+            val rows = fixture.dao.allRows()
+            val request = fixture.request(listOf("staged.png", "blocked.png")).copy(prepare = {
+                if (it == "blocked.png") fixture.availableBytes = 0
+                fixture.image(it)
+            })
+
+            assertTrue(fixture.repository.acceptUploadBatch(request).isFailure)
+            assertEquals(rows, fixture.dao.allRows())
+            assertTrue(fixture.original(requireNotNull(retained.idempotencyKey)).isFile)
+            assertFalse(fixture.original(uploadItemKey(request.id, 0)).exists())
+            assertFalse(fixture.original(uploadItemKey(request.id, 1)).exists())
+        }
+    }
+
+    @Test
     fun anOriginalSelectionCannotBindToAnotherOriginOrAccountWithTheSameLedger() = runBlocking<Unit> {
         for (changeOrigin in listOf(true, false)) {
             UploadIntentRepositoryFixture().use { fixture ->
@@ -273,6 +293,7 @@ class UploadIntentRepositoryTest {
             })) }.exceptionOrNull()
             assertTrue(cancellation is CancellationException)
             assertTrue(fixture.dao.allRows().isEmpty())
+            assertFalse(fixture.original(uploadItemKey(request.id, 0)).exists())
             assertEquals(0, fixture.scheduled)
             val switched = fixture.repository.acceptUploadBatch(request.copy(prepare = { name ->
                 fixture.session.value = fixture.session.value.copy(bindingRevision = "changed-during-prepare")
@@ -281,7 +302,7 @@ class UploadIntentRepositoryTest {
             assertTrue(switched.isFailure)
             assertTrue(fixture.dao.allRows().isEmpty())
             assertEquals(0, fixture.scheduled)
-            assertTrue(fixture.original(uploadItemKey(request.id, 0)).isFile)
+            assertFalse(fixture.original(uploadItemKey(request.id, 0)).exists())
         }
     }
 
@@ -341,7 +362,7 @@ class UploadIntentRepositoryTest {
     }
 
     @Test
-    fun theNextAcceptanceReclaimsAnUnacceptedPrefixWithoutDroppingAnotherBindingOriginal() = runBlocking<Unit> {
+    fun failedAcceptanceReclaimsItsPrefixWithoutDroppingAnotherBindingOriginal() = runBlocking<Unit> {
         UploadIntentRepositoryFixture().use { fixture ->
             val retained = fixture.request(listOf("retained.png"))
             fixture.repository.acceptUploadBatch(retained).getOrThrow()
@@ -354,7 +375,7 @@ class UploadIntentRepositoryTest {
             assertTrue(error is CancellationException)
             assertEquals(listOf(original), fixture.dao.allRows())
             val orphan = fixture.original(uploadItemKey(interrupted.id, 0))
-            assertTrue(orphan.isFile)
+            assertFalse(orphan.exists())
 
             fixture.session.value = fixture.session.value.copy(identity = fixture.session.value.identity.copy(ledgerId = "other-ledger"))
             fixture.repository.acceptUploadBatch(fixture.request(listOf("new.png"))).getOrThrow()
