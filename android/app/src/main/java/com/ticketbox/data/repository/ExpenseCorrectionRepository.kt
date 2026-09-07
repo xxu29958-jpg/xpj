@@ -1,6 +1,7 @@
 package com.ticketbox.data.repository
 
 import com.squareup.moshi.JsonAdapter
+import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto
 import com.ticketbox.data.remote.dto.ExpenseDto
@@ -54,16 +55,19 @@ internal class ExpenseCorrectionRepository(
             }
             val bound = core.ledgerRequestGuard.bindExact(expectedBinding)
             val target = "expense:${expense.id}"
-            if (outbox.activeForTarget(bound, target).isNotEmpty() || observe().first().corrections.any {
-                    it.row.targetId == target && (!it.hasSupportedIntent || it.refreshRequired)
-                }) throw RepositoryException("这笔账单有待处理的提交，请先查看原提交。")
             val payload = ExpenseCorrectionPayload(1, expense.id, expense.merchant,
                 expense.originalCurrencyCodeRaw ?: expense.originalCurrencyCode.storageKey, expense.originalAmountMinor, expense.homeCurrencyCode ?: expense.homeCurrency.storageKey,
                 expectedBinding.ownerKey, expectedBinding.ledgerId, expectedBinding.sessionGeneration, expectedBinding.bindingRevision,
                 correction.toRequest(expense.rowVersion))
             outbox.enqueue(boundRequest = bound, intent = PendingMutationIntent(
                 type = PendingMutationType.CorrectExpense, targetId = target, payloadJson = adapter.toJson(payload),
-                expectedRowVersion = expense.rowVersion, idempotencyKey = UUID.randomUUID().toString()))
+                expectedRowVersion = expense.rowVersion, idempotencyKey = UUID.randomUUID().toString()),
+                validateTargetRows = { rows ->
+                    if (rows.any { row -> row.status != PendingMutationStatus.Done ||
+                        (row.type == PendingMutationType.CorrectExpense &&
+                            (adapter.readSupportedCorrection(row) == null || row.lastError?.startsWith(CORRECTION_REFRESH_PREFIX) == true))
+                    }) throw RepositoryException("这笔账单有待处理的提交，请先查看原提交。")
+                })
         }
 
     suspend fun recover(expectedBinding: LogicalSessionBinding, rowId: Long, drop: Boolean): Result<Unit> = core.errorHandler.safeCall {

@@ -255,8 +255,20 @@ internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxT
         val baseline = baselineExpense().copy(status = "confirmed", rowVersion = 7)
         harness.submit(repo, baseline, ExpenseCorrectionDraft("第一次", note = "原意图")).getOrThrow()
         val original = queue.rows.values.single()
-        assertTrue(harness.submit(repo, baseline, ExpenseCorrectionDraft("第二次", note = "不得替代")).isFailure)
-        assertEquals(original, queue.rows.values.single())
+        val unresolved = listOf(original, original.copy(status = "in_flight"), original.copy(status = "failed"),
+            original.copy(status = "conflict"), original.copy(type = PendingMutationType.PatchExpense.wireValue),
+            original.copy(status = "done", lastError = "correction_refresh_required:8"),
+            original.copy(status = "done", lastError = "correction_refresh_required:unknown"))
+        for (predecessor in unresolved) {
+            queue.rows[original.id] = predecessor
+            assertTrue(harness.submit(repo, baseline, ExpenseCorrectionDraft("第二次", note = "不得替代")).isFailure)
+            assertEquals(predecessor, queue.rows.values.single())
+        }
+        val delivered = original.copy(status = "done")
+        queue.rows[original.id] = delivered
+        val nextId = harness.submit(repo, baseline.copy(rowVersion = 8), ExpenseCorrectionDraft("第二次", note = "已核对新事实")).getOrThrow()
+        assertEquals(delivered, queue.rows.getValue(original.id))
+        assertEquals(8L, queue.rows.getValue(nextId).expectedRowVersion)
     }
 
     @Test
@@ -293,6 +305,9 @@ internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxT
         assertTrue(pending.canDiscard)
         assertFalse(pending.canRetry)
         assertEquals("{unknown format}", queue.rows.getValue(id).payload)
+        assertTrue(harness.submit(repo, baselineExpense().copy(status = "confirmed", rowVersion = 9),
+            ExpenseCorrectionDraft("不得绕过旧提交", note = "新内容")).isFailure)
+        assertEquals("{unknown format}", queue.rows.values.single().payload)
         repo.recoverCorrection(assertNotNull(observed.access).binding, id, true).getOrThrow()
         assertTrue(queue.rows.isEmpty())
     }

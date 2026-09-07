@@ -363,22 +363,27 @@ class OutboxRepository private constructor(
     internal suspend fun enqueue(
         boundRequest: BoundLedgerRequest,
         intent: PendingMutationIntent,
+        validateTargetRows: ((List<OutboxRow>) -> Unit)? = null,
         afterPersisted: suspend () -> Unit = {},
     ): Long = enqueueInternal(
         boundRequest = boundRequest,
         intent = intent,
+        validateTargetRows = validateTargetRows,
         afterPersisted = afterPersisted,
     )
 
     private suspend fun enqueueInternal(
         boundRequest: BoundLedgerRequest?,
         intent: PendingMutationIntent,
+        validateTargetRows: ((List<OutboxRow>) -> Unit)? = null,
         afterPersisted: suspend () -> Unit = {},
     ): Long {
         val id = bindingTransitionLease.withLock {
             val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
             boundRequest?.requireStillActiveFor(binding)
             binding.requireReadyForEnqueue()
+            validateTargetRows?.invoke(activeForTarget(binding, intent.targetId,
+                ACTIVE_STATUS_VALUES + PendingMutationStatus.Done.wireValue))
             val row = PendingMutationEntity(
                 serverUrl = binding.serverUrl,
                 ledgerId = binding.ledgerId,
@@ -887,11 +892,12 @@ class OutboxRepository private constructor(
     private suspend fun activeForTarget(
         binding: OutboxBinding,
         targetId: String,
+        statuses: List<String> = ACTIVE_STATUS_VALUES,
     ): List<OutboxRow> = dao.activeForTarget(
         ownerKey = binding.ownerStorageKey,
         ledgerId = binding.ledgerId,
         targetId = targetId,
-        activeStatuses = ACTIVE_STATUS_VALUES,
+        activeStatuses = statuses,
     ).map { it.toDomain() }
 
     /**
