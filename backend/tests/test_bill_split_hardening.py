@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -21,6 +22,39 @@ from tests.test_bill_split import (
     _owner_account_id,
     _seed_receiver,
 )
+
+
+def test_invitation_retry_after_peer_acceptance_keeps_the_original_result(
+    client: TestClient, *, identity
+) -> None:
+    expense_id = _make_expense_for_owner(amount_cents=5000)
+    receiver = _seed_receiver(name="B-lost-ack", ledger_id="receiver_lost_ack")
+    headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
+    payload = {"receiver_account_id": receiver, "amount_cents": 2000}
+    first = client.post(f"/api/expenses/{expense_id}/split-invite", headers=headers, json=payload)
+    assert first.status_code == 200, first.json()
+    original = first.json()
+
+    # The sender loses this response while the recipient accepts the invitation.
+    with SessionLocal() as db:
+        accepted, received = bsplit.accept_invitation(
+            db,
+            public_id=original["public_id"],
+            accepting_account_id=receiver,
+            target_ledger_id="receiver_lost_ack",
+        )
+        received_id = received.id
+        assert accepted.status == "accepted"
+
+    replay = client.post(f"/api/expenses/{expense_id}/split-invite", headers=headers, json=payload)
+    assert replay.status_code == 200, replay.json()
+    assert replay.json() == original
+    with SessionLocal() as db:
+        invitations = db.scalars(select(BillSplitInvitation).where(
+            BillSplitInvitation.sender_expense_id == expense_id,
+        )).all()
+        assert len(invitations) == 1
+        assert invitations[0].receiver_expense_id == received_id
 
 
 def test_active_split_invitation_total_cannot_exceed_parent_expense(
