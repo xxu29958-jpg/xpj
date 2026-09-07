@@ -268,12 +268,7 @@ private suspend fun assertInvitationActionsRespectCorrection(scope: TestScope, f
     vm.selectBillSplitInviteMember(3L)
     vm.updateBillSplitInviteAmount("4.00")
     assertTrue(vm.uiState.value.billSplitInviteSheetOpen)
-    vm.openCorrectionSheet()
-    vm.updateCorrectionField(CorrectionScalarField.Amount, "14.00")
-    vm.updateCorrectionField(CorrectionScalarField.Reason, "Correct before sharing this expense")
-    vm.submitCorrection()
-    scope.advanceUntilIdle()
-    assertEquals(PendingMutationStatus.Pending, vm.uiState.value.corrections.single().row.status)
+    submitCorrectionBeforeSharing(scope, vm)
     vm.sendBillSplitInvite()
     scope.advanceUntilIdle()
     val sentWhilePending = fake.createBillSplitCalls
@@ -317,6 +312,16 @@ private suspend fun assertInvitationActionsRespectCorrection(scope: TestScope, f
     assertEquals(1, fake.createBillSplitCalls)
     assertEquals(Triple(7L, 333L, 400L), fake.lastCreateBillSplitArgs)
     assertFalse(vm.uiState.value.billSplitInviteSheetOpen)
+}
+
+@OptIn(ExperimentalCoroutinesApi::class)
+private fun submitCorrectionBeforeSharing(scope: TestScope, vm: ExpenseFactViewModel) {
+    vm.openCorrectionSheet()
+    vm.updateCorrectionField(CorrectionScalarField.Amount, "14.00")
+    vm.updateCorrectionField(CorrectionScalarField.Reason, "Correct before sharing this expense")
+    vm.submitCorrection()
+    scope.advanceUntilIdle()
+    assertEquals(PendingMutationStatus.Pending, vm.uiState.value.corrections.single().row.status)
 }
 
 private fun prepareCorrectionInvitations(fake: FakeExpenseFactActions, cancelled: MutableList<String>) {
