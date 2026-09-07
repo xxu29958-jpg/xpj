@@ -150,7 +150,7 @@ private fun SyncStatusPageBody(
     val status = state.status
     SyncStatusOverviewSection(status, state.correctionObservation.corrections, state.debtAdjustments.values.toList())
     SyncStatusCorrectionSection(state, actions)
-    SyncStatusUploadSection(state, actions, onOpenInbox)
+    SyncStatusUploadSection(state, onOpenInbox)
 
     SyncStatusQuarantineSection(
         count = status.quarantinedCount,
@@ -198,18 +198,13 @@ private fun SyncStatusPageBody(
 private val SEPARATE_RECOVERY_TYPES = setOf(PendingMutationType.CorrectExpense, PendingMutationType.UploadScreenshot)
 
 @Composable
-private fun SyncStatusUploadSection(state: OutboxStatusUiState, actions: SyncStatusActions, onOpenInbox: () -> Unit) {
+private fun SyncStatusUploadSection(state: OutboxStatusUiState, onOpenInbox: () -> Unit) {
     val rows = (state.status.conflicts + state.status.failed).filter { it.type == PendingMutationType.UploadScreenshot }
     if (rows.isEmpty()) return
     SettingsSection(title = stringResource(R.string.sync_status_mutation_upload_screenshot), icon = Icons.Filled.CloudUpload) {
         Text(stringResource(R.string.sync_status_upload_recovery_body), style = MaterialTheme.typography.bodyMedium)
         AppPrimaryButton(text = stringResource(R.string.sync_status_open_uploads), icon = Icons.Filled.CloudUpload,
             onClick = onOpenInbox)
-        rows.forEach { row ->
-            FailedCard(row, null, state.busyRowId == row.id, onRetry = null, actions = actions.copy(onDropFailed = {
-                if (row in state.status.conflicts) actions.onDropMine(row) else actions.onDropFailed(row)
-            }))
-        }
     }
 }
 

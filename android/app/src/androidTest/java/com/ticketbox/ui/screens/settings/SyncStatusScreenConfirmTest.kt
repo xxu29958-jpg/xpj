@@ -236,6 +236,7 @@ class SyncStatusScreenConfirmTest {
             onDropFailed = {}, onClearQuarantined = {},
         ))
         composeRule.onNodeWithText("重试").assertDoesNotExist()
+        composeRule.onNodeWithText("放弃").assertDoesNotExist()
         composeRule.onNodeWithText("查看待上传截图").performScrollTo().performClick()
         composeRule.runOnIdle { assertEquals(1, openedUploads) }
     }

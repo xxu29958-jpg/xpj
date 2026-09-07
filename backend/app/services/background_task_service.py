@@ -31,6 +31,9 @@ Orphan recovery:
     orphans the moment startup begins. Cloud/multi-worker deployments may
     set ``BACKGROUND_TASK_ORPHAN_GRACE_SECONDS`` to avoid a newly started
     worker force-failing fresh work still heartbeating in another process.
+    The upload domain may explicitly readmit its original restart-orphaned
+    enrichment from durable input and through the same capacity authority.
+    Startup itself does not automatically execute tasks or restart terminal work.
 """
 
 from __future__ import annotations
