@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import update
 from sqlalchemy.orm import Session
@@ -39,6 +39,7 @@ def run_task(
             mark_failed(
                 db,
                 task_id,
+                expected_status="running",
                 error_code="unknown_task_type",
                 error_message=f"No handler registered for {task.task_type!r}.",
             )
@@ -53,6 +54,7 @@ def run_task(
             mark_failed(
                 db,
                 task_id,
+                expected_status="running",
                 error_code=type(exc).__name__,
                 error_message=str(exc)[:500],
             )
@@ -79,14 +81,16 @@ def claim_queued_task(db: Session, task_id: int) -> BackgroundTask | None:
     return db.get(BackgroundTask, task_id) if result.rowcount == 1 else None
 
 
-def mark_failed(db: Session, task_id: int, *, error_code: str, error_message: str) -> None:
-    task = db.get(BackgroundTask, task_id)
-    if task is None or task.status in _TERMINAL_STATUSES:
-        return
-    task.status = "failed"
-    task.completed_at = now_utc()
-    task.error_code = error_code
-    task.error_message = error_message
+def mark_failed(
+    db: Session, task_id: int, *, expected_status: Literal["queued", "running"],
+    error_code: str, error_message: str,
+) -> None:
+    """Publish failure only while the caller still owns the expected task phase."""
+    db.execute(
+        update(BackgroundTask)
+        .where(BackgroundTask.id == task_id, BackgroundTask.status == expected_status)
+        .values(status="failed", completed_at=now_utc(), error_code=error_code, error_message=error_message)
+    )
     db.commit()
 
 

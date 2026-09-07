@@ -33,6 +33,7 @@ from app.services.idempotency import (
 )
 from app.services.pending_enrichment_task_service import (
     prepare_pending_expense_enrichment,
+    resume_pending_expense_enrichment,
     submit_pending_expense_enrichment,
 )
 from app.services.upload_receipt_service import upload_commit_is_durable
@@ -315,6 +316,8 @@ async def handle_upload(
     try:
         prepared_upload = await _prepare_request_upload(request, db, tenant_id, max_size_bytes, intent)
         if isinstance(prepared_upload, UploadResponse):
+            resume_pending_expense_enrichment(db, task_public_id=prepared_upload.enrichment_task_public_id,
+                expense_id=prepared_upload.id, tenant_id=tenant_id)
             return prepared_upload
         saved_file, timing_ms, claim = prepared_upload
         if commit_guard is not None:

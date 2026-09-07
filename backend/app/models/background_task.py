@@ -81,6 +81,9 @@ class BackgroundTask(Base):
 
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Original execution input, persisted only by task types that support receipt replay.
+    # Internal input is separate from the public, handler-produced result summary.
+    input_payload_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     # JSON-encoded; per-task shape (e.g. csv_import returns rows_imported / errors).
     result_summary_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 

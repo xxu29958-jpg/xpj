@@ -233,6 +233,7 @@ def submit_committed(
             _mark_failed(
                 db,
                 prepared.task_id,
+                expected_status="queued",
                 error_code="task_submission_failed",
                 error_message="Task execution could not be started.",
             )
@@ -244,6 +245,14 @@ def submit_committed(
             logger.exception("background task %s failure status could not be persisted", prepared.task_id)
         raise BackgroundTaskSubmissionError(prepared.task_public_id) from exc
     return task
+
+
+def submit_existing(db: Session, task: BackgroundTask, payload: dict[str, Any]) -> BackgroundTask:
+    """Reconstruct execution for a domain-validated durable task, without new admission."""
+    return submit_committed(db, PreparedBackgroundTask(
+        task=task, task_id=task.id, task_public_id=task.public_id,
+        payload=dict(payload), registry=_current_handler_registry(),
+    ))
 
 
 def enqueue_or_get_active(
