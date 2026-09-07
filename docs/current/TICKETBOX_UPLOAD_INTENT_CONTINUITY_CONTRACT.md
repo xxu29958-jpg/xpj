@@ -7,7 +7,7 @@ This is the current working contract for durable upload continuity. The full Goa
 - Allowed Changes：完成原上传的接收、持久化、恢复及所有实际消费者，复用现有上传、Room Outbox、幂等、身份、文件与任务 owner；同步退役被替代出口。按 TDD、impact closure、bounded review 和 exact SHA 云端证据自主施工、正常提交与受保护合并。
 - Forbidden Surface：不新增 queue / status ledger / bus；不把图片相同当作命令幂等；不把本地保存冒充服务端 receipt；不清除未完成原意图来满足回归；不另造鉴权、金额 writer 或容量政策；不扩展任何 Windows 生命周期 HOLD。长测放云端，保护既有数据、身份、附件和用户工作树。
 - Done Checks：来源失效后重开的真实 Room / repository / VM 可读原恢复，原 Retry 最终只发送 A/B/B/C；同一原 key、文件及 timezone 重放返回同一 receipt，账单、任务、文件和执行器提交不增加；不同 key 同图仍新增 Pending 并进入重复核查；容量准入失败仍回滚 Expense / task / file。绑定、权限、未知 payload、协议拒绝与过期不得改绑、换 key 或静默结算；全部直接消费者和旧出口在生产施工后按下表重新闭合。
-- Evidence：各候选与合并主体的直接测试、云端结果及 formal review 状态见对应证据段；不以旧主体的通过替代当前资格化。#385 尚未合并，完整 Capture 任务、实际 OS 中断和总 Goal 仍未完成。
+- Evidence：各候选与合并主体的直接测试、云端结果及 formal review 状态见对应证据段；不以旧主体的通过替代当前资格化。#385 已合并，合并后主线独立资格化进行中；完整 Capture 任务、实际 OS 中断和总 Goal 仍未完成。
 
 ## 施工前 impact closure
 

@@ -172,15 +172,15 @@ Do not drop these or open full lifecycle work while handling other journeys.
 remaining art/interaction details, then the exact full RC. Keep useful state
 feedback and efficient actions within each active capability change.
 
-**Active work:** #385's original input and committed-result corrections are
-implemented. #386 incorporates them alongside its debt-image binding correction.
-Both candidates are in qualification; neither PR is merged. Details belong in their
+**Active work:** #385 is merged; independent main qualification is running.
+#386's combined candidate passed qualification and its review threads are resolved.
+It is integrating the merged main while real-device task validation begins. Details belong in their
 [upload](TICKETBOX_UPLOAD_INTENT_CONTINUITY_CONTRACT.md) and
 [debt-bill](TICKETBOX_DEBT_BILL_BINDING_CONTRACT.md) contracts.
 
-**Next action:** close those direct counterexamples with targeted regression,
-qualify the final Capture candidate, merge and independently qualify main; then
-close the qualified Debt integration. Continue the real capture/facts/reference task using
+**Next action:** finish Capture main qualification, qualify the Debt integration
+and close it through protected merge and independent main qualification.
+Continue the real capture/facts/reference task using
 its existing consumers. Preserve draft #372 for the later detail wave. The full
 Goal and all remaining packages above stay active.
 
