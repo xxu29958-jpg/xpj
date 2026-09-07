@@ -1,6 +1,7 @@
 package com.ticketbox.ui.navigation
 
 import android.content.Context
+import android.net.Uri
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
@@ -12,6 +13,7 @@ import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -31,6 +33,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import java.io.File
 
 /** The outer and inner controllers, route callbacks and detail factories are all production code. */
 class FactEntryNavigationTest {
@@ -41,11 +44,84 @@ class FactEntryNavigationTest {
     private val harness = FactEntryNavigationHarness(context)
     private val mounted = mutableStateOf(true)
     private lateinit var outer: NavHostController
+    private val launchRequest = mutableStateOf<LaunchIntentRequest?>(null)
+    private val handledLaunches = mutableListOf<LaunchIntentRequest>()
+    private val sharedImage = File(context.cacheDir, "fact-navigation-share.png")
 
     @After fun close() {
         compose.runOnIdle { mounted.value = false; harness.models.viewModelStore.clear() }
         compose.waitForIdle()
         harness.close()
+        sharedImage.delete()
+    }
+
+    @Test fun reviewShortcutLeavesTheFactAndReachesInbox() {
+        installMainGraph()
+        openFact()
+        val request = LaunchIntentRequest.Navigate(ShortcutTarget.ReviewPending)
+        compose.runOnIdle { launchRequest.value = request }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertEquals(MAIN_ROUTE, outer.currentBackStackEntry?.destination?.route)
+            assertEquals(MainProductDestination.Domain(PrimaryDomain.Inbox), harness.shell.activeDestination)
+            assertEquals(listOf(request), handledLaunches)
+        }
+    }
+
+    @Test fun shareFromFactReachesDurableAcceptanceBeforeAcknowledgingTheOriginalSelection() {
+        sharedImage.writeBytes(harness.fixture.network.originalImage)
+        installMainGraph()
+        openFact()
+        val request = LaunchIntentRequest.ShareImages("ad4ef4c7-93fb-4cb2-97b4-6b318a6c1b08",
+            listOf(Uri.fromFile(sharedImage).toString()), "UTC")
+        compose.runOnIdle { launchRequest.value = request }
+        compose.waitUntil(5_000) { handledLaunches.contains(request) }
+        compose.runOnIdle {
+            assertEquals(MAIN_ROUTE, outer.currentBackStackEntry?.destination?.route)
+            assertEquals(listOf(request), handledLaunches)
+            assertTrue(!harness.shell.launchAction.containsUpload(request.batchId))
+        }
+        val rows = harness.fixture.stored()
+        assertEquals(1, rows.size)
+        assertEquals("pending", rows.single()["status"])
+        assertTrue(requireNotNull(rows.single()["payload"]).contains(request.batchId))
+    }
+
+    @Test fun confirmCompletesTheEditorAndRefreshesInboxInsteadOfBecomingAnUnfinishedFactRoute() {
+        harness.fixture.network.current = harness.fixture.network.current.copy(status = "pending", confirmedAt = null)
+        installMainGraph()
+        compose.runOnIdle { outer.navigate(expenseRoute(42L)) }
+        val confirm = context.getString(R.string.expense_edit_confirm_button)
+        waitForText(confirm)
+        compose.onNodeWithText(confirm).performClick()
+        compose.waitUntil(5_000) { harness.shell.expenseEditCompletionRevision == 1 }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertEquals(MAIN_ROUTE, outer.currentBackStackEntry?.destination?.route)
+            assertEquals(1, harness.shell.expenseEditCompletionRevision)
+            assertEquals("confirmed", harness.fixture.network.current.status)
+            assertEquals(listOf("save", "confirm"), harness.fixture.network.editCalls)
+        }
+    }
+
+    @Test fun factWithoutThumbnailStillOpensItsProtectedOriginal() {
+        harness.fixture.network.current = harness.fixture.network.current.copy(imagePath = "synthetic/original.png")
+        installMainGraph()
+        openFact()
+        val original = context.getString(R.string.expense_fact_image_view_full)
+        waitForText(original)
+        compose.onNodeWithText(original).performScrollTo().performClick()
+        compose.waitUntil(5_000) { harness.fixture.network.imageReads.size == 1 }
+        compose.waitForIdle()
+        compose.onNodeWithContentDescription(context.getString(R.string.components_async_image_content_description))
+            .performScrollTo().assertIsDisplayed()
+        assertEquals(listOf(42L), harness.fixture.network.imageReads)
+    }
+
+    private fun openFact() {
+        compose.runOnIdle { outer.navigate(expenseRoute(42L)) }
+        waitForText(context.getString(R.string.expense_fact_title))
+        compose.waitForIdle()
     }
 
     @Test fun workspaceRecoveryOpensTheRealFactAndReturnsToItsOriginalSubmission() {
@@ -137,6 +213,7 @@ class FactEntryNavigationTest {
                     TicketboxTheme(skin = AppSkin.Paper) {
                         val controller = rememberNavController()
                         outer = controller
+                        LaunchRequestEffect(launchRequest.value, harness.shell) { handledLaunches += it }
                         MainNavGraph(
                             MainNavigationRuntime(controller, harness.shell, harness.screenFactory),
                             remember { SnackbarHostState() },

@@ -418,7 +418,7 @@ private fun ShellBodyWithBanner(
  * 热分享仍是后续独立请求；重入使用原 selection id，不能通过再次路由产生另一批命令。
  */
 @Composable
-private fun LaunchRequestEffect(
+internal fun LaunchRequestEffect(
     launchRequest: LaunchIntentRequest?,
     shellState: MainShellState,
     onLaunchRequestHandled: (LaunchIntentRequest) -> Unit,
