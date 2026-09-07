@@ -118,6 +118,21 @@ class BackgroundTasksViewModelTest {
     }
 
     @Test
+    fun roleRevocationBeforeTapCannotUseCachedWritePermission() = runTest(dispatcher) {
+        val running = task(publicId = "task-1")
+        val repo = FakeBackgroundTaskActions(fetchResult = Result.success(listOf(running)))
+        val vm = BackgroundTasksViewModel(repo)
+        vm.refresh()
+        runCurrent()
+
+        repo.canModify = false
+        vm.cancel(running.publicId)
+        runCurrent()
+
+        assertEquals(0, repo.cancelCalls)
+    }
+
+    @Test
     fun viewerCanReadTasksButCannotRequestCancellation() = runTest(dispatcher) {
         val running = task(publicId = "task-1")
         val repo = FakeBackgroundTaskActions(
