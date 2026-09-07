@@ -147,10 +147,10 @@ completion percentages.
 |---|---|
 | First use and household | Owner/member/viewer enter the intended household, understand where data lives and recover expired/failed connection without losing intent or changing identity |
 | Capture, facts and reference | Capture consumer gaps #387 closed; continue integrated search/reference/correction and remaining role/error journeys with one fact owner |
-| Relationships | Split-creation retry #388 CLOSED; split-center frozen amounts and accepted-result continuation are in progress. Complete proposals/repayment/adjustment/forgiveness/void, original-intent retry/discard and canonical totals across clients |
+| Relationships | Split creation #388 CLOSED; accepted-result continuation #391 merged, main qualification pending. Member settlement continuity is next; complete proposals/repayment/adjustment/forgiveness/void, original-intent retry/discard and canonical totals across clients |
 | Planning and insights | Complete supported budget/goal/income/recurring/debt-plan tasks; overview/period review/data health reflect authoritative facts/corrections with useful empty/error/read-only states |
 | Backstage | Ordinary household can configure applicable capabilities, understand actual health and resume failed work; local governance, secrets and host authority retain their owners |
-| Consumer art and convenience | Actual Web 360/768/1440 and Android journeys meet the selected modern consumer design and reduce interaction burden; replaced visual owners physically retire |
+| Consumer art and convenience | Actual Web 360/768/1440 and Android journeys meet the selected modern consumer design and reduce interaction burden; retire replaced visual owners. Replace raw split-source metadata; resolve the observed intermittent first bottom-navigation tap |
 | Cross-client continuity and data safety | Rehearse role/revocation, token rotation, ledger switch, offline intent, actual OS interruption, reconnect/conflict/quarantine, originals/provenance and supported export outcomes; Room reopen is not process-death proof |
 | Exact RC freeze and delivery | Freeze final main/tree, Setup/APK and manifests; complete clean-Windows ordinary product and cross-client/reboot/data/identity rehearsal; publish accepted non-blocking limits and unchanged Windows HOLDs |
 
@@ -172,14 +172,14 @@ Do not drop these or open full lifecycle work while handling other journeys.
 remaining art/interaction details, then the exact full RC. Keep useful state
 feedback and efficient actions within each active capability change.
 
-**Active work:** #385–#390 are CLOSED, integrated and independently main-qualified.
-[#391](https://github.com/xxu29958-jpg/xpj/pull/391) completes frozen
-split amounts and canonical acceptance results using the existing invitation,
-membership, ledger-switch and fact owners.
+**Active work:** #385–#390 are CLOSED. [#391](https://github.com/xxu29958-jpg/xpj/pull/391)
+has merged frozen split amounts and canonical accepted-result navigation;
+independent main qualification is pending. Its implementation remains bounded by
+[split-result continuation](TICKETBOX_SPLIT_RESULT_CONTINUATION_CONTRACT.md).
 
-**Next action:** implement and qualify the
-[split-result continuation](TICKETBOX_SPLIT_RESULT_CONTINUATION_CONTRACT.md),
-including acknowledgement/refresh feedback, private result access and real navigation.
+**Next action:** complete [member settlement continuity](TICKETBOX_MEMBER_SETTLEMENT_CONTINUITY_CONTRACT.md):
+debtor proposal → creditor decision → canonical balance/history and recoverable
+feedback, with original task/identity retained across delayed operations.
 Physical budget/income creation works; simplify Android's first-budget optional
 fields within Planning/convenience. Preserve draft #372 for the later detail wave.
 The full Goal and all remaining packages above stay active.

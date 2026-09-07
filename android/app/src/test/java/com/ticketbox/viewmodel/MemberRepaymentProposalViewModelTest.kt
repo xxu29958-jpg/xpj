@@ -1,16 +1,10 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.R
-import com.ticketbox.data.repository.DebtProposalActions
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Debt
-import com.ticketbox.domain.model.DebtCounterpartyTypes
-import com.ticketbox.domain.model.DebtDirections
-import com.ticketbox.domain.model.DebtLinkStatuses
-import com.ticketbox.domain.model.DebtSourceTypes
 import com.ticketbox.domain.model.MemberProposalStatuses
-import com.ticketbox.domain.model.MemberRepaymentProposal
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -43,9 +37,9 @@ class MemberRepaymentProposalViewModelTest {
 
     @Test
     fun loadFetchesProposalsAndReflectsRole() = runTest(dispatcher) {
-        val repo = FakeProposalActions(
+        val repo = ProposalTestActions(
             canModify = false,
-            listResult = Result.success(listOf(sampleProposal())),
+            listResult = Result.success(listOf(sampleMemberProposal())),
         )
         val viewModel = MemberRepaymentProposalViewModel(repo)
         viewModel.load("d1")
@@ -59,7 +53,7 @@ class MemberRepaymentProposalViewModelTest {
 
     @Test
     fun loadClearsStaleProposalsBeforeRefetch() = runTest(dispatcher) {
-        val repo = FakeProposalActions(listResult = Result.success(listOf(sampleProposal())))
+        val repo = ProposalTestActions(listResult = Result.success(listOf(sampleMemberProposal())))
         val viewModel = MemberRepaymentProposalViewModel(repo)
         viewModel.load("d1")
         advanceUntilIdle()
@@ -72,7 +66,7 @@ class MemberRepaymentProposalViewModelTest {
 
     @Test
     fun refreshFailureSurfacesError() = runTest(dispatcher) {
-        val repo = FakeProposalActions(listResult = Result.failure(RuntimeException("offline")))
+        val repo = ProposalTestActions(listResult = Result.failure(RuntimeException("offline")))
         val viewModel = MemberRepaymentProposalViewModel(repo)
         viewModel.load("d1")
         advanceUntilIdle()
@@ -83,8 +77,8 @@ class MemberRepaymentProposalViewModelTest {
 
     @Test
     fun openConfirmPrefillsProposedAmount() = runTest(dispatcher) {
-        val viewModel = MemberRepaymentProposalViewModel(FakeProposalActions())
-        viewModel.openForm(ProposalForm.Confirm, sampleProposal(proposedAmountCents = 20_050))
+        val viewModel = MemberRepaymentProposalViewModel(ProposalTestActions())
+        viewModel.openForm(ProposalForm.Confirm, sampleMemberProposal(proposedAmountCents = 20_050))
 
         assertEquals(ProposalForm.Confirm, viewModel.state.value.activeForm)
         assertEquals("200.50", viewModel.state.value.amountInput)
@@ -92,7 +86,7 @@ class MemberRepaymentProposalViewModelTest {
 
     @Test
     fun submitProposeSendsAmountAndNote() = runTest(dispatcher) {
-        val repo = FakeProposalActions()
+        val repo = ProposalTestActions()
         val viewModel = MemberRepaymentProposalViewModel(repo)
         viewModel.load("d1")
         advanceUntilIdle()
@@ -117,7 +111,7 @@ class MemberRepaymentProposalViewModelTest {
     @Test
     fun submitProposeAcceptsExactTrailingZeroAmount() = runTest(dispatcher) {
         // C07：1.230 精确等于 123 minor；不得在客户端做 HALF_UP。
-        val repo = FakeProposalActions()
+        val repo = ProposalTestActions()
         val viewModel = MemberRepaymentProposalViewModel(repo)
         viewModel.load("d1")
         advanceUntilIdle()
@@ -132,7 +126,7 @@ class MemberRepaymentProposalViewModelTest {
 
     @Test
     fun submitProposeValidatesNonPositiveWithoutCall() = runTest(dispatcher) {
-        val repo = FakeProposalActions()
+        val repo = ProposalTestActions()
         val viewModel = MemberRepaymentProposalViewModel(repo)
         viewModel.load("d1")
         advanceUntilIdle()
@@ -150,8 +144,8 @@ class MemberRepaymentProposalViewModelTest {
 
     @Test
     fun submitConfirmFullSendsNullAmountAndBumpsFold() = runTest(dispatcher) {
-        val repo = FakeProposalActions(
-            listResult = Result.success(listOf(sampleProposal(publicId = "p1", proposedAmountCents = 20_000))),
+        val repo = ProposalTestActions(
+            listResult = Result.success(listOf(sampleMemberProposal(publicId = "p1", proposedAmountCents = 20_000))),
         )
         val viewModel = MemberRepaymentProposalViewModel(repo)
         viewModel.load("d1")
@@ -172,8 +166,8 @@ class MemberRepaymentProposalViewModelTest {
 
     @Test
     fun submitConfirmPartialSendsConfirmedAmount() = runTest(dispatcher) {
-        val repo = FakeProposalActions(
-            listResult = Result.success(listOf(sampleProposal(publicId = "p1", proposedAmountCents = 20_000))),
+        val repo = ProposalTestActions(
+            listResult = Result.success(listOf(sampleMemberProposal(publicId = "p1", proposedAmountCents = 20_000))),
         )
         val viewModel = MemberRepaymentProposalViewModel(repo)
         viewModel.load("d1")
@@ -190,8 +184,8 @@ class MemberRepaymentProposalViewModelTest {
 
     @Test
     fun submitConfirmValidatesOverProposedWithoutCall() = runTest(dispatcher) {
-        val repo = FakeProposalActions(
-            listResult = Result.success(listOf(sampleProposal(publicId = "p1", proposedAmountCents = 20_000))),
+        val repo = ProposalTestActions(
+            listResult = Result.success(listOf(sampleMemberProposal(publicId = "p1", proposedAmountCents = 20_000))),
         )
         val viewModel = MemberRepaymentProposalViewModel(repo)
         viewModel.load("d1")
@@ -208,8 +202,8 @@ class MemberRepaymentProposalViewModelTest {
 
     @Test
     fun withdrawCallsRepoRefreshesAndFlashes() = runTest(dispatcher) {
-        val repo = FakeProposalActions(
-            listResult = Result.success(listOf(sampleProposal(publicId = "p1"))),
+        val repo = ProposalTestActions(
+            listResult = Result.success(listOf(sampleMemberProposal(publicId = "p1"))),
         )
         val viewModel = MemberRepaymentProposalViewModel(repo)
         viewModel.load("d1")
@@ -227,8 +221,8 @@ class MemberRepaymentProposalViewModelTest {
 
     @Test
     fun rejectCallsRepoRefreshesAndFlashes() = runTest(dispatcher) {
-        val repo = FakeProposalActions(
-            listResult = Result.success(listOf(sampleProposal(publicId = "p1"))),
+        val repo = ProposalTestActions(
+            listResult = Result.success(listOf(sampleMemberProposal(publicId = "p1"))),
         )
         val viewModel = MemberRepaymentProposalViewModel(repo)
         viewModel.load("d1")
@@ -244,8 +238,8 @@ class MemberRepaymentProposalViewModelTest {
 
     @Test
     fun actionFailureSurfacesError() = runTest(dispatcher) {
-        val repo = FakeProposalActions(
-            listResult = Result.success(listOf(sampleProposal(publicId = "p1"))),
+        val repo = ProposalTestActions(
+            listResult = Result.success(listOf(sampleMemberProposal(publicId = "p1"))),
             proposalResult = Result.failure(RuntimeException("boom")),
         )
         val viewModel = MemberRepaymentProposalViewModel(repo)
@@ -263,8 +257,8 @@ class MemberRepaymentProposalViewModelTest {
     fun submitFailureKeepsFormOpenWithValidationError() = runTest(dispatcher) {
         // submit()'s onFailure diverges from reject()/withdraw(): it surfaces an in-form
         // validationError (not the action-bar error) and keeps the form open for retry.
-        val repo = FakeProposalActions(
-            listResult = Result.success(listOf(sampleProposal(publicId = "p1", proposedAmountCents = 20_000))),
+        val repo = ProposalTestActions(
+            listResult = Result.success(listOf(sampleMemberProposal(publicId = "p1", proposedAmountCents = 20_000))),
             confirmResult = Result.failure(RuntimeException("boom")),
         )
         val viewModel = MemberRepaymentProposalViewModel(repo)
@@ -285,9 +279,9 @@ class MemberRepaymentProposalViewModelTest {
         // Backend returns proposals newest-first (created_at desc); the first non-pending is the latest resolved.
         val state = MemberProposalUiState(
             proposals = listOf(
-                sampleProposal(publicId = "newPending", status = MemberProposalStatuses.PENDING),
-                sampleProposal(publicId = "rejected", status = MemberProposalStatuses.REJECTED),
-                sampleProposal(publicId = "older", status = MemberProposalStatuses.WITHDRAWN),
+                sampleMemberProposal(publicId = "newPending", status = MemberProposalStatuses.PENDING),
+                sampleMemberProposal(publicId = "rejected", status = MemberProposalStatuses.REJECTED),
+                sampleMemberProposal(publicId = "older", status = MemberProposalStatuses.WITHDRAWN),
             ),
         )
         assertEquals("rejected", state.latestResolvedProposal?.publicId)
@@ -297,22 +291,22 @@ class MemberRepaymentProposalViewModelTest {
     fun showDebtorAfterRejectOnlyWhenLatestResolvedRejectedAndNoPending() {
         // §1.4: latest resolved is a rejection and nothing is in flight → show the neutral re-propose hint.
         val rejectedNoPending = MemberProposalUiState(
-            proposals = listOf(sampleProposal(publicId = "p1", status = MemberProposalStatuses.REJECTED)),
+            proposals = listOf(sampleMemberProposal(publicId = "p1", status = MemberProposalStatuses.REJECTED)),
         )
         assertTrue(rejectedNoPending.showDebtorAfterReject)
 
         // A live re-proposal (pending) suppresses the hint even though an older one was rejected.
         val rejectedThenPending = MemberProposalUiState(
             proposals = listOf(
-                sampleProposal(publicId = "p2", status = MemberProposalStatuses.PENDING),
-                sampleProposal(publicId = "p1", status = MemberProposalStatuses.REJECTED),
+                sampleMemberProposal(publicId = "p2", status = MemberProposalStatuses.PENDING),
+                sampleMemberProposal(publicId = "p1", status = MemberProposalStatuses.REJECTED),
             ),
         )
         assertEquals(false, rejectedThenPending.showDebtorAfterReject)
 
         // A non-rejected latest resolution (e.g. withdrawn) does not show the hint, nor does an empty list.
         val withdrawn = MemberProposalUiState(
-            proposals = listOf(sampleProposal(publicId = "p3", status = MemberProposalStatuses.WITHDRAWN)),
+            proposals = listOf(sampleMemberProposal(publicId = "p3", status = MemberProposalStatuses.WITHDRAWN)),
         )
         assertEquals(false, withdrawn.showDebtorAfterReject)
         assertEquals(false, MemberProposalUiState().showDebtorAfterReject)
@@ -322,7 +316,7 @@ class MemberRepaymentProposalViewModelTest {
 
     @Test
     fun forgiveCallsRepoBumpsFoldFlashesAndRefreshes() = runTest(dispatcher) {
-        val repo = FakeProposalActions(listResult = Result.success(listOf(sampleProposal(publicId = "p1"))))
+        val repo = ProposalTestActions(listResult = Result.success(listOf(sampleMemberProposal(publicId = "p1"))))
         val viewModel = MemberRepaymentProposalViewModel(repo)
         viewModel.load("d1")
         advanceUntilIdle()
@@ -342,7 +336,7 @@ class MemberRepaymentProposalViewModelTest {
     fun forgiveConflictSurfacesNeutralConflictCopy() = runTest(dispatcher) {
         // §4.3 / P2#10: an OCC / already-settled 409 (backend `state_conflict`) shows the warm
         // "有人刚记了一笔" copy (errorCode branch), not the generic failed fallback; fold untouched.
-        val repo = FakeProposalActions(
+        val repo = ProposalTestActions(
             forgiveResult = Result.failure(RepositoryException("欠款或提案状态已变化，请刷新后再试。", errorCode = "state_conflict")),
         )
         val viewModel = MemberRepaymentProposalViewModel(repo)
@@ -363,7 +357,7 @@ class MemberRepaymentProposalViewModelTest {
     fun forgiveGenericFailureUsesFailedFallback() = runTest(dispatcher) {
         // A non-coded failure (e.g. a transport error with no message) falls back to the
         // forgive-specific failed copy, not the conflict copy.
-        val repo = FakeProposalActions(forgiveResult = Result.failure(RuntimeException()))
+        val repo = ProposalTestActions(forgiveResult = Result.failure(RuntimeException()))
         val viewModel = MemberRepaymentProposalViewModel(repo)
         viewModel.load("d1")
         advanceUntilIdle()
@@ -383,7 +377,7 @@ class MemberRepaymentProposalViewModelTest {
     fun staleRefreshDoesNotRevertAfterAction() = runTest(dispatcher) {
         // A slow earlier refresh must not bring back a withdrawn proposal after the action's own
         // refresh delivered the post-action (empty) list.
-        val repo = FakeProposalActions(listResult = Result.success(listOf(sampleProposal(publicId = "p1"))))
+        val repo = ProposalTestActions(listResult = Result.success(listOf(sampleMemberProposal(publicId = "p1"))))
         val viewModel = MemberRepaymentProposalViewModel(repo)
         viewModel.load("d1")
         advanceUntilIdle() // proposals = [p1]
@@ -410,7 +404,7 @@ class MemberRepaymentProposalViewModelTest {
     @Test
     fun staleRefreshDoesNotClobberSwitchedDebt() = runTest(dispatcher) {
         // Switching member debts: a slow prior refresh of d1 must not show d1's 收发箱 under d2.
-        val repo = FakeProposalActions(listResult = Result.success(listOf(sampleProposal(publicId = "pA"))))
+        val repo = ProposalTestActions(listResult = Result.success(listOf(sampleMemberProposal(publicId = "pA"))))
         val viewModel = MemberRepaymentProposalViewModel(repo)
         viewModel.load("d1")
         advanceUntilIdle()
@@ -423,7 +417,7 @@ class MemberRepaymentProposalViewModelTest {
 
         // ...then the user switches to d2.
         repo.listGate = null
-        repo.listResult = Result.success(listOf(sampleProposal(publicId = "pB")))
+        repo.listResult = Result.success(listOf(sampleMemberProposal(publicId = "pB")))
         viewModel.load("d2")
         advanceUntilIdle()
         assertEquals("pB", viewModel.state.value.proposals.single().publicId)
@@ -439,9 +433,9 @@ class MemberRepaymentProposalViewModelTest {
         // PR#255 R7-3：确认金额按 proposal 冻结币种解析（服务端 confirmed 与 proposed 同单位
         // 比较）。JPY proposal 1200 minor 预填 "1200"（零小数整数），与宿主欠款同币种时
         // 全额确认成功（confirmedAmountCents=null），不被 CNY 口径拒/缩放。
-        val repo = FakeProposalActions(
+        val repo = ProposalTestActions(
             listResult = Result.success(
-                listOf(sampleProposal(publicId = "p1", proposedAmountCents = 1_200).copy(homeCurrencyCode = "JPY")),
+                listOf(sampleMemberProposal(publicId = "p1", proposedAmountCents = 1_200).copy(homeCurrencyCode = "JPY")),
             ),
         )
         val viewModel = MemberRepaymentProposalViewModel(repo)
@@ -463,9 +457,9 @@ class MemberRepaymentProposalViewModelTest {
         // R7-3：installation 漂移实例 —— CNY proposal（50000 minor 预填 "500.00"）挂在 JPY
         // 宿主欠款上：JPY 解析会拒/缩 100×，服务端又会把 repayment 按 proposal 口径折进
         // 异币种欠款 → fail closed 禁确认（亮 mismatch 错误，不可达写路径）。
-        val repo = FakeProposalActions(
+        val repo = ProposalTestActions(
             listResult = Result.success(
-                listOf(sampleProposal(publicId = "p1", proposedAmountCents = 50_000)),
+                listOf(sampleMemberProposal(publicId = "p1", proposedAmountCents = 50_000)),
             ),
         )
         val viewModel = MemberRepaymentProposalViewModel(repo)
@@ -486,9 +480,9 @@ class MemberRepaymentProposalViewModelTest {
     fun prefillSkippedAndSubmitBlockedWhenProposalCurrencyUnsupported() = runTest(dispatcher) {
         // R7-2/R7-3：proposal 码在支持集外 → 不预填（禁落 CNY 兜底渲染），submit 同样
         // fail closed。
-        val repo = FakeProposalActions(
+        val repo = ProposalTestActions(
             listResult = Result.success(
-                listOf(sampleProposal(publicId = "p1", proposedAmountCents = 1_200).copy(homeCurrencyCode = "XXX")),
+                listOf(sampleMemberProposal(publicId = "p1", proposedAmountCents = 1_200).copy(homeCurrencyCode = "XXX")),
             ),
         )
         val viewModel = MemberRepaymentProposalViewModel(repo)
@@ -504,134 +498,3 @@ class MemberRepaymentProposalViewModelTest {
         assertTrue(repo.confirmCalls.isEmpty())
     }
 }
-
-private data class ProposeArgs(
-    val debtPublicId: String,
-    val proposedAmountCents: Long,
-    val note: String?,
-    val supersedesProposalPublicId: String?,
-)
-
-private data class ConfirmArgs(
-    val debtPublicId: String,
-    val proposalPublicId: String,
-    val expectedRowVersion: Long,
-    val confirmedAmountCents: Long?,
-)
-
-private class FakeProposalActions(
-    private val canModify: Boolean = true,
-    var listResult: Result<List<MemberRepaymentProposal>> = Result.success(emptyList()),
-    var proposalResult: Result<MemberRepaymentProposal> = Result.success(sampleProposal()),
-    var confirmResult: Result<Debt> = Result.success(sampleDebt()),
-    var forgiveResult: Result<Debt> = Result.success(sampleDebt(status = DebtLinkStatuses.CLEARED, isForgiven = true)),
-) : DebtProposalActions {
-    val proposeCalls = mutableListOf<ProposeArgs>()
-    val withdrawCalls = mutableListOf<Pair<String, String>>()
-    val confirmCalls = mutableListOf<ConfirmArgs>()
-    val rejectCalls = mutableListOf<Pair<String, String>>()
-    val forgiveCalls = mutableListOf<Pair<String, Long>>()
-    var listCalls = 0
-
-    /** When set, listRepaymentProposals() stalls until completed — used to interleave a slow load. */
-    var listGate: CompletableDeferred<Unit>? = null
-
-    override fun canModifyLedger(): Boolean = canModify
-
-    override suspend fun listRepaymentProposals(debtPublicId: String): Result<List<MemberRepaymentProposal>> {
-        listCalls++
-        // Capture the result at entry so a stalled load returns the snapshot it started with, even
-        // if a newer load swaps listResult in the meantime.
-        val captured = listResult
-        listGate?.await()
-        return captured
-    }
-
-    override suspend fun proposeRepayment(
-        debtPublicId: String,
-        proposedAmountCents: Long,
-        note: String?,
-        supersedesProposalPublicId: String?,
-    ): Result<MemberRepaymentProposal> {
-        proposeCalls += ProposeArgs(debtPublicId, proposedAmountCents, note, supersedesProposalPublicId)
-        return proposalResult
-    }
-
-    override suspend fun withdrawRepaymentProposal(
-        debtPublicId: String,
-        proposalPublicId: String,
-    ): Result<MemberRepaymentProposal> {
-        withdrawCalls += debtPublicId to proposalPublicId
-        return proposalResult
-    }
-
-    override suspend fun confirmRepaymentProposal(
-        debtPublicId: String,
-        proposalPublicId: String,
-        expectedRowVersion: Long,
-        confirmedAmountCents: Long?,
-    ): Result<Debt> {
-        confirmCalls += ConfirmArgs(debtPublicId, proposalPublicId, expectedRowVersion, confirmedAmountCents)
-        return confirmResult
-    }
-
-    override suspend fun rejectRepaymentProposal(
-        debtPublicId: String,
-        proposalPublicId: String,
-    ): Result<MemberRepaymentProposal> {
-        rejectCalls += debtPublicId to proposalPublicId
-        return proposalResult
-    }
-
-    override suspend fun forgiveDebt(debtPublicId: String, expectedRowVersion: Long): Result<Debt> {
-        forgiveCalls += debtPublicId to expectedRowVersion
-        return forgiveResult
-    }
-}
-
-private fun sampleProposal(
-    publicId: String = "p1",
-    proposedAmountCents: Long = 20_000L,
-    status: String = MemberProposalStatuses.PENDING,
-): MemberRepaymentProposal = MemberRepaymentProposal(
-    publicId = publicId,
-    debtPublicId = "d1",
-    status = status,
-    proposedAmountCents = proposedAmountCents,
-    confirmedAmountCents = null,
-    homeCurrencyCode = "CNY",
-    originalCurrencyCode = null,
-    originalAmountMinor = null,
-    paidAt = "2026-06-16T00:00:00Z",
-    note = null,
-    expiresAt = "2026-07-16T00:00:00Z",
-    createdAt = "2026-06-16T00:00:00Z",
-    resolvedAt = null,
-    supersedesProposalPublicId = null,
-    committedRepaymentPublicId = null,
-)
-
-private fun sampleDebt(
-    status: String = DebtLinkStatuses.CLEARED,
-    isForgiven: Boolean = false,
-): Debt = Debt(
-    publicId = "d1",
-    ledgerId = "owner",
-    direction = DebtDirections.OWED_TO_ME,
-    counterpartyType = DebtCounterpartyTypes.MEMBER,
-    counterpartyAccountId = 42,
-    counterpartyLabel = "家人",
-    principalAmountCents = 20_000,
-    remainingAmountCents = 0,
-    paidAmountCents = 20_000,
-    status = status,
-    sourceType = DebtSourceTypes.BILL_SPLIT,
-    sourceId = "inv-1",
-    homeCurrencyCode = "CNY",
-    originalCurrencyCode = null,
-    originalAmountMinor = null,
-    createdAt = "2026-06-16T00:00:00Z",
-    updatedAt = "2026-06-16T00:00:00Z",
-    rowVersion = 6,
-    isForgiven = isForgiven,
-)
