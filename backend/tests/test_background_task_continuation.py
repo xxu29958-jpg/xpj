@@ -5,18 +5,20 @@ from __future__ import annotations
 import json
 
 import pytest
+from api_contract_helpers import reject_expense_api
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import BackgroundTask, Expense, Ledger
+from app.models import BackgroundTask, Expense
 from app.services import background_task_service, background_task_worker
 from app.services.background_task_registry import TaskHandlerRegistry
 from tests._infra.assets import PNG_BYTES
+from tests._runtime_protocol import negotiated_headers
 
 pytestmark = pytest.mark.real_db
 
 
-def _failed_upload(client, monkeypatch, identity):
+def _failed_upload(client, monkeypatch, headers):
     def fail_recognition(db, task, payload):
         raise RuntimeError("recognition unavailable")
 
@@ -28,7 +30,7 @@ def _failed_upload(client, monkeypatch, identity):
     )
     response = client.post(
         "/api/app/upload-screenshot",
-        headers=identity.app_headers,
+        headers=headers,
         files={"file": ("task-continuation.png", PNG_BYTES, "image/png")},
     )
     assert response.status_code == 200, response.text
@@ -36,7 +38,7 @@ def _failed_upload(client, monkeypatch, identity):
 
 
 def test_failed_upload_task_identifies_original_bill_without_changing_it(client, monkeypatch, *, identity):
-    receipt = _failed_upload(client, monkeypatch, identity)
+    receipt = _failed_upload(client, monkeypatch, identity.app_headers)
     task_url = f"/api/tasks/{receipt['enrichment_task_public_id']}"
     with SessionLocal() as db:
         expense = db.get(Expense, receipt["id"])
@@ -61,7 +63,7 @@ def test_failed_upload_task_identifies_original_bill_without_changing_it(client,
 @pytest.mark.parametrize("payload", [None, {"expense_id": True, "tenant_id": "owner"},
     {"expense_id": 1, "tenant_id": "another-ledger"}, {"expense_id": 99999999, "tenant_id": "owner"}])
 def test_task_with_unavailable_original_never_invents_a_bill_link(client, monkeypatch, payload, *, identity):
-    receipt = _failed_upload(client, monkeypatch, identity)
+    receipt = _failed_upload(client, monkeypatch, identity.app_headers)
     with SessionLocal() as db:
         task = db.scalar(select(BackgroundTask).where(
             BackgroundTask.public_id == receipt["enrichment_task_public_id"],
@@ -75,19 +77,20 @@ def test_task_with_unavailable_original_never_invents_a_bill_link(client, monkey
 
 @pytest.mark.parametrize("source_state", ["rejected", "other_ledger"])
 def test_task_link_requires_the_original_bill_to_remain_accessible(client, monkeypatch, source_state, *, identity):
-    receipt = _failed_upload(client, monkeypatch, identity)
-    with SessionLocal() as db:
-        task = db.scalar(select(BackgroundTask).where(
-            BackgroundTask.public_id == receipt["enrichment_task_public_id"],
-        ))
-        expense = db.get(Expense, receipt["id"])
-        if source_state == "other_ledger":
-            db.add(Ledger(ledger_id="other_ledger", name="Other", owner_account_id=task.initiated_by_account_id))
-            db.flush()
-            expense.tenant_id = "other_ledger"
-        else:
-            expense.status = "rejected"
-        db.commit()
+    receipt = _failed_upload(client, monkeypatch, identity.app_headers)
+    if source_state == "rejected":
+        rejected = reject_expense_api(client, receipt["id"], headers=negotiated_headers(client, identity.app_headers))
+        assert rejected.status_code == 200, rejected.text
+    else:
+        foreign = _failed_upload(client, monkeypatch, identity.gray_app_headers)
+        with SessionLocal() as db:
+            task = db.scalar(select(BackgroundTask).where(
+                BackgroundTask.public_id == receipt["enrichment_task_public_id"],
+            ))
+            payload = json.loads(task.input_payload_json)
+            payload["expense_id"] = foreign["id"]
+            task.input_payload_json = json.dumps(payload)
+            db.commit()
     response = client.get(f"/api/tasks/{receipt['enrichment_task_public_id']}", headers=identity.app_headers)
     assert response.status_code == 200, response.text
     assert response.json()["source_expense_id"] is None

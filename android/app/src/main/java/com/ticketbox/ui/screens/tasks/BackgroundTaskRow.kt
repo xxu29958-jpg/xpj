@@ -32,10 +32,9 @@ internal fun BackgroundTaskRow(
     canModify: Boolean,
     onCancel: () -> Unit,
     onOpenSource: () -> Unit,
-    modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = AppSpacing.smallGap),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),

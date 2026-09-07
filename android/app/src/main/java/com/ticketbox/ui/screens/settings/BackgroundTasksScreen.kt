@@ -39,10 +39,7 @@ fun BackgroundTasksScreen(
             if (!failedWithoutData) {
                 BackgroundTasksOverview(summary)
                 BackgroundTasksRows(
-                    tasks = state.tasks,
-                    loading = state.loading,
-                    busyTaskId = state.busyTaskId,
-                    canModify = state.canModify,
+                    state = state,
                     onCancel = viewModel::cancel,
                     onOpenSource = { id -> viewModel.sourceExpenseId(id)?.let(onOpenExpense) },
                 )

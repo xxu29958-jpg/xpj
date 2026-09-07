@@ -7,7 +7,7 @@ import logging
 from datetime import datetime
 from typing import TypedDict, cast
 
-from sqlalchemy import select, tuple_
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import BackgroundTask, Expense
@@ -34,20 +34,23 @@ class BackgroundTaskResponsePayload(TypedDict):
     source_expense_id: int | None
 
 
-def task_response_dicts(db: Session, tasks: list[BackgroundTask]) -> list[BackgroundTaskResponsePayload]:
+def task_response_dicts(
+    db: Session, tasks: list[BackgroundTask], *, tenant_id: str,
+) -> list[BackgroundTaskResponsePayload]:
     """Project original task sources in one ledger-scoped query; never replay work."""
-    sources = {task.id: _source_expense_key(task) for task in tasks}
-    keys = {key for key in sources.values() if key is not None}
-    available = set(db.execute(select(Expense.tenant_id, Expense.id).where(
-        tuple_(Expense.tenant_id, Expense.id).in_(keys),
+    sources = {task.id: _source_expense_id(task, tenant_id=tenant_id) for task in tasks}
+    ids = {source_id for source_id in sources.values() if source_id is not None}
+    available = set(db.scalars(select(Expense.id).where(
+        Expense.tenant_id == tenant_id,
+        Expense.id.in_(ids),
         Expense.status.in_(("pending", "confirmed")),
-    )).tuples()) if keys else set()
-    source_ids = {task_id: key[1] for task_id, key in sources.items() if key is not None and key in available}
+    ))) if ids else set()
+    source_ids = {task_id: source_id for task_id, source_id in sources.items() if source_id in available}
     return [_to_response_dict(task, source_expense_id=source_ids.get(task.id)) for task in tasks]
 
 
-def _source_expense_key(task: BackgroundTask) -> tuple[str, int] | None:
-    if task.task_type != "expense_enrichment" or not task.tenant_id:
+def _source_expense_id(task: BackgroundTask, *, tenant_id: str) -> int | None:
+    if task.task_type != "expense_enrichment" or task.tenant_id != tenant_id:
         return None
     try:
         payload = json.loads(task.input_payload_json or "null")
@@ -58,7 +61,7 @@ def _source_expense_key(task: BackgroundTask) -> tuple[str, int] | None:
     expense_id = payload.get("expense_id")
     if isinstance(expense_id, bool) or not isinstance(expense_id, int) or expense_id <= 0:
         return None
-    return task.tenant_id, expense_id
+    return expense_id
 
 
 def _to_response_dict(task: BackgroundTask, *, source_expense_id: int | None) -> BackgroundTaskResponsePayload:
