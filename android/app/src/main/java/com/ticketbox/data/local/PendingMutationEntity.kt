@@ -174,4 +174,12 @@ data class PendingMutationEntity(
      */
     @ColumnInfo(name = "completedAt")
     val completedAt: String? = null,
+
+    /** Original server receipt, committed with DONE; null is not evidence of upload delivery. */
+    @ColumnInfo(name = "receiptJson", defaultValue = "NULL")
+    val receiptJson: String? = null,
+
+    /** Only a FAILED row may let a later same-target intent proceed; all legacy rows still block. */
+    @ColumnInfo(name = "blocksFollowing", defaultValue = "1")
+    val blocksFollowing: Boolean = true,
 )

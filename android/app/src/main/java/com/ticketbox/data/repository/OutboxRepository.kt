@@ -409,6 +409,56 @@ class OutboxRepository private constructor(
         }
     }
 
+    /** Files must already be durable, with the upload file lock held across this bound transaction. */
+    internal suspend fun enqueueUploadBatch(
+        boundRequest: BoundLedgerRequest,
+        intents: List<PendingMutationIntent>,
+    ): List<Long> {
+        require(intents.size in 1..100)
+        require(intents.all { it.type == PendingMutationType.UploadScreenshot && it.expectedRowVersion == 0L })
+        val keys = intents.map { requireNotNull(it.idempotencyKey) }
+        require(keys.distinct().size == keys.size && keys.all(::isUploadIntentFileKey))
+        val ids = bindingTransitionLease.withLock {
+            val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
+            boundRequest.requireStillActiveFor(binding)
+            binding.requireReadyForEnqueue()
+            val existing = dao.findByIdempotencyKeys(binding.ownerStorageKey, binding.ledgerId,
+                PendingMutationType.UploadScreenshot.wireValue, keys)
+            if (existing.isNotEmpty()) {
+                check(existing.size == intents.size) { "Incomplete original upload acceptance" }
+                val byKey = existing.associateBy { it.idempotencyKey }
+                intents.map { intent ->
+                    val row = checkNotNull(byKey[intent.idempotencyKey])
+                    check(row.payload == intent.payloadJson && row.targetId == intent.targetId &&
+                        row.expectedRowVersion == intent.expectedRowVersion) { "Original upload intent changed" }
+                    row.id
+                }
+            } else {
+                val createdAt = nowIso()
+                dao.insertBatch(intents.map { intent -> PendingMutationEntity(
+                    serverUrl = binding.serverUrl, ledgerId = binding.ledgerId, ownerKey = binding.ownerStorageKey,
+                    type = intent.type.wireValue, targetId = intent.targetId, payload = intent.payloadJson,
+                    expectedRowVersion = intent.expectedRowVersion, idempotencyKey = intent.idempotencyKey,
+                    status = PendingMutationStatus.Pending.wireValue, createdAt = createdAt,
+                ) })
+            }
+        }
+        schedulePending()
+        return ids
+    }
+
+    /** Includes delivered and expired originals, so an uncertain acceptance cannot allocate another command. */
+    internal suspend fun originalUploadRows(boundRequest: BoundLedgerRequest, keys: List<String>): List<OutboxRow> =
+        bindingTransitionLease.withLock {
+            val binding = canonicalBindingWithAliasesMigratedLocked(rawBinding())
+            boundRequest.requireStillActiveFor(binding)
+            dao.findByIdempotencyKeys(binding.ownerStorageKey, binding.ledgerId,
+                PendingMutationType.UploadScreenshot.wireValue, keys).map { it.toDomain() }
+        }
+
+    /** Raw types stay visible: an unknown future kind makes file ownership unprovable. */
+    internal suspend fun allRowsForUploadFileReferences(): List<PendingMutationEntity> = dao.allRows()
+
     suspend fun pauseForBindingTransition() {
         withBindingTransition(clearExistingRows = false) {}
     }
@@ -475,7 +525,7 @@ class OutboxRepository private constructor(
      * 3. Returns the public [OutboxRow] view (not the raw Entity)
      *    so the drain engine doesn't depend on Room types.
      */
-    suspend fun dequeueNextRunnable(limit: Int = DEFAULT_DRAIN_BATCH): List<OutboxRow> {
+    suspend fun dequeueNextRunnable(limit: Int = DEFAULT_DRAIN_BATCH, excludedIds: List<Long> = emptyList()): List<OutboxRow> {
         val binding = currentBinding()
         // [codex round-3 P2#1 / round-4 P1] Use the SQL-side filter
         // so LIMIT applies AFTER unresolved targets are excluded.
@@ -484,9 +534,9 @@ class OutboxRepository private constructor(
         val candidates = dao.nextRunnableBatch(
             ownerKey = binding.ownerStorageKey,
             ledgerId = binding.ledgerId,
-            pendingStatus = PendingMutationStatus.Pending.wireValue,
             unresolvedStatuses = UNRESOLVED_STATUS_VALUES,
             limit = limit,
+            excludedIds = excludedIds,
         )
         if (candidates.isEmpty()) return emptyList()
         val seenTargets = mutableSetOf<String>()
@@ -547,11 +597,12 @@ class OutboxRepository private constructor(
         dao.deleteIfStatus(id, binding.ownerStorageKey, binding.ledgerId, status.wireValue) > 0
     }
 
-    suspend fun markDone(id: Long) {
+    suspend fun markDone(id: Long, receiptJson: String? = null) {
         dao.markDone(
             id = id,
             status = PendingMutationStatus.Done.wireValue,
             completedAt = nowIso(),
+            receiptJson = receiptJson,
         )
     }
 
@@ -568,7 +619,8 @@ class OutboxRepository private constructor(
                 ownerKey = binding.ownerStorageKey,
                 ledgerId = binding.ledgerId,
                 targetId = targetId,
-                preservedTokenTypes = listOf(PendingMutationType.VoidExpenseOffset.wireValue, PendingMutationType.CorrectExpense.wireValue),
+                preservedTokenTypes = listOf(PendingMutationType.VoidExpenseOffset.wireValue,
+                    PendingMutationType.CorrectExpense.wireValue, PendingMutationType.UploadScreenshot.wireValue),
                 freshToken = newToken,
             )
         }
@@ -623,11 +675,12 @@ class OutboxRepository private constructor(
      * fresh budget. While the row is FAILED, ``retryCount`` should be treated
      * as historical-only — no future drain decision keys off it.
      */
-    suspend fun markFailed(id: Long, error: String) {
+    suspend fun markFailed(id: Long, error: String, blocksFollowing: Boolean = true) {
         dao.markFailed(
             id = id,
             status = PendingMutationStatus.Failed.wireValue,
             lastError = error,
+            blocksFollowing = blocksFollowing,
         )
     }
 
@@ -1038,6 +1091,8 @@ data class OutboxRow(
     val attemptedAt: String?,
     val completedAt: String?,
     val idempotencyKey: String? = null,
+    val receiptJson: String? = null,
+    val blocksFollowing: Boolean = true,
 )
 
 internal fun OutboxRow.bindingOrNull(): OutboxBinding? {
@@ -1133,6 +1188,8 @@ private fun PendingMutationEntity.toDomain(): OutboxRow = OutboxRow(
     attemptedAt = attemptedAt,
     completedAt = completedAt,
     idempotencyKey = idempotencyKey,
+    receiptJson = receiptJson,
+    blocksFollowing = blocksFollowing,
 )
 
 /**

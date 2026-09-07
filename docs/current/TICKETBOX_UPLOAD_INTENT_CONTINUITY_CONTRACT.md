@@ -167,3 +167,32 @@ Keyed receipt 的 `duration_ms/timing_ms` 随成功收据在 commit 前冻结，
 Android fast `101583536322` 的实际 XML artifact `10000063383` 共 2161 tests / 0 failures / 0 errors / 0 skips。能力的六个参数用例全部独立通过，四拒绝场景的零上传、实际 409 与协商断言均越过原首失败，两个允许场景仍保留原 key/body/headers。完整 upload DTO 往返与真实 schema gate 同轮通过。Backend ordinary 2/2 实际 1863 passed / 3 skipped，原 runtime 精确 JSON 及其后的隐私断言通过；三个 real-db 分片为 98/101/110 passed、均无失败/skips，原八个 receipt 控制按实际源码分片 producer 对齐。以上行为证据不等于整轮 CI 通过：实际 Detekt 对 `RuntimeNegotiationInterceptor.intercept` 报 CC 15，超过 14。
 
 施工前后影响只涉及同一个协商入口决定：之前 caller 先判断 keyed upload，再另问 `requiresRuntimeNegotiation` 旧规则，两个位置共同决定是否绕过协商；现在既有 `requiresRuntimeNegotiation` 接收两个明确请求属性，并独自表达 keyed upload 强制协商或原 ordinary/income 规则。caller 只消费这个完整决定。布尔规则、实际 runtime GET、版本与能力拒绝顺序、body/key/headers 和所有原六用例不变，没有新 helper/file/owner 或门禁豁免。此窄修正还需下一 exact 候选真实 Detekt 验证；此前 Lizard 未解析出该函数，不能用其空记录声称复杂度已合格。
+
+### Android 持久命令与原队列：施工前影响闭合
+
+当前 source 为 `77b3e7bcb6e697dd94e1216f0e42b84c91c66946`。先前的 test-only 与 backend-only 限制是各自历史阶段；本阶段按同一总 Goal 施工 Android 真实持久链。原 Room 重开反例已经实际到达来源撤销、新数据库实例与新 VM 后的恢复失败，不能删除这个出口来关闭片。
+
+| 入口 / 唯一责任 / 直接消费者 | 本阶段变更与必须保留的边界 | 直接生产者 |
+| --- | --- | --- |
+| 分享、picker、shortcut → launch handoff → Pending VM | 接受从 RAM 布尔值改为等待全部文件与一个绑定下的 Room 事务成立；入口在重入与未知提交时保留原逐项 UUID。新分享追加不隐式重试已经暂停的原项；每个明确的新意图仍有新 key，相同图片不能用 hash 去重成旧命令。Activity 与 shell 的旧提前成功出口一并迁移，不能只修改 VM。 | 原 LaunchShareHandoff、三个 Connected 入口、新真实 Room 重开与所有 VM 容量、普通失败、不可读、取消、身份控制；准备时机断言若依赖旧延迟读取模型，按新的接受后原件保证修正并说明，不能删行为断言。 |
+| 文件接受 → Room `pending_mutations` → 观察 | 新 `UploadScreenshot` 是既有 Outbox 的具体命令；payload 冻结 batch、逐项顺序/UUID、准备元信息、timezone、原绑定。原行新增 nullable `receiptJson` 与默认 true 的 `blocksFollowing`，既有行迁移为 null/true；不新增表、第二状态账或把 bytes 存进 JSON。完整服务器 DTO 的含 null JSON 与 Done 在同一行更新中成立，原 payload/key 不覆盖。 | DB 17→18 的实际 Room migration 与 DAO；原所有 outbox fake/mapper/默认值消费者同步，生成 v18 只能从真实云端 KSP artifact 获取。 |
+| DAO FIFO / claim / dispatch | 仅 Failed 可依据 `blocksFollowing=false` 放行后项，InFlight/Conflict 始终阻塞；其它种类默认 true 保留旧规则。上传容量、协议与身份拒绝挡住尾部并保留原件；普通上传失败保留 Failed 原行但允许后项继续。协议拒绝绝不能进入 Discarded/Done。 | `nextRunnableBatch` 与 `hasUnresolvedRowForTarget`、真实 DAO 和 Fake DAO，以及 engine 的容量暂停/普通失败/显式原 key Retry 控制。旧无生产 caller 的 DAO 方法也不能默认跳过。 |
+| 原 engine / worker / scheduler | 现有 drainOnce 一次仅取每 target 一行，完成 A 后 KEEP 唤醒不足以保证 B/C 继续。需在原 owner 有界重取尚未尝试的尾部，同轮不忙重试失败 B，不添加第二 worker 或调度器。原 maxAttempts、七天 expiry、binding lease、取消与未知类型保持。 | 原 OutboxDrainEngine/Worker/Scheduler 控制及真实上传 fixture，不能靠测试手动发送 A/B/B/C 绕开生产队列。 |
+| 原 direct sender / 成功收据 / 新 VM | `ExpensePendingRepository.uploadScreenshot` 的唯一 HTTP 发送迁移到具体 upload dispatcher，旧 RAM drain 退役。lastUploadAt、Pending refresh 和 enrichment 只消费服务器原完整收据；新 VM 从同一行恢复观察，不依赖原 URI、原 VM 或旧 scope。 | 原 ExpenseUploadBinding、Pending enrichment/advice 控制、新 Room 重开和完整 DTO 往返；本地接受不能生成已确认财务事实。 |
+| Drop / Stop / clearAll / quarantine / Done GC / expiry | 删除由现有行条件变更决定；明确停止处理整个未完成上传批次。文件清理在 Outbox lease 释放后执行；孤文件回收在文件锁内读取所有绑定原行引用，未知引用不删除。dispatch 读文件须核对原 key/length/hash，不重做准备。 | 文件 owner 八项真实 Android 文件测试、行删除与孤文件控制、已有身份和过期测试；onClearAll 调度通知、VM dispose、换账本和网络失败均不是删文件证据。 |
+
+文件 owner 的源码已具备有界顺序写入、AtomicFile 恢复、完整性验证及跨实例文件锁，原件全部成立后才运行 Room 回调；未知回调结果保留原件。八个文件测试已编写但尚未编译执行。该部分没有接入用户入口、队列或调度，不能据此宣称上传恢复完成。
+
+### 77b3e7bc 后 Android 基础模型的施工后影响与验证边界
+
+`77b3e7bcb6e697dd94e1216f0e42b84c91c66946` 的 CI `34070642303` 与 CodeQL `34070642301` 已完成且成功，实际 Android fast `101587250641` 执行了 JVM、两项 Detekt、lint 和 Room schema 门；成功任务没有上传 JVM XML，不能沿用前一个候选的 2161 数量冒充本轮 XML 统计。Connected `34070642318` 的原 XML `10000584636` 为 129 tests / 1 failure / 0 errors / 0 skips，唯一失败仍是原 Room 重开用例等待 canRetryUpload；原三个入口控制通过，原 Retry 与 B/C 发送尾段尚未到达。
+
+| 原责任 / 所有直接消费者 | 本候选 after-impact 与旧出口处置 | 直接生产者 / 尚未闭合 |
+| --- | --- | --- |
+| Room 原行 / schema / Fake | DB 17→18 增加完整 receiptJson 与默认 true 的 blocksFollowing；原行 key、body、OCC、归属、隔离默认均保留。collection insert 是唯一批次事务，原行查询包含已完成状态；原型映射和 Fake 全部迁移。未知 raw type 仍可供完整文件引用核准。 | 新实际磁盘 Room 八例及 migration 一例，尚未执行。schema18 尚未提交，必须下载下一云端 KSP 实际产物再纳入候选，不手写生成文件。 |
+| FIFO / 原子 claim / 同一 engine | DAO 的选择、claim 与 target 检查复用同一 Failed blocking 判定，只有明确非阻塞 Failed 放行；earliest Pending 判定在排除本轮 visited 之前成立。原 dispatch lease 现在包括 claim、epoch 核对、HTTP 与结算，避免 Stop 后旧 claim 仍发送。engine 在原 owner 内分开有界遍历、原行发送、结果结算，每次最多处理 100 个候选且每行只尝试一次；空批次及上限出口都检查未排除 visited 的真实 runnable，保留并发 Retry 后重新可发送的原尾项唤醒。 | 五个新 engine 组合控制覆盖容量、普通失败、transient 不忙重试、100 项上限及 stale C / Retry B 竞态；原 cancel、epoch、maxAttempts 控制未改。拆分后删除 drainOnce 的两条旧 CC/LongMethod baseline，不迁移豁免到新方法，实际 Detekt 仍待云端。 |
+| 原 Worker 成功分类 / 旧测试 | mixed Done 不再把尚待 retry 或 binding abort 的命令结算成整轮 SUCCESS，continuation 同样保留 RETRY。旧两条 SUCCESS 断言随错误产品模型纠正。原 engine 三例改为实际观察同轮发送的后项，保留并加强其 OCC、原 payload/key 与实际发送次序断言；不是恢复旧的一轮只发一个 target 的限制。 | 原 Worker/Engine 测试加上述五例尚未执行。KEEP 在当前 worker 最后一次查询后仍可能吞并发 enqueue 唤醒，调度接线继续处理；本候选不宣称 WorkManager 闭合。 |
+| 原文件 / 同键接受重入 / GC 引用 | FileStore 在同一跨实例文件锁内，先交还原行 owner 核对既有完整接受，再准备来源；已提交原批次直接返回原 IDs。文件落盘先于单 Room 事务；未知提交结果保留文件。已有直接文件读取、两实例接受/引用互斥、限额、AtomicFile、引用不明禁止 GC 等八例保留，追加同原批次并发重入零 URI 读取例。 | 九个真实 Android 文件用例尚未执行；入口与所有删除 hook 尚待真实接线，不能凭原件辅助 owner 宣称用户恢复完成。 |
+| payload / dispatcher / 完整收据 / Sync 类型展示 | 新具体 UploadScreenshot dispatcher 消费固定 revision、batch/order、完整原 owner、文件和 timezone；不重新准备或换 key。容量/协议/身份失败阻塞尾部，普通失败保留 Failed 并放行，404 不进入 Discarded。Success 的完整含 null receipt 与原行 Done 同次更新；上传不触发 confirmed advice。SyncStatus 全枚举 getValue 消费者增加上传标签。 | 四个 payload 与四个 dispatcher 用例和既有全枚举标签控制尚待运行。dispatcher 尚未注册，旧 direct sender / RAM 上传循环、Activity/shell 提前 consume、新 VM 恢复和删除 hook 仍在施工，PR 保持 Draft。 |
+
+本机只执行 diff、现有文案审计（47 条既有 allowlist 未增加）、逐路径 scope 与 pinned Lizard 的秒级源码检查。基础候选代码路径仅选中 android；Lizard 新增函数无 >80 行 / CC15 超额，AppDatabase 旧 migrate 及其解析器误归属的 expenseDao 跨度仍需按实际报告分层解释。这些不是 Kotlin 编译、Room、Detekt 或产品 GREEN；整个上传任务仍须原 Room 重开反例和全部生产消费者完成后才能闭合。

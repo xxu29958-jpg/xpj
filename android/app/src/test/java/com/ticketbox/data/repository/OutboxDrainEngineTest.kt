@@ -192,9 +192,8 @@ class OutboxDrainEngineTest {
         // [codex P1#1] Offline chain A → B against the same target.
         // After A lands, the server moves to T1; B's row must be
         // rewritten to T1 so it doesn't fake-conflict.
-        val (engine, outbox) = withDispatcher(
-            StubDispatcher(result = DispatchResult.Success(newRowVersion = 2L)),
-        )
+        val dispatcher = StubDispatcher(result = DispatchResult.Success(newRowVersion = 2L))
+        val (engine, outbox) = withDispatcher(dispatcher)
         outbox.enqueue(
             type = PendingMutationType.PatchExpense,
             targetId = "expense:1",
@@ -210,13 +209,11 @@ class OutboxDrainEngineTest {
 
         val summary = engine.drainOnce()
 
-        // Same-target dedup means only first runs this pass.
-        assertEquals(1, summary.attempted)
-        assertEquals(1, summary.done)
-
-        val second = outbox.activeForTarget("expense:1").single { it.id == secondId }
-        assertEquals(PendingMutationStatus.Pending, second.status)
-        assertEquals(2L, second.expectedRowVersion)
+        assertEquals(2, summary.attempted)
+        assertEquals(2, summary.done)
+        assertEquals(listOf(1L, 2L), dispatcher.dispatchedRows.map { it.expectedRowVersion })
+        assertEquals(secondId, dispatcher.dispatchedRows.last().id)
+        assertTrue(outbox.activeForTarget("expense:1").isEmpty())
     }
 
     @Test
@@ -225,7 +222,8 @@ class OutboxDrainEngineTest {
         val outbox = testOutboxRepository(dao = dao)
         val engine = OutboxDrainEngine(
             outbox,
-            listOf(StubDispatcher(result = DispatchResult.Success(newRowVersion = 8L))),
+            listOf(StubDispatcher(result = DispatchResult.Success(newRowVersion = 8L)),
+                StubDispatcher(result = DispatchResult.Conflict("stale original fact"), type = PendingMutationType.CorrectExpense)),
         )
         outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 7L)
         val payload = """{"expected_row_version":0,"reason":"校正复合事实","original_currency_code":"CNY","original_amount_minor":1200,"items":[{"name":"午餐","amount_cents":1200}],"splits":[{"member_id":7,"amount_cents":1200}]}"""
@@ -241,14 +239,15 @@ class OutboxDrainEngineTest {
         val summary = engine.drainOnce()
 
         assertEquals(1, summary.done)
-        assertEquals(1, summary.attempted, "the correction waits behind the earlier same-target command")
+        assertEquals(2, summary.attempted, "the correction follows the predecessor using only its original OCC")
+        assertEquals(1, summary.conflicts)
         val pending = dao.rows.getValue(correctionId)
         assertEquals(7L, pending.expectedRowVersion, "a predecessor's success cannot authorize correction of an unseen fact version")
         assertEquals("original-correction-key", pending.idempotencyKey)
         assertEquals(payload, pending.payload)
         assertEquals(original.ownerKey, pending.ownerKey)
         assertEquals(original.ledgerId, pending.ledgerId)
-        assertEquals(PendingMutationStatus.Pending.wireValue, pending.status)
+        assertEquals(PendingMutationStatus.Conflict.wireValue, pending.status)
     }
 
     @Test
@@ -292,10 +291,9 @@ class OutboxDrainEngineTest {
 
     @Test
     fun sameTargetSerialInsideOneDrain() = runTest {
-        // [codex P1#1] Two PENDING rows for the same target → only
-        // the oldest comes out of this drain batch; the second
-        // waits for the next tick.
-        val (engine, outbox) = withDispatcher(StubDispatcher(result = DispatchResult.Success()))
+        // Each selection takes one sibling; the bounded drain continues only after it settles.
+        val dispatcher = StubDispatcher(result = DispatchResult.Success())
+        val (engine, outbox) = withDispatcher(dispatcher)
         outbox.enqueue(
             type = PendingMutationType.PatchExpense,
             targetId = "expense:1",
@@ -310,12 +308,10 @@ class OutboxDrainEngineTest {
         )
 
         val summary = engine.drainOnce()
-        assertEquals(1, summary.attempted)
-        assertEquals(1, summary.done)
-        assertEquals(
-            PendingMutationStatus.Pending,
-            outbox.activeForTarget("expense:1").single().status,
-        )
+        assertEquals(2, summary.attempted)
+        assertEquals(2, summary.done)
+        assertEquals(listOf(1L, 2L), dispatcher.dispatchedRows.map { it.id })
+        assertTrue(outbox.activeForTarget("expense:1").isEmpty())
     }
 
     @Test
@@ -925,7 +921,9 @@ private class StubDispatcher(
     private val throwError: Throwable? = null,
     override val type: PendingMutationType = PendingMutationType.PatchExpense,
 ) : OutboxMutationDispatcher {
+    val dispatchedRows = mutableListOf<OutboxRow>()
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
+        dispatchedRows += row
         throwError?.let { throw it }
         return result ?: DispatchResult.Success()
     }

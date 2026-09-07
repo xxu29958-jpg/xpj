@@ -118,6 +118,7 @@ class OutboxDrainEngine(
     var onAdviceInputReplaySucceeded: () -> Unit = {}
 
     private companion object {
+        const val MAX_DRAIN_ITEMS = 100
         /** Mutation kinds whose replay moves the budget advisor's server-side
          *  inputs (_inputs_builder.py: confirmed-expense aggregates, income
          *  plans). Create/confirm/patch change confirmed-expense rows;
@@ -148,9 +149,8 @@ class OutboxDrainEngine(
     }
 
     /**
-     * Replay every currently-runnable row exactly once. Returns the
-     * summary so the caller (worker / UI / tests) can decide whether
-     * to re-enqueue itself.
+     * Replay at most 100 original rows, each once, continuing newly released
+     * FIFO tails. The summary preserves unfinished work for the existing worker.
      *
      * Sweeps stale IN_FLIGHT rows (left behind by a cancelled or
      * crashed worker) back to PENDING before dequeueing so the
@@ -174,200 +174,104 @@ class OutboxDrainEngine(
         // check below will see it and abort the rest of the batch
         // before any in-memory row is sent under the new session.
         val capturedEpoch = outbox.currentSessionEpoch()
-        val batch = outbox.dequeueNextRunnable()
-        // Even with no runnable work, a reap mutated the DB — return a summary
-        // carrying ``reaped`` (not the shared IDLE constant) so a reap-only pass
-        // still reports anythingChanged to the scheduler / UI.
-        if (batch.isEmpty()) return DrainSummary(attempted = 0, done = 0, conflicts = 0, failures = 0, reaped = reaped)
+        var summary = DrainSummary(0, 0, 0, 0, reaped = reaped)
+        val visited = mutableSetOf<Long>()
+        while (visited.size < MAX_DRAIN_ITEMS) {
+            val batch = outbox.dequeueNextRunnable(
+                limit = minOf(OutboxRepository.DEFAULT_DRAIN_BATCH, MAX_DRAIN_ITEMS - visited.size),
+                excludedIds = visited.toList(),
+            )
+            if (batch.isEmpty()) {
+                // A stale claim can become runnable after its retried predecessor settles.
+                // Preserve a wakeup without attempting that same id twice in this pass.
+                return summary.copy(continuationRequired = outbox.dequeueNextRunnable(limit = 1).isNotEmpty())
+            }
+            visited.addAll(batch.map { it.id })
+            val result = drainBatch(batch, capturedEpoch)
+            summary += result
+            if (result.aborted > 0) return summary
+        }
+        return summary.copy(continuationRequired = outbox.dequeueNextRunnable(limit = 1).isNotEmpty())
+    }
 
-        var done = 0
-        var conflicts = 0
-        var failures = 0
-        var retryable = 0
-        var discarded = 0
-        var unsupported = 0
-        var raced = 0
-        var aborted = 0
-        for (row in batch) {
-            val dispatcher = registry[row.type]
-            if (dispatcher == null || row.type == PendingMutationType.Unknown) {
-                // [codex finding P2#5] fix: rows with no registered
-                // dispatcher used to stay PENDING forever, blocking
-                // newer same-or-later rows behind them in the
-                // ``ORDER BY createdAt`` window. Move them to FAILED
-                // with a structured ``lastError`` so a UI affordance
-                // can offer "upgrade the app, then manual retry" or
-                // "drop". The user-visible behaviour is identical to
-                // a 4xx that needs human action.
-                outbox.markFailed(row.id, "no_dispatcher_registered:${row.type.wireValue}")
-                unsupported++
-                continue
-            }
-            // [codex finding P1#2] fix: atomic PENDING → IN_FLIGHT
-            // claim. If another drain pass beat us to it, the
-            // dispatcher MUST NOT be called.
-            if (!outbox.tryClaim(row.id)) {
-                raced++
-                continue
-            }
-            // [codex round-10 P1] Hold the dispatch lease across
-            // BOTH the epoch check AND the dispatcher.dispatch(row)
-            // call. Without the lease, a binding transition that fires
-            // AFTER the epoch check but BEFORE dispatch acquires its
-            // bound service would let the
-            // old row be sent under the NEW session. With the
-            // lease:
-            //   - the binding transition blocks until our dispatch returns,
-            //   - credentials writes happen inside that locked transition,
-            //   - so dispatcher.dispatch(row) always sees the
-            //     credentials it was queued under.
-            //
-            // ``signalAbort = true`` returned from inside the
-            // lease means "epoch check failed, abort the remainder
-            // of the batch". We propagate that up after the lease
-            // releases so the abort accounting reads the same
-            // counters the dispatch result handlers updated.
-            val signalAbort = outbox.withDispatchLease {
-                // [codex round-9 P1] post-claim epoch check.
-                // Binding transition bumps the epoch before credentials
-                // change;
-                // if the epoch changed between our snapshot and the
-                // moment we acquired the lease, the row was loaded under
-                // a stale binding and must not dispatch under whatever
-                // session the user just bound. Abort the rest of the
-                // batch.
-                if (outbox.currentSessionEpoch() != capturedEpoch) {
-                    // codex P2 #10: tryClaim 已经把 row 推到 IN_FLIGHT + retryCount++,
-                    // 这里直接 return 会让它一直 IN_FLIGHT, 要等下次 drain 的
-                    // recoverStaleInFlight(5min 阈值)兜底, 中间 same-target serial 卡住后续 row。
-                    // 用 revertClaimWithoutAttempt 而不是 markRetryable, 抵消 tryClaim 的
-                    // retryCount++: 这次根本没 dispatch, 不该算成一次"尝试"。否则 session
-                    // 反复 flap 会让 retryCount 静默累积到 max_attempts 阈值, 用户毫不知情
-                    // 就被推到 FAILED。lastError 不写——保留先前 markRetryable 留下的诊断
-                    // (如 "server 503"), abort 只是窗口期事件不该淹没根因。
-                    outbox.revertClaimWithoutAttempt(row.id)
-                    return@withDispatchLease true
-                }
-                // [codex round-2 P1#2] fix: do NOT let runCatching
-                // swallow CancellationException — that would let a
-                // structured-concurrency cancel mark the row as
-                // RetryableFailure mid-shutdown. Catch it
-                // explicitly and roll the row back to PENDING in a
-                // NonCancellable context so a fresh drain can
-                // re-claim it after the worker restarts.
-                //
-                // PR review #3: 用 revertClaimWithoutAttempt 而不是 markRetryable, 跟
-                // epoch-abort 对称——WorkManager OS-kill 也是 "dispatcher 没真正完成",
-                // 不该算一次尝试消耗 max_attempts 配额。否则反复 cancel 会让 retryCount
-                // 静默爬到 cap, 用户毫不知情就被推到 FAILED。
-                val result = try {
-                    dispatcher.dispatch(row)
-                } catch (e: CancellationException) {
-                    withContext(NonCancellable) {
-                        outbox.revertClaimWithoutAttempt(row.id)
-                    }
-                    throw e
-                } catch (e: Exception) {
-                    // [codex round-5 P3] catch Exception, not
-                    // Throwable — Error subclasses (OOM, Linkage,
-                    // StackOverflow, VirtualMachineError) indicate
-                    // JVM-level damage that the per-row retry
-                    // policy can't recover from; let them propagate
-                    // up to the worker so WorkManager's own restart
-                    // semantics handle it. CancellationException is
-                    // already taken by the catch above (it extends
-                    // Exception, but the more-specific catch binds
-                    // first).
-                    DispatchResult.RetryableFailure(e.message ?: "dispatch threw")
-                }
-                when (result) {
-                    is DispatchResult.Success -> {
-                        outbox.markDone(row.id)
-                        // [codex finding P1#1] fix: cascade the
-                        // server's post-mutation token to same-
-                        // target PENDING rows so the next chained
-                        // mutation against this row doesn't replay
-                        // with a now-stale snapshot.
-                        val newToken = result.newRowVersion
-                        if (newToken != null && newToken != 0L) {
-                            outbox.cascadeFreshToken(row.targetId, newToken)
-                        }
-                        // 218-B4 review: the queue-time hook (round 7) invalidated the
-                        // advice cache when the mutation was ENQUEUED, but advice
-                        // generated in the queue→replay window was computed from the
-                        // pre-replay server state — a successful replay of an
-                        // advice-input mutation must invalidate it. Failure/Retry
-                        // leaves the server unchanged: no invalidation.
-                        if (row.type in ADVICE_INPUT_MUTATION_TYPES) {
-                            onAdviceInputReplaySucceeded()
-                        }
-                        done++
-                    }
-                    is DispatchResult.Conflict -> {
-                        outbox.markConflict(row.id, result.serverMessage)
-                        conflicts++
-                    }
-                    is DispatchResult.RetryableFailure -> {
-                        // codex P1 #7: tryClaim 把 retryCount 加了 1, row.retryCount 是
-                        // dequeue 时(claim 前)的快照, attempts = row.retryCount + 1。超出
-                        // maxAttempts 转 FAILED, lastError 带 attempt 计数和原始错误, UI
-                        // 经 SyncStatusScreen 的 friendlyLastError 翻译成中文展示。
-                        //
-                        // PR review #5: displayedAttempts 用 coerceAtMost(maxAttempts) 防
-                        // pre-PR 旧 row(retryCount 已经远超 cap)输出 "16/10" 这种 N>M 看
-                        // 起来像 cap 漏掉的分数。语义层面 retryCount 仍是真实值, 只是 UI
-                        // 显示 cap 住。
-                        val attempts = row.retryCount + 1
-                        if (attempts >= maxAttempts) {
-                            val displayedAttempts = attempts.coerceAtMost(maxAttempts)
-                            outbox.markFailed(
-                                row.id,
-                                "max_attempts_exceeded(${displayedAttempts}/${maxAttempts}): ${result.message}",
-                            )
-                            failures++
-                        } else {
-                            // 此前 finding P1#3 fix: keep the row in PENDING so the next
-                            // drain tick picks it up. The retryCount was already bumped
-                            // by tryClaim; the scheduler can apply back-off based on it.
-                            outbox.markRetryable(row.id, result.message)
-                            retryable++
-                        }
-                    }
-                    is DispatchResult.Failure -> {
-                        outbox.markFailed(row.id, result.message)
-                        failures++
-                    }
-                    is DispatchResult.Discarded -> {
-                        // Discarded rows are gone from the user's
-                        // view — there's nothing for them to
-                        // resolve. Mark DONE and let cleanup
-                        // garbage-collect after retention.
-                        outbox.markDone(row.id)
-                        discarded++
-                    }
-                }
-                false  // not aborting
-            }
-            if (signalAbort) {
-                val processed = done + conflicts + failures + retryable +
-                    discarded + unsupported + raced
-                aborted = batch.size - processed
-                break
+    private suspend fun drainBatch(batch: List<OutboxRow>, capturedEpoch: Long): DrainSummary {
+        var summary = DrainSummary.IDLE
+        for ((index, row) in batch.withIndex()) {
+            val result = dispatchRow(row, capturedEpoch)
+            summary += result
+            if (result.aborted > 0) {
+                return summary.copy(attempted = batch.size, aborted = batch.size - index)
             }
         }
-        return DrainSummary(
-            attempted = batch.size,
-            done = done,
-            conflicts = conflicts,
-            failures = failures,
-            retryable = retryable,
-            discarded = discarded,
-            unsupported = unsupported,
-            raced = raced,
-            aborted = aborted,
-            reaped = reaped,
-        )
+        return summary
     }
+
+    /** The original dispatch lease covers claim, binding proof, HTTP and its local result. */
+    private suspend fun dispatchRow(row: OutboxRow, capturedEpoch: Long): DrainSummary {
+        val dispatcher = registry[row.type]
+        if (dispatcher == null || row.type == PendingMutationType.Unknown) {
+            outbox.markFailed(row.id, "no_dispatcher_registered:${row.type.wireValue}")
+            return DrainSummary(1, 0, 0, 0, unsupported = 1)
+        }
+        return outbox.withDispatchLease {
+            // Recheck FIFO atomically. Stop cannot delete a claimed original before its send.
+            if (!outbox.tryClaim(row.id)) return@withDispatchLease DrainSummary(1, 0, 0, 0, raced = 1)
+            if (outbox.currentSessionEpoch() != capturedEpoch) {
+                outbox.revertClaimWithoutAttempt(row.id)
+                return@withDispatchLease DrainSummary(1, 0, 0, 0, aborted = 1)
+            }
+            settle(row, dispatchSafely(row, dispatcher))
+        }
+    }
+
+    private suspend fun dispatchSafely(row: OutboxRow, dispatcher: OutboxMutationDispatcher): DispatchResult =
+        try {
+            dispatcher.dispatch(row)
+        } catch (error: CancellationException) {
+            withContext(NonCancellable) { outbox.revertClaimWithoutAttempt(row.id) }
+            throw error
+        } catch (error: Exception) {
+            DispatchResult.RetryableFailure(error.message ?: "dispatch threw")
+        }
+
+    /** Only this result handler settles a claimed command; the immutable receipt shares its Done update. */
+    private suspend fun settle(row: OutboxRow, result: DispatchResult): DrainSummary {
+        val summary = DrainSummary(1, 0, 0, 0)
+        return when (result) {
+            is DispatchResult.Success -> {
+                outbox.markDone(row.id, receiptJson = result.receiptJson)
+                result.newRowVersion?.takeIf { it != 0L }?.let { outbox.cascadeFreshToken(row.targetId, it) }
+                if (row.type in ADVICE_INPUT_MUTATION_TYPES) onAdviceInputReplaySucceeded()
+                summary.copy(done = 1)
+            }
+            is DispatchResult.Conflict -> {
+                outbox.markConflict(row.id, result.serverMessage)
+                summary.copy(conflicts = 1)
+            }
+            is DispatchResult.RetryableFailure -> recordRetryable(row, result.message)
+            is DispatchResult.Failure -> {
+                outbox.markFailed(row.id, result.message, blocksFollowing = result.blocksFollowing)
+                summary.copy(failures = 1)
+            }
+            is DispatchResult.Discarded -> {
+                outbox.markDone(row.id)
+                summary.copy(discarded = 1)
+            }
+        }
+    }
+
+    private suspend fun recordRetryable(row: OutboxRow, message: String): DrainSummary {
+        val attempts = row.retryCount + 1
+        return if (attempts >= maxAttempts) {
+            val displayedAttempts = attempts.coerceAtMost(maxAttempts)
+            outbox.markFailed(row.id, "max_attempts_exceeded(${displayedAttempts}/${maxAttempts}): $message")
+            DrainSummary(1, 0, 0, 1)
+        } else {
+            outbox.markRetryable(row.id, message)
+            DrainSummary(1, 0, 0, 0, retryable = 1)
+        }
+    }
+
 }
 
 data class DrainSummary(
@@ -396,6 +300,8 @@ data class DrainSummary(
      * they were terminally failed before dequeue, never handed to a dispatcher.
      */
     val reaped: Int = 0,
+    /** The bounded pass left a runnable original for the existing worker's next attempt. */
+    val continuationRequired: Boolean = false,
 ) {
     /**
      * 任何一行真的改了 DB(状态、retryCount、lastError 等)就为 true。
@@ -418,3 +324,12 @@ data class DrainSummary(
         val IDLE = DrainSummary(0, 0, 0, 0)
     }
 }
+
+private operator fun DrainSummary.plus(other: DrainSummary) = DrainSummary(
+    attempted = attempted + other.attempted, done = done + other.done,
+    conflicts = conflicts + other.conflicts, failures = failures + other.failures,
+    retryable = retryable + other.retryable, discarded = discarded + other.discarded,
+    unsupported = unsupported + other.unsupported, raced = raced + other.raced,
+    aborted = aborted + other.aborted, reaped = reaped + other.reaped,
+    continuationRequired = continuationRequired || other.continuationRequired,
+)

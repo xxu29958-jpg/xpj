@@ -10,7 +10,7 @@ import com.ticketbox.domain.model.FxContract
 
 @Database(
     entities = [ExpenseEntity::class, PendingMutationEntity::class, ExpenseOffsetStreamEntity::class],
-    version = 17,
+    version = 18,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -498,6 +498,17 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        internal val MIGRATION_17_18_STATEMENTS: List<String> = listOf(
+            "ALTER TABLE pending_mutations ADD COLUMN receiptJson TEXT DEFAULT NULL",
+            "ALTER TABLE pending_mutations ADD COLUMN blocksFollowing INTEGER NOT NULL DEFAULT 1",
+        )
+
+        internal val Migration17To18 = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_17_18_STATEMENTS.forEach(db::execSQL)
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -522,6 +533,7 @@ abstract class AppDatabase : RoomDatabase() {
                         Migration14To15,
                         Migration15To16,
                         Migration16To17,
+                        Migration17To18,
                     )
                     .build()
                     .also { instance = it }

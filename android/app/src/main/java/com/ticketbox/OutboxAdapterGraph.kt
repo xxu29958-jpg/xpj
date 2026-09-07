@@ -59,6 +59,14 @@ internal class OutboxAdapterGraph {
         moshi.adapter(com.ticketbox.data.repository.ExpenseCorrectionPayload::class.java)
     }
 
+    val uploadPayloadAdapter: JsonAdapter<com.ticketbox.data.repository.UploadScreenshotPayload> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.repository.UploadScreenshotPayload::class.java).serializeNulls()
+    }
+
+    val uploadReceiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.UploadResponseDto> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.remote.dto.UploadResponseDto::class.java).serializeNulls()
+    }
+
     // PR-2g.4: shared between UpdateCategoryRuleDispatcher
     // (deserialises on replay) and RuleRepository.updateCategoryRuleAllowingOffline
     // (serialises before enqueue). Same roundtrip guarantee as patchExpenseAdapter.

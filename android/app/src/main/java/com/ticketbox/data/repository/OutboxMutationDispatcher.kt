@@ -68,7 +68,7 @@ sealed interface DispatchResult {
      * Routes that don't return a token (creates / terminal
      * lifecycle that has its own state machine) pass ``null``.
      */
-    data class Success(val newRowVersion: Long? = null) : DispatchResult
+    data class Success(val newRowVersion: Long? = null, val receiptJson: String? = null) : DispatchResult
 
     /**
      * Server returned 409 ``state_conflict``. The row goes to
@@ -85,7 +85,7 @@ sealed interface DispatchResult {
      * the drain engine will NOT auto-retry — the user has to
      * fix the input or dismiss the row.
      */
-    data class Failure(val message: String) : DispatchResult
+    data class Failure(val message: String, val blocksFollowing: Boolean = true) : DispatchResult
 
     /**
      * Transient failure that the drain engine should retry on a
