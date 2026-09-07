@@ -902,6 +902,7 @@ class OutboxRepository private constructor(
                 dao.observeQuarantinedCount(binding.owner?.storageKey),
             ) { queueDepth, conflicts, failed, quarantinedCount ->
                 OutboxStatus(
+                    binding = binding,
                     queueDepth = queueDepth,
                     conflicts = conflicts.map { it.toDomain() },
                     failed = failed.map { it.toDomain() },
@@ -1170,6 +1171,7 @@ data class OutboxStatus(
     val failed: List<OutboxRow>,
     val quarantinedCount: Int = 0,
     val writeBlock: OutboxWriteBlock? = null,
+    val binding: OutboxBinding? = null,
 ) {
     val needsUserAction: Boolean
         get() = conflicts.isNotEmpty() || failed.isNotEmpty() || quarantinedCount > 0

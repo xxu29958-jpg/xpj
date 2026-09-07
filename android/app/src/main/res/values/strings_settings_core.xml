@@ -200,6 +200,8 @@
 
     <!-- 离线同步页（SyncStatusScreen） -->
     <string name="sync_status_page_title">离线同步</string>
+    <string name="sync_status_binding_loading">正在读取当前账本的同步状态…</string>
+    <string name="sync_status_binding_unavailable">账本连接已变化，请重新打开同步状态。</string>
     <string name="sync_status_page_subtitle">联网后会自动把离线改动同步到账本；有冲突或失败时在这里处理。</string>
     <string name="sync_status_section_needs_action">需要你确认</string>
     <string name="sync_status_section_failed">同步失败</string>

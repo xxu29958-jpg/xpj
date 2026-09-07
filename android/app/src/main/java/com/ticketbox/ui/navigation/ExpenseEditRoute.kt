@@ -85,7 +85,6 @@ internal fun ExpenseEditRoute(
     if (expense.status == "confirmed") {
         ExpenseFactRoute(
             expenseId = expenseId,
-            initialExpense = expense,
             screenFactory = screenFactory,
             onExit = { adviceInputsChanged ->
                 if (adviceInputsChanged) onCompleted(true) else onBack()

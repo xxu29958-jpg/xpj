@@ -1,6 +1,7 @@
 package com.ticketbox.ui.screens.settings
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -89,6 +90,28 @@ class SyncStatusScreenConfirmTest {
         composeRule.onNodeWithText("放弃我的改动").performScrollTo().performClick()
         composeRule.onNodeWithText("确定放弃").performClick()
         composeRule.runOnIdle { assertEquals(row, dropped) }
+    }
+
+    @Test
+    fun switchingBindingRetiresAnOpenDropConfirmationBeforeTheNextSnapshot() {
+        val binding = com.ticketbox.data.repository.LogicalSessionBinding("https://qa.invalid", "ledger-1", "owner", "session", "first")
+        val original = outboxRow(PendingMutationStatus.Conflict)
+        val state = mutableStateOf(OutboxStatusUiState(binding = binding, bindingReady = true,
+            status = OutboxStatus(0, listOf(original), emptyList())))
+        var dropped: OutboxRow? = null
+        composeRule.setContent { TicketboxTheme(skin = AppSkin.Default) {
+            SyncStatusScreenContent(state.value, SyncStatusActions(onOpenExpense = {}, onKeepMine = {},
+                onDropMine = { dropped = it }, onRetry = {}, onDropFailed = {}, onClearQuarantined = {}), {})
+        } }
+        composeRule.onNodeWithText("放弃我的改动").performScrollTo().performClick()
+        composeRule.onNodeWithText("放弃我的改动？").assertIsDisplayed()
+        composeRule.runOnIdle {
+            state.value = OutboxStatusUiState(binding = binding.copy(ledgerId = "ledger-2", bindingRevision = "second"))
+        }
+        composeRule.onNodeWithText("放弃我的改动？").assertDoesNotExist()
+        composeRule.onNodeWithText("确定放弃").assertDoesNotExist()
+        composeRule.onNodeWithText("正在读取当前账本的同步状态…").assertIsDisplayed()
+        composeRule.runOnIdle { assertNull(dropped) }
     }
 
     @Test
@@ -212,6 +235,7 @@ class SyncStatusScreenConfirmTest {
             TicketboxTheme(skin = AppSkin.Default) {
                 SyncStatusScreenContent(
                     state = OutboxStatusUiState(
+                        bindingReady = true,
                         incomeEdits = incomeEdits,
                         status = OutboxStatus(
                             queueDepth = 0,

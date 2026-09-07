@@ -303,6 +303,8 @@ class ExpenseRepository(
     internal fun captureDeferredLedgerBinding(): LogicalSessionBinding? =
         core.ledgerRequestGuard.captureLogicalBinding()
 
+    internal fun observeLedgerAccess(): Flow<LedgerAccessContext?> = core.apiProvider.observeActiveLedgerAccess()
+
     override suspend fun createRepaymentDraftFromExpense(
         expectedBinding: LogicalSessionBinding,
         expense: Expense,

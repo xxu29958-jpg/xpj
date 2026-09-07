@@ -54,7 +54,7 @@ internal class ExpenseFactViewModelCorrectionOutcomeTest : ExpenseFactViewModelT
         val vm = ExpenseFactViewModel(
             expenseId = fake.baseExpense.id,
             repository = fake,
-            initialExpense = fake.baseExpense,
+            preferLocalCache = true,
         )
         advanceUntilIdle()
 
@@ -78,7 +78,7 @@ internal class ExpenseFactViewModelCorrectionOutcomeTest : ExpenseFactViewModelT
         fake.factBundleResult = { Result.success(published) }
         fake.revisionsResult = { _, _ -> Result.success(timeline) }
 
-        val vm = ExpenseFactViewModel(published.root.id, fake, initialExpense = published.root)
+        val vm = ExpenseFactViewModel(published.root.id, fake, preferLocalCache = true)
         advanceUntilIdle()
 
         assertTrue(vm.uiState.value.corrections.single().delivered)
@@ -107,7 +107,7 @@ internal class ExpenseFactViewModelCorrectionOutcomeTest : ExpenseFactViewModelT
                 emitAll(fake.observeCorrections())
             }
         }
-        val vm = ExpenseFactViewModel(original.root.id, delayedRepository, initialExpense = original.root)
+        val vm = ExpenseFactViewModel(original.root.id, delayedRepository, preferLocalCache = true)
         // Existing initial reads may finish with the old snapshot. A fix may also
         // wait for the first Room snapshot before starting them; both are valid.
         advanceUntilIdle()

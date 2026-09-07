@@ -154,7 +154,7 @@ data class CorrectionFormState(
 class ExpenseFactViewModel(
     internal val expenseId: Long,
     internal val repository: ExpenseFactActions,
-    initialExpense: Expense? = null,
+    preferLocalCache: Boolean = false,
 ) : ViewModel() {
 
     internal var correctionOriginalItems: ExpenseItems? = null
@@ -174,31 +174,19 @@ class ExpenseFactViewModel(
     /** bundle 读/命令的 authority 序号：只在调用点同步递增（见 Offsets 扩展）。 */
     internal var factBundleLoadGeneration = 0L
 
-    internal val _uiState = MutableStateFlow(
-        ExpenseFactUiState(
-            expense = initialExpense,
-            initialRootVerificationPending = initialExpense != null,
-            expenseLoading = initialExpense == null,
-            expenseLoadState = if (initialExpense == null) {
-                ExpenseDetailDataLoadState.Loading
-            } else {
-                ExpenseDetailDataLoadState.Loaded
-            },
-            readOnly = !repository.canModifyLedger(),
-        ),
-    )
+    internal val _uiState = MutableStateFlow(ExpenseFactUiState(readOnly = true))
     val uiState: StateFlow<ExpenseFactUiState> = _uiState.asStateFlow()
 
     init {
+        var verifyInitialCache = preferLocalCache
         observeCorrectionSubmissions {
-            val knownExpense = _uiState.value.expense
-            if (knownExpense == null) {
-                loadExpense(initialLoad = true)
-            } else {
+            if (verifyInitialCache) {
+                verifyInitialCache = false
                 verifyInitialExpenseFromCache { loadExpense(initialLoad = true) }
+            } else {
+                loadExpense(initialLoad = true)
             }
             loadCategories()
-            knownExpense?.let { loadThumbnailFor(it) }
             loadExpenseItems()
             loadExpenseSplits()
             loadExpenseFactBundle()
@@ -320,7 +308,7 @@ class ExpenseFactViewModel(
         _uiState.value.expense?.let { loadThumbnailFor(it, force = true) }
     }
 
-    private fun loadThumbnailFor(expense: Expense, force: Boolean = false) {
+    internal fun loadThumbnailFor(expense: Expense, force: Boolean = false) {
         val binding = _uiState.value.correctionAccess?.binding ?: return
         if (!expense.hasImage) {
             thumbnailLoadGeneration++

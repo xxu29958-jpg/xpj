@@ -13,6 +13,11 @@ import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.OutboxStatus
 import com.ticketbox.data.repository.PendingDebtCreation
 import com.ticketbox.data.repository.parseExpenseTargetRef
+import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.OutboxBinding
+import com.ticketbox.data.repository.ExpenseCorrectionObservation
+import com.ticketbox.data.repository.bindingOrNull
+import com.ticketbox.data.repository.canonicalServerOriginOrNull
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -47,19 +52,24 @@ class OutboxStatusViewModel(
     private val incomePlans: com.ticketbox.data.repository.IncomePlanActions,
     private val debtAdjustments: com.ticketbox.data.repository.DebtAdjustmentActions,
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(OutboxStatusUiState())
+    private val _uiState = MutableStateFlow(OutboxStatusUiState(binding = expenseRepository.captureDeferredLedgerBinding()))
     val uiState: StateFlow<OutboxStatusUiState> = _uiState.asStateFlow()
 
     init {
         viewModelScope.launch {
-            expenseRepository.observeCorrections().collect { observation ->
-                _uiState.update { it.copy(correctionObservation = observation) }
-            }
-        }
-        viewModelScope.launch {
-            outbox.observeStatus().combine(
-                debtAdjustments.observeAdjustments(),
-            ) { status, adjustments -> status to adjustments }.collect { (status, adjustments) ->
+            combine(outbox.observeStatus(), expenseRepository.observeCorrections(),
+                debtAdjustments.observeAdjustments(), expenseRepository.observeLedgerAccess()) { status, corrections, adjustments, access ->
+                Triple(status, corrections, adjustments) to access
+            }.collect { (observations, access) ->
+                val (observedStatus, corrections, adjustments) = observations
+                val binding = access?.binding?.takeIf { it == expenseRepository.captureDeferredLedgerBinding() }
+                val status = observedStatus.takeIf { it.binding.matches(binding) }
+                    ?: OutboxStatus(0, emptyList(), emptyList())
+                val currentCorrections = corrections.takeIf { it.access?.binding == binding }
+                    ?: ExpenseCorrectionObservation(null, emptyList())
+                val currentAdjustments = adjustments.adjustments.takeIf { adjustments.binding == binding }.orEmpty()
+                val ready = binding != null && status.binding.matches(binding) &&
+                    currentCorrections.access?.binding == binding && adjustments.binding == binding
                 val descriptions = status.failed.mapNotNull { row ->
                     debtCreation.describePendingCreation(row)?.let { row.id to it }
                 }.toMap()
@@ -69,10 +79,13 @@ class OutboxStatusViewModel(
                 val incomeDescriptions = (status.failed + status.conflicts).mapNotNull { row ->
                     incomePlans.describeEdit(row)?.let { row.id to it }
                 }.toMap()
-                val adjustmentDescriptions = adjustments.adjustments.filter {
+                val adjustmentDescriptions = currentAdjustments.filter {
                     it.row.status != com.ticketbox.data.local.PendingMutationStatus.Done
                 }.associateBy { it.row.id }
-                _uiState.update { it.copy(status = status, failedDebtCreations = descriptions,
+                _uiState.update { previous ->
+                    val state = previous.takeIf { it.binding == binding } ?: OutboxStatusUiState()
+                    state.copy(binding = binding, bindingReady = ready,
+                    correctionObservation = currentCorrections, status = status, failedDebtCreations = descriptions,
                     debtAdjustments = adjustmentDescriptions,
                     waitingDebtAdjustments = adjustmentDescriptions.values.filter {
                         it.row.status in setOf(com.ticketbox.data.local.PendingMutationStatus.Pending,
@@ -88,6 +101,8 @@ class OutboxStatusViewModel(
 
     /** "用我的覆盖" — re-apply my change on top of the server's latest. */
     fun keepMine(row: OutboxRow) {
+        val binding = expenseRepository.captureDeferredLedgerBinding()
+        if (!_uiState.value.accepts(row, binding)) return
         if (row.type == PendingMutationType.CorrectExpense) return
         if (row.type == PendingMutationType.CreateExpenseOffset) {
             explainOffsetReview()
@@ -95,8 +110,10 @@ class OutboxStatusViewModel(
         }
         if (_uiState.value.busyRowId != null) return
         viewModelScope.launch {
+            if (!_uiState.value.accepts(row, expenseRepository.captureDeferredLedgerBinding())) return@launch
             _uiState.update { it.copy(busyRowId = row.id, message = null, messageTone = MessageTone.Neutral) }
             val token = freshExpenseToken(row)
+            if (expenseRepository.captureDeferredLedgerBinding() != binding) return@launch
             if (token == null) {
                 _uiState.update {
                     it.copy(
@@ -108,12 +125,13 @@ class OutboxStatusViewModel(
                 return@launch
             }
             outbox.resolveConflict(row.id, ConflictResolution.KeepMine(token))
-            _uiState.update { it.copy(busyRowId = null) }
+            if (expenseRepository.captureDeferredLedgerBinding() == binding) _uiState.update { it.copy(busyRowId = null) }
         }
     }
 
     /** "放弃我的改动" — discard the queued change; the server's version wins. */
     fun dropMine(row: OutboxRow) {
+        if (!_uiState.value.accepts(row, expenseRepository.captureDeferredLedgerBinding())) return
         if (row.type == PendingMutationType.CorrectExpense) recoverCorrection(row, true)
         else if (row.type == PendingMutationType.RecordDebtAdjustment) recoverAdjustment(row, true)
         else resolve(row) { outbox.resolveConflict(row.id, ConflictResolution.DropMine) }
@@ -121,6 +139,7 @@ class OutboxStatusViewModel(
 
     /** "重试" — flip a FAILED row back to PENDING for the next drain. */
     fun retry(row: OutboxRow) {
+        if (!_uiState.value.accepts(row, expenseRepository.captureDeferredLedgerBinding())) return
         if (row.type == PendingMutationType.CorrectExpense) {
             recoverCorrection(row, false)
             return
@@ -142,6 +161,7 @@ class OutboxStatusViewModel(
 
     /** "放弃" — drop a FAILED row. */
     fun dropFailed(row: OutboxRow) {
+        if (!_uiState.value.accepts(row, expenseRepository.captureDeferredLedgerBinding())) return
         if (row.type == PendingMutationType.CorrectExpense) recoverCorrection(row, true)
         else if (row.type == PendingMutationType.RecordDebtAdjustment) recoverAdjustment(row, true)
         else resolve(row) { outbox.resolveFailed(row.id, FailedResolution.Drop) }
@@ -161,7 +181,9 @@ class OutboxStatusViewModel(
         }
         resolve(row) {
             debtAdjustments.recover(access.binding, pending, drop).onFailure { error ->
-                _uiState.update { it.copy(message = error.toUiText(R.string.debt_action_failed), messageTone = MessageTone.Danger) }
+                if (expenseRepository.captureDeferredLedgerBinding() == access.binding) {
+                    _uiState.update { it.copy(message = error.toUiText(R.string.debt_action_failed), messageTone = MessageTone.Danger) }
+                }
             }
         }
     }
@@ -170,20 +192,26 @@ class OutboxStatusViewModel(
         val binding = _uiState.value.correctionObservation.access?.binding ?: return
         resolve(row) {
             expenseRepository.recoverCorrection(binding, row.id, drop).onFailure { error ->
-                _uiState.update { it.copy(message = error.toUiText(R.string.expense_correction_failed), messageTone = MessageTone.Danger) }
+                if (expenseRepository.captureDeferredLedgerBinding() == binding) {
+                    _uiState.update { it.copy(message = error.toUiText(R.string.expense_correction_failed), messageTone = MessageTone.Danger) }
+                }
             }
         }
     }
 
     /** Remove only ownerless or foreign-owner rows after the screen confirms it. */
     fun clearQuarantined() {
+        val binding = expenseRepository.captureDeferredLedgerBinding() ?: return
+        if (!_uiState.value.bindingReady || _uiState.value.binding != binding) return
         if (_uiState.value.busyRowId != null || _uiState.value.isClearingQuarantine) return
         viewModelScope.launch {
+            if (expenseRepository.captureDeferredLedgerBinding() != binding) return@launch
             _uiState.update {
                 it.copy(isClearingQuarantine = true, message = null, messageTone = MessageTone.Neutral)
             }
             runCatching { outbox.clearQuarantined() }
                 .onSuccess { removed ->
+                    if (expenseRepository.captureDeferredLedgerBinding() != binding) return@onSuccess
                     _uiState.update {
                         it.copy(
                             isClearingQuarantine = false,
@@ -193,6 +221,7 @@ class OutboxStatusViewModel(
                     }
                 }
                 .onFailure {
+                    if (expenseRepository.captureDeferredLedgerBinding() != binding) return@onFailure
                     _uiState.update {
                         it.copy(
                             isClearingQuarantine = false,
@@ -211,11 +240,17 @@ class OutboxStatusViewModel(
     }
 
     private fun resolve(row: OutboxRow, block: suspend () -> Unit) {
+        val binding = expenseRepository.captureDeferredLedgerBinding()
+        if (!_uiState.value.accepts(row, binding)) return
         if (_uiState.value.busyRowId != null) return
         viewModelScope.launch {
+            if (expenseRepository.captureDeferredLedgerBinding() != binding) return@launch
             _uiState.update { it.copy(busyRowId = row.id, message = null, messageTone = MessageTone.Neutral) }
-            block()
-            _uiState.update { it.copy(busyRowId = null) }
+            try {
+                block()
+            } finally {
+                if (expenseRepository.captureDeferredLedgerBinding() == binding) _uiState.update { it.copy(busyRowId = null) }
+            }
         }
     }
 
@@ -229,6 +264,8 @@ class OutboxStatusViewModel(
 }
 
 data class OutboxStatusUiState(
+    val binding: LogicalSessionBinding? = null,
+    val bindingReady: Boolean = false,
     val correctionObservation: com.ticketbox.data.repository.ExpenseCorrectionObservation =
         com.ticketbox.data.repository.ExpenseCorrectionObservation(null, emptyList()),
     val status: OutboxStatus = OutboxStatus(queueDepth = 0, conflicts = emptyList(), failed = emptyList()),
@@ -243,6 +280,13 @@ data class OutboxStatusUiState(
     val message: UiText? = null,
     val messageTone: MessageTone = MessageTone.Neutral,
 )
+
+private fun OutboxBinding?.matches(binding: LogicalSessionBinding?): Boolean =
+    this != null && binding != null && ownerStorageKey == binding.ownerKey && ledgerId == binding.ledgerId &&
+        canonicalServerOriginOrNull(serverUrl)?.let { it == canonicalServerOriginOrNull(binding.serverUrl) } == true
+
+private fun OutboxStatusUiState.accepts(row: OutboxRow, currentBinding: LogicalSessionBinding?): Boolean =
+    bindingReady && binding == currentBinding && row.bindingOrNull().matches(currentBinding)
 
 /** Required consumers for readable original-intent recovery at either navigation entrance. */
 data class OutboxRecoveryRepositories(

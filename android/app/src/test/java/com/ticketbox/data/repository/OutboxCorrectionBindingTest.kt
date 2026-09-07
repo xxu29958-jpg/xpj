@@ -23,6 +23,7 @@ import kotlinx.coroutines.test.setMain
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.test.assertFalse
 
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class OutboxCorrectionBindingTest : ExpensePendingRepositoryOutboxTestBase() {
@@ -40,7 +41,9 @@ internal class OutboxCorrectionBindingTest : ExpensePendingRepositoryOutboxTestB
             val original = fixture.queue.rows.getValue(id)
             vm = fixture.model()
             runCurrent()
-            assertEquals(id, vm.uiState.value.correctionObservation.corrections.single().row.id)
+            val oldRow = vm.uiState.value.correctionObservation.corrections.single().row
+            assertEquals(id, oldRow.id)
+            assertTrue(vm.uiState.value.bindingReady)
 
             fixture.session.switchLedgerForFixture("other", "Other ledger")
             runCurrent()
@@ -48,6 +51,12 @@ internal class OutboxCorrectionBindingTest : ExpensePendingRepositoryOutboxTestB
             assertTrue(vm.uiState.value.status.failed.isEmpty(), "The ordinary outbox already switched")
             assertTrue(vm.uiState.value.correctionObservation.corrections.isEmpty(),
                 "The new ledger cannot retain a previous ledger's reason or numeric expense link")
+            assertFalse(vm.uiState.value.bindingReady)
+            vm.retry(oldRow)
+            vm.dropFailed(oldRow)
+            runCurrent()
+            assertEquals(original, fixture.queue.rows[id])
+            assertEquals(null, vm.uiState.value.message)
             fixture.release.complete(Unit)
             runCurrent()
             assertTrue(vm.uiState.value.correctionObservation.corrections.isEmpty())
@@ -61,9 +70,45 @@ internal class OutboxCorrectionBindingTest : ExpensePendingRepositoryOutboxTestB
             Dispatchers.resetMain()
         }
     }
+
+    @Test
+    fun delayedDebtObservationCannotRestoreThePreviousLedgersAdjustmentDescription() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val fixture = CorrectionBindingFixture(PendingMutationType.RecordDebtAdjustment)
+        var vm: OutboxStatusViewModel? = null
+        try {
+            val access = requireNotNull(fixture.repository.observeCorrections().first().access)
+            val id = fixture.outbox.enqueue(PendingMutationType.RecordDebtAdjustment, "debt:old",
+                "{\"revision\":99}", 7, "original-adjustment-key")
+            fixture.outbox.markFailed(id, "debt_adjustment_payload_unsupported")
+            val original = fixture.queue.rows.getValue(id)
+            vm = fixture.model()
+            runCurrent()
+            assertEquals(setOf(id), vm.uiState.value.debtAdjustments.keys)
+            fixture.session.switchLedgerForFixture("other", "Other ledger")
+            runCurrent()
+            assertTrue(fixture.waiting.isCompleted)
+            assertTrue(vm.uiState.value.status.failed.isEmpty())
+            assertTrue(vm.uiState.value.debtAdjustments.isEmpty())
+            assertTrue(vm.uiState.value.waitingDebtAdjustments.isEmpty())
+            assertFalse(vm.uiState.value.bindingReady)
+            fixture.release.complete(Unit)
+            runCurrent()
+            assertTrue(vm.uiState.value.bindingReady)
+            fixture.session.switchLedgerForFixture(access.binding.ledgerId, "Original ledger")
+            runCurrent()
+            assertEquals(setOf(id), vm.uiState.value.debtAdjustments.keys)
+            assertEquals(original, fixture.queue.rows[id])
+        } finally {
+            fixture.release.complete(Unit)
+            vm?.viewModelScope?.coroutineContext?.job?.cancelAndJoin()
+            Dispatchers.resetMain()
+        }
+    }
 }
 
-private class CorrectionBindingFixture : ExpensePendingRepositoryOutboxTestBase() {
+private class CorrectionBindingFixture(private val delayedType: PendingMutationType = PendingMutationType.CorrectExpense) :
+    ExpensePendingRepositoryOutboxTestBase() {
     val session = seededTokenStore()
     val queue = FakePendingMutationDao()
     val waiting = CompletableDeferred<Unit>()
@@ -71,7 +116,7 @@ private class CorrectionBindingFixture : ExpensePendingRepositoryOutboxTestBase(
     private val dao = object : PendingMutationDao by queue {
         override fun observeActiveByTypes(ownerKey: String, ledgerId: String, types: Collection<String>,
             activeStatuses: Collection<String>) = flow {
-            if (ledgerId == "other" && PendingMutationType.CorrectExpense.wireValue in types) {
+            if (ledgerId == "other" && delayedType.wireValue in types) {
                 waiting.complete(Unit)
                 release.await()
             }

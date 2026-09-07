@@ -18,7 +18,7 @@ internal fun ExpenseFactViewModel.observeCorrectionSubmissions(onBindingSnapshot
     viewModelScope.launch {
         repository.observeCorrections().collect { observation ->
             val previous = _uiState.value.correctionAccess
-            if (previous != null && previous.binding != observation.access?.binding) {
+            if (previous?.binding != observation.access?.binding) {
                 correctionSplitMemberGeneration++
                 correctionBaseline = null
                 correctionBinding = null
@@ -144,6 +144,7 @@ private fun ExpenseFactViewModel.adoptVerifiedCachedRoot(cached: Expense): Boole
         loadBillSplitSent(onlyIfUnknown = true)
     }
     val state = _uiState.value
+    state.expense?.let { loadThumbnailFor(it) }
     return state.corrections.none { it.refreshRequired } &&
         (state.expense?.rowVersion ?: 0L) >= state.requiredRootRowVersion
 }
@@ -184,7 +185,9 @@ fun ExpenseFactViewModel.recoverCorrection(rowId: Long, drop: Boolean) {
     if (_uiState.value.correctionRecoveryBusy) return
     _uiState.update { it.copy(correctionRecoveryBusy = true) }
     viewModelScope.launch {
-        repository.recoverCorrection(binding, rowId, drop)
+        val result = repository.recoverCorrection(binding, rowId, drop)
+        if (_uiState.value.correctionAccess?.binding != binding) return@launch
+        result
             .onSuccess { if (drop) refreshCorrectionFact() }
             .onFailure { error -> _uiState.update { it.copy(message = error.toUiText(R.string.expense_correction_failed),
                 messageTone = MessageTone.Danger) } }

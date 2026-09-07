@@ -145,7 +145,7 @@ internal class ExpenseFactViewModelRefreshRecoveryTest : ExpenseFactViewModelTes
                     return response.await()
                 }
             }
-            val vm = ExpenseFactViewModel(fresh.id, repository, initialExpense = fake.baseExpense)
+            val vm = ExpenseFactViewModel(fresh.id, repository, preferLocalCache = true)
             try {
                 advanceUntilIdle()
                 response.complete(Result.success(fresh))
@@ -178,7 +178,7 @@ internal class ExpenseFactViewModelRefreshRecoveryTest : ExpenseFactViewModelTes
         val repository = object : ExpenseFactActions by fake {
             override suspend fun fetchExpenseFromLocalCache(id: Long): Result<Expense> = Result.success(cachedRoot)
         }
-        val vm = ExpenseFactViewModel(fake.baseExpense.id, repository, initialExpense = fake.baseExpense)
+        val vm = ExpenseFactViewModel(fake.baseExpense.id, repository, preferLocalCache = true)
         advanceUntilIdle()
         assertFalse(vm.uiState.value.authoritativeRootReady)
 
@@ -217,7 +217,7 @@ internal class ExpenseFactViewModelRefreshRecoveryTest : ExpenseFactViewModelTes
         fake.clearRefreshRequirement()
         fake.baseExpense = initial.copy(rowVersion = 11, merchant = "Already adopted in Room")
         fake.fetchExpenseFailure = RepositoryException("Offline")
-        val vm = ExpenseFactViewModel(initial.id, fake, initialExpense = initial)
+        val vm = ExpenseFactViewModel(initial.id, fake, preferLocalCache = true)
         assertFalse(vm.uiState.value.authoritativeRootReady)
         advanceUntilIdle()
 
@@ -236,12 +236,12 @@ internal class ExpenseFactViewModelRefreshRecoveryTest : ExpenseFactViewModelTes
                 Result.failure(RepositoryException("The confirmed cache was retired"))
         }
         val initial = fake.baseExpense
-        val vm = ExpenseFactViewModel(initial.id, repository, initialExpense = initial)
+        val vm = ExpenseFactViewModel(initial.id, repository, preferLocalCache = true)
         advanceUntilIdle()
 
-        assertEquals(initial, vm.uiState.value.expense, "Known content can remain visible")
+        assertEquals(null, vm.uiState.value.expense, "No bound producer verified the retired route content")
         assertFalse(vm.uiState.value.authoritativeRootReady)
-        assertTrue(vm.uiState.value.expenseStale)
+        assertFalse(vm.uiState.value.expenseStale, "Unverified route content is never presented as a known stale fact")
         assertEquals(ExpenseDetailDataLoadState.Failed, vm.uiState.value.expenseLoadState)
         assertEquals(1, fake.fetchExpenseCalls)
 
@@ -266,7 +266,7 @@ internal class ExpenseFactViewModelRefreshRecoveryTest : ExpenseFactViewModelTes
                 return cache.await()
             }
         }
-        val vm = ExpenseFactViewModel(old.id, repository, initialExpense = old)
+        val vm = ExpenseFactViewModel(old.id, repository, preferLocalCache = true)
         advanceUntilIdle()
         assertTrue(started.isCompleted)
 

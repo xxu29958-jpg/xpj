@@ -87,8 +87,8 @@ internal fun SyncStatusScreenContent(
     onBack: () -> Unit,
 ) {
     // Dropping an offline edit is irreversible, so both paths require confirmation.
-    var confirmingDrop by remember { mutableStateOf<SyncStatusDropSelection?>(null) }
-    var confirmingClearQuarantined by remember { mutableStateOf(false) }
+    var confirmingDrop by remember(state.binding) { mutableStateOf<SyncStatusDropSelection?>(null) }
+    var confirmingClearQuarantined by remember(state.binding) { mutableStateOf(false) }
 
     confirmingDrop?.let { selection ->
         SyncStatusDropDialog(
@@ -140,6 +140,10 @@ private fun SyncStatusPageBody(
     state: OutboxStatusUiState,
     actions: SyncStatusActions,
 ) {
+    if (!state.bindingReady) {
+        Text(stringResource(if (state.binding == null) R.string.sync_status_binding_unavailable else R.string.sync_status_binding_loading))
+        return
+    }
     val status = state.status
     SyncStatusOverviewSection(status, state.correctionObservation.corrections, state.debtAdjustments.values.toList())
     SyncStatusCorrectionSection(state, actions)
