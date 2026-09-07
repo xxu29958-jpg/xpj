@@ -10,12 +10,13 @@ Two route prefixes:
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_app_context, get_current_protocol_writer_context
 from app.database import get_db
-from app.models import BillSplitInvitation
 from app.schemas import (
     BillSplitAcceptRequest,
     BillSplitInboxListResponse,
@@ -27,6 +28,9 @@ from app.schemas import (
 from app.services import bill_split_service as bsplit
 from app.services.ledger_service import list_ledgers_for_account
 from app.tenants import AuthContext
+
+if TYPE_CHECKING:
+    from app.models import BillSplitInvitation
 
 # Sender-side endpoint lives under the expense it splits from.
 sender_router = APIRouter(prefix="/api/expenses", tags=["bill-splits"])

@@ -60,6 +60,7 @@ class OpenApiContractGateTest {
         Pairing(BillSplitAcceptRequestDto::class, "BillSplitAcceptRequest"),
         Pairing(BillSplitSentDto::class, "BillSplitSentResponse"),
         Pairing(BillSplitInboxDto::class, "BillSplitInboxResponse"),
+        Pairing(BillSplitReceivedBillDto::class, "BillSplitReceivedBillResponse"),
         Pairing(BillSplitSentListResponseDto::class, "BillSplitSentListResponse"),
         Pairing(BillSplitInboxListResponseDto::class, "BillSplitInboxListResponse"),
         Pairing(DiscretionaryResponseDto::class, "DiscretionaryResponse"),
@@ -201,12 +202,10 @@ class OpenApiContractGateTest {
     // consume them). Keyed by backend schema name. Anything a schema requires but the
     // DTO omits AND is not listed here is drift → CI red. Populated from a real gate run.
     private val ignoredRequiredFields: Map<String, Set<String>> = mapOf(
-        // Bill-split DTOs model only `amount_cents` (the home-currency cents the UI shows);
-        // the backend's currency-code fields are intentionally not consumed — bill-split
-        // does not surface original-currency detail (ADR-0029, pre-existing). The reverse
-        // check surfaced this real omission; revisit if bill-split grows multi-currency UI.
+        // Split lists consume the frozen home amount and currency. Original-currency
+        // detail is not part of these rows; its required code remains intentionally omitted.
         "BillSplitSentResponse" to setOf("original_currency_code"),
-        "BillSplitInboxResponse" to setOf("home_currency_code", "original_currency_code"),
+        "BillSplitInboxResponse" to setOf("original_currency_code"),
         "RuntimeCompatibilitySnapshotResponse" to setOf(
             "contract",
             "observed_at",

@@ -44,6 +44,8 @@ existing membership queries; do not build per-page authorization rules.
 
 ## Direct verification and exit
 
+- Protocol producer: generated OpenAPI matches runtime; Android pairs both the inbox
+  and nested received-reference DTO, and no longer exempts frozen home currency.
 - API: accept/replay and subsequent inbox read identify the same received fact;
   current viewer can read, disabled membership/archived target hide its reference,
   sender and unrelated account cannot obtain it. Existing atomicity/currency and
