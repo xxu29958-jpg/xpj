@@ -75,11 +75,10 @@ fun repositoryViewModelFactory(
 @Suppress("UNCHECKED_CAST")
 fun budgetViewModelFactory(
     repository: BudgetActions,
-    debts: DebtActions,
     onDataChanged: () -> Unit = {},
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return BudgetViewModel(repository, debts, onDataChanged = onDataChanged) as T
+        return BudgetViewModel(repository, onDataChanged = onDataChanged) as T
     }
 }
 

@@ -34,7 +34,7 @@ internal fun CategoryBudgetSection(
     ) {
         items.forEachIndexed { index, item ->
             if (index > 0) BudgetRowDivider()
-            val (amountLabel, amountValue) = if (item.overspentAmountCents > 0L) {
+            val (amountLabel, amountValue) = if (item.overspentAmountCents?.let { it > 0L } == true) {
                 stringResource(R.string.budget_summary_metric_overspent) to
                     formatDisplayAmount(item.overspentAmountCents, currencyDisplay)
             } else {

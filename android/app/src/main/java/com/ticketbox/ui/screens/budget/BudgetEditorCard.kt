@@ -11,9 +11,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
+import com.ticketbox.domain.model.CurrencyDisplay
+import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
@@ -49,11 +52,18 @@ internal fun BudgetEditorSection(
             )
             return@BudgetOpenSection
         }
-        BudgetCoreFields(state, actions)
-        BudgetCategoryFields(state, actions)
+        val currency = state.formCurrency
+        if (currency == null) {
+            Text(stringResource(R.string.currency_unconfirmed_write_blocked))
+            return@BudgetOpenSection
+        }
+        CompositionLocalProvider(LocalCurrencyDisplay provides CurrencyDisplay(currency)) {
+            BudgetCoreFields(state, actions)
+            BudgetCategoryFields(state, actions)
+        }
         Button(
             modifier = Modifier.fillMaxWidth(),
-            enabled = !state.saving,
+            enabled = !state.saving && !state.hasPendingSave,
             onClick = actions.onSave,
         ) {
             Text(

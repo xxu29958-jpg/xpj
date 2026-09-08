@@ -347,6 +347,7 @@ data class BudgetProgress(
     val progress: Float,
     val percent: Long,
     val overBudget: Boolean,
+    val homeCurrencyCode: String? = null,
 )
 
 data class LifestyleStats(

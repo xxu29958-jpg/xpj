@@ -71,6 +71,10 @@ private fun dropConfirmationText(selection: SyncStatusDropSelection): DropConfir
     val debtCreation = row.type == PendingMutationType.CreateDebt
     val label = stringResource(syncStatusMutationLabelResources.getValue(row.type))
     return when {
+        row.type == PendingMutationType.SaveMonthlyBudget -> DropConfirmationText(
+            stringResource(R.string.budget_save_drop), stringResource(R.string.budget_save_drop_explanation),
+            stringResource(R.string.budget_save_drop),
+        )
         row.type == PendingMutationType.RecordDebtAdjustment -> DropConfirmationText(
             stringResource(R.string.debt_adjustment_drop), stringResource(R.string.debt_adjustment_drop_explanation),
             stringResource(R.string.debt_adjustment_drop),

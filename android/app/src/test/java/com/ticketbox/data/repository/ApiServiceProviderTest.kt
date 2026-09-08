@@ -1,4 +1,4 @@
-﻿package com.ticketbox.data.repository
+package com.ticketbox.data.repository
 
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiClient
@@ -194,13 +194,13 @@ class ApiServiceProviderTest {
         )
 
         val results = listOf(
-            BudgetRepository(provider).monthlyBudget(binding, "2026-05"),
+            testBudgetRepository(provider).monthlyBudget(binding, "2026-05"),
             RecurringRepository(provider).items(binding, includeArchived = true),
             IncomePlanRepository(provider, testOutboxRepository(dao = FakePendingMutationDao()), com.ticketbox.OutboxAdapterGraph().incomePlanUpdateAdapter).listActive(binding),
-            BudgetRepository(provider).saveMonthlyBudget(
+            testBudgetRepository(provider).enqueueSave(
                 binding,
                 "2026-05",
-                BudgetMonthlyUpdate(totalAmountCents = 300_000),
+                BudgetMonthlyUpdate(homeCurrencyCode = "CNY", expectedRowVersion = null, totalAmountCents = 300_000),
             ),
             RecurringRepository(provider).pause(binding, "recurring-1", expectedRowVersion = 1L),
             IncomePlanRepository(provider, testOutboxRepository(dao = FakePendingMutationDao()), com.ticketbox.OutboxAdapterGraph().incomePlanUpdateAdapter).archive(binding, "income-1", expectedRowVersion = 1L, intentMonth = "2026-09"),

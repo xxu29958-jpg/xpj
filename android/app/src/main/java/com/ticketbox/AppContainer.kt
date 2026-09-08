@@ -296,6 +296,11 @@ class AppContainer(context: Context) {
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.incomePlanUpdateAdapter,
             ),
+            com.ticketbox.data.repository.SaveMonthlyBudgetDispatcher(
+                apiProvider = ::outboxApi,
+                payloadAdapter = outboxAdapters.budgetSaveAdapter,
+                receiptAdapter = outboxAdapters.budgetReceiptAdapter,
+            ),
             CreateRecurringItemDispatcher(
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.recurringCreateAdapter,

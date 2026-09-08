@@ -45,7 +45,7 @@ private fun budgetMoneyApi(unknown: Boolean): ApiService {
     val overspent = if (unknown) "null" else "1200"
     val body = """{
         "ledger_id":"owner","month":"2026-09","configured":true,"row_version":3,
-        "home_currency_code":"JPY","missing_currencies":["USD"],
+        "home_currency_code":"JPY","missing_currency_codes":["USD"],
         "total_amount_cents":1200,"rollover_amount_cents":0,"fixed_amount_cents":0,
         "non_monthly_amount_cents":0,"flex_budget_cents":1200,"spent_amount_cents":$spent,
         "excluded_amount_cents":0,"remaining_amount_cents":$remaining,"overspent_amount_cents":$overspent,

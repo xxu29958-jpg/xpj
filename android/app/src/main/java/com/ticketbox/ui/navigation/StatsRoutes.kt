@@ -93,7 +93,6 @@ internal fun BudgetRoute(
     val budgetViewModel: BudgetViewModel = viewModel(
         factory = budgetViewModelFactory(
             repository = screenFactory.budgetRepository,
-            debts = screenFactory.debtRepository,
             onDataChanged = onDataChanged,
         ),
     )
@@ -112,6 +111,7 @@ internal fun BudgetRoute(
             onAddCategoryRow = budgetViewModel::addCategoryRow,
             onRemoveCategoryRow = budgetViewModel::removeCategoryRow,
             onSave = budgetViewModel::save,
+            onRecoverSave = budgetViewModel::recoverSave,
         ),
         onBack = onBack,
     )

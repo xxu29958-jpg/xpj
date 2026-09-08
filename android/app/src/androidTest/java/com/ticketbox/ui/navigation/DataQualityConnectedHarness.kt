@@ -120,7 +120,7 @@ internal class DataQualityConnectedHarness : AutoCloseable {
                 apiProvider = apiProvider,
             ),
             recurringRepository = RecurringRepository(apiProvider),
-            budgetRepository = BudgetRepository(apiProvider),
+            budgetRepository = BudgetRepository(apiProvider, outbox, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter),
             reportsRepository = interfaceProxy<ReportsActions>(),
             goalEditRepository = com.ticketbox.data.repository.GoalEditRepository(apiProvider, outbox,
                 adapters.goalUpdateAdapter, adapters.goalReceiptAdapter),

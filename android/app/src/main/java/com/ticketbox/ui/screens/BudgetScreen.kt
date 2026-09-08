@@ -5,6 +5,8 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
+import com.ticketbox.data.repository.PendingBudgetSave
+import com.ticketbox.ui.screens.budget.BudgetPendingSaves
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppPageRole
@@ -16,7 +18,6 @@ import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.screens.budget.BudgetEditorActions
 import com.ticketbox.ui.screens.budget.BudgetEditorSection
 import com.ticketbox.ui.screens.budget.BudgetPageDecision
@@ -41,6 +42,7 @@ data class BudgetScreenActions(
     val onAddCategoryRow: () -> Unit,
     val onRemoveCategoryRow: (Int) -> Unit,
     val onSave: () -> Unit,
+    val onRecoverSave: (PendingBudgetSave, Boolean) -> Unit,
 )
 
 @Composable
@@ -58,7 +60,7 @@ private fun BudgetScreenContent(
     actions: BudgetScreenActions,
     onBack: (() -> Unit)?,
 ) {
-    val currencyDisplay = LocalCurrencyDisplay.current
+    val currencyDisplay = CurrencyDisplay.forRecord(state.budget?.homeCurrencyCode ?: "UNKNOWN")
     val decision = budgetPageDecision(state)
 
     AppSecondaryScrollableContent(
@@ -94,6 +96,9 @@ private fun BudgetScreenContent(
         }
         budgetInlineLoadError(state)?.let { error ->
             item { AppStatusBanner(message = error, tone = MessageTone.Info) }
+        }
+        if (state.saves.isNotEmpty()) {
+            item { BudgetPendingSaves(state.saves, actions.onRecoverSave) }
         }
         item {
             BudgetSummarySection(

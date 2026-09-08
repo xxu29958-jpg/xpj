@@ -761,6 +761,7 @@ internal class FakeApiService(
         month: String,
         request: BudgetMonthlyUpdateRequestDto,
         timezone: String?,
+        idempotencyKey: String?,
     ): BudgetMonthlyDto = unsupported()
     override suspend fun listIncomePlans(status: String): com.ticketbox.data.remote.dto.IncomePlanListResponseDto = unsupported()
     override suspend fun createIncomePlan(request: com.ticketbox.data.remote.dto.IncomePlanCreateRequestDto): com.ticketbox.data.remote.dto.IncomePlanDto = unsupported()

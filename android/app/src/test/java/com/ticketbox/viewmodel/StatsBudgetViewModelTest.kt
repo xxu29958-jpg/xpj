@@ -133,11 +133,14 @@ private class FakeStatsBudgetActions(
         month: String,
     ): Result<BudgetMonthly> = monthlyBudget(month)
 
-    override suspend fun saveMonthlyBudget(
+    override fun observeSaves(expectedBinding: LogicalSessionBinding): Flow<List<com.ticketbox.data.repository.PendingBudgetSave>> = flowOf(emptyList())
+    override suspend fun recoverSave(expectedBinding: LogicalSessionBinding, pending: com.ticketbox.data.repository.PendingBudgetSave, drop: Boolean): Result<Unit> = Result.failure(UnsupportedOperationException())
+
+    override suspend fun enqueueSave(
         expectedBinding: LogicalSessionBinding,
         month: String,
         update: BudgetMonthlyUpdate,
-    ): Result<BudgetMonthly> = Result.failure(UnsupportedOperationException())
+    ): Result<Long> = Result.failure(UnsupportedOperationException())
 }
 
 private fun budgetMonthly(
@@ -145,6 +148,7 @@ private fun budgetMonthly(
     totalAmountCents: Long,
     spentAmountCents: Long,
 ): BudgetMonthly = BudgetMonthly(
+    homeCurrencyCode = "CNY",
     ledgerId = "ledger-1",
     month = "2026-07",
     configured = configured,

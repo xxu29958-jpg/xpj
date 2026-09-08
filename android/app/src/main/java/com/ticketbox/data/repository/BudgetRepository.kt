@@ -1,5 +1,10 @@
 package com.ticketbox.data.repository
 
+import com.squareup.moshi.JsonAdapter
+import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.data.local.PendingMutationType
+import com.ticketbox.data.remote.dto.BudgetMonthlyDto
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.BudgetAdviceResult
 import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
@@ -12,6 +17,7 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.map
 import java.time.YearMonth
 import java.util.TimeZone
+import java.util.UUID
 
 interface BudgetActions {
     fun canModifyLedger(): Boolean
@@ -29,12 +35,7 @@ interface BudgetActions {
     ): Result<BudgetMonthly>
     suspend fun requestBudgetAdvice(month: String): Result<BudgetAdviceResult>
 
-    /** Last successful advice for [month] under the CURRENT logical session
-     *  binding in this process, or null. Process-lifetime, binding-scoped —
-     *  see [BudgetRepository.cachedBudgetAdvice]. Restored only while no
-     *  advice-input write (income plan / recurring / budget / expense) has
-     *  occurred in this process — those write paths call
-     *  [invalidateBudgetAdvice] from their existing refresh points. */
+    /** Advice is scoped to this process and logical binding; accepted writes invalidate it. */
     suspend fun cachedBudgetAdvice(month: String): BudgetAdviceResult? = null
 
     /** Drops the process-lifetime advice cache (all bindings). */
@@ -46,11 +47,13 @@ interface BudgetActions {
     val adviceInvalidations: StateFlow<Int>
         get() = MutableStateFlow(0)
 
-    suspend fun saveMonthlyBudget(
+    fun observeSaves(expectedBinding: LogicalSessionBinding): Flow<List<PendingBudgetSave>>
+    suspend fun recoverSave(expectedBinding: LogicalSessionBinding, pending: PendingBudgetSave, drop: Boolean): Result<Unit>
+    suspend fun enqueueSave(
         expectedBinding: LogicalSessionBinding,
         month: String,
         update: BudgetMonthlyUpdate,
-    ): Result<BudgetMonthly>
+    ): Result<Long>
 }
 
 data class LedgerAccessState(
@@ -60,6 +63,9 @@ data class LedgerAccessState(
 
 class BudgetRepository(
     private val apiProvider: ApiServiceProvider,
+    private val outbox: OutboxRepository,
+    private val saveAdapter: JsonAdapter<BudgetSavePayload>,
+    private val receiptAdapter: JsonAdapter<BudgetMonthlyDto>,
 ) : BudgetActions {
     private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
     private val errorHandler = NetworkErrorHandler(
@@ -154,24 +160,55 @@ class BudgetRepository(
     override val adviceInvalidations: StateFlow<Int>
         get() = adviceCallStore.invalidations
 
-    override suspend fun saveMonthlyBudget(
+    override fun observeSaves(expectedBinding: LogicalSessionBinding): Flow<List<PendingBudgetSave>> =
+        outbox.observeActiveByTypes(setOf(PendingMutationType.SaveMonthlyBudget), includeCompleted = true).map { rows ->
+            if (ledgerRequestGuard.captureLogicalBinding() != expectedBinding) emptyList()
+            else rows.mapNotNull(::describeSave)
+        }
+
+    fun describeSave(row: OutboxRow): PendingBudgetSave? {
+        val binding = ledgerRequestGuard.captureLogicalBinding() ?: return null
+        if (row.type != PendingMutationType.SaveMonthlyBudget ||
+            row.ownerKey != binding.ownerKey || row.ledgerId != binding.ledgerId) return null
+        val receipt = row.receiptJson?.let { runCatching { receiptAdapter.fromJson(it)?.toDomain() }.getOrNull() }
+        return PendingBudgetSave(row, saveAdapter.readSupportedBudgetSave(row.payloadJson), receipt)
+    }
+
+    override suspend fun recoverSave(expectedBinding: LogicalSessionBinding, pending: PendingBudgetSave, drop: Boolean): Result<Unit> = errorHandler.safeCall {
+        val bound = ledgerRequestGuard.bindExact(expectedBinding)
+        check(pending.row.type == PendingMutationType.SaveMonthlyBudget && (drop || pending.intent != null)) {
+            "无法确认原预算提交的格式，请保留记录并核对。"
+        }
+        when (pending.row.status) {
+            PendingMutationStatus.Conflict -> if (drop) outbox.resolveConflict(pending.row.id, ConflictResolution.DropMine, bound)
+            PendingMutationStatus.Failed -> outbox.resolveFailed(pending.row.id,
+                if (drop) FailedResolution.Drop else FailedResolution.Retry(), bound)
+            else -> Unit
+        }
+        Unit
+    }
+
+    override suspend fun enqueueSave(
         expectedBinding: LogicalSessionBinding,
         month: String,
         update: BudgetMonthlyUpdate,
-    ): Result<BudgetMonthly> {
+    ): Result<Long> {
         if (!canModifyLedger()) {
             return Result.failure(RepositoryException("当前角色为只读，无法修改账本。"))
         }
         val cleanMonth = validatedMonth(month)
             .getOrElse { return Result.failure(it) }
         return errorHandler.safeCall {
-            ledgerRequestGuard.bindExact(expectedBinding).call { api ->
-                api.updateMonthlyBudget(
-                    month = cleanMonth,
-                    request = update.toRequest(),
-                    timezone = currentTimezoneId(),
-                ).toDomain()
-            }
+            val bound = ledgerRequestGuard.bindExact(expectedBinding)
+            check(CurrencyCode.fromStorageKeyOrNull(update.homeCurrencyCode) != null) { "预算币种无法确认，请重新读取预算。" }
+            check(update.expectedRowVersion == null || update.expectedRowVersion > 0) { "预算版本无法确认，请重新读取预算。" }
+            val payload = BudgetSavePayload(1, cleanMonth, currentTimezoneId(), update.toRequest().copy(expectedRowVersion = null))
+            outbox.enqueue(boundRequest = bound, intent = PendingMutationIntent(
+                type = PendingMutationType.SaveMonthlyBudget, targetId = monthlyBudgetTarget(cleanMonth),
+                payloadJson = saveAdapter.toJson(payload), expectedRowVersion = update.expectedRowVersion ?: 0L,
+                idempotencyKey = UUID.randomUUID().toString()), validateTargetRows = { rows ->
+                    check(rows.isEmpty()) { "这月预算有待处理的保存，请先查看原提交的同步结果。" }
+                })
         }
     }
 }

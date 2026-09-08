@@ -19,6 +19,7 @@ class BudgetDtoContractTest {
                   "ledger_id": "owner",
                   "month": "2026-05",
                   "configured": true,
+                  "home_currency_code": "CNY",
                   "row_version": 3,
                   "total_amount_cents": 500000,
                   "rollover_amount_cents": -20000,
@@ -49,6 +50,7 @@ class BudgetDtoContractTest {
         )
         val requestJson = moshi.adapter(BudgetMonthlyUpdateRequestDto::class.java).toJson(
             BudgetMonthlyUpdateRequestDto(
+                homeCurrencyCode = "CNY", expectedRowVersion = 3L,
                 totalAmountCents = 500000,
                 nonMonthlyAmountCents = 30000,
                 rolloverAmountCents = -20000,
@@ -64,7 +66,7 @@ class BudgetDtoContractTest {
         assertEquals("医疗", dto.excludedBreakdown.single().category)
         assertEquals("餐饮", dto.categoryBudgets.single().category)
         assertEquals(
-            """{"total_amount_cents":500000,"non_monthly_amount_cents":30000,"rollover_amount_cents":-20000,"excluded_categories":["医疗"],"category_budgets":[{"category":"餐饮","amount_cents":120000}]}""",
+            """{"home_currency_code":"CNY","expected_row_version":3,"total_amount_cents":500000,"non_monthly_amount_cents":30000,"rollover_amount_cents":-20000,"excluded_categories":["医疗"],"category_budgets":[{"category":"餐饮","amount_cents":120000}]}""",
             requestJson,
         )
     }

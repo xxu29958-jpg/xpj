@@ -4,6 +4,13 @@ import com.ticketbox.data.local.PendingMutationDao
 import kotlinx.coroutines.flow.Flow
 import java.time.Clock
 
+internal fun testBudgetRepository(provider: ApiServiceProvider,
+    outbox: OutboxRepository = testOutboxRepository(FakePendingMutationDao(),
+        bindingProvider = { provider.currentSession().toOutboxBinding() })): BudgetRepository {
+    val adapters = com.ticketbox.OutboxAdapterGraph()
+    return BudgetRepository(provider, outbox, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter)
+}
+
 internal fun testOutboxBinding(
     serverUrl: String = "https://api.example.com",
     ledgerId: String = "owner",

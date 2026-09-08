@@ -3,9 +3,10 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
+import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.BudgetActions
-import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.PendingBudgetSave
 import com.ticketbox.domain.model.BudgetCategoryDraft
 import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
@@ -13,6 +14,7 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.parseExactMoneyMinor
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,10 +24,7 @@ import kotlinx.coroutines.launch
 import java.math.BigDecimal
 import java.time.YearMonth
 
-data class BudgetCategoryInput(
-    val category: String = "",
-    val amount: String = "",
-)
+data class BudgetCategoryInput(val category: String = "", val amount: String = "")
 
 data class BudgetFormState(
     val totalAmount: String = "",
@@ -33,6 +32,8 @@ data class BudgetFormState(
     val nonMonthlyAmount: String = "",
     val excludedCategories: String = "",
     val categoryRows: List<BudgetCategoryInput> = listOf(BudgetCategoryInput()),
+    val homeCurrencyCode: String? = null,
+    val expectedRowVersion: Long? = null,
 )
 
 data class BudgetUiState(
@@ -41,90 +42,67 @@ data class BudgetUiState(
     val saving: Boolean = false,
     val message: UiText? = null,
     val messageTone: MessageTone = MessageTone.Neutral,
-    /**
-     * 本月预算读取 / 刷新失败说明（区别于 [message]：后者还承载保存成功 /
-     * 校验提示等）。无 [budget] 时由概况卡渲染为可重试错误态；已有 [budget] 时保留旧数据并以内联
-     * 提示说明刷新失败。
-     */
     val loadError: UiText? = null,
-    val canModify: Boolean = true,
+    val canModify: Boolean = false,
     val budget: BudgetMonthly? = null,
     val form: BudgetFormState = BudgetFormState(),
-    /** 账本币种（R13-7）：VM 由列表信封 capability 注入；null=未确认 → 禁写（不落 CNY
-     *  兜底 ×100）。回填显示在未确认时落 display-home 兜底（save 由本字段禁写）。 */
-    val ledgerCurrency: CurrencyCode? = null,
-)
+    val formDirty: Boolean = false,
+    val saves: List<PendingBudgetSave> = emptyList(),
+) {
+    val formCurrency: CurrencyCode? get() = CurrencyCode.fromStorageKeyOrNull(form.homeCurrencyCode)
+    val hasPendingSave: Boolean get() = saves.any { it.row.status != PendingMutationStatus.Done }
+}
 
 class BudgetViewModel(
     private val repository: BudgetActions,
-    private val debts: DebtActions,
     initialMonth: String = YearMonth.now().toString(),
     private val onDataChanged: () -> Unit = {},
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(
-        BudgetUiState(
-            month = initialMonth,
-            canModify = false,
-        ),
-    )
+    private val _uiState = MutableStateFlow(BudgetUiState(month = initialMonth))
     val uiState: StateFlow<BudgetUiState> = _uiState.asStateFlow()
     private var requestGeneration = 0
     private var refreshGeneration = 0
     private var activeBinding: LogicalSessionBinding? = null
-    private var activeCanModify = false
+    private var savesJob: Job? = null
+    private var observedSaves: List<PendingBudgetSave> = emptyList()
 
     init {
         viewModelScope.launch {
-            repository.observeActiveLedgerAccess()
-                .distinctUntilChanged()
-                .collect { access ->
+            repository.observeActiveLedgerAccess().distinctUntilChanged().collect { access ->
+                if (activeBinding == access?.binding) {
+                    _uiState.update { it.copy(canModify = access?.canModify == true) }
+                } else {
                     activeBinding = access?.binding
-                    activeCanModify = access?.canModify ?: false
                     requestGeneration += 1
-                    _uiState.update {
-                        it.copy(
-                            loading = access != null,
-                            saving = false,
-                            budget = null,
-                            form = BudgetFormState(),
-                            message = null,
-                            messageTone = MessageTone.Neutral,
-                            loadError = null,
-                            canModify = access?.canModify ?: false,
-                            // R15a-1：账本切换清旧币种重解析 —— 旧币种不得在解析窗口内
-                            // 参与回填/放行（R13-7 竞态变体）。
-                            ledgerCurrency = null,
-                        )
-                    }
-                    if (access != null) {
-                        // R15a-1+R15a-2：同协程串行 —— 先解析币种（代际守卫 last-writer-wins），
-                        // 后 refresh/回填；离线 null 时读面仍刷新，表单空 + 禁写，不按兜底
-                        // 币种缩放回填（R13-7 回填×save 分裂竞态的修复）。
-                        refreshLedgerCurrency()
-                        refresh()
-                    }
+                    savesJob?.cancel()
+                    observedSaves = emptyList()
+                    _uiState.value = BudgetUiState(month = _uiState.value.month, canModify = access?.canModify == true)
+                    access?.let { observeSaves(it.binding); refresh() }
                 }
+            }
         }
     }
 
-    private var currencyResolutionGeneration = 0L
-
-    /**
-     * （重新）解析账本币种（R15a-2，信封 capability 严格解析，未知 → null 禁写）。
-     * 代际守卫：并发解析 last-writer-wins（快速切账本旧结果不得后于新结果落定）。
-     * 币种到达且表单仍处未触碰默认态（解析窗口内 refresh 落了空表单）时按确认币种重回填。
-     */
-    private suspend fun refreshLedgerCurrency() {
-        val generation = ++currencyResolutionGeneration
-        val resolved = CurrencyCode.fromStorageKeyOrNull(debts.listDebts().getOrNull()?.ledgerHomeCurrencyCode)
-        _uiState.update { state ->
-            if (generation != currencyResolutionGeneration) return@update state
-            val budget = state.budget
-            val rebackfill = resolved != null && budget != null && state.form == BudgetFormState()
-            state.copy(
-                ledgerCurrency = resolved,
-                form = if (rebackfill) budget.toFormState(resolved) else state.form,
-            )
+    private fun observeSaves(binding: LogicalSessionBinding) {
+        savesJob = viewModelScope.launch {
+            var previousDone: Set<Long>? = null
+            repository.observeSaves(binding).collect { saves ->
+                if (activeBinding != binding) return@collect
+                observedSaves = saves
+                val done = saves.filter { it.row.status == PendingMutationStatus.Done }
+                val newlyDone = done.filter { previousDone != null && it.row.id !in previousDone.orEmpty() }
+                    .lastOrNull { it.intent?.month == _uiState.value.month }
+                previousDone = done.map { it.row.id }.toSet()
+                _uiState.update { state ->
+                    val receipt = newlyDone?.receipt
+                    state.copy(saves = saves.forMonth(state.month),
+                        form = receipt?.toFormState() ?: state.form,
+                        formDirty = if (newlyDone != null) false else state.formDirty,
+                        message = if (newlyDone != null) UiText.res(R.string.budget_message_saved) else state.message,
+                        messageTone = if (newlyDone != null) MessageTone.Success else state.messageTone)
+                }
+                if (newlyDone != null) { onDataChanged(); refresh() }
+            }
         }
     }
 
@@ -133,262 +111,116 @@ class BudgetViewModel(
         val binding = activeBinding ?: return
         val generation = requestGeneration
         val refresh = ++refreshGeneration
+        val month = _uiState.value.month
+        _uiState.update { it.copy(loading = true, loadError = null) }
         viewModelScope.launch {
-            val month = _uiState.value.month
-            _uiState.update {
-                it.copy(
-                    loading = true,
-                    message = null,
-                    messageTone = MessageTone.Neutral,
-                    loadError = null,
-                    canModify = activeCanModify,
-                )
-            }
-            repository.monthlyBudget(binding, month)
-                .onSuccess { budget ->
-                    _uiState.update {
-                        if (!isCurrentRefresh(generation, refresh, month, it.month)) return@update it
-                        it.copy(
-                            loading = false,
-                            budget = budget,
-                            // R15a-1：币种已确认才回填（init 已串行解析；null=离线/未知 →
-                            // 空表单 + 禁写，不按兜底币种缩放撒谎）。
-                            form = it.ledgerCurrency?.let { currency -> budget.toFormState(currency) }
-                                ?: BudgetFormState(),
-                            loadError = null,
-                            canModify = activeCanModify,
-                        )
-                    }
+            repository.monthlyBudget(binding, month).fold(onSuccess = { budget ->
+                _uiState.update { state ->
+                    if (!isCurrent(generation, month) || refresh != refreshGeneration) state else state.copy(
+                        loading = false, budget = budget, loadError = null,
+                        form = if (!state.formDirty && !state.hasPendingSave) budget.toFormState() else state.form)
                 }
-                .onFailure { error ->
-                    _uiState.update {
-                        if (!isCurrentRefresh(generation, refresh, month, it.month)) return@update it
-                        // Initial failure → a retryable error state; refresh failure with
-                        // readable data keeps the previous budget and surfaces a stale notice.
-                        val fallback = if (it.budget == null) {
-                            R.string.budget_message_load_failed
-                        } else {
-                            R.string.budget_message_refresh_failed_with_data
-                        }
-                        it.copy(
-                            loading = false,
-                            loadError = error.toUiText(fallback),
-                            canModify = activeCanModify,
-                        )
-                    }
+            }, onFailure = { error ->
+                _uiState.update { state ->
+                    if (!isCurrent(generation, month) || refresh != refreshGeneration) state else state.copy(
+                        loading = false, loadError = error.toUiText(if (state.budget == null)
+                            R.string.budget_message_load_failed else R.string.budget_message_refresh_failed_with_data))
                 }
+            })
         }
     }
 
-    private fun isCurrentRefresh(
-        generation: Int,
-        refresh: Int,
-        requestedMonth: String,
-        currentMonth: String,
-    ): Boolean = requestGeneration == generation &&
-        refreshGeneration == refresh &&
-        requestedMonth == currentMonth
-
-    fun previousMonth() {
-        changeMonth(-1)
+    fun previousMonth() = changeMonth(-1)
+    fun nextMonth() = changeMonth(1)
+    fun updateTotalAmount(value: String) = updateForm { it.copy(totalAmount = value) }
+    fun updateRolloverAmount(value: String) = updateForm { it.copy(rolloverAmount = value) }
+    fun updateNonMonthlyAmount(value: String) = updateForm { it.copy(nonMonthlyAmount = value) }
+    fun updateExcludedCategories(value: String) = updateForm { it.copy(excludedCategories = value) }
+    fun updateCategoryRow(index: Int, category: String, amount: String) = updateForm { form ->
+        form.copy(categoryRows = form.categoryRows.mapIndexed { rowIndex, row ->
+            if (rowIndex == index) BudgetCategoryInput(category, amount) else row })
     }
-
-    fun nextMonth() {
-        changeMonth(1)
-    }
-
-    fun updateTotalAmount(value: String) {
-        updateForm { it.copy(totalAmount = value) }
-    }
-
-    fun updateRolloverAmount(value: String) {
-        updateForm { it.copy(rolloverAmount = value) }
-    }
-
-    fun updateNonMonthlyAmount(value: String) {
-        updateForm { it.copy(nonMonthlyAmount = value) }
-    }
-
-    fun updateExcludedCategories(value: String) {
-        updateForm { it.copy(excludedCategories = value) }
-    }
-
-    fun updateCategoryRow(index: Int, category: String, amount: String) {
-        updateForm { form ->
-            val rows = form.categoryRows.toMutableList()
-            if (index !in rows.indices) return@updateForm form
-            rows[index] = rows[index].copy(category = category, amount = amount)
-            form.copy(categoryRows = rows)
-        }
-    }
-
-    fun addCategoryRow() {
-        updateForm { it.copy(categoryRows = it.categoryRows + BudgetCategoryInput()) }
-    }
-
-    fun removeCategoryRow(index: Int) {
-        updateForm { form ->
-            val rows = form.categoryRows.toMutableList()
-            if (index !in rows.indices) return@updateForm form
-            rows.removeAt(index)
-            form.copy(categoryRows = rows.ifEmpty { listOf(BudgetCategoryInput()) })
-        }
+    fun addCategoryRow() = updateForm { it.copy(categoryRows = it.categoryRows + BudgetCategoryInput()) }
+    fun removeCategoryRow(index: Int) = updateForm { form ->
+        form.copy(categoryRows = form.categoryRows.filterIndexed { rowIndex, _ -> rowIndex != index }
+            .ifEmpty { listOf(BudgetCategoryInput()) })
     }
 
     fun save() {
-        if (_uiState.value.saving) return
+        val state = _uiState.value
+        if (state.saving || state.hasPendingSave) return
         val binding = activeBinding ?: return
-        if (!repository.canModifyLedger()) {
-            _uiState.update {
-                it.copy(
-                    canModify = false,
-                    message = UiText.res(R.string.common_readonly_ledger),
-                    messageTone = MessageTone.Danger,
-                )
-            }
+        if (!state.canModify || !repository.canModifyLedger()) {
+            _uiState.update { it.copy(canModify = false, message = UiText.res(R.string.common_readonly_ledger), messageTone = MessageTone.Danger) }
             return
         }
-        // 写按点按瞬间快照构建（binding + form + 已确认币种）：切账本事件在队列中先于
-        // 保存协程处理时，也不得拿新账本的状态写旧表单（binding 竞态钉合同）。
-        val month = _uiState.value.month
+        val currency = state.formCurrency
+        if (currency == null) {
+            _uiState.update { it.copy(message = UiText.res(R.string.currency_unconfirmed_write_blocked), messageTone = MessageTone.Danger) }
+            return
+        }
+        val update = parseBudgetUpdate(state.form, currency).getOrElse { error ->
+            _uiState.update { it.copy(message = (error as? BudgetInputError)?.uiText
+                ?: error.toUiText(R.string.budget_message_content_invalid), messageTone = MessageTone.Danger) }
+            return
+        }
         val generation = requestGeneration
-        val formSnapshot = _uiState.value.form
-        val currencySnapshot = _uiState.value.ledgerCurrency
-        // saving 同步置位：refresh/重复 save 从点按瞬间即串行（串行化钉合同）。
-        _uiState.update { it.withSaveStarted(activeCanModify) }
+        refreshGeneration += 1
+        _uiState.update { it.copy(saving = true, loading = false, message = null) }
         viewModelScope.launch {
-            performSave(binding, month, generation, formSnapshot, currencySnapshot)
+            val result = repository.enqueueSave(binding, state.month, update)
+            if (!isCurrent(generation, state.month)) return@launch
+            _uiState.update { current -> current.copy(saving = false,
+                message = result.fold({ UiText.res(R.string.budget_message_queued) }, { it.toUiText(R.string.budget_message_save_failed) }),
+                messageTone = if (result.isSuccess) MessageTone.Info else MessageTone.Danger) }
         }
     }
 
-    private suspend fun performSave(
-        binding: LogicalSessionBinding,
-        month: String,
-        generation: Int,
-        formSnapshot: BudgetFormState,
-        currencySnapshot: CurrencyCode?,
-    ) {
-        // R15a-2：币种未确认时先重解析再裁决 —— 离线冷启动的一次性门闩解除（网络恢复
-        // 后写尝试自带重解析，不再会话级锁死）；R13-7 禁写口径不变（不落 CNY 兜底 ×100）。
-        val currency = currencySnapshot ?: run {
-            refreshLedgerCurrency()
-            _uiState.value.ledgerCurrency
+    fun recoverSave(pending: PendingBudgetSave, drop: Boolean) {
+        val binding = activeBinding ?: return
+        val generation = requestGeneration
+        val month = _uiState.value.month
+        viewModelScope.launch {
+            val result = repository.recoverSave(binding, pending, drop)
+            if (!isCurrent(generation, month)) return@launch
+            result.onSuccess { if (drop) { _uiState.update { it.copy(formDirty = false) }; refresh() } }
+                .onFailure { error -> _uiState.update { it.copy(message = error.toUiText(R.string.budget_message_save_failed), messageTone = MessageTone.Danger) } }
         }
-        if (currency == null) {
-            _uiState.update {
-                it.copy(
-                    saving = false,
-                    message = UiText.res(R.string.currency_unconfirmed_write_blocked),
-                    messageTone = MessageTone.Danger,
-                )
-            }
-            return
-        }
-        // 快照在场路径坚持点按瞬间表单（binding 竞态钉合同）；快照缺失的恢复路径
-        // （R15a-2）以重解析后的当前表单为准 —— 未触碰表单已按确认币种重回填。
-        val formForWrite = if (currencySnapshot != null) formSnapshot else _uiState.value.form
-        val update = parseBudgetUpdate(formForWrite, currency)
-            .getOrElse { error ->
-                val message = (error as? BudgetInputError)?.uiText
-                    ?: error.toUiText(R.string.budget_message_content_invalid)
-                _uiState.update { it.copy(saving = false, message = message, messageTone = MessageTone.Danger) }
-                return
-            }
-        refreshGeneration += 1
-        repository.saveMonthlyBudget(binding, month, update)
-            .onSuccess { budget ->
-                if (requestGeneration != generation ||
-                    activeBinding != binding ||
-                    _uiState.value.month != month
-                ) {
-                    return@onSuccess
-                }
-                _uiState.update { it.withSavedBudget(budget, activeCanModify) }
-                onDataChanged()
-            }
-            .onFailure { error ->
-                _uiState.update {
-                    if (requestGeneration != generation ||
-                        activeBinding != binding ||
-                        it.month != month
-                    ) {
-                        return@update it
-                    }
-                    it.withSaveFailure(error, activeCanModify)
-                }
-            }
     }
+
+    private fun isCurrent(generation: Int, month: String): Boolean = requestGeneration == generation && _uiState.value.month == month
 
     private fun changeMonth(delta: Long) {
         if (_uiState.value.saving) return
-        val current = runCatching { YearMonth.parse(_uiState.value.month) }
-            .getOrDefault(YearMonth.now())
+        val month = YearMonth.parse(_uiState.value.month).plusMonths(delta).toString()
         requestGeneration += 1
-        _uiState.update {
-            it.copy(
-                month = current.plusMonths(delta).toString(),
-                budget = null,
-                form = BudgetFormState(),
-                message = null,
-                messageTone = MessageTone.Neutral,
-                loadError = null,
-            )
-        }
+        _uiState.update { BudgetUiState(month = month, canModify = it.canModify, saves = observedSaves.forMonth(month)) }
         refresh()
     }
 
     private fun updateForm(transform: (BudgetFormState) -> BudgetFormState) {
-        _uiState.update { it.copy(form = transform(it.form), message = null, messageTone = MessageTone.Neutral) }
+        _uiState.update { if (it.saving || it.hasPendingSave) it else it.copy(form = transform(it.form),
+            formDirty = true, message = null, messageTone = MessageTone.Neutral) }
     }
 }
 
-private fun BudgetUiState.withSaveStarted(canModify: Boolean): BudgetUiState = copy(
-    loading = false,
-    saving = true,
-    message = null,
-    messageTone = MessageTone.Neutral,
-    canModify = canModify,
-)
+private fun List<PendingBudgetSave>.forMonth(month: String): List<PendingBudgetSave> = filter {
+    it.row.targetId == "monthly_budget:$month"
+}.let { rows -> rows.filter { it.row.status != PendingMutationStatus.Done } +
+    listOfNotNull(rows.lastOrNull { it.row.status == PendingMutationStatus.Done }) }
 
-private fun BudgetUiState.withSavedBudget(
-    budget: BudgetMonthly,
-    canModify: Boolean,
-): BudgetUiState = copy(
-    loading = false,
-    saving = false,
-    budget = budget,
-    // 保存成功重回填：save 门已保证币种非 null（R15a-1 同口径，null 时保留当前表单不撒谎）。
-    form = ledgerCurrency?.let { budget.toFormState(it) } ?: form,
-    message = UiText.res(R.string.budget_message_saved),
-    messageTone = MessageTone.Success,
-    loadError = null,
-    canModify = canModify,
-)
-
-private fun BudgetUiState.withSaveFailure(
-    error: Throwable,
-    canModify: Boolean,
-): BudgetUiState = copy(
-    loading = false,
-    saving = false,
-    message = error.toUiText(R.string.budget_message_save_failed),
-    messageTone = MessageTone.Danger,
-    canModify = canModify,
-)
-
-private fun BudgetMonthly.toFormState(currency: CurrencyCode): BudgetFormState {
-    if (!configured) {
-        return BudgetFormState()
-    }
+private fun BudgetMonthly.toFormState(): BudgetFormState {
+    val currency = CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode)
+        ?: return BudgetFormState(homeCurrencyCode = homeCurrencyCode, expectedRowVersion = rowVersion)
+    if (!configured) return BudgetFormState(homeCurrencyCode = homeCurrencyCode, expectedRowVersion = rowVersion)
     return BudgetFormState(
         totalAmount = amountInput(totalAmountCents, currency),
         rolloverAmount = amountInput(rolloverAmountCents, currency),
         nonMonthlyAmount = amountInput(nonMonthlyAmountCents, currency),
         excludedCategories = excludedCategories.joinToString("，"),
-        categoryRows = categoryBudgets
-            .map { BudgetCategoryInput(category = it.category, amount = amountInput(it.amountCents, currency)) }
+        categoryRows = categoryBudgets.map { BudgetCategoryInput(it.category, amountInput(it.amountCents, currency)) }
             .ifEmpty { listOf(BudgetCategoryInput()) },
-    )
+        homeCurrencyCode = homeCurrencyCode, expectedRowVersion = rowVersion)
 }
 
 private class BudgetInputError(val uiText: UiText) : IllegalArgumentException()
@@ -423,6 +255,8 @@ private fun parseBudgetUpdate(form: BudgetFormState, currency: CurrencyCode): Re
         )
     }
     BudgetMonthlyUpdate(
+        homeCurrencyCode = currency.storageKey,
+        expectedRowVersion = form.expectedRowVersion,
         totalAmountCents = total,
         nonMonthlyAmountCents = nonMonthly,
         rolloverAmountCents = rollover,

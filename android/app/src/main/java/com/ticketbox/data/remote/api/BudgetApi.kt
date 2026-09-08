@@ -4,6 +4,7 @@ import com.ticketbox.data.remote.dto.BudgetMonthlyDto
 import com.ticketbox.data.remote.dto.BudgetMonthlyUpdateRequestDto
 import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.Header
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.PUT
@@ -21,6 +22,7 @@ interface BudgetApi {
         @Path("month") month: String,
         @Body request: BudgetMonthlyUpdateRequestDto,
         @Query("timezone") timezone: String? = null,
+        @Header("Idempotency-Key") idempotencyKey: String? = null,
     ): BudgetMonthlyDto
 
     @GET("api/budget/discretionary")
