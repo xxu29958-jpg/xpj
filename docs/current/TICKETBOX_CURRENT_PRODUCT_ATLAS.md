@@ -172,14 +172,16 @@ Do not drop these or open full lifecycle work while handling other journeys.
 remaining art/interaction details, then the exact full RC. Keep useful state
 feedback and efficient actions within each active capability change.
 
-**Active work:** #385–#392 are CLOSED, integrated and independently main-qualified.
+**Active work:** #385–#393 are CLOSED, integrated and independently main-qualified.
 [Member settlement evidence](TICKETBOX_MEMBER_SETTLEMENT_CONTINUITY_CONTRACT.md).
+[Spending-goal continuity evidence](TICKETBOX_PLANNING_GOAL_CONTINUITY_CONTRACT.md).
 
-**Next action:** complete [spending-goal submission and recovery](TICKETBOX_PLANNING_GOAL_CONTINUITY_CONTRACT.md):
-authoritative currency → real Save → durable original intent → canonical progress
-and recoverable feedback. Retire the parallel direct writer and unused fallback.
+**Next action:** complete [Web spending-goal editing](TICKETBOX_WEB_GOAL_EDIT_CONTRACT.md):
+card entry → shared update command → preserved input and explicit conflict review
+→ canonical progress. Retire the API route's duplicate transaction owner.
 Physical budget/income creation works; simplify Android's first-budget optional
-fields within Planning/convenience. Preserve draft #372 for the later detail wave.
+fields and correct the generic goal offline-viewing claim within Planning/convenience.
+Preserve draft #372 for the later detail wave.
 The full Goal and all remaining packages above stay active.
 
 After a slice's agreed user postcondition, targeted regression, bounded review

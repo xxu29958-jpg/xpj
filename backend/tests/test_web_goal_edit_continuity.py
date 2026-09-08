@@ -79,6 +79,16 @@ def test_validation_and_occ_refusals_keep_input_original_key_and_original_versio
     assert retained["idempotency_key"] == fields["idempotency_key"]
     canonical = web_client.get(f'/api/goals/{goal["public_id"]}', headers=identity.app_headers).json()
     assert canonical["name"] == "另一端已保存" and canonical["target_amount_cents"] == 20000
+    review = web_client.post(action, data={**fields, "review_latest": "true"})
+    assert review.status_code == 200, review.text
+    assert 'value="尚未保存的修改"' in review.text and "另一端已保存" in review.text
+    proposal = hidden_post_forms(review.text)[action]
+    assert int(proposal["expected_row_version"]) == canonical["row_version"]
+    assert proposal["idempotency_key"] != fields["idempotency_key"]
+    unchanged = web_client.get(f'/api/goals/{goal["public_id"]}', headers=identity.app_headers).json()
+    assert unchanged == canonical
+    proposal.update(name=fields["name"], month=fields["month"], category=fields["category"], target_amount_yuan="350.25")
+    assert web_client.post(action, data=proposal, follow_redirects=False).status_code == 303
 
 
 def test_viewer_and_other_ledger_cannot_reuse_the_goal_editor(web_client, identity):

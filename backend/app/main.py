@@ -87,6 +87,7 @@ from app.routes import (
     web_expense_items,
     web_expense_lifecycle,
     web_expense_splits,
+    web_goal_edit,
     web_goals,
     web_import_export,
     web_inbox_capture,
@@ -392,6 +393,7 @@ app.include_router(web_income_plans.router)
 app.include_router(web_library.router)
 app.include_router(web_reports.router)
 app.include_router(web_goals.router)
+app.include_router(web_goal_edit.router)
 app.include_router(web_search.router)
 app.include_router(web_data_quality.router)
 app.include_router(web_debts.router)
