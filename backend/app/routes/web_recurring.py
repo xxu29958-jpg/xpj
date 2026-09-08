@@ -113,6 +113,8 @@ def _render_recurring(
     error_guidance: dict | None = None,
     review_merchant: str | None = None,
     open_edit_id: str | None = None,
+    draft: dict | None = None,
+    prepare_review: bool = False,
 ) -> HTMLResponse:
     if status and status not in _VALID_STATUS_FILTERS:
         raise AppError("recurring_status_invalid", status_code=422)
@@ -138,7 +140,7 @@ def _render_recurring(
     if status:
         visible = [item for item in all_items if item.status == status]
     else:
-        visible = [item for item in all_items if item.status != "archived"]
+        visible = [item for item in all_items if item.status != "archived" or (draft and item.public_id == draft.get("public_id"))]
     due_dates = next_due_dates(db, tenant_id=selected_id, items=all_items)
     ctx["items"] = [
         item_view(
@@ -176,8 +178,24 @@ def _render_recurring(
     ctx["error_guidance"] = error_guidance
     today = now_utc().astimezone(accounting_zone()).date()
     ctx["suggested_next_date"] = suggest_next_expected_date(today).isoformat()
-    # 创建表单的 durable intent key: 一次渲染一把, 同一提交的重试/双击都回放它。
-    ctx["create_idempotency_key"] = uuid4().hex
+    ctx["create_form"] = {
+        "merchant": "", "baseline_amount_yuan": "", "next_expected_date": ctx["suggested_next_date"],
+        "idempotency_key": uuid4().hex,
+    }
+    if draft is not None:
+        target = next((item for item in ctx["items"] if item["public_id"] == draft.get("public_id")), None)
+        if draft.get("public_id") and target is None:
+            raise AppError("recurring_item_not_found", status_code=404)
+        if prepare_review and (not draft.get("public_id") or (target and target["status"] != "archived")):
+            draft = {**draft, "idempotency_key": uuid4().hex, "review_required": False}
+            if target:
+                draft["expected_row_version"] = str(target["row_version"])
+            ctx["flash_message"] = "填写已保留，尚未保存。核对已保存记录后，点击保存提交。"
+        if target:
+            target["edit_form"] = draft
+        else:
+            ctx["create_form"] = draft
+    ctx["draft_public_id"] = draft.get("public_id") if draft else None
     ctx["open_edit_id"] = open_edit_id
     return templates.TemplateResponse(request=request, name="recurring.html", context=ctx)
 
@@ -213,6 +231,7 @@ def web_recurring_create(
     baseline_amount_yuan: str = Form(default=""),
     next_expected_date: str = Form(default=""),
     idempotency_key: str = Form(default=""),
+    review_latest: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ):
@@ -224,6 +243,11 @@ def web_recurring_create(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
+    draft = {"merchant": merchant, "baseline_amount_yuan": baseline_amount_yuan,
+             "next_expected_date": next_expected_date, "idempotency_key": idempotency_key}
+    if review_latest == "true":
+        return _render_recurring(request=request, db=db, selected_id=selected_id, options=options,
+                                 draft=draft, prepare_review=True)
     try:
         currency_code = require_runtime_home_currency_code(db)
         amount_cents = parse_baseline_yuan(baseline_amount_yuan, currency_code=currency_code)
@@ -243,6 +267,7 @@ def web_recurring_create(
             db=db,
             selected_id=selected_id,
             options=options,
+            draft={**draft, "review_required": exc.error in {"idempotency_key_required", "idempotency_key_reused"}},
             **_conflict_kwargs(exc, selected_id=selected_id, merchant=merchant),
         )
     return _web_redirect("/web/recurring", selected_id, flash="已加入你的固定支出。")
@@ -300,6 +325,7 @@ def web_recurring_edit(
     next_expected_date: str = Form(default=""),
     expected_row_version: str = Form(default=""),
     idempotency_key: str = Form(default=""),
+    review_latest: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ):
@@ -310,10 +336,16 @@ def web_recurring_edit(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
+    draft = {"public_id": public_id, "merchant": merchant, "baseline_amount_yuan": baseline_amount_yuan,
+             "next_expected_date": next_expected_date, "idempotency_key": idempotency_key,
+             "expected_row_version": expected_row_version}
+    if review_latest == "true":
+        return _render_recurring(request=request, db=db, selected_id=selected_id, options=options,
+                                 draft=draft, prepare_review=True)
     parsed = parse_form_row_version_token(expected_row_version)
-    if parsed is None:
-        return _web_redirect("/web/recurring", selected_id, flash=_STALE_PAGE_FLASH)
     try:
+        if parsed is None:
+            raise AppError("invalid_request", _STALE_PAGE_FLASH, status_code=422)
         currency_code = require_runtime_home_currency_code(db)
         amount_cents = parse_baseline_yuan(baseline_amount_yuan, currency_code=currency_code)
         expected_date = parse_optional_date(next_expected_date)
@@ -337,6 +369,9 @@ def web_recurring_edit(
             db=db,
             selected_id=selected_id,
             options=options,
+            draft={**draft, "review_required": parsed is None or exc.error in {
+                "state_conflict", "idempotency_key_required", "idempotency_key_reused",
+            }},
             **_conflict_kwargs(exc, selected_id=selected_id, merchant=merchant),
         )
     return _web_redirect("/web/recurring", selected_id, flash="固定支出已保存。")

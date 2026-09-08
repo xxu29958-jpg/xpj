@@ -25,3 +25,15 @@ change pause/resume/archive/restore or candidate financial semantics. Their
 shared page and tokens require direct regression. Keep evidence in the PR and
 external qualification directory; the atlas retains status and next action.
 Windows lifecycle HOLDs and the other full-Goal packages remain unchanged.
+
+## Impact after construction
+
+The existing page now separates raw create/edit proposals from canonical item,
+hero and lifecycle-token projections. Refusals retain original keys and versions;
+pending claims keep the same retry identity. Explicit review prepares a new
+proposal without calling a financial writer. Archived proposals remain readable
+without a Save exit. The old fresh-key/error redraw and stale-token redirect are
+retired from create/edit; candidate adoption and lifecycle commands stay intact.
+OpenAPI changes only the two native form bodies. No API money schema or storage
+changes. The original VM request reproduced both input loss and key replacement;
+candidate cloud regression, browser qualification and bounded review remain.

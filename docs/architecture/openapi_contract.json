@@ -3519,6 +3519,11 @@
             "default": "",
             "title": "Next Expected Date",
             "type": "string"
+          },
+          "review_latest": {
+            "default": "",
+            "title": "Review Latest",
+            "type": "string"
           }
         },
         "title": "Body_web_recurring_create_web_recurring_create_post",
@@ -3554,6 +3559,11 @@
           "next_expected_date": {
             "default": "",
             "title": "Next Expected Date",
+            "type": "string"
+          },
+          "review_latest": {
+            "default": "",
+            "title": "Review Latest",
             "type": "string"
           }
         },

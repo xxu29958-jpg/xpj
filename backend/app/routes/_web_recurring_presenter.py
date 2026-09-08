@@ -77,9 +77,13 @@ def item_view(item, anomaly, *, currency_code: str, due_date: date | None) -> di
             currency_code,
         ),
         "amount_delta_percent": anomaly.amount_delta_percent,
-        # 每次渲染生成一次: 编辑表单的 durable intent key (ADR-0042)。双击/重试
-        # 同一提交 → 服务端 replay; 重新渲染 = 新 intent, 换新键。
-        "edit_idempotency_key": uuid4().hex,
+        "edit_form": {
+            "merchant": item.merchant_name,
+            "baseline_amount_yuan": _amount_yuan(item.baseline_amount_cents, currency_code),
+            "next_expected_date": item.next_expected_date.isoformat() if item.next_expected_date else "",
+            "expected_row_version": str(item.row_version),
+            "idempotency_key": uuid4().hex,
+        },
     }
 
 
@@ -254,7 +258,7 @@ def conflict_error_kwargs(
         if public_id:
             kwargs["error_guidance"] = _archived_guidance(selected_id, public_id)
     elif exc.error == "state_conflict":
-        kwargs["error_message"] = "这条记录刚在别处被修改，已为你刷新最新值，请核对后再保存。"
+        kwargs["error_message"] = "这条记录刚在别处被修改，你填的内容仍保留；请核对后再保存。"
     elif exc.error in {"idempotency_key_required", "idempotency_key_reused"}:
         kwargs["error_message"] = stale_page_flash
     elif exc.error == "idempotency_key_in_progress":
