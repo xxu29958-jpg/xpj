@@ -56,22 +56,6 @@ class OutboxStatusViewModelTest {
     }
 
     @Test
-    fun keepMineWithoutServerRowShowsDangerTone() = runTest(dispatcher) {
-        val harness = harness()
-        val row = harness.conflictRow(targetId = "expense:local:client-1")
-        val vm = OutboxStatusViewModel(harness.outbox, harness.expenseRepository,
-            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits))
-        runCurrent()
-
-        vm.keepMine(row)
-        runCurrent()
-
-        assertEquals(UiText.res(R.string.sync_status_vm_keep_mine_unavailable), vm.uiState.value.message)
-        assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
-        assertNull(vm.uiState.value.busyRowId)
-    }
-
-    @Test
     fun originalOffsetCannotBeRebasedByGlobalKeepMine() = runTest(dispatcher) {
         val harness = harness()
         val id = harness.outbox.enqueue(PendingMutationType.CreateExpenseOffset, "expense:7",
@@ -96,7 +80,7 @@ class OutboxStatusViewModelTest {
     }
 
     @Test
-    fun resolvingRowClearsStaleDangerTone() = runTest(dispatcher) {
+    fun rejectedKeepMineShowsFeedbackAndDropClearsIt() = runTest(dispatcher) {
         val harness = harness()
         val row = harness.conflictRow(targetId = "expense:local:client-1")
         val vm = OutboxStatusViewModel(harness.outbox, harness.expenseRepository,
@@ -105,7 +89,9 @@ class OutboxStatusViewModelTest {
 
         vm.keepMine(row)
         runCurrent()
+        assertEquals(UiText.res(R.string.sync_status_vm_keep_mine_unavailable), vm.uiState.value.message)
         assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
+        assertNull(vm.uiState.value.busyRowId)
 
         vm.dropMine(row)
         runCurrent()

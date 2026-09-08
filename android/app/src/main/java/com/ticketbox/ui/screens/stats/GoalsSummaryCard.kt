@@ -252,7 +252,7 @@ private fun GoalPortfolioRail(
 private fun GoalPriorityRow(model: GoalDisplayModel) {
     val goal = model.goal
     val tone = goalTone(model)
-    val currencyDisplay = com.ticketbox.domain.model.CurrencyDisplay.forRecord(goal.homeCurrencyCode ?: "币种未确认")
+    val currencyDisplay = com.ticketbox.domain.model.CurrencyDisplay.forRecord(goal.homeCurrencyCode ?: stringResource(R.string.spending_goal_currency_unknown))
     val debtEvaluation = goal.debtRepayment.takeIf { goal.isDebtRepayment }
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         Row(

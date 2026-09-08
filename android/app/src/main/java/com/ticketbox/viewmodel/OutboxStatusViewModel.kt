@@ -204,12 +204,14 @@ class OutboxStatusViewModel(
                 PendingMutationType.CreateBillSplitInvitation -> expenseRepository.recoverBillSplitCreation(binding, row.id, drop)
                 PendingMutationType.UpdateGoal -> recoveries.goalEdits.describeEdit(row)?.let {
                     recoveries.goalEdits.recover(binding, it, drop)
-                } ?: Result.failure(IllegalStateException("无法确认原目标修改，请回到原账本核对。"))
+                } ?: Result.failure(IllegalStateException())
                 else -> expenseRepository.recoverCorrection(binding, row.id, drop)
             }
             result.onFailure { error ->
                 if (expenseRepository.captureDeferredLedgerBinding() == binding) {
-                    _uiState.update { it.copy(message = error.toUiText(R.string.expense_correction_failed), messageTone = MessageTone.Danger) }
+                    val fallback = if (row.type == PendingMutationType.UpdateGoal) R.string.spending_goal_recovery_unavailable
+                        else R.string.expense_correction_failed
+                    _uiState.update { it.copy(message = error.toUiText(fallback), messageTone = MessageTone.Danger) }
                 }
             }
         }

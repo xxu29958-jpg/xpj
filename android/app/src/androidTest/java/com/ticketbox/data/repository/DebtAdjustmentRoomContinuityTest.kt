@@ -192,30 +192,30 @@ class DebtAdjustmentRoomContinuityTest {
                 model = when (consumer) {
                     "list" -> {
                         DebtListViewModel(graph.debtRepository, graph.debtCreationRepository,
-                            graph.debtAdjustmentRepository, graph.goalEditRepository).also { viewModel ->
+                            graph.debtAdjustmentRepository).also { viewModel ->
                             balance = { viewModel.state.value.debts.singleOrNull()?.remainingAmountCents }
                         }
                     }
                     "receivables" -> {
-                        ReceivablesViewModel(graph.debtRepository, graph.debtAdjustmentRepository, graph.goalEditRepository).also { viewModel ->
+                        ReceivablesViewModel(graph.debtRepository, graph.debtAdjustmentRepository).also { viewModel ->
                             balance = { viewModel.state.value.receivables.singleOrNull()?.remainingAmountCents }
                         }
                     }
                     "goal" -> {
-                        DebtGoalViewModel(graph.reportsRepository, graph.debtAdjustmentRepository, graph.goalEditRepository).also { viewModel ->
+                        DebtGoalViewModel(graph.reportsRepository, graph.debtAdjustmentRepository).also { viewModel ->
                             balance = { viewModel.state.value.goals.singleOrNull()?.debtRepayment
                                 ?.linkedDebts?.singleOrNull()?.remainingAmountCents }
                         }
                     }
                     "createGoal" -> {
                         CreateDebtGoalViewModel(graph.reportsRepository, graph.debtRepository,
-                            graph.debtAdjustmentRepository, graph.goalEditRepository).also { viewModel ->
+                            graph.debtAdjustmentRepository).also { viewModel ->
                             balance = { viewModel.state.value.candidates.singleOrNull()?.remainingAmountCents }
                         }
                     }
                     "repaymentDraft" -> {
                         RepaymentDraftInboxViewModel(graph.repaymentDraftRepository, graph.debtRepository,
-                            graph.debtAdjustmentRepository, graph.goalEditRepository).also { viewModel ->
+                            graph.debtAdjustmentRepository).also { viewModel ->
                             balance = { viewModel.state.value.targetDebts.singleOrNull()?.remainingAmountCents }
                         }
                     }
@@ -249,7 +249,7 @@ class DebtAdjustmentRoomContinuityTest {
     private fun saveAndCloseDetail(graph: RepositoryGraph, retained: DebtAdjustmentConnectedFixture) {
         lateinit var model: DebtDetailViewModel
         compose.runOnIdle {
-            model = DebtDetailViewModel(graph.debtRepository, graph.debtAdjustmentRepository, graph.goalEditRepository)
+            model = DebtDetailViewModel(graph.debtRepository, graph.debtAdjustmentRepository)
             model.loadDebt(retained.network.current.publicId)
         }
         compose.waitUntil(10_000) { model.state.value.debt != null }
@@ -267,7 +267,7 @@ class DebtAdjustmentRoomContinuityTest {
         compose.runOnIdle {
             proposals = MemberRepaymentProposalViewModel(graph.debtRepository.proposals)
             history = DebtRepaymentHistoryViewModel(graph.debtRepository.repayments)
-            detail.value = DebtDetailViewModel(graph.debtRepository, graph.debtAdjustmentRepository, graph.goalEditRepository)
+            detail.value = DebtDetailViewModel(graph.debtRepository, graph.debtAdjustmentRepository)
                 .also { it.loadDebt(fixture.network.current.publicId) }
         }
     }

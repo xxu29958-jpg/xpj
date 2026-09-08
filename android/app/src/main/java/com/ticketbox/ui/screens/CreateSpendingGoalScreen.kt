@@ -148,7 +148,7 @@ private fun SpendingGoalForm(
             modifier = Modifier.fillMaxWidth(),
         )
         } else {
-            Text("正在确认目标币种；已有输入仍保留。")
+            Text(stringResource(R.string.spending_goal_currency_loading))
         }
         AppTextInput(
             state = AppTextInputState(

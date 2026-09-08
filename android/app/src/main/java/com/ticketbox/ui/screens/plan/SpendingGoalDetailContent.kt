@@ -60,7 +60,7 @@ internal fun SpendingGoalViewContent(
 
 @Composable
 private fun SpendingGoalSummaryCard(goal: Goal) {
-    val currency = com.ticketbox.domain.model.CurrencyDisplay.forRecord(goal.homeCurrencyCode ?: "币种未确认")
+    val currency = com.ticketbox.domain.model.CurrencyDisplay.forRecord(goal.homeCurrencyCode ?: stringResource(R.string.spending_goal_currency_unknown))
     AppContentCard {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -140,7 +140,7 @@ private fun SpendingGoalMetric(
 
 @Composable
 private fun SpendingGoalFactsCard(goal: Goal) {
-    val currency = com.ticketbox.domain.model.CurrencyDisplay.forRecord(goal.homeCurrencyCode ?: "币种未确认")
+    val currency = com.ticketbox.domain.model.CurrencyDisplay.forRecord(goal.homeCurrencyCode ?: stringResource(R.string.spending_goal_currency_unknown))
     AppContentCard {
         Text(
             text = stringResource(R.string.spending_goal_details_section),
@@ -233,7 +233,7 @@ internal fun SpendingGoalEditContent(
             modifier = Modifier.fillMaxWidth(),
         )
         } else {
-            Text("正在确认目标币种；已有输入仍保留。")
+            Text(stringResource(R.string.spending_goal_currency_loading))
         }
         SpendingGoalCategoryInput(state = state, viewModel = viewModel)
     }

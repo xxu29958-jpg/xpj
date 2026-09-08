@@ -226,8 +226,8 @@ class SpendingGoalDetailViewModel(
             if (!matches(binding, id)) return@launch
             _state.update { it.copy(isSaving = false,
                 formError = result.exceptionOrNull()?.toUiText(R.string.spending_goal_edit_failed),
-                message = if (result.isSuccess) UiText.raw(if (drop) "已撤下本地修改，请核对目标后重新编辑。"
-                    else "正在重试原提交。") else null, messageTone = MessageTone.Info) }
+                message = if (result.isSuccess) UiText.res(if (drop) R.string.spending_goal_submission_dropped
+                    else R.string.spending_goal_submission_retrying) else null, messageTone = MessageTone.Info) }
         }
     }
 

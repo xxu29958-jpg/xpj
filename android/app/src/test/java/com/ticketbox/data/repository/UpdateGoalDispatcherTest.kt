@@ -97,14 +97,18 @@ class UpdateGoalDispatcherTest {
     )
 
     @Test
-    fun dispatchReplaysOriginalKeyAndReturnsCanonicalVersion() = runTest {
-        val stub = Stub(Result.success(updatedGoalDto()))
+    fun dispatchReplaysOriginalKeyAndStoresCanonicalReceipt() = runTest {
+        val canonical = updatedGoalDto()
+        val stub = Stub(Result.success(canonical))
 
         val result = dispatcherFor(stub).dispatch(goalRow(idempotencyKey = "key-abc"))
 
         assertEquals("key-abc", stub.lastIdempotencyKey, "dispatcher must send the row's key")
         assertTrue(result is DispatchResult.Success)
         assertEquals(2L, result.newRowVersion)
+        val receipt = result.receiptJson
+        assertTrue(receipt != null, "the acknowledgement must survive Room reopen")
+        assertEquals(canonical, moshi().adapter(GoalDto::class.java).fromJson(receipt))
     }
 
     @Test
@@ -122,16 +126,6 @@ class UpdateGoalDispatcherTest {
         val result = dispatcherFor(stub).dispatch(goalRow("original-key").copy(targetId = "goal:"))
         assertTrue(result is DispatchResult.Failure, "an unsent intent cannot become done: $result")
         assertEquals(null, stub.lastIdempotencyKey)
-    }
-
-    @Test
-    fun acceptedGoalIsStoredInDurableReceipt() = runTest {
-        val canonical = updatedGoalDto()
-        val result = dispatcherFor(Stub(Result.success(canonical))).dispatch(goalRow("original-key"))
-        assertTrue(result is DispatchResult.Success)
-        val receipt = result.receiptJson
-        assertTrue(receipt != null, "the acknowledgement must survive Room reopen")
-        assertEquals(canonical, moshi().adapter(GoalDto::class.java).fromJson(receipt))
     }
 
     @Test
