@@ -235,7 +235,7 @@ internal fun NavGraphBuilder.addObligationRoutes(
                     screenFactory.outboxRepository, screenFactory.repository,
                     com.ticketbox.viewmodel.OutboxRecoveryRepositories(screenFactory.debtCreationRepository,
                         screenFactory.recurringRepository.occurrences, screenFactory.incomePlanRepository,
-                        screenFactory.debtAdjustmentRepository, screenFactory.goalEditRepository),
+                        screenFactory.debtAdjustmentRepository, screenFactory.goalEditRepository, screenFactory.budgetRepository),
                 ),
             )
             SyncStatusScreen(viewModel = vm, onBack = onBack, onOpenExpense = runtime.navController::openExpense,

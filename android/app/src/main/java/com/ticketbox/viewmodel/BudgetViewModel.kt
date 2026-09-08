@@ -247,6 +247,7 @@ private fun List<PendingBudgetSave>.forMonth(month: String): List<PendingBudgetS
     listOfNotNull(rows.filter { it.row.status == PendingMutationStatus.Done }.maxByOrNull { it.row.id }) }
 
 private fun PendingBudgetSave.matches(form: BudgetFormState): Boolean {
+    if (!hasSupportedIntent) return false
     val payload = intent ?: return false
     val currency = CurrencyCode.fromStorageKeyOrNull(form.homeCurrencyCode) ?: return false
     val request = parseBudgetUpdate(form, currency).getOrNull()?.toRequest() ?: return false
@@ -255,6 +256,7 @@ private fun PendingBudgetSave.matches(form: BudgetFormState): Boolean {
 }
 
 private fun PendingBudgetSave.originalForm(): BudgetFormState? {
+    if (!hasSupportedIntent) return null
     val request = intent?.request ?: return null
     val currency = CurrencyCode.fromStorageKeyOrNull(request.homeCurrencyCode) ?: return null
     return BudgetFormState(

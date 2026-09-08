@@ -19,22 +19,27 @@ class SaveMonthlyBudgetDispatcher(
 
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
         val key = row.idempotencyKey?.takeIf(String::isNotBlank)
-            ?: return DispatchResult.Failure("原预算提交缺少标识，已保留记录，请核对。")
+            ?: return DispatchResult.Failure(BUDGET_SAVE_UNSUPPORTED)
         val payload = payloadAdapter.readSupportedBudgetSave(row.payloadJson)
-            ?: return DispatchResult.Failure("原预算提交的格式或币种无法确认，已保留记录，请核对。")
-        if (row.targetId != monthlyBudgetTarget(payload.month) || row.expectedRowVersion < 0) {
-            return DispatchResult.Failure("原提交与预算月份不匹配，已保留记录，请核对。")
+            ?: return DispatchResult.Failure(BUDGET_SAVE_UNSUPPORTED)
+        if (!payload.matches(row)) {
+            return DispatchResult.Failure(BUDGET_SAVE_UNSUPPORTED)
         }
         val request = payload.request.copy(expectedRowVersion = row.expectedRowVersion.takeIf { it > 0 })
         return try {
             val receipt = apiProvider(row).updateMonthlyBudget(payload.month, request, payload.timezone, key)
             if (!receipt.confirms(row, payload.month, request)) {
-                DispatchResult.Failure("无法核对原提交的预算、币种或金额，已保留记录，请核对后继续。")
+                DispatchResult.Failure(BUDGET_SAVE_UNVERIFIED)
             } else { DispatchResult.Success(receiptJson = receiptAdapter.toJson(receipt)) }
-        } catch (error: HttpException) { mapOutboxHttpException(error)
+        } catch (error: HttpException) {
+            // A month without a budget returns an unconfigured response, never 404.
+            // A missing route or ledger does not prove this original was accepted.
+            mapOutboxHttpException(error).let { result ->
+                if (result is DispatchResult.Discarded) DispatchResult.Failure(BUDGET_SAVE_UNVERIFIED) else result
+            }
         } catch (_: IOException) { DispatchResult.RetryableFailure("连接中断，保留原预算提交等待重试。")
         } catch (error: CancellationException) { throw error
-        } catch (_: Exception) { DispatchResult.Failure("暂时无法确认保存结果，已保留原预算提交。") }
+        } catch (_: Exception) { DispatchResult.Failure(BUDGET_SAVE_UNVERIFIED) }
     }
 }
 

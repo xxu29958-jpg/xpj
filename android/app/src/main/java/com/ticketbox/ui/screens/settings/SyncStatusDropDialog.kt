@@ -26,6 +26,7 @@ internal data class SyncStatusDropSelection(
     val recurringOccurrence: com.ticketbox.data.repository.PendingOccurrencePayment? = null,
     val incomeEdit: com.ticketbox.data.repository.PendingIncomePlanEdit? = null,
     val debtAdjustment: com.ticketbox.data.repository.PendingDebtAdjustment? = null,
+    val budgetSave: com.ticketbox.data.repository.PendingBudgetSave? = null,
 )
 
 private data class DropConfirmationText(val title: String, val text: String, val confirmWord: String)
@@ -50,6 +51,7 @@ internal fun SyncStatusDropDialog(
                 selection.recurringOccurrence?.let { com.ticketbox.ui.screens.recurring.RecurringOccurrenceIntentSummary(it) }
                 selection.incomeEdit?.let { com.ticketbox.ui.screens.IncomePlanIntentSummary(it) }
                 selection.debtAdjustment?.let { com.ticketbox.ui.screens.DebtAdjustmentIntentSummary(it) }
+                selection.budgetSave?.let { com.ticketbox.ui.screens.budget.BudgetSaveIntentSummary(it) }
                 Text(copy.text)
             }
         },

@@ -19,17 +19,16 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.settings.friendlyLastError
-import com.ticketbox.ui.screens.settings.isExpiredFailure
 
 @Composable
-internal fun BudgetPendingSaves(saves: List<PendingBudgetSave>, recover: (PendingBudgetSave, Boolean) -> Unit) {
+internal fun BudgetPendingSaves(saves: List<PendingBudgetSave>, canModify: Boolean, recover: (PendingBudgetSave, Boolean) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        saves.forEach { pending -> BudgetSaveStatus(pending, recover) }
+        saves.forEach { pending -> BudgetSaveStatus(pending, canModify, recover) }
     }
 }
 
 @Composable
-private fun BudgetSaveStatus(pending: PendingBudgetSave, recover: (PendingBudgetSave, Boolean) -> Unit) {
+private fun BudgetSaveStatus(pending: PendingBudgetSave, canModify: Boolean, recover: (PendingBudgetSave, Boolean) -> Unit) {
     var confirmDrop by rememberSaveable(pending.row.id) { mutableStateOf(false) }
     HorizontalDivider()
     Text(stringResource(when (pending.row.status) {
@@ -37,14 +36,11 @@ private fun BudgetSaveStatus(pending: PendingBudgetSave, recover: (PendingBudget
         PendingMutationStatus.Pending, PendingMutationStatus.InFlight -> R.string.budget_message_queued
         else -> R.string.budget_save_attention
     }))
-    pending.intent?.let { intent ->
-        Text(intent.month + " · " + formatDisplayAmount(intent.request.totalAmountCents,
-            CurrencyDisplay.forRecord(intent.request.homeCurrencyCode)))
-    }
+    BudgetSaveIntentSummary(pending)
     if (pending.row.status in setOf(PendingMutationStatus.Failed, PendingMutationStatus.Conflict)) {
         Text(friendlyLastError(pending.row.lastError, stringResource(R.string.budget_save_attention)))
-        if (pending.row.status == PendingMutationStatus.Failed && !isExpiredFailure(pending.row.lastError)) {
-            TextButton(onClick = { recover(pending, false) }, enabled = pending.intent != null) {
+        if (pending.canRetry && canModify) {
+            TextButton(onClick = { recover(pending, false) }) {
                 Text(stringResource(R.string.sync_status_failed_button_retry))
             }
         }
@@ -52,9 +48,33 @@ private fun BudgetSaveStatus(pending: PendingBudgetSave, recover: (PendingBudget
     }
     if (confirmDrop) AlertDialog(onDismissRequest = { confirmDrop = false },
         title = { Text(stringResource(R.string.budget_save_drop)) },
-        text = { Text(stringResource(R.string.budget_save_drop_explanation)) },
+        text = { Column { BudgetSaveIntentSummary(pending); Text(stringResource(R.string.budget_save_drop_explanation)) } },
         confirmButton = { TextButton(onClick = { confirmDrop = false; recover(pending, true) }) {
             Text(stringResource(R.string.budget_save_drop))
         } },
         dismissButton = { TextButton(onClick = { confirmDrop = false }) { Text(stringResource(R.string.common_cancel)) } })
+}
+
+/** Both sync entrances show the original monetary basis, never the current display default. */
+@Composable
+internal fun BudgetSaveIntentSummary(pending: PendingBudgetSave) {
+    val intent = pending.intent?.takeIf { pending.hasSupportedIntent }
+    if (intent == null) {
+        Text(stringResource(R.string.budget_save_unsupported))
+        return
+    }
+    val request = intent.request
+    val currency = CurrencyDisplay.forRecord(request.homeCurrencyCode)
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        Text(intent.month + " · " + request.homeCurrencyCode)
+        Text(stringResource(R.string.budget_editor_total_label) + " · " + formatDisplayAmount(request.totalAmountCents, currency))
+        listOf(R.string.budget_editor_rollover_label to request.rolloverAmountCents,
+            R.string.budget_editor_non_monthly_label to request.nonMonthlyAmountCents).filter { it.second != 0L }.forEach { (label, amount) ->
+            Text(stringResource(label) + " · " + formatDisplayAmount(amount, currency))
+        }
+        request.categoryBudgets.forEach { Text(it.category + " · " + formatDisplayAmount(it.amountCents, currency)) }
+        if (request.excludedCategories.isNotEmpty()) {
+            Text(stringResource(R.string.budget_editor_excluded_label) + " · " + request.excludedCategories.joinToString("、"))
+        }
+    }
 }

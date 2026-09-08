@@ -966,6 +966,9 @@
     <string name="budget_missing_conversion">缺少 %1$s 的汇率，部分金额暂无法汇总。</string>
     <string name="budget_message_queued">预算提交已保留，等待服务器确认。</string>
     <string name="budget_save_attention">预算提交需要处理，原金额已保留。</string>
-    <string name="budget_save_drop">放弃原提交并重新编辑</string>
-    <string name="budget_save_drop_explanation">将移除此设备保留的原提交，并重新读取当前预算。服务器可能已接收过这次保存，请先核对当前预算；移除不会撤销服务器上的改动。</string>
+    <string name="budget_save_drop">停止此设备的重试</string>
+    <string name="budget_save_drop_explanation">将移除此设备保留的原提交。服务器可能已接收过这次保存，请先核对当前预算；移除不会撤销服务器上的改动。</string>
+    <string name="budget_save_unsupported">无法确认原预算提交的格式或币种，已保留记录。请升级客户端后核对，勿直接重复保存。</string>
+    <string name="budget_save_unverified">尚未确认服务器是否保存了原提交。请先核对当前预算；重试将沿用原金额与提交标识。</string>
+    <string name="budget_save_currency_conflict">原输入币种与这月预算不同。请核对原金额和当前预算，再决定是否停止原提交的重试。</string>
 </resources>

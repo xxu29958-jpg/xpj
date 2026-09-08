@@ -125,11 +125,11 @@ internal fun SyncStatusScreenContent(
             onOpenInbox = onOpenInbox,
             actions = actions.copy(
                 onDropMine = { confirmingDrop = SyncStatusDropSelection(it, failed = false, debtCreation = null,
-                    recurringOccurrence = state.recurringOccurrences[it.id], incomeEdit = state.incomeEdits[it.id], debtAdjustment = state.debtAdjustments[it.id]) },
+                    recurringOccurrence = state.recurringOccurrences[it.id], incomeEdit = state.incomeEdits[it.id], debtAdjustment = state.debtAdjustments[it.id], budgetSave = state.budgetSaves[it.id]) },
                 onDropFailed = { row ->
                     if (row.type in setOf(PendingMutationType.CorrectExpense, PendingMutationType.CreateBillSplitInvitation)) actions.onDropFailed(row)
                     else confirmingDrop = SyncStatusDropSelection(row, failed = true, debtCreation = state.failedDebtCreations[row.id],
-                        recurringOccurrence = state.recurringOccurrences[row.id], incomeEdit = state.incomeEdits[row.id], debtAdjustment = state.debtAdjustments[row.id])
+                        recurringOccurrence = state.recurringOccurrences[row.id], incomeEdit = state.incomeEdits[row.id], debtAdjustment = state.debtAdjustments[row.id], budgetSave = state.budgetSaves[row.id])
                 },
                 onClearQuarantined = { confirmingClearQuarantined = true },
             ),

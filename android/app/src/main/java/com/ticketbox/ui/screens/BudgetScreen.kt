@@ -98,7 +98,7 @@ private fun BudgetScreenContent(
             item { AppStatusBanner(message = error, tone = MessageTone.Info) }
         }
         if (state.saves.isNotEmpty()) {
-            item { BudgetPendingSaves(state.saves, actions.onRecoverSave) }
+            item { BudgetPendingSaves(state.saves, state.canModify, actions.onRecoverSave) }
         }
         item {
             BudgetSummarySection(

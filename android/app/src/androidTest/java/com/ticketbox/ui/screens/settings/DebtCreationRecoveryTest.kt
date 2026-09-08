@@ -110,7 +110,7 @@ class DebtCreationRecoveryTest {
             viewModel = remember {
                 outboxStatusViewModelFactory(factory.outboxRepository, factory.repository,
                     com.ticketbox.viewmodel.OutboxRecoveryRepositories(factory.debtCreationRepository, null,
-                        factory.incomePlanRepository, factory.debtAdjustmentRepository, factory.goalEditRepository))
+                        factory.incomePlanRepository, factory.debtAdjustmentRepository, factory.goalEditRepository, factory.budgetRepository))
                     .create(OutboxStatusViewModel::class.java)
             }
             TicketboxTheme(skin = AppSkin.Default) {

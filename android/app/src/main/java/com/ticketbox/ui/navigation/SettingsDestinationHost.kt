@@ -127,6 +127,7 @@ internal data class SettingsRouteRepositories(
     val incomePlans: com.ticketbox.data.repository.IncomePlanActions,
     val debtAdjustments: com.ticketbox.data.repository.DebtAdjustmentActions,
     val goalEdits: com.ticketbox.data.repository.GoalEditActions,
+    val budgetSaves: com.ticketbox.data.repository.BudgetSaveActions,
 )
 
 @Composable
@@ -381,7 +382,7 @@ internal fun SettingsDestinationHost(
                     repositories.outboxRepository,
                     repositories.expenseRepository,
                     com.ticketbox.viewmodel.OutboxRecoveryRepositories(repositories.debtCreationRepository,
-                        repositories.recurringOccurrences, repositories.incomePlans, repositories.debtAdjustments, repositories.goalEdits),
+                        repositories.recurringOccurrences, repositories.incomePlans, repositories.debtAdjustments, repositories.goalEdits, repositories.budgetSaves),
                 ),
             )
             SyncStatusScreen(

@@ -45,15 +45,20 @@ class BudgetSaveRepository(
 
     override fun describeSave(row: OutboxRow): PendingBudgetSave? {
         val binding = ledgerRequestGuard.captureLogicalBinding() ?: return null
+        val origin = canonicalServerOriginOrNull(binding.serverUrl) ?: return null
         if (row.type != PendingMutationType.SaveMonthlyBudget ||
-            row.ownerKey != binding.ownerKey || row.ledgerId != binding.ledgerId) return null
+            row.ownerKey != binding.ownerKey || row.ledgerId != binding.ledgerId ||
+            canonicalServerOriginOrNull(row.serverUrl) != origin) return null
         val receipt = row.receiptJson?.let { runCatching { receiptAdapter.fromJson(it)?.toDomain() }.getOrNull() }
-        return PendingBudgetSave(row, saveAdapter.readSupportedBudgetSave(row.payloadJson), receipt)
+        val intent = saveAdapter.readSupportedBudgetSave(row.payloadJson)?.takeIf { it.matches(row) }
+        return PendingBudgetSave(row, intent, receipt)
     }
 
     override suspend fun recoverSave(expectedBinding: LogicalSessionBinding, pending: PendingBudgetSave, drop: Boolean): Result<Unit> = errorHandler.safeCall {
         val bound = ledgerRequestGuard.bindExact(expectedBinding)
-        check(pending.row.type == PendingMutationType.SaveMonthlyBudget && (drop || pending.intent != null)) {
+        val original = checkNotNull(describeSave(pending.row)) { "原预算提交不属于当前连接，请重新核对。" }
+        check(drop || ledgerRoleCanModify(apiProvider.currentLedgerRole())) { "当前角色为只读，无法修改账本。" }
+        check(drop || original.canRetry) {
             "无法确认原预算提交的格式，请保留记录并核对。"
         }
         when (pending.row.status) {

@@ -39,6 +39,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.test.assertFalse
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class OutboxStatusViewModelTest {
@@ -64,7 +65,7 @@ class OutboxStatusViewModelTest {
         harness.outbox.markConflict(id, "state_conflict")
         val original = harness.outbox.observeStatus().first().conflicts.single()
         val vm = outboxStatusViewModelFactory(harness.outbox, harness.expenseRepository,
-            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits))
+            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits, harness.budgetSaves))
             .create(OutboxStatusViewModel::class.java)
         try {
             runCurrent()
@@ -84,7 +85,7 @@ class OutboxStatusViewModelTest {
         val harness = harness()
         val row = harness.conflictRow(targetId = "expense:local:client-1")
         val vm = OutboxStatusViewModel(harness.outbox, harness.expenseRepository,
-            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits))
+            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits, harness.budgetSaves))
         runCurrent()
 
         vm.keepMine(row)
@@ -119,7 +120,7 @@ class OutboxStatusViewModelTest {
         harness.outbox.markFailed(id, "unsupported original intent")
         val row = harness.outbox.observeStatus().first().failed.single()
         val vm = outboxStatusViewModelFactory(harness.outbox, harness.expenseRepository,
-            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits))
+            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits, harness.budgetSaves))
             .create(OutboxStatusViewModel::class.java)
         runCurrent()
         kotlin.test.assertNotNull(vm.uiState.value.incomeEdits[id])
@@ -145,7 +146,7 @@ class OutboxStatusViewModelTest {
             harness.outbox.markFailed(id, if (supported) "debt_adjustment_negative_remaining" else "unsupported original intent")
             val original = harness.outbox.observeStatus().first().failed.single()
             val vm = outboxStatusViewModelFactory(harness.outbox, harness.expenseRepository,
-                OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits))
+                OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits, harness.budgetSaves))
                 .create(OutboxStatusViewModel::class.java)
             runCurrent()
             val described = assertNotNull(vm.uiState.value.debtAdjustments[id])
@@ -194,7 +195,7 @@ class OutboxStatusViewModelTest {
 
         // Open the global entry after persistence; no canonical Debt read or retry is needed.
         val vm = outboxStatusViewModelFactory(harness.outbox, harness.expenseRepository,
-            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits))
+            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits, harness.budgetSaves))
             .create(OutboxStatusViewModel::class.java)
         runCurrent()
 
@@ -240,7 +241,7 @@ class OutboxStatusViewModelTest {
         harness.outbox.markFailed(id, "upload_intent_unsupported")
         val original = harness.outbox.observeStatus().first().failed.single()
         val vm = OutboxStatusViewModel(harness.outbox, harness.expenseRepository,
-            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits))
+            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits, harness.budgetSaves))
         runCurrent()
 
         vm.retry(original)
@@ -267,7 +268,7 @@ class OutboxStatusViewModelTest {
         harness.outbox.markFailed(id, "目标参数已失效")
         val original = harness.outbox.observeStatus().first().failed.single()
         val vm = outboxStatusViewModelFactory(harness.outbox, harness.expenseRepository,
-            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits))
+            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits, harness.budgetSaves))
             .create(OutboxStatusViewModel::class.java)
         try {
             runCurrent()
@@ -285,6 +286,46 @@ class OutboxStatusViewModelTest {
         } finally {
             vm.viewModelScope.coroutineContext.job.cancelAndJoin()
         }
+    }
+
+    @Test
+    fun globalBudgetRecoveryReplaysOnlyTheOriginalSupportedCommand() = runTest(dispatcher) {
+        val harness = harness()
+        val payload = OutboxAdapterGraph().budgetSaveAdapter.toJson(com.ticketbox.data.repository.BudgetSavePayload(
+            1, "2026-09", "UTC", com.ticketbox.data.remote.dto.BudgetMonthlyUpdateRequestDto("JPY", null, 1200)))
+        val id = harness.outbox.enqueue(PendingMutationType.SaveMonthlyBudget, "monthly_budget:2026-09", payload, 0, "budget-original-key")
+        harness.outbox.markFailed(id, "budget_save_unverified")
+        val original = harness.outbox.observeStatus().first().failed.single()
+        val vm = outboxStatusViewModelFactory(harness.outbox, harness.expenseRepository,
+            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits, harness.budgetSaves))
+            .create(OutboxStatusViewModel::class.java)
+        try {
+            runCurrent()
+            assertTrue(vm.uiState.value.offersRetry(original))
+            assertEquals("JPY", vm.uiState.value.budgetSaves[id]?.intent?.request?.homeCurrencyCode)
+            assertNull(harness.budgetSaves.describeSave(original.copy(serverUrl = "https://another.example.test")))
+            vm.keepMine(original)
+            runCurrent()
+            assertEquals(original, harness.outbox.observeStatus().first().failed.single())
+            vm.retry(original)
+            runCurrent()
+            val retried = harness.outbox.observeActiveByTypes(setOf(PendingMutationType.SaveMonthlyBudget)).first().single()
+            assertEquals(PendingMutationStatus.Pending, retried.status)
+            assertEquals(original.payloadJson, retried.payloadJson)
+            assertEquals(original.idempotencyKey, retried.idempotencyKey)
+            assertEquals(original.expectedRowVersion, retried.expectedRowVersion)
+            val unknownId = harness.outbox.enqueue(PendingMutationType.SaveMonthlyBudget, "monthly_budget:2026-10", "{}", 0, "unknown-budget-key")
+            harness.outbox.markFailed(unknownId, "budget_save_unsupported")
+            runCurrent()
+            val unknown = harness.outbox.observeStatus().first().failed.single()
+            assertFalse(vm.uiState.value.offersRetry(unknown))
+            vm.retry(unknown)
+            runCurrent()
+            assertEquals(unknown, harness.outbox.observeStatus().first().failed.single())
+            vm.dropFailed(unknown)
+            runCurrent()
+            assertTrue(harness.outbox.observeStatus().first().failed.isEmpty())
+        } finally { vm.viewModelScope.coroutineContext.job.cancelAndJoin() }
     }
 
     private fun harness(): Harness {
@@ -311,6 +352,8 @@ class OutboxStatusViewModelTest {
                 OutboxAdapterGraph().debtAdjustmentAdapter),
             goalEdits = com.ticketbox.data.repository.GoalEditRepository(testApiServiceProvider(api, tokenStore), outbox,
                 OutboxAdapterGraph().goalUpdateAdapter, OutboxAdapterGraph().goalReceiptAdapter),
+            budgetSaves = com.ticketbox.data.repository.BudgetSaveRepository(testApiServiceProvider(api, tokenStore), outbox,
+                OutboxAdapterGraph().budgetSaveAdapter, OutboxAdapterGraph().budgetReceiptAdapter),
         )
     }
 
@@ -321,5 +364,6 @@ class OutboxStatusViewModelTest {
         val incomePlans: IncomePlanRepository,
         val debtAdjustments: DebtAdjustmentRepository,
         val goalEdits: com.ticketbox.data.repository.GoalEditRepository,
+        val budgetSaves: com.ticketbox.data.repository.BudgetSaveActions,
     )
 }

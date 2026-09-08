@@ -23,6 +23,7 @@ internal fun SyncStatusOriginalIntentSummary(row: OutboxRow, state: OutboxStatus
     state.recurringOccurrences[row.id]?.let { com.ticketbox.ui.screens.recurring.RecurringOccurrenceIntentSummary(it) }
     state.incomeEdits[row.id]?.let { com.ticketbox.ui.screens.IncomePlanIntentSummary(it) }
     state.debtAdjustments[row.id]?.let { com.ticketbox.ui.screens.DebtAdjustmentIntentSummary(it) }
+    state.budgetSaves[row.id]?.let { com.ticketbox.ui.screens.budget.BudgetSaveIntentSummary(it) }
 }
 
 internal data class SyncStatusOverview(
@@ -159,6 +160,9 @@ internal fun friendlyLastError(raw: String?, fallback: String): String {
 }
 
 internal val syncStatusExactErrorMessageResources = mapOf(
+    "budget_currency_conflict" to R.string.budget_save_currency_conflict,
+    "budget_save_unsupported" to R.string.budget_save_unsupported,
+    "budget_save_unverified" to R.string.budget_save_unverified,
     "runtime_version_mismatch" to R.string.sync_status_error_protocol_mismatch,
     "offset_create_requires_review" to R.string.expense_offset_original_requires_review,
     "client_upgrade_required" to R.string.sync_status_error_protocol_mismatch,
