@@ -7,7 +7,6 @@ Routes and page assembly only. Pure presenter/form helpers live in
 from __future__ import annotations
 
 import logging
-from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -17,6 +16,7 @@ from app.database import get_db
 from app.errors import AppError
 from app.money_contract import MoneySign, parse_canonical_money_minor
 from app.routes._web_recurring_presenter import (
+    apply_form_draft,
     candidate_review_prefill,
     candidate_view,
     conflict_error_kwargs,
@@ -178,24 +178,7 @@ def _render_recurring(
     ctx["error_guidance"] = error_guidance
     today = now_utc().astimezone(accounting_zone()).date()
     ctx["suggested_next_date"] = suggest_next_expected_date(today).isoformat()
-    ctx["create_form"] = {
-        "merchant": "", "baseline_amount_yuan": "", "next_expected_date": ctx["suggested_next_date"],
-        "idempotency_key": uuid4().hex,
-    }
-    if draft is not None:
-        target = next((item for item in ctx["items"] if item["public_id"] == draft.get("public_id")), None)
-        if draft.get("public_id") and target is None:
-            raise AppError("recurring_item_not_found", status_code=404)
-        if prepare_review and (not draft.get("public_id") or (target and target["status"] != "archived")):
-            draft = {**draft, "idempotency_key": uuid4().hex, "review_required": False}
-            if target:
-                draft["expected_row_version"] = str(target["row_version"])
-            ctx["flash_message"] = "填写已保留，尚未保存。核对已保存记录后，点击保存提交。"
-        if target:
-            target["edit_form"] = draft
-        else:
-            ctx["create_form"] = draft
-    ctx["draft_public_id"] = draft.get("public_id") if draft else None
+    apply_form_draft(ctx, draft, prepare_review=prepare_review)
     ctx["open_edit_id"] = open_edit_id
     return templates.TemplateResponse(request=request, name="recurring.html", context=ctx)
 

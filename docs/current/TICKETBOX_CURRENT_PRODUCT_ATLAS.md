@@ -145,7 +145,7 @@ completion percentages.
 
 | Package | Remaining user outcome / exit |
 |---|---|
-| First use and household | Explicit initial home-currency choice must precede immutable binding: the current unconfigured CNY fallback can be claimed by the first financial write. Owner/member/viewer must enter the intended household and recover connection without changing identity or losing intent |
+| First use and household | Explicit home-currency choice before first use, plus correction of an already implicit default binding while preserving historical amounts and currency meaning. The unconfigured CNY fallback currently lets the first financial write lock the choice. Owner/member/viewer must enter the intended household and recover connection without changing identity or losing intent |
 | Capture, facts and reference | Capture consumer gaps #387 closed; continue integrated search/reference/correction and remaining role/error journeys with one fact owner |
 | Relationships | Split creation #388, accepted-result continuation #391 and member settlement continuity #392 CLOSED. Continue integrated relationship journeys and remaining cross-client recovery evidence |
 | Planning and insights | Complete supported budget/goal/income/recurring/debt-plan tasks; overview/period review/data health reflect authoritative facts/corrections with useful empty/error/read-only states |
@@ -178,8 +178,8 @@ feedback and efficient actions within each active capability change.
 
 **Next action:** qualify and integrate [Web income correction](TICKETBOX_WEB_INCOME_EDIT_CONTRACT.md)
 and [recurring form continuation](TICKETBOX_RECURRING_FORM_CONTINUITY_CONTRACT.md).
-Then correct the initial currency-choice gap above; immutable historical money
-meaning cannot justify silently selecting an installation's home currency.
+Then correct initial currency choice and existing implicit-lock recovery;
+immutable historical money meaning cannot justify silently choosing and locking currency.
 Physical budget/income creation works; simplify Android's first-budget optional
 fields and correct the generic goal offline-viewing claim within Planning/convenience.
 Preserve draft #372 for the later detail wave.

@@ -87,6 +87,29 @@ def item_view(item, anomaly, *, currency_code: str, due_date: date | None) -> di
     }
 
 
+def apply_form_draft(ctx: dict, draft: dict | None, *, prepare_review: bool) -> None:
+    """Keep form continuation separate from canonical cards and action tokens."""
+    ctx["create_form"] = {
+        "merchant": "", "baseline_amount_yuan": "", "next_expected_date": ctx["suggested_next_date"],
+        "idempotency_key": uuid4().hex,
+    }
+    ctx["draft_public_id"] = draft.get("public_id") if draft else None
+    if draft is None:
+        return
+    target = next((item for item in ctx["items"] if item["public_id"] == draft.get("public_id")), None)
+    if draft.get("public_id") and target is None:
+        raise AppError("recurring_item_not_found", status_code=404)
+    if prepare_review and (target is None or target["status"] != "archived"):
+        draft = {**draft, "idempotency_key": uuid4().hex, "review_required": False}
+        if target:
+            draft["expected_row_version"] = str(target["row_version"])
+        ctx["flash_message"] = "填写已保留，尚未保存。核对已保存记录后，点击保存提交。"
+    if target:
+        target["edit_form"] = draft
+    else:
+        ctx["create_form"] = draft
+
+
 def _candidate_amount_cents(candidate: dict) -> int:
     return projection_sum_to_int(
         candidate.get("amount_cents"),
