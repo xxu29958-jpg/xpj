@@ -1,9 +1,5 @@
-"""CSV import service (v0.4-alpha3 slice 2 / PR17).
-
-Parses a small CSV (≤500 rows) into a preview model and, on confirm,
-writes them as ``status='pending'`` rows so the user can review them via
-``/web/pending`` before they hit the ledger. No image, no OCR — purely
-manual data entry shaped like the existing export schema.
+"""Parse CSV money and write pending expenses through the shared FX owner.
+The durable batch service reuses this parser for larger, paged imports.
 
 Accepted columns (case-insensitive, BOM-aware):
 
