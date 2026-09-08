@@ -67,6 +67,12 @@ def test_rendered_month_survives_calendar_change_and_replay_does_not_publish_aga
     for month, expected in (("2026-08", 100000), ("2026-09", 200025)):
         forecast = client.get("/api/income-plans", params={"month": month}, headers=identity.app_headers)
         assert forecast.status_code == 200 and forecast.json()["expected_amount_cents"] == expected
+    fields.update(label="再次修改", amount_yuan="2100.25")
+    reused = client.post(action, data=fields)
+    assert reused.status_code == 422 and 'value="再次修改"' in reused.text
+    assert 'name="review_latest"' in reused.text
+    assert hidden_post_forms(reused.text)[action]["idempotency_key"] == fields["idempotency_key"]
+    assert _revisions(plan["public_id"]) == revisions
 
 
 def test_refusal_retains_input_and_review_of_a_later_month_never_submits_a_write(web_income, identity):

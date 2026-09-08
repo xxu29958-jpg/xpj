@@ -113,10 +113,12 @@ def web_income_save(
         )
     except (AppError, ValidationError) as exc:
         db.rollback()
-        conflict = isinstance(exc, AppError) and exc.error == "state_conflict"
+        conflict = isinstance(exc, AppError) and exc.error in {"state_conflict", "idempotency_key_reused"}
         error = exc.message if isinstance(exc, AppError) else "请检查名称、频率、月份和金额。输入已保留。"
         if conflict:
             error = "计划已有较新变更。你的输入和原生效月份已保留，请核对当前计划后再保存。"
+            if exc.error == "idempotency_key_reused":
+                error = "这份表单已经提交过。新的修改尚未保存，请核对当前计划和生效月份后再保存。"
         return _render_editor(
             request, db, options, selected, plan, intent_month=intent_month,
             values=values, error=error, conflict=conflict,

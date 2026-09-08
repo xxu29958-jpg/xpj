@@ -2945,6 +2945,67 @@
         "title": "Body_web_import_preview_web_import_preview_post",
         "type": "object"
       },
+      "Body_web_income_save_web_income_plans__public_id__edit_post": {
+        "properties": {
+          "amount_yuan": {
+            "default": "",
+            "title": "Amount Yuan",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "frequency": {
+            "default": "",
+            "title": "Frequency",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "income_month": {
+            "default": "",
+            "title": "Income Month",
+            "type": "string"
+          },
+          "intent_month": {
+            "default": "",
+            "title": "Intent Month",
+            "type": "string"
+          },
+          "label": {
+            "default": "",
+            "title": "Label",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "pay_day": {
+            "default": "",
+            "title": "Pay Day",
+            "type": "string"
+          },
+          "review_latest": {
+            "default": false,
+            "title": "Review Latest",
+            "type": "boolean"
+          },
+          "source_type": {
+            "default": "",
+            "title": "Source Type",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_income_save_web_income_plans__public_id__edit_post",
+        "type": "object"
+      },
       "Body_web_items_acknowledge_mismatch_web_expenses__expense_id__items_acknowledge_mismatch_post": {
         "properties": {
           "expected_row_version": {
@@ -40773,6 +40834,117 @@
           }
         },
         "summary": "Post Archive",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/income-plans/{public_id}/edit": {
+      "get": {
+        "operationId": "web_income_edit_web_income_plans__public_id__edit_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "intent_month",
+            "required": true,
+            "schema": {
+              "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+              "title": "Intent Month",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Income Edit",
+        "tags": [
+          "web"
+        ]
+      },
+      "post": {
+        "operationId": "web_income_save_web_income_plans__public_id__edit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_income_save_web_income_plans__public_id__edit_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Income Save",
         "tags": [
           "web"
         ]

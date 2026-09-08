@@ -25,3 +25,14 @@ create/archive/restore owners remain; retire any duplicate or bypass introduced
 by the edit connection. The product atlas retains overall remaining packages;
 exact SHA/run evidence stays in the PR and external qualification directory.
 Windows lifecycle HOLDs and the full Goal remain unchanged.
+
+## Impact after construction
+
+The card/editor use the existing delivery and revision owners, including actor
+identity and original typed receipt. A rejected form retains its fields, key,
+version and month; explicit review prepares the current month/version without
+writing. A consumed form with a changed second edit receives that review exit
+too. Source-type labels are shared by list/create/edit and their old inline copy
+is retired. Route classification, OCC inventory and OpenAPI include the new
+native form; existing API schemas and financial storage remain unchanged.
+Real browser tasks, bounded review and final cloud qualification are required.
