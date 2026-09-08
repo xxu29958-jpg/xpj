@@ -15,7 +15,6 @@ from app.canonical_money_facts import canonical_money_facts_sha256
 from app.database import SessionLocal, engine
 from app.database._managed_postgres_migration_runtime import _prearmed_transaction
 from app.models import (
-    Budget,
     ExpenseItem,
     ExpenseSplit,
     Goal,
@@ -207,16 +206,16 @@ def test_upgrade_preserves_legacy_values_and_exposes_c07_release_bounds() -> Non
     run_alembic(command.upgrade, HEAD_REVISION)
 
     with SessionLocal() as db:
-        budget = db.query(Budget).filter_by(month="2026-07").one()
-        assert budget.rollover_amount_cents == LEGACY_INT32_MIN
-        budget.rollover_amount_cents = LEGACY_INT32_MAX + 1
-        db.commit()
-        assert budget.rollover_amount_cents == LEGACY_INT32_MAX + 1
-        budget.rollover_amount_cents = MONEY_MINOR_MAX
-        db.commit()
-        assert budget.rollover_amount_cents == MONEY_MINOR_MAX
-        budget.rollover_amount_cents = MONEY_MINOR_MAX + 1
+        # This test stops at C07; its SQL must not depend on later ORM columns.
+        read_rollover = text("SELECT rollover_amount_cents FROM budgets WHERE month = '2026-07'")
+        write_rollover = text("UPDATE budgets SET rollover_amount_cents = :amount WHERE month = '2026-07'")
+        assert db.scalar(read_rollover) == LEGACY_INT32_MIN
+        for amount in (LEGACY_INT32_MAX + 1, MONEY_MINOR_MAX):
+            db.execute(write_rollover, {"amount": amount})
+            db.commit()
+            assert db.scalar(read_rollover) == amount
         with pytest.raises(IntegrityError):
+            db.execute(write_rollover, {"amount": MONEY_MINOR_MAX + 1})
             db.commit()
         db.rollback()
 

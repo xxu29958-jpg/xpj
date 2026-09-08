@@ -6,6 +6,7 @@ from unittest.mock import Mock
 import pytest
 
 from app.errors import AppError
+from app.routes import web_budgets as web
 from app.routes.web_budgets import _budget_payload_from_draft
 from app.services import budget_command_service as command
 
@@ -48,3 +49,18 @@ def test_review_keeps_an_unresolved_original_key_when_no_receipt_exists():
     db.scalar.return_value = None
     assert command.review_monthly_budget_save(db, tenant_id="owner", month="2026-09", idempotency_key="original-key") is False
     db.commit.assert_not_called()
+
+
+def test_different_currency_review_keeps_original_basis_and_key(monkeypatch):
+    monkeypatch.setattr(web, "_list_ledger_options", lambda db: [])
+    monkeypatch.setattr(web, "_resolve_selected_ledger_id", lambda *args, **kwargs: "owner")
+    monkeypatch.setattr(web, "_require_selected_ledger_write", lambda *args: None)
+    monkeypatch.setattr(web, "review_monthly_budget_save", lambda *args, **kwargs: True)
+    monkeypatch.setattr(web, "get_monthly_budget", lambda *args, **kwargs:
+        SimpleNamespace(configured=True, home_currency_code="CNY", row_version=3))
+    monkeypatch.setattr(web, "_render_budgets", lambda **kwargs: kwargs)
+    original = _draft(idempotency_key="accepted-jpy-key")
+    result = web.web_budgets_save(Mock(), ledger_id="owner", month="2026-09", review_latest=True,
+        _local=None, db=Mock(), **original)
+    assert result["draft"] == original
+    assert "币种不同" in result["message"]

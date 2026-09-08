@@ -88,11 +88,29 @@ def test_budget_jpy_draft_survives_validation_under_cny_default(web_client):
     assert refused.status_code == 422, refused.text
     assert 'name="home_currency_code" value="JPY"' in refused.text
     assert 'name="total_amount_yuan" value="1.5"' in refused.text
+    assert 'type="submit">保存预算</button>' in refused.text
     accepted = web_client.post("/web/budgets/save", data={**form, "total_amount_yuan": "1200"}, follow_redirects=False)
     assert accepted.status_code == 303, accepted.text
     with SessionLocal() as db:
         budget = db.scalar(select(Budget).where(Budget.tenant_id == "owner", Budget.month == "2026-05"))
         assert (budget.home_currency_code, budget.total_amount_cents) == ("JPY", 1200)
+
+
+def test_budget_currency_conflict_offers_new_editor_without_relabelling_draft(web_client):
+    _save_budget(web_client)
+    key = str(uuid4())
+    form = {"ledger_id": "owner", "month": "2026-05", "home_currency_code": "JPY",
+        "expected_row_version": "null", "idempotency_key": key, "total_amount_yuan": "1200"}
+    for changes in ({}, {"review_latest": "true"}):
+        response = web_client.post("/web/budgets/save", data={**form, **changes})
+        assert response.status_code == (200 if changes else 409), response.text
+        assert 'name="home_currency_code" value="JPY"' in response.text
+        assert 'name="expected_row_version" value="null"' in response.text
+        assert f'name="idempotency_key" value="{key}"' in response.text
+        assert 'name="total_amount_yuan" value="1200"' in response.text
+        assert 'target="_blank" rel="noopener">打开当前预算重新编辑</a>' in response.text
+        assert 'type="submit">保存预算</button>' not in response.text
+        assert _owner_budget_total() == 100000
 
 
 def test_budget_presenter_keeps_fresh_execution_identity_when_draft_renames_row() -> None:

@@ -210,7 +210,10 @@
     </details>
 
     <div class="budget-actions">
-      {% if budget_conflict %}<button class="product-button product-button--primary" type="submit" name="review_latest" value="true" formnovalidate>保留输入，核对最新预算</button>
+      {% if budget_currency_changed %}
+      <p role="status">原输入使用 {{ save_intent.home_currency_code }}，与当前预算币种不同。原输入保留在此页，请在新页面按当前预算币种重新填写金额。</p>
+      <a class="product-button product-button--primary" href="/web/budgets?ledger_id={{ selected_ledger_id | urlencode }}&amp;month={{ month | urlencode }}" target="_blank" rel="noopener">打开当前预算重新编辑</a>
+      {% elif budget_conflict %}<button class="product-button product-button--primary" type="submit" name="review_latest" value="true" formnovalidate>保留输入，核对最新预算</button>
       {% else %}<button class="product-button product-button--primary" type="submit">保存预算</button>{% endif %}
     </div>
   </form>

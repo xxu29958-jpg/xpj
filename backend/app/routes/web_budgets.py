@@ -312,6 +312,8 @@ def _render_budgets(
         "idempotency_key": str(uuid4()),
     }
     ctx["budget_conflict"] = bool(draft is not None and draft.get("conflict"))
+    ctx["budget_currency_changed"] = bool(draft is not None and budget.configured and
+        draft["home_currency_code"] != budget.home_currency_code)
     return templates.TemplateResponse(
         request=request,
         name="budgets.html",
@@ -385,6 +387,9 @@ def web_budgets_save(
         if review_latest:
             accepted = review_monthly_budget_save(db, tenant_id=selected, month=target_month, idempotency_key=idempotency_key)
             latest = get_monthly_budget(db, tenant_id=selected, month=target_month, timezone_name=_budget_timezone_name())
+            if latest.configured and latest.home_currency_code != home_currency_code:
+                return _render_budgets(request=request, db=db, selected_id=selected, options=options,
+                    month=target_month, draft=draft, message="当前预算与原输入币种不同，已保留原输入。请打开当前预算重新编辑。")
             draft["expected_row_version"] = str(latest.row_version) if latest.row_version is not None else "null"
             if accepted:
                 draft["idempotency_key"] = str(uuid4())
