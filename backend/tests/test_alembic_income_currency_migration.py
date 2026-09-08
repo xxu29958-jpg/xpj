@@ -76,6 +76,8 @@ def test_unknown_income_history_is_declared_in_the_same_owner_adoption_transacti
         with engine.connect() as db:
             assert db.scalar(text("SELECT home_currency_code FROM monthly_income_plans")) is None
             assert db.scalar(text("SELECT home_currency_code FROM income_plan_revisions")) is None
+        # The historical edge is frozen; the live adoption owner needs its full current schema.
+        run_alembic(command.upgrade, "head")
         with SessionLocal() as db:
             auth = authenticate_session_token(db, bootstrap.admin_token, {"app", "admin"})
             preview = adoption_preview(db)

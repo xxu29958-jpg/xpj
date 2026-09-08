@@ -132,8 +132,8 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # main. See ``_audit_pr_delta_metrics.py`` docstring for what each
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
-    "mutate_token_carriers": 109,
-    "mutate_token_exempted": 127,
+    "mutate_token_carriers": 111,
+    "mutate_token_exempted": 125,
     "mutate_token_reason_admin_single_writer": 10,
     "mutate_token_reason_append_only_fact": 4,
     "mutate_token_reason_batch_db_write": 17,
@@ -144,7 +144,7 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_read_only_compute": 4,
     "mutate_token_reason_session_rotation": 8,
     "mutate_token_reason_terminal_flag_flip": 30,
-    "mutate_token_reason_upsert_bucket": 7,
+    "mutate_token_reason_upsert_bucket": 5,
 }
 STRICT_EQUALITY_BASELINE.update(load_current_test_count_baselines())
 

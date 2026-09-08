@@ -142,7 +142,6 @@ _RULES_APPLY = ("expenses", "rule_application_batches", "rule_application_change
 _LEARNING_PRUNE = ("algorithm_decisions", "ledger_learning_events", "ocr_facts")
 _SUGGESTION_EVENT = ("algorithm_decisions", "ledger_learning_events")
 _ADVISOR_WRITE = ("budget_advisor_audit_logs", "budget_advisor_quota_locks")
-_BUDGET_BUCKET = ("budgets", "budget_categories")
 _LEDGER_CREATE = ("ledgers", "ledger_members")
 _LEDGER_ARCHIVE = ("ledgers", "ledger_audit_logs")
 _OWNER_TRANSFER = ("ledger_members", "ledgers")
@@ -329,11 +328,9 @@ ALLOWLIST: dict[str, Exempt] = {
     ),
 
     # --- /api upsert / replace-all / lifecycle (tenant/account-keyed bucket) ---
-    "PUT /api/budgets/monthly/{month}": Exempt("upsert_bucket", "budget", _BUDGET_BUCKET),
     "PUT /api/dashboard/cards": Exempt("upsert_bucket", "budget", _DASHBOARD),
 
     # --- /web mutate forms / create / batch / terminal ---
-    "POST /web/budgets/save": Exempt("upsert_bucket", "budget", _BUDGET_BUCKET),
     "POST /web/budget-advise": Exempt("append_only_fact", "budget", _ADVISOR_WRITE, "high"),
     "POST /web/bill-splits/{public_id}/accept": Exempt("terminal_flag_flip", "bill_split", _BILL_SPLIT, "medium"),
     "POST /web/bill-splits/{public_id}/cancel": Exempt("terminal_flag_flip", "bill_split", _BILL_SPLIT),

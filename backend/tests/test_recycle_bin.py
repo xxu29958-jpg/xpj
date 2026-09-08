@@ -68,16 +68,12 @@ def _seed_archived_income(
 def _seed_archived_budget() -> tuple[str, int]:
     with SessionLocal() as db:
         budget = save_monthly_budget(
-            db,
+            db, tenant_id="owner", month="2026-07",
             actor_account_id=None, idempotency_key=str(uuid4()),
-            tenant_id="owner",
-            month="2026-07",
             payload=BudgetMonthlyUpdateRequest(
                 home_currency_code="CNY", expected_row_version=None,
                 total_amount_cents=66000,
-                category_budgets=[
-                    BudgetCategoryRequest(category="交通", amount_cents=12000)
-                ],
+                category_budgets=[BudgetCategoryRequest(category="交通", amount_cents=12000)],
             ),
         )
         archived = archive_monthly_budget(

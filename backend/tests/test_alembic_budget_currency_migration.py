@@ -73,6 +73,7 @@ def test_unknown_budget_currency_is_filled_only_by_owner_adoption():
         run_alembic(command.upgrade, _HEAD)
         with engine.connect() as db:
             assert db.scalar(text("SELECT home_currency_code FROM budgets")) is None
+        run_alembic(command.upgrade, "head")
         with SessionLocal() as db:
             auth = authenticate_session_token(db, bootstrap.admin_token, {"app", "admin"})
             preview = adoption_preview(db)

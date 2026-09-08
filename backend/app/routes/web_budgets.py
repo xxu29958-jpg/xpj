@@ -391,7 +391,7 @@ def web_budgets_save(
             return _render_budgets(request=request, db=db, selected_id=selected, options=options,
                 month=target_month, draft=draft, message="已保留输入并载入当前版本，请核对后再保存。")
         save_monthly_budget(db, tenant_id=selected, month=target_month, payload=_budget_payload_from_draft(draft),
-            actor_account_id=resolve_web_actor_account_id(request, db), idempotency_key=idempotency_key,
+            actor_account_id=resolve_web_actor_account_id(db, request, selected), idempotency_key=idempotency_key,
             timezone_name=_budget_timezone_name())
     except AppError as exc:
         draft["conflict"] = exc.error in {"state_conflict", "budget_currency_conflict", "idempotency_key_reused"}
