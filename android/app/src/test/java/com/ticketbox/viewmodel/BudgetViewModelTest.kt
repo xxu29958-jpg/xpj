@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.R
 import com.ticketbox.data.repository.BudgetActions
+import com.ticketbox.data.repository.BudgetSaveActions
 import com.ticketbox.data.repository.PendingBudgetSave
 import com.ticketbox.data.repository.LedgerAccessState
 import com.ticketbox.data.repository.RepositoryException
@@ -167,8 +168,8 @@ class BudgetViewModelTest {
         vm.save()
         advanceUntilIdle()
 
-        val request = fake.savedRequests.single()
-        assertEquals("2026-05", fake.savedMonths.single())
+        val request = fake.commands.savedRequests.single()
+        assertEquals("2026-05", fake.commands.savedMonths.single())
         assertEquals(300000L, request.totalAmountCents)
         assertEquals(-10000L, request.rolloverAmountCents)
         assertEquals(20000L, request.nonMonthlyAmountCents)
@@ -191,7 +192,7 @@ class BudgetViewModelTest {
         vm.save()
         advanceUntilIdle()
 
-        assertEquals(0, fake.savedRequests.size)
+        assertEquals(0, fake.commands.savedRequests.size)
         assertEquals(UiText.res(R.string.budget_validation_nonmonthly_negative), vm.uiState.value.message)
         assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
     }
@@ -209,7 +210,7 @@ class BudgetViewModelTest {
         vm.save()
         advanceUntilIdle()
 
-        assertEquals(0, fake.savedRequests.size)
+        assertEquals(0, fake.commands.savedRequests.size)
         assertEquals(UiText.res(R.string.common_readonly_ledger), vm.uiState.value.message)
         assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
         assertFalse(vm.uiState.value.canModify)
@@ -791,13 +792,13 @@ class BudgetViewModelBindingRaceTest {
         vm.updateTotalAmount("7000")
 
         val nextBinding = planBinding(ownerKey = "owner-b")
-        fake.authoritativeBinding = nextBinding
+        fake.commands.authoritativeBinding = nextBinding
         accessFlow.value = LedgerAccessContext(nextBinding, canModify = true)
         vm.save()
         advanceUntilIdle()
 
-        assertEquals(planBinding(ownerKey = "owner-a"), fake.attemptedBindings.single())
-        assertEquals(0, fake.savedRequests.size)
+        assertEquals(planBinding(ownerKey = "owner-a"), fake.commands.attemptedBindings.single())
+        assertEquals(0, fake.commands.savedRequests.size)
     }
 
     @Test
@@ -1054,13 +1055,11 @@ internal class FakeBudgetActions(
     private val cachedAdvice: BudgetAdviceResult? = null,
     private val accessFlow: Flow<LedgerAccessState?> = emptyFlow(),
     private val activeAccessFlow: Flow<LedgerAccessContext?> = flowOf(planAccess(canModify = canModify)),
-) : BudgetActions {
+    val commands: FakeBudgetSaveActions = FakeBudgetSaveActions(),
+) : BudgetActions, BudgetSaveActions by commands {
     val loadedMonths = mutableListOf<String>()
-    val savedMonths = mutableListOf<String>()
-    val savedRequests = mutableListOf<BudgetMonthlyUpdate>()
     val adviceMonths = mutableListOf<String>()
     val cachedAdviceMonths = mutableListOf<String>()
-    val attemptedBindings = mutableListOf<LogicalSessionBinding>()
     val loadCalls: Int get() = loadedMonths.size
     var canModify: Boolean = canModify
     var monthlyBudgetResponder: (suspend (String) -> Result<BudgetMonthly>)? = null
@@ -1072,9 +1071,6 @@ internal class FakeBudgetActions(
         cachedAdviceMonths += month
         return cachedAdvice
     }
-
-    var saveResponder: (suspend (BudgetMonthlyUpdate) -> Result<Long>)? = null
-    var authoritativeBinding: LogicalSessionBinding = planBinding()
 
     private val invalidationsFlow = MutableStateFlow(0)
 
@@ -1121,6 +1117,14 @@ internal class FakeBudgetActions(
         month: String,
     ): Result<BudgetMonthly> = monthlyBudget(month)
 
+}
+
+internal class FakeBudgetSaveActions : BudgetSaveActions {
+    val savedMonths = mutableListOf<String>()
+    val savedRequests = mutableListOf<BudgetMonthlyUpdate>()
+    val attemptedBindings = mutableListOf<LogicalSessionBinding>()
+    var saveResponder: (suspend (BudgetMonthlyUpdate) -> Result<Long>)? = null
+    var authoritativeBinding: LogicalSessionBinding = planBinding()
     val saves = MutableStateFlow<List<PendingBudgetSave>>(emptyList())
     override fun describeSave(row: com.ticketbox.data.repository.OutboxRow): com.ticketbox.data.repository.PendingBudgetSave? = saves.value.firstOrNull { it.row.id == row.id }
     override fun observeSaves(expectedBinding: LogicalSessionBinding): Flow<List<PendingBudgetSave>> = saves

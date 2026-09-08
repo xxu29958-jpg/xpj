@@ -18,7 +18,7 @@ class BudgetDraftContinuityTest {
         advanceUntilIdle()
         assertEquals("2026-07", vm.uiState.value.month)
         assertEquals(listOf("2026-07"), owner.loadedMonths)
-        assertEquals(0, owner.savedRequests.size)
+        assertEquals(0, owner.commands.savedRequests.size)
     }
 
     @Test
@@ -52,12 +52,12 @@ class BudgetDraftContinuityTest {
         assertEquals(original, restored.uiState.value.form)
         assertEquals("CNY", restored.uiState.value.budget?.homeCurrencyCode)
         assertEquals(2L, restored.uiState.value.budget?.rowVersion)
-        assertEquals(0, owner.savedRequests.size)
+        assertEquals(0, owner.commands.savedRequests.size)
     }
 
     @Test
     fun sameNamedLedgerKeepsRawDraftsWithTheirOriginalOwner() = budgetTest {
-        val originalBinding = FakeBudgetActions(budget()).authoritativeBinding
+        val originalBinding = FakeBudgetActions(budget()).commands.authoritativeBinding
         val access = MutableStateFlow(LedgerAccessContext(originalBinding, canModify = true))
         val owner = FakeBudgetActions(budget = budget().copy(homeCurrencyCode = "JPY"), activeAccessFlow = access)
         val vm = BudgetViewModel(owner, "2026-05")
@@ -72,6 +72,6 @@ class BudgetDraftContinuityTest {
         access.value = LedgerAccessContext(originalBinding, canModify = true)
         advanceUntilIdle()
         assertEquals(original, vm.uiState.value.form)
-        assertEquals(0, owner.savedRequests.size)
+        assertEquals(0, owner.commands.savedRequests.size)
     }
 }

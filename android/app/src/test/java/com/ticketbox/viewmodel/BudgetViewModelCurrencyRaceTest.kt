@@ -34,15 +34,15 @@ class BudgetViewModelCurrencyRaceTest {
         assertNotNull(vm.uiState.value.loadError)
         vm.save()
         advanceUntilIdle()
-        assertEquals(0, fake.savedRequests.size)
+        assertEquals(0, fake.commands.savedRequests.size)
         fake.monthlyBudgetResponder = null
         vm.refresh()
         advanceUntilIdle()
         assertEquals("1200", vm.uiState.value.form.totalAmount)
         vm.save()
         advanceUntilIdle()
-        assertEquals("JPY", fake.savedRequests.single().homeCurrencyCode)
-        assertEquals(1200L, fake.savedRequests.single().totalAmountCents)
+        assertEquals("JPY", fake.commands.savedRequests.single().homeCurrencyCode)
+        assertEquals(1200L, fake.commands.savedRequests.single().totalAmountCents)
     }
 
     @Test
@@ -60,9 +60,9 @@ class BudgetViewModelCurrencyRaceTest {
         assertEquals(2L, vm.uiState.value.budget?.rowVersion)
         vm.save()
         advanceUntilIdle()
-        assertEquals("JPY", fake.savedRequests.single().homeCurrencyCode)
-        assertEquals(1500L, fake.savedRequests.single().totalAmountCents)
-        assertEquals(1L, fake.savedRequests.single().expectedRowVersion)
+        assertEquals("JPY", fake.commands.savedRequests.single().homeCurrencyCode)
+        assertEquals(1500L, fake.commands.savedRequests.single().totalAmountCents)
+        assertEquals(1L, fake.commands.savedRequests.single().expectedRowVersion)
     }
 
     @Test

@@ -46,6 +46,12 @@ class BudgetGlobalRecoveryTest {
         compose.onNodeWithText(context.getString(R.string.sync_status_failed_button_retry)).assertDoesNotExist()
     }
 
+    @Test
+    fun originalBudgetOffersAnEntranceToItsMonth() {
+        show(pending())
+        compose.onNodeWithText("查看这月预算").performScrollTo().assertIsDisplayed()
+    }
+
     private fun show(pending: PendingBudgetSave) {
         val binding = LogicalSessionBinding("https://example.test", "owner", "owner", "session", "binding")
         val state = OutboxStatusUiState(binding = binding, bindingReady = true,

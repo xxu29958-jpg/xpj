@@ -24,7 +24,7 @@ class BudgetViewModelCapabilityTest {
         vm.save()
         advanceUntilIdle()
 
-        val request = fake.savedRequests.single()
+        val request = fake.commands.savedRequests.single()
         assertEquals(1_200L, request.totalAmountCents)
         assertEquals(1_200L, request.categoryBudgets.single().amountCents)
     }
@@ -42,7 +42,7 @@ class BudgetViewModelCapabilityTest {
         vm.save()
         advanceUntilIdle()
 
-        assertEquals(0, fake.savedRequests.size)
+        assertEquals(0, fake.commands.savedRequests.size)
         assertEquals(
             UiText.res(R.string.currency_unconfirmed_write_blocked),
             vm.uiState.value.message,
@@ -62,7 +62,7 @@ class BudgetViewModelCapabilityTest {
         vm.save()
         advanceUntilIdle()
 
-        assertEquals(0, fake.savedRequests.size)
+        assertEquals(0, fake.commands.savedRequests.size)
         assertEquals(
             UiText.res(R.string.budget_validation_amount_invalid),
             vm.uiState.value.message,
@@ -80,7 +80,7 @@ class BudgetViewModelCapabilityTest {
         vm.save()
         advanceUntilIdle()
 
-        assertEquals(0, fake.savedRequests.size)
+        assertEquals(0, fake.commands.savedRequests.size)
         assertEquals(
             UiText.res(R.string.budget_validation_amount_invalid),
             vm.uiState.value.message,
@@ -99,7 +99,7 @@ class BudgetViewModelCapabilityTest {
         vm.save()
         advanceUntilIdle()
 
-        val request = fake.savedRequests.single()
+        val request = fake.commands.savedRequests.single()
         assertEquals(300_000L, request.totalAmountCents)
         assertEquals(-20_000L, request.rolloverAmountCents)
     }

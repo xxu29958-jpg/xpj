@@ -14,7 +14,6 @@ import com.ticketbox.data.repository.FakeExpenseDao
 import com.ticketbox.data.repository.FakePendingMutationDao
 import com.ticketbox.data.repository.TestSessionFixture
 import com.ticketbox.data.repository.OutboxRepository
-import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.IncomePlanRepository
 import com.ticketbox.data.repository.testOutboxRepository
 import com.ticketbox.data.repository.testApiServiceProvider
@@ -83,7 +82,10 @@ class OutboxStatusViewModelTest {
     @Test
     fun rejectedKeepMineShowsFeedbackAndDropClearsIt() = runTest(dispatcher) {
         val harness = harness()
-        val row = harness.conflictRow(targetId = "expense:local:client-1")
+        val rowId = harness.outbox.enqueue(PendingMutationType.PatchExpense,
+            "expense:local:client-1", "{}", 1L)
+        harness.outbox.markConflict(rowId, "state conflict")
+        val row = harness.outbox.observeStatus().first { it.conflicts.isNotEmpty() }.conflicts.single()
         val vm = OutboxStatusViewModel(harness.outbox, harness.expenseRepository,
             OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits, harness.budgetSaves))
         runCurrent()
@@ -99,17 +101,6 @@ class OutboxStatusViewModelTest {
 
         assertNull(vm.uiState.value.message)
         assertEquals(MessageTone.Neutral, vm.uiState.value.messageTone)
-    }
-
-    private suspend fun Harness.conflictRow(targetId: String): OutboxRow {
-        val rowId = outbox.enqueue(
-            type = PendingMutationType.PatchExpense,
-            targetId = targetId,
-            payloadJson = "{}",
-            expectedRowVersion = 1L,
-        )
-        outbox.markConflict(rowId, "state conflict")
-        return outbox.observeStatus().first { it.conflicts.isNotEmpty() }.conflicts.single()
     }
 
     @Test

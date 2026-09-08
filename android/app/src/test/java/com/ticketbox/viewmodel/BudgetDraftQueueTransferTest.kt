@@ -26,8 +26,8 @@ class BudgetDraftQueueTransferTest {
         val oldSnapshot = SavedStateHandle(state.keys().associateWith { state.get<Any?>(it) })
         first.save()
         advanceUntilIdle()
-        assertEquals(1, owner.savedRequests.size)
-        owner.saves.value = listOf(pendingBudget())
+        assertEquals(1, owner.commands.savedRequests.size)
+        owner.commands.saves.value = listOf(pendingBudget())
         owner.budget = owner.budget.copy(homeCurrencyCode = "CNY", rowVersion = 3)
         val restored = BudgetViewModel(owner, "2026-05", savedStateHandle = oldSnapshot)
         advanceUntilIdle()
@@ -37,13 +37,13 @@ class BudgetDraftQueueTransferTest {
         assertEquals(1L, restored.uiState.value.form.expectedRowVersion)
         restored.save()
         advanceUntilIdle()
-        assertEquals(1, owner.savedRequests.size)
+        assertEquals(1, owner.commands.savedRequests.size)
         val accepted = budget(totalAmountCents = 1200).copy(homeCurrencyCode = "JPY", rowVersion = 2)
-        owner.saves.value = listOf(pendingBudget().let { it.copy(row = it.row.copy(status = PendingMutationStatus.Done), receipt = accepted) })
+        owner.commands.saves.value = listOf(pendingBudget().let { it.copy(row = it.row.copy(status = PendingMutationStatus.Done), receipt = accepted) })
         advanceUntilIdle()
         assertFalse(restored.uiState.value.hasPendingSave)
         assertEquals("CNY", restored.uiState.value.budget?.homeCurrencyCode)
-        assertEquals(1, owner.savedRequests.size)
+        assertEquals(1, owner.commands.savedRequests.size)
     }
 
     @Test
@@ -54,7 +54,7 @@ class BudgetDraftQueueTransferTest {
         advanceUntilIdle()
         vm.updateTotalAmount(" 1500 ")
         val original = vm.uiState.value.form
-        owner.saves.value = listOf(pendingBudget().let { it.copy(
+        owner.commands.saves.value = listOf(pendingBudget().let { it.copy(
             row = it.row.copy(status = PendingMutationStatus.Done),
             receipt = budget(totalAmountCents = 1200).copy(homeCurrencyCode = "JPY", rowVersion = 2),
         ) })
@@ -65,7 +65,7 @@ class BudgetDraftQueueTransferTest {
         advanceUntilIdle()
         assertEquals(original, restored.uiState.value.form)
         assertTrue(restored.uiState.value.formDirty)
-        assertEquals(0, owner.savedRequests.size)
+        assertEquals(0, owner.commands.savedRequests.size)
     }
 
     private fun pendingBudget() = PendingBudgetSave(
