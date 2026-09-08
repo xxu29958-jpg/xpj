@@ -7,7 +7,6 @@ Routes and page assembly only. Pure presenter/form helpers live in
 from __future__ import annotations
 
 import logging
-from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -17,6 +16,7 @@ from app.database import get_db
 from app.errors import AppError
 from app.money_contract import MoneySign, parse_canonical_money_minor
 from app.routes._web_recurring_presenter import (
+    apply_form_draft,
     candidate_review_prefill,
     candidate_view,
     conflict_error_kwargs,
@@ -113,6 +113,8 @@ def _render_recurring(
     error_guidance: dict | None = None,
     review_merchant: str | None = None,
     open_edit_id: str | None = None,
+    draft: dict | None = None,
+    prepare_review: bool = False,
 ) -> HTMLResponse:
     if status and status not in _VALID_STATUS_FILTERS:
         raise AppError("recurring_status_invalid", status_code=422)
@@ -138,7 +140,7 @@ def _render_recurring(
     if status:
         visible = [item for item in all_items if item.status == status]
     else:
-        visible = [item for item in all_items if item.status != "archived"]
+        visible = [item for item in all_items if item.status != "archived" or (draft and item.public_id == draft.get("public_id"))]
     due_dates = next_due_dates(db, tenant_id=selected_id, items=all_items)
     ctx["items"] = [
         item_view(
@@ -176,8 +178,7 @@ def _render_recurring(
     ctx["error_guidance"] = error_guidance
     today = now_utc().astimezone(accounting_zone()).date()
     ctx["suggested_next_date"] = suggest_next_expected_date(today).isoformat()
-    # 创建表单的 durable intent key: 一次渲染一把, 同一提交的重试/双击都回放它。
-    ctx["create_idempotency_key"] = uuid4().hex
+    apply_form_draft(ctx, draft, prepare_review=prepare_review)
     ctx["open_edit_id"] = open_edit_id
     return templates.TemplateResponse(request=request, name="recurring.html", context=ctx)
 
@@ -213,6 +214,7 @@ def web_recurring_create(
     baseline_amount_yuan: str = Form(default=""),
     next_expected_date: str = Form(default=""),
     idempotency_key: str = Form(default=""),
+    review_latest: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ):
@@ -224,6 +226,11 @@ def web_recurring_create(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
+    draft = {"merchant": merchant, "baseline_amount_yuan": baseline_amount_yuan,
+             "next_expected_date": next_expected_date, "idempotency_key": idempotency_key}
+    if review_latest == "true":
+        return _render_recurring(request=request, db=db, selected_id=selected_id, options=options,
+                                 draft=draft, prepare_review=True)
     try:
         currency_code = require_runtime_home_currency_code(db)
         amount_cents = parse_baseline_yuan(baseline_amount_yuan, currency_code=currency_code)
@@ -243,6 +250,7 @@ def web_recurring_create(
             db=db,
             selected_id=selected_id,
             options=options,
+            draft={**draft, "review_required": exc.error in {"idempotency_key_required", "idempotency_key_reused"}},
             **_conflict_kwargs(exc, selected_id=selected_id, merchant=merchant),
         )
     return _web_redirect("/web/recurring", selected_id, flash="已加入你的固定支出。")
@@ -300,6 +308,7 @@ def web_recurring_edit(
     next_expected_date: str = Form(default=""),
     expected_row_version: str = Form(default=""),
     idempotency_key: str = Form(default=""),
+    review_latest: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ):
@@ -310,10 +319,16 @@ def web_recurring_edit(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
+    draft = {"public_id": public_id, "merchant": merchant, "baseline_amount_yuan": baseline_amount_yuan,
+             "next_expected_date": next_expected_date, "idempotency_key": idempotency_key,
+             "expected_row_version": expected_row_version}
+    if review_latest == "true":
+        return _render_recurring(request=request, db=db, selected_id=selected_id, options=options,
+                                 draft=draft, prepare_review=True)
     parsed = parse_form_row_version_token(expected_row_version)
-    if parsed is None:
-        return _web_redirect("/web/recurring", selected_id, flash=_STALE_PAGE_FLASH)
     try:
+        if parsed is None:
+            raise AppError("invalid_request", _STALE_PAGE_FLASH, status_code=422)
         currency_code = require_runtime_home_currency_code(db)
         amount_cents = parse_baseline_yuan(baseline_amount_yuan, currency_code=currency_code)
         expected_date = parse_optional_date(next_expected_date)
@@ -337,6 +352,9 @@ def web_recurring_edit(
             db=db,
             selected_id=selected_id,
             options=options,
+            draft={**draft, "review_required": parsed is None or exc.error in {
+                "state_conflict", "idempotency_key_required", "idempotency_key_reused",
+            }},
             **_conflict_kwargs(exc, selected_id=selected_id, merchant=merchant),
         )
     return _web_redirect("/web/recurring", selected_id, flash="固定支出已保存。")

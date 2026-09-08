@@ -77,10 +77,37 @@ def item_view(item, anomaly, *, currency_code: str, due_date: date | None) -> di
             currency_code,
         ),
         "amount_delta_percent": anomaly.amount_delta_percent,
-        # 每次渲染生成一次: 编辑表单的 durable intent key (ADR-0042)。双击/重试
-        # 同一提交 → 服务端 replay; 重新渲染 = 新 intent, 换新键。
-        "edit_idempotency_key": uuid4().hex,
+        "edit_form": {
+            "merchant": item.merchant_name,
+            "baseline_amount_yuan": _amount_yuan(item.baseline_amount_cents, currency_code),
+            "next_expected_date": item.next_expected_date.isoformat() if item.next_expected_date else "",
+            "expected_row_version": str(item.row_version),
+            "idempotency_key": uuid4().hex,
+        },
     }
+
+
+def apply_form_draft(ctx: dict, draft: dict | None, *, prepare_review: bool) -> None:
+    """Keep form continuation separate from canonical cards and action tokens."""
+    ctx["create_form"] = {
+        "merchant": "", "baseline_amount_yuan": "", "next_expected_date": ctx["suggested_next_date"],
+        "idempotency_key": uuid4().hex,
+    }
+    ctx["draft_public_id"] = draft.get("public_id") if draft else None
+    if draft is None:
+        return
+    target = next((item for item in ctx["items"] if item["public_id"] == draft.get("public_id")), None)
+    if draft.get("public_id") and target is None:
+        raise AppError("recurring_item_not_found", status_code=404)
+    if prepare_review and (target is None or target["status"] != "archived"):
+        draft = {**draft, "idempotency_key": uuid4().hex, "review_required": False}
+        if target:
+            draft["expected_row_version"] = str(target["row_version"])
+        ctx["flash_message"] = "填写已保留，尚未保存。核对已保存记录后，点击保存提交。"
+    if target:
+        target["edit_form"] = draft
+    else:
+        ctx["create_form"] = draft
 
 
 def _candidate_amount_cents(candidate: dict) -> int:
@@ -254,7 +281,7 @@ def conflict_error_kwargs(
         if public_id:
             kwargs["error_guidance"] = _archived_guidance(selected_id, public_id)
     elif exc.error == "state_conflict":
-        kwargs["error_message"] = "这条记录刚在别处被修改，已为你刷新最新值，请核对后再保存。"
+        kwargs["error_message"] = "这条记录刚在别处被修改，你填的内容仍保留；请核对后再保存。"
     elif exc.error in {"idempotency_key_required", "idempotency_key_reused"}:
         kwargs["error_message"] = stale_page_flash
     elif exc.error == "idempotency_key_in_progress":

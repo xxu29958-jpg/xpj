@@ -144,19 +144,20 @@
         <span class="readonly-inline">只读</span>
         {% endif %}
       </div>
-      {% if can_write and item.status != 'archived' %}
-      <details class="plan-edit"{% if open_edit_id == item.public_id %} open{% endif %}>
+      {% if can_write and (item.status != 'archived' or draft_public_id == item.public_id) %}
+      {% set edit_form = item.edit_form %}
+      <details class="plan-edit"{% if open_edit_id == item.public_id or draft_public_id == item.public_id %} open{% endif %}>
         <summary class="product-button product-button--quiet product-button--small">编辑</summary>
         <form method="post" action="/web/recurring/{{ item.public_id }}/edit" class="budget-form">
           <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-          <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
-          <input type="hidden" name="idempotency_key" value="{{ item.edit_idempotency_key }}">
+          <input type="hidden" name="expected_row_version" value="{{ edit_form.expected_row_version }}">
+          <input type="hidden" name="idempotency_key" value="{{ edit_form.idempotency_key }}">
           {{ csrf_field|safe }}
           <div class="product-form-grid">
             <div class="product-field">
               <label for="rc-edit-merchant-{{ item.public_id }}">商家或名称</label>
               <input class="product-input" id="rc-edit-merchant-{{ item.public_id }}" type="text" name="merchant"
-                     maxlength="255" value="{{ item.merchant }}" required
+                     maxlength="255" value="{{ edit_form.merchant }}" required
                      {% if not item.merchant_editable %}readonly aria-describedby="rc-edit-merchant-help-{{ item.public_id }}"{% endif %}>
               {% if not item.merchant_editable %}
               <p class="hint" id="rc-edit-merchant-help-{{ item.public_id }}">名称与已识别账单绑定；可调整金额和日期。如需更换商家，请归档后新建。</p>
@@ -166,18 +167,25 @@
               <label for="rc-edit-amount-{{ item.public_id }}">每月金额（{{ currency_input.currency_code }} · {{ currency_input.currency_symbol }}，{{ currency_input.amount_input_hint }}）</label>
               <input class="product-input" id="rc-edit-amount-{{ item.public_id }}" type="number" name="baseline_amount_yuan"
                      step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}"
-                     inputmode="{{ currency_input.inputmode }}" value="{{ item.baseline_amount_yuan }}" required>
+                     inputmode="{{ currency_input.inputmode }}" value="{{ edit_form.baseline_amount_yuan }}" required>
             </div>
             <div class="product-field">
               <label for="rc-edit-date-{{ item.public_id }}">下次预计日期</label>
               <input class="product-input" id="rc-edit-date-{{ item.public_id }}" type="date" name="next_expected_date"
-                     value="{{ item.next_expected_date }}">
+                     value="{{ edit_form.next_expected_date }}">
               <p class="hint">清空表示不提醒——不留日期就不会提醒。</p>
             </div>
           </div>
+          {% if item.status == 'archived' %}
+          <p class="hint">填写仍保留。这条固定支出已归档，恢复后才能继续修改。</p>
+          {% else %}
           <div class="budget-actions">
-            <button class="product-button product-button--primary" type="submit">保存修改</button>
+            {% if edit_form.review_required %}
+            <button class="product-button" type="submit" name="review_latest" value="true" formnovalidate>核对已保存记录，保留填写继续</button>
+            {% endif %}
+            <button class="product-button product-button--primary" type="submit"{% if edit_form.review_required %} disabled{% endif %}>保存修改</button>
           </div>
+          {% endif %}
         </form>
       </details>
       {% endif %}
@@ -235,28 +243,31 @@
   </div>
   <form method="post" action="/web/recurring/create" class="budget-form">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <input type="hidden" name="idempotency_key" value="{{ create_idempotency_key }}">
+    <input type="hidden" name="idempotency_key" value="{{ create_form.idempotency_key }}">
     {{ csrf_field|safe }}
     <div class="product-form-grid">
       <div class="product-field">
         <label for="rc-add-merchant">商家或名称</label>
         <input class="product-input" id="rc-add-merchant" type="text" name="merchant" maxlength="255"
-               placeholder="房租、视频会员、保险…" required>
+               placeholder="房租、视频会员、保险…" value="{{ create_form.merchant }}" required>
       </div>
       <div class="product-field">
         <label for="rc-add-amount">每月金额（{{ currency_input.currency_code }} · {{ currency_input.currency_symbol }}，{{ currency_input.amount_input_hint }}）</label>
         <input class="product-input" id="rc-add-amount" type="number" name="baseline_amount_yuan"
                step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}"
-               inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_example }}" required>
+               inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_example }}" value="{{ create_form.baseline_amount_yuan }}" required>
       </div>
       <div class="product-field">
         <label for="rc-add-date">下次预计日期</label>
-        <input class="product-input" id="rc-add-date" type="date" name="next_expected_date" value="{{ suggested_next_date }}">
+        <input class="product-input" id="rc-add-date" type="date" name="next_expected_date" value="{{ create_form.next_expected_date }}">
         <p class="hint">已建议下月同日，可以改也可以清空——不留日期就不会提醒。</p>
       </div>
     </div>
     <div class="budget-actions">
-      <button class="product-button product-button--primary" type="submit">保存固定支出</button>
+      {% if create_form.review_required %}
+      <button class="product-button" type="submit" name="review_latest" value="true" formnovalidate>保留填写，准备重新保存</button>
+      {% endif %}
+      <button class="product-button product-button--primary" type="submit"{% if create_form.review_required %} disabled{% endif %}>保存固定支出</button>
     </div>
   </form>
   {% endif %}
