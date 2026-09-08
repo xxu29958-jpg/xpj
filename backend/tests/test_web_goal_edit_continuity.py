@@ -96,7 +96,8 @@ def test_viewer_and_other_ledger_cannot_reuse_the_goal_editor(web_client, identi
     action, fields = _editor(web_client, goal["public_id"])
     fields.update(name="禁止的修改", month="2026-05", target_amount_yuan="99", category="餐饮")
     foreign = web_client.post(action, data={**fields, "ledger_id": "gray"})
-    assert foreign.status_code in {403, 404}, foreign.text
+    assert foreign.status_code == 400, foreign.text
+    assert foreign.json()["error"] == "invalid_request"
     with SessionLocal() as db:
         member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1))
         assert member is not None

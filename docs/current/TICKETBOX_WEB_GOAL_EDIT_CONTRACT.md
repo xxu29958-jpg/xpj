@@ -43,3 +43,9 @@ explicit review displays current facts and prepares a new proposal without writi
 Create/archive and the shared recycle owner remain their existing consumers.
 Executed cloud RED found all three missing-entry cases. Candidate qualification,
 actual browser tasks and bounded review are still pending.
+
+The 360px real browser exposed month navigation pushing identity/actions outside
+the shared header. Compact headers now wrap the month picker onto its own row;
+month-bearing pages and the editor retain all controls. The new Web OCC form adds
+one token carrier to the exact inventory (107 → 108); no token exemption or debt
+ceiling changes. Asset cache keys already derive from template/CSS contents.

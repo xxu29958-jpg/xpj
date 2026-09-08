@@ -971,6 +971,18 @@ details[open] > .chrome-trigger {
 @media (max-width: 40rem) {
     .product-topbar {
         gap: var(--space-2);
+        flex-wrap: wrap;
+    }
+
+    .product-topbar > .month-picker {
+        order: 1;
+        flex-basis: 100%;
+        justify-content: center;
+    }
+
+    .topbar-domain,
+    .manager-home-link {
+        white-space: nowrap;
     }
 
     /* W1 IA-B: ≤40rem topbar = 品牌 mark / 当前域 + 记账 / 收票 / 我。
