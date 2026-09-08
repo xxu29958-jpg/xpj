@@ -25,15 +25,16 @@ def upgrade():
         op.add_column("exchange_rates", sa.Column("home_currency_code", sa.String(3), nullable=True))
     # Only a persisted ACTIVE choice proves these legacy rates' target. An
     # unadopted installation keeps NULL until its Owner confirms in one transaction.
-    bind.execute(sa.text(
-        "SELECT set_config('xpj.currency_writer', currency_contract_version::text || ':' || binding_revision::text, true) "
-        "FROM installation_currency_bindings WHERE singleton_id = 1 AND state = 'ACTIVE'"
-    ))
-    bind.execute(sa.text(
-        "UPDATE exchange_rates AS rate SET home_currency_code = binding.home_currency_code "
-        "FROM installation_currency_bindings AS binding "
-        "WHERE binding.singleton_id = 1 AND binding.state = 'ACTIVE' AND rate.home_currency_code IS NULL"
-    ))
+    if bind.scalar(sa.text("SELECT state = 'ACTIVE' FROM installation_currency_bindings WHERE singleton_id = 1")):
+        bind.execute(sa.text(
+            "SELECT set_config('xpj.currency_writer', currency_contract_version::text || ':' || binding_revision::text, true) "
+            "FROM installation_currency_bindings WHERE singleton_id = 1"
+        ))
+        bind.execute(sa.text(
+            "UPDATE exchange_rates AS rate SET home_currency_code = binding.home_currency_code "
+            "FROM installation_currency_bindings AS binding "
+            "WHERE binding.singleton_id = 1 AND rate.home_currency_code IS NULL"
+        ))
     uniques = {item["name"] for item in inspector.get_unique_constraints("exchange_rates")}
     if "uq_exchange_rates_tenant_currency_date" in uniques:
         op.drop_constraint("uq_exchange_rates_tenant_currency_date", "exchange_rates", type_="unique")
