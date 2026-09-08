@@ -1,0 +1,27 @@
+# Web income-plan editing
+
+Authority: full Goal and latest user rulings → final Gmail contracts → exact
+code/runtime. Strengthen Planning without duplicating its revision authority.
+
+## User outcome and impact before construction
+
+Web income cards support create/archive/restore but have no editing task. A
+writer needs to correct the real plan, retain input after refusal, understand the
+effective month and continue after a cross-client conflict. Earlier immutable
+revisions and their forecast meaning must survive every new submission.
+
+| Boundary | Required closure |
+|---|---|
+| Entries | Income card → native edit form; rendered server forecast month travels with the form rather than being replaced by the calendar at Save |
+| Owner | Reuse income_plan_service._delivery.update_income_plan_idempotently, its original typed receipt, actor fingerprint and immutable revision owner; no new writer/state engine |
+| Consumers | Web list/editor/forecast, API and Android income delivery retain frequency, one-time month, amount, pay day and intent-month semantics |
+| Old success exits | Edit has no existing success path. Invalid/OCC refusal must retain fields/key/token/month; explicit review prepares a new proposal without publishing |
+| Persistence/protocol | Existing MonthlyIncomePlan, IncomePlanRevision and idempotency tables/epoch suffice. Repeated original submissions cannot add a revision |
+| Recovery | A later-month conflict requires explicit review of the current month and current version; repeatedly resubmitting an older month is not a recovery action |
+| Direct producers | Frozen-clock native form replay and month rollover; unchanged earlier forecasts/revisions; failed validation; cross-client later-month OCC; role/ledger guard; existing delivery and revision tests; actual browser tasks |
+
+This slice starts with executed counterexamples before implementation. Existing
+create/archive/restore owners remain; retire any duplicate or bypass introduced
+by the edit connection. The product atlas retains overall remaining packages;
+exact SHA/run evidence stays in the PR and external qualification directory.
+Windows lifecycle HOLDs and the full Goal remain unchanged.
