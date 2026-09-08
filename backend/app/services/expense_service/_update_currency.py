@@ -129,6 +129,7 @@ def _apply_update_currency(
         apply_currency_payload(
             db,
             tenant_id=tenant_id,
+            home_currency_code=expense.home_currency_code,
             expense=expense,
             payload=payload,
             amount_was_explicit="amount_cents" in updates,
@@ -152,6 +153,7 @@ def _apply_update_currency(
     apply_currency_payload(
         db,
         tenant_id=tenant_id,
+        home_currency_code=expense.home_currency_code,
         expense=expense,
         payload=payload,
         amount_was_explicit="amount_cents" in updates,

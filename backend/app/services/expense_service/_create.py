@@ -163,6 +163,7 @@ def _insert_manual_expense(
     apply_currency_payload(
         db,
         tenant_id=tenant_id,
+        home_currency_code=require_runtime_home_currency_code(db),
         expense=expense,
         payload=payload,
         amount_was_explicit=payload.amount_cents is not None,
@@ -317,6 +318,7 @@ def create_notification_draft(
     apply_currency_payload(
         db,
         tenant_id=tenant_id,
+        home_currency_code=require_runtime_home_currency_code(db),
         expense=expense,
         payload=payload,
         amount_was_explicit=payload.amount_cents is not None,

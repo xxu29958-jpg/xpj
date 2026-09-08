@@ -28,7 +28,7 @@ def test_web_note_length_uses_textarea_newlines(separator: str) -> None:
     from app.routes.web_debt_create import _create_payload
 
     fields = {
-        "home_currency_code": "CNY", "direction": "i_owe",
+        "direction": "i_owe",
         "counterparty_label": "同行人",
         "amount_major": "12.00",
         "currency_code": "CNY",

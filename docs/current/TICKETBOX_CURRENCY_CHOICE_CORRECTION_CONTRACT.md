@@ -33,6 +33,7 @@ the user's existing financial data remains a separate, concrete approval step.
 | Persistence and recovery | Binding/audit/idempotency receipt, currency evidence inventory and SQL guards; migration tests; Android negotiated binding, queued payloads, dispatcher recovery and legacy gate |
 | Debt create intent | Web form and Android `DebtCreationRepository` capture currency; `CreateDebtDispatcher` maps the durable v1 intent to the wire request without replacing its meaning. `debt_command_service` owns create/replay; an old completed receipt is reusable only when its original request and persisted currency match. Request-contract, API replay and existing Room-payload tests verify these boundaries |
 | Changed command protocol | Debt create and manual FX reuse the income command's version dependency before body validation. Old clients receive `client_upgrade_required`; runtime projection no longer promises unversioned write compatibility. Direct HTTP producers negotiate through the existing test client helper; protocol refusal tests use the original old request shape |
+| Expense currency continuation | Pending FX refresh, date/original-currency edits and manual pending FX preserve `Expense.home_currency_code`. The shared payload owner requires explicit context; new manual/notification capture still uses the confirmed default, and parsed direct imports retain their parse currency. Persisted CSV staging still needs its own carrier before default changes can open. Direct conversion/refresh tests verify record meaning under a different default |
 | Product consumers | Money pages, recycle bin and Owner projections, reports/insights, Android forms/caches and sync feedback, Desktop first-use navigation; real non-CNY choice then financial task, refusal/replay and cross-client recovery |
 | Verification producers | Explicit currency fixtures for ordinary and migration tests; legacy bootstrap/admin HTTP smoke and Desktop bridge tests declare a configured CNY baseline. Dedicated fresh Owner product tests and VM prove actual initial selection. Generated API and protocol gates follow real semantic changes |
 
@@ -80,6 +81,11 @@ frozen currency. Web validation keeps the form currency and retry key; a changed
 already-used form requires a nonwriting review before a new command. These
 changes are candidates awaiting full qualification, not closure of all money
 consumers or permission to change an existing installation default yet.
+Expense FX refresh and date/currency corrections now pass the stored record
+currency to the same FX owner. Direct parsed imports retain their parse currency.
+Persisted staging and planning carriers still need completion; the old CNY
+unversioned-writer exception must also retire across remaining commands before
+the default-change path opens, with its direct client/test producers migrated.
 
 Qualification includes TDD, exact candidate cloud gates, bounded review, real
 Desktop/Android continuation and independent main qualification. No long local

@@ -22,7 +22,6 @@ from app.money_contract import (
     ensure_optional_money_minor,
 )
 from app.services.currency_binding_service import (
-    assert_currency_binding_consistent,
     require_runtime_home_currency_code,
     resolve_write_capability,
 )
@@ -363,6 +362,7 @@ def apply_currency_payload(
     db: Session,
     *,
     tenant_id: str,
+    home_currency_code: str,
     expense: Expense,
     payload: CurrencyPayload,
     amount_was_explicit: bool,
@@ -376,8 +376,8 @@ def apply_currency_payload(
     if not has_original_fields and not amount_was_explicit:
         # R10②：纯元数据维护不读 env、不过门（不碰币种快照，漂移/配错 env 不拖死它）。
         return
-    home = require_runtime_home_currency_code(db)
-    assert_currency_binding_consistent(db, home)
+    home = normalize_currency_code(home_currency_code)
+    resolve_write_capability(db)
     if not has_original_fields:
         _apply_legacy_home_amount(expense, payload, home=home)
         return
@@ -434,6 +434,7 @@ def refresh_currency_snapshot(db: Session, *, tenant_id: str, expense: Expense) 
     apply_currency_payload(
         db,
         tenant_id=tenant_id,
+        home_currency_code=expense.home_currency_code,
         expense=expense,
         payload=expense,
         amount_was_explicit=False,

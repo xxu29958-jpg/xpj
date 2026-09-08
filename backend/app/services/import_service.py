@@ -44,7 +44,7 @@ from app.errors import AppError
 from app.models import Expense
 from app.money_contract import MoneySign, ensure_optional_money_minor
 from app.services.category_service import normalize_category
-from app.services.currency_binding_service import require_runtime_home_currency_code, resolve_write_capability
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.exchange_rate_service import (
     BASE_CURRENCY_CODE,
     apply_currency_payload,
@@ -73,9 +73,10 @@ DEFAULT_SOURCE = "CSV导入"
 @dataclass
 class ParsedRow:
     line_number: int
+    home_currency_code: str
+    original_currency_code: str
     amount_cents: int | None = None
     amount_display: str = ""
-    original_currency_code: str = BASE_CURRENCY_CODE
     original_amount_minor: int | None = None
     exchange_rate_to_cny: Decimal | None = None
     exchange_rate_date: date | None = None
@@ -418,6 +419,7 @@ def parse_csv_row(
     )
     return ParsedRow(
         line_number=line_number,
+        home_currency_code=home_currency,
         amount_cents=fx.amount_cents,
         amount_display=fx.amount_display,
         original_currency_code=fx.original_currency_code,
@@ -482,9 +484,10 @@ def import_rows(
         apply_currency_payload(
             db,
             tenant_id=tenant_id,
+            home_currency_code=row.home_currency_code,
             expense=expense,
             payload=row,
-            amount_was_explicit=row.original_currency_code == require_runtime_home_currency_code(db) and row.amount_cents is not None,
+            amount_was_explicit=row.original_currency_code == row.home_currency_code and row.amount_cents is not None,
         )
         db.add(expense)
         created.append(expense)

@@ -155,12 +155,7 @@ def web_create_debt(
     db: Session = Depends(get_db),
 ) -> Response:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(
-        db,
-        ledger_id or None,
-        options,
-        request=request,
-    )
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     values = {
         "direction": direction,

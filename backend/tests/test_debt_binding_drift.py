@@ -169,6 +169,7 @@ def test_metadata_only_payload_bypasses_gate_and_env_read(monkeypatch) -> None:
             apply_currency_payload(
                 db,
                 tenant_id="owner",
+                home_currency_code="CNY",
                 expense=expense,
                 payload=SimpleNamespace(note="after"),
                 amount_was_explicit=False,
@@ -184,7 +185,7 @@ def test_explicit_amount_payload_uses_confirmed_basis_despite_environment(monkey
     monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
     with SessionLocal() as db:
         expense = Expense(tenant_id="owner")
-        apply_currency_payload(db, tenant_id="owner", expense=expense,
+        apply_currency_payload(db, tenant_id="owner", home_currency_code="CNY", expense=expense,
             payload=SimpleNamespace(amount_cents=1200), amount_was_explicit=True)
         assert expense.amount_cents == 1200
         assert expense.original_amount_minor == 1200
