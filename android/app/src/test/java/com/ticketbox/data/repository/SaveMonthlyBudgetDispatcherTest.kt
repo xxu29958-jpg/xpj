@@ -28,7 +28,7 @@ class SaveMonthlyBudgetDispatcherTest {
         assertIs<DispatchResult.RetryableFailure>(writer.dispatch(row))
         stub.result = Result.success(receipt(version = 1))
         val success = assertIs<DispatchResult.Success>(writer.dispatch(row))
-        assertEquals(listOf("original-budget-key", "original-budget-key"), stub.keys)
+        assertEquals(listOf<String?>("original-budget-key", "original-budget-key"), stub.keys)
         assertEquals(2, stub.requests.size)
         assertEquals(stub.requests.first(), stub.requests.last())
         assertEquals("JPY", stub.requests.last().homeCurrencyCode)
