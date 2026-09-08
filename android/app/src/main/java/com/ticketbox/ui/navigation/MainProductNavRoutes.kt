@@ -80,6 +80,8 @@ internal fun NavGraphBuilder.addWorkspaceRoute(
     }
 }
 
+internal fun budgetRoute(month: String): String = "${ProductSecondaryPage.Budget.route}?month=$month"
+
 internal fun NavGraphBuilder.addPlanRoutes(
     dependencies: MainProductRouteDependencies,
 ) {
