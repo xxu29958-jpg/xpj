@@ -282,7 +282,7 @@ def _parse_amount(
             None,
             declared_home,
             "client_upgrade_required",
-            f"CSV home_currency_code={declared_home} 与当前账本 {home_currency} 不一致；禁止跨本位币静默导入",
+            f"CSV home_currency_code={declared_home} 与本行解析币种 {home_currency} 不一致",
         )
     if raw_yuan and declared_home != BASE_CURRENCY_CODE:
         return (

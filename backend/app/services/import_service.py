@@ -9,10 +9,10 @@ Accepted columns (case-insensitive, BOM-aware):
 
 * ``amount_yuan``, ``amount_cents`` or ``amount_home_major`` — one required.
   ``amount_yuan`` is the published legacy CSV compatibility column and always
-  means CNY with two fraction digits. It is accepted only by CNY installations.
+  means CNY with two fraction digits. It is accepted only for CNY rows.
   Currency-aware producers must carry exact ``amount_cents`` plus an explicit
-  matching ``home_currency_code``; ``amount_home_major`` is cross-checked using
-  that currency's exponent.
+  ``home_currency_code`` for each row; ``amount_home_major`` is cross-checked
+  using that currency's exponent, independently of the current default.
 * ``merchant`` — optional
 * ``category`` — optional, defaults to ``"其他"``
 * ``note`` — optional
@@ -45,6 +45,7 @@ from app.models import Expense
 from app.money_contract import MoneySign, ensure_optional_money_minor
 from app.services.category_service import normalize_category
 from app.services.currency_binding_service import resolve_write_capability
+from app.services.currency_common import supported_currency_codes
 from app.services.exchange_rate_service import (
     BASE_CURRENCY_CODE,
     apply_currency_payload,
@@ -375,6 +376,9 @@ def parse_csv_row(
     home_currency: str,
 ) -> ParsedRow:
     cells = dict(zip(headers, row + [""] * max(0, len(headers) - len(row)), strict=False))
+    declared_home = cells.get("home_currency_code", "").strip().upper()
+    if declared_home in supported_currency_codes():
+        home_currency = declared_home
     (
         amount_cents,
         amount_display,

@@ -66,6 +66,9 @@ def test_unadopted_manual_rate_waits_for_the_same_audited_owner_transaction():
         run_alembic(command.upgrade, _HEAD)
         with SessionLocal() as db:
             assert db.scalar(text("SELECT home_currency_code FROM exchange_rates")) is None
+        # Runtime adoption uses the current schema, after the frozen migration probe.
+        run_alembic(command.upgrade, "head")
+        with SessionLocal() as db:
             auth = authenticate_session_token(db, bootstrap.admin_token, {"app", "admin"})
             preview = adoption_preview(db)
             assert "JPY" in preview.allowed_home_currency_codes

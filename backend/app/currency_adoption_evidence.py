@@ -36,6 +36,7 @@ def _has_legacy_currencyless_money_facts(connection: Connection) -> bool:
                     OR EXISTS (
                         SELECT 1 FROM csv_import_rows
                          WHERE amount_cents IS NOT NULL
+                           AND to_jsonb(csv_import_rows)->>'home_currency_code' IS NULL
                     )
                     OR EXISTS (
                         SELECT 1 FROM goals
@@ -96,6 +97,11 @@ def currency_adoption_evidence(connection: Connection) -> CurrencyAdoptionEviden
             {"c07_money_facts_sha256": canonical_money_facts_sha256(connection)}
         )
     )
+    for row in connection.execute(text(
+        "SELECT id, tenant_id, to_jsonb(csv_import_rows)->>'home_currency_code' AS home_currency_code "
+        "FROM csv_import_rows ORDER BY id"
+    )):
+        digest.update(_json_line({"csv_import_row": row.id, "tenant_id": row.tenant_id, "home_currency_code": row.home_currency_code}))
     exchange_rows = list(
         connection.execute(
             text(

@@ -27,6 +27,7 @@ from app.services.csv_import_batch_service import (
     create_csv_import_batch,
 )
 from app.services.time_service import now_utc
+from tests._runtime_protocol import current_protocol_headers
 from tests.desktop_activation_support import token_row as _token_row
 from tests.test_csv_import_batches_apply_lease import _csv_bytes
 from tests.test_desktop_ledger_switch_prepare import _desktop_session
@@ -210,7 +211,7 @@ def test_api_apply_desktop_bearer_applies_the_batch(identity, client: TestClient
 
     response = client.post(
         f"/api/imports/csv/{public_id}/apply",
-        headers=headers,
+        headers=current_protocol_headers(headers),
         json={"batch_size": 3},
     )
     assert response.status_code == 200, response.text
@@ -234,7 +235,7 @@ def test_api_apply_desktop_bearer_aborts_when_membership_disabled_mid_batch(
 
     response = client.post(
         f"/api/imports/csv/{public_id}/apply",
-        headers=headers,
+        headers=current_protocol_headers(headers),
         json={"batch_size": 3},
     )
     assert response.status_code == 401

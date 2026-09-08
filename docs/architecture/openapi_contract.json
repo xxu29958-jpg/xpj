@@ -6093,6 +6093,17 @@
             ],
             "title": "Expense Time"
           },
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
+          },
           "line_number": {
             "title": "Line Number",
             "type": "integer"
@@ -6170,6 +6181,7 @@
           "error_code",
           "error_message",
           "amount_cents",
+          "home_currency_code",
           "original_currency_code",
           "original_amount_minor",
           "exchange_rate_to_cny",

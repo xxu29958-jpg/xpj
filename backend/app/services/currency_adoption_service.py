@@ -28,6 +28,7 @@ from app.database._currency_writer import lock_currency_evidence_tables
 from app.errors import AppError
 from app.fx_constants import CURRENCY_MINOR_UNIT_DIGITS, DEFAULT_SUPPORTED_CURRENCY_CODES
 from app.models import (
+    CsvImportRow,
     Device,
     ExchangeRate,
     InstallationCurrencyAuditLog,
@@ -229,6 +230,7 @@ def _adopt_in_transaction(
     db.flush()
     _set_writer_proof(db, binding)
     db.execute(update(ExchangeRate).where(ExchangeRate.home_currency_code.is_(None)).values(home_currency_code=code))
+    db.execute(update(CsvImportRow).where(CsvImportRow.home_currency_code.is_(None)).values(home_currency_code=code))
 
     receipt = _receipt(binding, event, evidence_sha256=evidence.sha256, activated_at=activated_at)
     claimed.status = "succeeded"

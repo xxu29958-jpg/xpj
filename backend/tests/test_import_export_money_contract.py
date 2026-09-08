@@ -140,7 +140,7 @@ def test_parse_csv_preview_round_trips_zero_decimal_home_money_exactly(
         get_settings.cache_clear()
 
 
-def test_parse_csv_preview_rejects_cross_home_currency_file(
+def test_parse_csv_preview_preserves_explicit_currency_independently_of_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
@@ -151,9 +151,9 @@ def test_parse_csv_preview_rejects_cross_home_currency_file(
             "1234,CNY,12.34\n",
             home_currency="JPY",
         )
-        assert preview.valid_count == 0
-        assert preview.rows[0].error_code == "client_upgrade_required"
-        assert preview.rows[0].amount_cents is None
+        assert preview.valid_count == 1
+        assert preview.rows[0].home_currency_code == "CNY"
+        assert preview.rows[0].amount_cents == 1234
     finally:
         get_settings.cache_clear()
 

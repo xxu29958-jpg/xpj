@@ -62,7 +62,6 @@ from app.services.csv_import_batch_service._row_claim import (
     _reset_claimed_csv_import_rows,
 )
 from app.services.currency_binding_service import (
-    require_runtime_home_currency_code,
     resolve_write_capability,
 )
 from app.services.desktop_switch_service import revalidate_desktop_session_under_lock
@@ -123,10 +122,10 @@ def _process_csv_import_apply_row(
     apply_currency_payload(
         db,
         tenant_id=tenant_id,
-        home_currency_code=require_runtime_home_currency_code(db),
+        home_currency_code=row.home_currency_code,
         expense=expense,
         payload=row,
-        amount_was_explicit=row.original_currency_code == require_runtime_home_currency_code(db) and row.amount_cents is not None,
+        amount_was_explicit=row.original_currency_code == row.home_currency_code and row.amount_cents is not None,
     )
     return expense
 

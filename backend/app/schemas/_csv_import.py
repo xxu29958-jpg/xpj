@@ -49,6 +49,7 @@ class CsvImportRowResponse(BaseModel):
     error_code: str | None
     error_message: str | None
     amount_cents: NonNegativeMoneyMinor | None
+    home_currency_code: str | None
     original_currency_code: str | None
     original_amount_minor: NonNegativeMoneyMinor | None
     exchange_rate_to_cny: Decimal | None

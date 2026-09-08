@@ -359,7 +359,7 @@ def test_stale_binding_is_refused_while_environment_cannot_change_confirmed_curr
     client: TestClient, web_client: TestClient, activate_currency, monkeypatch, *, identity,
 ) -> None:
     activate_currency("CNY")
-    initial = _put_budget(client, headers=identity.auth_headers)
+    initial = _put_budget(client, headers=identity.app_headers)
     assert initial.status_code == 200, initial.json()
     stale = _put_budget(client, headers=_runtime_headers(identity.auth_headers, binding="1:0:CNY"), month="2026-09")
     assert stale.status_code == 409
