@@ -13,6 +13,7 @@ def _seed_usd_rate(client: TestClient, identity, rate_date: str, rate: str) -> N
         f"/api/exchange-rates/USD/{rate_date}",
         headers=identity.app_headers,
         json={
+            "home_currency_code": "CNY",
             "currency_code": "USD",
             "rate_date": rate_date,
             "rate_to_cny": rate,

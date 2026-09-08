@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from typing import Literal
 from uuid import RFC_4122, UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import Session
 
@@ -29,6 +29,7 @@ from app.errors import AppError
 from app.fx_constants import CURRENCY_MINOR_UNIT_DIGITS, DEFAULT_SUPPORTED_CURRENCY_CODES
 from app.models import (
     Device,
+    ExchangeRate,
     InstallationCurrencyAuditLog,
     InstallationCurrencyBinding,
     InstallationIdempotencyKey,
@@ -38,6 +39,7 @@ from app.services import permission_service
 from app.services.currency_binding_service import (
     CurrencyBindingState,
     _load_binding,
+    _set_writer_proof,
     _snapshot,
     _state,
 )
@@ -225,6 +227,8 @@ def _adopt_in_transaction(
     event.after_snapshot = _snapshot(binding)
     db.add(event)
     db.flush()
+    _set_writer_proof(db, binding)
+    db.execute(update(ExchangeRate).where(ExchangeRate.home_currency_code.is_(None)).values(home_currency_code=code))
 
     receipt = _receipt(binding, event, evidence_sha256=evidence.sha256, activated_at=activated_at)
     claimed.status = "succeeded"

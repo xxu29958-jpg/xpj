@@ -170,6 +170,7 @@ def _freeze_foreign_amount(
         rate, source, fx_status, effective_date = resolve_payload_rate(
             db,
             tenant_id=tenant_id,
+            home_currency_code=home,
             currency_code=code,
             rate_date=rate_date,
         )

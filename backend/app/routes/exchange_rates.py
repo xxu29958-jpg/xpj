@@ -18,6 +18,7 @@ router = APIRouter(prefix="/api/exchange-rates", tags=["exchange-rates"])
 @router.get("", response_model=ExchangeRateListResponse)
 def get_rates(
     currency_code: str | None = None,
+    home_currency_code: str | None = None,
     limit: int = Query(default=90, ge=1, le=365),
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
@@ -27,6 +28,7 @@ def get_rates(
             db,
             tenant_id=auth.tenant_id,
             currency_code=currency_code,
+            home_currency_code=home_currency_code,
             limit=limit,
         )
     )
@@ -49,6 +51,7 @@ def put_rate(
         db,
         tenant_id=auth.tenant_id,
         currency_code=code,
+        home_currency_code=payload.home_currency_code,
         rate_date=rate_date,
         rate_to_cny=payload.rate_to_cny,
         source=payload.source,

@@ -19,6 +19,7 @@ def _set_manual_rate(
         f"/api/exchange-rates/{currency_code}/{rate_date}",
         headers=identity.app_headers,
         json={
+            "home_currency_code": "CNY",
             "currency_code": currency_code,
             "rate_date": rate_date,
             "rate_to_cny": rate_to_cny,

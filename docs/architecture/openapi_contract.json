@@ -7635,6 +7635,12 @@
             "title": "Currency Code",
             "type": "string"
           },
+          "home_currency_code": {
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Home Currency Code",
+            "type": "string"
+          },
           "rate_date": {
             "format": "date",
             "title": "Rate Date",
@@ -7662,6 +7668,7 @@
         },
         "required": [
           "currency_code",
+          "home_currency_code",
           "rate_date",
           "rate_to_cny"
         ],
@@ -7683,6 +7690,10 @@
           },
           "currency_code": {
             "title": "Currency Code",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "title": "Home Currency Code",
             "type": "string"
           },
           "public_id": {
@@ -7717,6 +7728,7 @@
         "required": [
           "public_id",
           "currency_code",
+          "home_currency_code",
           "rate_date",
           "rate_to_cny",
           "source",
@@ -21181,6 +21193,22 @@
                 }
               ],
               "title": "Currency Code"
+            }
+          },
+          {
+            "in": "query",
+            "name": "home_currency_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Home Currency Code"
             }
           },
           {

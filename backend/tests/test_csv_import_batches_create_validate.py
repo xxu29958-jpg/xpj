@@ -99,7 +99,7 @@ def test_csv_import_batch_handles_more_than_legacy_preview_limit_with_paged_appl
         assert inserted == 10_000
 
 
-def test_csv_import_batch_create_inserts_rows_in_chunks(
+def test_csv_import_batch_failure_preserves_confirmed_currency_and_rolls_back_rows(
     identity,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -142,8 +142,15 @@ def test_csv_import_batch_create_inserts_rows_in_chunks(
         assert db.scalar(select(func.count()).select_from(CsvImportRow)) == 0
         assert db.scalar(select(func.count()).select_from(CsvImportBatch)) == 1
 
-    monkeypatch.setattr(lifecycle_mod, "_row_from_parsed", real_row_from_parsed)
+
+
+def test_csv_import_batch_create_inserts_rows_in_chunks(identity, monkeypatch: pytest.MonkeyPatch) -> None:
+    del identity
+    import app.services.csv_import_batch_service._lifecycle as lifecycle_mod
+
+    monkeypatch.setattr(lifecycle_mod, "CREATE_BATCH_INSERT_CHUNK_SIZE", 2)
     with SessionLocal() as db:
+        confirmed_currency = get_capability(db)
         real_commit = db.commit
         real_flush = db.flush
         commit_count = 0
@@ -247,6 +254,7 @@ def test_csv_import_foreign_amount_cents_is_original_minor_not_home_amount(clien
         "/api/exchange-rates/USD/2026-05-04",
         headers=identity.app_headers,
         json={
+            "home_currency_code": "CNY",
             "currency_code": "USD",
             "rate_date": "2026-05-04",
             "rate_to_cny": "7.0000",

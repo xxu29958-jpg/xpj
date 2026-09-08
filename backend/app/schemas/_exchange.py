@@ -22,6 +22,7 @@ class ExchangeRateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     currency_code: str = Field(min_length=3, max_length=3)
+    home_currency_code: str = Field(min_length=3, max_length=3)
     rate_date: date
     rate_to_cny: PositiveCanonicalDecimalInput
     source: str | None = Field(default=FX_SOURCE_MANUAL, max_length=32)
@@ -32,6 +33,7 @@ class ExchangeRateResponse(BaseModel):
 
     public_id: str
     currency_code: str
+    home_currency_code: str
     rate_date: date
     rate_to_cny: Decimal
     source: str

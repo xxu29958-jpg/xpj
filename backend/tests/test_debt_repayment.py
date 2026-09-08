@@ -40,6 +40,7 @@ def _seed_usd_rate(*, tenant_id: str, rate_date: date, rate_to_cny: str) -> None
         db.add(
             ExchangeRate(
                 tenant_id=tenant_id,
+                home_currency_code="CNY",
                 currency_code="USD",
                 rate_date=rate_date,
                 rate_to_cny=Decimal(rate_to_cny),

@@ -39,6 +39,7 @@ from fastapi.testclient import TestClient
             "/api/exchange-rates/USD/2026-05-24",
             {
                 "json": {
+                    "home_currency_code": "CNY",
                     "currency_code": "USD",
                     "rate_date": "2026-05-24",
                     "rate_to_cny": "7.2000",

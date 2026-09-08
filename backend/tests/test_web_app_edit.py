@@ -42,7 +42,7 @@ def test_web_correction_preserves_foreign_currency_fields(web_client: TestClient
     rate = web_client.put(
         "/api/exchange-rates/USD/2026-05-04",
         headers=identity.app_headers,
-        json={"currency_code": "USD", "rate_date": "2026-05-04", "rate_to_cny": "7.0000"},
+        json={"home_currency_code": "CNY", "currency_code": "USD", "rate_date": "2026-05-04", "rate_to_cny": "7.0000"},
     )
     assert rate.status_code == 200, rate.json()
     created = web_client.post(

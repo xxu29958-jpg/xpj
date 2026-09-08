@@ -259,7 +259,7 @@ def test_foreign_repayment_uses_confirmed_debt_basis_despite_environment(client:
     monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "CNY")
     paid_at = datetime(2026, 9, 8, 2, tzinfo=UTC)
     with SessionLocal() as db:
-        upsert_exchange_rate(db, tenant_id="owner", currency_code="USD", rate_date=paid_at.date(), rate_to_cny=Decimal("150"))
+        upsert_exchange_rate(db, tenant_id="owner", currency_code="USD", home_currency_code="JPY", rate_date=paid_at.date(), rate_to_cny=Decimal("150"))
         record_repayment(db, tenant_id="owner", public_id=public_id, actor_account_id=_owner_account_id(),
             payload=RepaymentCreateRequest(original_currency="USD", original_amount=Decimal("1"), paid_at=paid_at, expected_row_version=1),
             idempotency_key=str(uuid4()))

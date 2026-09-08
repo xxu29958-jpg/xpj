@@ -259,6 +259,7 @@ def test_foreign_refund_uses_accounting_date_rate_and_freezes_snapshot(
         "/api/exchange-rates/USD/2026-05-04",
         headers=identity.app_headers,
         json={
+            "home_currency_code": "CNY",
             "currency_code": "USD",
             "rate_date": "2026-05-04",
             "rate_to_cny": "7",
@@ -270,6 +271,7 @@ def test_foreign_refund_uses_accounting_date_rate_and_freezes_snapshot(
         "/api/exchange-rates/USD/2026-05-05",
         headers=identity.app_headers,
         json={
+            "home_currency_code": "CNY",
             "currency_code": "USD",
             "rate_date": "2026-05-05",
             "rate_to_cny": "8",
@@ -324,6 +326,7 @@ def test_foreign_refund_without_accounting_date_rate_refuses_without_mutation(
         "/api/exchange-rates/USD/2026-05-04",
         headers=identity.app_headers,
         json={
+            "home_currency_code": "CNY",
             "currency_code": "USD",
             "rate_date": "2026-05-04",
             "rate_to_cny": "7",
@@ -401,6 +404,7 @@ def test_foreign_reversal_reuses_root_snapshot_without_a_new_rate(
         "/api/exchange-rates/USD/2026-05-04",
         headers=identity.app_headers,
         json={
+            "home_currency_code": "CNY",
             "currency_code": "USD",
             "rate_date": "2026-05-04",
             "rate_to_cny": "7",

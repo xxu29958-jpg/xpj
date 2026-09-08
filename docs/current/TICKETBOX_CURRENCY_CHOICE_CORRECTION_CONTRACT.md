@@ -66,8 +66,12 @@ First prove absent choice and non-CNY selection against the current default;
 retire implicit activation and configuration-as-money-authority with all direct
 consumers. Then close existing implicit-binding correction, using actual evidence
 to distinguish empty setup from records that require preserved historical meaning.
-The correction decision above governs the next transaction, migration and
-consumer work; those paths remain unimplemented and in this delivery package.
+Manual rates now capture both currencies in their command, stored row and
+lookup. The migration uses an existing ACTIVE binding; unknown legacy targets
+wait for the same audited Owner adoption transaction. Expenses, offsets and
+repayments request rates for their explicit money context. This is a candidate
+implementation; the other money carriers, nonempty choice transaction and
+offline continuation remain unfinished in this delivery package.
 
 Qualification includes TDD, exact candidate cloud gates, bounded review, real
 Desktop/Android continuation and independent main qualification. No long local

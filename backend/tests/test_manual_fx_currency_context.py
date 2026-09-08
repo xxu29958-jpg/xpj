@@ -3,6 +3,7 @@
 from datetime import date
 from decimal import Decimal
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
@@ -18,6 +19,13 @@ def _put_rate(client, identity, home, rate):
             "rate_date": "2026-09-08", "rate_to_cny": rate,
         },
     )
+
+
+@pytest.mark.currency_binding_unbound
+def test_unadopted_rates_require_owner_choice_before_the_list_can_label_them(client: TestClient, identity):
+    response = client.get("/api/exchange-rates", headers=identity.app_headers)
+    assert response.status_code == 409
+    assert response.json()["error"] == "currency_adoption_required"
 
 
 def test_manual_rate_requires_the_target_currency(client: TestClient, identity):

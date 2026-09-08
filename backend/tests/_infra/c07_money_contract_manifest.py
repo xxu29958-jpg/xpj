@@ -61,7 +61,7 @@ POSITIVE_DECIMAL_REQUEST_FIELDS = (
     (
         ExchangeRateRequest,
         "rate_to_cny",
-        {"currency_code": "USD", "rate_date": "2026-05-04"},
+        {"currency_code": "USD", "home_currency_code": "CNY", "rate_date": "2026-05-04"},
     ),
     (
         DebtCreateRequest,

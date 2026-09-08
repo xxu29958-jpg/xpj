@@ -16,7 +16,7 @@ from app.canonical_money_facts_contract import INSTALLATION_HOME_CURRENCY_KEY
 from app.errors import AppError
 from app.fx_constants import DEFAULT_HOME_CURRENCY_CODE, DEFAULT_SUPPORTED_CURRENCY_CODES
 
-_EVIDENCE_SCHEMA = "ticketbox-c02-currency-adoption-evidence-v1"
+_EVIDENCE_SCHEMA = "ticketbox-c02-currency-adoption-evidence-v2"
 
 
 def _has_legacy_currencyless_money_facts(connection: Connection) -> bool:
@@ -100,7 +100,8 @@ def currency_adoption_evidence(connection: Connection) -> CurrencyAdoptionEviden
         connection.execute(
             text(
                 """
-                SELECT public_id, tenant_id, currency_code, rate_date, rate_to_cny, source
+                SELECT public_id, tenant_id, currency_code, rate_date, rate_to_cny, source,
+                       to_jsonb(exchange_rates)->>'home_currency_code' AS home_currency_code
                   FROM exchange_rates
                  ORDER BY public_id
                 """
@@ -115,6 +116,7 @@ def currency_adoption_evidence(connection: Connection) -> CurrencyAdoptionEviden
             _json_line(
                 {
                     "currency_code": row.currency_code,
+                    "home_currency_code": row.home_currency_code,
                     "public_id": row.public_id,
                     "rate_date": row.rate_date.isoformat(),
                     "rate_to_cny": format(rate, "f"),
@@ -123,7 +125,9 @@ def currency_adoption_evidence(connection: Connection) -> CurrencyAdoptionEviden
                 }
             )
         )
-    rate_source_codes = {str(row.currency_code) for row in exchange_rows}
+    # A known pair already carries its meaning. Only unadopted legacy rates
+    # constrain the currency the Owner is about to supply for missing carriers.
+    rate_source_codes = {str(row.currency_code) for row in exchange_rows if row.home_currency_code is None}
 
     explicit_codes = set(
         connection.scalars(

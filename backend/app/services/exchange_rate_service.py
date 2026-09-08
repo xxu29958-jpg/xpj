@@ -159,29 +159,15 @@ def get_exchange_rate(
     tenant_id: str,
     currency_code: str,
     rate_date: date,
-) -> ExchangeRate | None:
-    return _get_exchange_rate_for_home(
-        db,
-        tenant_id=tenant_id,
-        currency_code=currency_code,
-        rate_date=rate_date,
-        home=require_runtime_home_currency_code(db),
-    )
-
-
-def _get_exchange_rate_for_home(
-    db: Session,
-    *,
-    tenant_id: str,
-    currency_code: str,
-    rate_date: date,
-    home: str,
+    home_currency_code: str,
 ) -> ExchangeRate | None:
     code = normalize_currency_code(currency_code)
+    home = normalize_currency_code(home_currency_code)
     if code == home:
         return None
     return db.scalar(
         ledger_scoped_select(ExchangeRate, tenant_id)
+        .where(ExchangeRate.home_currency_code == home)
         .where(ExchangeRate.currency_code == code)
         .where(ExchangeRate.rate_date == rate_date)
     )
@@ -192,14 +178,19 @@ def list_exchange_rates(
     *,
     tenant_id: str,
     currency_code: str | None = None,
+    home_currency_code: str | None = None,
     limit: int = 90,
 ) -> list[ExchangeRate]:
+    require_runtime_home_currency_code(db)
     query = ledger_scoped_select(ExchangeRate, tenant_id)
+    if home_currency_code:
+        query = query.where(ExchangeRate.home_currency_code == normalize_currency_code(home_currency_code))
     if currency_code:
         query = query.where(ExchangeRate.currency_code == normalize_currency_code(currency_code))
     return list(
         db.scalars(
-            query.order_by(ExchangeRate.rate_date.desc(), ExchangeRate.currency_code.asc()).limit(min(max(limit, 1), 365))
+            query.order_by(ExchangeRate.rate_date.desc(), ExchangeRate.currency_code.asc(), ExchangeRate.home_currency_code.asc())
+            .limit(min(max(limit, 1), 365))
         )
     )
 
@@ -209,29 +200,31 @@ def upsert_exchange_rate(
     *,
     tenant_id: str,
     currency_code: str,
+    home_currency_code: str,
     rate_date: date,
     rate_to_cny: Decimal,
     source: str | None = None,
 ) -> ExchangeRate:
     resolve_write_capability(db)
     code = normalize_currency_code(currency_code)
-    home = require_runtime_home_currency_code(db)
+    home = normalize_currency_code(home_currency_code)
     if code == home:
         raise AppError("exchange_rate_base_currency", status_code=422)
     rate = format_decimal_rate(rate_to_cny)
     assert rate is not None
     clean_source = (source or FX_SOURCE_MANUAL).strip()[:32] or FX_SOURCE_MANUAL
-    existing = _get_exchange_rate_for_home(
+    existing = get_exchange_rate(
         db,
         tenant_id=tenant_id,
         currency_code=code,
         rate_date=rate_date,
-        home=home,
+        home_currency_code=home,
     )
     now = now_utc()
     if existing is None:
         existing = ExchangeRate(
             tenant_id=tenant_id,
+            home_currency_code=home,
             currency_code=code,
             rate_date=rate_date,
             rate_to_cny=rate,
@@ -254,6 +247,7 @@ def resolve_payload_rate(
     *,
     tenant_id: str,
     currency_code: str,
+    home_currency_code: str,
     rate_date: date,
 ) -> tuple[Decimal | None, str | None, str, date]:
     """Resolve (rate, source, fx_status, effective_date) for a currency on a date.
@@ -266,15 +260,15 @@ def resolve_payload_rate(
     rate, so the requested date is echoed back.
     """
     code = normalize_currency_code(currency_code)
-    home = require_runtime_home_currency_code(db)
+    home = normalize_currency_code(home_currency_code)
     if code == home:
         return Decimal("1"), FX_SOURCE_BASE, FX_STATUS_READY, rate_date
-    stored = _get_exchange_rate_for_home(
+    stored = get_exchange_rate(
         db,
         tenant_id=tenant_id,
         currency_code=code,
         rate_date=rate_date,
-        home=home,
+        home_currency_code=home,
     )
     if stored is not None:
         return Decimal(stored.rate_to_cny), stored.source, FX_STATUS_READY, stored.rate_date
@@ -417,6 +411,7 @@ def apply_currency_payload(
         rate, source, fx_status, effective_rate_date = resolve_payload_rate(
             db,
             tenant_id=tenant_id,
+            home_currency_code=home,
             currency_code=code,
             rate_date=rate_date,
         )

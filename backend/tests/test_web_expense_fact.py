@@ -230,6 +230,7 @@ def test_web_correction_can_change_original_currency_through_existing_fx_owner(
         "/api/exchange-rates/USD/2026-05-04",
         headers=identity.app_headers,
         json={
+            "home_currency_code": "CNY",
             "currency_code": "USD",
             "rate_date": "2026-05-04",
             "rate_to_cny": "7.0000",

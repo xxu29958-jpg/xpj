@@ -82,6 +82,7 @@ def _foreign_expense(web_client: TestClient, *, identity, rate: str = "7.0000") 
         "/api/exchange-rates/USD/2026-05-04",
         headers=identity.app_headers,
         json={
+            "home_currency_code": "CNY",
             "currency_code": "USD",
             "rate_date": "2026-05-04",
             "rate_to_cny": rate,
@@ -286,6 +287,7 @@ def test_web_edit_ignores_mutable_rate_and_preserves_frozen_fx_snapshot(
         "/api/exchange-rates/USD/2026-05-04",
         headers=identity.app_headers,
         json={
+            "home_currency_code": "CNY",
             "currency_code": "USD",
             "rate_date": "2026-05-04",
             "rate_to_cny": "8.0000",
@@ -337,6 +339,7 @@ def test_api_amount_correction_preserves_frozen_rate_snapshot(
         "/api/exchange-rates/USD/2026-05-04",
         headers=identity.app_headers,
         json={
+            "home_currency_code": "CNY",
             "currency_code": "USD",
             "rate_date": "2026-05-04",
             "rate_to_cny": "8.0000",
