@@ -34,6 +34,7 @@ from app.money_contract import projection_sum_to_int
 from app.services.budget_service import list_archived_budgets, restore_monthly_budget
 from app.services.category_preference_service import restore_category_preference
 from app.services.classify_service import undo_delete_rule
+from app.services.currency_binding_service import runtime_home_currency_code
 from app.services.currency_common import minor_amount_label
 from app.services.goal_service import restore_goal
 from app.services.income_plan_service import restore_income_plan
@@ -71,13 +72,14 @@ class RecycleBinListing:
 
 
 def list_recycle_bin_items(db: Session, *, tenant_id: str) -> RecycleBinListing:
+    currency = runtime_home_currency_code(db)
     rows: list[RecycleBinItem] = []
-    rows.extend(_archived_budget_rows(db, tenant_id))
+    rows.extend(_archived_budget_rows(db, tenant_id, currency))
     rows.extend(_soft_deleted_category_preference_rows(db, tenant_id))
     rows.extend(_soft_deleted_merchant_catalog_rows(db, tenant_id))
-    rows.extend(_archived_income_rows(db, tenant_id))
-    rows.extend(_archived_recurring_rows(db, tenant_id))
-    rows.extend(_archived_goal_rows(db, tenant_id))
+    rows.extend(_archived_income_rows(db, tenant_id, currency))
+    rows.extend(_archived_recurring_rows(db, tenant_id, currency))
+    rows.extend(_archived_goal_rows(db, tenant_id, currency))
     rows.extend(_soft_deleted_rule_rows(db, tenant_id))
     rows.extend(_soft_deleted_alias_rows(db, tenant_id))
     rows.extend(_tag_undo_rows(db, tenant_id))
@@ -216,7 +218,7 @@ def _sort_key(row: RecycleBinItem) -> datetime:
     return row.removed_at or datetime.min
 
 
-def _archived_income_rows(db: Session, tenant_id: str) -> list[RecycleBinItem]:
+def _archived_income_rows(db: Session, tenant_id: str, currency: str | None) -> list[RecycleBinItem]:
     intent_month = current_accounting_month()
     rows = db.scalars(
         select(MonthlyIncomePlan)
@@ -230,7 +232,7 @@ def _archived_income_rows(db: Session, tenant_id: str) -> list[RecycleBinItem]:
             kind_label="收入计划",
             resource_id=item.public_id,
             title=item.label,
-            detail=_income_detail(item) + f" · 恢复从 {intent_month} 生效",
+            detail=_income_detail(item, currency) + f" · 恢复从 {intent_month} 生效",
             removed_at=item.archived_at,
             retention_label="长期保留",
             expected_row_version=item.row_version,
@@ -240,14 +242,14 @@ def _archived_income_rows(db: Session, tenant_id: str) -> list[RecycleBinItem]:
     ]
 
 
-def _archived_budget_rows(db: Session, tenant_id: str) -> list[RecycleBinItem]:
+def _archived_budget_rows(db: Session, tenant_id: str, currency: str | None) -> list[RecycleBinItem]:
     return [
         RecycleBinItem(
             kind="monthly_budget",
             kind_label="预算",
             resource_id=item.month,
             title=f"{item.month} 月度预算",
-            detail=_budget_detail(db, item),
+            detail=_budget_detail(db, item, currency),
             removed_at=item.archived_at,
             retention_label="长期保留",
             expected_row_version=item.row_version,
@@ -312,7 +314,7 @@ def _soft_deleted_merchant_catalog_rows(
     ]
 
 
-def _archived_recurring_rows(db: Session, tenant_id: str) -> list[RecycleBinItem]:
+def _archived_recurring_rows(db: Session, tenant_id: str, currency: str | None) -> list[RecycleBinItem]:
     rows = db.scalars(
         select(RecurringItem)
         .where(RecurringItem.tenant_id == tenant_id)
@@ -327,7 +329,7 @@ def _archived_recurring_rows(db: Session, tenant_id: str) -> list[RecycleBinItem
             title=item.merchant_name,
             detail=recurring_item_monthly_detail(
                 item,
-                _money(item.baseline_amount_cents),
+                _money(item.baseline_amount_cents, currency),
             ),
             removed_at=item.archived_at,
             retention_label="长期保留",
@@ -337,7 +339,7 @@ def _archived_recurring_rows(db: Session, tenant_id: str) -> list[RecycleBinItem
     ]
 
 
-def _archived_goal_rows(db: Session, tenant_id: str) -> list[RecycleBinItem]:
+def _archived_goal_rows(db: Session, tenant_id: str, currency: str | None) -> list[RecycleBinItem]:
     rows = db.scalars(
         select(Goal)
         .where(Goal.tenant_id == tenant_id)
@@ -350,7 +352,7 @@ def _archived_goal_rows(db: Session, tenant_id: str) -> list[RecycleBinItem]:
             kind_label="目标",
             resource_id=item.public_id,
             title=item.name,
-            detail=_goal_detail(item),
+            detail=_goal_detail(item, currency),
             removed_at=item.archived_at,
             retention_label="长期保留",
             expected_row_version=item.row_version,
@@ -446,41 +448,37 @@ def _tag_undo_rows(db: Session, tenant_id: str) -> list[RecycleBinItem]:
     return rows
 
 
-def _income_detail(item: MonthlyIncomePlan) -> str:
+def _income_detail(item: MonthlyIncomePlan, currency: str | None) -> str:
     frequency = "每月固定" if item.frequency == "monthly" else f"{item.income_month} 预计"
-    return f"{frequency} · {_money(item.amount_cents)} · {item.pay_day} 号"
+    return f"{frequency} · {_money(item.amount_cents, currency)} · {item.pay_day} 号"
 
 
-def _goal_detail(item: Goal) -> str:
+def _goal_detail(item: Goal, currency: str | None) -> str:
     if item.goal_type == "debt_repayment":
         return "还债目标"
     scope = item.category or "总支出"
-    return f"{item.month} · {scope} · 目标 {_money(item.target_amount_cents)}"
+    return f"{item.month} · {scope} · 目标 {_money(item.target_amount_cents, currency)}"
 
 
-def _budget_detail(db: Session, item: Budget) -> str:
+def _budget_detail(db: Session, item: Budget, currency: str | None) -> str:
     category_count = db.scalar(
         select(func.count(BudgetCategory.id))
         .where(BudgetCategory.tenant_id == item.tenant_id)
         .where(BudgetCategory.month == item.month)
     )
     return (
-        f"总预算 {_money(item.total_amount_cents)} · "
+        f"总预算 {_money(item.total_amount_cents, currency)} · "
         f"分类预算 {int(category_count or 0)} 项"
     )
 
 
-def _money(amount_cents: int) -> str:
-    # Income/goal/budget/recurring rows carry no per-row currency column: their
-    # amounts are stored in home-currency minor units, so None lets
-    # currency_common resolve the deployment home code (JPY/KRW → zero
-    # fraction, divmod-based, no float).
+def _money(amount_cents: int, currency: str | None) -> str:
     return minor_amount_label(
         projection_sum_to_int(
             amount_cents,
             label="recycle_bin.money",
         ),
-        None,
+        currency,
     )
 
 

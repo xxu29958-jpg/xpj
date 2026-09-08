@@ -59,14 +59,14 @@ def test_recycle_income_display_and_restore_share_one_accounting_month(monkeypat
 
     clock = Mock(side_effect=["2026-09", "2026-10", "2026-10", "2026-10"])
     monkeypatch.setattr(recycle_bin_service, "current_accounting_month", clock)
-    monkeypatch.setattr(recycle_bin_service, "_income_detail", lambda _: "计划")
+    monkeypatch.setattr(recycle_bin_service, "_income_detail", lambda _item, _currency: "计划")
     db = Mock()
     db.scalars.return_value = [
         SimpleNamespace(public_id=key, label=key, archived_at=None, row_version=2)
         for key in ("plan-a", "plan-b")
     ]
 
-    rows = recycle_bin_service._archived_income_rows(db, "owner")
+    rows = recycle_bin_service._archived_income_rows(db, "owner", "CNY")
     responses = [recycle_bin._to_response(row) for row in rows]
 
     assert len(responses) == 2

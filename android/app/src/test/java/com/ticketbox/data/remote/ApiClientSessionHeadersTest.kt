@@ -7,6 +7,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import okhttp3.Protocol
+import java.io.IOException
 import java.net.ServerSocket
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
@@ -15,6 +16,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
 
 class ApiClientSessionHeadersTest {
     @Test

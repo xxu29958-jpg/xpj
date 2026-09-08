@@ -170,8 +170,9 @@ def test_rules_page_render_follows_zero_decimal_home(jpy_env, web_client: TestCl
     assert "¥12.00" not in page.text
 
 
+@pytest.mark.currency_binding_unbound
 def test_budget_advise_render_follows_zero_decimal_home(jpy_env, web_client: TestClient, *, identity) -> None:
-    # R15a-3：JPY env 下 advise breakdown 回显零缩放 + 输入 step 走零小数元数据。
+    _activate_jpy_authority()
     page = web_client.get(
         "/web/budget-advise?ledger_id=owner&month=2026-05&savings_target_yuan=1200",
     )
@@ -191,10 +192,11 @@ def test_budget_advise_render_follows_zero_decimal_home(jpy_env, web_client: Tes
     assert 'step="1"' in page.text
 
 
+@pytest.mark.currency_binding_unbound
 def test_budget_advise_suggestion_table_follows_zero_decimal_home(
     jpy_env, web_client: TestClient, live_provider_env, monkeypatch, *, identity
 ) -> None:
-    # R15a-3：AI 建议表回显零缩放 —— suggested_amount_cents=1200 亮 "¥1200"，不 ÷100。
+    _activate_jpy_authority()
     _patch_provider_suggestion(monkeypatch, 1200)
 
     page = web_client.post(

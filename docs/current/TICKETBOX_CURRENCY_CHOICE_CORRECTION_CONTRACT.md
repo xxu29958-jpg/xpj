@@ -31,11 +31,34 @@ the user's existing financial data remains a separate, concrete approval step.
 | Money writers | Expense/manual/OCR/import, debt/repayment/proposal, split invitation, budget/goal/income/recurring/category rules; existing command and currency/FX tests, DB writer fences |
 | Parsing and FX | `currency_common`, `exchange_rate_service`, `fx_rate_provider`, scheduler; explicit source/home arguments must replace env-derived meaning, including pure-helper callers |
 | Persistence and recovery | Binding/audit/idempotency receipt, currency evidence inventory and SQL guards; migration tests; Android negotiated binding, queued payloads, dispatcher recovery and legacy gate |
-| Product consumers | Money pages and Owner projections, reports/insights, Android forms/caches and sync feedback, Desktop first-use navigation; real non-CNY choice then financial task, refusal/replay and cross-client recovery |
-| Verification producers | Currency fixtures currently activate/claim authority; migrate fixtures to explicit setup without allowing tests to restore the implicit production writer. Generated API and protocol gates follow real semantic changes |
+| Product consumers | Money pages, recycle bin and Owner projections, reports/insights, Android forms/caches and sync feedback, Desktop first-use navigation; real non-CNY choice then financial task, refusal/replay and cross-client recovery |
+| Verification producers | Explicit currency fixtures for ordinary and migration tests; standalone HTTP smoke must perform real Desktop Owner selection. Desktop bridge tests declare an already configured CNY baseline. Generated API and protocol gates follow real semantic changes |
 
 This inventory defines the affected scope, not an assertion that each path is
 already repaired. Unknown consumers cannot be omitted as unaffected.
+
+## Correction decision
+
+The installation's current choice supplies the default for new entry and the
+reporting currency. It must not remain the interpreter of every historical
+integer. Changing that choice preserves records, original/home currency and FX
+snapshots, relationships, immutable revisions and stable command receipts.
+
+Before enabling changes on a nonempty installation, money rows that lack a
+currency carrier must acquire their existing persisted meaning: budgets and
+categories, spending goals, income plans and revisions, recurring items, amount
+rules, staged imports and manual FX rates. Children may inherit a frozen parent
+currency only where the actual relationship guarantees it. The old binding is
+migration evidence, never a guess from the environment. Read models aggregate
+only a common currency through the existing FX owner, with missing conversions
+visible; they must not relabel or add unlike units.
+
+Changing the default and correcting an incorrectly recorded historical currency
+are distinct user actions. Historical corrections reuse the domain's command
+and revision owner, with a reviewable before/after result. An accepted offline
+command keeps its own money currency; transport negotiation cannot replace it.
+Legacy intents whose meaning cannot be established remain recoverable, and an
+uncertain prior submission requires receipt reconciliation before resubmission.
 
 ## Construction and exit
 
@@ -43,8 +66,8 @@ First prove absent choice and non-CNY selection against the current default;
 retire implicit activation and configuration-as-money-authority with all direct
 consumers. Then close existing implicit-binding correction, using actual evidence
 to distinguish empty setup from records that require preserved historical meaning.
-That correction's concrete transaction and migration design must be settled
-before implementation; it remains in this same delivery package.
+The correction decision above governs the next transaction, migration and
+consumer work; those paths remain unimplemented and in this delivery package.
 
 Qualification includes TDD, exact candidate cloud gates, bounded review, real
 Desktop/Android continuation and independent main qualification. No long local

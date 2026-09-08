@@ -70,6 +70,7 @@ def main() -> int:
             hash_secret,
             new_session_token,
         )
+        from tests._infra.currency import activate_test_currency_authority
 
         init_db()
         with SessionLocal() as db:
@@ -80,6 +81,10 @@ def main() -> int:
                 device_name="e2e-owner-console",
             )
         with SessionLocal() as db:
+            # These bridge/pairing tests start with configured CNY money semantics.
+            # Initial Owner choice is exercised by the currency product tests
+            # and the standalone HTTP smoke, not by an implicit first writer.
+            activate_test_currency_authority(db, "CNY")
             owner = db.query(Account).order_by(Account.id.asc()).first()
             assert owner is not None
             tester = Ledger(ledger_id="tester_1", name="另一账本", owner_account_id=owner.id)

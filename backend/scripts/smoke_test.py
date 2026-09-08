@@ -16,9 +16,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 if __package__:
+    from scripts._smoke_currency import choose_smoke_currency
     from scripts.test_postgres_contract import TEST_POSTGRES_CONTRACT
     from scripts.write_test_postgres_env import render_environment
 else:
+    from _smoke_currency import choose_smoke_currency
     from test_postgres_contract import TEST_POSTGRES_CONTRACT
     from write_test_postgres_env import render_environment
 
@@ -976,6 +978,7 @@ def run_smoke(base_url: str) -> None:
     _check_health(base_url)
     bootstrap = _bootstrap_owner(base_url)
     _pair_android(base_url, bootstrap)
+    choose_smoke_currency(base_url, session_token=SESSION_TOKEN, ledger_id="owner")
     _check_auth_and_legacy_tokens(base_url)
     _check_maintenance_and_upload_guards(base_url)
     expense_id = _upload_ticket_and_assert_pending(base_url)
