@@ -501,13 +501,6 @@ private data class CreateGoalCall(
     val timezone: String?,
 )
 
-private data class UpdateGoalCall(
-    val publicId: String,
-    val request: GoalUpdateRequestDto,
-    val idempotencyKey: String?,
-    val timezone: String?,
-)
-
 private data class UpdateDashboardCardsCall(
     val request: DashboardCardsUpdateRequestDto,
     val surface: String,
@@ -530,7 +523,6 @@ private class ReportsApiHandler : InvocationHandler {
     val csvReportCalls = mutableListOf<ReportsOverviewCall>()
     val goalsCalls = mutableListOf<GoalsCall>()
     val createGoalCalls = mutableListOf<CreateGoalCall>()
-    val updateGoalCalls = mutableListOf<UpdateGoalCall>()
     val archiveGoalCalls = mutableListOf<Pair<String, String?>>()
     val replaceDebtLinksCalls = mutableListOf<ReplaceDebtLinksCall>()
     val acknowledgeIntegrityCalls = mutableListOf<AcknowledgeIntegrityCall>()
@@ -651,17 +643,6 @@ private class ReportsApiHandler : InvocationHandler {
                 if (request.goalType == "debt_repayment") debtGoalDto() else goalDto(category = request.category)
             }
             "goal" -> goalDto()
-            "updateGoal" -> {
-                // ADR-0042 Slice F: arg order is now
-                // [publicId, request, idempotencyKey, timezone].
-                updateGoalCalls += UpdateGoalCall(
-                    publicId = values[0] as String,
-                    request = values[1] as GoalUpdateRequestDto,
-                    idempotencyKey = values[2] as String?,
-                    timezone = values[3] as String?,
-                )
-                goalDto(category = (values[1] as GoalUpdateRequestDto).category)
-            }
             "archiveGoal" -> {
                 archiveGoalCalls += (values[0] as String) to (values[1] as String?)
                 goalDto(status = "archived", progressState = "archived", archivedAt = "2026-05-14T00:00:00Z")

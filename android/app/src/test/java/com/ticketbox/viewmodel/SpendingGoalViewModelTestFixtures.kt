@@ -133,6 +133,7 @@ internal class RecordingGoalEdits : com.ticketbox.data.repository.GoalEditAction
     val saves = mutableListOf<GoalUpdate>()
     override fun currentAccess() = access.value
     override fun observeAccess() = access
+    override fun describeEdit(row: com.ticketbox.data.repository.OutboxRow) = rows.value.firstOrNull { it.row.id == row.id }
     override suspend fun currency(binding: com.ticketbox.data.repository.LogicalSessionBinding): Result<com.ticketbox.domain.model.CurrencyCode> {
         val result = currencyResult
         currencyGate?.invoke()

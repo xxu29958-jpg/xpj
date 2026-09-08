@@ -97,7 +97,7 @@ class UpdateGoalDispatcherTest {
     )
 
     @Test
-    fun `dispatch replays the row's idempotency key and returns the new row_version`() = runTest {
+    fun dispatchReplaysOriginalKeyAndReturnsCanonicalVersion() = runTest {
         val stub = Stub(Result.success(updatedGoalDto()))
 
         val result = dispatcherFor(stub).dispatch(goalRow(idempotencyKey = "key-abc"))
@@ -108,7 +108,7 @@ class UpdateGoalDispatcherTest {
     }
 
     @Test
-    fun `a row with no idempotency key fails loudly instead of silently dropping`() = runTest {
+    fun missingKeyFailsWithoutDiscarding() = runTest {
         val stub = Stub(Result.success(updatedGoalDto()))
 
         val result = dispatcherFor(stub).dispatch(goalRow(idempotencyKey = null))
@@ -117,7 +117,7 @@ class UpdateGoalDispatcherTest {
     }
 
     @Test
-    fun `an unreadable original target remains a visible failure`() = runTest {
+    fun unreadableOriginalTargetRemainsFailed() = runTest {
         val stub = Stub(Result.success(updatedGoalDto()))
         val result = dispatcherFor(stub).dispatch(goalRow("original-key").copy(targetId = "goal:"))
         assertTrue(result is DispatchResult.Failure, "an unsent intent cannot become done: $result")
@@ -125,7 +125,7 @@ class UpdateGoalDispatcherTest {
     }
 
     @Test
-    fun `accepted goal survives a failed following read in the durable receipt`() = runTest {
+    fun acceptedGoalIsStoredInDurableReceipt() = runTest {
         val canonical = updatedGoalDto()
         val result = dispatcherFor(Stub(Result.success(canonical))).dispatch(goalRow("original-key"))
         assertTrue(result is DispatchResult.Success)
@@ -135,7 +135,7 @@ class UpdateGoalDispatcherTest {
     }
 
     @Test
-    fun `409 idempotency_key_in_progress is retried, not dropped`() = runTest {
+    fun inProgressKeyRetriesWithoutDiscarding() = runTest {
         val body = """{"error":"idempotency_key_in_progress","message":"操作正在处理中，请稍后再试。"}"""
         val stub = Stub(Result.failure(httpException(409, body)))
 
@@ -148,7 +148,7 @@ class UpdateGoalDispatcherTest {
     }
 
     @Test
-    fun `409 state_conflict still surfaces as a Conflict row`() = runTest {
+    fun stateConflictRemainsConflict() = runTest {
         val body = """{"error":"state_conflict","message":"目标已被其它端修改"}"""
         val stub = Stub(Result.failure(httpException(409, body)))
 
@@ -158,7 +158,7 @@ class UpdateGoalDispatcherTest {
     }
 
     @Test
-    fun `422 surfaces as a visible Failure, not a silent Discard`() = runTest {
+    fun invalidRequestRemainsVisibleFailure() = runTest {
         val body = """{"error":"idempotency_key_reused","message":"请求重复。"}"""
         val stub = Stub(Result.failure(httpException(422, body)))
 

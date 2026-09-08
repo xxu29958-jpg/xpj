@@ -333,6 +333,7 @@ private class CorrectionRecoveryHarness : ExpensePendingRepositoryOutboxTestBase
             recurringOccurrences = null,
             incomePlans = IncomePlanRepository(binding.apiProvider, outbox, adapters.incomePlanUpdateAdapter),
             debtAdjustments = DebtAdjustmentRepository(binding.apiProvider, outbox, adapters.debtAdjustmentAdapter),
+            goalEdits = GoalEditRepository(binding.apiProvider, outbox, adapters.goalUpdateAdapter, adapters.goalReceiptAdapter),
         )
         val vm = outboxStatusViewModelFactory(outbox, repository, consumers).create(OutboxStatusViewModel::class.java)
         recoveryModels += vm

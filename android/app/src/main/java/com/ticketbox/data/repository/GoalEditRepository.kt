@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.map
 interface GoalEditActions {
     fun currentAccess(): LedgerAccessContext?
     fun observeAccess(): Flow<LedgerAccessContext?>
+    fun describeEdit(row: OutboxRow): PendingGoalEdit?
     suspend fun currency(binding: LogicalSessionBinding): Result<CurrencyCode>
     fun observeEdits(binding: LogicalSessionBinding, publicId: String): Flow<List<PendingGoalEdit>>
     suspend fun save(binding: LogicalSessionBinding, goal: Goal, update: GoalUpdate): Result<Long>
@@ -55,17 +56,20 @@ class GoalEditRepository(
         }
     }
 
+    override fun describeEdit(row: OutboxRow): PendingGoalEdit? {
+        val binding = guard.captureLogicalBinding() ?: return null
+        if (row.type != PendingMutationType.UpdateGoal || row.ownerKey != binding.ownerKey || row.ledgerId != binding.ledgerId) return null
+        val request = requestAdapter.readGoalUpdate(row)
+        val receipt = row.receiptJson?.let { runCatching { receiptAdapter.fromJson(it) }.getOrNull() }
+        return PendingGoalEdit(row, request, receipt?.takeIf {
+            row.targetId == "goal:${it.publicId}" && it.ledgerId == binding.ledgerId
+        }?.toDomain())
+    }
+
     override fun observeEdits(binding: LogicalSessionBinding, publicId: String): Flow<List<PendingGoalEdit>> =
         outbox.observeActiveByTypes(setOf(PendingMutationType.UpdateGoal), includeCompleted = true).map { rows ->
             if (guard.captureLogicalBinding() != binding) emptyList()
-            else rows.filter { it.ownerKey == binding.ownerKey && it.ledgerId == binding.ledgerId &&
-                it.targetId == "goal:$publicId" }.map { row ->
-                val request = requestAdapter.readGoalUpdate(row)
-                val receipt = row.receiptJson?.let { runCatching { receiptAdapter.fromJson(it) }.getOrNull() }
-                PendingGoalEdit(row, request, receipt?.takeIf {
-                    it.publicId == publicId && it.ledgerId == binding.ledgerId
-                }?.toDomain())
-            }
+            else rows.filter { it.targetId == "goal:$publicId" }.mapNotNull(::describeEdit)
         }
 
     override suspend fun save(binding: LogicalSessionBinding, goal: Goal, update: GoalUpdate): Result<Long> = errors.safeCall {

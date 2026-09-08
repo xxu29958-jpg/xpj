@@ -363,7 +363,6 @@ fun outboxStatusViewModelFactory(
     repositories: OutboxRecoveryRepositories,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return OutboxStatusViewModel(outbox, expenseRepository, repositories.debtCreation,
-            repositories.recurringOccurrences, repositories.incomePlans, repositories.debtAdjustments) as T
+        return OutboxStatusViewModel(outbox, expenseRepository, repositories) as T
     }
 }

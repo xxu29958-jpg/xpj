@@ -184,11 +184,7 @@ private fun SyncStatusPageBody(
                     row = row,
                     debtCreation = state.failedDebtCreations[row.id],
                     busy = state.busyRowId == row.id,
-                    onRetry = { actions.onRetry(row) }.takeIf {
-                        (row.type != PendingMutationType.UpdateIncomePlan || state.incomeEdits[row.id]?.hasSupportedIntent == true) &&
-                            (row.type != PendingMutationType.RecordDebtAdjustment || state.debtAdjustments[row.id]?.canRetry == true) &&
-                            (row.type != PendingMutationType.CreateExpenseOffset || row.id in state.retryableOffsetIds)
-                    },
+                    onRetry = { actions.onRetry(row) }.takeIf { state.offersRetry(row) },
                     actions = actions,
                 )
             }

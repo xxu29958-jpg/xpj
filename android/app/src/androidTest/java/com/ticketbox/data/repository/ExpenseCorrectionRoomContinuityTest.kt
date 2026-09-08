@@ -118,7 +118,7 @@ class ExpenseCorrectionRoomContinuityTest {
         compose.runOnIdle {
             global = outboxStatusViewModelFactory(fixture.outbox, graph.expenseRepository,
                 OutboxRecoveryRepositories(graph.debtCreationRepository, graph.recurringRepository.occurrences,
-                    graph.incomePlanRepository, graph.debtAdjustmentRepository)).create(OutboxStatusViewModel::class.java)
+                    graph.incomePlanRepository, graph.debtAdjustmentRepository, graph.goalEditRepository)).create(OutboxStatusViewModel::class.java)
         }
         compose.setContent { TicketboxTheme(skin = AppSkin.Paper) {
             SyncStatusScreen(requireNotNull(global), {}, onOpenExpense = { opened = it }, onOpenInbox = {})
@@ -185,7 +185,7 @@ class ExpenseCorrectionRoomContinuityTest {
         compose.runOnIdle {
             global = outboxStatusViewModelFactory(fixture.outbox, graph.expenseRepository,
                 OutboxRecoveryRepositories(graph.debtCreationRepository, graph.recurringRepository.occurrences,
-                    graph.incomePlanRepository, graph.debtAdjustmentRepository)).create(OutboxStatusViewModel::class.java)
+                    graph.incomePlanRepository, graph.debtAdjustmentRepository, graph.goalEditRepository)).create(OutboxStatusViewModel::class.java)
         }
         compose.setContent { TicketboxTheme(skin = AppSkin.Paper) {
             SyncStatusScreen(requireNotNull(global), {}, onOpenExpense = {}, onOpenInbox = {})
@@ -238,7 +238,7 @@ class ExpenseCorrectionRoomContinuityTest {
         compose.runOnIdle {
             global = outboxStatusViewModelFactory(fixture.outbox, repository,
                 OutboxRecoveryRepositories(graph.debtCreationRepository, graph.recurringRepository.occurrences,
-                    graph.incomePlanRepository, graph.debtAdjustmentRepository)).create(OutboxStatusViewModel::class.java)
+                    graph.incomePlanRepository, graph.debtAdjustmentRepository, graph.goalEditRepository)).create(OutboxStatusViewModel::class.java)
         }
         compose.setContent { TicketboxTheme(skin = AppSkin.Paper) {
             SyncStatusScreen(requireNotNull(global), {}, onOpenExpense = {}, onOpenInbox = {})
@@ -290,7 +290,7 @@ class ExpenseCorrectionRoomContinuityTest {
         compose.runOnIdle {
             global = outboxStatusViewModelFactory(fixture.outbox, graph.expenseRepository,
                 OutboxRecoveryRepositories(graph.debtCreationRepository, graph.recurringRepository.occurrences,
-                    graph.incomePlanRepository, graph.debtAdjustmentRepository)).create(OutboxStatusViewModel::class.java)
+                    graph.incomePlanRepository, graph.debtAdjustmentRepository, graph.goalEditRepository)).create(OutboxStatusViewModel::class.java)
         }
         compose.setContent { TicketboxTheme(skin = AppSkin.Paper) {
             SyncStatusScreen(requireNotNull(global), {}, onOpenExpense = { opened = it }, onOpenInbox = {})
