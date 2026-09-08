@@ -65,7 +65,7 @@ class BudgetViewModel(
     private val savedStateHandle: SavedStateHandle = SavedStateHandle(),
 ) : ViewModel() {
     private val drafts = BudgetDraftStore(savedStateHandle)
-    private val _uiState = MutableStateFlow(BudgetUiState(month = savedStateHandle["budget.month"] ?: initialMonth))
+    private val _uiState = MutableStateFlow(BudgetUiState(month = savedStateHandle["month"] ?: initialMonth))
     val uiState: StateFlow<BudgetUiState> = _uiState.asStateFlow()
     private var requestGeneration = 0
     private var refreshGeneration = 0
@@ -219,7 +219,7 @@ class BudgetViewModel(
     private fun changeMonth(delta: Long) {
         if (_uiState.value.saving) return
         val month = YearMonth.parse(_uiState.value.month).plusMonths(delta).toString()
-        savedStateHandle["budget.month"] = month
+        savedStateHandle["month"] = month
         requestGeneration += 1
         _uiState.update { BudgetUiState(month = month, canModify = it.canModify, saves = observedSaves.forMonth(month)) }
         restoreDraft()

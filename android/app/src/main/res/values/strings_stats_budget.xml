@@ -971,4 +971,5 @@
     <string name="budget_save_unsupported">无法确认原预算提交的格式或币种，已保留记录。请升级客户端后核对，勿直接重复保存。</string>
     <string name="budget_save_unverified">尚未确认服务器是否保存了原提交。请先核对当前预算；重试将沿用原金额与提交标识。</string>
     <string name="budget_save_currency_conflict">原输入币种与这月预算不同。请核对原金额和当前预算，再决定是否停止原提交的重试。</string>
+    <string name="budget_save_open_month">查看这月预算</string>
 </resources>

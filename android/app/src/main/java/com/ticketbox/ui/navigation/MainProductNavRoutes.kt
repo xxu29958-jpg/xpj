@@ -70,7 +70,8 @@ internal fun NavGraphBuilder.addWorkspaceRoute(
         composable(WORKSPACE_ROUTE) {
             SettingsRoute(
                 navigation = SettingsDestinationNavigation(onOpenExpense = runtime.navController::openExpense,
-                    onOpenInbox = { shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox) }, onCloseRoot = onBack),
+                    onOpenInbox = { shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox) },
+                    onOpenBudget = { month -> runtime.navController.navigate(budgetRoute(month)) }, onCloseRoot = onBack),
                 screenFactory = screenFactory,
                 preferenceControls = workspaceControls.preferences,
                 onBindingCleared = workspaceControls.onBindingCleared,
@@ -89,7 +90,10 @@ internal fun NavGraphBuilder.addPlanRoutes(
                 onBack = onBack,
             )
         }
-        composable(ProductSecondaryPage.Budget.route) {
+        composable(
+            route = budgetRoute("{month}"),
+            arguments = listOf(navArgument("month") { type = NavType.StringType; nullable = true; defaultValue = null }),
+        ) {
             BudgetRoute(
                 screenFactory = screenFactory,
                 onBack = onBack,
@@ -239,7 +243,8 @@ internal fun NavGraphBuilder.addObligationRoutes(
                 ),
             )
             SyncStatusScreen(viewModel = vm, onBack = onBack, onOpenExpense = runtime.navController::openExpense,
-                onOpenInbox = { shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox) })
+                onOpenInbox = { shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox) },
+                onOpenBudget = { month -> runtime.navController.navigate(budgetRoute(month)) })
         }
         composable(
             route = REPAYMENT_DRAFT_ROUTE,

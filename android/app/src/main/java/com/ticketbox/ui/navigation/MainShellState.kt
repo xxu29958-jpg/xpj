@@ -32,6 +32,8 @@ internal const val REPAYMENT_DRAFT_ROUTE =
 
 internal fun expenseRoute(expenseId: Long): String = "expense/$expenseId"
 
+internal fun budgetRoute(month: String): String = "${ProductSecondaryPage.Budget.route}?month=$month"
+
 internal fun repaymentDraftRoute(focusedDraftPublicId: String?): String {
     val focused = focusedDraftPublicId?.trim().orEmpty()
     if (focused.isEmpty()) return REPAYMENT_DRAFT_BASE_ROUTE

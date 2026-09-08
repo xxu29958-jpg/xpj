@@ -125,10 +125,9 @@ class OutboxDrainEngine(
          *  income-plan update changes the income leg. Excluded on purpose:
          *  pending-side kinds (reject / OCR / recognize / not-duplicate /
          *  items-mismatch) never touch confirmed aggregates; splits only
-         *  re-share an unchanged total; rules / aliases / goals are not
+         *  re-share an unchanged total; rules / aliases / goals / budgets are not
          *  inputs; recurring create/update now travel the outbox and change
-         *  the fixed-expense leg. Monthly-budget saves also invalidate advice
-         *  after their accepted receipt. ReplaceItems only rewrites
+         *  the fixed-expense leg. ReplaceItems only rewrites
          *  ExpenseItem sub-lines
          *  (+ updated_at / items_sum_status) — the advisor aggregates
          *  Expense.category / amount_cents / month via confirmed_amount_query
@@ -141,7 +140,6 @@ class OutboxDrainEngine(
             PendingMutationType.PatchExpense,
             PendingMutationType.CorrectExpense,
             PendingMutationType.UpdateIncomePlan,
-            PendingMutationType.SaveMonthlyBudget,
             PendingMutationType.CreateRecurringItem,
             PendingMutationType.UpdateRecurringItem,
             PendingMutationType.SetRecurringOccurrencePayment,

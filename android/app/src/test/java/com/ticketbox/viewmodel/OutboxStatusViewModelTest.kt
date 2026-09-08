@@ -299,8 +299,11 @@ class OutboxStatusViewModelTest {
             runCurrent()
             assertEquals(original, harness.outbox.observeStatus().first().failed.single())
             vm.retry(original)
-            runCurrent()
-            val retried = harness.outbox.observeActiveByTypes(setOf(PendingMutationType.SaveMonthlyBudget)).first().single()
+            // The real recovery owner runs on IO; advancing only the virtual
+            // Main dispatcher does not prove that its durable write completed.
+            val retried = harness.outbox.observeActiveByTypes(setOf(PendingMutationType.SaveMonthlyBudget))
+                .first { rows -> rows.singleOrNull()?.status == PendingMutationStatus.Pending }.single()
+            vm.uiState.first { it.busyRowId == null }
             assertEquals(PendingMutationStatus.Pending, retried.status)
             assertEquals(original.payloadJson, retried.payloadJson)
             assertEquals(original.idempotencyKey, retried.idempotencyKey)
@@ -312,10 +315,10 @@ class OutboxStatusViewModelTest {
             assertFalse(vm.uiState.value.offersRetry(unknown))
             vm.retry(unknown)
             runCurrent()
+            vm.uiState.first { it.busyRowId == null }
             assertEquals(unknown, harness.outbox.observeStatus().first().failed.single())
             vm.dropFailed(unknown)
-            runCurrent()
-            assertTrue(harness.outbox.observeStatus().first().failed.isEmpty())
+            assertTrue(harness.outbox.observeStatus().first { status -> status.failed.none { it.id == unknownId } }.failed.isEmpty())
         } finally { vm.viewModelScope.coroutineContext.job.cancelAndJoin() }
     }
 

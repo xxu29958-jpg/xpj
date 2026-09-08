@@ -6,6 +6,7 @@ import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
@@ -19,11 +20,18 @@ import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.OutboxStatusUiState
 
 @Composable
-internal fun SyncStatusOriginalIntentSummary(row: OutboxRow, state: OutboxStatusUiState) {
+internal fun SyncStatusOriginalIntentSummary(row: OutboxRow, state: OutboxStatusUiState, actions: SyncStatusActions) {
     state.recurringOccurrences[row.id]?.let { com.ticketbox.ui.screens.recurring.RecurringOccurrenceIntentSummary(it) }
     state.incomeEdits[row.id]?.let { com.ticketbox.ui.screens.IncomePlanIntentSummary(it) }
     state.debtAdjustments[row.id]?.let { com.ticketbox.ui.screens.DebtAdjustmentIntentSummary(it) }
-    state.budgetSaves[row.id]?.let { com.ticketbox.ui.screens.budget.BudgetSaveIntentSummary(it) }
+    state.budgetSaves[row.id]?.let { pending ->
+        com.ticketbox.ui.screens.budget.BudgetSaveIntentSummary(pending)
+        if (pending.hasSupportedIntent) {
+            TextButton(onClick = { actions.onOpenBudget(requireNotNull(pending.intent).month) }) {
+                Text(stringResource(R.string.budget_save_open_month))
+            }
+        }
+    }
 }
 
 internal data class SyncStatusOverview(

@@ -48,9 +48,10 @@ fun SyncStatusScreen(
     onBack: () -> Unit,
     onOpenExpense: (Long) -> Unit,
     onOpenInbox: () -> Unit,
+    onOpenBudget: (String) -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val actions = remember(viewModel, onOpenExpense) {
+    val actions = remember(viewModel, onOpenExpense, onOpenBudget) {
         SyncStatusActions(
             onOpenExpense = onOpenExpense,
             onKeepMine = viewModel::keepMine,
@@ -58,6 +59,7 @@ fun SyncStatusScreen(
             onRetry = viewModel::retry,
             onDropFailed = viewModel::dropFailed,
             onClearQuarantined = viewModel::clearQuarantined,
+            onOpenBudget = onOpenBudget,
         )
     }
     SyncStatusScreenContent(state = state, actions = actions, onBack = onBack, onOpenInbox = onOpenInbox)
@@ -71,6 +73,7 @@ internal data class SyncStatusActions(
     val onRetry: (OutboxRow) -> Unit,
     val onDropFailed: (OutboxRow) -> Unit,
     val onClearQuarantined: () -> Unit,
+    val onOpenBudget: (String) -> Unit,
 )
 
 private data class SyncStatusActionButton(
@@ -165,7 +168,7 @@ private fun SyncStatusPageBody(
     if (conflicts.isNotEmpty()) {
         SettingsSection(title = stringResource(R.string.sync_status_section_needs_action), icon = Icons.Filled.SyncProblem) {
             conflicts.forEach { row ->
-                SyncStatusOriginalIntentSummary(row, state)
+                SyncStatusOriginalIntentSummary(row, state, actions)
                 ConflictCard(
                     row = row,
                     busy = state.busyRowId == row.id,
@@ -179,7 +182,7 @@ private fun SyncStatusPageBody(
     if (failures.isNotEmpty()) {
         SettingsSection(title = stringResource(R.string.sync_status_section_failed), icon = Icons.Filled.ErrorOutline) {
             failures.forEach { row ->
-                SyncStatusOriginalIntentSummary(row, state)
+                SyncStatusOriginalIntentSummary(row, state, actions)
                 FailedCard(
                     row = row,
                     debtCreation = state.failedDebtCreations[row.id],

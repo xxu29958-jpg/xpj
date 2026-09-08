@@ -4,6 +4,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
@@ -25,6 +26,7 @@ import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.OutboxStatusUiState
 import org.junit.Rule
 import org.junit.Test
+import org.junit.Assert.assertEquals
 
 class BudgetGlobalRecoveryTest {
     @get:Rule val compose = createComposeRule()
@@ -44,22 +46,30 @@ class BudgetGlobalRecoveryTest {
         show(pending().copy(intent = null))
         compose.onNodeWithText(context.getString(R.string.budget_save_unsupported)).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(context.getString(R.string.sync_status_failed_button_retry)).assertDoesNotExist()
+        compose.onNodeWithText(context.getString(R.string.budget_save_open_month)).assertDoesNotExist()
     }
 
     @Test
     fun originalBudgetOffersAnEntranceToItsMonth() {
-        show(pending())
-        compose.onNodeWithText("查看这月预算").performScrollTo().assertIsDisplayed()
+        var openedMonth: String? = null
+        show(pending(), onOpenBudget = { openedMonth = it })
+        compose.onNodeWithText(context.getString(R.string.budget_save_open_month)).performScrollTo().performClick()
+        compose.runOnIdle { assertEquals("2026-09", openedMonth) }
     }
 
-    private fun show(pending: PendingBudgetSave) {
+    private fun show(pending: PendingBudgetSave, onOpenBudget: (String) -> Unit = {}) {
         val binding = LogicalSessionBinding("https://example.test", "owner", "owner", "session", "binding")
         val state = OutboxStatusUiState(binding = binding, bindingReady = true,
             correctionObservation = ExpenseCorrectionObservation(LedgerAccessContext(binding, true), emptyList()),
             status = OutboxStatus(0, emptyList(), listOf(pending.row)), budgetSaves = mapOf(pending.row.id to pending))
         compose.setContent { TicketboxTheme(skin = AppSkin.Default) {
             CompositionLocalProvider(LocalCurrencyDisplay provides CurrencyDisplay(CurrencyCode.CNY)) {
-                SyncStatusScreenContent(state, SyncStatusActions({}, {}, {}, {}, {}, {}), {}, {})
+                SyncStatusScreenContent(state, SyncStatusActions(
+                    onOpenExpense = {}, onKeepMine = { error("Unexpected write") },
+                    onDropMine = { error("Unexpected drop") }, onRetry = { error("Unexpected retry") },
+                    onDropFailed = { error("Unexpected drop") }, onClearQuarantined = {},
+                    onOpenBudget = onOpenBudget,
+                ), {}, {})
             }
         } }
     }
