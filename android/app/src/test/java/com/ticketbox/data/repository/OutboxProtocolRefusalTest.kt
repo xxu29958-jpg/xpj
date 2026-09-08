@@ -117,7 +117,7 @@ private class RefusalTransport(private val refusal: String) {
         }
         val body = when {
             read -> compatibilityBody()
-            accept -> """{"public_id":"plan-1","label":"工资","source_type":"salary","frequency":"monthly","amount_cents":12000,"pay_day":15,"status":"active","created_at":"2026-09-01T00:00:00Z","updated_at":"2026-09-30T23:55:00Z","row_version":8}"""
+            accept -> """{"public_id":"plan-1","home_currency_code":"CNY","label":"工资","source_type":"salary","frequency":"monthly","amount_cents":12000,"pay_day":15,"status":"active","created_at":"2026-09-01T00:00:00Z","updated_at":"2026-09-30T23:55:00Z","row_version":8}"""
             else -> refusalBody(request)
         }
         return Response.Builder().request(request).protocol(Protocol.HTTP_1_1)

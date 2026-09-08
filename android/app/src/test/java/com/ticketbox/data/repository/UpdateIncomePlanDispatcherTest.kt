@@ -86,10 +86,12 @@ class UpdateIncomePlanDispatcherTest {
         }
     }
 
-    private fun dispatcherFor(stub: ApiService) = UpdateIncomePlanDispatcher(
-        apiProvider = { stub },
-        payloadAdapter = moshi().adapter(IncomePlanEditPayload::class.java),
-    )
+    private fun dispatcherFor(stub: ApiService): UpdateIncomePlanDispatcher {
+        return UpdateIncomePlanDispatcher(
+            apiProvider = { stub },
+            payloadAdapter = moshi().adapter(IncomePlanEditPayload::class.java),
+        )
+    }
 
     @Test
     fun `dispatch replays the row's idempotency key without rebasing another original command`() = runTest {

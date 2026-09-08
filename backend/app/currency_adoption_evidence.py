@@ -13,6 +13,7 @@ from sqlalchemy.engine import Connection
 from app.app_meta_observation import read_app_meta_value
 from app.canonical_money_facts import canonical_money_facts_sha256
 from app.canonical_money_facts_contract import INSTALLATION_HOME_CURRENCY_KEY
+from app.database._currency_writer import captured_currency_evidence_rows
 from app.errors import AppError
 from app.fx_constants import DEFAULT_HOME_CURRENCY_CODE, DEFAULT_SUPPORTED_CURRENCY_CODES
 
@@ -88,16 +89,8 @@ def _resolve_allowed_home_currency_codes(
 
 
 def _hash_captured_currencies(connection: Connection, digest) -> None:
-    for table in ("csv_import_rows", "monthly_income_plans"):
-        for row in connection.execute(text(
-            f"SELECT id, tenant_id, to_jsonb({table})->>'home_currency_code' AS home_currency_code FROM {table} ORDER BY id"
-        )):
-            digest.update(_json_line({"table": table, "id": row.id, "tenant_id": row.tenant_id, "home_currency_code": row.home_currency_code}))
-    # Earlier frozen schema probes predate revisions; current runtime locks this
-    # table before adoption, so a missing current table cannot become a success.
-    if connection.scalar(text("SELECT to_regclass('public.income_plan_revisions') IS NOT NULL")):
-        for row in connection.execute(text("SELECT to_jsonb(income_plan_revisions)::text FROM income_plan_revisions ORDER BY id")):
-            digest.update(_json_line({"income_revision": row[0]}))
+    for row in captured_currency_evidence_rows(connection):
+        digest.update(_json_line(row))
 
 
 def currency_adoption_evidence(connection: Connection) -> CurrencyAdoptionEvidence:

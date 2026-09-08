@@ -60,6 +60,16 @@ def _applicable_revisions(revisions: Iterable[IncomePlanRevision], period: date)
     return list(chosen.values())
 
 
+def _project_revision_amount(row: IncomePlanRevision, home: str, project_amount) -> int | None:
+    if row.home_currency_code is None:
+        return None
+    if row.home_currency_code == home:
+        return row.amount_cents
+    if project_amount is None:
+        return None
+    return project_amount(row.amount_cents, row.home_currency_code)
+
+
 def forecast_from_revisions(
     revisions: Iterable[IncomePlanRevision], *, period: date, today: date, home_currency_code: str,
     project_amount: Callable[[int, str], int | None] | None = None,
@@ -74,10 +84,7 @@ def forecast_from_revisions(
         row.frequency == "monthly" or row.income_month == month
     ))
     last_day = monthrange(period.year, period.month)[1]
-    projected = [(row, row.amount_cents if row.home_currency_code == home else (
-        project_amount(row.amount_cents, row.home_currency_code)
-        if project_amount is not None and row.home_currency_code else None
-    )) for row in entries]
+    projected = [(row, _project_revision_amount(row, home, project_amount)) for row in entries]
     due = [amount for row, amount in projected if period < current or (
         period == current and min(row.pay_day, last_day) <= today.day)]
     return IncomeForecast(
