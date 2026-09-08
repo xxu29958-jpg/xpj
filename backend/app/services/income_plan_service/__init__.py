@@ -13,10 +13,10 @@ from app.config import get_settings
 from app.errors import AppError
 from app.ledger_scope import ledger_filter, ledger_scoped_select
 from app.models import IncomePlanRevision, MonthlyIncomePlan
-from app.money_contract import projection_sum_to_int
 from app.services.currency_binding_service import (
     resolve_write_capability,
 )
+from app.services.currency_common import normalize_currency_code
 from app.services.income_plan_service._forecast import IncomeForecast, query_income_forecast
 from app.services.income_plan_service._history import (
     append_income_revision,
@@ -91,6 +91,7 @@ def create_income_plan(
     tenant_id: str,
     label: str,
     source_type: str,
+    home_currency_code: str,
     amount_cents: int,
     pay_day: int,
     frequency: str = "monthly",
@@ -110,8 +111,8 @@ def create_income_plan(
         income_month=income_month,
     )
     _validate_pay_day(pay_day)
-    # R13-2：无币种列的收入计划写按 env 口径入账 —— 先过绑定门（漂移/未决拒写）。
     resolve_write_capability(db)
+    home = normalize_currency_code(home_currency_code)
 
     when = now or now_utc()
     intent_period = income_intent_month(intent_month, when)
@@ -126,6 +127,7 @@ def create_income_plan(
         source_type=clean_source,
         frequency=clean_frequency,
         income_month=clean_income_month,
+        home_currency_code=home,
         amount_cents=clean_amount_cents,
         pay_day=pay_day,
         status="active",
@@ -321,11 +323,9 @@ def total_monthly_income_cents(
     forecast = query_income_forecast(
         db, tenant_id=tenant_id, period=income_month_start(month) if month else today.replace(day=1), today=today,
     )
-    if month is not None:
-        return forecast.expected_amount_cents
-    return projection_sum_to_int(sum(
-        row.amount_cents for row in forecast.entries if row.frequency == "monthly"
-    ), label="income_plan.total")
+    if forecast.expected_amount_cents is None:
+        raise AppError("exchange_rate_missing", "部分收入计划缺少折算汇率，请补齐汇率后查看完整估算。", status_code=422)
+    return forecast.expected_amount_cents
 
 
 def _require_active_income_plan(plan: MonthlyIncomePlan) -> None:

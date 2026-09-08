@@ -29,7 +29,12 @@ class UpdateIncomePlanDispatcher(
             // ADR-0042: replay carries the row's original intent-time key, so a
             // committed-but-unseen first attempt is deduped server-side (HIT →
             // original stable result) instead of false-409ing on the stale row_version.
-            apiProvider(row).updateIncomePlan(publicId, request, idempotencyKey)
+            val result = apiProvider(row).updateIncomePlan(publicId, request, idempotencyKey)
+            if (result.publicId != publicId || result.homeCurrencyCode != payload.homeCurrencyCode ||
+                result.rowVersion <= row.expectedRowVersion ||
+                (request.amountCents != null && result.amountCents != request.amountCents)) {
+                return DispatchResult.Failure("无法核对原提交的计划、币种或金额，已保留记录，请核对后继续。")
+            }
             DispatchResult.Success()
         } catch (e: HttpException) {
             mapOutboxHttpException(e)

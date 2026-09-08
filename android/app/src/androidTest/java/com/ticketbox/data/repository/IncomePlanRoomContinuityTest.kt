@@ -85,8 +85,8 @@ class IncomePlanRoomContinuityTest {
     private fun installModels() {
         val graph = fixture.reopen()
         compose.runOnIdle {
-            model.value = IncomePlanViewModel(graph.incomePlanRepository, fixture.debts)
-            editor.value = IncomePlanEditViewModel(graph.incomePlanRepository, fixture.debts,
+            model.value = IncomePlanViewModel(graph.incomePlanRepository)
+            editor.value = IncomePlanEditViewModel(graph.incomePlanRepository,
                 onDataChanged = { model.value?.refresh() })
         }
     }

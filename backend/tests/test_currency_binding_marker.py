@@ -68,7 +68,7 @@ def test_confirmed_jpy_binding_requires_a_versioned_writer() -> None:
         activate_test_currency_authority(db, "JPY")
         _mark_legacy_http_writer(db)
         with pytest.raises(AppError) as refused:
-            create_income_plan(db, tenant_id="owner", label="工资", source_type="salary", amount_cents=1200, pay_day=10)
+            create_income_plan(db, home_currency_code="JPY", tenant_id="owner", label="工资", source_type="salary", amount_cents=1200, pay_day=10)
         assert refused.value.error == "client_upgrade_required"
         assert get_capability(db).home_currency_code == "JPY"
         assert get_value(db, INSTALLATION_HOME_CURRENCY_KEY) is None
@@ -77,7 +77,7 @@ def test_confirmed_jpy_binding_requires_a_versioned_writer() -> None:
 def test_income_creation_cannot_silently_claim_cny() -> None:
     with SessionLocal() as db:
         with pytest.raises(AppError) as refused:
-            create_income_plan(db, tenant_id="owner", label="工资", source_type="salary", amount_cents=1_000_000, pay_day=10)
+            create_income_plan(db, home_currency_code="CNY", tenant_id="owner", label="工资", source_type="salary", amount_cents=1_000_000, pay_day=10)
         assert refused.value.error == "currency_adoption_required"
         assert get_capability(db).state == "EMPTY"
         assert get_value(db, INSTALLATION_HOME_CURRENCY_KEY) is None
@@ -100,7 +100,7 @@ def test_planning_writes_follow_confirmed_currency_despite_environment(monkeypat
         activate_test_currency_authority(db, "CNY")
         budget = upsert_monthly_budget(db, tenant_id="owner", month="2026-07", payload=BudgetMonthlyUpdateRequest(total_amount_cents=1200))
         goal = create_goal(db, tenant_id="owner", payload=GoalCreateRequest(name="本月外卖", month="2026-07", target_amount_cents=1200))
-        income = create_income_plan(db, tenant_id="owner", label="工资", source_type="salary", amount_cents=1200, pay_day=10)
+        income = create_income_plan(db, home_currency_code="CNY", tenant_id="owner", label="工资", source_type="salary", amount_cents=1200, pay_day=10)
         assert budget.total_amount_cents == 1200
         assert goal.target_amount_cents == 1200
         assert income.amount_cents == 1200

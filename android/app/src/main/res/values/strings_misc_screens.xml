@@ -158,6 +158,9 @@
     <string name="income_plan_header_subtitle_compact">每月固定与单笔预计</string>
     <string name="income_plan_add_action_short">添加</string>
     <string name="income_plan_total_meta">收入计划 %1$d 项</string>
+    <string name="income_plan_conversion_pending">待补汇率</string>
+    <string name="income_plan_currency_refresh_required">计划已有变化或币种尚未确认，请保留输入，刷新后核对。</string>
+    <string name="income_plan_missing_rates">%1$s 金额缺少折算汇率，补齐后显示完整合计。</string>
     <string name="income_plan_empty_body_compact">添加第一笔收入计划。</string>
     <!-- W2-C 收入编辑与 hero 口径：预计=现有本月计划合计投影；截至今日=服务端按计划公式 aggregate -->
     <string name="income_plan_edit_sheet_title">编辑收入计划</string>

@@ -71,6 +71,9 @@ def test_unadopted_csv_row_waits_for_the_audited_owner_choice():
         run_alembic(command.upgrade, _HEAD)
         with SessionLocal() as db:
             assert db.scalar(text("SELECT home_currency_code FROM csv_import_rows WHERE id = :id"), {"id": row_id}) is None
+        # Adopt through the current runtime after checking the frozen CSV edge.
+        run_alembic(command.upgrade, "head")
+        with SessionLocal() as db:
             auth = authenticate_session_token(db, bootstrap.admin_token, {"app", "admin"})
             preview = adoption_preview(db)
             receipt = adopt_currency_binding(

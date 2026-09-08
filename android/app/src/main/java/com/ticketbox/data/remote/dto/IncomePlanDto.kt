@@ -23,15 +23,18 @@ data class IncomePlanDto(
     @param:Json(name = "updated_at") val updatedAt: String,
     @param:Json(name = "row_version") val rowVersion: Long,
     @param:Json(name = "archived_at") val archivedAt: String?,
+    @param:Json(name = "home_currency_code") val homeCurrencyCode: String? = null,
 )
 
 data class IncomePlanListResponseDto(
     val items: List<IncomePlanDto>,
-    @param:Json(name = "total_active_amount_cents") val totalActiveAmountCents: Long,
+    @param:Json(name = "total_active_amount_cents") val totalActiveAmountCents: Long?,
     val month: String,
-    @param:Json(name = "scheduled_amount_cents") val scheduledAmountCents: Long,
+    @param:Json(name = "scheduled_amount_cents") val scheduledAmountCents: Long?,
     @param:Json(name = "effective_plan_count") val effectivePlanCount: Int,
-    @param:Json(name = "expected_amount_cents") val expectedAmountCents: Long,
+    @param:Json(name = "expected_amount_cents") val expectedAmountCents: Long?,
+    @param:Json(name = "home_currency_code") val homeCurrencyCode: String? = null,
+    @param:Json(name = "missing_currency_codes") val missingCurrencyCodes: List<String> = emptyList(),
 )
 
 data class IncomePlanCreateRequestDto(
@@ -42,6 +45,7 @@ data class IncomePlanCreateRequestDto(
     @param:Json(name = "income_month") val incomeMonth: String? = null,
     @param:Json(name = "amount_cents") val amountCents: Long,
     @param:Json(name = "pay_day") val payDay: Int,
+    @param:Json(name = "home_currency_code") val homeCurrencyCode: String,
 )
 
 /**

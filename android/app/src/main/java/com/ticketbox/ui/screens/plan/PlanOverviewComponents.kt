@@ -38,6 +38,7 @@ import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalCurrencyDisplay
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.ui.screens.budget.BudgetProgressBar
@@ -334,9 +335,8 @@ private fun planIncomeSummary(state: IncomePlanUiState): String = when {
     else -> stringResource(
         R.string.plan_income_summary,
         state.currentMonthSummary.effectivePlanCount,
-        formatDisplayAmount(
-            state.currentMonthSummary.expectedAmountCents,
-            LocalCurrencyDisplay.current,
-        ),
+        state.currentMonthSummary.expectedAmountCents?.let {
+            formatDisplayAmount(it, CurrencyDisplay.forRecord(state.forecastCurrencyCode))
+        } ?: stringResource(R.string.income_plan_conversion_pending),
     )
 }

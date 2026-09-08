@@ -105,7 +105,7 @@ private data class IncomeAdoptionCommand(val name: String, val execute: suspend 
 
 private val incomeAdoptionCommands = listOf(
     IncomeAdoptionCommand("create") { api ->
-        api.createIncomePlan(IncomePlanCreateRequestDto("2026-09", "工资", "salary", amountCents = 10000, payDay = 15))
+        api.createIncomePlan(IncomePlanCreateRequestDto("2026-09", "工资", "salary", amountCents = 10000, payDay = 15, homeCurrencyCode = "CNY"))
     },
     IncomeAdoptionCommand("edit") { api ->
         api.updateIncomePlan("plan-1", IncomePlanUpdateRequestDto("2026-09", 7, amountCents = 12000), "original-key")

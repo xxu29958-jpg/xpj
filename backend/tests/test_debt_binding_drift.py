@@ -379,7 +379,7 @@ def test_active_jpy_binding_rejects_legacy_unversioned_writer(client: TestClient
 
             create_income_plan(
                 db,
-                tenant_id="owner",
+                home_currency_code="JPY", tenant_id="owner",
                 label="工资",
                 source_type="salary",
                 amount_cents=1_000_000,

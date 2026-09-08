@@ -1437,6 +1437,10 @@
             "title": "Frequency",
             "type": "string"
           },
+          "home_currency_code": {
+            "title": "Home Currency Code",
+            "type": "string"
+          },
           "income_month": {
             "anyOf": [
               {
@@ -1502,6 +1506,7 @@
           }
         },
         "required": [
+          "home_currency_code",
           "intent_month"
         ],
         "title": "Body_post_create_web_income_plans_create_post",
@@ -10691,6 +10696,12 @@
             "title": "Frequency",
             "type": "string"
           },
+          "home_currency_code": {
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Home Currency Code",
+            "type": "string"
+          },
           "income_month": {
             "anyOf": [
               {
@@ -10730,6 +10741,7 @@
         },
         "required": [
           "intent_month",
+          "home_currency_code",
           "label",
           "amount_cents",
           "pay_day"
@@ -10744,11 +10756,22 @@
             "type": "integer"
           },
           "expected_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": 0.0,
-            "title": "Expected Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Amount Cents"
+          },
+          "home_currency_code": {
+            "title": "Home Currency Code",
+            "type": "string"
           },
           "items": {
             "items": {
@@ -10757,28 +10780,51 @@
             "title": "Items",
             "type": "array"
           },
+          "missing_currency_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Currency Codes",
+            "type": "array"
+          },
           "month": {
             "title": "Month",
             "type": "string"
           },
           "scheduled_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": 0.0,
-            "title": "Scheduled Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduled Amount Cents"
           },
           "total_active_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": 0.0,
-            "title": "Total Active Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Active Amount Cents"
           }
         },
         "required": [
           "items",
           "month",
+          "home_currency_code",
+          "missing_currency_codes",
           "total_active_amount_cents",
           "expected_amount_cents",
           "scheduled_amount_cents",
@@ -10825,6 +10871,17 @@
             ],
             "title": "Frequency",
             "type": "string"
+          },
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
           },
           "income_month": {
             "anyOf": [

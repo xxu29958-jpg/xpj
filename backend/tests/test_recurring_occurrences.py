@@ -46,7 +46,7 @@ def test_recurring_payment_reconciles_reservation_and_replays_once(
 ) -> None:
     with SessionLocal() as db:
         resolve_write_capability(db)
-        create_income_plan(db, tenant_id="owner", label="计划工资", source_type="salary",
+        create_income_plan(db, home_currency_code="CNY", tenant_id="owner", label="计划工资", source_type="salary",
             amount_cents=100_000, pay_day=1, frequency="one_time", income_month="2026-09")
     series = _create_series(client, identity)
     payment = _payment(client, identity)

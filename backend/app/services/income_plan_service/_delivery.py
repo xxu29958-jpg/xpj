@@ -1,8 +1,10 @@
 """Settle an income edit and its original typed result in one transaction."""
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.models import IncomePlanRevision, MonthlyIncomePlan
 from app.schemas import IncomePlanResponse, IncomePlanUpdateRequest
 from app.services.idempotency import (
     IdempotencyOutcomeKind,
@@ -12,6 +14,27 @@ from app.services.idempotency import (
 )
 
 from . import update_income_plan
+
+
+def _income_receipt_result(db: Session, *, tenant_id: str, public_id: str, body) -> IncomePlanResponse:
+    result = IncomePlanResponse.model_validate(body)
+    if result.public_id != public_id:
+        raise AppError("income_plan_response_unverified", "原提交结果与计划不一致，请保留原提交并核对。", status_code=409)
+    if result.home_currency_code is not None:
+        return result
+    revision = db.scalar(select(IncomePlanRevision).join(
+        MonthlyIncomePlan, (MonthlyIncomePlan.id == IncomePlanRevision.plan_id)
+        & (MonthlyIncomePlan.tenant_id == IncomePlanRevision.tenant_id),
+    ).where(
+        IncomePlanRevision.tenant_id == tenant_id, MonthlyIncomePlan.public_id == public_id,
+        IncomePlanRevision.revision_number == result.row_version,
+    ))
+    fields = ("label", "source_type", "frequency", "income_month", "amount_cents", "pay_day", "status")
+    if revision is None or not revision.home_currency_code or any(
+        getattr(revision, field) != getattr(result, field) for field in fields
+    ):
+        raise AppError("income_plan_response_unverified", "原提交的币种还无法确认，请保留记录并核对计划。", status_code=409)
+    return result.model_copy(update={"home_currency_code": revision.home_currency_code})
 
 
 def update_income_plan_idempotently(
@@ -36,7 +59,7 @@ def update_income_plan_idempotently(
     if claim.kind is IdempotencyOutcomeKind.FINGERPRINT_MISMATCH:
         raise AppError("idempotency_key_reused", status_code=422)
     if claim.kind is IdempotencyOutcomeKind.HIT:
-        return IncomePlanResponse.model_validate(claim.row.response_body)
+        return _income_receipt_result(db, tenant_id=tenant_id, public_id=public_id, body=claim.row.response_body)
     plan = update_income_plan(
         db, tenant_id=tenant_id, public_id=public_id,
         expected_row_version=payload.expected_row_version,

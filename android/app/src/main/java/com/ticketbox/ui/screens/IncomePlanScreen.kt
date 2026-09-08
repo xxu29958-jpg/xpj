@@ -148,7 +148,6 @@ fun IncomePlanScreen(
         incomePlanBody(
             state = state,
             editFlash = editState.flashMessage,
-            currency = currency,
             viewModel = viewModel,
             onEditPlan = { plan -> state.forecastMonth?.let { editViewModel.openEdit(plan, it) } },
         )
@@ -164,7 +163,7 @@ fun IncomePlanScreen(
             viewModel.resetDraft()
         },
     )
-    IncomePlanEditSheetHost(state = editState, currency = currency, editViewModel = editViewModel)
+    IncomePlanEditSheetHost(state = editState, editViewModel = editViewModel)
 }
 
 @Composable
@@ -206,7 +205,6 @@ private fun IncomePlanSideEffects(
 private fun LazyListScope.incomePlanBody(
     state: IncomePlanUiState,
     editFlash: UiText?,
-    currency: CurrencyDisplay,
     viewModel: IncomePlanViewModel,
     onEditPlan: (IncomePlan) -> Unit,
 ) {
@@ -233,7 +231,8 @@ private fun LazyListScope.incomePlanBody(
                 expectedCents = state.currentMonthSummary.expectedAmountCents,
                 planCount = state.currentMonthSummary.effectivePlanCount,
                 scheduledCents = state.scheduledAmountCents,
-                currency = currency,
+                currency = CurrencyDisplay.forRecord(state.forecastCurrencyCode),
+                missingCurrencies = state.missingCurrencyCodes,
             )
         }
     }
@@ -252,7 +251,6 @@ private fun LazyListScope.incomePlanBody(
         IncomePlanBodyState.Empty,
         IncomePlanBodyState.Content -> incomePlanSections(
             state = state,
-            currency = currency,
             viewModel = viewModel,
             onEditPlan = onEditPlan,
         )
@@ -261,7 +259,6 @@ private fun LazyListScope.incomePlanBody(
 
 private fun LazyListScope.incomePlanSections(
     state: IncomePlanUiState,
-    currency: CurrencyDisplay,
     viewModel: IncomePlanViewModel,
     onEditPlan: (IncomePlan) -> Unit,
 ) {
@@ -279,7 +276,6 @@ private fun LazyListScope.incomePlanSections(
             state.activePlans.forEach { plan ->
                 IncomePlanRow(
                     plan = plan,
-                    currency = currency,
                     // 行本体即编辑入口；归档收进编辑器（W2-C）。
                     onClick = if (state.canModify && state.pendingEdits.none { it.row.targetId == "income_plan:${plan.publicId}" })
                         ({ onEditPlan(plan) }) else null,
@@ -293,7 +289,6 @@ private fun LazyListScope.incomePlanSections(
         items(state.archivedPlans, key = { "archived-${it.publicId}" }) { plan ->
             IncomePlanRow(
                 plan = plan,
-                currency = currency,
                 trailingAction = if (state.canModify) {
                     IncomePlanRowAction(
                         icon = Icons.Default.Restore,
@@ -352,10 +347,11 @@ private fun SectionEyebrow(text: String) {
 @Composable
 private fun IncomeTotalSummary(
     month: String,
-    expectedCents: Long,
+    expectedCents: Long?,
     planCount: Int,
-    scheduledCents: Long,
+    scheduledCents: Long?,
     currency: CurrencyDisplay,
+    missingCurrencies: List<String>,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
@@ -365,7 +361,8 @@ private fun IncomeTotalSummary(
         )
         Spacer(Modifier.size(AppSpacing.miniGap))
         Text(
-            formatDisplayAmount(expectedCents, currency),
+            expectedCents?.let { formatDisplayAmount(it, currency) }
+                ?: stringResource(R.string.income_plan_conversion_pending),
             style = MaterialTheme.typography.headlineLarge.tabularNum(),
             fontWeight = FontWeight.SemiBold,
         )
@@ -379,11 +376,16 @@ private fun IncomeTotalSummary(
         Text(
             stringResource(
                 R.string.income_plan_arrived_caption,
-                formatDisplayAmount(scheduledCents, currency),
+                scheduledCents?.let { formatDisplayAmount(it, currency) }
+                    ?: stringResource(R.string.income_plan_conversion_pending),
             ),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        if (missingCurrencies.isNotEmpty()) {
+            Text(stringResource(R.string.income_plan_missing_rates, missingCurrencies.joinToString("、")),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         Spacer(Modifier.size(AppSpacing.compactGap))
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
     }
@@ -392,7 +394,6 @@ private fun IncomeTotalSummary(
 @Composable
 private fun IncomePlanRow(
     plan: IncomePlan,
-    currency: CurrencyDisplay,
     dimmed: Boolean = false,
     onClick: (() -> Unit)? = null,
     trailingAction: IncomePlanRowAction? = null,
@@ -411,7 +412,7 @@ private fun IncomePlanRow(
         ) {
             IncomePlanRowSummary(plan = plan, dimmed = dimmed, modifier = Modifier.weight(1f))
             Text(
-                formatDisplayAmount(plan.amountCents, currency),
+                formatDisplayAmount(plan.amountCents, CurrencyDisplay.forRecord(plan.homeCurrencyCode)),
                 style = MaterialTheme.typography.titleMedium.tabularNum(),
                 fontWeight = FontWeight.SemiBold,
                 color = if (dimmed) MaterialTheme.colorScheme.onSurfaceVariant

@@ -42,7 +42,7 @@ def _has_legacy_currencyless_money_facts(connection: Connection) -> bool:
                         SELECT 1 FROM goals
                          WHERE target_amount_cents IS NOT NULL
                     )
-                    OR EXISTS (SELECT 1 FROM monthly_income_plans)
+                    OR EXISTS (SELECT 1 FROM monthly_income_plans WHERE to_jsonb(monthly_income_plans)->>'home_currency_code' IS NULL)
                     OR EXISTS (SELECT 1 FROM recurring_items)
                 """
             )
@@ -87,6 +87,19 @@ def _resolve_allowed_home_currency_codes(
     return allowed, not allowed
 
 
+def _hash_captured_currencies(connection: Connection, digest) -> None:
+    for table in ("csv_import_rows", "monthly_income_plans"):
+        for row in connection.execute(text(
+            f"SELECT id, tenant_id, to_jsonb({table})->>'home_currency_code' AS home_currency_code FROM {table} ORDER BY id"
+        )):
+            digest.update(_json_line({"table": table, "id": row.id, "tenant_id": row.tenant_id, "home_currency_code": row.home_currency_code}))
+    # Earlier frozen schema probes predate revisions; current runtime locks this
+    # table before adoption, so a missing current table cannot become a success.
+    if connection.scalar(text("SELECT to_regclass('public.income_plan_revisions') IS NOT NULL")):
+        for row in connection.execute(text("SELECT to_jsonb(income_plan_revisions)::text FROM income_plan_revisions ORDER BY id")):
+            digest.update(_json_line({"income_revision": row[0]}))
+
+
 def currency_adoption_evidence(connection: Connection) -> CurrencyAdoptionEvidence:
     """Bind legacy facts and derive choices that cannot reinterpret them."""
 
@@ -97,11 +110,7 @@ def currency_adoption_evidence(connection: Connection) -> CurrencyAdoptionEviden
             {"c07_money_facts_sha256": canonical_money_facts_sha256(connection)}
         )
     )
-    for row in connection.execute(text(
-        "SELECT id, tenant_id, to_jsonb(csv_import_rows)->>'home_currency_code' AS home_currency_code "
-        "FROM csv_import_rows ORDER BY id"
-    )):
-        digest.update(_json_line({"csv_import_row": row.id, "tenant_id": row.tenant_id, "home_currency_code": row.home_currency_code}))
+    _hash_captured_currencies(connection, digest)
     exchange_rows = list(
         connection.execute(
             text(

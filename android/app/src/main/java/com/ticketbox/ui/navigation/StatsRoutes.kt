@@ -127,7 +127,6 @@ internal fun IncomePlanRoute(
         key = IncomePlanViewModelKey,
         factory = incomePlanViewModelFactory(
             repository = screenFactory.incomePlanRepository,
-            debts = screenFactory.debtRepository,
             onDataChanged = onDataChanged,
         ),
     )
@@ -137,7 +136,6 @@ internal fun IncomePlanRoute(
         key = IncomePlanEditViewModelKey,
         factory = incomePlanEditViewModelFactory(
             repository = screenFactory.incomePlanRepository,
-            debts = screenFactory.debtRepository,
             onDataChanged = onDataChanged,
         ),
     )

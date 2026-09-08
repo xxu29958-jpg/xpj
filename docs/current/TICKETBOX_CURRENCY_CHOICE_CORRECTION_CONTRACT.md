@@ -36,6 +36,7 @@ the user's existing financial data remains a separate, concrete approval step.
 | All monetary HTTP writers | `resolve_write_capability` rejects unversioned clients for every currency; the CNY/revision-one mode and its old success exit are retired. Web/Owner/upload-link and internal jobs retain their existing server identity. Ordinary test app/rotated/member-token producers declare current persisted negotiation, legacy tests retain raw authentication, and the live smoke client reads runtime compatibility before sending app requests |
 | Expense currency continuation | Pending FX refresh, date/original-currency edits and manual pending FX preserve `Expense.home_currency_code`. The shared payload owner requires explicit context; new manual/notification capture still uses the confirmed default. Direct conversion/refresh tests verify record meaning under a different default |
 | CSV money continuation | Explicit file currency is captured per row through parsing, durable staging, API/Web preview, paged application and receipt replay. The old current-default relabelling exit is retired. Migration uses a linked expense or persisted ACTIVE binding; unknown history waits for Owner adoption. Pure parser, API/Web/paged retry, FX-pair and real migration tests are the direct producers |
+| Income money continuation | API/Web create and Android drafts capture currency; the plan/version owns ordinary edits and durable v1 replay without changing the old update fingerprint. Plan/revision migration, audited adoption, receipt reconciliation, API/Web editing, Android list/editor/overview, recycle bin and advisor projections use the recorded meaning. Income query replaces the Android debt-list currency bridge. Direct command/ORM/form/DTO/Room producers and mixed-currency/refusal tests are migrated; cloud qualification is pending |
 | Product consumers | Money pages, recycle bin and Owner projections, reports/insights, Android forms/caches and sync feedback, Desktop first-use navigation; real non-CNY choice then financial task, refusal/replay and cross-client recovery |
 | Verification producers | Explicit currency fixtures for ordinary and migration tests; legacy bootstrap/admin HTTP smoke and Desktop bridge tests declare a configured CNY baseline. Dedicated fresh Owner product tests and VM prove actual initial selection. Generated API and protocol gates follow real semantic changes |
 
@@ -89,6 +90,11 @@ currency, including mixed-currency files and later retries. Planning carriers
 still need completion. The old CNY
 unversioned-writer exception is now removed across the monetary owner and its
 direct client/test producers are migrated; current cloud qualification is pending.
+
+Income creation still needs accepted-response-loss reconciliation and Web raw-form
+retention; it currently has no creation idempotency key. Missing-FX recovery in
+advisor/insight consumers and the remaining planning currencies must also close
+before the nonempty default-change command can be delivered.
 
 Qualification includes TDD, exact candidate cloud gates, bounded review, real
 Desktop/Android continuation and independent main qualification. No long local

@@ -3,7 +3,6 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
-import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.IncomePlanActions
 import com.ticketbox.data.repository.IncomePlanDraft
 import com.ticketbox.data.repository.PendingIncomePlanEdit
@@ -38,8 +37,10 @@ data class IncomePlanUiState(
     val canModify: Boolean = true,
     val activePlans: List<IncomePlan> = emptyList(),
     val archivedPlans: List<IncomePlan> = emptyList(),
-    val scheduledAmountCents: Long = 0L,
+    val scheduledAmountCents: Long? = null,
     val forecastMonth: String? = null,
+    val forecastCurrencyCode: String? = null,
+    val missingCurrencyCodes: List<String> = emptyList(),
     val pendingEdits: List<PendingIncomePlanEdit> = emptyList(),
     val currentMonthSummary: IncomePlanMonthSummary = IncomePlanMonthSummary(),
     val error: UiText? = null,
@@ -65,7 +66,7 @@ enum class IncomePlanLoadState {
 /** Confirmed forecast values supplied by the IncomePlan query owner. */
 data class IncomePlanMonthSummary(
     val effectivePlanCount: Int = 0,
-    val expectedAmountCents: Long = 0L,
+    val expectedAmountCents: Long? = null,
 )
 
 data class IncomePlanDraftUi(
@@ -117,6 +118,7 @@ private fun IncomePlanDraftUi.toRepositoryDraftOrNull(): IncomePlanDraft? {
     }
     return IncomePlanDraft(
         intentMonth = intentMonth,
+        homeCurrencyCode = homeCurrency?.storageKey ?: return null,
         label = cleanLabel,
         sourceType = sourceType,
         frequency = frequency,
@@ -128,7 +130,6 @@ private fun IncomePlanDraftUi.toRepositoryDraftOrNull(): IncomePlanDraft? {
 
 class IncomePlanViewModel(
     private val repository: IncomePlanActions,
-    private val debts: DebtActions,
     private val onDataChanged: () -> Unit = {},
 ) : ViewModel() {
 
@@ -151,15 +152,6 @@ class IncomePlanViewModel(
                     _state.value = IncomePlanUiState(
                         canModify = access?.canModify ?: false,
                     )
-                    // R12-D + R14-6：每次账本生效/切换都重解析账本币种（共享同源裁决：
-                    // record 集合 × 信封 capability，未知/冲突 → 草稿 homeCurrency=null 禁写，
-                    // 不落 CNY 兜底）。
-                    viewModelScope.launch {
-                        val page = debts.listDebts().getOrNull()
-                        _state.update {
-                            it.copy(addDraft = it.addDraft.copy(homeCurrency = resolveLedgerCurrency(page)))
-                        }
-                    }
                     queueJob?.cancel()
                     if (access != null) {
                         queueJob = viewModelScope.launch {
@@ -206,9 +198,12 @@ class IncomePlanViewModel(
                         archivedPlans = archived.getOrDefault(emptyList()),
                         scheduledAmountCents = listing.scheduledAmountCents,
                         forecastMonth = listing.month,
+                        forecastCurrencyCode = listing.homeCurrencyCode,
+                        missingCurrencyCodes = listing.missingCurrencyCodes,
                         addDraft = _state.value.addDraft.let { draft ->
-                            if (draft.intentMonth.isEmpty()) draft.copy(intentMonth = listing.month,
-                                incomeMonthInput = draft.incomeMonthInput.ifEmpty { listing.month }) else draft
+                            draft.copy(intentMonth = draft.intentMonth.ifEmpty { listing.month },
+                                incomeMonthInput = draft.incomeMonthInput.ifEmpty { listing.month },
+                                homeCurrency = draft.homeCurrency ?: CurrencyCode.fromStorageKeyOrNull(listing.homeCurrencyCode))
                         },
                         currentMonthSummary = IncomePlanMonthSummary(listing.effectivePlanCount, listing.expectedAmountCents),
                         error = archivedError,
@@ -276,15 +271,9 @@ class IncomePlanViewModel(
     }
 
     fun resetDraft() {
-        _state.update { it.copy(addDraft = IncomePlanDraftUi(intentMonth = it.forecastMonth.orEmpty(), incomeMonthInput = it.forecastMonth.orEmpty()),
+        _state.update { it.copy(addDraft = IncomePlanDraftUi(intentMonth = it.forecastMonth.orEmpty(),
+            incomeMonthInput = it.forecastMonth.orEmpty(), homeCurrency = CurrencyCode.fromStorageKeyOrNull(it.forecastCurrencyCode)),
             isSubmitting = false, addSucceeded = false) }
-        // 草稿重建后重新注入账本币种（R12-D + R14-6 共享同源裁决；不清 homeCurrency 则新草稿永远 null 禁写）。
-        viewModelScope.launch {
-            val page = debts.listDebts().getOrNull()
-            _state.update {
-                it.copy(addDraft = it.addDraft.copy(homeCurrency = resolveLedgerCurrency(page)))
-            }
-        }
     }
 
     fun submitDraft() {

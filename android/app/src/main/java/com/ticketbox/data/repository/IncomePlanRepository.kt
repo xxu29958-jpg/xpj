@@ -32,10 +32,12 @@ interface IncomePlanActions {
 
 data class IncomePlanListing(
     val plans: List<IncomePlan>,
-    val expectedAmountCents: Long,
+    val expectedAmountCents: Long?,
     val month: String,
-    val scheduledAmountCents: Long,
+    val scheduledAmountCents: Long?,
     val effectivePlanCount: Int,
+    val homeCurrencyCode: String? = null,
+    val missingCurrencyCodes: List<String> = emptyList(),
 )
 
 class IncomePlanRepository(
@@ -80,10 +82,11 @@ class IncomePlanRepository(
         guard.bindExact(expectedBinding).call { api ->
             val response = api.listIncomePlans(status = "active")
             IncomePlanListing(response.items.map { it.toDomain() }, response.expectedAmountCents,
-                response.month, response.scheduledAmountCents, response.effectivePlanCount)
+                response.month, response.scheduledAmountCents, response.effectivePlanCount,
+                response.homeCurrencyCode, response.missingCurrencyCodes)
         }
     }.onSuccess { listing ->
-        onActivePlansSnapshot("m=${listing.month};total=${listing.expectedAmountCents};" +
+        onActivePlansSnapshot("m=${listing.month};home=${listing.homeCurrencyCode};total=${listing.expectedAmountCents};" +
             "n=${listing.plans.size};rv=${listing.plans.maxOfOrNull(IncomePlan::rowVersion) ?: 0};" +
             "ua=${listing.plans.maxOfOrNull(IncomePlan::updatedAt).orEmpty()}")
     }
@@ -110,6 +113,7 @@ class IncomePlanRepository(
             throw RepositoryException("这条计划有待处理的修改，请先查看原提交的同步结果。")
         }
         if (patch.expectedRowVersion != baseline.rowVersion) throw RepositoryException("请刷新计划后重新核对修改。")
+        if (baseline.homeCurrencyCode != currency.storageKey) throw RepositoryException("计划币种还无法确认，请刷新计划后核对金额。")
         val payload = IncomePlanEditPayload(INCOME_PLAN_EDIT_PAYLOAD_REVISION, baseline.publicId, baseline.label,
             baseline.amountCents, currency.storageKey, expectedBinding.sessionGeneration, expectedBinding.bindingRevision,
             patch.toUpdateRequest().copy(expectedRowVersion = 0))

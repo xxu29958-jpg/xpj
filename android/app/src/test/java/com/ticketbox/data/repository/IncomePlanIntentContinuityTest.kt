@@ -125,4 +125,4 @@ private class IncomeIntentApi : ApiService by FakeApiService(mutableListOf(), 0)
 }
 
 private fun incomeIntentDto() = IncomePlanDto("income-1", "工资", "salary", "monthly", null,
-    100_000, 10, "active", "2026-08-01T00:00:00Z", "2026-08-01T00:00:00Z", 3, null)
+    100_000, 10, "active", "2026-08-01T00:00:00Z", "2026-08-01T00:00:00Z", 3, null, homeCurrencyCode = "CNY")

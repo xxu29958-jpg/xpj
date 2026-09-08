@@ -41,7 +41,7 @@ def test_income_plans_page_renders_empty(web_client: TestClient, *, identity) ->
 def test_income_plans_create_and_list(web_client: TestClient, *, identity) -> None:  # noqa: ARG001
     create_resp = web_client.post(
         "/web/income-plans/create",
-        data={"intent_month": "2026-05",
+        data={"home_currency_code": "CNY", "intent_month": "2026-05",
             "label": "我的工资",
             "source_type": "salary",
             "amount_yuan": "10000",
@@ -65,7 +65,7 @@ def test_income_plans_one_time_month_is_user_facing(
 ) -> None:  # noqa: ARG001
     create_resp = web_client.post(
         "/web/income-plans/create",
-        data={"intent_month": "2026-05",
+        data={"home_currency_code": "CNY", "intent_month": "2026-05",
             "label": "项目尾款",
             "source_type": "freelance",
             "frequency": "one_time",
@@ -88,7 +88,7 @@ def test_income_plans_one_time_month_is_user_facing(
 def test_income_plans_archive_and_restore(web_client: TestClient, *, identity) -> None:  # noqa: ARG001
     create_resp = web_client.post(
         "/web/income-plans/create",
-        data={"intent_month": "2026-05",
+        data={"home_currency_code": "CNY", "intent_month": "2026-05",
             "label": "副业",
             "source_type": "freelance",
             "amount_yuan": "3000",
@@ -154,7 +154,7 @@ def test_income_plans_archive_and_restore(web_client: TestClient, *, identity) -
 def test_income_plans_rejects_bad_pay_day(web_client: TestClient, *, identity) -> None:  # noqa: ARG001
     resp = web_client.post(
         "/web/income-plans/create",
-        data={"intent_month": "2026-05",
+        data={"home_currency_code": "CNY", "intent_month": "2026-05",
             "label": "x",
             "source_type": "salary",
             "amount_yuan": "100",

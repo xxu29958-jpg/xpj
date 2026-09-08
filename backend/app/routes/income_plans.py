@@ -48,6 +48,7 @@ def _to_response(plan: MonthlyIncomePlan) -> IncomePlanResponse:
         frequency=plan.frequency,
         income_month=plan.income_month,
         amount_cents=plan.amount_cents,
+        home_currency_code=plan.home_currency_code,
         pay_day=plan.pay_day,
         status=plan.status,
         created_at=plan.created_at,
@@ -75,6 +76,8 @@ def list_plans(
     return IncomePlanListResponse(
         items=[_to_response(p) for p in plans],
         month=month_label,
+        home_currency_code=forecast.home_currency_code,
+        missing_currency_codes=list(forecast.missing_currency_codes),
         # Older APKs render this field as scheduled through today.
         total_active_amount_cents=forecast.scheduled_amount_cents,
         expected_amount_cents=forecast.expected_amount_cents,
@@ -97,6 +100,7 @@ def create_plan(
         frequency=payload.frequency,
         income_month=payload.income_month,
         amount_cents=payload.amount_cents,
+        home_currency_code=payload.home_currency_code,
         pay_day=payload.pay_day,
         intent_month=payload.intent_month,
         actor_account_id=auth.account_id,

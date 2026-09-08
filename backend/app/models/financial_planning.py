@@ -47,6 +47,7 @@ class MonthlyIncomePlan(Base):
     __tablename__ = "monthly_income_plans"
     __table_args__ = (
         UniqueConstraint("id", "tenant_id", name="uq_income_plan_id_tenant"),
+        CheckConstraint("home_currency_code IN ('CNY', 'USD', 'EUR', 'GBP', 'JPY', 'HKD', 'KRW')", name="ck_income_plan_currency"),
         *money_check_constraints_for_table("monthly_income_plans"),
         CheckConstraint(
             "status IN ('active', 'archived')",
@@ -94,6 +95,7 @@ class MonthlyIncomePlan(Base):
         nullable=False,
     )
     income_month: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    home_currency_code: Mapped[str | None] = mapped_column(String(3), nullable=True)
     amount_cents: Mapped[int] = mapped_column(BigInteger, nullable=False)
     pay_day: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="active", nullable=False, index=True)

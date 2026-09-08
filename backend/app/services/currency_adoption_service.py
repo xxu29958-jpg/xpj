@@ -31,10 +31,12 @@ from app.models import (
     CsvImportRow,
     Device,
     ExchangeRate,
+    IncomePlanRevision,
     InstallationCurrencyAuditLog,
     InstallationCurrencyBinding,
     InstallationIdempotencyKey,
     InstallationOwnerClaim,
+    MonthlyIncomePlan,
 )
 from app.services import permission_service
 from app.services.currency_binding_service import (
@@ -231,6 +233,8 @@ def _adopt_in_transaction(
     _set_writer_proof(db, binding)
     db.execute(update(ExchangeRate).where(ExchangeRate.home_currency_code.is_(None)).values(home_currency_code=code))
     db.execute(update(CsvImportRow).where(CsvImportRow.home_currency_code.is_(None)).values(home_currency_code=code))
+    db.execute(update(MonthlyIncomePlan).where(MonthlyIncomePlan.home_currency_code.is_(None)).values(home_currency_code=code))
+    db.execute(update(IncomePlanRevision).where(IncomePlanRevision.home_currency_code.is_(None)).values(home_currency_code=code))
 
     receipt = _receipt(binding, event, evidence_sha256=evidence.sha256, activated_at=activated_at)
     claimed.status = "succeeded"

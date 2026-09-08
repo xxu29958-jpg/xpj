@@ -25,11 +25,13 @@ class IncomePlanMappersTest {
             updatedAt = "2026-05-15T08:00:00Z",
             rowVersion = 1L,
             archivedAt = null,
+            homeCurrencyCode = "JPY",
         )
 
         val plan = dto.toDomain()
 
         assertEquals("abc-123", plan.publicId)
+        assertEquals("JPY", plan.homeCurrencyCode)
         assertEquals("我的工资", plan.label)
         assertEquals(IncomeSourceType.SALARY, plan.sourceType)
         assertEquals(IncomeFrequency.MONTHLY, plan.frequency)
@@ -56,6 +58,7 @@ class IncomePlanMappersTest {
     @Test
     fun draftSerialisesToCreateRequestUsingWireValues() {
         val draft = IncomePlanDraft(intentMonth = "2026-09",
+            homeCurrencyCode = "JPY",
             label = "  我的副业  ",
             sourceType = IncomeSourceType.FREELANCE,
             frequency = IncomeFrequency.ONE_TIME,
@@ -69,6 +72,7 @@ class IncomePlanMappersTest {
         assertEquals("one_time", request.frequency)
         assertEquals("2026-06", request.incomeMonth)
         assertEquals(300_000L, request.amountCents)
+        assertEquals("JPY", request.homeCurrencyCode)
         assertEquals(20, request.payDay)
     }
 

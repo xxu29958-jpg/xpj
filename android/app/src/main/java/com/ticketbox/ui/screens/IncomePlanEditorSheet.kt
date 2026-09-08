@@ -32,17 +32,16 @@ internal data class IncomePlanEditSheetCallbacks(
 @Composable
 internal fun IncomePlanEditSheetHost(
     state: IncomePlanEditUiState,
-    currency: CurrencyDisplay,
     editViewModel: IncomePlanEditViewModel,
 ) {
-    if (state.session == null) return
+    val session = state.session ?: return
     AppBusyGuardedSheet(
         isSubmitting = state.isSubmitting,
         onDismiss = editViewModel::dismiss,
     ) {
         EditIncomePlanSheet(
             state = state,
-            currency = currency,
+            currency = CurrencyDisplay.forRecord(session.draft.homeCurrency?.storageKey),
             callbacks = IncomePlanEditSheetCallbacks(
                 fields = IncomePlanDraftFieldCallbacks(
                     onLabel = { editViewModel.updateDraftField(IncomePlanDraftField.Label, it) },

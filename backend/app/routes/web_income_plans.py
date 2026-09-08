@@ -20,7 +20,6 @@ from app.routes.web_common import (
     parse_form_row_version_token,
     templates,
 )
-from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import (
     major_amount_to_minor,
     minor_amount_value,
@@ -134,15 +133,15 @@ def page_income_plans(
         selected_ledger_id=selected,
         page_title="收入计划",
     )
-    # Keep one configured currency explicit across every amount in this view.
-    home = ctx["home_currency_code"]
+    home = forecast.home_currency_code
     ctx.update(
         plans_active=plans_active,
         plans_archived=plans_archived,
-        total_yuan=minor_amount_value(forecast.expected_amount_cents, home),
-        scheduled_yuan=minor_amount_value(forecast.scheduled_amount_cents, home),
+        total_yuan=minor_amount_value(forecast.expected_amount_cents, home) if forecast.expected_amount_cents is not None else None,
+        scheduled_yuan=minor_amount_value(forecast.scheduled_amount_cents, home) if forecast.scheduled_amount_cents is not None else None,
+        missing_currency_codes=forecast.missing_currency_codes,
         intent_month=intent_month,
-        minor_label=lambda cents: minor_amount_value(cents, home),
+        minor_label=lambda plan: minor_amount_value(plan.amount_cents, plan.home_currency_code) if plan.home_currency_code else "待确认币种",
         currency_input=_currency_input_view(home),
         can_write=can_write,
         message=message,
@@ -166,6 +165,7 @@ def post_create(
     income_month_year: str | None = Form(default=None),
     income_month_number: str | None = Form(default=None),
     amount_yuan: str = Form(default=""),
+    home_currency_code: str = Form(...),
     pay_day: str = Form(default=""),
     intent_month: str = Form(...),
     db: Session = Depends(get_db),
@@ -174,10 +174,9 @@ def post_create(
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, ledger_id, options=options, request=request)
     _require_selected_ledger_write(options, selected)
-    presentation_currency = require_runtime_home_currency_code(db)
     amount_cents = _parse_yuan(
         amount_yuan,
-        currency_code=presentation_currency,
+        currency_code=home_currency_code,
         label="预计收入金额",
     )
     day = _parse_pay_day(pay_day)
@@ -193,6 +192,7 @@ def post_create(
             month=income_month_number,
         ),
         amount_cents=amount_cents,
+        home_currency_code=home_currency_code,
         pay_day=day,
         intent_month=intent_month,
         actor_account_id=resolve_web_actor_account_id(db, request, selected),

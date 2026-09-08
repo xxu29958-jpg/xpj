@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
+from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import RecurringItem
 from app.money_contract import (
@@ -25,7 +26,7 @@ from app.services.budget_advisor_service._models import (
     IncomePlanSnapshot,
 )
 from app.services.category_common import DEFAULT_CATEGORIES, normalize_category
-from app.services.income_plan_service import list_applicable_income_plans
+from app.services.income_plan_service import income_forecast
 from app.services.monthly_report_service import (
     MonthlyReport,
     compose_budget_explanation,
@@ -171,16 +172,19 @@ def _historical_baseline(
 def _income_plan(db: Session, *, tenant_id: str, month: str) -> list[IncomePlanSnapshot]:
     """Active income plans as advisor input. ``source_type`` is generalised to a
     PII-free allowlist; the free-text ``label`` is intentionally never sent."""
+    forecast = income_forecast(db, tenant_id=tenant_id, month=month)
+    if forecast.expected_amount_cents is None:
+        raise AppError("exchange_rate_missing", "收入计划缺少折算汇率，请补充后再生成建议。", status_code=422)
     return [
         IncomePlanSnapshot(
             source_type=_generalize_source_type(plan.source_type),
             amount_cents=projection_sum_to_int(
-                plan.amount_cents,
+                amount,
                 label="budget_advisor.income_plan",
             ),
             pay_day=int(plan.pay_day),
         )
-        for plan in list_applicable_income_plans(db, tenant_id=tenant_id, month=month)
+        for plan, amount in forecast.projected_entries
     ]
 
 

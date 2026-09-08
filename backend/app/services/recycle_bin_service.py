@@ -77,7 +77,7 @@ def list_recycle_bin_items(db: Session, *, tenant_id: str) -> RecycleBinListing:
     rows.extend(_archived_budget_rows(db, tenant_id, currency))
     rows.extend(_soft_deleted_category_preference_rows(db, tenant_id))
     rows.extend(_soft_deleted_merchant_catalog_rows(db, tenant_id))
-    rows.extend(_archived_income_rows(db, tenant_id, currency))
+    rows.extend(_archived_income_rows(db, tenant_id))
     rows.extend(_archived_recurring_rows(db, tenant_id, currency))
     rows.extend(_archived_goal_rows(db, tenant_id, currency))
     rows.extend(_soft_deleted_rule_rows(db, tenant_id))
@@ -218,7 +218,7 @@ def _sort_key(row: RecycleBinItem) -> datetime:
     return row.removed_at or datetime.min
 
 
-def _archived_income_rows(db: Session, tenant_id: str, currency: str | None) -> list[RecycleBinItem]:
+def _archived_income_rows(db: Session, tenant_id: str) -> list[RecycleBinItem]:
     intent_month = current_accounting_month()
     rows = db.scalars(
         select(MonthlyIncomePlan)
@@ -232,7 +232,7 @@ def _archived_income_rows(db: Session, tenant_id: str, currency: str | None) -> 
             kind_label="收入计划",
             resource_id=item.public_id,
             title=item.label,
-            detail=_income_detail(item, currency) + f" · 恢复从 {intent_month} 生效",
+            detail=_income_detail(item) + f" · 恢复从 {intent_month} 生效",
             removed_at=item.archived_at,
             retention_label="长期保留",
             expected_row_version=item.row_version,
@@ -448,9 +448,9 @@ def _tag_undo_rows(db: Session, tenant_id: str) -> list[RecycleBinItem]:
     return rows
 
 
-def _income_detail(item: MonthlyIncomePlan, currency: str | None) -> str:
+def _income_detail(item: MonthlyIncomePlan) -> str:
     frequency = "每月固定" if item.frequency == "monthly" else f"{item.income_month} 预计"
-    return f"{frequency} · {_money(item.amount_cents, currency)} · {item.pay_day} 号"
+    return f"{frequency} · {_money(item.amount_cents, item.home_currency_code)} · {item.pay_day} 号"
 
 
 def _goal_detail(item: Goal, currency: str | None) -> str:

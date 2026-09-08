@@ -18,14 +18,14 @@ def _seed_undated_single_month_plan(when: datetime) -> tuple[int, str, int]:
     with SessionLocal() as db:
         resolve_write_capability(db)
         plan = MonthlyIncomePlan(
-            tenant_id="owner", label="旧名称", source_type="salary", frequency="one_time",
+            home_currency_code="CNY", tenant_id="owner", label="旧名称", source_type="salary", frequency="one_time",
             income_month="2026-08", amount_cents=10000, pay_day=1, status="active",
             row_version=1, created_at=when, updated_at=when,
         )
         db.add(plan)
         db.flush()
         db.add(IncomePlanRevision(
-            tenant_id="owner", plan_id=plan.id, revision_number=1, change_kind="baseline",
+            home_currency_code="CNY", tenant_id="owner", plan_id=plan.id, revision_number=1, change_kind="baseline",
             effective_month=None, intent_month=None, label=plan.label, source_type=plan.source_type,
             frequency=plan.frequency, income_month=plan.income_month, amount_cents=plan.amount_cents,
             pay_day=plan.pay_day, status=plan.status, recorded_at=when,
@@ -85,7 +85,7 @@ def test_original_edit_result_survives_a_later_edit_and_stale_commands_do_not_pu
 
     server_now = datetime(2026, 9, 30, 15, 30, tzinfo=UTC)
     monkeypatch.setattr(income_plan_service, "now_utc", lambda: server_now)
-    created = client.post("/api/income-plans", headers=negotiated_headers(client, identity.app_headers), json={
+    created = client.post("/api/income-plans", headers=negotiated_headers(client, identity.app_headers), json={"home_currency_code": "CNY",
         "intent_month": "2026-08", "label": "原计划", "amount_cents": 10000, "pay_day": 31,
     })
     assert created.status_code == 201
@@ -129,7 +129,7 @@ def test_frequency_conversion_and_single_month_correction_preserve_unrelated_his
     from app.services.income_plan_service import create_income_plan, income_forecast, update_income_plan
 
     with SessionLocal() as db:
-        plan = create_income_plan(db, tenant_id="owner", label="估算", source_type="salary", amount_cents=10000,
+        plan = create_income_plan(db, home_currency_code="CNY", tenant_id="owner", label="估算", source_type="salary", amount_cents=10000,
             pay_day=1, now=datetime(2026, 8, 2, tzinfo=UTC))
         plan = update_income_plan(db, tenant_id="owner", public_id=plan.public_id, expected_row_version=plan.row_version,
             frequency="one_time", income_month="2026-11", income_month_provided=True, amount_cents=12000,
@@ -183,7 +183,7 @@ def test_status_replay_preserves_the_declared_month_and_committed_history(
     when = datetime(2026, 12, 2, tzinfo=UTC)
     command = getattr(income_plan_service, f"{action}_income_plan")
     with SessionLocal() as db:
-        plan = income_plan_service.create_income_plan(db, tenant_id="owner", label="月份重放", source_type="salary",
+        plan = income_plan_service.create_income_plan(db, home_currency_code="CNY", tenant_id="owner", label="月份重放", source_type="salary",
             amount_cents=10000, pay_day=1, intent_month="2026-08", now=when)
         if action == "restore":
             plan = income_plan_service.archive_income_plan(db, tenant_id="owner", public_id=plan.public_id,

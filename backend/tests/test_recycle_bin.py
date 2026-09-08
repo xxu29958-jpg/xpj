@@ -46,7 +46,7 @@ def _seed_archived_income(
     with SessionLocal() as db:
         plan = create_income_plan(
             db,
-            tenant_id=tenant_id,
+            home_currency_code="CNY", tenant_id=tenant_id,
             label=label,
             source_type="salary",
             amount_cents=amount_cents,
@@ -92,7 +92,7 @@ def _seed_archived_jpy_money_facts() -> str:
         activate_test_currency_authority(db, "JPY")
         timestamp = now_utc()
         income = MonthlyIncomePlan(
-            tenant_id="owner", label="JPY收入",
+            home_currency_code="JPY", tenant_id="owner", label="JPY收入",
             frequency="one_time", income_month="2026-06",
             amount_cents=5000,
             pay_day=28, status="archived", archived_at=timestamp,

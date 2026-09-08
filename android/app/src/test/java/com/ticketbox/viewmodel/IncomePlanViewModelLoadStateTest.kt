@@ -48,7 +48,6 @@ class IncomePlanViewModelLoadStateTest {
             LoadStateIncomePlanRepository(
                 activeResult = Result.failure(RuntimeException("offline")),
             ),
-            CapabilityDebtActions(),
         )
         advanceUntilIdle()
 
@@ -61,7 +60,7 @@ class IncomePlanViewModelLoadStateTest {
 
     @Test
     fun loadedEmptyAndArchivedFailureStayExplicit() = runTest(dispatcher) {
-        val loadedEmpty = IncomePlanViewModel(LoadStateIncomePlanRepository(), CapabilityDebtActions())
+        val loadedEmpty = IncomePlanViewModel(LoadStateIncomePlanRepository())
         advanceUntilIdle()
         assertEquals(IncomePlanLoadState.Loaded, loadedEmpty.state.value.loadState)
         assertNull(loadedEmpty.state.value.error)
@@ -70,7 +69,6 @@ class IncomePlanViewModelLoadStateTest {
             LoadStateIncomePlanRepository(
                 archivedResult = Result.failure(RuntimeException("archived offline")),
             ),
-            CapabilityDebtActions(),
         )
         advanceUntilIdle()
 
@@ -80,7 +78,7 @@ class IncomePlanViewModelLoadStateTest {
 }
 
 private class LoadStateIncomePlanRepository(
-    private val activeResult: Result<IncomePlanListing> = Result.success(IncomePlanListing(emptyList(), 0L, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0)),
+    private val activeResult: Result<IncomePlanListing> = Result.success(IncomePlanListing(emptyList(), 0L, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0, homeCurrencyCode = "CNY")),
     private val archivedResult: Result<List<IncomePlan>> = Result.success(emptyList()),
 ) : IncomePlanActions {
     override fun describeEdit(row: com.ticketbox.data.repository.OutboxRow): com.ticketbox.data.repository.PendingIncomePlanEdit? = null

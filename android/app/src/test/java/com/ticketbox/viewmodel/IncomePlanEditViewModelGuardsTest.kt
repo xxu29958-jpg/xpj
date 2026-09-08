@@ -1,6 +1,5 @@
 package com.ticketbox.viewmodel
 
-import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.data.repository.IncomePlanListing
 import com.ticketbox.domain.model.CurrencyCode
 import kotlinx.coroutines.CompletableDeferred
@@ -34,74 +33,67 @@ class IncomePlanEditViewModelGuardsTest {
     @AfterTest fun tearDown() { Dispatchers.resetMain() }
 
     @Test
-    fun amountSeedsWhenCurrencyResolutionCompletesAfterOpen() = runTest(dispatcher) {
-        val plan = editPlan("p1", 12_300, rowVersion = 7L)
-        val repo = FakeIncomePlanEditRepository(active = IncomePlanListing(listOf(plan), 12_300, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0))
-        val gate = CompletableDeferred<Unit>()
-        val debts = CapabilityDebtActions()
-        debts.listDebtsGate = { gate.await() }
-        val viewModel = IncomePlanEditViewModel(repo, debts)
+    fun editUsesThePlansRecordedCurrencyImmediately() = runTest(dispatcher) {
+        val plan = editPlan("p1", 12_300, rowVersion = 7L).copy(homeCurrencyCode = "JPY")
+        val repo = FakeIncomePlanEditRepository()
+        val viewModel = IncomePlanEditViewModel(repo)
         advanceUntilIdle()
-
-        // 弱网路径：列表已有缓存、编辑 VM 刚建立、币种解析未归时点行——先开会话（无币种）。
         viewModel.openEdit(plan, "2026-09")
-        viewModel.state.value.also { state ->
-            assertNotNull(state.session)
-            assertNull(state.session?.draft?.homeCurrency)
-            assertEquals("", state.session?.draft?.amountYuanInput)
-            // 解析未归期间对 UI 亮「正在准备金额」，不留永久空金额。
-            assertTrue(state.currencyPending)
-        }
-
-        gate.complete(Unit)
-        advanceUntilIdle()
-
-        viewModel.state.value.also { state ->
-            assertNotNull(state.session)
-            assertEquals(CurrencyCode.CNY, state.session?.draft?.homeCurrency)
-            assertEquals("123.00", state.session?.draft?.amountYuanInput)
-            assertFalse(state.currencyPending)
-        }
+        val state = viewModel.state.value
+        assertEquals(CurrencyCode.JPY, state.session?.draft?.homeCurrency)
+        assertEquals("12300", state.session?.draft?.amountYuanInput)
+        assertFalse(state.currencyPending)
     }
 
     @Test
-    fun retryCurrencyResolutionSeedsDraftAfterRecovery() = runTest(dispatcher) {
-        val plan = editPlan("p1", 12_300, rowVersion = 7L)
-        val repo = FakeIncomePlanEditRepository(active = IncomePlanListing(listOf(plan), 12_300, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0))
-        // 首次解析 fail closed：信封 capability 是未知码（"XXX"）→ 无币种；恢复后重试补种子。
-        val debts = CapabilityDebtActions(
-            page = DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "XXX"),
-        )
-        val viewModel = IncomePlanEditViewModel(repo, debts)
+    fun retryFillsUnknownCachedCurrencyFromTheSamePlanVersion() = runTest(dispatcher) {
+        val plan = editPlan("p1", 12_300, rowVersion = 7L).copy(homeCurrencyCode = "JPY")
+        val repo = FakeIncomePlanEditRepository(active = IncomePlanListing(listOf(plan), 12_300,
+            month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0, homeCurrencyCode = "CNY"))
+        val gate = CompletableDeferred<Unit>()
+        repo.listGate = { gate.await() }
+        val viewModel = IncomePlanEditViewModel(repo)
         advanceUntilIdle()
-
-        viewModel.openEdit(plan, "2026-09")
-        viewModel.state.value.also { state ->
-            assertNotNull(state.session)
-            assertNull(state.session?.draft?.homeCurrency)
-            assertEquals("", state.session?.draft?.amountYuanInput)
-            assertFalse(state.currencyPending)
-        }
-
-        debts.page = DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "CNY")
+        viewModel.openEdit(plan.copy(homeCurrencyCode = null), "2026-09")
+        assertNull(viewModel.state.value.session?.draft?.homeCurrency)
+        assertEquals("", viewModel.state.value.session?.draft?.amountYuanInput)
         viewModel.retryCurrencyResolution()
         advanceUntilIdle()
+        assertTrue(viewModel.state.value.currencyPending)
+        gate.complete(Unit)
+        advanceUntilIdle()
+        val session = assertNotNull(viewModel.state.value.session)
+        assertEquals(CurrencyCode.JPY, session.draft.homeCurrency)
+        assertEquals("12300", session.draft.amountYuanInput)
+        assertEquals("JPY", session.baseline.homeCurrencyCode)
+        assertFalse(viewModel.state.value.currencyPending)
+    }
 
-        viewModel.state.value.also { state ->
-            assertNotNull(state.session)
-            assertEquals(CurrencyCode.CNY, state.session?.draft?.homeCurrency)
-            assertEquals("123.00", state.session?.draft?.amountYuanInput)
-            assertFalse(state.currencyPending)
-        }
+    @Test
+    fun retryDoesNotBorrowCurrencyFromANewerPlanVersion() = runTest(dispatcher) {
+        val baseline = editPlan("p1", 12_300, rowVersion = 7L).copy(homeCurrencyCode = null)
+        val current = baseline.copy(rowVersion = 8L, homeCurrencyCode = "JPY")
+        val repo = FakeIncomePlanEditRepository(active = IncomePlanListing(listOf(current), 12_300,
+            month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0, homeCurrencyCode = "CNY"))
+        val viewModel = IncomePlanEditViewModel(repo)
+        advanceUntilIdle()
+        viewModel.openEdit(baseline, "2026-09")
+        viewModel.retryCurrencyResolution()
+        advanceUntilIdle()
+        val session = assertNotNull(viewModel.state.value.session)
+        assertEquals(7L, session.baselineRowVersion)
+        assertNull(session.draft.homeCurrency)
+        assertNotNull(session.draft.validationError)
+        assertTrue(repo.updateCalls.isEmpty())
     }
 
     @Test
     fun dismissDuringSubmitKeepsSessionUntilResult() = runTest(dispatcher) {
         val plan = editPlan("p1", 12_300, rowVersion = 7L)
-        val repo = FakeIncomePlanEditRepository(active = IncomePlanListing(listOf(plan), 12_300, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0))
+        val repo = FakeIncomePlanEditRepository(active = IncomePlanListing(listOf(plan), 12_300, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0, homeCurrencyCode = "CNY"))
         val gate = CompletableDeferred<Unit>()
         repo.updateGate = { gate.await() }
-        val viewModel = IncomePlanEditViewModel(repo, CapabilityDebtActions())
+        val viewModel = IncomePlanEditViewModel(repo)
         advanceUntilIdle()
         viewModel.openEdit(plan, "2026-09")
 
@@ -124,10 +116,10 @@ class IncomePlanEditViewModelGuardsTest {
     fun openEditDuringSubmitKeepsOriginalSession() = runTest(dispatcher) {
         val planA = editPlan("p1", 12_300, rowVersion = 7L)
         val planB = editPlan("p2", 5_000, rowVersion = 2L)
-        val repo = FakeIncomePlanEditRepository(active = IncomePlanListing(listOf(planA, planB), 17_300, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0))
+        val repo = FakeIncomePlanEditRepository(active = IncomePlanListing(listOf(planA, planB), 17_300, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0, homeCurrencyCode = "CNY"))
         val gate = CompletableDeferred<Unit>()
         repo.updateGate = { gate.await() }
-        val viewModel = IncomePlanEditViewModel(repo, CapabilityDebtActions())
+        val viewModel = IncomePlanEditViewModel(repo)
         advanceUntilIdle()
         viewModel.openEdit(planA, "2026-09")
         viewModel.submit()

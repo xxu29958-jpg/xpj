@@ -66,7 +66,7 @@ def _create_plan(
     resp = client.post(
         "/api/income-plans",
         headers=negotiated_headers(client, identity.app_headers),
-        json={"intent_month": "2026-05",
+        json={"home_currency_code": "CNY", "intent_month": "2026-05",
             "label": label,
             "source_type": "salary",
             "amount_cents": 1_000_000,

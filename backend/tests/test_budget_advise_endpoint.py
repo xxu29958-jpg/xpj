@@ -161,7 +161,7 @@ def test_builder_sends_generalized_income_plan(identity) -> None:  # noqa: ARG00
     with SessionLocal() as db:
         create_income_plan(
             db,
-            tenant_id="owner",
+            home_currency_code="CNY", tenant_id="owner",
             label="Acme Corp 工资",
             source_type="工资",
             amount_cents=1_500_000,
@@ -196,7 +196,7 @@ def test_builder_sends_only_income_applicable_to_advice_month(identity, monkeypa
     with SessionLocal() as db:
         create_income_plan(
             db,
-            tenant_id="owner",
+            home_currency_code="CNY", tenant_id="owner",
             label="monthly",
             source_type="salary",
             amount_cents=1_000_000,
@@ -204,7 +204,7 @@ def test_builder_sends_only_income_applicable_to_advice_month(identity, monkeypa
         )
         create_income_plan(
             db,
-            tenant_id="owner",
+            home_currency_code="CNY", tenant_id="owner",
             label="june bonus",
             source_type="bonus",
             amount_cents=200_000,
@@ -214,7 +214,7 @@ def test_builder_sends_only_income_applicable_to_advice_month(identity, monkeypa
         )
         create_income_plan(
             db,
-            tenant_id="owner",
+            home_currency_code="CNY", tenant_id="owner",
             label="july bonus",
             source_type="bonus",
             amount_cents=300_000,

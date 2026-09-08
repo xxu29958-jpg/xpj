@@ -33,9 +33,10 @@
   <div class="plan-income-hero">
     <div>
       <span class="product-eyebrow">本月预计收入</span>
-      <span class="plan-income-value"><small>{{ home_currency_symbol }}</small>{{ total_yuan }}</span>
+      <span class="plan-income-value">{% if total_yuan is not none %}<small>{{ home_currency_symbol }}</small>{{ total_yuan }}{% else %}待补汇率{% endif %}</span>
     </div>
-    <p>按收入计划估算，不代表实际到账或账户余额。按计划截至今日：{{ home_currency_symbol }}{{ scheduled_yuan }}。</p>
+    <p>按收入计划估算，不代表实际到账或账户余额。按计划截至今日：{% if scheduled_yuan is not none %}{{ home_currency_symbol }}{{ scheduled_yuan }}{% else %}待补汇率{% endif %}。</p>
+    {% if missing_currency_codes %}<p role="status">{{ missing_currency_codes|join('、') }} 金额缺少兑换为 {{ home_currency_code }} 的汇率，补齐后显示完整合计。每项计划仍保留原币种。</p>{% endif %}
   </div>
 </section>
 
@@ -49,7 +50,7 @@
         <strong>{{ plan.label }}</strong>
         <span class="pill-row"><span class="product-status">{{ source_type_labels.get(plan.source_type, plan.source_type) }}</span></span>
       </div>
-      <span class="plan-goal-amount">{{ home_currency_symbol }}{{ minor_label(plan.amount_cents) }}</span>
+      <span class="plan-goal-amount">{{ plan.home_currency_code or '' }} {{ minor_label(plan) }}</span>
     </div>
     <div class="plan-row-meta">
       <span>
@@ -102,6 +103,7 @@
     </div>
     <form method="post" action="/web/income-plans/create" class="budget-form">
       {{ csrf_field|safe }}
+      <input type="hidden" name="home_currency_code" value="{{ home_currency_code }}">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
         <input type="hidden" name="intent_month" value="{{ intent_month }}">
       <div class="product-field">

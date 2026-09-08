@@ -1,7 +1,7 @@
 """One revision projection for whole-month and scheduled-to-date estimates."""
 
 from calendar import monthrange
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import date
 
@@ -11,13 +11,22 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.models import IncomePlanRevision
 from app.money_contract import projection_sum_to_int
+from app.services.currency_binding_service import require_runtime_home_currency_code
+from app.services.currency_common import normalize_currency_code
+from app.services.income_plan_service._money import project_income_amount
 
 
 @dataclass(frozen=True)
 class IncomeForecast:
-    entries: tuple[IncomePlanRevision, ...]
-    expected_amount_cents: int
-    scheduled_amount_cents: int
+    projected_entries: tuple[tuple[IncomePlanRevision, int | None], ...]
+    home_currency_code: str
+    expected_amount_cents: int | None
+    scheduled_amount_cents: int | None
+    missing_currency_codes: tuple[str, ...]
+
+    @property
+    def entries(self) -> tuple[IncomePlanRevision, ...]:
+        return tuple(row for row, _ in self.projected_entries)
 
 
 def _applicable_revisions(revisions: Iterable[IncomePlanRevision], period: date) -> list[IncomePlanRevision]:
@@ -37,8 +46,8 @@ def _applicable_revisions(revisions: Iterable[IncomePlanRevision], period: date)
             selected = chosen.get(revision.plan_id)
             history_known = selected is not None and selected.effective_month is not None
             financial_correction = (
-                previous.income_month, previous.amount_cents, previous.pay_day,
-            ) != (revision.income_month, revision.amount_cents, revision.pay_day)
+                previous.income_month, previous.amount_cents, previous.pay_day, previous.home_currency_code,
+            ) != (revision.income_month, revision.amount_cents, revision.pay_day, revision.home_currency_code)
             # A rename or source label does not establish an undated baseline's
             # historical amount. Keep that marker through consecutive metadata
             # edits; actual financial corrections can still declare old/new targets.
@@ -52,8 +61,10 @@ def _applicable_revisions(revisions: Iterable[IncomePlanRevision], period: date)
 
 
 def forecast_from_revisions(
-    revisions: Iterable[IncomePlanRevision], *, period: date, today: date,
+    revisions: Iterable[IncomePlanRevision], *, period: date, today: date, home_currency_code: str,
+    project_amount: Callable[[int, str], int | None] | None = None,
 ) -> IncomeForecast:
+    home = normalize_currency_code(home_currency_code)
     chosen = _applicable_revisions(revisions, period)
     current = today.replace(day=1)
     if period < current and any(row.effective_month is None for row in chosen):
@@ -63,18 +74,36 @@ def forecast_from_revisions(
         row.frequency == "monthly" or row.income_month == month
     ))
     last_day = monthrange(period.year, period.month)[1]
-    due = (row for row in entries if period < current or (
-        period == current and min(row.pay_day, last_day) <= today.day
-    ))
+    projected = [(row, row.amount_cents if row.home_currency_code == home else (
+        project_amount(row.amount_cents, row.home_currency_code)
+        if project_amount is not None and row.home_currency_code else None
+    )) for row in entries]
+    due = [amount for row, amount in projected if period < current or (
+        period == current and min(row.pay_day, last_day) <= today.day)]
     return IncomeForecast(
-        entries=entries,
-        expected_amount_cents=projection_sum_to_int(sum(row.amount_cents for row in entries), label="income_plan.expected"),
-        scheduled_amount_cents=projection_sum_to_int(sum(row.amount_cents for row in due), label="income_plan.scheduled"),
+        projected_entries=tuple(projected),
+        home_currency_code=home,
+        expected_amount_cents=_sum_projection([amount for _, amount in projected], label="income_plan.expected"),
+        scheduled_amount_cents=_sum_projection(due, label="income_plan.scheduled"),
+        missing_currency_codes=tuple(sorted({row.home_currency_code or "UNKNOWN" for row, amount in projected if amount is None})),
     )
 
 
+def _sum_projection(values: list[int | None], *, label: str) -> int | None:
+    if any(value is None for value in values):
+        return None
+    return projection_sum_to_int(sum(value for value in values if value is not None), label=label)
+
+
 def query_income_forecast(db: Session, *, tenant_id: str, period: date, today: date) -> IncomeForecast:
+    home = require_runtime_home_currency_code(db)
+    rate_date = min(today, period.replace(day=monthrange(period.year, period.month)[1]))
     revisions = db.scalars(select(IncomePlanRevision).where(
         IncomePlanRevision.tenant_id == tenant_id,
     ))
-    return forecast_from_revisions(revisions, period=period, today=today)
+    return forecast_from_revisions(
+        revisions, period=period, today=today, home_currency_code=home,
+        project_amount=lambda amount, code: project_income_amount(
+            db, tenant_id=tenant_id, amount_minor=amount, source_currency=code, home_currency=home, rate_date=rate_date,
+        ),
+    )

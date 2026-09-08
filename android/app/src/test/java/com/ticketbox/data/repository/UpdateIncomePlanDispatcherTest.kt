@@ -44,6 +44,7 @@ class UpdateIncomePlanDispatcherTest {
         updatedAt = "2026-05-20T13:00:00.000Z",
         rowVersion = 2L,
         archivedAt = null,
+        homeCurrencyCode = "CNY",
     )
 
     private fun planRow(idempotencyKey: String?): OutboxRow = OutboxRow(
@@ -107,6 +108,15 @@ class UpdateIncomePlanDispatcherTest {
         val result = dispatcherFor(stub).dispatch(planRow(idempotencyKey = null))
 
         assertTrue(result is DispatchResult.Failure, "null-key row must FAIL visibly: $result")
+    }
+
+    @Test
+    fun `a successful HTTP response with different money cannot settle the original intent`() = runTest {
+        for (response in listOf(updatedPlanDto().copy(homeCurrencyCode = "JPY"),
+            updatedPlanDto().copy(homeCurrencyCode = null), updatedPlanDto().copy(amountCents = 15000))) {
+            val result = dispatcherFor(Stub(Result.success(response))).dispatch(planRow("original-key"))
+            assertTrue(result is DispatchResult.Failure, "unverified money must remain recoverable: $result")
+        }
     }
 
     @Test

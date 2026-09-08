@@ -64,7 +64,7 @@ def test_create_income_plan_happy_path(identity) -> None:  # noqa: ARG001
     with SessionLocal() as db:
         plan = create_income_plan(
             db,
-            tenant_id="owner",
+            home_currency_code="CNY", tenant_id="owner",
             label="我的工资",
             source_type="salary",
             amount_cents=1_000_000,  # 10,000 元
@@ -81,7 +81,7 @@ def test_create_income_plan_strips_label_whitespace(identity) -> None:  # noqa: 
     with SessionLocal() as db:
         plan = create_income_plan(
             db,
-            tenant_id="owner",
+            home_currency_code="CNY", tenant_id="owner",
             label="  我的副业  ",
             source_type="freelance",
             amount_cents=300_000,
@@ -94,7 +94,7 @@ def test_create_income_plan_rejects_empty_label(identity) -> None:  # noqa: ARG0
     with SessionLocal() as db, pytest.raises(AppError, match="收入名称"):
         create_income_plan(
             db,
-            tenant_id="owner",
+            home_currency_code="CNY", tenant_id="owner",
             label="   ",
             source_type="salary",
             amount_cents=100_000,
@@ -106,7 +106,7 @@ def test_create_income_plan_rejects_label_too_long(identity) -> None:  # noqa: A
     with SessionLocal() as db, pytest.raises(AppError, match="64"):
         create_income_plan(
             db,
-            tenant_id="owner",
+            home_currency_code="CNY", tenant_id="owner",
             label="x" * 65,
             source_type="salary",
             amount_cents=100_000,
@@ -118,7 +118,7 @@ def test_create_income_plan_rejects_negative_amount(identity) -> None:  # noqa: 
     with SessionLocal() as db, pytest.raises(AppError, match="负数"):
         create_income_plan(
             db,
-            tenant_id="owner",
+            home_currency_code="CNY", tenant_id="owner",
             label="负数测试",
             source_type="salary",
             amount_cents=-100,
@@ -131,7 +131,7 @@ def test_create_income_plan_rejects_invalid_pay_day(identity, bad_day) -> None: 
     with SessionLocal() as db, pytest.raises(AppError, match="预计收入日"):
         create_income_plan(
             db,
-            tenant_id="owner",
+            home_currency_code="CNY", tenant_id="owner",
             label="无效日",
             source_type="salary",
             amount_cents=100_000,
@@ -142,11 +142,11 @@ def test_create_income_plan_rejects_invalid_pay_day(identity, bad_day) -> None: 
 def test_create_income_plan_accepts_pay_day_edges(identity) -> None:  # noqa: ARG001
     with SessionLocal() as db:
         first = create_income_plan(
-            db, tenant_id="owner", label="月初", source_type="salary",
+            db, home_currency_code="CNY", tenant_id="owner", label="月初", source_type="salary",
             amount_cents=10_000, pay_day=1,
         )
         last = create_income_plan(
-            db, tenant_id="owner", label="月末", source_type="bonus",
+            db, home_currency_code="CNY", tenant_id="owner", label="月末", source_type="bonus",
             amount_cents=20_000, pay_day=31,
         )
     assert first.pay_day == 1
@@ -157,7 +157,7 @@ def test_create_one_time_income_requires_and_stores_income_month(identity) -> No
     with SessionLocal() as db:
         plan = create_income_plan(
             db,
-            tenant_id="owner",
+            home_currency_code="CNY", tenant_id="owner",
             label="项目尾款",
             source_type="freelance",
             amount_cents=250_000,
@@ -173,7 +173,7 @@ def test_create_one_time_income_rejects_missing_income_month(identity) -> None: 
     with SessionLocal() as db, pytest.raises(AppError, match="预计月份"):
         create_income_plan(
             db,
-            tenant_id="owner",
+            home_currency_code="CNY", tenant_id="owner",
             label="项目尾款",
             source_type="freelance",
             amount_cents=250_000,
@@ -187,7 +187,7 @@ def test_monthly_income_ignores_income_month(identity) -> None:  # noqa: ARG001
     with SessionLocal() as db:
         plan = create_income_plan(
             db,
-            tenant_id="owner",
+            home_currency_code="CNY", tenant_id="owner",
             label="工资",
             source_type="salary",
             amount_cents=1_000_000,
@@ -207,7 +207,7 @@ def test_monthly_income_ignores_income_month(identity) -> None:  # noqa: ARG001
 def test_update_changes_only_provided_fields(identity) -> None:  # noqa: ARG001
     with SessionLocal() as db:
         plan = create_income_plan(
-            db, tenant_id="owner", label="工资", source_type="salary",
+            db, home_currency_code="CNY", tenant_id="owner", label="工资", source_type="salary",
             amount_cents=1_000_000, pay_day=10,
         )
         pid = plan.public_id
@@ -227,7 +227,7 @@ def test_update_changes_only_provided_fields(identity) -> None:  # noqa: ARG001
 def test_update_rejects_archived_plan(identity) -> None:  # noqa: ARG001
     with SessionLocal() as db:
         plan = create_income_plan(
-            db, tenant_id="owner", label="x", source_type="salary",
+            db, home_currency_code="CNY", tenant_id="owner", label="x", source_type="salary",
             amount_cents=100, pay_day=5,
         )
         token = plan.row_version
@@ -259,7 +259,7 @@ def test_update_unknown_public_id_returns_not_found(identity) -> None:  # noqa: 
 def test_archive_is_idempotent(identity) -> None:  # noqa: ARG001
     with SessionLocal() as db:
         plan = create_income_plan(
-            db, tenant_id="owner", label="a", source_type="salary",
+            db, home_currency_code="CNY", tenant_id="owner", label="a", source_type="salary",
             amount_cents=100, pay_day=1,
         )
         first = archive_income_plan(
@@ -278,7 +278,7 @@ def test_archive_is_idempotent(identity) -> None:  # noqa: ARG001
 def test_restore_reactivates_archived_plan(identity) -> None:  # noqa: ARG001
     with SessionLocal() as db:
         plan = create_income_plan(
-            db, tenant_id="owner", label="b", source_type="salary",
+            db, home_currency_code="CNY", tenant_id="owner", label="b", source_type="salary",
             amount_cents=100, pay_day=1,
         )
         archived = archive_income_plan(
@@ -301,11 +301,11 @@ def test_restore_reactivates_archived_plan(identity) -> None:  # noqa: ARG001
 def test_list_active_excludes_archived(identity) -> None:  # noqa: ARG001
     with SessionLocal() as db:
         active = create_income_plan(
-            db, tenant_id="owner", label="alive", source_type="salary",
+            db, home_currency_code="CNY", tenant_id="owner", label="alive", source_type="salary",
             amount_cents=100, pay_day=10,
         )
         archived = create_income_plan(
-            db, tenant_id="owner", label="dead", source_type="bonus",
+            db, home_currency_code="CNY", tenant_id="owner", label="dead", source_type="bonus",
             amount_cents=200, pay_day=20,
         )
         archive_income_plan(
@@ -321,11 +321,11 @@ def test_list_active_excludes_archived(identity) -> None:  # noqa: ARG001
 def test_list_with_status_none_returns_everything(identity) -> None:  # noqa: ARG001
     with SessionLocal() as db:
         active = create_income_plan(
-            db, tenant_id="owner", label="alive", source_type="salary",
+            db, home_currency_code="CNY", tenant_id="owner", label="alive", source_type="salary",
             amount_cents=100, pay_day=10,
         )
         archived = create_income_plan(
-            db, tenant_id="owner", label="dead", source_type="bonus",
+            db, home_currency_code="CNY", tenant_id="owner", label="dead", source_type="bonus",
             amount_cents=200, pay_day=20,
         )
         archive_income_plan(
@@ -341,15 +341,15 @@ def test_list_with_status_none_returns_everything(identity) -> None:  # noqa: AR
 def test_total_monthly_income_only_counts_active(identity) -> None:  # noqa: ARG001
     with SessionLocal() as db:
         create_income_plan(
-            db, tenant_id="owner", label="alive", source_type="salary",
+            db, home_currency_code="CNY", tenant_id="owner", label="alive", source_type="salary",
             amount_cents=1_000_000, pay_day=10,
         )
         create_income_plan(
-            db, tenant_id="owner", label="alive2", source_type="bonus",
+            db, home_currency_code="CNY", tenant_id="owner", label="alive2", source_type="bonus",
             amount_cents=500_000, pay_day=15,
         )
         dead = create_income_plan(
-            db, tenant_id="owner", label="dead", source_type="salary",
+            db, home_currency_code="CNY", tenant_id="owner", label="dead", source_type="salary",
             amount_cents=999_999, pay_day=20,
         )
         archive_income_plan(
@@ -364,7 +364,7 @@ def test_total_monthly_income_counts_one_time_only_for_matching_month(identity) 
     with SessionLocal() as db:
         create_income_plan(
             db,
-            tenant_id="owner",
+            home_currency_code="CNY", tenant_id="owner",
             label="salary",
             now=datetime(2026, 5, 1, tzinfo=UTC),
             source_type="salary",
@@ -373,7 +373,7 @@ def test_total_monthly_income_counts_one_time_only_for_matching_month(identity) 
         )
         create_income_plan(
             db,
-            tenant_id="owner",
+            home_currency_code="CNY", tenant_id="owner",
             label="one-off June",
             source_type="bonus",
             amount_cents=200_000,
@@ -383,7 +383,7 @@ def test_total_monthly_income_counts_one_time_only_for_matching_month(identity) 
         )
         create_income_plan(
             db,
-            tenant_id="owner",
+            home_currency_code="CNY", tenant_id="owner",
             label="one-off July",
             source_type="bonus",
             amount_cents=300_000,
@@ -411,7 +411,7 @@ def test_whole_month_estimate_is_available_before_scheduled_day(identity) -> Non
     with SessionLocal() as db:
         create_income_plan(
             db,
-            tenant_id="owner",
+            home_currency_code="CNY", tenant_id="owner",
             label="late salary",
             source_type="salary",
             amount_cents=1_000_000,
@@ -440,11 +440,11 @@ def test_tenant_isolation_on_list_and_total(identity) -> None:  # noqa: ARG001
     other = _make_extra_ledger("iso")
     with SessionLocal() as db:
         create_income_plan(
-            db, tenant_id="owner", label="own", source_type="salary",
+            db, home_currency_code="CNY", tenant_id="owner", label="own", source_type="salary",
             amount_cents=100_000, pay_day=10,
         )
         create_income_plan(
-            db, tenant_id=other, label="theirs", source_type="salary",
+            db, home_currency_code="CNY", tenant_id=other, label="theirs", source_type="salary",
             amount_cents=999_000, pay_day=15,
         )
         own_listed = list_income_plans(db, tenant_id="owner")

@@ -67,7 +67,8 @@ def append_income_revision(
         tenant_id=plan.tenant_id, plan_id=plan.id, revision_number=plan.row_version,
         effective_month=period, intent_month=intent_period, change_kind=change_kind, label=plan.label,
         source_type=plan.source_type, frequency=plan.frequency, income_month=plan.income_month,
-        amount_cents=plan.amount_cents, pay_day=plan.pay_day, status=plan.status,
+        home_currency_code=plan.home_currency_code, amount_cents=plan.amount_cents,
+        pay_day=plan.pay_day, status=plan.status,
         actor_account_id=actor_account_id, recorded_at=when,
     ))
     db.flush()
