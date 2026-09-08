@@ -56,8 +56,7 @@ class OutboxDrainAdviceInvalidationTest {
 
     @Test
     fun nonInputReplaySuccessDoesNotFireInvalidationSeam() = runTest {
-        // Spending goals travel the outbox but are not an advisor input
-        // (nor is the monthly-budget row — it never travels the outbox).
+        // Spending goals travel the outbox but are not an advisor input.
         val (engine, outbox) = withDispatcher(
             TypedStubDispatcher(type = PendingMutationType.UpdateGoal),
         )
@@ -96,6 +95,17 @@ class OutboxDrainAdviceInvalidationTest {
 
         engine.drainOnce()
 
+        assertEquals(0, fired)
+    }
+
+    @Test
+    fun savingABudgetLimitDoesNotDiscardAdviceFromUnchangedFinancialInputs() = runTest {
+        // The advisor reads expense history, income and recurring commitments, not the saved limit.
+        val (engine, outbox) = withDispatcher(TypedStubDispatcher(type = PendingMutationType.SaveMonthlyBudget))
+        var fired = 0
+        engine.onAdviceInputReplaySucceeded = { fired += 1 }
+        outbox.enqueue(PendingMutationType.SaveMonthlyBudget, "monthly_budget:2026-09", "{}", 1L, "budget-original")
+        assertEquals(1, engine.drainOnce().done)
         assertEquals(0, fired)
     }
 

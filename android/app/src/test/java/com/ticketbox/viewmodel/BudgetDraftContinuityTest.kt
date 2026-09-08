@@ -11,6 +11,17 @@ import kotlin.test.assertEquals
 @OptIn(ExperimentalCoroutinesApi::class)
 class BudgetDraftContinuityTest {
     @Test
+    fun openingARecoverableBudgetUsesItsRequestedMonth() = budgetTest {
+        val owner = FakeBudgetActions(budget())
+        val state = SavedStateHandle(mapOf("month" to "2026-07"))
+        val vm = BudgetViewModel(owner, initialMonth = "2026-05", savedStateHandle = state)
+        advanceUntilIdle()
+        assertEquals("2026-07", vm.uiState.value.month)
+        assertEquals(listOf("2026-07"), owner.loadedMonths)
+        assertEquals(0, owner.savedRequests.size)
+    }
+
+    @Test
     fun changingMonthPreservesRawAmountsAndTheirObservedBasis() = budgetTest {
         val owner = FakeBudgetActions(budget = budget().copy(homeCurrencyCode = "JPY"))
         val vm = BudgetViewModel(owner, initialMonth = "2026-05")
