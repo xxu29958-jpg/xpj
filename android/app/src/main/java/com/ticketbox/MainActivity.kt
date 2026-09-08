@@ -163,6 +163,7 @@ class MainActivity : FragmentActivity() {
         recurringRepository = recurringRepository,
         budgetRepository = budgetRepository,
         reportsRepository = reportsRepository,
+        goalEditRepository = goalEditRepository,
         incomePlanRepository = incomePlanRepository,
         debtRepository = debtRepository,
         debtCreationRepository = debtCreationRepository,

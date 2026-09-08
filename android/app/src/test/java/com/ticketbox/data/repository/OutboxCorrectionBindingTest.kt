@@ -131,8 +131,10 @@ private class CorrectionBindingFixture(private val delayedType: PendingMutationT
     val repository = ExpenseRepository(FakeExpenseDao(), binding, deviceNameProvider = { "Test device" },
         offlineMutations = testExpenseOfflineMutationWiring(outbox))
     private val adapters = OutboxAdapterGraph()
-    fun model() = OutboxStatusViewModel(outbox, repository,
+    fun model() = OutboxStatusViewModel(outbox, repository, com.ticketbox.viewmodel.OutboxRecoveryRepositories(
         DebtCreationRepository(binding.apiProvider, outbox, adapters.debtCreateAdapter),
+        recurringOccurrences = null,
         incomePlans = IncomePlanRepository(binding.apiProvider, outbox, adapters.incomePlanUpdateAdapter),
-        debtAdjustments = DebtAdjustmentRepository(binding.apiProvider, outbox, adapters.debtAdjustmentAdapter))
+        debtAdjustments = DebtAdjustmentRepository(binding.apiProvider, outbox, adapters.debtAdjustmentAdapter),
+        goalEdits = GoalEditRepository(binding.apiProvider, outbox, adapters.goalUpdateAdapter, adapters.goalReceiptAdapter)))
 }

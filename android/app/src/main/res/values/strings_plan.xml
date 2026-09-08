@@ -106,4 +106,20 @@
     <string name="spending_goal_archive_confirm">确认归档</string>
     <string name="spending_goal_archiving">归档中</string>
     <string name="spending_goal_archive_failed">目标没有归档成功，请稍后再试。</string>
+    <string name="spending_goal_currency_unknown">币种未确认</string>
+    <string name="spending_goal_currency_loading">正在确认目标币种；已有输入仍保留。</string>
+    <string name="spending_goal_submission_amount">提交的限额：%1$s</string>
+    <string name="spending_goal_submission_month">目标月份：%1$s</string>
+    <string name="spending_goal_submission_retry">重试原提交</string>
+    <string name="spending_goal_submission_drop">撤下本地修改</string>
+    <string name="spending_goal_submission_pending">修改已保存在本机，等待同步；下方仍是已确认的进度。</string>
+    <string name="spending_goal_submission_in_flight">正在确认原提交，可以离开后再回来查看。</string>
+    <string name="spending_goal_submission_conflict">目标已在别处修改。请刷新核对，撤下本地修改后重新编辑。</string>
+    <string name="spending_goal_submission_uncertain">暂未确认修改结果，可以重试同一份原提交。</string>
+    <string name="spending_goal_submission_failed">这份修改尚未完成，请核对目标和原提交；本地记录已保留。</string>
+    <string name="spending_goal_submission_done">这份修改已由服务器确认。</string>
+    <string name="spending_goal_submission_attention">请核对这份本地修改。</string>
+    <string name="spending_goal_submission_dropped">已撤下本地修改，请核对目标后重新编辑。</string>
+    <string name="spending_goal_submission_retrying">正在重试原提交。</string>
+    <string name="spending_goal_recovery_unavailable">无法确认原目标修改，请回到原账本核对。</string>
 </resources>

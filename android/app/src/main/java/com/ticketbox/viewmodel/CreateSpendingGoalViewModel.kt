@@ -3,7 +3,9 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
-import com.ticketbox.data.repository.DebtActions
+import com.ticketbox.data.repository.GoalEditActions
+import com.ticketbox.data.repository.LogicalSessionBinding
+import kotlinx.coroutines.Job
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.GoalDraft
@@ -25,11 +27,6 @@ data class CreateSpendingGoalUiState(
     val isSubmitting: Boolean = false,
     val formError: UiText? = null,
     val createdPublicId: String? = null,
-    /**
-     * 账本币种（R12-D）：Goal 不带币种字段（服务端按账本 home 聚合），新建流上没有 record 可
-     * 提供 homeCurrencyCode —— 取列表信封的安装级 capability（PR#255 R6 同源信封）严格解析；
-     * null = 未确认/未知 → 禁写（不落 CNY 兜底，JPY/KRW 安装下 "1200" 会被放大成 120000）。
-     */
     val ledgerCurrency: CurrencyCode? = null,
 ) {
     val canSubmit: Boolean
@@ -42,28 +39,50 @@ data class CreateSpendingGoalUiState(
 
 class CreateSpendingGoalViewModel(
     private val reports: ReportsActions,
-    private val debts: DebtActions,
+    private val edits: GoalEditActions,
 ) : ViewModel() {
-    private val _state = MutableStateFlow(CreateSpendingGoalUiState(canModify = reports.canModifyLedger()))
+    private val _state = MutableStateFlow(CreateSpendingGoalUiState(canModify = edits.currentAccess()?.canModify == true))
     val state: StateFlow<CreateSpendingGoalUiState> = _state.asStateFlow()
 
+    private var binding: LogicalSessionBinding? = edits.currentAccess()?.binding
+    private var generation = 0L
+    private var currencyJob: Job? = null
+    private var submitJob: Job? = null
+
     init {
-        refreshLedgerCurrency()
+        retryCurrency()
+        viewModelScope.launch {
+            edits.observeAccess().collect { access ->
+                if (binding != access?.binding) {
+                    binding = access?.binding
+                    generation += 1
+                    currencyJob?.cancel()
+                    submitJob?.cancel()
+                    _state.value = CreateSpendingGoalUiState(canModify = access?.canModify == true)
+                    if (access != null) retryCurrency()
+                } else _state.update { it.copy(canModify = access?.canModify == true) }
+            }
+        }
     }
 
     fun reset(month: String = YearMonth.now().toString()) {
-        _state.value = CreateSpendingGoalUiState(
-            canModify = reports.canModifyLedger(),
-            month = month.cleanGoalMonth(),
-        )
-        refreshLedgerCurrency()
+        if (_state.value.month == month && (_state.value.name.isNotEmpty() || _state.value.targetAmountInput.isNotEmpty())) return
+        generation += 1
+        submitJob?.cancel()
+        _state.value = CreateSpendingGoalUiState(canModify = edits.currentAccess()?.canModify == true,
+            month = month.cleanGoalMonth())
+        retryCurrency()
     }
 
-    /** R12-D + R14-6：账本币种按共享同源裁决解析（record 集合 × 信封 capability；未知/冲突 → null 禁写）。 */
-    private fun refreshLedgerCurrency() {
-        viewModelScope.launch {
-            val page = debts.listDebts().getOrNull()
-            _state.update { it.copy(ledgerCurrency = resolveLedgerCurrency(page)) }
+    fun retryCurrency() {
+        val origin = binding ?: return
+        val revision = generation
+        currencyJob?.cancel()
+        currencyJob = viewModelScope.launch {
+            val result = edits.currency(origin)
+            if (binding != origin || edits.currentAccess()?.binding != origin || generation != revision) return@launch
+            _state.update { it.copy(ledgerCurrency = result.getOrNull(),
+                formError = result.exceptionOrNull()?.toUiText(R.string.currency_unconfirmed_write_blocked)) }
         }
     }
 
@@ -97,7 +116,9 @@ class CreateSpendingGoalViewModel(
 
     fun submit() {
         val current = _state.value
-        // R12-D：币种未确认禁写（不落 CNY 兜底）。
+        val origin = binding ?: return
+        val revision = generation
+        if (current.isSubmitting || edits.currentAccess()?.binding != origin || edits.currentAccess()?.canModify != true) return
         val currency = current.ledgerCurrency
         if (currency == null) {
             _state.update { it.copy(formError = UiText.res(R.string.currency_unconfirmed_write_blocked)) }
@@ -109,15 +130,17 @@ class CreateSpendingGoalViewModel(
             return
         }
         _state.update { it.copy(isSubmitting = true, formError = null) }
-        viewModelScope.launch {
-            reports.createGoal(
+        submitJob = viewModelScope.launch {
+            val result = reports.createGoal(
                 GoalDraft(
                     name = current.name,
                     month = current.month,
                     targetAmountCents = amountCents,
                     category = current.category,
-                ),
-            ).fold(
+                ), origin,
+            )
+            if (binding != origin || edits.currentAccess()?.binding != origin || generation != revision) return@launch
+            result.fold(
                 onSuccess = { goal ->
                     _state.update { it.copy(isSubmitting = false, createdPublicId = goal.publicId) }
                 },
@@ -134,7 +157,7 @@ class CreateSpendingGoalViewModel(
     }
 
     fun consumeCreated() {
-        _state.update { it.copy(createdPublicId = null) }
+        _state.update { CreateSpendingGoalUiState(canModify = it.canModify, month = it.month, ledgerCurrency = it.ledgerCurrency) }
     }
 
     private fun shiftMonth(delta: Long) {

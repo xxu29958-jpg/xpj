@@ -113,7 +113,7 @@ private fun SpendingGoalRowHeader(goal: Goal) {
 
 @Composable
 private fun SpendingGoalAmountSummary(goal: Goal) {
-    val currency = LocalCurrencyDisplay.current
+    val currency = com.ticketbox.domain.model.CurrencyDisplay.forRecord(goal.homeCurrencyCode ?: stringResource(R.string.spending_goal_currency_unknown))
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),

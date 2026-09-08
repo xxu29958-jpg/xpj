@@ -44,15 +44,15 @@ internal fun SpendingGoalsRoute(
         models = SpendingGoalRouteModels(
             list = viewModel(
                 key = SpendingGoalsViewModelKey,
-                factory = spendingGoalsViewModelFactory(screenFactory.reportsRepository),
+                factory = spendingGoalsViewModelFactory(screenFactory.reportsRepository, screenFactory.goalEditRepository),
             ),
             detail = viewModel(
                 key = SpendingGoalDetailViewModelKey,
-                factory = spendingGoalDetailViewModelFactory(screenFactory.reportsRepository, screenFactory.debtRepository),
+                factory = spendingGoalDetailViewModelFactory(screenFactory.reportsRepository, screenFactory.goalEditRepository),
             ),
             create = viewModel(
                 key = CreateSpendingGoalViewModelKey,
-                factory = createSpendingGoalViewModelFactory(screenFactory.reportsRepository, screenFactory.debtRepository),
+                factory = createSpendingGoalViewModelFactory(screenFactory.reportsRepository, screenFactory.goalEditRepository),
             ),
         ),
         onBack = onBack,

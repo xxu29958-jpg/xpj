@@ -26,6 +26,7 @@ internal class MainScreenFactory(
     val ledgerRepository: LedgerRepository get() = repositories.ledgerRepository
     val recurringRepository: RecurringRepository get() = repositories.recurringRepository
     val budgetRepository: BudgetRepository get() = repositories.budgetRepository
+    val goalEditRepository get() = repositories.goalEditRepository
     val reportsRepository: ReportsActions get() = repositories.reportsRepository
     val incomePlanRepository: IncomePlanActions get() = repositories.incomePlanRepository
     val debtRepository: DebtRepository get() = repositories.debtRepository
@@ -75,6 +76,7 @@ internal data class MainFeatureRepositories(
     val recurringRepository: RecurringRepository,
     val budgetRepository: BudgetRepository,
     val reportsRepository: ReportsActions,
+    val goalEditRepository: com.ticketbox.data.repository.GoalEditActions,
     val incomePlanRepository: IncomePlanActions,
     val debtRepository: DebtRepository,
     val debtCreationRepository: DebtCreationActions,

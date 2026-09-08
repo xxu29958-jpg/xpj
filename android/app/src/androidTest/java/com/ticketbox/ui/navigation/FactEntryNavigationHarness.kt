@@ -31,6 +31,7 @@ internal class FactEntryNavigationHarness(context: Context) : Closeable {
             recurringRepository = graph.recurringRepository,
             budgetRepository = graph.budgetRepository,
             reportsRepository = graph.reportsRepository,
+            goalEditRepository = graph.goalEditRepository,
             incomePlanRepository = graph.incomePlanRepository,
             debtRepository = graph.debtRepository,
             debtCreationRepository = graph.debtCreationRepository,

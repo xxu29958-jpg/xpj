@@ -114,6 +114,7 @@ data class GoalUpdateRequestDto(
     val targetAmountCents: Long? = null,
 )
 
+@JsonClass(generateAdapter = true)
 data class GoalDto(
     @param:Json(name = "public_id")
     val publicId: String,

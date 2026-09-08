@@ -138,11 +138,12 @@ internal class RepositoryGraph(
         apiProvider = apiServiceProvider,
     )
 
+    val goalEditRepository = com.ticketbox.data.repository.GoalEditRepository(
+        apiServiceProvider, outbox, outboxAdapters.goalUpdateAdapter, outboxAdapters.goalReceiptAdapter,
+    )
+
     val reportsRepository = ReportsRepository(
         apiProvider = apiServiceProvider,
-        // ADR-0042 Slice F: outbox + adapter for updateGoalAllowingOffline.
-        outbox = outbox,
-        goalUpdateAdapter = outboxAdapters.goalUpdateAdapter,
     )
 
     val ruleRepository = RuleRepository(

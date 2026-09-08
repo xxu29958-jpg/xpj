@@ -33,9 +33,11 @@ financial writer, generic workflow framework or parallel offline executor.
 
 ## Qualification state
 
-Implementation is under qualification. Short local source analysis passes; final
-candidate cloud checks, bounded review, VM/cloud debtor/creditor use and independent
-merge-main qualification are still required. The earlier split-save Connected
-waiting-receipt timeout remains an explicit final regression subject. Exact hashes,
-run IDs and logs belong in [PR #392](https://github.com/xxu29958-jpg/xpj/pull/392)
-and external evidence, not this product contract or the atlas.
+CLOSED: integrated and independently main-qualified. Exact candidate and merged
+main passed CI, CodeQL and executed Connected checks, including the earlier
+split-save regression. The disconnected VM exercised both actors through the real
+Web consumer while preserving unrelated synthetic records and installed data.
+Bounded review and selected user postconditions are closed; full Internal Beta RC
+and Windows lifecycle HOLDs remain separate. Exact hashes, runs and retained
+failure evidence live in [PR #392](https://github.com/xxu29958-jpg/xpj/pull/392)
+and external qualification files.

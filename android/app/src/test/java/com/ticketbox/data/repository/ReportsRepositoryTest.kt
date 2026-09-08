@@ -115,14 +115,7 @@ class ReportsRepositoryTest {
                     targetAmountCents = 80000,
                     category = "吃饭",
                 ),
-            ).getOrThrow()
-            val updated = repository.updateGoal(
-                publicId = " goal-1 ",
-                update = GoalUpdate(
-                    expectedRowVersion = 1L,
-                    targetAmountCents = 90000,
-                    category = "购物",
-                ),
+                expectedBinding = repository.dashboardAccess()!!.binding,
             ).getOrThrow()
             val binding = repository.dashboardAccess()!!.binding
             val cards = repository.dashboardCards(binding, DashboardSurface.Android).getOrThrow()
@@ -139,11 +132,10 @@ class ReportsRepositoryTest {
             assertEquals(true, api.goalsCalls.single().includeArchived)
             assertEquals("UTC", api.goalsCalls.single().timezone)
             assertEquals(GoalProgressState.NearLimit, goals.single().progressState)
+            assertEquals("JPY", goals.single().homeCurrencyCode)
             assertEquals("餐饮", created.category)
-            assertEquals("购物", updated.category)
             assertEquals("本月餐饮", api.createGoalCalls.single().request.name)
             assertEquals("餐饮", api.createGoalCalls.single().request.category)
-            assertEquals("goal-1", api.updateGoalCalls.single().publicId)
             assertEquals("android", api.dashboardCardCalls.single())
             assertEquals("goals", api.updateDashboardCardCalls.single().request.cards.first().key)
             assertEquals("reports", savedCards.items[1].key)
@@ -227,6 +219,7 @@ class ReportsRepositoryTest {
                 month = "2026-05",
                 targetAmountCents = 80000,
             ),
+        expectedBinding = repository.dashboardAccess()!!.binding,
         )
         val cardsResult = repository.updateDashboardCards(
             binding = repository.dashboardAccess()!!.binding,
@@ -275,6 +268,7 @@ class ReportsRepositoryTest {
                 month = "2026-05",
                 targetAmountCents = 80000,
             ),
+        expectedBinding = repository.dashboardAccess()!!.binding,
         )
 
         assertTrue(result.isFailure)
@@ -507,13 +501,6 @@ private data class CreateGoalCall(
     val timezone: String?,
 )
 
-private data class UpdateGoalCall(
-    val publicId: String,
-    val request: GoalUpdateRequestDto,
-    val idempotencyKey: String?,
-    val timezone: String?,
-)
-
 private data class UpdateDashboardCardsCall(
     val request: DashboardCardsUpdateRequestDto,
     val surface: String,
@@ -536,7 +523,6 @@ private class ReportsApiHandler : InvocationHandler {
     val csvReportCalls = mutableListOf<ReportsOverviewCall>()
     val goalsCalls = mutableListOf<GoalsCall>()
     val createGoalCalls = mutableListOf<CreateGoalCall>()
-    val updateGoalCalls = mutableListOf<UpdateGoalCall>()
     val archiveGoalCalls = mutableListOf<Pair<String, String?>>()
     val replaceDebtLinksCalls = mutableListOf<ReplaceDebtLinksCall>()
     val acknowledgeIntegrityCalls = mutableListOf<AcknowledgeIntegrityCall>()
@@ -567,6 +553,10 @@ private class ReportsApiHandler : InvocationHandler {
         }
         val values = args.orEmpty()
         return when (method.name) {
+            "runtimeCompatibility" -> com.ticketbox.data.remote.dto.RuntimeCompatibilityDto(
+                com.ticketbox.data.remote.CURRENT_TICKETBOX_API_VERSION, "compatible",
+                com.ticketbox.data.remote.dto.RuntimeProductCapabilitiesDto(
+                    com.ticketbox.data.remote.dto.RuntimeCurrencyCapabilityDto("1:1:JPY", "JPY", 0, "compatible")))
             "reportsOverview" -> {
                 @Suppress("UNCHECKED_CAST")
                 val query = values[0] as Map<String, String>
@@ -653,17 +643,6 @@ private class ReportsApiHandler : InvocationHandler {
                 if (request.goalType == "debt_repayment") debtGoalDto() else goalDto(category = request.category)
             }
             "goal" -> goalDto()
-            "updateGoal" -> {
-                // ADR-0042 Slice F: arg order is now
-                // [publicId, request, idempotencyKey, timezone].
-                updateGoalCalls += UpdateGoalCall(
-                    publicId = values[0] as String,
-                    request = values[1] as GoalUpdateRequestDto,
-                    idempotencyKey = values[2] as String?,
-                    timezone = values[3] as String?,
-                )
-                goalDto(category = (values[1] as GoalUpdateRequestDto).category)
-            }
             "archiveGoal" -> {
                 archiveGoalCalls += (values[0] as String) to (values[1] as String?)
                 goalDto(status = "archived", progressState = "archived", archivedAt = "2026-05-14T00:00:00Z")

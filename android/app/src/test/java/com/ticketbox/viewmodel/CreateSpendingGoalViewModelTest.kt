@@ -1,15 +1,13 @@
 package com.ticketbox.viewmodel
 
-import com.ticketbox.R
-import com.ticketbox.data.repository.DebtListPage
-import com.ticketbox.data.repository.ReportsActions
-import com.ticketbox.domain.model.Debt
-import com.ticketbox.domain.model.Goal
-import com.ticketbox.domain.model.GoalDraft
-import com.ticketbox.domain.model.GoalProgressState
-import com.ticketbox.domain.model.UiText
+import androidx.lifecycle.viewModelScope
+import com.ticketbox.domain.model.CurrencyCode
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -23,226 +21,74 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import java.lang.reflect.Proxy
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class CreateSpendingGoalViewModelTest {
     private val dispatcher = StandardTestDispatcher()
+    private val models = mutableListOf<CreateSpendingGoalViewModel>()
+    @BeforeTest fun setup() { Dispatchers.setMain(dispatcher) }
+    @AfterTest fun close() { models.forEach { it.viewModelScope.cancel() }; Dispatchers.resetMain() }
+    private fun model(reports: RecordingSpendingGoalActions, edits: RecordingGoalEdits) =
+        CreateSpendingGoalViewModel(reports, edits).also { models += it }
 
-    @BeforeTest
-    fun setUp() {
-        Dispatchers.setMain(dispatcher)
+    @Test fun jpyCreateUsesCapabilityAndPreservesReenteredDraft() = runTest(dispatcher) {
+        val reports = RecordingSpendingGoalActions()
+        val edits = RecordingGoalEdits().apply { currencyResult = Result.success(CurrencyCode.JPY) }
+        val vm = model(reports, edits)
+        vm.reset("2026-09"); advanceUntilIdle()
+        vm.updateName("餐饮"); vm.updateTargetAmount("1200")
+        vm.reset("2026-09")
+        assertEquals("1200", vm.state.value.targetAmountInput)
+        vm.submit(); advanceUntilIdle()
+        assertEquals(1200, reports.createCalls.single().targetAmountCents)
+        assertEquals("2026-09", reports.createCalls.single().month)
+        assertEquals("goal-1", vm.state.value.createdPublicId)
+        vm.consumeCreated()
+        assertEquals("", vm.state.value.name)
     }
 
-    @AfterTest
-    fun tearDown() {
-        Dispatchers.resetMain()
+    @Test fun duplicateSubmitAndLiveReadonlyRoleCannotCreateTwice() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        val reports = RecordingSpendingGoalActions().apply { createGate = { gate.await() } }
+        val edits = RecordingGoalEdits()
+        val vm = model(reports, edits)
+        advanceUntilIdle(); vm.updateName("餐饮"); vm.updateTargetAmount("100")
+        vm.submit(); vm.submit(); advanceUntilIdle()
+        assertEquals(1, reports.createCalls.size)
+        gate.complete(Unit); advanceUntilIdle(); vm.consumeCreated()
+        edits.access.value = edits.access.value!!.copy(canModify = false)
+        advanceUntilIdle(); vm.updateName("新目标"); vm.updateTargetAmount("200"); vm.submit(); advanceUntilIdle()
+        assertFalse(vm.state.value.canSubmit)
+        assertEquals(1, reports.createCalls.size)
     }
 
-    @Test
-    fun resetUsesRequestedMonthAndReflectsRole() = runTest(dispatcher) {
-        val reports = RecordingSpendingReportsActions(canModify = false)
-        val viewModel = CreateSpendingGoalViewModel(reports.actions, CapabilityDebtActions())
-
-        viewModel.reset("2026-07")
-
-        assertEquals("2026-07", viewModel.state.value.month)
-        assertFalse(viewModel.state.value.canModify)
-        assertFalse(viewModel.state.value.canSubmit)
+    @Test fun failedCurrencyHasRetryAndRejectsInvalidInput() = runTest(dispatcher) {
+        val reports = RecordingSpendingGoalActions()
+        val edits = RecordingGoalEdits().apply { currencyResult = Result.failure(IllegalStateException("offline")) }
+        val vm = model(reports, edits)
+        advanceUntilIdle(); vm.updateName("餐饮"); vm.updateTargetAmount("1200"); vm.submit()
+        assertTrue(reports.createCalls.isEmpty())
+        assertFalse(vm.state.value.canSubmit)
+        edits.currencyResult = Result.success(CurrencyCode.JPY)
+        vm.retryCurrency(); advanceUntilIdle()
+        vm.updateTargetAmount("12.50"); vm.submit(); advanceUntilIdle()
+        assertNotNull(vm.state.value.formError)
+        assertTrue(reports.createCalls.isEmpty())
+        vm.updateTargetAmount("1200")
+        assertTrue(vm.state.value.canSubmit)
     }
 
-    @Test
-    fun submitValidationBlocksMissingAmountWithoutApiCall() = runTest(dispatcher) {
-        val reports = RecordingSpendingReportsActions()
-        val viewModel = CreateSpendingGoalViewModel(reports.actions, CapabilityDebtActions())
-
-        advanceUntilIdle() // 币种先就位（默认 CNY fake），本钉专验金额校验分支
-        viewModel.updateName("本月外卖")
-        viewModel.submit()
-        advanceUntilIdle()
-
-        assertTrue(reports.createGoalCalls.isEmpty())
-        assertNotNull(viewModel.state.value.formError)
+    @Test fun oldCreateCompletionCannotNavigateTheReplacementBinding() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        val reports = RecordingSpendingGoalActions().apply { createGate = { withContext(NonCancellable) { gate.await() } } }
+        val edits = RecordingGoalEdits()
+        val vm = model(reports, edits)
+        advanceUntilIdle(); vm.updateName("旧目标"); vm.updateTargetAmount("100"); vm.submit(); advanceUntilIdle()
+        edits.access.value = edits.access.value!!.let { it.copy(binding = it.binding.copy(sessionGeneration = "session-2")) }
+        advanceUntilIdle(); vm.updateName("新草稿")
+        gate.complete(Unit); advanceUntilIdle()
+        assertNull(vm.state.value.createdPublicId)
+        assertEquals("新草稿", vm.state.value.name)
+        assertFalse(vm.state.value.isSubmitting)
     }
-
-    @Test
-    fun submitParsesTargetAmountInLedgerCapability() = runTest(dispatcher) {
-        // PR#255 R12-D：解析口径取列表信封 capability —— JPY 账本 "1200" → 1200 minor
-        // （零小数不 ×100），不再落 CNY 兜底放大 100×。
-        val debts = CapabilityDebtActions(
-            page = DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "JPY"),
-        )
-        val reports = RecordingSpendingReportsActions(createResult = Result.success(spendingGoal("goal-new")))
-        val viewModel = CreateSpendingGoalViewModel(reports.actions, debts)
-
-        viewModel.reset("2026-07")
-        advanceUntilIdle()
-        viewModel.updateName("本月外卖")
-        viewModel.updateTargetAmount("1200")
-        viewModel.submit()
-        advanceUntilIdle()
-
-        assertEquals(1_200L, reports.createGoalCalls.single().targetAmountCents)
-    }
-
-    @Test
-    fun submitBlockedWhenCapabilityUnsupported() = runTest(dispatcher) {
-        // R12-D：capability 在支持集外 → 禁写 + 明示文案，create 不可达。
-        val debts = CapabilityDebtActions(
-            page = DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "VND"),
-        )
-        val reports = RecordingSpendingReportsActions()
-        val viewModel = CreateSpendingGoalViewModel(reports.actions, debts)
-        advanceUntilIdle()
-
-        assertNull(viewModel.state.value.ledgerCurrency)
-        assertFalse(viewModel.state.value.canSubmit)
-        viewModel.updateName("本月外卖")
-        viewModel.updateTargetAmount("1200")
-        viewModel.submit()
-        advanceUntilIdle()
-
-        assertTrue(reports.createGoalCalls.isEmpty())
-        assertEquals(
-            UiText.res(R.string.currency_unconfirmed_write_blocked),
-            viewModel.state.value.formError,
-        )
-    }
-
-    @Test
-    fun updateTargetAmountReportsParseFailureImmediately() = runTest(dispatcher) {
-        // PR#255 R14-2：JPY 账本输 "12.50" 即时报解析失败（不再静默 canSubmit=false）；改合法即清。
-        val debts = CapabilityDebtActions(
-            page = DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "JPY"),
-        )
-        val reports = RecordingSpendingReportsActions()
-        val viewModel = CreateSpendingGoalViewModel(reports.actions, debts)
-        viewModel.reset("2026-07")
-        advanceUntilIdle()
-
-        viewModel.updateTargetAmount("12.50")
-        assertEquals(UiText.res(R.string.expense_edit_amount_invalid), viewModel.state.value.formError)
-
-        viewModel.updateTargetAmount("1250")
-        assertNull(viewModel.state.value.formError)
-    }
-
-    @Test
-    fun conflictingRecordAndEnvelopeCapabilityFailClosed() = runTest(dispatcher) {
-        // PR#255 R14-6：镜像 DebtList 同源裁决 —— record 码（CNY）与信封 capability（JPY）
-        // 冲突 = binding 漂移 → ledgerCurrency=null 禁写，不猜任一侧。
-        val debts = CapabilityDebtActions(
-            page = DebtListPage(
-                debts = listOf(conflictDebt(homeCurrencyCode = "CNY")),
-                ledgerHomeCurrencyCode = "JPY",
-            ),
-        )
-        val reports = RecordingSpendingReportsActions(createResult = Result.success(spendingGoal("goal-new")))
-        val viewModel = CreateSpendingGoalViewModel(reports.actions, debts)
-        advanceUntilIdle()
-
-        assertNull(viewModel.state.value.ledgerCurrency)
-        viewModel.updateName("本月外卖")
-        viewModel.updateTargetAmount("1200")
-        viewModel.submit()
-        advanceUntilIdle()
-
-        assertTrue(reports.createGoalCalls.isEmpty())
-        assertEquals(
-            UiText.res(R.string.currency_unconfirmed_write_blocked),
-            viewModel.state.value.formError,
-        )
-    }
-
-    @Test
-    fun submitSuccessPassesSpendingGoalDraftAndSetsCreatedSignal() = runTest(dispatcher) {
-        val reports = RecordingSpendingReportsActions(createResult = Result.success(spendingGoal("goal-new")))
-        val viewModel = CreateSpendingGoalViewModel(reports.actions, CapabilityDebtActions())
-
-        viewModel.reset("2026-07")
-        advanceUntilIdle() // R12-D：等账本币种（信封 capability）解析后再提交
-        viewModel.updateName("本月外卖")
-        viewModel.updateTargetAmount("128.50")
-        viewModel.updateCategory("餐饮")
-        viewModel.submit()
-        advanceUntilIdle()
-
-        assertEquals(
-            GoalDraft(
-                name = "本月外卖",
-                month = "2026-07",
-                targetAmountCents = 12850,
-                category = "餐饮",
-            ),
-            reports.createGoalCalls.single(),
-        )
-        assertEquals("goal-new", viewModel.state.value.createdPublicId)
-    }
-
-    private fun spendingGoal(publicId: String): Goal = Goal(
-        publicId = publicId,
-        ledgerId = "owner",
-        name = "本月外卖",
-        goalType = "spending_limit",
-        period = "monthly",
-        month = "2026-07",
-        category = "餐饮",
-        targetAmountCents = 12850,
-        spentAmountCents = 0,
-        remainingAmountCents = 12850,
-        progressPercent = 0,
-        progressState = GoalProgressState.Idle,
-        status = "active",
-        createdAt = "2026-07-06T00:00:00Z",
-        updatedAt = "2026-07-06T00:00:00Z",
-        rowVersion = 1L,
-        archivedAt = null,
-    )
-
-    private fun conflictDebt(homeCurrencyCode: String): Debt = Debt(
-        publicId = "debt-$homeCurrencyCode",
-        ledgerId = "owner",
-        direction = "i_owe",
-        counterpartyType = "external",
-        counterpartyAccountId = null,
-        counterpartyLabel = "对手方",
-        principalAmountCents = 100_000,
-        remainingAmountCents = 40_000,
-        paidAmountCents = 60_000,
-        status = "open",
-        sourceType = "manual",
-        sourceId = null,
-        homeCurrencyCode = homeCurrencyCode,
-        originalCurrencyCode = null,
-        originalAmountMinor = null,
-        createdAt = "2026-06-13T00:00:00Z",
-        updatedAt = "2026-06-15T00:00:00Z",
-        rowVersion = 1L,
-    )
-}
-
-private class RecordingSpendingReportsActions(
-    private val canModify: Boolean = true,
-    private val createResult: Result<Goal> = Result.failure(UnsupportedOperationException()),
-) {
-    val createGoalCalls = mutableListOf<GoalDraft>()
-    val actions: ReportsActions = Proxy.newProxyInstance(
-        ReportsActions::class.java.classLoader,
-        arrayOf(ReportsActions::class.java),
-    ) { _, method, args ->
-        when (method.name) {
-            "canModifyLedger" -> canModify
-            "createGoal",
-            method.name.takeIf { it.startsWith("createGoal-") },
-            -> {
-                createGoalCalls += args?.first() as GoalDraft
-                createResult.getOrThrow()
-            }
-            "goals",
-            "debtGoals",
-            -> Result.success(emptyList<Goal>())
-            "toString" -> "RecordingSpendingReportsActions"
-            else -> Result.failure<Any>(UnsupportedOperationException(method.name))
-        }
-    } as ReportsActions
 }

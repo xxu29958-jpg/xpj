@@ -2,10 +2,10 @@ package com.ticketbox.data.repository
 
 import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.JsonDataException
-import com.squareup.moshi.JsonEncodingException
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
+import com.ticketbox.data.remote.dto.GoalDto
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
@@ -26,45 +26,33 @@ import retrofit2.HttpException
 class UpdateGoalDispatcher(
     private val apiProvider: (OutboxRow) -> ApiService,
     private val payloadAdapter: JsonAdapter<GoalUpdateRequestDto>,
+    private val receiptAdapter: JsonAdapter<GoalDto>,
 ) : OutboxMutationDispatcher {
     override val type: PendingMutationType = PendingMutationType.UpdateGoal
 
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
         val publicId = parseGoalPublicId(row.targetId)
-            ?: return DispatchResult.Discarded("invalid target id: ${row.targetId}")
+            ?: return DispatchResult.Failure("原目标无法确认，已保留未发送的修改，请核对。")
+        if (row.expectedRowVersion <= 0) return DispatchResult.Failure("原目标版本无法确认，请保留记录并核对。")
 
         // ADR-0042: an UpdateGoal row MUST carry an idempotency key (every
         // enqueue mints one). A null key means a malformed / pre-ADR-0042 row
         // the server would 422 anyway — surface it as a visible FAILED row the
         // user can drop, not a silent server round-trip + Discard.
-        val idempotencyKey = row.idempotencyKey
+        val idempotencyKey = row.idempotencyKey?.takeIf { it.isNotBlank() }
             ?: return DispatchResult.Failure("UpdateGoal row missing idempotency key")
 
-        // Payload deserialise errors are TERMINAL — see PatchExpenseDispatcher
-        // KDoc for the rationale.
-        val request = try {
-            val storedPayload = payloadAdapter.fromJson(row.payloadJson)
-                ?: return DispatchResult.Failure("payload deserialised to null")
-            // Row's expectedRowVersion is authoritative. Payload was serialised
-            // with a 0L placeholder for the token (DTO field is non-nullable
-            // Long; round-8 P3#5 single-source-of-truth rule).
-            storedPayload.copy(expectedRowVersion = row.expectedRowVersion)
-        } catch (e: JsonDataException) {
-            return DispatchResult.Failure(
-                "payload JSON shape changed: ${e.message ?: "JsonDataException"}",
-            )
-        } catch (e: JsonEncodingException) {
-            return DispatchResult.Failure(
-                "payload JSON malformed: ${e.message ?: "JsonEncodingException"}",
-            )
-        }
+        val request = payloadAdapter.readGoalUpdate(row)
+            ?: return DispatchResult.Failure("原修改内容无法读取，已保留记录，请核对。")
 
         return try {
             // ADR-0042: replay carries the row's original intent-time key, so a
             // committed-but-unseen first attempt is deduped server-side (HIT →
             // canonical row) instead of false-409ing on the stale row_version.
             val updated = apiProvider(row).updateGoal(publicId, request, idempotencyKey, timezone = null)
-            DispatchResult.Success(newRowVersion = updated.rowVersion)
+            if (updated.publicId != publicId || updated.ledgerId != row.ledgerId) {
+                DispatchResult.Failure("返回的目标与原提交不匹配，已保留记录。")
+            } else DispatchResult.Success(newRowVersion = updated.rowVersion, receiptJson = receiptAdapter.toJson(updated))
         } catch (e: HttpException) {
             mapOutboxHttpException(e)
         } catch (e: IOException) {
@@ -83,3 +71,14 @@ class UpdateGoalDispatcher(
         return publicId.takeIf { it.isNotBlank() }
     }
 }
+
+/** Reads existing flat payloads without changing their durable body or original OCC. */
+internal fun JsonAdapter<GoalUpdateRequestDto>.readGoalUpdate(row: OutboxRow): GoalUpdateRequestDto? =
+    try {
+        fromJson(row.payloadJson)?.takeIf { row.expectedRowVersion > 0 && !row.idempotencyKey.isNullOrBlank() }
+            ?.copy(expectedRowVersion = row.expectedRowVersion)
+    } catch (_: JsonDataException) {
+        null
+    } catch (_: IOException) {
+        null
+    }
