@@ -16,7 +16,6 @@ from app.database import SessionLocal, engine
 from app.database._managed_postgres_migration_runtime import _prearmed_transaction
 from app.models import (
     Budget,
-    CsvImportRow,
     ExpenseItem,
     ExpenseSplit,
     Goal,
@@ -332,7 +331,10 @@ def test_legacy_csv_import_row_is_preserved_without_later_schema() -> None:
     run_alembic(command.upgrade, HEAD_REVISION)
 
     with SessionLocal() as db:
-        row = db.get(CsvImportRow, row_id)
+        row = db.execute(text(
+            "SELECT amount_cents, original_currency_code, original_amount_minor, "
+            "exchange_rate_to_cny, exchange_rate_source, status FROM csv_import_rows WHERE id = :id"
+        ), {"id": row_id}).one_or_none()
         assert row is not None
         assert row.amount_cents == 450
         assert row.original_currency_code == "CNY"

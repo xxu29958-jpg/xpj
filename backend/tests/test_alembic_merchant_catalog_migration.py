@@ -1,4 +1,8 @@
-"""PG round-trip of 20260630_0002 merchant catalog."""
+"""PG round-trip of 20260630_0002 merchant catalog.
+
+Check current ORM shape independently, then round-trip the frozen migration
+on its actual PostgreSQL schema. Never stamp a current schema as a historical one.
+"""
 
 from __future__ import annotations
 
@@ -102,11 +106,12 @@ def test_add_merchant_catalog_round_trips_on_postgres() -> None:
         Base.metadata.create_all(bind=engine)
         _assert_full_shape()
 
-        _run_alembic(command.stamp, _REVISION)
+        _reset_empty_database()
+        _run_alembic(command.upgrade, _REVISION)
         _run_alembic(command.downgrade, _PRIOR)
         assert not inspect(engine).has_table(_TABLE)
 
-        _run_alembic(command.upgrade, "head")
+        _run_alembic(command.upgrade, _REVISION)
         _assert_full_shape()
     finally:
         _reset_empty_database()

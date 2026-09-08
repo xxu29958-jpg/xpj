@@ -56,6 +56,18 @@ class QuerySite:
 
 EXEMPTIONS: tuple[ScopeExemption, ...] = (
     ScopeExemption(
+        path="services/currency_adoption_service.py",
+        function="_adopt_in_transaction",
+        model="CsvImportRow",
+        occurrences=1,
+        reason=(
+            "Installation Owner adoption locks the complete currency evidence inventory "
+            "and fills only unknown historical row currencies across every ledger in "
+            "the same audited binding transaction; request-ledger scoping would leave "
+            "other ledgers' staged money without its adopted currency."
+        ),
+    ),
+    ScopeExemption(
         path="database/_dataset_backup_snapshot.py",
         function="read_original_reference_rows",
         model="Expense",

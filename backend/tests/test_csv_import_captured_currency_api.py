@@ -50,15 +50,15 @@ def test_foreign_import_resolves_the_rows_rate_pair_under_a_different_default(cl
         )
         assert response.status_code == 200, response.json()
     content = (
-        "home_currency_code,amount_cents,original_currency_code,exchange_rate_date,merchant\n"
-        "JPY,100,USD,2026-09-08,Foreign train\n"
+        "home_currency_code,amount_cents,original_currency_code,original_amount_minor,exchange_rate_date,merchant\n"
+        "JPY,,USD,100,2026-09-08,Foreign train\n"
     )
     created = client.post(
         "/api/imports/csv", headers=identity.app_headers,
         files={"csv_file": ("foreign.csv", content.encode(), "text/csv")},
     )
     assert created.status_code == 201, created.json()
-    assert created.json()["valid_rows"] == 1
+    assert created.json()["valid_rows"] == 1, created.json()
     applied = client.post(f"/api/imports/csv/{created.json()['public_id']}/apply", headers=identity.app_headers)
     assert applied.status_code == 200, applied.json()
     assert applied.json()["inserted_count"] == 1

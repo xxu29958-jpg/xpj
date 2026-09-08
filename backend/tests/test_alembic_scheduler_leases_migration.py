@@ -1,19 +1,7 @@
 """PG round-trip of 20260620_0001 (add scheduler_leases, known-bugs 🟢#4).
 
-``init_db`` on a fresh DB runs ``create_all`` (the current ORM already carries
-``scheduler_leases``) then ``alembic stamp head``, so the guarded ``create_table``
-body never runs on the normal path — a divergence between the migration's
-hand-written ``create_table`` and the ORM would ship UNDETECTED by the deployment
-path. This drives the migration directly on PostgreSQL: create_all → stamp head →
-downgrade past 20260620_0001 (drops the table) → upgrade to head (re-creates it via
-the migration body), then REFLECTS the migration-built table and asserts its
-columns / nullability / primary key — not just that the table name exists.
-
-It also pins the one-way ``app_meta`` cleanup: a pre-table ``scheduler_lease:*`` row
-is removed by the upgrade while an unrelated control key survives.
-
-Marked ``real_db`` below because it issues DDL via its
-own ``engine.begin()`` connections outside the per-test transaction.
+Check current ORM shape independently, then round-trip the frozen migration
+on its actual PostgreSQL schema. Never stamp a current schema as a historical one.
 """
 
 from __future__ import annotations
@@ -105,7 +93,8 @@ def test_add_scheduler_leases_round_trips_on_postgres() -> None:
         Base.metadata.create_all(bind=engine)
         _assert_full_shape()  # the current ORM shape
 
-        _run_alembic(command.stamp, "20260620_0001")
+        _reset_empty_database()
+        _run_alembic(command.upgrade, "20260620_0001")
         _run_alembic(command.downgrade, "20260619_0001")
         assert "scheduler_leases" not in _table_names()  # downgrade drops it
 
@@ -113,7 +102,7 @@ def test_add_scheduler_leases_round_trips_on_postgres() -> None:
         # migration must re-create the table AND purge the transient lease row.
         _seed_legacy_and_control_app_meta()
 
-        _run_alembic(command.upgrade, "head")
+        _run_alembic(command.upgrade, "20260620_0001")
         # Re-created via the migration's hand-written create_table — assert the FULL
         # shape (columns/nullability/PK), not just the table name, so a
         # migration↔ORM divergence fails here.

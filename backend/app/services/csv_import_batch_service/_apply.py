@@ -17,11 +17,8 @@ Top-level state-machine driver. Each call:
 6. On AppError / IntegrityError / unexpected Exception: rolls back +
    releases the lease + marks the batch failed if needed.
 
-State preconditions for each helper are documented in their own
-modules. The three-branch exception ladder
-(``AppError`` / ``IntegrityError`` / ``Exception``) is preserved
-byte-for-byte from the pre-split implementation — changing it requires
-a deliberate state-machine review.
+Completed-batch retries use the same lease and row receipts, returning the
+stored outcome without inserting another expense.
 """
 
 from __future__ import annotations
