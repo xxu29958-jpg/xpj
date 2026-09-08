@@ -226,14 +226,7 @@ private fun LazyListScope.incomePlanBody(
     }
     if (incomePlanShowsSummary(bodyState)) {
         item {
-            IncomeTotalSummary(
-                month = state.forecastMonth.orEmpty(),
-                expectedCents = state.currentMonthSummary.expectedAmountCents,
-                planCount = state.currentMonthSummary.effectivePlanCount,
-                scheduledCents = state.scheduledAmountCents,
-                currency = CurrencyDisplay.forRecord(state.forecastCurrencyCode),
-                missingCurrencies = state.missingCurrencyCodes,
-            )
+            IncomeTotalSummary(state)
         }
     }
     if (state.pendingEdits.isNotEmpty()) {
@@ -345,30 +338,24 @@ private fun SectionEyebrow(text: String) {
 
 /** Whole-month estimate and scheduled-through-today amount share the server forecast owner. */
 @Composable
-private fun IncomeTotalSummary(
-    month: String,
-    expectedCents: Long?,
-    planCount: Int,
-    scheduledCents: Long?,
-    currency: CurrencyDisplay,
-    missingCurrencies: List<String>,
-) {
+private fun IncomeTotalSummary(state: IncomePlanUiState) {
+    val currency = CurrencyDisplay.forRecord(state.forecastCurrencyCode)
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
-            stringResource(R.string.income_plan_month_expected, month),
+            stringResource(R.string.income_plan_month_expected, state.forecastMonth.orEmpty()),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.size(AppSpacing.miniGap))
         Text(
-            expectedCents?.let { formatDisplayAmount(it, currency) }
+            state.currentMonthSummary.expectedAmountCents?.let { formatDisplayAmount(it, currency) }
                 ?: stringResource(R.string.income_plan_conversion_pending),
             style = MaterialTheme.typography.headlineLarge.tabularNum(),
             fontWeight = FontWeight.SemiBold,
         )
         Spacer(Modifier.size(AppSpacing.miniGap))
         Text(
-            stringResource(R.string.income_plan_total_meta, planCount),
+            stringResource(R.string.income_plan_total_meta, state.currentMonthSummary.effectivePlanCount),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -376,14 +363,14 @@ private fun IncomeTotalSummary(
         Text(
             stringResource(
                 R.string.income_plan_arrived_caption,
-                scheduledCents?.let { formatDisplayAmount(it, currency) }
+                state.scheduledAmountCents?.let { formatDisplayAmount(it, currency) }
                     ?: stringResource(R.string.income_plan_conversion_pending),
             ),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        if (missingCurrencies.isNotEmpty()) {
-            Text(stringResource(R.string.income_plan_missing_rates, missingCurrencies.joinToString("、")),
+        if (state.missingCurrencyCodes.isNotEmpty()) {
+            Text(stringResource(R.string.income_plan_missing_rates, state.missingCurrencyCodes.joinToString("、")),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(Modifier.size(AppSpacing.compactGap))

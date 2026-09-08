@@ -32,6 +32,10 @@ _PAGE_READY_DIAGNOSTIC = """
   return {
     protocol, route, readyState: document.readyState,
     mainContent: Boolean(document.querySelector("#main-content")),
+    domContentLoaded: (performance.getEntriesByType("navigation")[0]?.domContentLoadedEventEnd ?? 0) > 0,
+    stylesReady: Array.from(document.querySelectorAll('link[rel="stylesheet"]')).every(link => link.sheet !== null),
+    imagesReady: Array.from(document.images).every(image => image.complete),
+    fontsReady: document.fonts.status === "loaded",
     renderProbeStarted: globalThis.__probeStarted === true,
     renderProbeResultReady: typeof globalThis.__probeResult === "string"
   };
@@ -285,7 +289,7 @@ def _layout_timeout_diagnostic(
     for name, allowed in _READY_DIAGNOSTIC_VALUES.items():
         value = snapshot.get(name)
         diagnostic[name] = value if isinstance(value, str) and value in allowed else "unknown"
-    for name in ("mainContent", "renderProbeStarted", "renderProbeResultReady"):
+    for name in ("mainContent", "renderProbeStarted", "renderProbeResultReady", "domContentLoaded", "stylesReady", "imagesReady", "fontsReady"):
         value = snapshot.get(name)
         diagnostic[name] = value if isinstance(value, bool) else "unknown"
     return diagnostic

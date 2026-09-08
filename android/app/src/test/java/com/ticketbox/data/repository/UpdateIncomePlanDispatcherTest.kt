@@ -29,42 +29,48 @@ import kotlin.test.assertTrue
  */
 class UpdateIncomePlanDispatcherTest {
 
-    private fun moshi(): Moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
+    private fun moshi(): Moshi {
+        return Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
+    }
 
-    private fun updatedPlanDto(): IncomePlanDto = IncomePlanDto(
-        publicId = "plan-1",
-        label = "工资",
-        sourceType = "salary",
-        frequency = "monthly",
-        incomeMonth = null,
-        amountCents = 1500000,
-        payDay = 15,
-        status = "active",
-        createdAt = "2026-05-01T00:00:00Z",
-        updatedAt = "2026-05-20T13:00:00.000Z",
-        rowVersion = 2L,
-        archivedAt = null,
-        homeCurrencyCode = "CNY",
-    )
+    private fun updatedPlanDto(): IncomePlanDto {
+        return IncomePlanDto(
+            publicId = "plan-1",
+            label = "工资",
+            sourceType = "salary",
+            frequency = "monthly",
+            incomeMonth = null,
+            amountCents = 1500000,
+            payDay = 15,
+            status = "active",
+            createdAt = "2026-05-01T00:00:00Z",
+            updatedAt = "2026-05-20T13:00:00.000Z",
+            rowVersion = 2L,
+            archivedAt = null,
+            homeCurrencyCode = "CNY",
+        )
+    }
 
-    private fun planRow(idempotencyKey: String?): OutboxRow = OutboxRow(
-        id = 1L,
-        serverUrl = "https://api.example.com",
-        ledgerId = "owner",
-        type = PendingMutationType.UpdateIncomePlan,
-        targetId = "income_plan:plan-1",
-        payloadJson = moshi().adapter(IncomePlanEditPayload::class.java)
-            .toJson(IncomePlanEditPayload(1, "plan-1", "工资", 1400000, "CNY", "test-session", "test-binding",
-                IncomePlanUpdateRequestDto(intentMonth = "2026-09", expectedRowVersion = 0L, amountCents = 1500000))),
-        expectedRowVersion = 1L,
-        status = PendingMutationStatus.InFlight,
-        retryCount = 0,
-        lastError = null,
-        createdAt = "2026-05-20T12:00:00.000Z",
-        attemptedAt = "2026-05-20T12:00:00.000Z",
-        completedAt = null,
-        idempotencyKey = idempotencyKey,
-    )
+    private fun planRow(idempotencyKey: String?): OutboxRow {
+        return OutboxRow(
+            id = 1L,
+            serverUrl = "https://api.example.com",
+            ledgerId = "owner",
+            type = PendingMutationType.UpdateIncomePlan,
+            targetId = "income_plan:plan-1",
+            payloadJson = moshi().adapter(IncomePlanEditPayload::class.java)
+                .toJson(IncomePlanEditPayload(1, "plan-1", "工资", 1400000, "CNY", "test-session", "test-binding",
+                    IncomePlanUpdateRequestDto(intentMonth = "2026-09", expectedRowVersion = 0L, amountCents = 1500000))),
+            expectedRowVersion = 1L,
+            status = PendingMutationStatus.InFlight,
+            retryCount = 0,
+            lastError = null,
+            createdAt = "2026-05-20T12:00:00.000Z",
+            attemptedAt = "2026-05-20T12:00:00.000Z",
+            completedAt = null,
+            idempotencyKey = idempotencyKey,
+        )
+    }
 
     private class Stub(
         private val result: Result<IncomePlanDto>,
@@ -94,64 +100,76 @@ class UpdateIncomePlanDispatcherTest {
     }
 
     @Test
-    fun `dispatch replays the row's idempotency key without rebasing another original command`() = runTest {
-        val stub = Stub(Result.success(updatedPlanDto()))
+    fun dispatchReplaysOriginalIdempotencyKey() {
+        runTest {
+            val stub = Stub(Result.success(updatedPlanDto()))
 
-        val result = dispatcherFor(stub).dispatch(planRow(idempotencyKey = "key-abc"))
+            val result = dispatcherFor(stub).dispatch(planRow(idempotencyKey = "key-abc"))
 
-        assertEquals("key-abc", stub.lastIdempotencyKey, "dispatcher must send the row's key")
-        assertEquals(DispatchResult.Success(), result)
-    }
-
-    @Test
-    fun `a row with no idempotency key fails loudly instead of silently dropping`() = runTest {
-        val stub = Stub(Result.success(updatedPlanDto()))
-
-        val result = dispatcherFor(stub).dispatch(planRow(idempotencyKey = null))
-
-        assertTrue(result is DispatchResult.Failure, "null-key row must FAIL visibly: $result")
-    }
-
-    @Test
-    fun `a successful HTTP response with different money cannot settle the original intent`() = runTest {
-        for (response in listOf(updatedPlanDto().copy(homeCurrencyCode = "JPY"),
-            updatedPlanDto().copy(homeCurrencyCode = null), updatedPlanDto().copy(amountCents = 15000))) {
-            val result = dispatcherFor(Stub(Result.success(response))).dispatch(planRow("original-key"))
-            assertTrue(result is DispatchResult.Failure, "unverified money must remain recoverable: $result")
+            assertEquals("key-abc", stub.lastIdempotencyKey, "dispatcher must send the row's key")
+            assertEquals(DispatchResult.Success(), result)
         }
     }
 
     @Test
-    fun `409 idempotency_key_in_progress is retried, not dropped`() = runTest {
-        val body = """{"error":"idempotency_key_in_progress","message":"操作正在处理中，请稍后再试。"}"""
-        val stub = Stub(Result.failure(httpException(409, body)))
+    fun keylessIntentRemainsVisible() {
+        runTest {
+            val stub = Stub(Result.success(updatedPlanDto()))
 
-        val result = dispatcherFor(stub).dispatch(planRow(idempotencyKey = "key-abc"))
+            val result = dispatcherFor(stub).dispatch(planRow(idempotencyKey = null))
 
-        assertTrue(
-            result is DispatchResult.RetryableFailure,
-            "in_progress must retry (not Discard/Conflict): $result",
-        )
+            assertTrue(result is DispatchResult.Failure, "null-key row must FAIL visibly: $result")
+        }
     }
 
     @Test
-    fun `409 state_conflict still surfaces as a Conflict row`() = runTest {
-        val body = """{"error":"state_conflict","message":"收入计划已被其它端修改"}"""
-        val stub = Stub(Result.failure(httpException(409, body)))
-
-        val result = dispatcherFor(stub).dispatch(planRow(idempotencyKey = "key-abc"))
-
-        assertTrue(result is DispatchResult.Conflict, "state_conflict must stay Conflict: $result")
+    fun differentMoneyCannotSettleOriginalIntent() {
+        runTest {
+            for (response in listOf(updatedPlanDto().copy(homeCurrencyCode = "JPY"),
+                updatedPlanDto().copy(homeCurrencyCode = null), updatedPlanDto().copy(amountCents = 15000))) {
+                val result = dispatcherFor(Stub(Result.success(response))).dispatch(planRow("original-key"))
+                assertTrue(result is DispatchResult.Failure, "unverified money must remain recoverable: $result")
+            }
+        }
     }
 
     @Test
-    fun `422 surfaces as a visible Failure, not a silent Discard`() = runTest {
-        val body = """{"error":"idempotency_key_reused","message":"请求重复。"}"""
-        val stub = Stub(Result.failure(httpException(422, body)))
+    fun inProgressResponseRemainsRetryable() {
+        runTest {
+            val body = """{"error":"idempotency_key_in_progress","message":"操作正在处理中，请稍后再试。"}"""
+            val stub = Stub(Result.failure(httpException(409, body)))
 
-        val result = dispatcherFor(stub).dispatch(planRow(idempotencyKey = "key-abc"))
+            val result = dispatcherFor(stub).dispatch(planRow(idempotencyKey = "key-abc"))
 
-        assertTrue(result is DispatchResult.Failure, "422 must be a visible Failure: $result")
+            assertTrue(
+                result is DispatchResult.RetryableFailure,
+                "in_progress must retry (not Discard/Conflict): $result",
+            )
+        }
+    }
+
+    @Test
+    fun stateConflictRemainsVisible() {
+        runTest {
+            val body = """{"error":"state_conflict","message":"收入计划已被其它端修改"}"""
+            val stub = Stub(Result.failure(httpException(409, body)))
+
+            val result = dispatcherFor(stub).dispatch(planRow(idempotencyKey = "key-abc"))
+
+            assertTrue(result is DispatchResult.Conflict, "state_conflict must stay Conflict: $result")
+        }
+    }
+
+    @Test
+    fun invalidRequestRemainsVisible() {
+        runTest {
+            val body = """{"error":"idempotency_key_reused","message":"请求重复。"}"""
+            val stub = Stub(Result.failure(httpException(422, body)))
+
+            val result = dispatcherFor(stub).dispatch(planRow(idempotencyKey = "key-abc"))
+
+            assertTrue(result is DispatchResult.Failure, "422 must be a visible Failure: $result")
+        }
     }
 
     private fun httpException(code: Int, body: String): HttpException {
