@@ -3,23 +3,18 @@ package com.ticketbox.viewmodel
 import com.ticketbox.data.repository.BudgetActions
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
-import com.ticketbox.data.repository.StatsActions
 import com.ticketbox.domain.model.BudgetAdviceResult
 import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
 import com.ticketbox.domain.model.BudgetProgressStatus
-import com.ticketbox.domain.model.DataQualitySummary
-import com.ticketbox.domain.model.Expense
-import com.ticketbox.domain.model.LifestyleStats
-import com.ticketbox.domain.model.MonthlyStats
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -45,7 +40,6 @@ class StatsBudgetViewModelTest {
     @Test
     fun configuredBudgetWithoutProgressKeepsConfiguredStatus() = budgetTest {
         val vm = StatsBudgetViewModel(
-            statsRepository = FakeStatsBudgetStatsActions(),
             budgetRepository = FakeStatsBudgetActions(
                 budget = budgetMonthly(
                     configured = true,
@@ -56,7 +50,7 @@ class StatsBudgetViewModelTest {
         )
         runCurrent()
 
-        vm.refresh(month = "2026-07", stats = null)
+        vm.refresh(month = "2026-07")
         advanceUntilIdle()
 
         assertEquals(BudgetProgressStatus.ConfiguredWithoutProgress, vm.uiState.value.budgetProgressStatus)
@@ -66,7 +60,6 @@ class StatsBudgetViewModelTest {
     @Test
     fun unconfiguredBudgetDoesNotReusePositiveAmountsAsProgress() = budgetTest {
         val vm = StatsBudgetViewModel(
-            statsRepository = FakeStatsBudgetStatsActions(),
             budgetRepository = FakeStatsBudgetActions(
                 budget = budgetMonthly(
                     configured = false,
@@ -77,7 +70,7 @@ class StatsBudgetViewModelTest {
         )
         runCurrent()
 
-        vm.refresh(month = "2026-07", stats = null)
+        vm.refresh(month = "2026-07")
         advanceUntilIdle()
 
         assertEquals(BudgetProgressStatus.Unconfigured, vm.uiState.value.budgetProgressStatus)
@@ -88,53 +81,50 @@ class StatsBudgetViewModelTest {
     fun replacingSameNamedLedgerClearsBudgetAndReadsWithExactBinding() = budgetTest {
         val owner = FakeStatsBudgetActions(budgetMonthly(true, 100000, 2000))
         val original = requireNotNull(owner.access.value).binding
-        val vm = StatsBudgetViewModel(FakeStatsBudgetStatsActions(), owner)
+        val vm = StatsBudgetViewModel(owner)
         runCurrent()
-        vm.refresh("2026-07", stats = null)
+        vm.refresh("2026-07")
         advanceUntilIdle()
         assertEquals(100000L, vm.uiState.value.budgetProgress?.budgetCents)
         val replacement = original.copy(ownerKey = "second-owner", sessionGeneration = "second-session")
+        val response = CompletableDeferred<BudgetMonthly>()
+        owner.responder = { response.await() }
         owner.access.value = LedgerAccessContext(replacement, canModify = true)
         owner.budget = owner.budget.copy(totalAmountCents = 5000, homeCurrencyCode = "JPY")
         advanceUntilIdle()
         assertNull(vm.uiState.value.budgetProgress, "same ledger name does not identify the same household")
-        vm.refresh("2026-07", stats = null)
+        response.complete(owner.budget)
         advanceUntilIdle()
         assertEquals(5000L, vm.uiState.value.budgetProgress?.budgetCents)
         assertEquals("JPY", vm.uiState.value.budgetProgress?.homeCurrencyCode)
         assertEquals(listOf(original, replacement), owner.requestedBindings)
     }
-}
 
-private class FakeStatsBudgetStatsActions : StatsActions {
-    private val ledgerId = MutableStateFlow<String?>("ledger-1")
-
-    override fun observeActiveLedgerId(): Flow<String?> = ledgerId
-
-    override fun observeConfirmed(): Flow<List<Expense>> = emptyFlow()
-
-    override fun monthlyBudgetCents(): Long? = null
-
-    override fun lastUploadAt(): String? = null
-
-    override suspend fun months(): Result<List<String>> = Result.success(emptyList())
-
-    override suspend fun tags(): Result<List<String>> = Result.success(emptyList())
-
-    override suspend fun monthlyStats(month: String?, tag: String?): Result<MonthlyStats> =
-        Result.failure(UnsupportedOperationException())
-
-    override suspend fun lifestyleStats(month: String?): Result<LifestyleStats> =
-        Result.failure(UnsupportedOperationException())
-
-    override suspend fun syncConfirmed(
-        month: String?,
-        category: String?,
-        tag: String?,
-    ): Result<List<Expense>> = Result.success(emptyList())
-
-    override suspend fun dataQualitySummary(): Result<DataQualitySummary> =
-        Result.failure(UnsupportedOperationException())
+    @Test
+    fun returningToAnInflightMonthPublishesThatMonthsResponse() = budgetTest {
+        val july = CompletableDeferred<BudgetMonthly>()
+        val august = CompletableDeferred<BudgetMonthly>()
+        val owner = FakeStatsBudgetActions(budgetMonthly(true, 100000, 2000))
+        owner.responder = { if (it == "2026-07") july.await() else august.await() }
+        val vm = StatsBudgetViewModel(owner)
+        // Refresh may precede the first identity emission.
+        vm.refresh("2026-07")
+        runCurrent()
+        vm.refresh("2026-08")
+        runCurrent()
+        vm.refresh("2026-07")
+        august.complete(owner.budget.copy(month = "2026-08", totalAmountCents = 8000))
+        runCurrent()
+        assertNull(vm.uiState.value.budgetProgress)
+        july.complete(owner.budget)
+        advanceUntilIdle()
+        assertEquals("2026-07", vm.uiState.value.month)
+        assertEquals(100000L, vm.uiState.value.budgetProgress?.budgetCents)
+        assertEquals(2, owner.requestedBindings.size)
+        vm.refresh("2026-08")
+        assertEquals(8000L, vm.uiState.value.budgetProgress?.budgetCents)
+        assertEquals(2, owner.requestedBindings.size)
+    }
 }
 
 private class FakeStatsBudgetActions(
@@ -143,11 +133,12 @@ private class FakeStatsBudgetActions(
     val access = MutableStateFlow<LedgerAccessContext?>(LedgerAccessContext(
         LogicalSessionBinding("https://example.test", "ledger-1", "owner", "session", "binding"), true))
     val requestedBindings = mutableListOf<LogicalSessionBinding>()
+    var responder: (suspend (String) -> BudgetMonthly)? = null
     override fun canModifyLedger(): Boolean = true
 
     override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> = access
 
-    override suspend fun monthlyBudget(month: String): Result<BudgetMonthly> = Result.success(budget.copy(month = month))
+    override suspend fun monthlyBudget(month: String): Result<BudgetMonthly> = Result.success(responder?.invoke(month) ?: budget.copy(month = month))
 
     override suspend fun requestBudgetAdvice(month: String): Result<BudgetAdviceResult> =
         Result.failure(UnsupportedOperationException())

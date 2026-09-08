@@ -228,25 +228,6 @@ internal fun Expense.normalizedTagNames(): List<String> {
         .filter { seen.add(it.lowercase()) }
 }
 
-fun monthlyBudgetProgress(
-    stats: MonthlyStats?,
-    budgetCents: Long?,
-): BudgetProgress? {
-    val budget = budgetCents?.takeIf { it > 0L } ?: return null
-    val monthlyStats = stats ?: return null
-    val spent = monthlyStats.totalAmountCents
-    val progress = (spent.toFloat() / budget.toFloat()).coerceAtLeast(0f)
-    return BudgetProgress(
-        month = monthlyStats.month,
-        budgetCents = budget,
-        spentCents = spent,
-        remainingCents = budget - spent,
-        progress = progress.coerceIn(0f, 1f),
-        percent = moneyPercent(spent, budget) ?: 0L,
-        overBudget = spent > budget,
-    )
-}
-
 fun monthlyCategoryInsight(stats: MonthlyStats?): CategoryInsight? {
     val monthlyStats = stats ?: return null
     if (monthlyStats.totalAmountCents <= 0L || monthlyStats.count <= 0) {

@@ -118,13 +118,13 @@ class BudgetViewModelTest {
         advanceUntilIdle()
 
         assertEquals(2, fake.loadCalls)
-        assertEquals(500000L, vm.uiState.value.budget?.totalAmountCents)
+        assertEquals(700000L, vm.uiState.value.budget?.totalAmountCents)
         assertEquals("7000", vm.uiState.value.form.totalAmount)
 
         accessFlow.value = planAccess(ownerKey = "owner-b", canModify = false)
         advanceUntilIdle()
 
-        assertEquals(3, fake.loadCalls)
+        assertEquals(2, fake.loadCalls)
         assertFalse(vm.uiState.value.canModify)
     }
 
@@ -149,7 +149,7 @@ class BudgetViewModelTest {
         stale.complete(Result.success(budget(totalAmountCents = 600000)))
         advanceUntilIdle()
 
-        assertEquals(500000L, vm.uiState.value.budget?.totalAmountCents)
+        assertEquals(700000L, vm.uiState.value.budget?.totalAmountCents)
         assertEquals("7000", vm.uiState.value.form.totalAmount)
     }
 
@@ -288,7 +288,9 @@ class BudgetViewModelTest {
         vm.save()
         advanceUntilIdle()
 
-        assertNull(vm.uiState.value.loadError)
+        // Queuing a write has not repaired the failed read or confirmed a server result.
+        assertEquals(state.loadError, vm.uiState.value.loadError)
+        assertEquals(UiText.res(R.string.budget_message_queued), vm.uiState.value.message)
     }
 
     @Test

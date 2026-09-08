@@ -190,10 +190,6 @@ class SettingsViewModelTest {
 
         override fun lastUploadAt(): String? = null
 
-        override fun monthlyBudgetCents(): Long? = null
-
-        override fun saveMonthlyBudgetCents(amountCents: Long?) = Unit
-
         override suspend fun runConnectionDiagnostics(binding: LogicalSessionBinding): Result<ConnectionDiagnostics> {
             assertEquals(currentAccess().binding, binding)
             diagnosticsGate?.await()

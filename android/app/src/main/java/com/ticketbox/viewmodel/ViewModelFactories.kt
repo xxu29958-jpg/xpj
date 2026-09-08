@@ -2,6 +2,8 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.createSavedStateHandle
+import androidx.lifecycle.viewmodel.CreationExtras
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.repository.BudgetActions
 import com.ticketbox.data.repository.DebtActions
@@ -65,7 +67,7 @@ fun repositoryViewModelFactory(
             )
             GlobalSearchViewModel::class.java -> GlobalSearchViewModel(repository)
             MonthlyStatsViewModel::class.java -> MonthlyStatsViewModel(repository)
-            StatsBudgetViewModel::class.java -> StatsBudgetViewModel(repository, repositories.budgetRepository)
+            StatsBudgetViewModel::class.java -> StatsBudgetViewModel(checkNotNull(repositories.budgetRepository))
             StatsReportsViewModel::class.java -> StatsReportsViewModel(repositories.reportsRepository)
             else -> error("Unsupported ViewModel: ${modelClass.name}")
         } as T
@@ -79,6 +81,9 @@ fun budgetViewModelFactory(
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return BudgetViewModel(repository, onDataChanged = onDataChanged) as T
+    }
+    override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T {
+        return BudgetViewModel(repository, onDataChanged = onDataChanged, savedStateHandle = extras.createSavedStateHandle()) as T
     }
 }
 

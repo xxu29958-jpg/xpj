@@ -58,6 +58,18 @@ EXEMPTIONS: tuple[ScopeExemption, ...] = (
     ScopeExemption(
         path="services/currency_adoption_service.py",
         function="_adopt_in_transaction",
+        model="Budget",
+        occurrences=1,
+        reason=(
+            "Installation Owner adoption locks all currency evidence and fills only "
+            "unknown historical budget currencies across the installation in the same "
+            "audited transaction; limiting this to the request ledger would strand "
+            "other ledgers with unadopted money. Amounts and row versions are preserved."
+        ),
+    ),
+    ScopeExemption(
+        path="services/currency_adoption_service.py",
+        function="_adopt_in_transaction",
         model="CsvImportRow",
         occurrences=1,
         reason=(

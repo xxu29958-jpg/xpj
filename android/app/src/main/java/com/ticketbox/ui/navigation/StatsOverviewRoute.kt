@@ -47,9 +47,9 @@ internal fun StatsRoute(shellState: MainShellState, screenFactory: MainScreenFac
     }
     LaunchedEffect(
         monthlyState.ledgerReady, monthlyState.activeLedgerId, monthlyState.month,
-        monthlyState.selectedTag, monthlyState.stats, monthlyState.primaryRefreshRevision,
+        monthlyState.primaryRefreshRevision,
     ) {
-        if (monthlyState.ledgerReady) budget.refresh(monthlyState.month, monthlyState.stats)
+        if (monthlyState.ledgerReady) budget.refresh(monthlyState.month, force = true)
     }
 
     StatsScreen(
@@ -61,7 +61,7 @@ internal fun StatsRoute(shellState: MainShellState, screenFactory: MainScreenFac
         ).copy(
             onRefresh = {
                 reloadAllStats(monthly, reports)
-                budget.refresh(monthlyState.month, monthlyState.stats, force = true)
+                budget.refresh(monthlyState.month, force = true)
                 recurring.refresh()
                 layout.refresh()
             },

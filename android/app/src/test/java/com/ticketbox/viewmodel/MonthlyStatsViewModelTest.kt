@@ -423,8 +423,6 @@ private class FakeStatsActions : StatsActions {
 
     override fun observeConfirmed(): Flow<List<Expense>> = confirmedFlow
 
-    override fun monthlyBudgetCents(): Long? = null
-
     override fun lastUploadAt(): String? = null
 
     override suspend fun months(): Result<List<String>> = monthListResult ?: Result.success(monthList)

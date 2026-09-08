@@ -406,18 +406,11 @@ class ExpenseRepository(
     suspend fun serverSettings(): Result<ServerSettings> =
         connectionRepository.serverSettings()
 
-    override fun monthlyBudgetCents(): Long? =
-        connectionRepository.monthlyBudgetCents()
-
     override fun lastConfirmedSyncAt(): String? =
         connectionRepository.lastConfirmedSyncAt()
 
     override fun lastUploadAt(): String? =
         connectionRepository.lastUploadAt()
-
-    fun saveMonthlyBudgetCents(amountCents: Long?) {
-        connectionRepository.saveMonthlyBudgetCents(amountCents)
-    }
 
     suspend fun clearLocalCache() {
         connectionRepository.clearLocalCache()

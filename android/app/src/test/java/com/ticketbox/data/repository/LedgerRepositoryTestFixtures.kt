@@ -726,8 +726,6 @@ internal class LedgerFakeSettingsStore : TicketboxSettingsStore {
     var capturedBoundAt: String? = null
     fun serverUrl(): String? = serverUrl
     override fun appThemeModeKey(): String? = null
-    override fun monthlyBudgetCents(): Long? = null
-    override fun saveMonthlyBudgetCents(amountCents: Long?) = Unit
     override fun lastConfirmedSyncAt(): String? = null
     fun accountName(): String? = capturedAccountName
     fun ledgerName(): String? = ledgerName

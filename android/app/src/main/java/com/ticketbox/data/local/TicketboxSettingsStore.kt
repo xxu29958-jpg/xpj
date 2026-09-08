@@ -31,10 +31,6 @@ interface TicketboxSettingsStore {
 
     fun appThemeModeKey(): String?
 
-    fun monthlyBudgetCents(): Long?
-
-    fun saveMonthlyBudgetCents(amountCents: Long?)
-
     fun notificationPreferences(): NotificationPreferences = NotificationPreferences()
 
     fun saveNotificationPreferences(preferences: NotificationPreferences) {

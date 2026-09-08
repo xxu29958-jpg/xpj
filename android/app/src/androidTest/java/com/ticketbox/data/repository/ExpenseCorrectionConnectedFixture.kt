@@ -81,7 +81,7 @@ internal class ExpenseCorrectionConnectedFixture(private val context: Context) {
             "getBackgroundSettingsFlow" -> flowOf(BackgroundSettings())
             "notificationPreferences" -> NotificationPreferences()
             "lastConfirmedSyncAt", "lastConfirmedSyncAtForLedger" -> lastSyncAt
-            "monthlyBudgetCents", "lastUploadAt", "lastUploadAtForLedger" -> null
+            "lastUploadAt", "lastUploadAtForLedger" -> null
             "availableLedgersJson" -> availableLedgers
             else -> error("Unexpected settings: $method")
         }

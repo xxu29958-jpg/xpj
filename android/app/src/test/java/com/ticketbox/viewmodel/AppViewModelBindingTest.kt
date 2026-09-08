@@ -354,10 +354,6 @@ private class FakeAppSettingsStore(
 
     override fun appThemeModeKey(): String? = null
 
-    override fun monthlyBudgetCents(): Long? = null
-
-    override fun saveMonthlyBudgetCents(amountCents: Long?) = Unit
-
     override fun lastConfirmedSyncAt(): String? = null
 
     fun accountName(): String? = null

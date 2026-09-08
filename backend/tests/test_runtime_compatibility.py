@@ -419,21 +419,21 @@ def test_openapi_publishes_runtime_headers_on_mutating_api_operations(
     client: TestClient,
 ) -> None:
     schema = client.app.openapi()
-    expected_refs = {
-        "#/components/parameters/TicketboxApiVersion",
-        "#/components/parameters/TicketboxCurrencyBinding",
-    }
+    expected_names = {"Ticketbox-Api-Version", "Ticketbox-Currency-Binding"}
     for path, method in (
         ("/api/budgets/monthly/{month}", "put"),
         ("/api/goals", "post"),
         ("/api/expenses/manual", "post"),
     ):
         parameters = schema["paths"][path][method]["parameters"]
-        assert expected_refs <= {
-            parameter.get("$ref")
+        resolved = [
+            schema["components"]["parameters"][parameter["$ref"].rsplit("/", 1)[-1]]
+            if "$ref" in parameter else parameter
             for parameter in parameters
-            if isinstance(parameter, dict)
-        }
+        ]
+        assert expected_names <= {parameter.get("name") for parameter in resolved if parameter.get("in") == "header"}
+        for name in expected_names:
+            assert sum(parameter.get("name") == name for parameter in resolved) == 1
 
     currency_parameter = schema["components"]["parameters"][
         "TicketboxCurrencyBinding"

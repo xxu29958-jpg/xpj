@@ -86,7 +86,6 @@ internal class DataQualityConnectedHarness : AutoCloseable {
         }
         val settingsStore = interfaceProxy<TicketboxSettingsStore> { name ->
             when (name) {
-                "monthlyBudgetCents" -> null
                 "lastUploadAtForLedger" -> null
                 else -> Unhandled
             }

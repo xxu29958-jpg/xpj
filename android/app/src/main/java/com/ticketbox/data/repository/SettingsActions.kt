@@ -21,8 +21,6 @@ interface SettingsActions {
     fun observeAccess(): Flow<LedgerAccessContext?>
     fun lastConfirmedSyncAt(): String?
     fun lastUploadAt(): String?
-    fun monthlyBudgetCents(): Long?
-    fun saveMonthlyBudgetCents(amountCents: Long?)
     suspend fun runConnectionDiagnostics(binding: LogicalSessionBinding): Result<ConnectionDiagnostics>
     suspend fun serverSettings(): Result<ServerSettings>
     suspend fun syncConfirmed(
@@ -47,12 +45,6 @@ class ExpenseRepositorySettingsActions(
     override fun lastConfirmedSyncAt(): String? = repository.lastConfirmedSyncAt()
 
     override fun lastUploadAt(): String? = repository.lastUploadAt()
-
-    override fun monthlyBudgetCents(): Long? = repository.monthlyBudgetCents()
-
-    override fun saveMonthlyBudgetCents(amountCents: Long?) {
-        repository.saveMonthlyBudgetCents(amountCents)
-    }
 
     override suspend fun runConnectionDiagnostics(binding: LogicalSessionBinding): Result<ConnectionDiagnostics> =
         repository.runConnectionDiagnostics(binding)

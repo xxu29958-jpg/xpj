@@ -31,21 +31,6 @@ internal class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
 
     override fun currencyCodeKey(): String? = prefs.getString(KEY_CURRENCY_CODE, null)
 
-    override fun monthlyBudgetCents(): Long? {
-        val value = prefs.getLong(KEY_MONTHLY_BUDGET_CENTS, NO_BUDGET)
-        return value.takeIf { it > 0L }
-    }
-
-    override fun saveMonthlyBudgetCents(amountCents: Long?) {
-        prefs.edit {
-            if (amountCents == null || amountCents <= 0L) {
-                remove(KEY_MONTHLY_BUDGET_CENTS)
-            } else {
-                putLong(KEY_MONTHLY_BUDGET_CENTS, amountCents)
-            }
-        }
-    }
-
     override fun notificationPreferences(): NotificationPreferences =
         NotificationPreferences(
             autoCaptureEnabled = prefs.getBoolean(KEY_NOTIFY_AUTO_CAPTURE, false),
@@ -250,7 +235,6 @@ internal class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
         const val KEY_RECENT_SEARCHES = "recent_searches"
         const val KEY_APP_THEME_MODE = "app_theme_mode"
         const val KEY_CURRENCY_CODE = "currency_code"
-        const val KEY_MONTHLY_BUDGET_CENTS = "monthly_budget_cents"
         const val KEY_AVAILABLE_LEDGERS_JSON = "available_ledgers_json"
         const val KEY_LAST_CONFIRMED_SYNC_AT = "last_confirmed_sync_at"
         const val KEY_LAST_CONFIRMED_SYNC_AT_BY_LEDGER_PREFIX = "last_confirmed_sync_at_by_ledger:"
@@ -266,7 +250,6 @@ internal class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
         const val KEY_NOTIFY_BACKUP_STALE = "notify_backup_stale"
         const val KEY_LAST_UNLOCKED_AT = "last_unlocked_at"
         const val KEY_LAST_BACKGROUNDED_AT = "last_backgrounded_at"
-        const val NO_BUDGET = -1L
         const val LEGACY_LEDGER_ID = "legacy"
         const val LOCK_AFTER_MS = 5 * 60 * 1000L
     }

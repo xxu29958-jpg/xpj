@@ -42,7 +42,6 @@ data class SettingsUiState(
     val deviceName: String? = null,
     val role: String? = null,
     val boundAt: String? = null,
-    val monthlyBudgetCents: Long? = null,
     val notificationPreferences: NotificationPreferences = NotificationPreferences(),
     val serverSettings: ServerSettings? = null,
     val serverSettingsFresh: Boolean = false,
@@ -223,21 +222,6 @@ class SettingsViewModel(
             }
     }
 
-    fun saveMonthlyBudget(amountCents: Long?) {
-        repository.saveMonthlyBudgetCents(amountCents)
-        _uiState.update {
-            it.copy(
-                monthlyBudgetCents = amountCents?.takeIf { value -> value > 0L },
-                message = if (amountCents == null || amountCents <= 0L) {
-                    UiText.res(R.string.settings_vm_monthly_budget_off)
-                } else {
-                    UiText.res(R.string.settings_vm_monthly_budget_saved)
-                },
-                messageTone = MessageTone.Success,
-            )
-        }
-    }
-
     fun saveNotificationPreferences(preferences: NotificationPreferences) {
         refreshLocalBindingState()
         val savedPreferences = if (repository.currentAccess()?.canModify == true) {
@@ -278,7 +262,6 @@ private fun SettingsUiState.withLocalBindingFields(
         serverSettings = serverSettings?.let { settings ->
             binding?.role?.let { settings.copy(role = it) } ?: settings
         },
-        monthlyBudgetCents = settingsStore.monthlyBudgetCents(),
         notificationPreferences = settingsStore.notificationPreferences(),
         lastUploadAt = repository.lastUploadAt(),
         lastConfirmedSyncAt = repository.lastConfirmedSyncAt(),

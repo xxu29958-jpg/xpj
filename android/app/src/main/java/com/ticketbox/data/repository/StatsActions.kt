@@ -9,7 +9,6 @@ import kotlinx.coroutines.flow.Flow
 interface StatsActions {
     fun observeActiveLedgerId(): Flow<String?>
     fun observeConfirmed(): Flow<List<Expense>>
-    fun monthlyBudgetCents(): Long?
     fun lastUploadAt(): String?
     suspend fun months(): Result<List<String>>
     suspend fun tags(): Result<List<String>>

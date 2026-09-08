@@ -14,8 +14,6 @@ internal class ExpenseStatsRepositoryActions(
 
     override fun observeConfirmed(): Flow<List<Expense>> = core.observeConfirmed()
 
-    override fun monthlyBudgetCents(): Long? = core.settingsStore.monthlyBudgetCents()
-
     override fun lastUploadAt(): String? =
         core.apiProvider.currentLedgerId()
             ?.let(core.settingsStore::lastUploadAtForLedger)
