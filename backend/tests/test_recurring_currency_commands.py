@@ -30,3 +30,11 @@ def test_recurring_original_receipts_survive_later_edits_and_default_currency(cl
     actual = client.get(path, headers=identity.app_headers)
     assert actual.status_code == 200, actual.json()
     assert (actual.json()["home_currency_code"], actual.json()["baseline_amount_cents"], actual.json()["row_version"]) == ("JPY", 1450, 3)
+    archived = client.post(f"{path}/archive", headers=identity.app_headers)
+    assert archived.status_code == 200 and archived.json()["home_currency_code"] == "JPY"
+    recycled = client.get("/api/recycle-bin", headers=identity.app_headers)
+    assert recycled.status_code == 200, recycled.json()
+    entry = next(item for item in recycled.json()["items"] if item["title"] == "日元订阅")
+    assert "¥1,450" in entry["detail"] and "14.50" not in entry["detail"]
+    after_archive = client.post("/api/recurring/items", headers=original_headers, json=original)
+    assert after_archive.status_code == 201 and after_archive.json() == created.json()
