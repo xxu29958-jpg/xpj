@@ -1122,6 +1122,7 @@ internal class FakeBudgetActions(
     ): Result<BudgetMonthly> = monthlyBudget(month)
 
     val saves = MutableStateFlow<List<PendingBudgetSave>>(emptyList())
+    override fun describeSave(row: com.ticketbox.data.repository.OutboxRow): com.ticketbox.data.repository.PendingBudgetSave? = saves.value.firstOrNull { it.row.id == row.id }
     override fun observeSaves(expectedBinding: LogicalSessionBinding): Flow<List<PendingBudgetSave>> = saves
     override suspend fun recoverSave(expectedBinding: LogicalSessionBinding, pending: PendingBudgetSave, drop: Boolean): Result<Unit> = Result.success(Unit)
 

@@ -151,6 +151,7 @@ private class FakeStatsBudgetActions(
         return monthlyBudget(month)
     }
 
+    override fun describeSave(row: com.ticketbox.data.repository.OutboxRow): com.ticketbox.data.repository.PendingBudgetSave? = null
     override fun observeSaves(expectedBinding: LogicalSessionBinding): Flow<List<com.ticketbox.data.repository.PendingBudgetSave>> = flowOf(emptyList())
     override suspend fun recoverSave(expectedBinding: LogicalSessionBinding, pending: com.ticketbox.data.repository.PendingBudgetSave, drop: Boolean): Result<Unit> = Result.failure(UnsupportedOperationException())
 
