@@ -273,6 +273,26 @@ class OutboxStatusViewModelTest {
         assertNull(vm.uiState.value.busyRowId)
     }
 
+    @Test
+    fun terminalGoalRefusalCannotBeRequeuedFromTheGlobalRecoveryEntrance() = runTest(dispatcher) {
+        val harness = harness()
+        val id = harness.outbox.enqueue(PendingMutationType.UpdateGoal, "goal:original",
+            "{\"expected_row_version\":0,\"target_amount_cents\":1200}", 1, "original-goal-key")
+        harness.outbox.markFailed(id, "目标参数已失效")
+        val original = harness.outbox.observeStatus().first().failed.single()
+        val vm = outboxStatusViewModelFactory(harness.outbox, harness.expenseRepository,
+            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments))
+            .create(OutboxStatusViewModel::class.java)
+        try {
+            runCurrent()
+            vm.retry(original)
+            runCurrent()
+            assertEquals(listOf(original), harness.outbox.observeStatus().first().failed)
+        } finally {
+            vm.viewModelScope.coroutineContext.job.cancelAndJoin()
+        }
+    }
+
     private fun harness(): Harness {
         val tokenStore = TestSessionFixture().apply { saveToken("session-token") }
         val api = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0))
