@@ -27,6 +27,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+private val submissionFailureResources = mapOf(
+    PendingMutationType.UpdateGoal to R.string.spending_goal_recovery_unavailable,
+    PendingMutationType.SaveMonthlyBudget to R.string.budget_save_attention,
+)
+
 /**
  * ADR-0038 PR-2g.11: the user-facing half of the offline outbox.
  *
@@ -213,11 +218,7 @@ class OutboxStatusViewModel(
             }
             result.onFailure { error ->
                 if (expenseRepository.captureDeferredLedgerBinding() == binding) {
-                    val fallback = when (row.type) {
-                        PendingMutationType.UpdateGoal -> R.string.spending_goal_recovery_unavailable
-                        PendingMutationType.SaveMonthlyBudget -> R.string.budget_save_attention
-                        else -> R.string.expense_correction_failed
-                    }
+                    val fallback = submissionFailureResources[row.type] ?: R.string.expense_correction_failed
                     _uiState.update { it.copy(message = error.toUiText(fallback), messageTone = MessageTone.Danger) }
                 }
             }

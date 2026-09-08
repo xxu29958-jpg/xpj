@@ -631,10 +631,15 @@ def test_production_edge_process_tracks_the_visible_window_lifetime(tmp_path: Pa
         assert window.is_open()
         time.sleep(0.75)
         assert window.is_open(), "Edge launcher exited before the visible app window"
-        deadline = time.monotonic() + 10
+        # File/renderer startup is separate from the fixture's actual window-close lifecycle.
+        deadline = time.monotonic() + 30
+        document_seen = False
         while time.monotonic() < deadline:
             snapshot = _edge_cdp.app_window_snapshot(window.process.pid, "Ticketbox lifetime")
             snapshot["processOpen"] = window.is_open()
+            if snapshot["stages"] and not document_seen:
+                document_seen = True
+                deadline = time.monotonic() + 10
             if not observations or observations[-1] != snapshot:
                 observations.append(snapshot)
             if not window.is_open():

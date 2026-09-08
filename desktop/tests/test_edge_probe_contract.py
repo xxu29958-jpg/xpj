@@ -55,7 +55,7 @@ try {
   const value = vm.runInNewContext(probe, {
     document,
     localStorage: {getItem: () => "system"},
-  });
+  }, {timeout: 1000});
   process.stdout.write(JSON.stringify(value === undefined ? {pending: true} : JSON.parse(value)));
 } catch (error) {
   process.stdout.write(JSON.stringify({error: error.name}));
@@ -67,7 +67,7 @@ try {
         capture_output=True,
         text=True,
         check=True,
-        timeout=10,
+        timeout=30,  # Process startup is separate from the bounded JavaScript evaluation.
     )
     expected = {"pending": True} if stage != "ready" else {
         "theme": "midnight",
@@ -105,9 +105,9 @@ const context = vm.createContext({
   fetch: async () => ({status: 403}),
 });
 (async () => {
-  vm.runInContext(probe, context);
+  vm.runInContext(probe, context, {timeout: 1000});
   await new Promise(setImmediate);
-  const value = vm.runInContext(probe, context);
+  const value = vm.runInContext(probe, context, {timeout: 1000});
   process.stdout.write(JSON.stringify(value === undefined
     ? {pending: true}
     : {pending: false, overflow: JSON.parse(value).overflow}));
@@ -116,7 +116,7 @@ const context = vm.createContext({
     completed = subprocess.run(
         [node, "-e", script],
         input=json.dumps({"probe": _probe(module_name, constant_name), "stage": stage}),
-        capture_output=True, text=True, check=True, timeout=10,
+        capture_output=True, text=True, check=True, timeout=30,
     )
     expected = {"pending": False, "overflow": True} if stage == "complete" else {"pending": True}
     assert json.loads(completed.stdout) == expected
