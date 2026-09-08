@@ -67,6 +67,20 @@ class SaveMonthlyBudgetDispatcherTest {
         assertEquals(emptyList(), stub.requests)
     }
 
+    @Test
+    fun differentBudgetCurrencyRequiresReviewInsteadOfRetryingTheSameImpossibleWrite() = runTest {
+        val conflict = HttpException(Response.error<BudgetMonthlyDto>(409,
+            """{"error":"budget_currency_conflict","message":"输入币种与这月预算不同。"}""".toResponseBody()))
+        assertIs<DispatchResult.Conflict>(dispatcher(BudgetSaveStub(Result.failure(conflict))).dispatch(row()))
+    }
+
+    @Test
+    fun missingRouteDoesNotProveAnUnsentBudgetWasSaved() = runTest {
+        val missing = HttpException(Response.error<BudgetMonthlyDto>(404,
+            """{"detail":"Not Found"}""".toResponseBody()))
+        assertIs<DispatchResult.Failure>(dispatcher(BudgetSaveStub(Result.failure(missing))).dispatch(row()))
+    }
+
     private fun dispatcher(api: ApiService) = SaveMonthlyBudgetDispatcher({ api }, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter)
 
     private fun row(version: Long = 1) = OutboxRow(
