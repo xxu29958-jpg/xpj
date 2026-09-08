@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select, text
 from sqlalchemy.engine import make_url
 
+from app.config import get_settings
 from app.database import SessionLocal, engine
 from app.main import app
 from app.middleware.web_session import DESKTOP_BRIDGE_HEADER, DESKTOP_BRIDGE_VERSION
@@ -16,6 +17,7 @@ from app.models import (
     Account,
     AuthToken,
     Device,
+    Goal,
     InstallationCurrencyAuditLog,
     InstallationCurrencyBinding,
     InstallationOwnerClaim,
@@ -74,7 +76,7 @@ def _force_adoption_required() -> None:
 
 
 @pytest.fixture()
-def adoption_browser() -> Iterator[_AdoptionBrowser]:
+def adoption_browser(request: pytest.FixtureRequest) -> Iterator[_AdoptionBrowser]:
     with SessionLocal() as db:
         bootstrap = bootstrap_installation_owner(
             db,
@@ -86,7 +88,8 @@ def adoption_browser() -> Iterator[_AdoptionBrowser]:
             device_name="Windows 后端",
         )
         db.commit()
-    _force_adoption_required()
+    if getattr(request, "param", "ADOPTION_REQUIRED") != "EMPTY":
+        _force_adoption_required()
 
     with TestClient(
         app,
@@ -111,6 +114,63 @@ def _hidden_value(html: str, name: str) -> str:
     match = re.search(rf'name="{re.escape(name)}" value="([^"]+)"', html)
     assert match is not None, f"missing hidden field: {name}"
     return match.group(1)
+
+
+@pytest.mark.parametrize("adoption_browser", ["EMPTY"], indirect=True)
+def test_fresh_currency_requires_choice_before_exposing_a_money_basis(
+    adoption_browser: _AdoptionBrowser,
+) -> None:
+    browser = adoption_browser
+    snapshot = browser.client.get("/api/system/runtime-compatibility", headers=browser.headers)
+    assert snapshot.status_code == 200
+    currency = snapshot.json()["capabilities"]["currency"]
+    assert currency["home_currency_code"] is None
+    assert currency["request_binding"] is None
+    assert currency["write_compatibility"] == "owner_action_required"
+    entry = browser.client.get("/web/goals", headers=browser.headers, follow_redirects=False)
+    assert entry.status_code == 303
+    assert entry.headers["location"] == "/web/currency-adoption"
+    page = browser.client.get(entry.headers["location"], headers=browser.headers)
+    assert page.status_code == 200
+    assert 'name="home_currency_code"' in page.text
+    assert not re.search(r'<option[^>]*value="(?:CNY|USD|EUR|GBP|JPY|HKD|KRW)"[^>]*selected', page.text)
+    with SessionLocal() as db:
+        assert db.get(InstallationCurrencyBinding, 1).state == "EMPTY"
+
+
+@pytest.mark.parametrize("adoption_browser", ["EMPTY"], indirect=True)
+def test_explicit_jpy_choice_drives_real_goal_write_despite_cny_environment(
+    adoption_browser: _AdoptionBrowser,
+) -> None:
+    browser = adoption_browser
+    assert get_settings().fx_home_currency_code == "CNY"
+    page = browser.client.get("/web/currency-adoption", headers=browser.headers)
+    fields = {name: _hidden_value(page.text, name) for name in (
+        "csrf_token", "currency_contract_version", "expected_state",
+        "expected_binding_revision", "evidence_token", "idempotency_key",
+    )}
+    chosen = browser.client.post(
+        "/web/currency-adoption", headers=browser.headers,
+        data={**fields, "home_currency_code": "JPY"}, follow_redirects=False,
+    )
+    assert chosen.status_code == 303, chosen.text
+    snapshot = browser.client.get("/api/system/runtime-compatibility", headers=browser.headers).json()
+    assert snapshot["capabilities"]["currency"]["home_currency_code"] == "JPY"
+    assert snapshot["write_compatibility"] == "compatible"
+    page = browser.client.get("/web/goals", headers=browser.headers)
+    assert page.status_code == 200
+    created = browser.client.post(
+        "/web/goals/create", headers=browser.headers,
+        data={"csrf_token": _hidden_value(page.text, "csrf_token"),
+              "name": "明确选择日元后的目标", "target_amount_yuan": "1000", "month": "2026-09"},
+        follow_redirects=False,
+    )
+    assert created.status_code == 303, created.text
+    with SessionLocal() as db:
+        goal = db.scalar(select(Goal).where(Goal.name == "明确选择日元后的目标"))
+        assert goal is not None
+        assert goal.target_amount_cents == 1000
+        assert db.get(InstallationCurrencyBinding, 1).home_currency_code == "JPY"
 
 
 def test_installation_owner_desktop_can_complete_currency_adoption(
