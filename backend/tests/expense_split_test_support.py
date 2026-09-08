@@ -11,11 +11,12 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.models import LedgerMember
 from tests._infra.assets import PNG_BYTES
+from tests._runtime_protocol import current_protocol_headers
 from tests.pairing_test_support import invitation_accept_payload
 
 
 def bearer(token: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {token}"}
+    return current_protocol_headers({"Authorization": f"Bearer {token}"})
 
 
 def _create_family_ledger(client: TestClient, name: str = "家庭拆账本", *, identity) -> str:

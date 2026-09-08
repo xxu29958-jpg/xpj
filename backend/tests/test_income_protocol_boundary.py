@@ -100,7 +100,7 @@ def test_income_protocol_rejection_precedes_month_validation(version, method, pa
     ("ACTIVE", CURRENT_API_VERSION, None, "http_client", None, "client_upgrade_required"),
     ("EMPTY", CURRENT_API_VERSION, None, "http_client", None, "currency_adoption_required"),
     ("ADOPTION_REQUIRED", MONTHLESS_API_VERSION, None, "http_client", None, "client_upgrade_required"),
-    ("ADOPTION_REQUIRED", None, None, "http_client", None, "currency_adoption_required"),
+    ("ADOPTION_REQUIRED", None, None, "http_client", None, "client_upgrade_required"),
     ("ADOPTION_REQUIRED", None, None, "server_runtime", None, "currency_adoption_required"),
     ("ADOPTION_REQUIRED", CURRENT_API_VERSION, None, "http_client", 0, "client_upgrade_required"),
     ("ADOPTION_REQUIRED", CURRENT_API_VERSION, "invalid", "http_client", None, "client_upgrade_required"),

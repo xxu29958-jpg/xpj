@@ -15,6 +15,7 @@ from app.routes.web_app import _require_local as _web_require_local
 from app.services.identity_service import hash_secret
 from app.services.time_service import now_utc
 from tests._infra.assets import PNG_BYTES
+from tests._runtime_protocol import current_protocol_headers
 from tests.pairing_test_support import invitation_accept_payload
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
@@ -28,7 +29,7 @@ def web_client(client: TestClient) -> TestClient:
 
 
 def _bearer(token: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {token}"}
+    return current_protocol_headers({"Authorization": f"Bearer {token}"})
 
 
 def _create_family_ledger(client: TestClient, *, identity) -> str:

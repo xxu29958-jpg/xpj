@@ -14,6 +14,7 @@ from app.main import app
 from app.models import Invitation, Ledger, LedgerAuditLog, LedgerMember
 from app.routes import owner_ledgers
 from app.routes.web_auth import SESSION_COOKIE_NAME
+from tests._runtime_protocol import current_protocol_headers
 from tests._web_public_session_support import PUBLIC_HOST, mint_session, public_client
 from tests.pairing_test_support import invitation_accept_payload
 
@@ -82,7 +83,7 @@ def _open_member_web_session(
 ) -> TestClient:
     pairing = client.post(
         "/api/ledgers/owner/devices/pairing-codes",
-        headers={"Authorization": f"Bearer {session_token}"},
+        headers=current_protocol_headers({"Authorization": f"Bearer {session_token}"}),
         json={"ttl_minutes": 15},
     )
     assert pairing.status_code == 201, pairing.text

@@ -31,7 +31,7 @@ from sqlalchemy.exc import IntegrityError
 from app.database import SessionLocal
 from app.models import Account, AuthToken, Device, Ledger, LedgerMember, RepaymentDraft
 from app.services.identity_service import hash_secret, new_session_token
-from tests._runtime_protocol import negotiated_headers
+from tests._runtime_protocol import current_protocol_headers, negotiated_headers
 
 
 def _seed_personal_ledger(*, name: str, ledger_id: str) -> int:
@@ -76,7 +76,7 @@ def _mint_app_token(*, account_id: int, ledger_id: str) -> str:
 
 
 def _headers(token: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {token}"}
+    return current_protocol_headers({"Authorization": f"Bearer {token}"})
 
 
 def _create_owner_draft(client: TestClient, identity, *, amount_cents: int = 12000) -> dict:

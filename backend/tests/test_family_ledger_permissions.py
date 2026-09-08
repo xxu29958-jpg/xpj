@@ -19,6 +19,7 @@ from app.models import Account, AuthToken, Device, Invitation, Ledger, LedgerMem
 from app.services.identity_service import hash_secret
 from app.services.invitation_service import create_invitation
 from app.services.time_service import now_utc, to_iso
+from tests._runtime_protocol import current_protocol_headers
 from tests.pairing_test_support import invitation_accept_payload, session_refresh_payload
 
 # ---------------------------------------------------------------------------
@@ -40,7 +41,7 @@ def _switch_to(client: TestClient, ledger_id: str, headers: dict[str, str]) -> s
 
 
 def _bearer(token: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {token}"}
+    return current_protocol_headers({"Authorization": f"Bearer {token}"})
 
 
 def _set_member_role(ledger_id: str, account_id: int, role: str) -> None:
@@ -366,7 +367,7 @@ def test_accept_invitation_rejects_invalid_optional_bearer_without_consuming_tok
 
     rejected = client.post(
         "/api/invitations/accept",
-        headers={"Authorization": "Bearer invalid-existing-session"},
+        headers=current_protocol_headers({"Authorization": "Bearer invalid-existing-session"}),
         json=invitation_accept_payload(
             invite,
             account_name="不得创建的新身份",
@@ -510,9 +511,9 @@ def test_graced_source_token_can_finish_invitation_acceptance_after_refresh_wins
 
     selected = client.get(
         "/api/auth/check",
-        headers={
+        headers=current_protocol_headers({
             "Authorization": f"Bearer {refreshed.json()['session_token']}",
-        },
+        }),
     )
     assert selected.status_code == 200, selected.text
     assert selected.json()["ledger_id"] == family_id
@@ -603,7 +604,7 @@ def test_session_principal_accepts_invitation_without_an_active_ledger(
 
     accepted = _accept_existing_session_invitation(
         client,
-        headers={"Authorization": f"Bearer {refreshed_token}"},
+        headers=current_protocol_headers({"Authorization": f"Bearer {refreshed_token}"}),
         invite=invite,
         account_name="不得覆盖原成员名",
         device_name="不得覆盖原设备名",
@@ -613,7 +614,7 @@ def test_session_principal_accepts_invitation_without_an_active_ledger(
 
     listed = client.get(
         "/api/ledgers",
-        headers={"Authorization": f"Bearer {refreshed_token}"},
+        headers=current_protocol_headers({"Authorization": f"Bearer {refreshed_token}"}),
     )
     assert listed.status_code == 200, listed.text
     assert family_id in {ledger["ledger_id"] for ledger in listed.json()["ledgers"]}

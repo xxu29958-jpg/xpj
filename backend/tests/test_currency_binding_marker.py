@@ -328,7 +328,6 @@ def test_recurring_candidate_uses_confirmed_currency_despite_environment(monkeyp
     _seed_cny_expense_fact_row()
     monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
     with SessionLocal() as db:
-        _mark_legacy_http_writer(db)
         item = _candidate_confirm_call(db, "JPY")
         assert item.baseline_amount_cents == 1200
         assert get_capability(db).home_currency_code == "CNY"

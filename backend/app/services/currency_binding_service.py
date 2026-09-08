@@ -14,16 +14,12 @@ from app.currency_binding_contract import (
     CURRENCY_BINDING_EMPTY,
     CURRENCY_CONTRACT_VERSION,
     CURRENCY_WRITER_GUC,
-    INITIAL_BINDING_REVISION,
     MINIMUM_WRITABLE_CURRENCY_CONTRACT,
 )
 from app.database._currency_writer import (
     set_currency_writer_proof,
 )
 from app.errors import AppError
-from app.fx_constants import (
-    DEFAULT_HOME_CURRENCY_CODE,
-)
 from app.models import (
     InstallationCurrencyBinding,
 )
@@ -159,7 +155,7 @@ def _set_writer_proof(db: Session, binding: InstallationCurrencyBinding) -> None
 
 @dataclass(frozen=True)
 class _CurrencyWriteExpectation:
-    mode: Literal["internal", "legacy_http", "negotiated"]
+    mode: Literal["internal", "negotiated"]
     contract_version: int | None = None
     binding_revision: int | None = None
     home_currency_code: str | None = None
@@ -222,7 +218,7 @@ def _currency_write_expectation(
     if request is None:
         return _CurrencyWriteExpectation(mode="internal")
     if request.is_legacy:
-        return _CurrencyWriteExpectation(mode="legacy_http")
+        raise AppError("client_upgrade_required", status_code=409)
     request_binding = _required_http_currency_binding(db, request)
     try:
         contract_version, binding_revision, binding_currency = parse_currency_binding(
@@ -252,11 +248,6 @@ def _assert_write_expectation(
             raise AppError("currency_binding_revision_conflict", status_code=409)
         if expectation.binding_revision != binding.binding_revision:
             raise AppError("currency_binding_revision_conflict", status_code=409)
-    elif expectation.mode == "legacy_http" and (
-        binding.home_currency_code != DEFAULT_HOME_CURRENCY_CODE
-        or binding.binding_revision != INITIAL_BINDING_REVISION
-    ):
-        raise AppError("client_upgrade_required", status_code=409)
 
 
 def resolve_write_capability(

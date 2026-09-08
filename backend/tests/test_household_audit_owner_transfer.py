@@ -8,11 +8,12 @@ from sqlalchemy import func, select
 from app.database import SessionLocal
 from app.models import AuthToken, Ledger, LedgerAuditLog, LedgerMember
 from app.services.identity_service import hash_secret
+from tests._runtime_protocol import current_protocol_headers
 from tests.pairing_test_support import invitation_accept_payload
 
 
 def _bearer(token: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {token}"}
+    return current_protocol_headers({"Authorization": f"Bearer {token}"})
 
 
 def _create_family_ledger(client: TestClient, name: str = "家庭账本", *, identity) -> str:

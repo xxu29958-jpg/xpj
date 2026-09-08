@@ -22,6 +22,7 @@ import app.services.expense_service._create as create_module
 from app.database import SessionLocal
 from app.models import AuthToken, Device, Expense
 from app.services.identity_service import hash_secret, new_session_token
+from tests._runtime_protocol import current_protocol_headers
 
 
 def _manual_payload(**overrides) -> dict:
@@ -191,7 +192,7 @@ def test_same_client_ref_different_device_creates_distinct_rows(
     client: TestClient, *, identity
 ) -> None:
     second_token = _add_second_owner_device(identity)
-    second_headers = {"Authorization": f"Bearer {second_token}"}
+    second_headers = current_protocol_headers({"Authorization": f"Bearer {second_token}"})
 
     first = _post_manual(client, identity.app_headers, client_ref="shared-ref")
     second = _post_manual(client, second_headers, client_ref="shared-ref")

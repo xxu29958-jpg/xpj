@@ -84,7 +84,7 @@ def test_runtime_snapshot_is_authenticated_private_and_product_facing(
 
     response = client.get(
         "/api/system/runtime-compatibility",
-        headers=identity.app_headers,
+        headers=identity.auth_headers,
     )
 
     assert response.status_code == 200, response.json()
@@ -217,7 +217,7 @@ def test_jpy_snapshot_exposes_minor_unit_without_expanding_legacy_envelope(
 
     response = client.get(
         "/api/system/runtime-compatibility",
-        headers=identity.app_headers,
+        headers=identity.auth_headers,
     )
     assert response.status_code == 200, response.json()
     payload = response.json()
@@ -230,7 +230,7 @@ def test_jpy_snapshot_exposes_minor_unit_without_expanding_legacy_envelope(
     assert payload["write_compatibility"] == "compatible"
     assert payload["legacy_write_compatibility"] == "client_upgrade_required"
 
-    legacy_debts = client.get("/api/debts", headers=identity.app_headers)
+    legacy_debts = client.get("/api/debts", headers=identity.auth_headers)
     assert legacy_debts.status_code == 200, legacy_debts.json()
     assert legacy_debts.json()["home_currency_code"] == "JPY"
 
@@ -245,7 +245,7 @@ def test_negotiated_jpy_writes_and_internal_jobs_consume_confirmed_binding(
 
     created = _put_budget(
         client,
-        headers=_runtime_headers(identity.app_headers, binding="1:1:JPY"),
+        headers=_runtime_headers(identity.auth_headers, binding="1:1:JPY"),
     )
     assert created.status_code == 200, created.json()
 
@@ -272,7 +272,7 @@ def test_negotiated_jpy_writes_and_internal_jobs_consume_confirmed_binding(
 
     second = _put_budget(
         client,
-        headers=_runtime_headers(identity.app_headers, binding="1:1:JPY"),
+        headers=_runtime_headers(identity.auth_headers, binding="1:1:JPY"),
         month="2026-09",
         amount=3400,
     )
@@ -295,15 +295,17 @@ def test_preselection_revision_never_authorizes_a_confirmed_binding(activate_cur
         assert resolve_write_capability(db).binding_revision == 1
 
 
-def test_legacy_jpy_writer_is_rejected_before_any_financial_side_effect(
+@pytest.mark.parametrize("currency", ["CNY", "JPY"])
+def test_legacy_writer_is_rejected_before_any_financial_side_effect(
+    currency: str,
     client: TestClient,
     activate_currency: Callable[[str], None],
     *,
     identity,
 ) -> None:
-    activate_currency("JPY")
+    activate_currency(currency)
 
-    response = _put_budget(client, headers=identity.app_headers)
+    response = _put_budget(client, headers=identity.auth_headers)
 
     assert response.status_code == 409, response.json()
     assert response.json()["error"] == "client_upgrade_required"
@@ -341,7 +343,7 @@ def test_partial_stale_or_malformed_negotiation_fails_closed(
 
     response = _put_budget(
         client,
-        headers={**identity.app_headers, **extra_headers},
+        headers={**identity.auth_headers, **extra_headers},
     )
 
     assert response.status_code == 409, response.json()
@@ -357,28 +359,28 @@ def test_stale_binding_is_refused_while_environment_cannot_change_confirmed_curr
     client: TestClient, web_client: TestClient, activate_currency, monkeypatch, *, identity,
 ) -> None:
     activate_currency("CNY")
-    initial = _put_budget(client, headers=identity.app_headers)
+    initial = _put_budget(client, headers=identity.auth_headers)
     assert initial.status_code == 200, initial.json()
-    stale = _put_budget(client, headers=_runtime_headers(identity.app_headers, binding="1:0:CNY"), month="2026-09")
+    stale = _put_budget(client, headers=_runtime_headers(identity.auth_headers, binding="1:0:CNY"), month="2026-09")
     assert stale.status_code == 409
     assert stale.json()["error"] == "currency_binding_revision_conflict"
     monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
-    snapshot = client.get("/api/system/runtime-compatibility", headers=identity.app_headers).json()
+    snapshot = client.get("/api/system/runtime-compatibility", headers=identity.auth_headers).json()
     assert snapshot["write_compatibility"] == "compatible"
     assert snapshot["capabilities"]["currency"]["request_binding"] == "1:1:CNY"
     page = web_client.get("/web/budgets?ledger_id=owner&month=2026-08")
     assert page.status_code == 200
     assert 'name="total_amount_yuan" value="12.00"' in page.text
-    current = _put_budget(client, headers=_runtime_headers(identity.app_headers, binding="1:1:CNY"), month="2026-10")
+    current = _put_budget(client, headers=_runtime_headers(identity.auth_headers, binding="1:1:CNY"), month="2026-10")
     assert current.status_code == 200, current.json()
     with SessionLocal() as db:
         assert db.get(InstallationCurrencyBinding, 1).home_currency_code == "CNY"
 
 
 def test_empty_installation_cannot_be_activated_by_a_fabricated_money_binding(client: TestClient, *, identity) -> None:
-    snapshot = client.get("/api/system/runtime-compatibility", headers=identity.app_headers).json()
+    snapshot = client.get("/api/system/runtime-compatibility", headers=identity.auth_headers).json()
     assert snapshot["capabilities"]["currency"]["request_binding"] is None
-    refused = _put_budget(client, headers=_runtime_headers(identity.app_headers, binding="1:0:JPY"))
+    refused = _put_budget(client, headers=_runtime_headers(identity.auth_headers, binding="1:0:JPY"))
     assert refused.status_code == 409
     assert refused.json()["error"] == "currency_adoption_required"
     with SessionLocal() as db:

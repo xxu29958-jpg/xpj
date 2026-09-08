@@ -1,6 +1,7 @@
 """Currency-bearing commands reject old clients before body validation."""
 
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 from fastapi import FastAPI
@@ -8,9 +9,13 @@ from fastapi.testclient import TestClient
 
 from app.auth import get_current_writer_context
 from app.database import get_db
-from app.errors import add_exception_handlers
+from app.errors import AppError, add_exception_handlers
 from app.routes import debts, exchange_rates
-from app.runtime_compatibility_contract import CURRENT_API_VERSION
+from app.runtime_compatibility_contract import (
+    CURRENT_API_VERSION,
+    RUNTIME_COMPATIBILITY_SESSION_KEY,
+    RuntimeCompatibilityRequest,
+)
 from app.services import runtime_compatibility_service
 from app.services.currency_binding_service import CurrencyCapability
 
@@ -42,3 +47,22 @@ def test_cny_revision_one_no_longer_claims_the_unversioned_write_protocol_is_com
     snapshot = runtime_compatibility_service.runtime_compatibility_snapshot(None)
     assert snapshot.write_compatibility == "compatible"
     assert snapshot.legacy_write_compatibility == "client_upgrade_required"
+
+
+def test_the_money_writer_has_no_cny_exception_for_an_unversioned_client(monkeypatch):
+    from app.services import currency_binding_service as owner
+
+    binding = CurrencyCapability(state="ACTIVE", home_currency_code="CNY", minor_unit_exponent=2,
+        rounding_mode="ROUND_HALF_UP", currency_contract_version=1, binding_revision=1,
+        minimum_writable_currency_contract=1, health="active_match", initialization_offer=None)
+    db = Mock(info={RUNTIME_COMPATIBILITY_SESSION_KEY: RuntimeCompatibilityRequest(None, None)})
+    monkeypatch.setattr(owner, "_load_binding", lambda _db, **_: binding)
+    proof = Mock()
+    monkeypatch.setattr(owner, "_set_writer_proof", proof)
+    with pytest.raises(AppError) as refused:
+        owner.resolve_write_capability(db)
+    assert refused.value.error == "client_upgrade_required"
+    assert refused.value.status_code == 409
+    proof.assert_not_called()
+    db.add.assert_not_called()
+    db.commit.assert_not_called()

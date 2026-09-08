@@ -20,7 +20,7 @@ from app.models import (
 )
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.identity_service import hash_secret, new_session_token
-from tests._runtime_protocol import negotiated_headers
+from tests._runtime_protocol import current_protocol_headers, negotiated_headers
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
@@ -81,7 +81,7 @@ def _mint_member_actor(*, ledger_id: str = "owner", role: str = "member") -> tup
 
 
 def _member_headers(token: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {token}"}
+    return current_protocol_headers({"Authorization": f"Bearer {token}"})
 
 
 def _create_member_debt(

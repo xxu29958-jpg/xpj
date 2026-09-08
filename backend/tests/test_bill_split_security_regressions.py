@@ -23,6 +23,7 @@ from app.models import (
 from app.services import bill_split_service as bsplit
 from app.services.identity_service import hash_secret, new_session_token
 from app.services.time_service import now_utc
+from tests._runtime_protocol import current_protocol_headers
 from tests.test_bill_split import (
     _make_expense_for_owner,
     _owner_account_id,
@@ -51,7 +52,7 @@ def _bearer_for_account_ledger(account_id: int, ledger_id: str) -> dict[str, str
             )
         )
         db.commit()
-    return {"Authorization": f"Bearer {token}"}
+    return current_protocol_headers({"Authorization": f"Bearer {token}"})
 
 
 def _expense_snapshot(expense_id: int, tenant_id: str) -> dict[str, object]:

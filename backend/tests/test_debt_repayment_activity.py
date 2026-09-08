@@ -14,7 +14,7 @@ from app.main import app
 from app.models import Account, AuthToken, Debt, Device, Ledger, LedgerMember
 from app.services.debt_service import list_repayment_facts
 from app.services.identity_service import hash_secret, new_session_token
-from tests._runtime_protocol import negotiated_headers
+from tests._runtime_protocol import current_protocol_headers, negotiated_headers
 
 
 def _idem(headers: dict[str, str]) -> dict[str, str]:
@@ -322,7 +322,7 @@ def test_member_counterparty_reads_cross_ledger_committed_repayment(
     identity,
 ) -> None:
     debt_public_id, debtor_token = _seed_cross_ledger_member_debt()
-    debtor_headers = {"Authorization": f"Bearer {debtor_token}"}
+    debtor_headers = current_protocol_headers({"Authorization": f"Bearer {debtor_token}"})
 
     proposal = client.post(
         f"/api/debts/{debt_public_id}/repayment-proposals",

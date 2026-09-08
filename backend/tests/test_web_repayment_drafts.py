@@ -23,7 +23,7 @@ from app.models import Account, AuthToken, Device, LedgerMember
 from app.routes import web_repayment_drafts as web_repayment_drafts_module
 from app.routes.web_common import LedgerOption
 from app.services.identity_service import hash_secret, new_session_token
-from tests._runtime_protocol import negotiated_headers
+from tests._runtime_protocol import current_protocol_headers, negotiated_headers
 
 
 # ── /api seeding helpers ─────────────────────────────────────────────────────
@@ -102,7 +102,7 @@ def _seed_member_token(*, name: str, ledger_id: str = "owner") -> dict[str, str]
             )
         )
         db.commit()
-        return {"Authorization": f"Bearer {token}"}
+        return current_protocol_headers({"Authorization": f"Bearer {token}"})
 
 
 def _page(web_client: TestClient) -> str:
