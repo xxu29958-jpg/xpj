@@ -32,7 +32,7 @@ the user's existing financial data remains a separate, concrete approval step.
 | Parsing and FX | `currency_common`, `exchange_rate_service`, `fx_rate_provider`, scheduler; explicit source/home arguments must replace env-derived meaning, including pure-helper callers |
 | Persistence and recovery | Binding/audit/idempotency receipt, currency evidence inventory and SQL guards; migration tests; Android negotiated binding, queued payloads, dispatcher recovery and legacy gate |
 | Product consumers | Money pages, recycle bin and Owner projections, reports/insights, Android forms/caches and sync feedback, Desktop first-use navigation; real non-CNY choice then financial task, refusal/replay and cross-client recovery |
-| Verification producers | Explicit currency fixtures for ordinary and migration tests; standalone HTTP smoke must perform real Desktop Owner selection. Desktop bridge tests declare an already configured CNY baseline. Generated API and protocol gates follow real semantic changes |
+| Verification producers | Explicit currency fixtures for ordinary and migration tests; legacy bootstrap/admin HTTP smoke and Desktop bridge tests declare a configured CNY baseline. Dedicated fresh Owner product tests and VM prove actual initial selection. Generated API and protocol gates follow real semantic changes |
 
 This inventory defines the affected scope, not an assertion that each path is
 already repaired. Unknown consumers cannot be omitted as unaffected.

@@ -45,6 +45,17 @@ def main() -> int:
     ):
         _clean_upload_runtime()
         try:
+            # This smoke exercises legacy bootstrap/admin credentials, uploads
+            # and accounting on an explicitly configured CNY test installation.
+            # Real first-use choice is covered by the Desktop Owner product
+            # tests; no financial writer is allowed to perform this setup.
+            from app.database import SessionLocal, init_db
+            from tests._infra.currency import activate_test_currency_authority
+
+            init_db()
+            with SessionLocal() as db:
+                activate_test_currency_authority(db, "CNY")
+                db.commit()
             uvicorn.run(
                 "app.main:app",
                 host=host,
