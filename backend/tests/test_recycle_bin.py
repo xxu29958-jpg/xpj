@@ -424,8 +424,7 @@ def test_recycle_bin_amount_labels_follow_jpy_home_zero_fraction(
     *,
     identity,
 ) -> None:
-    """C5b-3: JPY home → 回收站金额按零小数渲染（¥5,000 而非 ¥50.00），
-    收入/预算混合行同一规则（行无币种列，金额即 home 币种 minor units）。"""
+    """Captured JPY money uses zero-fraction labels across the recycle bin."""
     monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
     get_settings.cache_clear()
     try:

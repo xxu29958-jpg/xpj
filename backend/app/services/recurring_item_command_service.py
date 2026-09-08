@@ -157,8 +157,7 @@ def _new_manual_item(
         home_currency_code=home_currency_code,
         frequency="monthly",
         baseline_amount_cents=amount_cents,
-        # The legacy column is non-null. occurrence_count=0 + source=manual are
-        # the honesty contract: consumers must not label this seed as observed.
+        # A manual seed with no occurrences is never an observed charge.
         last_amount_cents=amount_cents,
         occurrence_count=0,
         last_seen_at=None,
@@ -264,10 +263,8 @@ def _baseline_updates(
         return {}
     values: dict[str, object] = {"baseline_amount_cents": amount_cents}
     if current.source == "manual" and current.occurrence_count == 0 and current.last_seen_at is None:
-        # ``last_amount_cents`` predates manual commitments and remains
-        # non-null in storage. Before any observation exists it is only a
-        # compatibility seed, not provenance, so keep it aligned with the
-        # user-owned baseline. Once observations exist, never rewrite it.
+        # Until observed, this non-null seed follows the user's baseline;
+        # actual observation amounts are never overwritten by a plan edit.
         values["last_amount_cents"] = amount_cents
     return values
 
