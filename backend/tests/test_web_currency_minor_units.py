@@ -15,6 +15,7 @@ import subprocess
 from html.parser import HTMLParser
 from pathlib import Path
 from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 from _web_overview_test_support import seed_confirmed_expense_fact
@@ -168,7 +169,7 @@ def test_web_budget_write_and_reject_follow_home_currency_minor_units(
     try:
         saved = web_client.post(
             "/web/budgets/save",
-            data={
+            data={"home_currency_code": currency_code, "expected_row_version": "null", "idempotency_key": str(uuid4()),
                 "ledger_id": "owner",
                 "month": "2026-05",
                 "total_amount_yuan": major_input,
@@ -184,7 +185,7 @@ def test_web_budget_write_and_reject_follow_home_currency_minor_units(
 
         rejected = web_client.post(
             "/web/budgets/save",
-            data={
+            data={"home_currency_code": currency_code, "expected_row_version": "1", "idempotency_key": str(uuid4()),
                 "ledger_id": "owner",
                 "month": "2026-05",
                 "total_amount_yuan": invalid_input,

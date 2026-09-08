@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from datetime import timedelta
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -21,7 +22,8 @@ from app.models import (
     RecurringItem,
 )
 from app.schemas import BudgetCategoryRequest, BudgetMonthlyUpdateRequest
-from app.services.budget_service import archive_monthly_budget, upsert_monthly_budget
+from app.services.budget_command_service import save_monthly_budget
+from app.services.budget_service import archive_monthly_budget
 from app.services.category_preference_service import (
     delete_category_preference,
     ensure_category_preference_for_name,
@@ -65,11 +67,13 @@ def _seed_archived_income(
 
 def _seed_archived_budget() -> tuple[str, int]:
     with SessionLocal() as db:
-        budget = upsert_monthly_budget(
+        budget = save_monthly_budget(
             db,
+            actor_account_id=None, idempotency_key=str(uuid4()),
             tenant_id="owner",
             month="2026-07",
             payload=BudgetMonthlyUpdateRequest(
+                home_currency_code="CNY", expected_row_version=None,
                 total_amount_cents=66000,
                 category_budgets=[
                     BudgetCategoryRequest(category="交通", amount_cents=12000)
@@ -97,7 +101,7 @@ def _seed_archived_jpy_money_facts() -> str:
             amount_cents=5000,
             pay_day=28, status="archived", archived_at=timestamp,
         )
-        budget = Budget(
+        budget = Budget(home_currency_code="JPY",
             tenant_id="owner", month="2026-07", total_amount_cents=66000, archived_at=timestamp
         )
         db.add_all([income, budget])

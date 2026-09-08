@@ -16,6 +16,7 @@ import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -1128,8 +1129,8 @@ def test_owner_dashboard_budget_status_uses_primary_visible_ledger(
     assert created.status_code == 200, created.json()
     budget = local_client.put(
         f"/api/budgets/monthly/{month}?timezone=Asia/Shanghai",
-        headers=identity.app_headers,
-        json={
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "expected_row_version": None,
             "total_amount_cents": 100000,
             "category_budgets": [{"category": "餐饮", "amount_cents": 10000}],
         },
@@ -1170,7 +1171,7 @@ def test_owner_dashboard_budget_status_hides_external_ledger_budget(
         )
         db.flush()
         db.add(
-            Budget(
+            Budget(home_currency_code="CNY",
                 tenant_id="external_budget_status",
                 month=month,
                 total_amount_cents=999999,

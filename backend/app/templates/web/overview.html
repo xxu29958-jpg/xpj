@@ -135,9 +135,11 @@
     <div class="insight-stat-value num{% if cards.budget_is_over %} text-danger{% endif %}">
       {{ budget_remaining_label }}
     </div>
+    {% if cards.budget_remaining_cents is not none %}
     <span class="product-status {{ 'product-status--danger' if cards.budget_is_over else 'product-status--success' }}">
       {{ '已超支' if cards.budget_is_over else '仍可使用' }}
     </span>
+    {% endif %}
     {% if cards.budget_top %}
     <div class="insight-progress-list">
       {% for budget in cards.budget_top %}
@@ -145,13 +147,13 @@
         <div class="insight-progress-meta">
           <span>{{ budget.name }}</span>
           <strong class="num{% if budget.is_over %} text-danger{% endif %}">
-            {% if budget.is_over %}超 {{ budget.overspent_label }}{% else %}{{ budget.percent }}%{% endif %}
+            {% if budget.is_over %}超 {{ budget.overspent_label }}{% elif budget.percent is not none %}{{ budget.percent }}%{% else %}待补齐汇率{% endif %}
           </strong>
         </div>
-        <progress class="product-progress"
+        {% if budget.percent is not none %}<progress class="product-progress"
                   max="100"
                   value="{{ budget.percent }}"
-                  aria-label="{{ budget.name }}预算已使用 {{ budget.percent }}%"></progress>
+                  aria-label="{{ budget.name }}预算已使用 {{ budget.percent }}%"></progress>{% endif %}
       </div>
       {% endfor %}
     </div>

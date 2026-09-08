@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 from decimal import Decimal
 from io import StringIO
+from uuid import uuid4
 
 from api_contract_helpers import confirm_expense_api
 from fastapi.testclient import TestClient
@@ -111,8 +112,8 @@ def _assert_home_amount_report(client: TestClient, *, identity) -> None:
 def _assert_home_amount_budget(client: TestClient, *, identity) -> None:
     budget = client.put(
         "/api/budgets/monthly/2026-05?timezone=UTC",
-        headers=identity.app_headers,
-        json={
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "expected_row_version": None,
             "total_amount_cents": 100000,
             "category_budgets": [{"category": "餐饮", "amount_cents": 90000}],
         },

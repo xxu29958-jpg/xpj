@@ -8,6 +8,7 @@ R15a-3 起补渲染侧：rules 列表金额条件回显、budget-advise breakdow
 from __future__ import annotations
 
 import re
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -247,7 +248,7 @@ def test_zero_fraction_no_js_forms_and_dashboard_share_input_contract(
     _activate_jpy_authority()
     saved = web_client.post(
         "/web/budgets/save",
-        data={
+        data={"home_currency_code": "JPY", "expected_row_version": "null", "idempotency_key": str(uuid4()),
             "ledger_id": "owner",
             "month": "2026-05",
             "total_amount_yuan": "1200",

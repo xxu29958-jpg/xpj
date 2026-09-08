@@ -4,6 +4,7 @@ from datetime import date, datetime
 from uuid import uuid4
 
 from sqlalchemy import (
+    DDL,
     BigInteger,
     Boolean,
     CheckConstraint,
@@ -16,6 +17,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    event,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -30,6 +32,7 @@ class Budget(Base):
     __table_args__ = (
         *money_check_constraints_for_table("budgets"),
         CheckConstraint("length(month) = 7", name="ck_budgets_month_format"),
+        CheckConstraint("home_currency_code IN ('CNY', 'USD', 'EUR', 'GBP', 'JPY', 'HKD', 'KRW')", name="ck_budget_currency"),
         UniqueConstraint("tenant_id", "month", name="uq_budgets_tenant_month"),
     )
 
@@ -45,6 +48,7 @@ class Budget(Base):
         index=True,
     )
     month: Mapped[str] = mapped_column(String(7), nullable=False, index=True)
+    home_currency_code: Mapped[str | None] = mapped_column(String(3), nullable=True)
     total_amount_cents: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     non_monthly_amount_cents: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     rollover_amount_cents: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
@@ -86,6 +90,22 @@ Index("ix_budgets_tenant_month", Budget.tenant_id, Budget.month)
 Index("ix_budgets_tenant_archived", Budget.tenant_id, Budget.archived_at)
 Index("ix_budget_categories_tenant_month", BudgetCategory.tenant_id, BudgetCategory.month)
 Index("ix_budget_categories_tenant_category", BudgetCategory.tenant_id, BudgetCategory.category)
+
+event.listen(Budget.__table__, "after_create", DDL("""
+    CREATE OR REPLACE FUNCTION ticketbox_budget_currency_required()
+    RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+        IF NEW.home_currency_code IS NULL THEN
+            RAISE EXCEPTION 'budget requires its captured currency' USING ERRCODE = '23514';
+        END IF;
+        IF TG_OP = 'UPDATE' AND OLD.home_currency_code IS NOT NULL
+           AND NEW.home_currency_code IS DISTINCT FROM OLD.home_currency_code THEN
+            RAISE EXCEPTION 'budget currency cannot relabel saved amounts' USING ERRCODE = '23514';
+        END IF;
+        RETURN NEW;
+    END $$;
+    CREATE TRIGGER trg_budget_currency_required BEFORE INSERT OR UPDATE ON budgets
+    FOR EACH ROW EXECUTE FUNCTION ticketbox_budget_currency_required();
+""").execute_if(dialect="postgresql"))
 
 
 class Goal(Base):

@@ -59,7 +59,7 @@ def _overview_amount_views(cards: dict, *, currency_code: str) -> dict:
     for row in cards["budget_top"]:
         row["overspent_label"] = _minor_amount_label(
             row["overspent_cents"],
-            currency_code,
+            cards["budget_home_currency_code"],
         )
     return {
         "hero_amount": _amount_segments(
@@ -76,8 +76,8 @@ def _overview_amount_views(cards: dict, *, currency_code: str) -> dict:
         ),
         "budget_remaining_label": _minor_amount_label(
             cards["budget_remaining_cents"],
-            currency_code,
-        ),
+            cards["budget_home_currency_code"],
+        ) or "待补齐汇率",
     }
 
 

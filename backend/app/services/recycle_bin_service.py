@@ -74,7 +74,7 @@ class RecycleBinListing:
 def list_recycle_bin_items(db: Session, *, tenant_id: str) -> RecycleBinListing:
     currency = runtime_home_currency_code(db)
     rows: list[RecycleBinItem] = []
-    rows.extend(_archived_budget_rows(db, tenant_id, currency))
+    rows.extend(_archived_budget_rows(db, tenant_id))
     rows.extend(_soft_deleted_category_preference_rows(db, tenant_id))
     rows.extend(_soft_deleted_merchant_catalog_rows(db, tenant_id))
     rows.extend(_archived_income_rows(db, tenant_id))
@@ -242,14 +242,14 @@ def _archived_income_rows(db: Session, tenant_id: str) -> list[RecycleBinItem]:
     ]
 
 
-def _archived_budget_rows(db: Session, tenant_id: str, currency: str | None) -> list[RecycleBinItem]:
+def _archived_budget_rows(db: Session, tenant_id: str) -> list[RecycleBinItem]:
     return [
         RecycleBinItem(
             kind="monthly_budget",
             kind_label="预算",
             resource_id=item.month,
             title=f"{item.month} 月度预算",
-            detail=_budget_detail(db, item, currency),
+            detail=_budget_detail(db, item),
             removed_at=item.archived_at,
             retention_label="长期保留",
             expected_row_version=item.row_version,
@@ -460,14 +460,14 @@ def _goal_detail(item: Goal, currency: str | None) -> str:
     return f"{item.month} · {scope} · 目标 {_money(item.target_amount_cents, currency)}"
 
 
-def _budget_detail(db: Session, item: Budget, currency: str | None) -> str:
+def _budget_detail(db: Session, item: Budget) -> str:
     category_count = db.scalar(
         select(func.count(BudgetCategory.id))
         .where(BudgetCategory.tenant_id == item.tenant_id)
         .where(BudgetCategory.month == item.month)
     )
     return (
-        f"总预算 {_money(item.total_amount_cents, currency)} · "
+        f"总预算 {_money(item.total_amount_cents, item.home_currency_code)} · "
         f"分类预算 {int(category_count or 0)} 项"
     )
 

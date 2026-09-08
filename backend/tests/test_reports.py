@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from sqlalchemy import event, select
@@ -318,8 +319,8 @@ def test_reports_overview_month_granularity_and_viewer_read(
 def test_six_month_summary_budget_line_includes_rollover(client: TestClient, *, identity) -> None:
     response = client.put(
         "/api/budgets/monthly/2026-05?timezone=UTC",
-        headers=identity.app_headers,
-        json={"total_amount_cents": 100000, "rollover_amount_cents": 5000},
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "expected_row_version": None, "total_amount_cents": 100000, "rollover_amount_cents": 5000},
     )
     assert response.status_code == 200, response.json()
 

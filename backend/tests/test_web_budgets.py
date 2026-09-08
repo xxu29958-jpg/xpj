@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -39,7 +40,7 @@ def _owner_budget_total() -> int | None:
 def _save_budget(web_client: TestClient, *, total: str = "1000.00") -> None:
     response = web_client.post(
         "/web/budgets/save",
-        data={
+        data={"home_currency_code": "CNY", "expected_row_version": "null", "idempotency_key": str(uuid4()),
             "ledger_id": "owner",
             "month": "2026-05",
             "total_amount_yuan": total,
@@ -55,8 +56,47 @@ def _save_budget(web_client: TestClient, *, total: str = "1000.00") -> None:
     assert response.status_code == 303, response.text
 
 
+def test_budget_conflict_keeps_input_and_key_until_explicit_nonwriting_review(web_client, identity):
+    _save_budget(web_client)
+    newer = web_client.put("/api/budgets/monthly/2026-05", headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "expected_row_version": 1, "total_amount_cents": 200000})
+    assert newer.status_code == 200, newer.text
+    key = str(uuid4())
+    form = {"ledger_id": "owner", "month": "2026-05", "home_currency_code": "CNY",
+        "expected_row_version": "1", "idempotency_key": key, "total_amount_yuan": "1500.00"}
+    refused = web_client.post("/web/budgets/save", data=form)
+    assert refused.status_code == 409, refused.text
+    assert 'name="expected_row_version" value="1"' in refused.text
+    assert 'name="total_amount_yuan" value="1500.00"' in refused.text
+    assert f'name="idempotency_key" value="{key}"' in refused.text
+    assert _owner_budget_total() == 200000
+    review = web_client.post("/web/budgets/save", data={**form, "review_latest": "true"})
+    assert review.status_code == 200, review.text
+    assert 'name="expected_row_version" value="2"' in review.text
+    assert f'name="idempotency_key" value="{key}"' in review.text
+    assert _owner_budget_total() == 200000
+    accepted = web_client.post("/web/budgets/save", data={**form, "expected_row_version": "2"}, follow_redirects=False)
+    assert accepted.status_code == 303, accepted.text
+    assert _owner_budget_total() == 150000
+
+
+def test_budget_jpy_draft_survives_validation_under_cny_default(web_client):
+    key = str(uuid4())
+    form = {"ledger_id": "owner", "month": "2026-05", "home_currency_code": "JPY",
+        "expected_row_version": "null", "idempotency_key": key, "total_amount_yuan": "1.5"}
+    refused = web_client.post("/web/budgets/save", data=form)
+    assert refused.status_code == 422, refused.text
+    assert 'name="home_currency_code" value="JPY"' in refused.text
+    assert 'name="total_amount_yuan" value="1.5"' in refused.text
+    accepted = web_client.post("/web/budgets/save", data={**form, "total_amount_yuan": "1200"}, follow_redirects=False)
+    assert accepted.status_code == 303, accepted.text
+    with SessionLocal() as db:
+        budget = db.scalar(select(Budget).where(Budget.tenant_id == "owner", Budget.month == "2026-05"))
+        assert (budget.home_currency_code, budget.total_amount_cents) == ("JPY", 1200)
+
+
 def test_budget_presenter_keeps_fresh_execution_identity_when_draft_renames_row() -> None:
-    fresh = BudgetMonthlyResponse(
+    fresh = BudgetMonthlyResponse(home_currency_code="CNY",
         ledger_id="owner",
         month="2026-05",
         configured=True,
@@ -178,7 +218,7 @@ def test_web_budgets_save_and_display_budget_dashboard(web_client: TestClient, *
 
 
 def test_first_budget_total_only_save_and_optional_error_remain_operable(web_client: TestClient) -> None:
-    form = {
+    form = {"home_currency_code": "CNY", "expected_row_version": "null", "idempotency_key": str(uuid4()),
         "ledger_id": "owner",
         "month": "2026-05",
         "total_amount_yuan": "3000.00",
@@ -211,7 +251,7 @@ def test_web_budgets_viewer_read_only_and_post_denied(web_client: TestClient) ->
 
     denied = web_client.post(
         "/web/budgets/save",
-        data={
+        data={"home_currency_code": "CNY", "expected_row_version": "1", "idempotency_key": str(uuid4()),
             "ledger_id": "owner",
             "month": "2026-05",
             "total_amount_yuan": "2000.00",
@@ -268,7 +308,7 @@ def test_web_budgets_invalid_amount_shows_error_without_mutating(
 
     response = web_client.post(
         "/web/budgets/save",
-        data={
+        data={"home_currency_code": "CNY", "expected_row_version": "1", "idempotency_key": str(uuid4()),
             "ledger_id": "owner",
             "month": "2026-05",
             "total_amount_yuan": "-1.00",
@@ -307,7 +347,7 @@ def test_web_budgets_too_long_category_preserves_full_draft(web_client: TestClie
 
     response = web_client.post(
         "/web/budgets/save",
-        data={
+        data={"home_currency_code": "CNY", "expected_row_version": "1", "idempotency_key": str(uuid4()),
             "ledger_id": "owner",
             "month": "2026-05",
             "total_amount_yuan": "1000.00",
@@ -341,7 +381,7 @@ def test_web_budgets_combines_exclusions_and_removes_marked_category(
 
     response = web_client.post(
         "/web/budgets/save",
-        data={
+        data={"home_currency_code": "CNY", "expected_row_version": "1", "idempotency_key": str(uuid4()),
             "ledger_id": "owner",
             "month": "2026-05",
             "total_amount_yuan": "1000.00",

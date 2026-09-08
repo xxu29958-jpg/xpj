@@ -16,7 +16,6 @@ from app.database import SessionLocal, engine
 from app.database._managed_postgres_migration_runtime import _prearmed_transaction
 from app.models import (
     Account,
-    Budget,
     ExpenseItem,
     ExpenseSplit,
     Ledger,
@@ -312,15 +311,11 @@ def seed_boundary_facts() -> None:
                 last_amount_cents=LEGACY_INT32_MAX,
             )
         )
-        db.add(
-            Budget(
-                tenant_id="owner",
-                month="2026-07",
-                total_amount_cents=0,
-                non_monthly_amount_cents=0,
-                rollover_amount_cents=LEGACY_INT32_MIN,
-            )
-        )
+        db.execute(text("""
+            INSERT INTO budgets (public_id, tenant_id, month, total_amount_cents,
+                non_monthly_amount_cents, rollover_amount_cents, excluded_categories, created_at, updated_at)
+            VALUES (:key, 'owner', '2026-07', 0, 0, :rollover, '[]', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        """), {"key": str(uuid4()), "rollover": LEGACY_INT32_MIN})
         db.commit()
 
 

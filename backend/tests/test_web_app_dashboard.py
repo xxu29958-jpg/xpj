@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from uuid import uuid4
 
 from api_contract_helpers import web_save_expense
 from fastapi.testclient import TestClient
@@ -115,8 +116,8 @@ def _seed_budget_with_categories(
     month = current_month("Asia/Shanghai")
     resp = client.put(
         f"/api/budgets/monthly/{month}?timezone=Asia/Shanghai",
-        headers=identity.app_headers,
-        json={
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "expected_row_version": None,
             "total_amount_cents": 100000,
             "category_budgets": [
                 {"category": "餐饮", "amount_cents": dining_limit_cents},

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
 from pydantic import ValidationError
@@ -10,22 +12,26 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.errors import AppError
 from app.money_contract import projection_sum_to_int
+from app.routes._web_session_common import resolve_web_actor_account_id
 from app.routes.web_common import (
     LocalOnly,
     _amount_yuan,
     _base_ctx,
+    _currency_input_view,
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _web_redirect,
+    parse_form_row_version_token,
     templates,
 )
 from app.schemas import BudgetCategoryRequest, BudgetMonthlyResponse, BudgetMonthlyUpdateRequest
-from app.services.budget_service import get_monthly_budget, upsert_monthly_budget
+from app.services.budget_command_service import review_monthly_budget_save, save_monthly_budget
+from app.services.budget_service import get_monthly_budget
 from app.services.category_service import list_ledger_category_options
-from app.services.currency_binding_service import require_runtime_home_currency_code
-from app.services.currency_common import major_amount_to_minor
+from app.services.currency_common import major_amount_to_minor, normalize_currency_code
 from app.services.spending_contract_service import (
+    clean_month,
     current_accounting_month,
     default_accounting_timezone_name,
 )
@@ -169,7 +175,7 @@ def _category_form_rows(
                 "overspent_yuan": (
                     _amount_yuan(saved_item.overspent_amount_cents, currency_code) if saved_item is not None else ""
                 ),
-                "has_overspend": bool(saved_item is not None and saved_item.overspent_amount_cents > 0),
+                "has_overspend": bool(saved_item is not None and (saved_item.overspent_amount_cents or 0) > 0),
                 "is_configured": saved_item is not None,
                 "remove_requested": index in removed,
             }
@@ -197,7 +203,7 @@ def _category_form_rows(
 def _budget_view(budget: BudgetMonthlyResponse, *, currency_code: str) -> dict:
     spent = max(
         projection_sum_to_int(
-            budget.spent_amount_cents,
+            budget.spent_amount_cents if budget.spent_amount_cents is not None else 0,
             label="web_budget.spent",
         ),
         0,
@@ -211,6 +217,7 @@ def _budget_view(budget: BudgetMonthlyResponse, *, currency_code: str) -> dict:
         "ledger_id": budget.ledger_id,
         "month": budget.month,
         "configured": budget.configured,
+        "missing_currency_codes": budget.missing_currency_codes,
         "total_yuan": _amount_yuan(budget.total_amount_cents, currency_code),
         "rollover_yuan": _amount_yuan(budget.rollover_amount_cents, currency_code),
         "fixed_yuan": _amount_yuan(budget.fixed_amount_cents, currency_code),
@@ -237,8 +244,8 @@ def _budget_view(budget: BudgetMonthlyResponse, *, currency_code: str) -> dict:
         ),
         "progress_value_cents": min(spent, progress_max),
         "progress_max_cents": progress_max,
-        "has_progress_basis": progress_max > 0,
-        "is_over_budget": budget.remaining_amount_cents < 0,
+        "has_progress_basis": progress_max > 0 and budget.spent_amount_cents is not None,
+        "is_over_budget": budget.remaining_amount_cents is not None and budget.remaining_amount_cents < 0,
     }
 
 
@@ -272,7 +279,7 @@ def _render_budgets(
     ctx["month"] = month
     budget_view = _budget_view(
         budget,
-        currency_code=ctx["home_currency_code"],
+        currency_code=budget.home_currency_code,
     )
     if draft is not None:
         budget_view.update(
@@ -282,7 +289,7 @@ def _render_budgets(
         )
         budget_view["category_rows"] = _category_form_rows(
             budget,
-            currency_code=ctx["home_currency_code"],
+            currency_code=budget.home_currency_code,
             draft_categories=draft["category_budget_category"],
             draft_amounts=draft["category_budget_amount_yuan"],
             removed_indices=draft["category_budget_remove"],
@@ -297,6 +304,14 @@ def _render_budgets(
     ctx["excluded_categories_other"] = draft["excluded_categories"] if draft is not None else ""
     ctx["message"] = message
     ctx["error"] = error
+    ctx["budget_currency_symbol"] = _currency_input_view(budget.home_currency_code)["currency_symbol"]
+    ctx["currency_input"] = _currency_input_view(draft["home_currency_code"] if draft is not None else budget.home_currency_code)
+    ctx["save_intent"] = draft if draft is not None else {
+        "home_currency_code": budget.home_currency_code,
+        "expected_row_version": str(budget.row_version) if budget.row_version is not None else "null",
+        "idempotency_key": str(uuid4()),
+    }
+    ctx["budget_conflict"] = bool(draft is not None and draft.get("conflict"))
     return templates.TemplateResponse(
         request=request,
         name="budgets.html",
@@ -327,80 +342,59 @@ def web_budgets(
     )
 
 
+def _budget_payload_from_draft(draft: dict) -> BudgetMonthlyUpdateRequest:
+    raw_version = draft["expected_row_version"]
+    version = parse_form_row_version_token(raw_version)
+    if raw_version != "null" and version is None:
+        raise AppError("state_conflict", "预算版本无法确认，请保留输入并重新核对。", status_code=409)
+    currency = normalize_currency_code(draft["home_currency_code"])
+    return BudgetMonthlyUpdateRequest(
+        home_currency_code=currency, expected_row_version=version,
+        total_amount_cents=_parse_amount_yuan(draft["total_amount_yuan"], currency_code=currency, label="月度总预算", required=True),
+        rollover_amount_cents=_parse_amount_yuan(draft["rollover_amount_yuan"], currency_code=currency, label="结转金额", allow_negative=True),
+        non_monthly_amount_cents=_parse_amount_yuan(draft["non_monthly_amount_yuan"], currency_code=currency, label="非月度预留"),
+        excluded_categories=draft["excluded_category"] + _split_categories(draft["excluded_categories"]),
+        category_budgets=_parse_category_budgets(draft["category_budget_category"], draft["category_budget_amount_yuan"],
+            currency_code=currency, removed_indices=draft["category_budget_remove"]),
+    )
+
+
 @router.post("/save", response_class=HTMLResponse)
 def web_budgets_save(
     request: Request,
-    ledger_id: str = Form(default=""),
-    month: str = Form(default=""),
-    total_amount_yuan: str = Form(default=""),
-    rollover_amount_yuan: str = Form(default=""),
+    ledger_id: str = Form(default=""), month: str = Form(...),
+    home_currency_code: str = Form(...), expected_row_version: str = Form(...), idempotency_key: str = Form(...),
+    total_amount_yuan: str = Form(default=""), rollover_amount_yuan: str = Form(default=""),
     non_monthly_amount_yuan: str = Form(default=""),
-    excluded_category: list[str] = Form(default=[]),
-    excluded_categories: str = Form(default=""),
-    category_budget_category: list[str] = Form(default=[]),
-    category_budget_amount_yuan: list[str] = Form(default=[]),
-    category_budget_remove: list[int] = Form(default=[]),
-    _local: None = LocalOnly,
-    db: Session = Depends(get_db),
+    excluded_category: list[str] = Form(default=[]), excluded_categories: str = Form(default=""),
+    category_budget_category: list[str] = Form(default=[]), category_budget_amount_yuan: list[str] = Form(default=[]),
+    category_budget_remove: list[int] = Form(default=[]), review_latest: bool = Form(default=False),
+    _local: None = LocalOnly, db: Session = Depends(get_db),
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
-    _require_selected_ledger_write(options, selected_id)
-    timezone_name = _budget_timezone_name()
-    target_month = (month or "").strip() or current_accounting_month(timezone_name)
+    selected = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    _require_selected_ledger_write(options, selected)
+    target_month = clean_month(month)
+    draft = {"home_currency_code": home_currency_code, "expected_row_version": expected_row_version,
+        "idempotency_key": idempotency_key, "total_amount_yuan": total_amount_yuan,
+        "rollover_amount_yuan": rollover_amount_yuan, "non_monthly_amount_yuan": non_monthly_amount_yuan,
+        "excluded_category": excluded_category, "excluded_categories": excluded_categories,
+        "category_budget_category": category_budget_category, "category_budget_amount_yuan": category_budget_amount_yuan,
+        "category_budget_remove": set(category_budget_remove)}
     try:
-        presentation_currency = require_runtime_home_currency_code(db)
-        payload = BudgetMonthlyUpdateRequest(
-            total_amount_cents=_parse_amount_yuan(
-                total_amount_yuan,
-                currency_code=presentation_currency,
-                label="月度总预算",
-                required=True,
-            ),
-            rollover_amount_cents=_parse_amount_yuan(
-                rollover_amount_yuan,
-                currency_code=presentation_currency,
-                label="结转金额",
-                allow_negative=True,
-            ),
-            non_monthly_amount_cents=_parse_amount_yuan(
-                non_monthly_amount_yuan,
-                currency_code=presentation_currency,
-                label="非月度预留",
-            ),
-            excluded_categories=excluded_category + _split_categories(excluded_categories),
-            category_budgets=_parse_category_budgets(
-                category_budget_category,
-                category_budget_amount_yuan,
-                currency_code=presentation_currency,
-                removed_indices=set(category_budget_remove),
-            ),
-        )
-        upsert_monthly_budget(
-            db,
-            tenant_id=selected_id,
-            month=target_month,
-            payload=payload,
-            timezone_name=timezone_name,
-        )
+        if review_latest:
+            accepted = review_monthly_budget_save(db, tenant_id=selected, month=target_month, idempotency_key=idempotency_key)
+            latest = get_monthly_budget(db, tenant_id=selected, month=target_month, timezone_name=_budget_timezone_name())
+            draft["expected_row_version"] = str(latest.row_version) if latest.row_version is not None else "null"
+            if accepted:
+                draft["idempotency_key"] = str(uuid4())
+            return _render_budgets(request=request, db=db, selected_id=selected, options=options,
+                month=target_month, draft=draft, message="已保留输入并载入当前版本，请核对后再保存。")
+        save_monthly_budget(db, tenant_id=selected, month=target_month, payload=_budget_payload_from_draft(draft),
+            actor_account_id=resolve_web_actor_account_id(request, db), idempotency_key=idempotency_key,
+            timezone_name=_budget_timezone_name())
     except AppError as exc:
-        return _render_budgets(
-            request=request,
-            db=db,
-            selected_id=selected_id,
-            options=options,
-            month=_safe_month(target_month, timezone_name),
-            error=exc.message,
-            status_code=422,
-            draft={
-                "total_amount_yuan": total_amount_yuan,
-                "rollover_amount_yuan": rollover_amount_yuan,
-                "non_monthly_amount_yuan": non_monthly_amount_yuan,
-                "excluded_category": excluded_category,
-                "excluded_categories": excluded_categories,
-                "category_budget_category": category_budget_category,
-                "category_budget_amount_yuan": category_budget_amount_yuan,
-                "category_budget_remove": set(category_budget_remove),
-            },
-        )
-    return _web_redirect("/web/budgets", selected_id, month=target_month, msg="预算已保存。")
+        draft["conflict"] = exc.error in {"state_conflict", "budget_currency_conflict", "idempotency_key_reused"}
+        return _render_budgets(request=request, db=db, selected_id=selected, options=options,
+            month=target_month, error=exc.message, status_code=exc.status_code, draft=draft)
+    return _web_redirect("/web/budgets", selected, month=target_month, msg="预算已保存。")

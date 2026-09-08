@@ -27,8 +27,12 @@ def _has_legacy_currencyless_money_facts(connection: Connection) -> bool:
         connection.scalar(
             text(
                 """
-                SELECT EXISTS (SELECT 1 FROM budgets)
-                    OR EXISTS (SELECT 1 FROM budget_categories)
+                SELECT EXISTS (SELECT 1 FROM budgets WHERE to_jsonb(budgets)->>'home_currency_code' IS NULL)
+                    OR EXISTS (
+                        SELECT 1 FROM budget_categories AS category
+                        LEFT JOIN budgets AS budget ON budget.tenant_id = category.tenant_id AND budget.month = category.month
+                        WHERE to_jsonb(budget)->>'home_currency_code' IS NULL
+                    )
                     OR EXISTS (
                         SELECT 1 FROM category_rules
                          WHERE amount_min_cents IS NOT NULL

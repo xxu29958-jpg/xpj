@@ -13,7 +13,7 @@ from app.models import IncomePlanRevision
 from app.money_contract import projection_sum_to_int
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import normalize_currency_code
-from app.services.income_plan_service._money import project_income_amount
+from app.services.money_projection_service import project_recorded_amount
 
 
 @dataclass(frozen=True)
@@ -110,7 +110,7 @@ def query_income_forecast(db: Session, *, tenant_id: str, period: date, today: d
     ))
     return forecast_from_revisions(
         revisions, period=period, today=today, home_currency_code=home,
-        project_amount=lambda amount, code: project_income_amount(
+        project_amount=lambda amount, code: project_recorded_amount(
             db, tenant_id=tenant_id, amount_minor=amount, source_currency=code, home_currency=home, rate_date=rate_date,
         ),
     )

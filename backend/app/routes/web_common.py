@@ -178,37 +178,21 @@ def _ledger_switch_next_url(request: Request) -> str:
 
 
 def _budget_top_rows(budget, *, currency_code: str) -> list[dict]:
-    rows = sorted(
-        budget.category_budgets,
-        key=lambda category: category.spent_amount_cents,
-        reverse=True,
-    )[:3]
-    out: list[dict] = []
-    for category in rows:
-        limit_cents = projection_sum_to_int(
-            category.amount_cents,
-            label="web.budget_limit",
-        )
-        spent_cents = projection_sum_to_int(
-            category.spent_amount_cents,
-            label="web.budget_spent",
-        )
-        overspent_cents = projection_sum_to_int(
-            category.overspent_amount_cents,
-            label="web.budget_overspent",
-        )
-        percent = (spent_cents * 100 + limit_cents // 2) // limit_cents if limit_cents > 0 else 0
-        out.append(
-            {
-                "name": category.category,
-                "limit_yuan": _amount_yuan(limit_cents, currency_code),
-                "spent_yuan": _amount_yuan(spent_cents, currency_code),
-                "overspent_yuan": _amount_yuan(overspent_cents, currency_code),
-                "overspent_cents": overspent_cents,
-                "percent": min(percent, 100),
-                "is_over": category.overspent_amount_cents > 0,
-            }
-        )
+    rows = sorted(budget.category_budgets,
+        key=lambda row: (row.spent_amount_cents is not None, row.spent_amount_cents or 0), reverse=True)[:3]
+    out = []
+    for row in rows:
+        spent, limit = row.spent_amount_cents, row.amount_cents
+        percent = None if spent is None else (spent * 100 + limit // 2) // limit if limit > 0 else 0
+        out.append({
+            "name": row.category,
+            "limit_yuan": _amount_yuan(limit, currency_code),
+            "spent_yuan": _amount_yuan(spent, currency_code),
+            "overspent_yuan": _amount_yuan(row.overspent_amount_cents, currency_code),
+            "overspent_cents": row.overspent_amount_cents,
+            "percent": None if percent is None else min(percent, 100),
+            "is_over": (row.overspent_amount_cents or 0) > 0,
+        })
     return out
 
 
@@ -238,44 +222,20 @@ def _goals_top_rows(goals, *, currency_code: str) -> list[dict]:
     ]
 
 
-def _dashboard_budget_goals_block(
-    budget,
-    goals,
-    *,
-    currency_code: str,
-) -> dict:
-    goal_risk_count = sum(1 for goal in goals if goal.progress_state in {"near_limit", "over_limit"})
+def _dashboard_budget_goals_block(budget, goals, *, currency_code: str) -> dict:
+    home = budget.home_currency_code
     return {
         "budget_configured": budget.configured,
-        "budget_total_yuan": _amount_yuan(
-            projection_sum_to_int(
-                budget.total_amount_cents,
-                label="web.budget_total",
-            ),
-            currency_code,
-        ),
-        "budget_remaining_yuan": _amount_yuan(
-            projection_sum_to_int(
-                budget.remaining_amount_cents,
-                label="web.budget_remaining",
-            ),
-            currency_code,
-        ),
-        "budget_remaining_cents": projection_sum_to_int(
-            budget.remaining_amount_cents,
-            label="web.budget_remaining",
-        ),
-        "budget_overspent_yuan": _amount_yuan(
-            projection_sum_to_int(
-                budget.overspent_amount_cents,
-                label="web.budget_overspent",
-            ),
-            currency_code,
-        ),
-        "budget_is_over": budget.remaining_amount_cents < 0,
-        "budget_top": _budget_top_rows(budget, currency_code=currency_code),
+        "budget_home_currency_code": home,
+        "budget_missing_currency_codes": budget.missing_currency_codes,
+        "budget_total_yuan": _amount_yuan(budget.total_amount_cents, home),
+        "budget_remaining_yuan": _amount_yuan(budget.remaining_amount_cents, home),
+        "budget_remaining_cents": budget.remaining_amount_cents,
+        "budget_overspent_yuan": _amount_yuan(budget.overspent_amount_cents, home),
+        "budget_is_over": budget.remaining_amount_cents is not None and budget.remaining_amount_cents < 0,
+        "budget_top": _budget_top_rows(budget, currency_code=home),
         "goals_count": len(goals),
-        "goals_risk_count": goal_risk_count,
+        "goals_risk_count": sum(1 for goal in goals if goal.progress_state in {"near_limit", "over_limit"}),
         "goals_top": _goals_top_rows(goals, currency_code=currency_code),
     }
 

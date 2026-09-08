@@ -195,6 +195,7 @@ def confirmed_amount_query(
         stream.c.stream_date,
         stream.c.category,
         stream.c.stream_amount_cents.label("amount_cents"),
+        stream.c.home_currency_code,
     )
 
 
@@ -242,6 +243,7 @@ def _confirmed_root_stream_query(
         Expense.category.label("category"),
         Expense.merchant.label("merchant"),
         Expense.source.label("source"),
+        Expense.home_currency_code.label("home_currency_code"),
         case((active_reversal, 0), else_=Expense.amount_cents).label(
             "stream_amount_cents"
         ),
@@ -276,6 +278,7 @@ def _confirmed_offset_stream_query(
             ExpenseOffsetFact.category.label("category"),
             Expense.merchant.label("merchant"),
             cast(literal(None), String(64)).label("source"),
+            ExpenseOffsetFact.home_currency_code.label("home_currency_code"),
             case(
                 (ExpenseOffsetFact.kind == "reversal", 0),
                 else_=-ExpenseOffsetFact.amount_cents,

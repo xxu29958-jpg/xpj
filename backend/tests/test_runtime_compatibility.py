@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -69,8 +70,8 @@ def _put_budget(
 ):
     return client.put(
         f"/api/budgets/monthly/{month}",
-        headers=headers,
-        json={"total_amount_cents": amount},
+        headers={**headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "expected_row_version": None, "total_amount_cents": amount},
     )
 
 

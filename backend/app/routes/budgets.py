@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_app_context, get_current_writer_context
+from app.auth import get_current_app_context, get_current_protocol_writer_context, get_current_writer_context
 from app.database import get_db
 from app.schemas import (
     BudgetMonthlyArchiveRequest,
@@ -11,10 +11,10 @@ from app.schemas import (
     BudgetMonthlyResponse,
     BudgetMonthlyUpdateRequest,
 )
+from app.services.budget_command_service import save_monthly_budget
 from app.services.budget_service import (
     archive_monthly_budget,
     get_monthly_budget,
-    upsert_monthly_budget,
 )
 from app.tenants import AuthContext
 
@@ -44,14 +44,17 @@ def put_budget_monthly(
     month: str,
     payload: BudgetMonthlyUpdateRequest,
     timezone: str | None = Query(default=None),
-    auth: AuthContext = Depends(get_current_writer_context),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: AuthContext = Depends(get_current_protocol_writer_context),
     db: Session = Depends(get_db),
 ) -> BudgetMonthlyResponse:
-    return upsert_monthly_budget(
+    return save_monthly_budget(
         db,
         tenant_id=auth.tenant_id,
         month=month,
         payload=payload,
+        actor_account_id=auth.account_id,
+        idempotency_key=idempotency_key,
         timezone_name=timezone,
     )
 

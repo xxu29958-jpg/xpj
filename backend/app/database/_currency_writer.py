@@ -35,7 +35,7 @@ def lock_currency_evidence_tables(db: Session, tables: Sequence[str]) -> None:
 
 def captured_currency_evidence_rows(connection: Connection) -> Iterator[dict[str, object]]:
     """Read supplemental currency facts without changing frozen schema attestation."""
-    for table in ("csv_import_rows", "monthly_income_plans"):
+    for table in ("budgets", "csv_import_rows", "monthly_income_plans"):
         for row in connection.execute(text(
             f"SELECT id, tenant_id, to_jsonb({table})->>'home_currency_code' AS home_currency_code FROM {table} ORDER BY id"
         )):
