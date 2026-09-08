@@ -83,6 +83,27 @@ class StatsBudgetViewModelTest {
         assertEquals(BudgetProgressStatus.Unconfigured, vm.uiState.value.budgetProgressStatus)
         assertNull(vm.uiState.value.budgetProgress)
     }
+
+    @Test
+    fun replacingSameNamedLedgerClearsBudgetAndReadsWithExactBinding() = budgetTest {
+        val owner = FakeStatsBudgetActions(budgetMonthly(true, 100000, 2000))
+        val original = requireNotNull(owner.access.value).binding
+        val vm = StatsBudgetViewModel(FakeStatsBudgetStatsActions(), owner)
+        runCurrent()
+        vm.refresh("2026-07", stats = null)
+        advanceUntilIdle()
+        assertEquals(100000L, vm.uiState.value.budgetProgress?.budgetCents)
+        val replacement = original.copy(ownerKey = "second-owner", sessionGeneration = "second-session")
+        owner.access.value = LedgerAccessContext(replacement, canModify = true)
+        owner.budget = owner.budget.copy(totalAmountCents = 5000, homeCurrencyCode = "JPY")
+        advanceUntilIdle()
+        assertNull(vm.uiState.value.budgetProgress, "same ledger name does not identify the same household")
+        vm.refresh("2026-07", stats = null)
+        advanceUntilIdle()
+        assertEquals(5000L, vm.uiState.value.budgetProgress?.budgetCents)
+        assertEquals("JPY", vm.uiState.value.budgetProgress?.homeCurrencyCode)
+        assertEquals(listOf(original, replacement), owner.requestedBindings)
+    }
 }
 
 private class FakeStatsBudgetStatsActions : StatsActions {
@@ -117,11 +138,14 @@ private class FakeStatsBudgetStatsActions : StatsActions {
 }
 
 private class FakeStatsBudgetActions(
-    private val budget: BudgetMonthly,
+    var budget: BudgetMonthly,
 ) : BudgetActions {
+    val access = MutableStateFlow<LedgerAccessContext?>(LedgerAccessContext(
+        LogicalSessionBinding("https://example.test", "ledger-1", "owner", "session", "binding"), true))
+    val requestedBindings = mutableListOf<LogicalSessionBinding>()
     override fun canModifyLedger(): Boolean = true
 
-    override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> = flowOf(null)
+    override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> = access
 
     override suspend fun monthlyBudget(month: String): Result<BudgetMonthly> = Result.success(budget.copy(month = month))
 
@@ -131,7 +155,10 @@ private class FakeStatsBudgetActions(
     override suspend fun monthlyBudget(
         expectedBinding: LogicalSessionBinding,
         month: String,
-    ): Result<BudgetMonthly> = monthlyBudget(month)
+    ): Result<BudgetMonthly> {
+        requestedBindings += expectedBinding
+        return monthlyBudget(month)
+    }
 
     override fun observeSaves(expectedBinding: LogicalSessionBinding): Flow<List<com.ticketbox.data.repository.PendingBudgetSave>> = flowOf(emptyList())
     override suspend fun recoverSave(expectedBinding: LogicalSessionBinding, pending: com.ticketbox.data.repository.PendingBudgetSave, drop: Boolean): Result<Unit> = Result.failure(UnsupportedOperationException())

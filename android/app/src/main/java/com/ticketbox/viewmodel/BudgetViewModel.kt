@@ -1,6 +1,7 @@
 package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
@@ -57,6 +58,7 @@ class BudgetViewModel(
     private val repository: BudgetActions,
     initialMonth: String = YearMonth.now().toString(),
     private val onDataChanged: () -> Unit = {},
+    savedStateHandle: SavedStateHandle = SavedStateHandle(),
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(BudgetUiState(month = initialMonth))
     val uiState: StateFlow<BudgetUiState> = _uiState.asStateFlow()
