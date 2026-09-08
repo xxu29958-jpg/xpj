@@ -15,10 +15,8 @@ from app.ledger_scope import ledger_filter, ledger_scoped_select
 from app.models import IncomePlanRevision, MonthlyIncomePlan
 from app.money_contract import projection_sum_to_int
 from app.services.currency_binding_service import (
-    assert_currency_binding_consistent,
     resolve_write_capability,
 )
-from app.services.currency_common import home_currency_code
 from app.services.income_plan_service._forecast import IncomeForecast, query_income_forecast
 from app.services.income_plan_service._history import (
     append_income_revision,
@@ -113,7 +111,7 @@ def create_income_plan(
     )
     _validate_pay_day(pay_day)
     # R13-2：无币种列的收入计划写按 env 口径入账 —— 先过绑定门（漂移/未决拒写）。
-    assert_currency_binding_consistent(db, home_currency_code())
+    resolve_write_capability(db)
 
     when = now or now_utc()
     intent_period = income_intent_month(intent_month, when)
@@ -169,7 +167,7 @@ def update_income_plan(
     plan = _require_plan(db, tenant_id=tenant_id, public_id=public_id)
     _require_active_income_plan(plan)
     # R13-2：同 create —— 编辑写先过绑定门（漂移/未决拒写）。
-    assert_currency_binding_consistent(db, home_currency_code())
+    resolve_write_capability(db)
 
     when = now or now_utc()
     period = income_intent_month(intent_month, when)

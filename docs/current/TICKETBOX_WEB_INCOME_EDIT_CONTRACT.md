@@ -3,6 +3,9 @@
 Authority: full Goal and latest user rulings → final Gmail contracts → exact
 code/runtime. Strengthen Planning without duplicating its revision authority.
 
+#395 CLOSED: integrated and independently main-qualified.
+[Qualification evidence](https://github.com/xxu29958-jpg/xpj/pull/395).
+
 ## User outcome and impact before construction
 
 Web income cards support create/archive/restore but have no editing task. A

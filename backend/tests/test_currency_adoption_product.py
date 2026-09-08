@@ -9,7 +9,6 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select, text
 from sqlalchemy.engine import make_url
 
-from app.config import get_settings
 from app.database import SessionLocal, engine
 from app.main import app
 from app.middleware.web_session import DESKTOP_BRIDGE_HEADER, DESKTOP_BRIDGE_VERSION
@@ -133,7 +132,7 @@ def test_fresh_currency_requires_choice_before_exposing_a_money_basis(
     page = browser.client.get(entry.headers["location"], headers=browser.headers)
     assert page.status_code == 200
     assert 'name="home_currency_code"' in page.text
-    assert not re.search(r'<option[^>]*value="(?:CNY|USD|EUR|GBP|JPY|HKD|KRW)"[^>]*selected', page.text)
+    assert not re.search(r'<input\b[^>]*name="home_currency_code"[^>]*\bchecked', page.text)
     with SessionLocal() as db:
         assert db.get(InstallationCurrencyBinding, 1).state == "EMPTY"
 
@@ -141,9 +140,10 @@ def test_fresh_currency_requires_choice_before_exposing_a_money_basis(
 @pytest.mark.parametrize("adoption_browser", ["EMPTY"], indirect=True)
 def test_explicit_jpy_choice_drives_real_goal_write_despite_cny_environment(
     adoption_browser: _AdoptionBrowser,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     browser = adoption_browser
-    assert get_settings().fx_home_currency_code == "CNY"
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "CNY")
     page = browser.client.get("/web/currency-adoption", headers=browser.headers)
     fields = {name: _hidden_value(page.text, name) for name in (
         "csrf_token", "currency_contract_version", "expected_state",

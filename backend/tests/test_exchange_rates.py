@@ -313,28 +313,15 @@ def test_legacy_amount_payload_defaults_to_cny_rate_one(client: TestClient, *, i
     assert payload["fx_status"] == "ready"
 
 
-def test_calculate_home_minor_units_respects_no_fraction_home_currency(monkeypatch) -> None:
-    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
-    get_settings.cache_clear()
-    try:
-        assert (
-            calculate_cny_cents(
-                original_currency_code="JPY",
-                original_amount_minor=1000,
-                exchange_rate_to_cny=None,
-            )
-            == 1000
-        )
-        assert (
-            calculate_cny_cents(
-                original_currency_code="USD",
-                original_amount_minor=12345,
-                exchange_rate_to_cny=Decimal("150"),
-            )
-            == 18518
-        )
-    finally:
-        get_settings.cache_clear()
+def test_calculate_home_minor_units_uses_the_supplied_no_fraction_basis() -> None:
+    assert calculate_cny_cents(
+        home_currency_code="JPY", original_currency_code="JPY",
+        original_amount_minor=1000, exchange_rate_to_cny=None,
+    ) == 1000
+    assert calculate_cny_cents(
+        home_currency_code="JPY", original_currency_code="USD",
+        original_amount_minor=12345, exchange_rate_to_cny=Decimal("150"),
+    ) == 18518
 
 
 def test_expense_write_rejects_client_submitted_exchange_rate(client: TestClient, *, identity) -> None:
@@ -368,7 +355,7 @@ def test_ecb_daily_xml_cross_rate_can_be_stored_as_home_rate(client: TestClient,
     daily = parse_ecb_daily_rates(xml)
     expected = (Decimal("7.9194") / Decimal("1.1628")).quantize(Decimal("0.00000001"))
     assert daily.rate_date == date(2026, 5, 15)
-    assert cross_rate_to_home(daily.rates_per_eur, currency_code="USD") == expected
+    assert cross_rate_to_home(daily.rates_per_eur, currency_code="USD", home_currency_code="CNY") == expected
 
     with SessionLocal() as db:
         upsert_fx_rate(

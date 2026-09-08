@@ -199,13 +199,11 @@ def identity(request: pytest.FixtureRequest, _db_isolation) -> TestIdentity:
         # Dedicated binding-state tests opt out explicitly; this is not a
         # trigger bypass or a database-role escape hatch.
         from app.database import SessionLocal
-        from app.services.currency_binding_service import resolve_write_capability
+        from tests._infra.currency import activate_test_currency_authority
 
-        configured = os.environ.get("FX_HOME_CURRENCY_CODE", "CNY").strip().upper()
-        if configured == "CNY":
-            with SessionLocal() as db:
-                resolve_write_capability(db)
-                db.commit()
+        with SessionLocal() as db:
+            activate_test_currency_authority(db, "CNY")
+            db.commit()
     return test_identity
 
 

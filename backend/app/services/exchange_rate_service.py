@@ -29,7 +29,6 @@ from app.services.currency_binding_service import (
 from app.services.currency_common import (
     RATE_QUANT,
     format_decimal_rate,
-    home_currency_code,
     major_amount_to_minor,
     minor_unit_digits,
     normalize_currency_code,
@@ -44,11 +43,10 @@ HOME_CURRENCY_CODE = DEFAULT_HOME_CURRENCY_CODE
 SUPPORTED_CURRENCY_CODES = set(DEFAULT_SUPPORTED_CURRENCY_CODES)
 
 # Re-exports — existing callers do ``from app.services.exchange_rate_service
-# import home_currency_code`` etc. Keep that surface working.
+# import normalization/arithmetic helpers. Money authority stays with the binding.
 __all_currency_helpers = (
     RATE_QUANT,
     format_decimal_rate,
-    home_currency_code,
     normalize_currency_code,
     supported_currency_codes,
 )
@@ -104,6 +102,7 @@ def amount_major_to_minor(value: Decimal | None, currency_code: str) -> int | No
 
 def calculate_cny_cents(
     *,
+    home_currency_code: str,
     original_currency_code: str,
     original_amount_minor: int | None,
     exchange_rate_to_cny: Decimal | None,
@@ -111,7 +110,7 @@ def calculate_cny_cents(
     """Convert original currency minor units → home currency minor units.
 
     The legacy name says "cny_cents" but the result is always expressed in the
-    configured home currency's minor units. If `FX_HOME_CURRENCY_CODE` is a
+    supplied home currency's minor units. If the persisted home currency is a
     no-fraction currency (JPY/KRW), the multiplier collapses to 1 so that 1,000
     JPY persists as `amount_cents=1000` rather than 100,000.
     """
@@ -124,7 +123,7 @@ def calculate_cny_cents(
     )
     assert original_minor is not None
     currency_code = normalize_currency_code(original_currency_code)
-    home = home_currency_code()
+    home = normalize_currency_code(home_currency_code)
     rate = Decimal("1") if currency_code == home else format_decimal_rate(exchange_rate_to_cny)
     if rate is None:
         return None
@@ -297,12 +296,12 @@ def _payload_attr(payload: CurrencyPayload, name: str):
     return getattr(payload, name, None)
 
 
-def _payload_original_currency(payload: CurrencyPayload, expense: Expense) -> str:
+def _payload_original_currency(payload: CurrencyPayload, expense: Expense, *, home: str) -> str:
     return normalize_currency_code(
         _payload_attr(payload, "original_currency")
         or _payload_attr(payload, "original_currency_code")
         or expense.original_currency_code
-        or home_currency_code()
+        or home
     )
 
 
@@ -310,6 +309,7 @@ def _payload_original_amount_minor(
     payload: CurrencyPayload,
     *,
     currency_code: str,
+    home: str,
     amount_was_explicit: bool,
 ) -> int | None:
     original_amount = amount_major_to_minor(_payload_attr(payload, "original_amount"), currency_code)
@@ -323,7 +323,7 @@ def _payload_original_amount_minor(
             label="expense.original_amount_minor",
         )
     amount_cents = _payload_attr(payload, "amount_cents")
-    if amount_was_explicit and amount_cents is not None and currency_code == home_currency_code():
+    if amount_was_explicit and amount_cents is not None and currency_code == home:
         return ensure_optional_money_minor(
             amount_cents,
             sign=MoneySign.NONNEGATIVE,
@@ -382,16 +382,17 @@ def apply_currency_payload(
     if not has_original_fields and not amount_was_explicit:
         # R10②：纯元数据维护不读 env、不过门（不碰币种快照，漂移/配错 env 不拖死它）。
         return
-    home = home_currency_code()
+    home = require_runtime_home_currency_code(db)
     assert_currency_binding_consistent(db, home)
     if not has_original_fields:
         _apply_legacy_home_amount(expense, payload, home=home)
         return
 
-    code = _payload_original_currency(payload, expense)
+    code = _payload_original_currency(payload, expense, home=home)
     original_amount = _payload_original_amount_minor(
         payload,
         currency_code=code,
+        home=home,
         amount_was_explicit=amount_was_explicit,
     )
     if original_amount is None:
@@ -427,6 +428,7 @@ def apply_currency_payload(
     expense.exchange_rate_source = source
     expense.fx_status = fx_status
     expense.amount_cents = calculate_cny_cents(
+        home_currency_code=home,
         original_currency_code=code,
         original_amount_minor=original_amount,
         exchange_rate_to_cny=rate,

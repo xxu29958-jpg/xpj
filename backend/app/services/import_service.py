@@ -44,11 +44,10 @@ from app.errors import AppError
 from app.models import Expense
 from app.money_contract import MoneySign, ensure_optional_money_minor
 from app.services.category_service import normalize_category
-from app.services.currency_binding_service import assert_currency_binding_consistent
+from app.services.currency_binding_service import require_runtime_home_currency_code, resolve_write_capability
 from app.services.exchange_rate_service import (
     BASE_CURRENCY_CODE,
     apply_currency_payload,
-    home_currency_code,
     normalize_currency_code,
 )
 from app.services.import_money import (
@@ -145,7 +144,7 @@ def _parse_optional_date(raw: str) -> tuple[date | None, str | None]:
         return None, "exchange_rate_date 不是合法日期"
 
 
-def parse_csv_preview(content: str, timezone_name: str | None = None) -> CsvPreview:
+def parse_csv_preview(content: str, timezone_name: str | None = None, *, home_currency: str) -> CsvPreview:
     """Parse ``content`` into a preview structure.
 
     Caller is responsible for applying any size/encoding limits before
@@ -176,7 +175,7 @@ def parse_csv_preview(content: str, timezone_name: str | None = None) -> CsvPrev
         _assert_cell(cell)
     headers = [h.strip().lstrip("\ufeff").lower() for h in header_row]
     validate_csv_headers(headers)
-    parsed_home_currency = home_currency_code()
+    parsed_home_currency = home_currency
     preview = CsvPreview(headers=headers)
     try:
         for index, row in enumerate(reader, start=2):  # line 1 was the header
@@ -460,7 +459,7 @@ def import_rows(
             label="csv_import.original_amount_minor",
         )
     # Legacy import is one transaction; the database fence remains the final guard.
-    assert_currency_binding_consistent(db, home_currency_code())
+    resolve_write_capability(db)
     inserted = 0
     now = now_utc()
     created: list[Expense] = []
@@ -485,7 +484,7 @@ def import_rows(
             tenant_id=tenant_id,
             expense=expense,
             payload=row,
-            amount_was_explicit=row.original_currency_code == home_currency_code() and row.amount_cents is not None,
+            amount_was_explicit=row.original_currency_code == require_runtime_home_currency_code(db) and row.amount_cents is not None,
         )
         db.add(expense)
         created.append(expense)

@@ -17,6 +17,7 @@ from app.currency_adoption_evidence import currency_adoption_evidence
 from app.currency_binding_contract import (
     CURRENCY_BINDING_ACTIVE,
     CURRENCY_BINDING_ADOPTION_REQUIRED,
+    CURRENCY_BINDING_EMPTY,
     CURRENCY_EVIDENCE_TABLES,
     CURRENCY_ROUNDING_MODE,
     INITIAL_BINDING_REVISION,
@@ -36,7 +37,6 @@ from app.models import (
 from app.services import permission_service
 from app.services.currency_binding_service import (
     CurrencyBindingState,
-    _configured_home_or_none,
     _load_binding,
     _snapshot,
     _state,
@@ -53,7 +53,6 @@ class CurrencyAdoptionPreview:
     currency_contract_version: int
     evidence_sha256: str
     home_currency_code: str | None
-    configured_home_currency_code: str | None
     allowed_home_currency_codes: tuple[str, ...]
     evidence_health: Literal["adoptable", "conflict"]
 
@@ -83,7 +82,6 @@ def adoption_preview(db: Session) -> CurrencyAdoptionPreview:
         currency_contract_version=binding.currency_contract_version,
         evidence_sha256=evidence.sha256,
         home_currency_code=binding.home_currency_code,
-        configured_home_currency_code=_configured_home_or_none(),
         allowed_home_currency_codes=evidence.allowed_home_currency_codes,
         evidence_health=("conflict" if evidence.has_conflict else "adoptable"),
     )
@@ -202,7 +200,7 @@ def _adopt_in_transaction(
         raise AppError("currency_binding_already_active", status_code=409)
     if binding.state != expected_state or binding.binding_revision != expected_revision:
         raise AppError("currency_binding_state_conflict", status_code=409)
-    if binding.state != CURRENCY_BINDING_ADOPTION_REQUIRED:
+    if binding.state not in {CURRENCY_BINDING_EMPTY, CURRENCY_BINDING_ADOPTION_REQUIRED}:
         raise AppError("currency_binding_state_conflict", status_code=409)
 
     lock_currency_evidence_tables(db, CURRENCY_EVIDENCE_TABLES)

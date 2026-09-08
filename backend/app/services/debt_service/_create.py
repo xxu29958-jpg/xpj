@@ -27,10 +27,8 @@ from app.errors import AppError
 from app.models import Debt
 from app.schemas import DebtCreateRequest
 from app.services.currency_binding_service import (
-    assert_currency_binding_consistent,
     resolve_write_capability,
 )
-from app.services.currency_common import home_currency_code
 from app.services.debt_service._money import (
     freeze_home_amount,
     validate_home_amount_command,
@@ -154,7 +152,7 @@ def create_debt(
     direction = _clean_direction(payload.direction)
     # ADR-0061 C02 桥接门（PR#255 R9）：新 Debt 按 env 盖章 home_currency_code，
     # env 与已持久事实漂移时 fail closed（空库首笔放行；先于任何新事实落库）。
-    assert_currency_binding_consistent(db, home_currency_code())
+    resolve_write_capability(db)
     counterparty_type = _clean_counterparty_type(payload.counterparty_type)
     source_type = _clean_source_type(payload.source_type)
     counterparty_account_id, counterparty_label = _clean_counterparty(
@@ -229,7 +227,7 @@ def create_bill_split_debt(
     break the ``principal ≈ original × rate`` relationship and misstate the
     obligation, so it is intentionally NOT copied — the foreign origin stays
     auditable via ``source_type``/``source_id`` → the invitation. ``home_currency_code``
-    is frozen from the invitation snapshot (not the live ``home_currency_code()``
+    is frozen from the invitation snapshot (not the live ``require_runtime_home_currency_code(db)``
     setting) so a later home-currency change cannot rewrite this Debt's currency.
     Dedup is the ``uq_debts_source``
     ``(source_type, source_id)`` constraint plus the caller's re-accept fast

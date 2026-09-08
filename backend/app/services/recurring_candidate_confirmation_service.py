@@ -17,8 +17,7 @@ from app.money_contract import (
     projection_sum_to_int,
 )
 from app.schemas import RecurringCandidateConfirmRequest
-from app.services.currency_binding_service import assert_currency_binding_consistent
-from app.services.currency_common import home_currency_code
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.insights_service import recurring_candidates
 from app.services.merchant_service import normalize_merchant
 from app.services.recurring_item_command_service import raise_recurring_item_conflict
@@ -212,7 +211,7 @@ def _create_recurring_item_from_candidate(
     now = now_utc()
     # R15b-4：RecurringItem 属门证据集的无绑定表 —— 创建前过 ADR-0075 写门
     # （与 R13-2 五入口同模式；drift 窗口不得写入新无绑定行）。
-    assert_currency_binding_consistent(db, home_currency_code())
+    resolve_write_capability(db)
     item = RecurringItem(
         tenant_id=tenant_id,
         merchant_key=match.merchant_key,

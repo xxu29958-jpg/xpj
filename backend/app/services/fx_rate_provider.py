@@ -22,9 +22,6 @@ from app.services.currency_common import (
     normalize_currency_code,
     supported_currency_codes,
 )
-from app.services.currency_common import (
-    home_currency_code as current_home_currency_code,
-)
 from app.services.time_service import now_utc
 
 FETCH_TIMEOUT_SECONDS = 10
@@ -167,10 +164,10 @@ def cross_rate_to_home(
     rates_per_eur: dict[str, Decimal],
     *,
     currency_code: str,
-    home_currency_code: str | None = None,
+    home_currency_code: str,
 ) -> Decimal:
     currency = normalize_currency_code(currency_code)
-    home = normalize_currency_code(home_currency_code or current_home_currency_code())
+    home = normalize_currency_code(home_currency_code)
     if currency == home:
         return Decimal("1").quantize(RATE_QUANT, rounding=ROUND_HALF_UP)
     try:
@@ -188,11 +185,11 @@ def get_fx_rate(
     *,
     currency_code: str,
     rate_date: date,
-    home_currency_code: str | None = None,
+    home_currency_code: str,
     source: str = FX_SOURCE_ECB,
 ) -> FxRate | None:
     currency = normalize_currency_code(currency_code)
-    home = normalize_currency_code(home_currency_code or current_home_currency_code())
+    home = normalize_currency_code(home_currency_code)
     if currency == home:
         return None
     return db.scalar(
@@ -209,7 +206,7 @@ def get_fx_rate_on_or_before(
     *,
     currency_code: str,
     rate_date: date,
-    home_currency_code: str | None = None,
+    home_currency_code: str,
     source: str = FX_SOURCE_ECB,
 ) -> FxRate | None:
     """Most recent fetched rate effective on ``rate_date`` (``rate_date <= D``).
@@ -221,7 +218,7 @@ def get_fx_rate_on_or_before(
     the expense ``pending``. Returns an exact-date row when one exists.
     """
     currency = normalize_currency_code(currency_code)
-    home = normalize_currency_code(home_currency_code or current_home_currency_code())
+    home = normalize_currency_code(home_currency_code)
     if currency == home:
         return None
     return db.scalar(

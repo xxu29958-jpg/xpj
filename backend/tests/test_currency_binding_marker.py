@@ -44,6 +44,7 @@ from tests.test_debt_binding_drift import (
     _idem_headers,
     _owner_account_id,
 )
+from tests._infra.currency import activate_test_currency_authority
 
 pytestmark = pytest.mark.currency_binding_unbound
 
@@ -57,109 +58,53 @@ def _mark_legacy_http_writer(db) -> None:
 
 def _seed_cny_expense_fact_row() -> None:
     with SessionLocal() as db:
-        resolve_write_capability(db)
+        activate_test_currency_authority(db, "CNY")
         db.add(Expense(tenant_id="owner", home_currency_code="CNY"))
         db.commit()
 
 
-def test_jpy_fresh_install_legacy_writer_requires_upgrade(monkeypatch) -> None:
-    # C02 不伪造 C03 的客户端版本三元组：旧写者对非 CNY 首笔写入
-    # fail closed，且不得恢复 AppMeta 作为绑定权威。
-    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
-    get_settings.cache_clear()
-    try:
-        with SessionLocal() as db:
-            _mark_legacy_http_writer(db)
-            with pytest.raises(AppError) as excinfo:
-                create_income_plan(
-                    db,
-                    tenant_id="owner",
-                    label="工资",
-                    source_type="salary",
-                    amount_cents=1200,
-                    pay_day=10,
-                )
-            assert excinfo.value.error == "client_upgrade_required"
-            assert get_capability(db).state == "EMPTY"
-            assert get_value(db, INSTALLATION_HOME_CURRENCY_KEY) is None
-    finally:
-        monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
-        get_settings.cache_clear()
-
-
-def test_cny_first_fact_claims_persisted_binding_without_legacy_marker() -> None:
-    # 新装首笔 CNY 事实与持久化权威同事务确立；旧 AppMeta 不再自愈。
+def test_confirmed_jpy_binding_requires_a_versioned_writer() -> None:
     with SessionLocal() as db:
-        create_income_plan(
-            db,
-            tenant_id="owner",
-            label="工资",
-            source_type="salary",
-            amount_cents=1_000_000,
-            pay_day=10,
-        )
-        capability = get_capability(db)
-        assert capability.state == "ACTIVE"
-        assert capability.home_currency_code == "CNY"
+        activate_test_currency_authority(db, "JPY")
+        _mark_legacy_http_writer(db)
+        with pytest.raises(AppError) as refused:
+            create_income_plan(db, tenant_id="owner", label="工资", source_type="salary", amount_cents=1200, pay_day=10)
+        assert refused.value.error == "client_upgrade_required"
+        assert get_capability(db).home_currency_code == "JPY"
         assert get_value(db, INSTALLATION_HOME_CURRENCY_KEY) is None
 
 
-def test_persisted_binding_disagreeing_with_env_rejects(monkeypatch) -> None:
-    # 持久化绑定优先于运行环境；环境漂移必须 fail closed。
+def test_income_creation_cannot_silently_claim_cny() -> None:
     with SessionLocal() as db:
-        resolve_write_capability(db)
-        db.commit()
+        with pytest.raises(AppError) as refused:
+            create_income_plan(db, tenant_id="owner", label="工资", source_type="salary", amount_cents=1_000_000, pay_day=10)
+        assert refused.value.error == "currency_adoption_required"
+        assert get_capability(db).state == "EMPTY"
+        assert get_value(db, INSTALLATION_HOME_CURRENCY_KEY) is None
+
+
+def test_money_snapshot_must_match_persisted_binding_even_when_environment_agrees(monkeypatch) -> None:
+    with SessionLocal() as db:
+        activate_test_currency_authority(db, "CNY")
         monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
-        get_settings.cache_clear()
-        try:
-            with pytest.raises(AppError) as excinfo:
-                assert_currency_binding_consistent(db, "JPY")
-            assert excinfo.value.error == "currency_binding_configuration_drift"
-        finally:
-            monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
-            get_settings.cache_clear()
+        with pytest.raises(AppError) as refused:
+            assert_currency_binding_consistent(db, "JPY")
+        assert refused.value.error == "currency_binding_revision_conflict"
+        assert_currency_binding_consistent(db, "CNY")
 
 
-def test_unbound_write_services_gated_under_drift(client: TestClient, monkeypatch, *, identity) -> None:
-    # R13-2：CNY 事实 + env=JPY 时，budget/goal/income 三个无绑定写服务各 409（此前
-    # 完全无门：漂移下绑定写全 409 但规划写按 env 口径照过）。
-    _create_cny_debt(client, identity)
+def test_planning_writes_follow_confirmed_currency_despite_environment(monkeypatch, identity) -> None:
+    _ = identity
     monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
-    get_settings.cache_clear()
-    try:
-        with SessionLocal() as db:
-            with pytest.raises(AppError) as budget_exc:
-                upsert_monthly_budget(
-                    db,
-                    tenant_id="owner",
-                    month="2026-07",
-                    payload=BudgetMonthlyUpdateRequest(total_amount_cents=1200),
-                )
-            assert budget_exc.value.error == "currency_binding_configuration_drift"
-            with pytest.raises(AppError) as goal_exc:
-                create_goal(
-                    db,
-                    tenant_id="owner",
-                    payload=GoalCreateRequest(
-                        name="本月外卖",
-                        month="2026-07",
-                        target_amount_cents=1200,
-                    ),
-                )
-            assert goal_exc.value.error == "currency_binding_configuration_drift"
-            with pytest.raises(AppError) as income_exc:
-                create_income_plan(
-                    db,
-                    tenant_id="owner",
-                    label="工资",
-                    source_type="salary",
-                    amount_cents=1200,
-                    pay_day=10,
-                )
-            assert income_exc.value.error == "currency_binding_configuration_drift"
-    finally:
-        monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
-        get_settings.cache_clear()
+    with SessionLocal() as db:
+        activate_test_currency_authority(db, "CNY")
+        budget = upsert_monthly_budget(db, tenant_id="owner", month="2026-07", payload=BudgetMonthlyUpdateRequest(total_amount_cents=1200))
+        goal = create_goal(db, tenant_id="owner", payload=GoalCreateRequest(name="本月外卖", month="2026-07", target_amount_cents=1200))
+        income = create_income_plan(db, tenant_id="owner", label="工资", source_type="salary", amount_cents=1200, pay_day=10)
+        assert budget.total_amount_cents == 1200
+        assert goal.target_amount_cents == 1200
+        assert income.amount_cents == 1200
+        assert get_capability(db).home_currency_code == "CNY"
 
 
 def _patch_terminal_retry_dependencies(
@@ -282,6 +227,9 @@ def test_terminal_archive_restore_retries_do_not_require_a_writer(
 def test_first_binding_rejected_when_legacy_cny_draft_exists(client: TestClient, monkeypatch, *, identity) -> None:
     # R13-8a 空库四步序列：CNY 环境捕获草稿 → env 翻 JPY → 首笔 JPY 债必须被拒
     # （RepaymentDraft 已入 drift 事实集，否则 CNY 分整数将按 JPY 折叠）。
+    with SessionLocal() as db:
+        activate_test_currency_authority(db, "CNY")
+        db.commit()
     response = client.post(
         "/api/repayment-drafts",
         headers=identity.app_headers,
@@ -301,8 +249,10 @@ def test_first_binding_rejected_when_legacy_cny_draft_exists(client: TestClient,
                 "principal_amount_cents": 1200,
             },
         )
-        assert created.status_code == 409, created.json()
-        assert created.json()["error"] == "currency_binding_configuration_drift"
+        assert created.status_code == 201, created.json()
+        assert created.json()["home_currency_code"] == "CNY"
+        assert created.json()["principal_amount_cents"] == 1200
+        assert response.json()["home_currency_code"] == "CNY"
     finally:
         monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
         get_settings.cache_clear()
@@ -311,6 +261,9 @@ def test_first_binding_rejected_when_legacy_cny_draft_exists(client: TestClient,
 def test_confirm_rejected_when_draft_currency_mismatches_debt(client: TestClient, monkeypatch, *, identity) -> None:
     # R13-8b：草稿冻结 CNY 分、目标 debt 冻结 JPY（ORM 直种绕过建债门）→ confirm 拒；
     # 比对按两冻结口径，不让 CNY 分整数被当 JPY minor 折叠。
+    with SessionLocal() as db:
+        activate_test_currency_authority(db, "CNY")
+        db.commit()
     response = client.post(
         "/api/repayment-drafts",
         headers=identity.app_headers,
@@ -372,53 +325,32 @@ def _candidate_confirm_call(db, home_env: str):
     )
 
 
-def test_recurring_candidate_confirm_gated_under_drift(monkeypatch) -> None:
-    # R15b-4：候选确认创建 RecurringItem（门证据集的无绑定表）前过 ADR-0075 写门 ——
-    # CNY 事实 + env=JPY → drift 拒，drift 窗口不得写入新无绑定行。
+def test_recurring_candidate_uses_confirmed_currency_despite_environment(monkeypatch) -> None:
     _seed_cny_expense_fact_row()
     monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
-    get_settings.cache_clear()
-    try:
-        with SessionLocal() as db:
-            _mark_legacy_http_writer(db)
-            with pytest.raises(AppError) as excinfo:
-                _candidate_confirm_call(db, "JPY")
-            assert excinfo.value.error == "currency_binding_configuration_drift"
-    finally:
-        monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
-        get_settings.cache_clear()
-
-
-def test_recurring_candidate_confirm_requires_versioned_writer_on_jpy(monkeypatch) -> None:
-    # 非 CNY 新装不允许旧写者绕过 C03 版本合同。
-    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
-    get_settings.cache_clear()
-    try:
-        with SessionLocal() as db:
-            _mark_legacy_http_writer(db)
-            with pytest.raises(AppError) as excinfo:
-                _candidate_confirm_call(db, "JPY")
-            assert excinfo.value.error == "client_upgrade_required"
-            assert get_capability(db).state == "EMPTY"
-    finally:
-        monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
-        get_settings.cache_clear()
-
-
-def test_repeated_same_binding_resolution_is_idempotent(monkeypatch) -> None:
-    # 同一持久化绑定重复解析成功；配置变更后立即拒绝。
     with SessionLocal() as db:
-        resolve_write_capability(db)
-        resolve_write_capability(db)
+        _mark_legacy_http_writer(db)
+        item = _candidate_confirm_call(db, "JPY")
+        assert item.baseline_amount_cents == 1200
+        assert get_capability(db).home_currency_code == "CNY"
+
+
+def test_recurring_candidate_confirm_requires_versioned_writer_on_jpy() -> None:
+    with SessionLocal() as db:
+        activate_test_currency_authority(db, "JPY")
+        _mark_legacy_http_writer(db)
+        with pytest.raises(AppError) as refused:
+            _candidate_confirm_call(db, "JPY")
+        assert refused.value.error == "client_upgrade_required"
+
+
+def test_repeated_same_binding_resolution_is_idempotent_despite_environment(monkeypatch) -> None:
+    with SessionLocal() as db:
+        activate_test_currency_authority(db, "CNY")
+        before = resolve_write_capability(db)
         monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
-        get_settings.cache_clear()
-        try:
-            with pytest.raises(AppError) as excinfo:
-                resolve_write_capability(db)
-            assert excinfo.value.error == "currency_binding_configuration_drift"
-        finally:
-            monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
-            get_settings.cache_clear()
+        assert resolve_write_capability(db) == before
+        assert resolve_write_capability(db) == before
 
 
 def test_goal_create_passes_with_persisted_binding_matching_env() -> None:
@@ -426,7 +358,7 @@ def test_goal_create_passes_with_persisted_binding_matching_env() -> None:
     from app.schemas import GoalCreateRequest
 
     with SessionLocal() as db:
-        resolve_write_capability(db)
+        activate_test_currency_authority(db, "CNY")
         db.commit()
         response = create_goal(
             db,

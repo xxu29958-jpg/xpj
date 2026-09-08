@@ -27,8 +27,7 @@ from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Debt, Repayment
 from app.schemas import RepaymentCreateRequest
-from app.services.currency_binding_service import resolve_write_capability
-from app.services.currency_common import home_currency_code
+from app.services.currency_binding_service import require_runtime_home_currency_code, resolve_write_capability
 from app.services.debt_service._guards import guard_direct_fact_writable
 from app.services.debt_service._money import (
     freeze_home_amount,
@@ -81,7 +80,7 @@ def _guard_repayment_currency_binding(
         .where(Debt.public_id == public_id)
         .with_only_columns(Debt.home_currency_code)
     )
-    if parent_home is not None and parent_home != home_currency_code():
+    if parent_home is not None and parent_home != require_runtime_home_currency_code(db):
         raise AppError("currency_binding_drift", status_code=409)
 
 

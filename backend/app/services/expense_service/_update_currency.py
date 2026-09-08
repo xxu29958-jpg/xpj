@@ -106,6 +106,7 @@ def _apply_frozen_snapshot_update(
     assert_currency_binding_consistent(db, expense.home_currency_code)
     expense.original_amount_minor = original_amount_minor
     expense.amount_cents = calculate_cny_cents(
+        home_currency_code=expense.home_currency_code,
         original_currency_code=current_currency,
         original_amount_minor=original_amount_minor,
         exchange_rate_to_cny=expense.exchange_rate_to_cny,

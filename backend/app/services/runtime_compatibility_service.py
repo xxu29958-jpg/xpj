@@ -14,10 +14,9 @@ from sqlalchemy.orm import Session
 
 from app.currency_binding_contract import (
     CURRENCY_CONTRACT_VERSION,
-    CURRENCY_ROUNDING_MODE,
     INITIAL_BINDING_REVISION,
 )
-from app.fx_constants import CURRENCY_MINOR_UNIT_DIGITS, DEFAULT_HOME_CURRENCY_CODE
+from app.fx_constants import DEFAULT_HOME_CURRENCY_CODE
 from app.runtime_compatibility_contract import (
     CURRENT_API_VERSION,
     RUNTIME_COMPATIBILITY_CONTRACT,
@@ -70,10 +69,8 @@ def _currency_read_compatibility(
 ) -> CompatibilityConclusion:
     if capability.currency_contract_version != CURRENCY_CONTRACT_VERSION:
         return "server_upgrade_required"
-    if capability.state == "ADOPTION_REQUIRED":
+    if capability.state in {"EMPTY", "ADOPTION_REQUIRED"}:
         return "owner_action_required"
-    if capability.state == "EMPTY" and capability.initialization_offer is None:
-        return "configuration_required"
     return "compatible"
 
 
@@ -82,16 +79,8 @@ def _currency_write_compatibility(
 ) -> CompatibilityConclusion:
     if capability.currency_contract_version != CURRENCY_CONTRACT_VERSION:
         return "server_upgrade_required"
-    if capability.state == "ADOPTION_REQUIRED":
+    if capability.state in {"EMPTY", "ADOPTION_REQUIRED"}:
         return "owner_action_required"
-    if capability.state == "EMPTY":
-        return (
-            "compatible"
-            if capability.initialization_offer is not None
-            else "configuration_required"
-        )
-    if capability.health == "configuration_drift":
-        return "configuration_required"
     if capability.health != "active_match":
         return "server_upgrade_required"
     return "compatible"
@@ -103,17 +92,11 @@ def _legacy_write_compatibility(
 ) -> Literal["compatible", "client_upgrade_required"]:
     if write_compatibility != "compatible":
         return "client_upgrade_required"
-    if capability.state == "EMPTY":
-        safe = (
-            capability.initialization_offer == DEFAULT_HOME_CURRENCY_CODE
-            and capability.binding_revision == 0
-        )
-    else:
-        safe = (
-            capability.state == "ACTIVE"
-            and capability.home_currency_code == DEFAULT_HOME_CURRENCY_CODE
-            and capability.binding_revision == INITIAL_BINDING_REVISION
-        )
+    safe = (
+        capability.state == "ACTIVE"
+        and capability.home_currency_code == DEFAULT_HOME_CURRENCY_CODE
+        and capability.binding_revision == INITIAL_BINDING_REVISION
+    )
     return "compatible" if safe else "client_upgrade_required"
 
 
@@ -121,20 +104,7 @@ def runtime_compatibility_snapshot(db: Session) -> RuntimeCompatibilitySnapshot:
     capability = get_capability(db)
     read_compatibility = _currency_read_compatibility(capability)
     write_compatibility = _currency_write_compatibility(capability)
-    product_home_currency = (
-        capability.home_currency_code or capability.initialization_offer
-    )
-    if capability.home_currency_code is not None:
-        product_minor_unit_exponent = capability.minor_unit_exponent
-        product_rounding_mode = capability.rounding_mode
-    elif product_home_currency is not None:
-        product_minor_unit_exponent = CURRENCY_MINOR_UNIT_DIGITS[
-            product_home_currency
-        ]
-        product_rounding_mode = CURRENCY_ROUNDING_MODE
-    else:
-        product_minor_unit_exponent = None
-        product_rounding_mode = None
+    product_home_currency = capability.home_currency_code
     return RuntimeCompatibilitySnapshot(
         contract=RUNTIME_COMPATIBILITY_CONTRACT,
         observed_at=to_iso(now_utc()) or "",
@@ -149,8 +119,8 @@ def runtime_compatibility_snapshot(db: Session) -> RuntimeCompatibilitySnapshot:
         upload_original_receipt_version=UPLOAD_ORIGINAL_RECEIPT_VERSION,
         currency=RuntimeCurrencyCapability(
             home_currency_code=product_home_currency,
-            minor_unit_exponent=product_minor_unit_exponent,
-            rounding_mode=product_rounding_mode,
+            minor_unit_exponent=capability.minor_unit_exponent,
+            rounding_mode=capability.rounding_mode,
             contract_version=capability.currency_contract_version,
             binding_revision=capability.binding_revision,
             request_binding=(

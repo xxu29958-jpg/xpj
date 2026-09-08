@@ -62,11 +62,11 @@ from app.services.csv_import_batch_service._row_claim import (
     _reset_claimed_csv_import_rows,
 )
 from app.services.currency_binding_service import (
-    assert_currency_binding_consistent,
+    require_runtime_home_currency_code,
     resolve_write_capability,
 )
 from app.services.desktop_switch_service import revalidate_desktop_session_under_lock
-from app.services.exchange_rate_service import apply_currency_payload, home_currency_code
+from app.services.exchange_rate_service import apply_currency_payload
 from app.services.import_service import DEFAULT_SOURCE
 from app.services.tag_service import normalize_tags, sync_expense_tags
 from app.services.time_service import now_utc
@@ -125,7 +125,7 @@ def _process_csv_import_apply_row(
         tenant_id=tenant_id,
         expense=expense,
         payload=row,
-        amount_was_explicit=row.original_currency_code == home_currency_code() and row.amount_cents is not None,
+        amount_was_explicit=row.original_currency_code == require_runtime_home_currency_code(db) and row.amount_cents is not None,
     )
     return expense
 
@@ -428,7 +428,7 @@ def apply_csv_import_batch(
     mid-batch revocation/demotion cannot ride the per-row commits.
     """
     # The batch and every independently committed row revalidate the binding.
-    assert_currency_binding_consistent(db, home_currency_code())
+    resolve_write_capability(db)
     apply_token = str(uuid4())
     batch = _claim_apply_lease(db, tenant_id=tenant_id, public_id=public_id, apply_token=apply_token)
     claimed_row_ids: list[int] = []

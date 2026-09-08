@@ -23,7 +23,8 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.fx_constants import FX_STATUS_PENDING
 from app.money_contract import MoneySign, ensure_money_minor
-from app.services.currency_common import home_currency_code, normalize_currency_code
+from app.services.currency_binding_service import require_runtime_home_currency_code
+from app.services.currency_common import normalize_currency_code
 from app.services.exchange_rate_service import (
     amount_major_to_minor,
     calculate_cny_cents,
@@ -98,7 +99,7 @@ def freeze_home_amount(
         original_amount=original_amount,
         amount_error=amount_error,
     )
-    home = home_currency_code()
+    home = require_runtime_home_currency_code(db)
     has_original = original_currency is not None or original_amount is not None
 
     if not has_original:
@@ -178,6 +179,7 @@ def _freeze_foreign_amount(
         raise AppError("exchange_rate_pending", status_code=409)
 
     cents = calculate_cny_cents(
+        home_currency_code=home,
         original_currency_code=code,
         original_amount_minor=original_amount_minor,
         exchange_rate_to_cny=rate,

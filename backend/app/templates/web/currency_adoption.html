@@ -33,11 +33,15 @@
       </div>
       <a class="adoption-primary" href="/web">回到小票夹</a>
 
-      {% elif preview.state == 'ADOPTION_REQUIRED' %}
+      {% else %}
       <div class="adoption-status">一次性确认</div>
       <h1 id="adoption-title">确认这台小票夹的本位币</h1>
       <p class="adoption-lede">
+        {% if preview.state == 'EMPTY' %}
+        先选择这台小票夹记账和汇总使用的币种。系统不会替你选择，确认后即可开始记账。
+        {% else %}
         小票夹发现这台安装里已有金额记录，需要由安装拥有者确认它们原本使用的币种，才能继续安全记账。
+        {% endif %}
       </p>
 
       {% if error_message %}
@@ -63,7 +67,7 @@
         <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
 
         <fieldset class="adoption-currencies">
-          <legend>这些记录原本使用哪种本位币？</legend>
+          <legend>{% if preview.state == 'EMPTY' %}你要使用哪种本位币？{% else %}这些记录原本使用哪种本位币？{% endif %}</legend>
           {% for currency in currency_options %}
           <label class="adoption-currency">
             <input type="radio" name="home_currency_code" value="{{ currency.code }}" {% if selected_code == currency.code %}checked{% endif %} required>
@@ -75,12 +79,6 @@
           </label>
           {% endfor %}
         </fieldset>
-
-        {% if preview.configured_home_currency_code %}
-        <p class="adoption-config-note">
-          当前安装设置为 {{ configured_name }}（{{ preview.configured_home_currency_code }}）。这是配置提示，不替你判断历史记录。
-        </p>
-        {% endif %}
 
         <div class="adoption-consequences" aria-label="确认后的结果">
           <h2>确认后会发生什么</h2>
@@ -95,11 +93,6 @@
       </form>
       {% endif %}
 
-      {% else %}
-      <div class="adoption-status adoption-status--quiet">无需处理</div>
-      <h1 id="adoption-title">本位币会在首次记账时确定</h1>
-      <p class="adoption-lede">这台小票夹还没有需要人工确认的历史金额。你可以直接回到产品继续使用。</p>
-      <a class="adoption-primary" href="/web">回到小票夹</a>
       {% endif %}
     </section>
 

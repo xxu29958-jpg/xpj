@@ -11,10 +11,8 @@ from app.schemas import GoalCreateRequest, GoalResponse, GoalUpdateRequest
 from app.services import goal_debt_repayment_service
 from app.services.category_service import normalize_category
 from app.services.currency_binding_service import (
-    assert_currency_binding_consistent,
     resolve_write_capability,
 )
-from app.services.currency_common import home_currency_code
 from app.services.goal_spending_response import goal_response, month_spend_totals
 from app.services.optimistic_concurrency import bump_row_version, claim_row_with_token
 from app.services.spending_contract_service import clean_month
@@ -210,7 +208,7 @@ def create_goal(
     target_amount_cents = _clean_target_amount(payload.target_amount_cents)
     now = now_utc()
     # R13-2：无币种列的目标写按 env 口径入账 —— 先过绑定门（漂移/未决拒写）。
-    assert_currency_binding_consistent(db, home_currency_code())
+    resolve_write_capability(db)
     period = _clean_period(payload.period)
     month = _clean_month(payload.month)
     category = _clean_category(payload.category)
@@ -288,7 +286,7 @@ def update_goal(
 
     # R13-2：目标编辑若改金额字段则按 env 口径入账 —— 先过绑定门（漂移/未决拒写；
     # 未改金额的纯元数据 PATCH 也过门从简——门的 metadata 豁免只在 apply_currency_payload）。
-    assert_currency_binding_consistent(db, home_currency_code())
+    resolve_write_capability(db)
     updates = payload.model_dump(exclude_unset=True, exclude={"expected_row_version"})
     goal_id = goal.id
     new_name = goal.name

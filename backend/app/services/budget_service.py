@@ -31,10 +31,8 @@ from app.services.budget_money import (
 )
 from app.services.category_service import normalize_category
 from app.services.currency_binding_service import (
-    assert_currency_binding_consistent,
     resolve_write_capability,
 )
-from app.services.currency_common import home_currency_code
 from app.services.optimistic_concurrency import bump_row_version, claim_row_with_token
 from app.services.spending_contract_service import (
     clean_month,
@@ -351,7 +349,7 @@ def upsert_monthly_budget(
     now = now_utc()
     # R13-2：无币种列的预算写也按 env 盖章口径入账 —— 先过绑定门（漂移/未决拒写，
     # 否则 env 回摆后永久错值且无列可识别）。
-    assert_currency_binding_consistent(db, home_currency_code())
+    resolve_write_capability(db)
 
     budget = _get_any_budget(db, tenant_id=tenant_id, month=clean_month)
     if budget is None:

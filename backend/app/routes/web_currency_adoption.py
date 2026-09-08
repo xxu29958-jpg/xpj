@@ -22,7 +22,7 @@ from app.version import BACKEND_VERSION, STATIC_ASSET_VERSION
 
 router = APIRouter(prefix="/web", tags=["web"])
 
-_CONFIRM_REASON = "安装拥有者通过小票夹 Desktop 明确确认历史金额的本位币。"
+_CONFIRM_REASON = "安装拥有者通过小票夹 Desktop 明确选择并确认本位币。"
 _CURRENCY_NAMES = {
     "CNY": "人民币",
     "USD": "美元",
@@ -37,6 +37,7 @@ _RETRYABLE_ERRORS = {
     "currency_binding_state_conflict": "本位币状态刚刚发生了变化。已重新检查当前结果。",
     "currency_adoption_currency_conflict": "记录之间存在币种矛盾，没有改写任何金额。请先处理系统体检中的冲突。",
     "idempotency_key_in_progress": "上次确认仍在处理，请稍后重新检查结果。",
+    "currency_not_supported": "请选择一种支持的本位币。",
 }
 
 
@@ -86,9 +87,7 @@ def _render(
     status_code: int = 200,
 ) -> HTMLResponse:
     if selected_code not in preview.allowed_home_currency_codes:
-        selected_code = preview.configured_home_currency_code or ""
-    if selected_code not in preview.allowed_home_currency_codes:
-        selected_code = preview.allowed_home_currency_codes[0] if len(preview.allowed_home_currency_codes) == 1 else ""
+        selected_code = ""
     return templates.TemplateResponse(
         request=request,
         name="currency_adoption.html",
@@ -100,7 +99,6 @@ def _render(
             "preview": preview,
             "currency_options": _currency_options(preview),
             "selected_code": selected_code,
-            "configured_name": _CURRENCY_NAMES.get(preview.configured_home_currency_code or "", ""),
             "active_name": _CURRENCY_NAMES.get(preview.home_currency_code or "", ""),
             "error_message": error_message,
             "evidence_token": _evidence_token(preview.evidence_sha256),
