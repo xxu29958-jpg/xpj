@@ -25,7 +25,7 @@ internal fun PlanRoute(
     screenFactory: MainScreenFactory,
 ) {
     val budgetViewModel: BudgetViewModel = viewModel(
-        factory = budgetViewModelFactory(screenFactory.budgetRepository, screenFactory.debtRepository),
+        factory = budgetViewModelFactory(screenFactory.budgetRepository),
     )
     val recurringViewModel: RecurringViewModel = viewModel(
         factory = recurringViewModelFactory(screenFactory.recurringRepository),

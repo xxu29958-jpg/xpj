@@ -100,7 +100,7 @@ private fun PlanConfiguredBudget(
     budget: BudgetMonthly,
     onOpenBudget: () -> Unit,
 ) {
-    val currency = LocalCurrencyDisplay.current
+    val currency = CurrencyDisplay.forRecord(budget.homeCurrencyCode ?: "UNKNOWN")
     val danger = LocalStateTokens.current.danger.fg
     val amount = if (budget.isOverBudget) budget.overspentAmountCents else budget.remainingAmountCents
     Column(
@@ -133,17 +133,7 @@ private fun PlanConfiguredBudget(
             }
             PlanRowChevron(modifier = Modifier.align(Alignment.CenterVertically))
         }
-        BudgetProgressBar(progress = budget.spentProgress)
-        Text(
-            text = stringResource(
-                R.string.plan_budget_progress_meta,
-                formatDisplayAmount(budget.spentAmountCents, currency),
-                formatDisplayAmount(budget.availableAmountCents, currency),
-                budget.spentPercent,
-            ),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall.tabularNum(),
-        )
+        PlanBudgetProgress(budget, currency)
         state.loadError?.let {
             Text(
                 text = it.asString(),
@@ -153,6 +143,21 @@ private fun PlanConfiguredBudget(
         }
     }
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
+}
+
+@Composable
+private fun PlanBudgetProgress(budget: BudgetMonthly, currency: CurrencyDisplay) {
+    budget.spentProgress?.let { BudgetProgressBar(progress = it) }
+    Text(
+        text = budget.spentPercent?.let { percent -> stringResource(R.string.plan_budget_progress_meta,
+            formatDisplayAmount(budget.spentAmountCents, currency), formatDisplayAmount(budget.availableAmountCents, currency), percent)
+        } ?: stringResource(R.string.stats_budget_progress_unavailable_status),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.bodySmall.tabularNum(),
+    )
+    if (budget.missingCurrencyCodes.isNotEmpty()) {
+        Text(stringResource(R.string.budget_missing_conversion, budget.missingCurrencyCodes.joinToString("、")))
+    }
 }
 
 @Composable
