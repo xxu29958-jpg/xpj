@@ -105,10 +105,12 @@ def web_goal_save(
         )
     except (AppError, ValidationError) as exc:
         db.rollback()
-        conflict = isinstance(exc, AppError) and exc.error == "state_conflict"
+        conflict = isinstance(exc, AppError) and exc.error in {"state_conflict", "idempotency_key_reused"}
         error = exc.message if isinstance(exc, AppError) else "请检查目标名称、月份和金额。输入已保留。"
         if conflict:
             error = "目标已在其它端更新。你的输入已保留，请对照当前目标核对后再保存。"
+            if exc.error == "idempotency_key_reused":
+                error = "这份表单已经提交过。新的修改尚未保存，请核对当前目标后再保存。"
         return _render_editor(
             request, db, options, selected_id, goal, values=values, error=error,
             conflict=conflict, status_code=exc.status_code if isinstance(exc, AppError) else 422,

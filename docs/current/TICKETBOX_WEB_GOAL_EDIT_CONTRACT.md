@@ -40,6 +40,8 @@ transaction; the inline API transaction is retired. Existing GoalResponse,
 operation/key fingerprint, OCC, currency binding, Android receipt and report
 consumers keep their semantics. Refusal preserves the original input/key/token;
 explicit review displays current facts and prepares a new proposal without writing.
+This includes a changed second edit from a previously consumed form: its input
+survives key-reuse refusal and receives the same explicit review exit.
 Create/archive and the shared recycle owner remain their existing consumers.
 Executed cloud RED found all three missing-entry cases. Real VM browser journeys
 at 360/768/1440px and bounded review are closed; the [PR qualification record](https://github.com/xxu29958-jpg/xpj/pull/394)

@@ -56,6 +56,21 @@ def test_real_editor_replays_original_key_without_a_second_goal_revision(web_cli
     assert canonical["category"] is None
     assert canonical["target_amount_cents"] == 35025
     assert canonical["row_version"] == goal["row_version"] + 1
+    fields.update(name="第二次修改", target_amount_yuan="400.00")
+    reused = web_client.post(action, data=fields)
+    assert reused.status_code == 422, reused.text
+    assert 'value="第二次修改"' in reused.text and 'name="review_latest"' in reused.text
+    retained = hidden_post_forms(reused.text)[action]
+    assert retained["idempotency_key"] == fields["idempotency_key"]
+    review = web_client.post(action, data={**fields, "review_latest": "true"})
+    assert review.status_code == 200
+    proposal = hidden_post_forms(review.text)[action]
+    assert proposal["idempotency_key"] != fields["idempotency_key"]
+    assert int(proposal["expected_row_version"]) == canonical["row_version"]
+    proposal.update(name="第二次修改", month="2026-06", target_amount_yuan="400.00", category="")
+    assert web_client.post(action, data=proposal, follow_redirects=False).status_code == 303
+    final = web_client.get(f'/api/goals/{goal["public_id"]}', headers=identity.app_headers).json()
+    assert final["target_amount_cents"] == 40000 and final["row_version"] == canonical["row_version"] + 1
 
 
 def test_validation_and_occ_refusals_keep_input_original_key_and_original_version(web_client, identity):
