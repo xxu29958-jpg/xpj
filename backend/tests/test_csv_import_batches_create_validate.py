@@ -99,7 +99,6 @@ def test_csv_import_batch_handles_more_than_legacy_preview_limit_with_paged_appl
         assert inserted == 10_000
 
 
-@pytest.mark.currency_binding_unbound
 def test_csv_import_batch_create_inserts_rows_in_chunks(
     identity,
     monkeypatch: pytest.MonkeyPatch,
@@ -109,6 +108,8 @@ def test_csv_import_batch_create_inserts_rows_in_chunks(
 
     monkeypatch.setattr(lifecycle_mod, "CREATE_BATCH_INSERT_CHUNK_SIZE", 2)
     with SessionLocal() as db:
+        confirmed_currency = get_capability(db)
+        assert confirmed_currency.state == "ACTIVE"
         empty_batch = create_csv_import_batch(
             db,
             tenant_id="owner",
@@ -116,7 +117,7 @@ def test_csv_import_batch_create_inserts_rows_in_chunks(
             file_obj=_csv_bytes(0),
         )
         assert empty_batch.total_rows == 0
-        assert get_capability(db).state == "EMPTY"
+        assert get_capability(db) == confirmed_currency
 
     real_row_from_parsed = lifecycle_mod._row_from_parsed
     built_rows = 0
@@ -137,7 +138,7 @@ def test_csv_import_batch_create_inserts_rows_in_chunks(
             file_obj=_csv_bytes(5),
         )
     with SessionLocal() as db:
-        assert get_capability(db).state == "EMPTY"
+        assert get_capability(db) == confirmed_currency
         assert db.scalar(select(func.count()).select_from(CsvImportRow)) == 0
         assert db.scalar(select(func.count()).select_from(CsvImportBatch)) == 1
 
@@ -170,7 +171,7 @@ def test_csv_import_batch_create_inserts_rows_in_chunks(
         assert batch.total_rows == 5
         assert flush_count >= 4
         assert commit_count == 1
-        assert get_capability(db).state == "ACTIVE"
+        assert get_capability(db) == confirmed_currency
 
         rows = list_csv_import_rows(
             db,
