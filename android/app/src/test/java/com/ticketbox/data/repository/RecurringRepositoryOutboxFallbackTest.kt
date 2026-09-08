@@ -16,7 +16,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class RecurringRepositoryOutboxFallbackTest {
@@ -127,7 +126,7 @@ class RecurringRepositoryOutboxFallbackTest {
     }
 
     @Test
-    fun `manual create success publishes server fact without queue row`() = runTest {
+    fun `manual creates are durably queued before any network attempt`() = runTest {
         val dao = FakePendingMutationDao()
         val outbox = testOutboxRepository(dao = dao)
         val api = ApiStub(ApiResult.Success(successDto()))
@@ -136,11 +135,23 @@ class RecurringRepositoryOutboxFallbackTest {
         val outcome = harness.repository.createAllowingOffline(
             expectedBinding = harness.binding,
             draft = RecurringItemDraft("房租", 350000, "2026-09-01"),
-        ).getOrThrow() as RecurringSaveOutcome.Synced
+        ).getOrThrow()
 
-        assertEquals("recurring-1", outcome.item.publicId)
-        assertEquals(0, dao.rows.size)
-        assertFalse(api.createKey.isNullOrBlank())
+        assertEquals(null, api.createKey, "Only the existing Outbox dispatcher may send the saved intent")
+        assertTrue(outcome is RecurringSaveOutcome.Queued)
+        assertEquals(1, dao.rows.size)
+    }
+
+    @Test
+    fun `missing durable command owner cannot fall through to direct HTTP`() = runTest {
+        val api = ApiStub(ApiResult.Success(successDto()))
+        val harness = harness(api)
+        val outcome = harness.repository.createAllowingOffline(
+            expectedBinding = harness.binding,
+            draft = RecurringItemDraft("房租", 350000, null),
+        )
+        assertTrue(outcome.isFailure)
+        assertEquals(null, api.createKey)
     }
 
     @Test
