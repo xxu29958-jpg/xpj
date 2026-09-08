@@ -10,7 +10,7 @@
      salary/bonus 等协议枚举;
    - 三个表单 (create/archive/restore) 均带 csrf + ledger_id hidden
      (archive/restore 路由已声明接收), OCC expected_row_version 不变。 #}
-{% set source_type_labels = {'salary': '工资', 'bonus': '奖金', 'freelance': '副业 / 接单', 'rental': '租金', 'other': '其它'} %}
+{% from "_income_source_types.html" import source_type_labels %}
 {% block content %}
 <header class="product-page-header">
   <div class="product-page-heading">
@@ -60,6 +60,7 @@
         {% endif %}
       </span>
       {% if can_write %}
+      {% if action == 'archive' %}<a class="product-button product-button--quiet product-button--small" href="/web/income-plans/{{ plan.public_id }}/edit?ledger_id={{ selected_ledger_id }}&intent_month={{ intent_month }}">编辑计划</a>{% endif %}
       <form method="post" action="/web/income-plans/{{ plan.public_id }}/{{ action }}" class="product-inline-form">
         {{ csrf_field|safe }}
         <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">

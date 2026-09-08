@@ -91,6 +91,7 @@ from app.routes import (
     web_goals,
     web_import_export,
     web_inbox_capture,
+    web_income_edit,
     web_income_plans,
     web_media,
     web_merchants,
@@ -390,6 +391,7 @@ app.include_router(web_rules_routes.router)
 app.include_router(web_budgets.router)
 app.include_router(web_budget_advise.router)
 app.include_router(web_income_plans.router)
+app.include_router(web_income_edit.router)
 app.include_router(web_library.router)
 app.include_router(web_reports.router)
 app.include_router(web_goals.router)
