@@ -7,6 +7,8 @@ from io import StringIO
 from api_contract_helpers import confirm_expense_api
 from fastapi.testclient import TestClient
 
+from tests._runtime_protocol import negotiated_headers
+
 
 def _set_manual_rate(
     client: TestClient,
@@ -17,7 +19,7 @@ def _set_manual_rate(
 ) -> None:
     response = client.put(
         f"/api/exchange-rates/{currency_code}/{rate_date}",
-        headers=identity.app_headers,
+        headers=negotiated_headers(client, identity.app_headers),
         json={
             "home_currency_code": "CNY",
             "currency_code": currency_code,

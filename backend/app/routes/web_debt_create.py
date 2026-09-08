@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
@@ -24,7 +25,6 @@ from app.routes.web_common import (
 from app.routes.web_debt_actions import _actor_account_id, _error_message
 from app.routes.web_debts import _debt_create_context
 from app.schemas import DebtCreateRequest
-from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import (
     major_amount_to_minor,
     normalize_currency_code,
@@ -111,6 +111,7 @@ def _create_payload(
         )
     return DebtCreateRequest(
         direction=(direction or "").strip(),
+        home_currency_code=home_currency,
         counterparty_type="external",
         counterparty_label=(counterparty_label or "").strip(),
         # Native form encoding expands textarea newlines to CRLF.
@@ -143,6 +144,7 @@ def web_create_debt(
     note: str = Form(default=""),
     amount_major: str = Form(default=""),
     currency_code: str = Form(default=""),
+    home_currency_code: str = Form(default=""),
     event_time: str = Form(default=""),
     debt_kind: str = Form(default="unspecified"),
     installment_count: str = Form(default=""),
@@ -166,6 +168,7 @@ def web_create_debt(
         "note": note,
         "amount_major": amount_major,
         "currency_code": currency_code,
+        "home_currency_code": home_currency_code,
         "event_time": event_time,
         "debt_kind": debt_kind,
         "installment_count": installment_count,
@@ -173,7 +176,9 @@ def web_create_debt(
         "idempotency_key": idempotency_key,
     }
     try:
-        presentation_currency = require_runtime_home_currency_code(db)
+        if not home_currency_code:
+            raise AppError("invalid_request", "页面已更新，请核对金额、原币和记账币种后再次保存。", status_code=422)
+        presentation_currency = normalize_currency_code(home_currency_code)
         payload = _create_payload(
             direction=direction,
             counterparty_label=counterparty_label,
@@ -197,6 +202,9 @@ def web_create_debt(
         if isinstance(exc, AppError):
             message = _error_message(exc)
             status_code = exc.status_code
+            if exc.error == "idempotency_key_reused":
+                values["idempotency_key"] = str(uuid4())
+                message = "这个表单编号已使用。请先核对原记录；再次保存将新增一笔往来。"
         else:
             message = "请检查方向、对方、金额、币种、分期设置和往来说明（最多 500 字）。"
             status_code = 422

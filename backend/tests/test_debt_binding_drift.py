@@ -34,6 +34,7 @@ from app.services.debt_service._repayment import record_repayment
 from app.services.exchange_rate_service import apply_currency_payload, upsert_exchange_rate
 from app.services.time_service import now_utc
 from tests._infra.currency import activate_test_currency_authority
+from tests._runtime_protocol import negotiated_headers
 
 pytestmark = pytest.mark.currency_binding_unbound
 
@@ -55,9 +56,9 @@ def _create_cny_debt(client: TestClient, identity) -> None:
         db.commit()
     response = client.post(
         "/api/debts",
-        headers=_idem_headers(identity.app_headers),
+        headers=negotiated_headers(client, _idem_headers(identity.app_headers)),
         json={
-            "direction": "i_owe",
+            "home_currency_code": "CNY", "direction": "i_owe",
             "counterparty_type": "external",
             "counterparty_label": "房东",
             "principal_amount_cents": 30000,
@@ -108,8 +109,8 @@ def test_debt_create_keeps_confirmed_currency_when_environment_changes(client: T
     _create_cny_debt(client, identity)
     for configured in ("JPY", "ZZZ"):
         monkeypatch.setenv("FX_HOME_CURRENCY_CODE", configured)
-        response = client.post("/api/debts", headers=_idem_headers(identity.app_headers), json={
-            "direction": "i_owe", "counterparty_type": "external",
+        response = client.post("/api/debts", headers=negotiated_headers(client, _idem_headers(identity.app_headers)), json={
+            "home_currency_code": "CNY", "direction": "i_owe", "counterparty_type": "external",
             "counterparty_label": "同事", "principal_amount_cents": 1200,
         })
         assert response.status_code == 201, response.json()

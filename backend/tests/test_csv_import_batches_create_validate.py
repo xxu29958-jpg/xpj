@@ -17,6 +17,7 @@ from app.services.csv_import_batch_service import (
     list_csv_import_rows,
 )
 from app.services.currency_binding_service import get_capability
+from tests._runtime_protocol import negotiated_headers
 
 
 def _csv_bytes(row_count: int) -> BytesIO:
@@ -252,7 +253,7 @@ def test_csv_import_rejects_conflicting_amount_yuan_and_cents(client: TestClient
 def test_csv_import_foreign_amount_cents_is_original_minor_not_home_amount(client: TestClient, *, identity) -> None:
     rate = client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=identity.app_headers,
+        headers=negotiated_headers(client, identity.app_headers),
         json={
             "home_currency_code": "CNY",
             "currency_code": "USD",

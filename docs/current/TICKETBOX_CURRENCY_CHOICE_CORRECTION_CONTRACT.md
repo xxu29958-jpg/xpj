@@ -31,6 +31,8 @@ the user's existing financial data remains a separate, concrete approval step.
 | Money writers | Expense/manual/OCR/import, debt/repayment/proposal, split invitation, budget/goal/income/recurring/category rules; existing command and currency/FX tests, DB writer fences |
 | Parsing and FX | `currency_common`, `exchange_rate_service`, `fx_rate_provider`, scheduler; explicit source/home arguments must replace env-derived meaning, including pure-helper callers |
 | Persistence and recovery | Binding/audit/idempotency receipt, currency evidence inventory and SQL guards; migration tests; Android negotiated binding, queued payloads, dispatcher recovery and legacy gate |
+| Debt create intent | Web form and Android `DebtCreationRepository` capture currency; `CreateDebtDispatcher` maps the durable v1 intent to the wire request without replacing its meaning. `debt_command_service` owns create/replay; an old completed receipt is reusable only when its original request and persisted currency match. Request-contract, API replay and existing Room-payload tests verify these boundaries |
+| Changed command protocol | Debt create and manual FX reuse the income command's version dependency before body validation. Old clients receive `client_upgrade_required`; runtime projection no longer promises unversioned write compatibility. Direct HTTP producers negotiate through the existing test client helper; protocol refusal tests use the original old request shape |
 | Product consumers | Money pages, recycle bin and Owner projections, reports/insights, Android forms/caches and sync feedback, Desktop first-use navigation; real non-CNY choice then financial task, refusal/replay and cross-client recovery |
 | Verification producers | Explicit currency fixtures for ordinary and migration tests; legacy bootstrap/admin HTTP smoke and Desktop bridge tests declare a configured CNY baseline. Dedicated fresh Owner product tests and VM prove actual initial selection. Generated API and protocol gates follow real semantic changes |
 
@@ -72,6 +74,12 @@ wait for the same audited Owner adoption transaction. Expenses, offsets and
 repayments request rates for their explicit money context. This is a candidate
 implementation; the other money carriers, nonempty choice transaction and
 offline continuation remain unfinished in this delivery package.
+Debt creation now carries its captured currency through Web and the durable
+Android v1 queue; repayment/proposal/bill-split children use their parent's
+frozen currency. Web validation keeps the form currency and retry key; a changed
+already-used form requires a nonwriting review before a new command. These
+changes are candidates awaiting full qualification, not closure of all money
+consumers or permission to change an existing installation default yet.
 
 Qualification includes TDD, exact candidate cloud gates, bounded review, real
 Desktop/Android continuation and independent main qualification. No long local

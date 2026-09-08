@@ -11,5 +11,5 @@ def negotiated_headers(client: TestClient, auth_headers: dict[str, str]) -> dict
     return {
         **auth_headers,
         snapshot["api_version_header"]: snapshot["api_version"],
-        currency["request_binding_header"]: currency["request_binding"],
+        **({currency["request_binding_header"]: currency["request_binding"]} if currency["request_binding"] else {}),
     }

@@ -40,6 +40,7 @@ from app.services.recurring_candidate_confirmation_service import (
     _RecurringCandidateMatch,
 )
 from tests._infra.currency import activate_test_currency_authority
+from tests._runtime_protocol import negotiated_headers
 from tests.test_debt_binding_drift import (
     _idem_headers,
     _owner_account_id,
@@ -223,9 +224,8 @@ def test_terminal_archive_restore_retries_do_not_require_a_writer(
     db.commit.assert_not_called()
 
 
-def test_first_binding_rejected_when_legacy_cny_draft_exists(client: TestClient, monkeypatch, *, identity) -> None:
-    # R13-8a 空库四步序列：CNY 环境捕获草稿 → env 翻 JPY → 首笔 JPY 债必须被拒
-    # （RepaymentDraft 已入 drift 事实集，否则 CNY 分整数将按 JPY 折叠）。
+def test_environment_change_cannot_reinterpret_a_confirmed_draft_or_new_debt(client: TestClient, monkeypatch, *, identity) -> None:
+    # Both captured money intents retain CNY after an unrelated environment change.
     with SessionLocal() as db:
         activate_test_currency_authority(db, "CNY")
         db.commit()
@@ -240,9 +240,9 @@ def test_first_binding_rejected_when_legacy_cny_draft_exists(client: TestClient,
     try:
         created = client.post(
             "/api/debts",
-            headers=_idem_headers(identity.app_headers),
+            headers=negotiated_headers(client, _idem_headers(identity.app_headers)),
             json={
-                "direction": "i_owe",
+                "home_currency_code": "CNY", "direction": "i_owe",
                 "counterparty_type": "external",
                 "counterparty_label": "房东",
                 "principal_amount_cents": 1200,

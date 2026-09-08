@@ -79,6 +79,50 @@ class DebtCreationRepositoryTest {
     }
 
     @Test
+    fun aStoredV1IntentSuppliesItsCurrencyToTheNewWireRequest() = runTest {
+        val fixture = DebtCreationFixture()
+        val receipt = fixture.save().getOrThrow()
+        val row = fixture.dao.rows.getValue(receipt.intentId)
+        // This is the released Room shape: the nested request has no currency field.
+        val original = """{
+            "revision":1,"homeCurrencyCode":"JPY",
+            "originSessionGeneration":"${fixture.binding.sessionGeneration}",
+            "originBindingRevision":"${fixture.binding.bindingRevision}",
+            "request":{"direction":"owed_to_me","counterparty_type":"external",
+                "counterparty_label":"Alex","principal_amount_cents":1200,
+                "source_type":"manual","debt_kind":"unspecified"}
+        }"""
+        fixture.dao.rows[row.id] = row.copy(payload = original)
+        fixture.api.loseResponse = false
+        fixture.api.replyHomeCurrency = "JPY"
+
+        fixture.engine(fixture.outbox, fixture.clock).drainOnce()
+
+        val sent = fixture.api.calls.single()
+        assertEquals("JPY", sent.first.homeCurrencyCode)
+        assertEquals(1200L, sent.first.principalAmountCents)
+        assertEquals(row.idempotencyKey, sent.second)
+        assertEquals(original, fixture.dao.rows.getValue(row.id).payload)
+        assertEquals(PendingMutationStatus.Done.wireValue, fixture.dao.rows.getValue(row.id).status)
+    }
+
+    @Test
+    fun aReceiptWithAnotherCurrencyDoesNotSettleTheOriginalIntent() = runTest {
+        val fixture = DebtCreationFixture()
+        val receipt = fixture.save().getOrThrow()
+        val original = fixture.dao.rows.getValue(receipt.intentId)
+        fixture.api.loseResponse = false
+        fixture.api.replyHomeCurrency = "JPY"
+
+        fixture.engine(fixture.outbox, fixture.clock).drainOnce()
+
+        val retained = fixture.dao.rows.getValue(receipt.intentId)
+        assertEquals(PendingMutationStatus.Failed.wireValue, retained.status)
+        assertEquals(original.payload, retained.payload)
+        assertEquals(original.idempotencyKey, retained.idempotencyKey)
+    }
+
+    @Test
     fun separateSaveIntentsKeepSeparateKeysEvenWhenTheValuesMatch() = runTest {
         val fixture = DebtCreationFixture()
         val first = fixture.save().getOrThrow()
@@ -192,6 +236,7 @@ internal class DebtCreationApiProbe : ApiService by FakeApiService(mutableListOf
     val calls = mutableListOf<Pair<DebtCreateRequestDto, String?>>()
     val facts = mutableMapOf<String, DebtDto>()
     var loseResponse = true
+    var replyHomeCurrency = "CNY"
 
     override suspend fun createDebt(request: DebtCreateRequestDto, idempotencyKey: String?): DebtDto {
         calls += request to idempotencyKey
@@ -201,7 +246,7 @@ internal class DebtCreationApiProbe : ApiService by FakeApiService(mutableListOf
                 direction = request.direction, counterpartyType = request.counterpartyType,
                 counterpartyLabel = request.counterpartyLabel, principalAmountCents = request.principalAmountCents,
                 remainingAmountCents = request.principalAmountCents, paidAmountCents = 0,
-                status = "open", sourceType = request.sourceType, homeCurrencyCode = "CNY",
+                status = "open", sourceType = request.sourceType, homeCurrencyCode = replyHomeCurrency,
                 createdAt = "2026-09-06T00:00:00Z", updatedAt = "2026-09-06T00:00:00Z", rowVersion = 1,
                 debtKind = request.debtKind, installmentCount = request.installmentCount,
                 installmentPeriodMonths = request.installmentPeriodMonths, note = request.note,

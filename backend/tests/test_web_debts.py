@@ -18,6 +18,7 @@ from app.routes.web_debts import (
     _member_headline,
     _split_debt_views,
 )
+from tests._runtime_protocol import negotiated_headers
 
 # Uses the shared ``web_client`` fixture (conftest.py) which bypasses the /web
 # loopback gate by overriding _require_local; the plain ``client`` fixture keeps
@@ -37,13 +38,13 @@ def _create_external_debt(
     principal_cents: int = 50000,
 ) -> dict:
     body: dict[str, object] = {
-        "direction": direction,
+        "home_currency_code": "CNY", "direction": direction,
         "counterparty_type": "external",
         "principal_amount_cents": principal_cents,
     }
     if label is not None:
         body["counterparty_label"] = label
-    resp = web_client.post("/api/debts", headers=_idem(identity.app_headers), json=body)
+    resp = web_client.post("/api/debts", headers=negotiated_headers(web_client, _idem(identity.app_headers)), json=body)
     assert resp.status_code == 201, resp.text
     return resp.json()
 

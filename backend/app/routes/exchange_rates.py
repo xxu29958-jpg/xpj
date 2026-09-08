@@ -5,7 +5,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_app_context, get_current_writer_context
+from app.auth import get_current_app_context, get_current_protocol_writer_context
 from app.database import get_db
 from app.errors import AppError
 from app.schemas import ExchangeRateListResponse, ExchangeRateRequest, ExchangeRateResponse
@@ -39,7 +39,7 @@ def put_rate(
     currency_code: str,
     rate_date: date,
     payload: ExchangeRateRequest,
-    auth: AuthContext = Depends(get_current_writer_context),
+    auth: AuthContext = Depends(get_current_protocol_writer_context),
     db: Session = Depends(get_db),
 ) -> ExchangeRateResponse:
     code = payload.currency_code.strip().upper()

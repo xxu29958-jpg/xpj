@@ -14,6 +14,7 @@ from app.main import app
 from app.models import Account, AuthToken, Debt, Device, Ledger, LedgerMember
 from app.services.debt_service import list_repayment_facts
 from app.services.identity_service import hash_secret, new_session_token
+from tests._runtime_protocol import negotiated_headers
 
 
 def _idem(headers: dict[str, str]) -> dict[str, str]:
@@ -40,9 +41,9 @@ def _create_external_debt(
 ) -> dict:
     response = client.post(
         "/api/debts",
-        headers=_idem(headers),
+        headers=negotiated_headers(client, _idem(headers)),
         json={
-            "direction": "i_owe",
+            "home_currency_code": "CNY", "direction": "i_owe",
             "counterparty_type": "external",
             "counterparty_label": "测试借款",
             "principal_amount_cents": principal_amount_cents,

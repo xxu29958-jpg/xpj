@@ -23,7 +23,6 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.fx_constants import FX_STATUS_PENDING
 from app.money_contract import MoneySign, ensure_money_minor
-from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import normalize_currency_code
 from app.services.exchange_rate_service import (
     amount_major_to_minor,
@@ -71,6 +70,7 @@ def freeze_home_amount(
     db: Session,
     *,
     tenant_id: str,
+    home_currency_code: str,
     amount_cents: int | None,
     original_currency: str | None,
     original_amount: Decimal | None,
@@ -99,7 +99,7 @@ def freeze_home_amount(
         original_amount=original_amount,
         amount_error=amount_error,
     )
-    home = require_runtime_home_currency_code(db)
+    home = normalize_currency_code(home_currency_code)
     has_original = original_currency is not None or original_amount is not None
 
     if not has_original:

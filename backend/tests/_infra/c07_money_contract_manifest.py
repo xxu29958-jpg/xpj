@@ -66,7 +66,7 @@ POSITIVE_DECIMAL_REQUEST_FIELDS = (
     (
         DebtCreateRequest,
         "original_amount",
-        {"direction": "i_owe", "counterparty_type": "external"},
+        {"home_currency_code": "CNY", "direction": "i_owe", "counterparty_type": "external"},
     ),
     (
         RepaymentCreateRequest,

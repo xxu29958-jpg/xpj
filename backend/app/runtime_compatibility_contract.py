@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 RUNTIME_COMPATIBILITY_CONTRACT = "ticketbox-runtime-compatibility-v1"
-# Money writes require an explicitly confirmed persisted currency; no first-write choice.
+# Currency-bearing commands capture their money context; no implicit first-write choice.
 CURRENT_API_VERSION = "2026-09-08"
 # Optional keyed app uploads can replay their complete original committed receipt.
 UPLOAD_ORIGINAL_RECEIPT_VERSION = 1

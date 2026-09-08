@@ -70,6 +70,7 @@ class DebtCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     direction: str
+    home_currency_code: str = Field(min_length=3, max_length=3)
     counterparty_type: str
     counterparty_account_id: int | None = None
     counterparty_label: str | None = Field(default=None, max_length=255)

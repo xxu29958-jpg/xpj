@@ -129,7 +129,7 @@ class DebtMappersTest {
             counterpartyLabel = "  小王  ",
             note = "  出差垫付车费\n待报销后归还  ",
             principalAmountCents = 12_345,
-        ).toCreateRequest()
+        ).toOutboxRequest()
 
         assertEquals(DebtDirections.OWED_TO_ME, request.direction)
         // Public create is external/manual only; member Debt is server-side (§5.2).
@@ -149,7 +149,7 @@ class DebtMappersTest {
             counterpartyLabel = "信用卡",
             principalAmountCents = 80_000,
             debtKind = DebtKinds.REVOLVING,
-        ).toCreateRequest()
+        ).toOutboxRequest()
 
         assertEquals(DebtKinds.REVOLVING, request.debtKind)
         assertNull(request.note)
@@ -159,7 +159,7 @@ class DebtMappersTest {
                 counterpartyLabel = "同行人",
                 principalAmountCents = 100,
                 note = " \n ",
-            ).toCreateRequest().note,
+            ).toOutboxRequest().note,
         )
     }
 
@@ -213,7 +213,7 @@ class DebtMappersTest {
             debtKind = DebtKinds.INSTALLMENT,
             installmentCount = 12,
             installmentPeriodMonths = 3,
-        ).toCreateRequest()
+        ).toOutboxRequest()
         assertEquals(12L, installment.installmentCount)
         assertEquals(3L, installment.installmentPeriodMonths)
 
@@ -225,7 +225,7 @@ class DebtMappersTest {
             debtKind = DebtKinds.REVOLVING,
             installmentCount = 12,
             installmentPeriodMonths = 3,
-        ).toCreateRequest()
+        ).toOutboxRequest()
         assertNull(revolving.installmentCount)
         assertNull(revolving.installmentPeriodMonths)
 
@@ -236,7 +236,7 @@ class DebtMappersTest {
             principalAmountCents = 120_000,
             debtKind = DebtKinds.INSTALLMENT,
             installmentPeriodMonths = 3,
-        ).toCreateRequest()
+        ).toOutboxRequest()
         assertNull(periodOnly.installmentCount)
         assertNull(periodOnly.installmentPeriodMonths)
 
@@ -247,7 +247,7 @@ class DebtMappersTest {
             principalAmountCents = 120_000,
             debtKind = DebtKinds.INSTALLMENT,
             installmentCount = 12,
-        ).toCreateRequest()
+        ).toOutboxRequest()
         assertEquals(12L, countNoPeriod.installmentCount)
         assertNull(countNoPeriod.installmentPeriodMonths)
     }

@@ -23,6 +23,7 @@ from app.database import SessionLocal
 from app.models import Account, Debt, LedgerMember
 from app.services import debt_service
 from app.services.time_service import now_utc
+from tests._runtime_protocol import negotiated_headers
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
@@ -156,9 +157,9 @@ def _create_external_debt(
 ) -> dict:
     response = client.post(
         "/api/debts",
-        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        headers=negotiated_headers(client, {**identity.app_headers, "Idempotency-Key": str(uuid4())}),
         json={
-            "direction": "i_owe",
+            "home_currency_code": "CNY", "direction": "i_owe",
             "counterparty_type": "external",
             "counterparty_label": counterparty_label,
             "principal_amount_cents": principal_amount_cents,

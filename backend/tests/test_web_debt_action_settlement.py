@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import Account, Debt, LedgerMember
+from tests._runtime_protocol import negotiated_headers
 
 
 def _api_headers(identity) -> dict[str, str]:
@@ -19,9 +20,9 @@ def _api_headers(identity) -> dict[str, str]:
 def _create_external_debt(web_client: TestClient, *, identity) -> dict:
     response = web_client.post(
         "/api/debts",
-        headers=_api_headers(identity),
+        headers=negotiated_headers(web_client, _api_headers(identity)),
         json={
-            "direction": "i_owe",
+            "home_currency_code": "CNY", "direction": "i_owe",
             "counterparty_type": "external",
             "counterparty_label": "测试信用卡",
             "principal_amount_cents": 10_000,

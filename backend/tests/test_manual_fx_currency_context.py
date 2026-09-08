@@ -8,12 +8,13 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.services.exchange_rate_service import resolve_payload_rate
+from tests._runtime_protocol import negotiated_headers
 
 
 def _put_rate(client, identity, home, rate):
     return client.put(
         "/api/exchange-rates/USD/2026-09-08",
-        headers=identity.app_headers,
+        headers=negotiated_headers(client, identity.app_headers),
         json={
             "currency_code": "USD", "home_currency_code": home,
             "rate_date": "2026-09-08", "rate_to_cny": rate,
@@ -31,7 +32,7 @@ def test_unadopted_rates_require_owner_choice_before_the_list_can_label_them(cli
 def test_manual_rate_requires_the_target_currency(client: TestClient, identity):
     response = client.put(
         "/api/exchange-rates/USD/2026-09-08",
-        headers=identity.app_headers,
+        headers=negotiated_headers(client, identity.app_headers),
         json={"currency_code": "USD", "rate_date": "2026-09-08", "rate_to_cny": "7"},
     )
     assert response.status_code == 422

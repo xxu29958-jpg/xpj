@@ -14,9 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.currency_binding_contract import (
     CURRENCY_CONTRACT_VERSION,
-    INITIAL_BINDING_REVISION,
 )
-from app.fx_constants import DEFAULT_HOME_CURRENCY_CODE
 from app.runtime_compatibility_contract import (
     CURRENT_API_VERSION,
     RUNTIME_COMPATIBILITY_CONTRACT,
@@ -86,20 +84,6 @@ def _currency_write_compatibility(
     return "compatible"
 
 
-def _legacy_write_compatibility(
-    capability: CurrencyCapability,
-    write_compatibility: CompatibilityConclusion,
-) -> Literal["compatible", "client_upgrade_required"]:
-    if write_compatibility != "compatible":
-        return "client_upgrade_required"
-    safe = (
-        capability.state == "ACTIVE"
-        and capability.home_currency_code == DEFAULT_HOME_CURRENCY_CODE
-        and capability.binding_revision == INITIAL_BINDING_REVISION
-    )
-    return "compatible" if safe else "client_upgrade_required"
-
-
 def runtime_compatibility_snapshot(db: Session) -> RuntimeCompatibilitySnapshot:
     capability = get_capability(db)
     read_compatibility = _currency_read_compatibility(capability)
@@ -112,10 +96,7 @@ def runtime_compatibility_snapshot(db: Session) -> RuntimeCompatibilitySnapshot:
         api_version_header=TICKETBOX_API_VERSION_HEADER,
         read_compatibility=read_compatibility,
         write_compatibility=write_compatibility,
-        legacy_write_compatibility=_legacy_write_compatibility(
-            capability,
-            write_compatibility,
-        ),
+        legacy_write_compatibility="client_upgrade_required",
         upload_original_receipt_version=UPLOAD_ORIGINAL_RECEIPT_VERSION,
         currency=RuntimeCurrencyCapability(
             home_currency_code=product_home_currency,

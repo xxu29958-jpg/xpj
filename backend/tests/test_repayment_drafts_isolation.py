@@ -31,6 +31,7 @@ from sqlalchemy.exc import IntegrityError
 from app.database import SessionLocal
 from app.models import Account, AuthToken, Device, Ledger, LedgerMember, RepaymentDraft
 from app.services.identity_service import hash_secret, new_session_token
+from tests._runtime_protocol import negotiated_headers
 
 
 def _seed_personal_ledger(*, name: str, ledger_id: str) -> int:
@@ -91,9 +92,9 @@ def _create_owner_draft(client: TestClient, identity, *, amount_cents: int = 120
 def _create_owner_debt(client: TestClient, identity, *, principal_amount_cents: int = 50000) -> dict:
     response = client.post(
         "/api/debts",
-        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        headers=negotiated_headers(client, {**identity.app_headers, "Idempotency-Key": str(uuid4())}),
         json={
-            "direction": "i_owe",
+            "home_currency_code": "CNY", "direction": "i_owe",
             "counterparty_type": "external",
             "counterparty_label": "花呗",
             "principal_amount_cents": principal_amount_cents,
@@ -144,9 +145,9 @@ def test_suggestion_candidate_set_excludes_cross_tenant_debt(client: TestClient,
     # 花呗 draft must NOT be suggested ledger B's Debt — a dropped tenant filter would leak it.
     owner_debt = client.post(
         "/api/debts",
-        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        headers=negotiated_headers(client, {**identity.app_headers, "Idempotency-Key": str(uuid4())}),
         json={
-            "direction": "i_owe",
+            "home_currency_code": "CNY", "direction": "i_owe",
             "counterparty_type": "external",
             "counterparty_label": "京东白条",
             "principal_amount_cents": 50000,
@@ -158,9 +159,9 @@ def test_suggestion_candidate_set_excludes_cross_tenant_debt(client: TestClient,
     other_token = _mint_app_token(account_id=other_account, ledger_id="ledger_b")
     b_debt = client.post(
         "/api/debts",
-        headers={**_headers(other_token), "Idempotency-Key": str(uuid4())},
+        headers=negotiated_headers(client, {**_headers(other_token), "Idempotency-Key": str(uuid4())}),
         json={
-            "direction": "i_owe",
+            "home_currency_code": "CNY", "direction": "i_owe",
             "counterparty_type": "external",
             "counterparty_label": "花呗",
             "principal_amount_cents": 50000,

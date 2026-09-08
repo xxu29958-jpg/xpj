@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from app.config import get_settings
 from app.database import SessionLocal
 from tests._infra.currency import activate_test_currency_authority
+from tests._runtime_protocol import negotiated_headers
 
 
 def _idem_headers(app_headers: dict[str, str]) -> dict[str, str]:
@@ -37,9 +38,9 @@ def test_list_debts_envelope_carries_installation_home_currency(client: TestClie
 
     created = client.post(
         "/api/debts",
-        headers=_idem_headers(identity.app_headers),
+        headers=negotiated_headers(client, _idem_headers(identity.app_headers)),
         json={
-            "direction": "i_owe",
+            "home_currency_code": "CNY", "direction": "i_owe",
             "counterparty_type": "external",
             "counterparty_label": "房东",
             "principal_amount_cents": 30000,
@@ -61,9 +62,9 @@ def test_list_debts_envelope_keeps_persisted_authority_on_misconfigured_env(
     # An obsolete environment value cannot replace that authority.
     created = client.post(
         "/api/debts",
-        headers=_idem_headers(identity.app_headers),
+        headers=negotiated_headers(client, _idem_headers(identity.app_headers)),
         json={
-            "direction": "i_owe",
+            "home_currency_code": "CNY", "direction": "i_owe",
             "counterparty_type": "external",
             "counterparty_label": "房东",
             "principal_amount_cents": 30000,

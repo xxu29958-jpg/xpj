@@ -14,6 +14,7 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 from fastapi.testclient import TestClient
 
+from tests._runtime_protocol import negotiated_headers
 from tests.web_expense_fact_test_support import create_confirmed as _create_confirmed
 from tests.web_expense_fact_test_support import owner_member_id as _owner_member_id
 from tests.web_expense_fact_test_support import row_version as _row_version
@@ -228,7 +229,7 @@ def test_web_correction_can_change_original_currency_through_existing_fx_owner(
 ) -> None:
     rate = web_client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=identity.app_headers,
+        headers=negotiated_headers(web_client, identity.app_headers),
         json={
             "home_currency_code": "CNY",
             "currency_code": "USD",

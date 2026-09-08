@@ -22,6 +22,7 @@ from app.database import SessionLocal
 from app.models import Account, RepaymentDraft
 from app.services import debt_service
 from app.services.time_service import now_utc
+from tests._runtime_protocol import negotiated_headers
 
 # A merchant label that confidently matches NO debt label below ("卡A"/"卡B"/...), so the
 # confident matcher returns None and the learned fallback is what drives the suggestion.
@@ -37,9 +38,9 @@ def _create_external_debt(
 ) -> dict:
     response = client.post(
         "/api/debts",
-        headers=_idem(identity.app_headers),
+        headers=negotiated_headers(client, _idem(identity.app_headers)),
         json={
-            "direction": "i_owe",
+            "home_currency_code": "CNY", "direction": "i_owe",
             "counterparty_type": "external",
             "counterparty_label": counterparty_label,
             "principal_amount_cents": principal_amount_cents,

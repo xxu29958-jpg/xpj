@@ -8,7 +8,7 @@ from app.schemas import DebtCreateRequest
 
 def test_create_note_is_optional_and_bounded() -> None:
     fields = {
-        "direction": "i_owe",
+        "home_currency_code": "CNY", "direction": "i_owe",
         "counterparty_type": "external",
         "counterparty_label": "同行人",
         "principal_amount_cents": 1200,
@@ -28,7 +28,7 @@ def test_web_note_length_uses_textarea_newlines(separator: str) -> None:
     from app.routes.web_debt_create import _create_payload
 
     fields = {
-        "direction": "i_owe",
+        "home_currency_code": "CNY", "direction": "i_owe",
         "counterparty_label": "同行人",
         "amount_major": "12.00",
         "currency_code": "CNY",

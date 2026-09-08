@@ -1,6 +1,5 @@
 package com.ticketbox.data.repository
 
-import com.ticketbox.data.remote.dto.DebtCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtBillParseResponseDto
 import com.ticketbox.data.remote.dto.DebtDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalDto
@@ -73,7 +72,7 @@ data class DebtDraft(
     val note: String? = null,
 )
 
-fun DebtDraft.toCreateRequest(): DebtCreateRequestDto = DebtCreateRequestDto(
+fun DebtDraft.toOutboxRequest(): DebtCreateOutboxRequest = DebtCreateOutboxRequest(
     direction = direction,
     // Public create only accepts external/manual; member Debt is server-side (§5.2).
     counterpartyType = DebtCounterpartyTypes.EXTERNAL,

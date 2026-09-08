@@ -24,10 +24,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.ledger_scope import ledger_scoped_select
 from app.models import Debt, Repayment
 from app.schemas import RepaymentCreateRequest
-from app.services.currency_binding_service import require_runtime_home_currency_code, resolve_write_capability
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.debt_service._guards import guard_direct_fact_writable
 from app.services.debt_service._money import (
     freeze_home_amount,
@@ -64,26 +63,6 @@ def get_repayment_public_id_for_idempotency(
     return repayment_public_id
 
 
-def _guard_repayment_currency_binding(
-    db: Session,
-    *,
-    tenant_id: str,
-    public_id: str,
-    payload: RepaymentCreateRequest,
-) -> None:
-    """Reject FX materialization when the parent and runtime home bindings drift."""
-
-    if payload.original_currency is None and payload.original_amount is None:
-        return
-    parent_home = db.scalar(
-        ledger_scoped_select(Debt, tenant_id)
-        .where(Debt.public_id == public_id)
-        .with_only_columns(Debt.home_currency_code)
-    )
-    if parent_home is not None and parent_home != require_runtime_home_currency_code(db):
-        raise AppError("currency_binding_drift", status_code=409)
-
-
 def record_repayment(
     db: Session,
     *,
@@ -106,37 +85,20 @@ def record_repayment(
     )
     resolve_write_capability(db)
     paid_at = payload.paid_at or now_utc()
-    # PR#255 R12-C：外币还款的换算按 env home 进行（freeze_home_amount），随后整数按
-    # parent debt 的冻结币种折叠 —— payload 带 original 币种字段且 debt.home_currency_code
-    # ≠ env 时，换算口径与折叠口径错位（错额或误报 overpay，bot 09:28 P1）→ 按
-    # currency_binding_drift 拒（与库级 drift 门同码同 409：都是「配置与已冻结事实不一致」
-    # 的写拒绝；无 original 字段=整数透传，record 冻结语义豁免不动）。轻查 parent 冻结
-    # 币种于 freeze 之前；debt 不存在时不拦（lock_and_fold 的 404 自会处理）。
-    _guard_repayment_currency_binding(
-        db,
-        tenant_id=tenant_id,
-        public_id=public_id,
-        payload=payload,
-    )
-    money = freeze_home_amount(
-        db,
-        tenant_id=tenant_id,
-        amount_cents=payload.amount_cents,
-        original_currency=payload.original_currency,
-        original_amount=payload.original_amount,
-        event_time=paid_at,
-        amount_error="debt_amount_invalid",
-    )
-    # The Repayment table has no home_currency_code column (that lives on the
-    # parent Debt); drop it from the freeze result.
-    money.pop("home_currency_code", None)
-    amount_cents = money.pop("amount_cents")
 
     def _mutate(debt: Debt, remaining_before: int) -> Repayment:
         # §5.2 / §3.5 adverse-interest guard: slice 2 only records committed
         # repayments directly for external/manual Debt (owner-side bookkeeping).
         # Member-Debt repayment stays behind the slice-3 confirmation flow.
         guard_direct_fact_writable(debt)
+        money = freeze_home_amount(
+            db, tenant_id=tenant_id, home_currency_code=debt.home_currency_code,
+            amount_cents=payload.amount_cents, original_currency=payload.original_currency,
+            original_amount=payload.original_amount, event_time=paid_at, amount_error="debt_amount_invalid",
+        )
+        # Repayments inherit the currency of this locked parent.
+        money.pop("home_currency_code")
+        amount_cents = money.pop("amount_cents")
         # §3.1 / F8: a repayment that would push remaining below 0 is rejected
         # inside the serialized section, never silently clamped.
         if amount_cents > remaining_before:

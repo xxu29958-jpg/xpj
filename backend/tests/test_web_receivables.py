@@ -332,7 +332,7 @@ def test_web_receivables_external_row_uses_accounting_framing(web_client: TestCl
             created_by_account_id=owner_id,
             owner_account_id=owner_id,
             payload=DebtCreateRequest(
-                direction="owed_to_me",
+                home_currency_code="CNY", direction="owed_to_me",
                 counterparty_type="external",
                 counterparty_label="小周 · 演出票",
                 principal_amount_cents=32_000,

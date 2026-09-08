@@ -67,7 +67,7 @@ class DebtCreationRepository(
                 homeCurrencyCode = homeCurrency.storageKey,
                 originSessionGeneration = expectedBinding.sessionGeneration,
                 originBindingRevision = expectedBinding.bindingRevision,
-                request = cleanDraft.toCreateRequest(),
+                request = cleanDraft.toOutboxRequest(),
             )
             val key = UUID.randomUUID().toString()
             val id = outbox.enqueue(

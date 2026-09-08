@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+from tests._runtime_protocol import negotiated_headers
 from tests.expense_correction_support import idem, manual_confirmed
 from tests.test_bill_split import _seed_receiver, _split_headers
 
@@ -11,7 +12,7 @@ from tests.test_bill_split import _seed_receiver, _split_headers
 def _seed_usd_rate(client: TestClient, identity, rate_date: str, rate: str) -> None:
     response = client.put(
         f"/api/exchange-rates/USD/{rate_date}",
-        headers=identity.app_headers,
+        headers=negotiated_headers(client, identity.app_headers),
         json={
             "home_currency_code": "CNY",
             "currency_code": "USD",

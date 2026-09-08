@@ -120,6 +120,7 @@ def _freeze_money(db: Session, *, tenant_id: str, payload: DebtCreateRequest) ->
     money = freeze_home_amount(
         db,
         tenant_id=tenant_id,
+        home_currency_code=payload.home_currency_code,
         amount_cents=payload.principal_amount_cents,
         original_currency=payload.original_currency,
         original_amount=payload.original_amount,
@@ -150,7 +151,7 @@ def create_debt(
         original_amount=payload.original_amount,
     )
     direction = _clean_direction(payload.direction)
-    # The confirmed installation supplies the new debt's currency and writer proof.
+    # Negotiation authorizes the writer; the captured command supplies its money meaning.
     resolve_write_capability(db)
     counterparty_type = _clean_counterparty_type(payload.counterparty_type)
     source_type = _clean_source_type(payload.source_type)
@@ -239,16 +240,13 @@ def create_bill_split_debt(
     money = freeze_home_amount(
         db,
         tenant_id=ledger_id,
+        home_currency_code=home_currency_code,
         amount_cents=amount_cents,
         original_currency=None,
         original_amount=None,
         event_time=event_time,
         amount_error="debt_amount_invalid",
     )
-    # Freeze the invitation's home currency rather than the live app default the
-    # shared helper fills in, so this Debt records the currency the share was
-    # agreed in (§4 "currency ... from the frozen invitation snapshot").
-    money["home_currency_code"] = home_currency_code
     now = now_utc()
     debt = Debt(
         tenant_id=ledger_id,

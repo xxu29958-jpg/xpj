@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+from tests._runtime_protocol import negotiated_headers
 from tests.expense_correction_support import idem, manual_confirmed
 from tests.test_bill_split import _seed_receiver, _split_headers
 from tests.test_bill_split_security_regressions import _bearer_for_account_ledger
@@ -257,10 +258,9 @@ def test_foreign_refund_uses_accounting_date_rate_and_freezes_snapshot(
 ) -> None:
     original_rate = client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=identity.app_headers,
+        headers=negotiated_headers(client, identity.app_headers),
         json={
-            "home_currency_code": "CNY",
-            "currency_code": "USD",
+            "currency_code": "USD", "home_currency_code": "CNY",
             "rate_date": "2026-05-04",
             "rate_to_cny": "7",
             "source": "manual",
@@ -269,10 +269,9 @@ def test_foreign_refund_uses_accounting_date_rate_and_freezes_snapshot(
     assert original_rate.status_code == 200, original_rate.text
     refund_rate = client.put(
         "/api/exchange-rates/USD/2026-05-05",
-        headers=identity.app_headers,
+        headers=negotiated_headers(client, identity.app_headers),
         json={
-            "home_currency_code": "CNY",
-            "currency_code": "USD",
+            "currency_code": "USD", "home_currency_code": "CNY",
             "rate_date": "2026-05-05",
             "rate_to_cny": "8",
             "source": "manual",
@@ -324,10 +323,9 @@ def test_foreign_refund_without_accounting_date_rate_refuses_without_mutation(
 ) -> None:
     seeded = client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=identity.app_headers,
+        headers=negotiated_headers(client, identity.app_headers),
         json={
-            "home_currency_code": "CNY",
-            "currency_code": "USD",
+            "currency_code": "USD", "home_currency_code": "CNY",
             "rate_date": "2026-05-04",
             "rate_to_cny": "7",
             "source": "manual",
@@ -402,10 +400,9 @@ def test_foreign_reversal_reuses_root_snapshot_without_a_new_rate(
 ) -> None:
     seeded = client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=identity.app_headers,
+        headers=negotiated_headers(client, identity.app_headers),
         json={
-            "home_currency_code": "CNY",
-            "currency_code": "USD",
+            "currency_code": "USD", "home_currency_code": "CNY",
             "rate_date": "2026-05-04",
             "rate_to_cny": "7",
             "source": "manual",

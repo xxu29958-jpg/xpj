@@ -16,7 +16,6 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.routes.web_common import (
     _base_ctx,
-    _currency_input_view,
     _home_amount_label,
     _minor_amount_value,
     _require_selected_ledger_write,
@@ -180,7 +179,7 @@ def _debt_create_context(
     values: dict[str, str] | None = None,
     error: str | None = None,
 ) -> dict:
-    """新建欠款页上下文：币种感知的金额输入 + 每渲染一套幂等键。"""
+    """Render a creation intent without replacing its currency or retry key."""
 
     ctx = _base_ctx(
         request,
@@ -199,13 +198,16 @@ def _debt_create_context(
         for value, label, hint in _DEBT_DIRECTION_OPTIONS
     ]
     home = ctx["home_currency_code"]
-    ctx["currency_input"] = _currency_input_view(home)
     from app.services.currency_common import supported_currency_codes
 
     ctx["currency_options"] = [home, *sorted(supported_currency_codes() - {home})]
-    ctx["idempotency_key"] = str(uuid4())
+    values = values or {}
+    captured_home = values.get("home_currency_code", "")
+    ctx["form_home_currency_code"] = captured_home if captured_home in supported_currency_codes() else home
+    ctx["selected_currency_code"] = values.get("currency_code") or ctx["form_home_currency_code"]
+    ctx["idempotency_key"] = values.get("idempotency_key") or str(uuid4())
     ctx["today"] = now_utc().astimezone(accounting_zone()).strftime("%Y-%m-%d")
-    ctx["values"] = values or {}
+    ctx["values"] = values
     ctx["form_error"] = error
     return ctx
 

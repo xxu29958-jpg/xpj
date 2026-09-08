@@ -15,6 +15,7 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import LedgerMember
+from tests._runtime_protocol import negotiated_headers
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
@@ -35,14 +36,14 @@ def _set_owner_ledger_role(role: str) -> None:
 
 def _create_external_debt(client: TestClient, identity, *, debt_kind: str | None = None) -> dict:
     body: dict = {
-        "direction": "i_owe",
+        "home_currency_code": "CNY", "direction": "i_owe",
         "counterparty_type": "external",
         "counterparty_label": "招商信用卡",
         "principal_amount_cents": 50000,
     }
     if debt_kind is not None:
         body["debt_kind"] = debt_kind
-    response = client.post("/api/debts", headers=_idem(identity.app_headers), json=body)
+    response = client.post("/api/debts", headers=negotiated_headers(client, _idem(identity.app_headers)), json=body)
     assert response.status_code == 201, response.json()
     return response.json()
 
