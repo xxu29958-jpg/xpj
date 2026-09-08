@@ -46,6 +46,7 @@ Create/archive and the shared recycle owner remain their existing consumers.
 Executed cloud RED found all three missing-entry cases. Real VM browser journeys
 at 360/768/1440px and bounded review are closed; the [PR qualification record](https://github.com/xxu29958-jpg/xpj/pull/394)
 holds the exact candidate/main gate results and final slice status.
+#394 is CLOSED, protected-squash integrated and independently main-qualified.
 
 The 360px real browser exposed month navigation pushing identity/actions outside
 the shared header. Compact headers now wrap the month picker onto its own row;

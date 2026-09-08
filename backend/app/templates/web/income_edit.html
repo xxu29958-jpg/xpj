@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% from "_income_source_types.html" import source_type_labels %}
+{% set page_title = '编辑收入计划' %}
+{% set product_body_domain = 'plans' %}
+{% block title %}编辑收入计划 · 小票夹{% endblock %}
+{% block content %}
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">计划 / 收入</span>
+    <h1 class="page-title">编辑收入计划</h1>
+    <p class="product-page-summary">每月计划从 {{ values.intent_month }} 生效，单次计划使用预计月份。计划不代表实际到账。</p>
+  </div>
+  <a class="product-button product-button--quiet" href="/web/income-plans?ledger_id={{ selected_ledger_id }}">返回收入计划</a>
+</header>
+<div class="plan-flow">
+  {% if error %}<div class="product-feedback product-feedback--danger" role="alert">{{ error }}</div>{% endif %}
+  {% if plan.status == 'archived' %}<div class="product-feedback" role="status">计划已归档。请返回收入计划恢复后再修改。</div>{% endif %}
+  <section class="product-panel product-panel--padded" aria-label="编辑收入计划">
+    <h2 class="product-panel-title">计划设置</h2>
+    <form method="post" action="/web/income-plans/{{ plan.public_id }}/edit" class="budget-form">
+      {{ csrf_field|safe }}
+      {% for key in ['intent_month', 'expected_row_version', 'idempotency_key'] %}<input type="hidden" name="{{ key }}" value="{{ values[key] }}">{% endfor %}
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <div class="product-form-grid">
+        <div class="product-field">
+          <label for="income-edit-label">名称</label>
+          <input id="income-edit-label" class="product-input" name="label" value="{{ values.label }}" maxlength="64" required>
+        </div>
+        <div class="product-field">
+          <label for="income-edit-source">类型</label>
+          <select id="income-edit-source" class="product-input" name="source_type">
+            {% if values.source_type not in source_type_labels %}<option value="{{ values.source_type }}" selected>保留原类型</option>{% endif %}
+            {% for value, label in source_type_labels.items() %}<option value="{{ value }}" {% if value == values.source_type %}selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="product-field">
+          <label for="income-edit-frequency">计划频率</label>
+          <select id="income-edit-frequency" class="product-input" name="frequency">
+            <option value="one_time" {% if values.frequency == 'one_time' %}selected{% endif %}>单次预计</option>
+            <option value="monthly" {% if values.frequency == 'monthly' %}selected{% endif %}>每月固定</option>
+          </select>
+        </div>
+        <div class="product-field">
+          <label for="income-edit-month">预计月份（单次计划填写）</label>
+          <input id="income-edit-month" class="product-input" type="month" name="income_month" value="{{ values.income_month }}" aria-describedby="income-edit-month-impact">
+          <p id="income-edit-month-impact" class="hint">单次计划影响所选预计月份；修改月份会同时更正原月份和新月份的预测。</p>
+        </div>
+        <div class="product-field">
+          <label for="income-edit-amount">预计金额（{{ currency_input.currency_code }} · {{ currency_input.currency_symbol }}，{{ currency_input.amount_input_hint }}）</label>
+          <input id="income-edit-amount" class="product-input" type="text" name="amount_yuan" value="{{ values.amount_yuan }}" inputmode="{{ currency_input.inputmode }}" required>
+        </div>
+        <div class="product-field">
+          <label for="income-edit-day">预计收入日（1–31，短月取月末）</label>
+          <input id="income-edit-day" class="product-input" type="number" name="pay_day" value="{{ values.pay_day }}" min="1" max="31" required>
+        </div>
+      </div>
+      <div class="budget-actions">
+        {% if plan.status != 'archived' %}
+          {% if conflict %}<button class="product-button product-button--primary" type="submit" name="review_latest" value="true" formnovalidate>保留输入，按 {{ review_month }} 核对</button>
+          {% else %}<button class="product-button product-button--primary" type="submit">保存修改</button>{% endif %}
+        {% endif %}
+      </div>
+    </form>
+  </section>
+  <section class="product-panel product-panel--padded" aria-label="当前已保存的收入计划">
+    <h2 class="product-panel-title">当前已保存</h2>
+    <p><strong>{{ current.label }}</strong> · {{ source_type_labels.get(current.source_type, '原类型') }}</p>
+    <p>{{ home_currency_symbol }}{{ current.amount_yuan }} · {% if current.frequency == 'one_time' %}单次预计 {{ current.income_month }}{% else %}每月固定{% endif %} · {{ current.pay_day }} 号</p>
+    <p class="product-panel-subtitle">上方输入再次保存成功后，才会发布计划修改。已有版本保留。</p>
+  </section>
+</div>
+{% endblock %}
