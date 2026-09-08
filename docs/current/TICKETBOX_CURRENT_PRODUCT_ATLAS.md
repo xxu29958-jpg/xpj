@@ -172,12 +172,11 @@ Do not drop these or open full lifecycle work while handling other journeys.
 remaining art/interaction details, then the exact full RC. Keep useful state
 feedback and efficient actions within each active capability change.
 
-**Active work:** #385–#393 are CLOSED, integrated and independently main-qualified.
+**Active work:** #385–#394 are CLOSED, integrated and independently main-qualified.
 [Member settlement evidence](TICKETBOX_MEMBER_SETTLEMENT_CONTINUITY_CONTRACT.md).
 [Spending-goal continuity evidence](TICKETBOX_PLANNING_GOAL_CONTINUITY_CONTRACT.md).
 
-**Next action:** independently qualify #394's integrated Web spending-goal edit,
-then complete [Web income correction](TICKETBOX_WEB_INCOME_EDIT_CONTRACT.md):
+**Next action:** complete [Web income correction](TICKETBOX_WEB_INCOME_EDIT_CONTRACT.md):
 card entry → original effective month → shared revision/receipt owner → retained
 input and explicit conflict review. No second financial writer is introduced.
 Physical budget/income creation works; simplify Android's first-budget optional

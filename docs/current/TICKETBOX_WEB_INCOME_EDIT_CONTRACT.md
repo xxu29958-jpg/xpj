@@ -39,3 +39,8 @@ The pre-integration candidate passed real VM browser journeys at 360/768/1440px,
 including single-month delivery and consumed-form recovery. After integration
 with #394, the shared OCC carrier inventory is 109; the [PR qualification record](https://github.com/xxu29958-jpg/xpj/pull/395)
 holds final source, browser, bounded review and candidate/main evidence.
+
+The integrated audit exposed a grouped-import false positive: real routers
+registered by main were reported as unreferenced modules. The audit now counts
+explicit imported child names, while a direct fixture keeps self-only modules
+unreferenced. No production import workaround or debt-limit increase is used.

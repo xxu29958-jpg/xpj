@@ -227,3 +227,26 @@ def test_n_plus_one_flags_business_loop_query() -> None:
 def test_n_plus_one_ignores_bounded_integrity_recovery_read() -> None:
     for name, source in _N_PLUS_ONE_IGNORED_CASES.items():
         assert _n_plus_one_hits(source) == [], name
+
+
+def test_module_references_include_grouped_imports_but_not_self_references(
+    tmp_path, monkeypatch, capsys,
+) -> None:
+    mod = _load()
+    monkeypatch.chdir(tmp_path)
+    routes = Path("app/routes")
+    routes.mkdir(parents=True)
+    Path("app/main.py").write_text(
+        "from app.routes import (\n    editor as income_editor,\n)\n",
+        encoding="utf-8",
+    )
+    (routes / "editor.py").write_text("router = object()\n", encoding="utf-8")
+    (routes / "unused.py").write_text(
+        "from app.routes import unused\n", encoding="utf-8",
+    )
+
+    assert mod.audit_test_coverage_by_module() == {"unreferenced_modules": 2}
+    output = capsys.readouterr().out
+    assert "  app.routes.unused\n" in output
+    assert "  app.main\n" in output
+    assert "  app.routes.editor\n" not in output

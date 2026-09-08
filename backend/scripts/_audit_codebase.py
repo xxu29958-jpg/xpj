@@ -1114,9 +1114,18 @@ def audit_test_coverage_by_module() -> DebtCounts:
     reference_sources: list[tuple[pathlib.Path, str]] = []
     for p in (*walk(TESTS), *walk(APP)):
         with contextlib.suppress(Exception):
-            reference_sources.append(
-                (p, p.read_text(encoding="utf-8", errors="ignore"))
+            body = p.read_text(encoding="utf-8", errors="ignore")
+            reference_sources.append((p, body))
+            # Grouped/aliased imports reference child modules without spelling
+            # their full names in source (for example router registration).
+            imported_modules = (
+                f"{node.module}.{alias.name}"
+                for node in ast.walk(ast.parse(body))
+                if isinstance(node, ast.ImportFrom) and node.module and node.level == 0
+                for alias in node.names
+                if alias.name != "*"
             )
+            reference_sources.append((p, "\n".join(imported_modules)))
 
     unreferenced = sorted(
         mod
