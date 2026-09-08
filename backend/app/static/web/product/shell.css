@@ -851,11 +851,18 @@ details[open] > .chrome-trigger {
        W1 IA-B: 全带高 56px (min-height), 是 ≤64rem 唯一顶部 chrome。 */
     .product-topbar {
         position: static;
+        flex-wrap: wrap;
         min-height: var(--mobile-chrome-block-size);
         padding: var(--space-2) var(--space-4);
         border-block-end: 0;
         background: transparent;
         backdrop-filter: none;
+    }
+
+    .product-topbar > .month-picker {
+        order: 1;
+        flex-basis: 100%;
+        justify-content: center;
     }
 
     /* 顶栏「收票」锚点必须把真实 file command 完整放到 sticky chrome 下方。 */
@@ -971,6 +978,11 @@ details[open] > .chrome-trigger {
 @media (max-width: 40rem) {
     .product-topbar {
         gap: var(--space-2);
+    }
+
+    .topbar-domain,
+    .manager-home-link {
+        white-space: nowrap;
     }
 
     /* W1 IA-B: ≤40rem topbar = 品牌 mark / 当前域 + 记账 / 收票 / 我。

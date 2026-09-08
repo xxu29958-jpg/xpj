@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% set page_title = '编辑消费目标' %}
+{% set product_body_domain = 'plans' %}
+{% block title %}编辑消费目标 · 小票夹{% endblock %}
+{% block content %}
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">计划 / 月度目标</span>
+    <h1 class="page-title">编辑消费目标</h1>
+    <p class="product-page-summary">调整提醒范围与金额，已记录的支出保持原样。</p>
+  </div>
+  <a class="product-button product-button--quiet" href="/web/goals?ledger_id={{ selected_ledger_id }}&month={{ current.month }}">返回目标</a>
+</header>
+<div class="plan-flow">
+  {% if error %}<div class="product-feedback product-feedback--danger" role="alert">{{ error }}</div>{% endif %}
+  {% if goal.status == 'archived' %}<div class="product-feedback" role="status">目标已归档。请先到回收站恢复，再继续修改。</div>{% endif %}
+  <section class="product-panel product-panel--padded" aria-label="编辑消费目标">
+    <div class="product-panel-header">
+      <h2 class="product-panel-title">目标设置</h2>
+      <p class="product-panel-subtitle">修改月份后，进度会按所选月份的已确认支出重新计算。</p>
+    </div>
+    <form method="post" action="/web/goals/{{ goal.public_id }}/edit" class="budget-form">
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <input type="hidden" name="expected_row_version" value="{{ values.expected_row_version }}">
+      <input type="hidden" name="idempotency_key" value="{{ values.idempotency_key }}">
+      {{ csrf_field|safe }}
+      <div class="product-form-grid">
+        <div class="product-field">
+          <label for="goal-edit-name">目标名称</label>
+          <input id="goal-edit-name" class="product-input" type="text" name="name" value="{{ values.name }}" maxlength="80" required>
+        </div>
+        <div class="product-field">
+          <label for="goal-edit-month">目标月份</label>
+          <input id="goal-edit-month" class="product-input" type="month" name="month" value="{{ values.month }}" required>
+        </div>
+        <div class="product-field">
+          <label for="goal-edit-amount">目标金额（{{ currency_input.currency_code }} · {{ currency_input.currency_symbol }}，{{ currency_input.amount_input_hint }}）</label>
+          <input id="goal-edit-amount" class="product-input" type="text" name="target_amount_yuan" value="{{ values.target_amount_yuan }}" inputmode="{{ currency_input.inputmode }}" required>
+        </div>
+        <div class="product-field">
+          <label for="goal-edit-category">分类（留空为总支出）</label>
+          <input id="goal-edit-category" class="product-input" type="text" name="category" value="{{ values.category }}" maxlength="64" placeholder="餐饮">
+        </div>
+      </div>
+      <div class="budget-actions">
+        {% if goal.status != 'archived' %}
+          {% if conflict %}<button class="product-button product-button--primary" type="submit" name="review_latest" value="true" formnovalidate>保留输入，按当前目标核对</button>
+          {% else %}<button class="product-button product-button--primary" type="submit">保存修改</button>{% endif %}
+        {% endif %}
+      </div>
+    </form>
+  </section>
+  <section class="product-panel product-panel--padded" aria-label="当前已保存的目标">
+    <div class="product-panel-header"><h2 class="product-panel-title">当前已保存</h2><p class="product-panel-subtitle">上方输入保存成功后，才会更新目标。</p></div>
+    <p><strong>{{ current.name }}</strong> · {{ current.month }} · {{ current.category or '总支出' }}</p>
+    <p>目标金额 {{ home_currency_symbol }}{{ current.target_amount_yuan }}</p>
+  </section>
+</div>
+{% endblock %}

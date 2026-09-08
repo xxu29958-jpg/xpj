@@ -61,12 +61,15 @@
         <span>剩余 {{ home_currency_symbol }}{{ goal.remaining_yuan }}</span>
       </div>
       {% if can_write and not goal.is_archived %}
+      <div class="budget-actions">
+      <a class="product-button product-button--quiet product-button--small" href="/web/goals/{{ goal.public_id }}/edit?ledger_id={{ selected_ledger_id }}&month={{ month }}">编辑目标</a>
       <form method="post" action="/web/goals/{{ goal.public_id }}/archive" class="product-inline-form">
         <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
         <input type="hidden" name="month" value="{{ month }}">
         {{ csrf_field|safe }}
         <button type="submit" class="product-button product-button--quiet product-button--small">归档</button>
       </form>
+      </div>
       {% endif %}
     </div>
     {% endfor %}

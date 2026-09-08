@@ -15,8 +15,9 @@ outbox owner; a parallel direct writer must not survive the migration.
 
 Executed counterexamples established that real Save persisted no Room intent,
 malformed targets were discarded, and accepted goal responses were not retained.
-Implementation now publishes through GoalEditRepository and UpdateGoalDispatcher;
-final cloud execution and bounded review remain required.
+Implementation publishes through GoalEditRepository and UpdateGoalDispatcher.
+#393 is CLOSED: integrated and independently main-qualified, with bounded review
+and physical offline Save → process termination → reconnect → canonical receipt.
 
 ## Before / after construction impact closure
 
@@ -39,6 +40,6 @@ offline executor. Backend schema/protocol changes require a concrete consumer
 need and a full producer/consumer check. Windows lifecycle remains HOLD.
 
 Actual Save and dispatcher counterexamples executed RED before their fixes.
-The final implementation is under qualification; no completion claim yet. Long checks run in cloud; actual consumer work
+The slice is qualified; the full Goal remains active. Long checks run in cloud; actual consumer work
 uses the disconnected VM/cloud emulator. Exact hashes and run logs belong in the
 PR and external qualification evidence, not the product atlas.
