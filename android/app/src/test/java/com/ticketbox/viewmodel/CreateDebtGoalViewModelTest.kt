@@ -371,16 +371,13 @@ private class FakeCreateReportsActions(
     override suspend fun goals(month: String?, includeArchived: Boolean): Result<List<Goal>> =
         Result.success(emptyList())
 
-    override suspend fun createGoal(draft: GoalDraft): Result<Goal> =
+    override suspend fun createGoal(draft: GoalDraft, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding): Result<Goal> =
         Result.failure(UnsupportedOperationException())
 
     override suspend fun goal(publicId: String): Result<Goal> =
         Result.failure(UnsupportedOperationException())
 
-    override suspend fun updateGoal(publicId: String, update: GoalUpdate): Result<Goal> =
-        Result.failure(UnsupportedOperationException())
-
-    override suspend fun archiveGoal(publicId: String): Result<Goal> =
+    override suspend fun archiveGoal(publicId: String, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding): Result<Goal> =
         Result.failure(UnsupportedOperationException())
 
     override suspend fun debtGoals(includeArchived: Boolean): Result<List<Goal>> =

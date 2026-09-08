@@ -40,7 +40,7 @@ class SpendingGoalsViewModelTest {
                 ),
             ),
         )
-        val viewModel = SpendingGoalsViewModel(actions, initialMonth = "2026-07")
+        val viewModel = SpendingGoalsViewModel(actions, RecordingGoalEdits().apply { access.value = access.value!!.copy(canModify = actions.canModifyLedger()) }, initialMonth = "2026-07")
         advanceUntilIdle()
 
         assertEquals(SpendingGoalListCall("2026-07", false), actions.goalsCalls.single())
@@ -52,7 +52,7 @@ class SpendingGoalsViewModelTest {
     @Test
     fun monthNavigationReloadsTheSelectedMonth() = runTest(dispatcher) {
         val actions = RecordingSpendingGoalActions()
-        val viewModel = SpendingGoalsViewModel(actions, initialMonth = "2026-07")
+        val viewModel = SpendingGoalsViewModel(actions, RecordingGoalEdits().apply { access.value = access.value!!.copy(canModify = actions.canModifyLedger()) }, initialMonth = "2026-07")
         advanceUntilIdle()
 
         viewModel.nextMonth()
@@ -67,7 +67,7 @@ class SpendingGoalsViewModelTest {
         val actions = RecordingSpendingGoalActions(
             goalsResult = Result.failure(IllegalStateException("offline")),
         )
-        val viewModel = SpendingGoalsViewModel(actions, initialMonth = "2026-07")
+        val viewModel = SpendingGoalsViewModel(actions, RecordingGoalEdits().apply { access.value = access.value!!.copy(canModify = actions.canModifyLedger()) }, initialMonth = "2026-07")
         advanceUntilIdle()
         assertNotNull(viewModel.state.value.loadError)
 

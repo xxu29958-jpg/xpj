@@ -34,7 +34,6 @@ import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.screens.budget.MonthSwitcher
 import com.ticketbox.viewmodel.CreateSpendingGoalUiState
 import com.ticketbox.viewmodel.CreateSpendingGoalViewModel
@@ -68,7 +67,11 @@ fun CreateSpendingGoalScreen(
         ),
         refresh = AppSecondaryRefreshState(isRefreshing = false, onRefresh = {}),
         slots = AppSecondaryPageSlots(
-            status = { CreateSpendingGoalStatusStack(state = state) },
+            status = { CreateSpendingGoalStatusStack(state = state)
+                if (state.ledgerCurrency == null) androidx.compose.material3.TextButton(onClick = viewModel::retryCurrency) {
+                    Text(stringResource(R.string.common_retry))
+                }
+            },
             bottomBar = {
                 CreateSpendingGoalFooter(
                     canSubmit = state.canSubmit,
@@ -119,9 +122,7 @@ private fun SpendingGoalForm(
     state: CreateSpendingGoalUiState,
     viewModel: CreateSpendingGoalViewModel,
 ) {
-    // R14-2：金额输入标签随 VM 已解析的账本 capability（JPY 亮 ¥ 即 JPY 语义+整数口径），
-    // 未确认时落 display-home 兜底仅作展示（写面由 VM canSubmit/禁写门拦截）。
-    val currency = state.ledgerCurrency ?: LocalCurrencyDisplay.current.homeCurrency
+    val currency = state.ledgerCurrency
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
         AppTextInput(
             state = AppTextInputState(
@@ -133,6 +134,7 @@ private fun SpendingGoalForm(
             actions = AppTextInputActions(onValueChange = viewModel::updateName),
             modifier = Modifier.fillMaxWidth(),
         )
+        if (currency != null) {
         AppAmountInput(
             state = AppAmountInputState(
                 label = stringResource(R.string.spending_goal_create_amount_label),
@@ -145,6 +147,9 @@ private fun SpendingGoalForm(
             actions = AppAmountInputActions(onValueChange = viewModel::updateTargetAmount),
             modifier = Modifier.fillMaxWidth(),
         )
+        } else {
+            Text("正在确认目标币种；已有输入仍保留。")
+        }
         AppTextInput(
             state = AppTextInputState(
                 label = stringResource(R.string.spending_goal_create_category_label),

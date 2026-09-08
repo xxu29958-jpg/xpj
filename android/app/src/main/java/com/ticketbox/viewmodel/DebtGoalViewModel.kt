@@ -263,10 +263,13 @@ class DebtGoalViewModel(
      */
     fun archiveSelected() {
         val goal = _state.value.selectedGoal ?: return
-        if (!_state.value.canModify) return
+        val binding = adjustmentBinding ?: return
+        if (!_state.value.canModify || adjustments.currentAccess()?.binding != binding) return
         _state.update { it.copy(isSubmitting = true, error = null) }
         viewModelScope.launch {
-            repository.archiveGoal(goal.publicId).fold(
+            val result = repository.archiveGoal(goal.publicId, binding)
+            if (adjustmentBinding != binding || adjustments.currentAccess()?.binding != binding) return@launch
+            result.fold(
                 onSuccess = {
                     // Supersede in-flight loads, drop the detail, and reload the list
                     // (the archived goal falls out of the default list).

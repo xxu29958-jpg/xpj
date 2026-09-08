@@ -20,6 +20,12 @@ data class RuntimeProductCapabilitiesDto(
 data class RuntimeCurrencyCapabilityDto(
     @param:Json(name = "request_binding")
     val requestBinding: String?,
+    @param:Json(name = "home_currency_code")
+    val homeCurrencyCode: String? = null,
+    @param:Json(name = "minor_unit_exponent")
+    val minorUnitExponent: Int? = null,
+    @param:Json(name = "read_compatibility")
+    val readCompatibility: String? = null,
 )
 
 data class RuntimeWriteCompatibility(

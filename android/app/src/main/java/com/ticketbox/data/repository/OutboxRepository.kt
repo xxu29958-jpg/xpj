@@ -767,9 +767,9 @@ class OutboxRepository private constructor(
      *   rolled back at the call site — that's not the outbox's
      *   job.
      */
-    suspend fun resolveConflict(id: Long, resolution: ConflictResolution): Boolean =
+    internal suspend fun resolveConflict(id: Long, resolution: ConflictResolution, boundRequest: BoundLedgerRequest? = null): Boolean =
         resolveStatus(id, PendingMutationStatus.Conflict, resolution == ConflictResolution.DropMine,
-            (resolution as? ConflictResolution.KeepMine)?.freshToken)
+            (resolution as? ConflictResolution.KeepMine)?.freshToken, boundRequest)
 
     /**
      * User picked an action on a FAILED-state row.

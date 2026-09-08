@@ -70,7 +70,7 @@ internal fun SpendingGoalDetailScreen(
             },
         ),
         slots = AppSecondaryPageSlots(
-            status = { SpendingGoalDetailStatus(state) },
+            status = { SpendingGoalDetailStatus(state, viewModel) },
             bottomBar = if (goal != null && state.canModify && !goal.isArchived) {
                 { SpendingGoalDetailFooter(state = state, viewModel = viewModel) }
             } else {
@@ -91,7 +91,7 @@ internal fun SpendingGoalDetailScreen(
 }
 
 @Composable
-private fun SpendingGoalDetailStatus(state: SpendingGoalDetailUiState) {
+private fun SpendingGoalDetailStatus(state: SpendingGoalDetailUiState, viewModel: SpendingGoalDetailViewModel) {
     androidx.compose.foundation.layout.Column(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
@@ -115,6 +115,11 @@ private fun SpendingGoalDetailStatus(state: SpendingGoalDetailUiState) {
         state.formError?.let {
             AppStatusBanner(message = it, tone = MessageTone.Danger)
         }
+        if (state.goal != null) state.loadError?.let {
+            AppStatusBanner(message = it, tone = MessageTone.Danger)
+            TextButton(onClick = { viewModel.load() }) { Text(stringResource(R.string.common_retry)) }
+        }
+        SpendingGoalSubmissionStatus(state, viewModel)
     }
 }
 
@@ -143,8 +148,8 @@ private fun SpendingGoalDetailBody(
         state.isEditing -> SpendingGoalEditContent(state = state, viewModel = viewModel)
         else -> SpendingGoalViewContent(
             goal = state.goal,
-            canModify = state.canModify,
-            onArchive = viewModel::requestArchive,
+            canModify = state.canModify && !state.hasPendingEdit,
+            onArchive = { viewModel.showArchiveConfirmation(true) },
         )
     }
 }
@@ -185,7 +190,7 @@ private fun SpendingGoalDetailFooter(
                 icon = Icons.Filled.Edit,
                 modifier = Modifier.fillMaxWidth(),
                 // R14-5：账本币种未确认时禁入编辑（回填币种必须与 save 同源，VM 同门兜底）。
-                enabled = state.ledgerCurrency != null,
+                enabled = state.ledgerCurrency != null && !state.hasPendingEdit && !state.isSaving,
                 onClick = viewModel::beginEdit,
             )
         }
@@ -198,7 +203,7 @@ private fun SpendingGoalArchiveDialog(
     viewModel: SpendingGoalDetailViewModel,
 ) {
     AlertDialog(
-        onDismissRequest = viewModel::dismissArchive,
+        onDismissRequest = { viewModel.showArchiveConfirmation(false) },
         title = { Text(stringResource(R.string.spending_goal_archive_dialog_title)) },
         text = { Text(stringResource(R.string.spending_goal_archive_dialog_body)) },
         confirmButton = {
@@ -218,7 +223,7 @@ private fun SpendingGoalArchiveDialog(
         dismissButton = {
             TextButton(
                 enabled = !state.isArchiving,
-                onClick = viewModel::dismissArchive,
+                onClick = { viewModel.showArchiveConfirmation(false) },
             ) {
                 Text(stringResource(R.string.common_cancel))
             }

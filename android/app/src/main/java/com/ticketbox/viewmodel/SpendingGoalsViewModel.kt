@@ -24,11 +24,12 @@ data class SpendingGoalsUiState(
 
 class SpendingGoalsViewModel(
     private val reports: ReportsActions,
+    private val edits: com.ticketbox.data.repository.GoalEditActions,
     initialMonth: String = YearMonth.now().toString(),
 ) : ViewModel() {
     private val _state = MutableStateFlow(
         SpendingGoalsUiState(
-            canModify = reports.canModifyLedger(),
+            canModify = edits.currentAccess()?.canModify == true,
             month = initialMonth.validGoalMonth(),
         ),
     )
@@ -36,24 +37,36 @@ class SpendingGoalsViewModel(
     private var loadJob: Job? = null
     private var loadGeneration = 0L
 
+    private var binding: com.ticketbox.data.repository.LogicalSessionBinding? = null
     init {
-        refresh()
+        viewModelScope.launch {
+            edits.observeAccess().collect { access ->
+                if (binding != access?.binding) {
+                    binding = access?.binding
+                    loadGeneration += 1
+                    loadJob?.cancel()
+                    _state.update { it.copy(goals = emptyList(), canModify = access?.canModify == true, isLoading = false) }
+                    if (access != null) refresh()
+                } else _state.update { it.copy(canModify = access?.canModify == true) }
+            }
+        }
     }
 
     fun refresh() {
+        val origin = edits.currentAccess()?.binding ?: return
         val requestedMonth = _state.value.month
         val generation = ++loadGeneration
         loadJob?.cancel()
         _state.update {
             it.copy(
-                canModify = reports.canModifyLedger(),
+                canModify = edits.currentAccess()?.canModify == true,
                 isLoading = true,
                 loadError = null,
             )
         }
         loadJob = viewModelScope.launch {
             val result = reports.goals(month = requestedMonth, includeArchived = false)
-            if (generation != loadGeneration || _state.value.month != requestedMonth) return@launch
+            if (generation != loadGeneration || edits.currentAccess()?.binding != origin || _state.value.month != requestedMonth) return@launch
             result.fold(
                 onSuccess = { goals ->
                     _state.update {

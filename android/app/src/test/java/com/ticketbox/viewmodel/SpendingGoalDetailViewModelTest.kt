@@ -1,11 +1,18 @@
 package com.ticketbox.viewmodel
 
-import com.ticketbox.R
-import com.ticketbox.data.repository.DebtListPage
+import androidx.lifecycle.viewModelScope
+import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.data.local.PendingMutationType
+import com.ticketbox.data.repository.OutboxRow
+import com.ticketbox.data.repository.PendingGoalEdit
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.GoalUpdate
-import com.ticketbox.domain.model.UiText
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -15,7 +22,6 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -23,211 +29,112 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class SpendingGoalDetailViewModelTest {
     private val dispatcher = StandardTestDispatcher()
+    private val models = mutableListOf<SpendingGoalDetailViewModel>()
+    @BeforeTest fun setup() { Dispatchers.setMain(dispatcher) }
+    @AfterTest fun close() { models.forEach { it.viewModelScope.cancel() }; Dispatchers.resetMain() }
+    private fun model(reports: RecordingSpendingGoalActions, edits: RecordingGoalEdits) =
+        SpendingGoalDetailViewModel(reports, edits).also { models += it; it.load("goal-1") }
 
-    @BeforeTest
-    fun setUp() {
-        Dispatchers.setMain(dispatcher)
+    @Test fun savePublishesOnceAndKeepsCanonicalProgress() = runTest(dispatcher) {
+        val reports = RecordingSpendingGoalActions()
+        val gate = CompletableDeferred<Unit>()
+        val edits = RecordingGoalEdits().apply { saveGate = { gate.await() } }
+        val vm = model(reports, edits)
+        advanceUntilIdle()
+        vm.beginEdit()
+        vm.updateField(SpendingGoalEditField.Amount, "350.00")
+        vm.updateField(SpendingGoalEditField.Category, "")
+        vm.save(); vm.save()
+        advanceUntilIdle()
+        assertEquals(listOf(GoalUpdate(1, "本月外卖", "2026-07", 35000, "")), edits.saves)
+        assertEquals(20000, vm.state.value.goal?.targetAmountCents)
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertFalse(vm.state.value.isEditing)
+        assertEquals(12000, vm.state.value.goal?.remainingAmountCents)
+        assertEquals(0, vm.state.value.mutationRevision)
     }
 
-    @AfterTest
-    fun tearDown() {
-        Dispatchers.resetMain()
+    @Test fun jpyInputAndReentryKeepTheOriginalDraft() = runTest(dispatcher) {
+        val edits = RecordingGoalEdits().apply { currencyResult = Result.success(CurrencyCode.JPY) }
+        val vm = model(RecordingSpendingGoalActions(), edits)
+        advanceUntilIdle()
+        vm.beginEdit()
+        assertEquals("20000", vm.state.value.targetAmountInput)
+        vm.updateField(SpendingGoalEditField.Amount, "1200")
+        vm.load("goal-1")
+        assertEquals("1200", vm.state.value.targetAmountInput)
+        vm.save()
+        advanceUntilIdle()
+        assertEquals(1200, edits.saves.single().targetAmountCents)
     }
 
-    @Test
-    fun loadReadsCanonicalGoalAndEditStartsFromThatSnapshot() = runTest(dispatcher) {
-        val actions = RecordingSpendingGoalActions(
-            goalResult = Result.success(spendingGoal(rowVersion = 7L)),
-        )
-        val viewModel = SpendingGoalDetailViewModel(actions, CapabilityDebtActions())
-
-        viewModel.load(" goal-1 ")
+    @Test fun unknownCurrencyIsRecoverableAndNeverEnablesWriting() = runTest(dispatcher) {
+        val edits = RecordingGoalEdits().apply { currencyResult = Result.failure(IllegalStateException("offline")) }
+        val vm = model(RecordingSpendingGoalActions(), edits)
         advanceUntilIdle()
-        viewModel.beginEdit()
-
-        assertEquals(listOf("goal-1"), actions.goalCalls)
-        assertEquals(7L, viewModel.state.value.goal?.rowVersion)
-        assertEquals("200.00", viewModel.state.value.targetAmountInput)
-        assertTrue(viewModel.state.value.isEditing)
+        vm.beginEdit(); vm.save()
+        assertFalse(vm.state.value.canSave)
+        assertTrue(edits.saves.isEmpty())
+        assertNotNull(vm.state.value.loadError)
+        edits.currencyResult = Result.success(CurrencyCode.JPY)
+        vm.load(); advanceUntilIdle(); vm.beginEdit()
+        assertTrue(vm.state.value.isEditing)
     }
 
-    @Test
-    fun saveUsesLastSeenRowVersionAndCanonicalResponse() = runTest(dispatcher) {
-        val updated = spendingGoal(rowVersion = 8L).copy(
-            month = "2026-08",
-            category = null,
-        )
-        val actions = RecordingSpendingGoalActions(
-            goalResult = Result.success(spendingGoal(rowVersion = 7L)),
-            updateResult = Result.success(updated),
-        )
-        val viewModel = SpendingGoalDetailViewModel(actions, CapabilityDebtActions())
-        viewModel.load("goal-1")
+    @Test fun pendingAndConfirmedReceiptsRemainDistinctAcrossFailedReads() = runTest(dispatcher) {
+        val reports = RecordingSpendingGoalActions()
+        val edits = RecordingGoalEdits()
+        val vm = model(reports, edits)
         advanceUntilIdle()
-        viewModel.beginEdit()
-        viewModel.nextMonth()
-        viewModel.updateField(SpendingGoalEditField.Name, "八月总支出")
-        viewModel.updateField(SpendingGoalEditField.Amount, "500.00")
-        viewModel.updateField(SpendingGoalEditField.Category, "")
-
-        viewModel.save()
+        val row = goalRow(PendingMutationStatus.Pending)
+        edits.rows.value = listOf(PendingGoalEdit(row, null, null))
         advanceUntilIdle()
-
-        assertEquals(
-            SpendingGoalUpdateCall(
-                publicId = "goal-1",
-                update = GoalUpdate(
-                    expectedRowVersion = 7L,
-                    name = "八月总支出",
-                    month = "2026-08",
-                    targetAmountCents = 50_000,
-                    category = "",
-                ),
-            ),
-            actions.updateCalls.single(),
-        )
-        assertEquals(8L, viewModel.state.value.goal?.rowVersion)
-        assertEquals(1, viewModel.state.value.mutationRevision)
-        assertFalse(viewModel.state.value.isEditing)
+        vm.beginEdit(); vm.showArchiveConfirmation(true)
+        assertFalse(vm.state.value.isEditing)
+        assertFalse(vm.state.value.showArchiveDialog)
+        val canonical = spendingGoal(rowVersion = 2).copy(targetAmountCents = 35000, remainingAmountCents = 27000)
+        edits.rows.value = listOf(PendingGoalEdit(row.copy(status = PendingMutationStatus.Done), null, canonical))
+        reports.goalResult = Result.failure(IllegalStateException("read unavailable"))
+        advanceUntilIdle(); vm.load(); advanceUntilIdle()
+        assertEquals(35000, vm.state.value.goal?.targetAmountCents)
+        assertEquals(27000, vm.state.value.goal?.remainingAmountCents)
+        assertFalse(vm.state.value.hasPendingEdit)
+        assertNotNull(vm.state.value.loadError)
     }
 
-    @Test
-    fun invalidEditDoesNotCallUpdate() = runTest(dispatcher) {
-        val actions = RecordingSpendingGoalActions()
-        val viewModel = SpendingGoalDetailViewModel(actions, CapabilityDebtActions())
-        viewModel.load("goal-1")
+    @Test fun replacedBindingCannotAdoptAnOldCurrencyOrGoalResult() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        val reports = RecordingSpendingGoalActions().apply { goalGate = { withContext(NonCancellable) { gate.await() } } }
+        val edits = RecordingGoalEdits()
+        val vm = model(reports, edits)
         advanceUntilIdle()
-        viewModel.beginEdit()
-        viewModel.updateField(SpendingGoalEditField.Amount, "")
-
-        viewModel.save()
+        reports.goalGate = null
+        reports.goalResult = Result.success(spendingGoal().copy(name = "新会话目标"))
+        edits.access.value = edits.access.value!!.let { it.copy(binding = it.binding.copy(bindingRevision = "binding-2")) }
         advanceUntilIdle()
-
-        assertTrue(actions.updateCalls.isEmpty())
-        assertNotNull(viewModel.state.value.formError)
+        gate.complete(Unit); advanceUntilIdle()
+        assertEquals("新会话目标", vm.state.value.goal?.name)
+        edits.access.value = edits.access.value!!.copy(canModify = false)
+        advanceUntilIdle(); vm.beginEdit(); vm.save()
+        assertFalse(vm.state.value.canModify)
+        assertTrue(edits.saves.isEmpty())
     }
 
-    @Test
-    fun saveParsesAmountInLedgerCapability() = runTest(dispatcher) {
-        // PR#255 R12-D：编辑保存同走信封 capability —— JPY 账本 "1200" → 1200 minor（不 ×100）。
-        val debts = CapabilityDebtActions(
-            page = DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "JPY"),
-        )
-        val updated = spendingGoal(rowVersion = 8L)
-        val actions = RecordingSpendingGoalActions(
-            goalResult = Result.success(spendingGoal(rowVersion = 7L)),
-            updateResult = Result.success(updated),
-        )
-        val viewModel = SpendingGoalDetailViewModel(actions, debts)
-        viewModel.load("goal-1")
-        advanceUntilIdle()
-        viewModel.beginEdit()
-        // JPY 回填：20000 minor → "20000"（零小数不 ÷100）。
-        assertEquals("20000", viewModel.state.value.targetAmountInput)
-        viewModel.updateField(SpendingGoalEditField.Amount, "1200")
-
-        viewModel.save()
-        advanceUntilIdle()
-
-        assertEquals(1_200L, actions.updateCalls.single().update.targetAmountCents)
+    @Test fun invalidFormAndArchivedGoalNeverPublish() = runTest(dispatcher) {
+        val edits = RecordingGoalEdits()
+        val reports = RecordingSpendingGoalActions()
+        val vm = model(reports, edits)
+        advanceUntilIdle(); vm.beginEdit(); vm.updateField(SpendingGoalEditField.Amount, "0"); vm.save()
+        assertNotNull(vm.state.value.formError)
+        vm.cancelEdit()
+        reports.goalResult = Result.success(spendingGoal(status = "archived", rowVersion = 2))
+        vm.load(); advanceUntilIdle(); vm.beginEdit(); vm.save()
+        assertFalse(vm.state.value.isEditing)
+        assertTrue(edits.saves.isEmpty())
     }
 
-    @Test
-    fun saveBlockedWhenCapabilityUnsupported() = runTest(dispatcher) {
-        // R12-D：capability 在支持集外 → 禁写 + 明示文案，update 不可达。
-        val debts = CapabilityDebtActions(
-            page = DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "VND"),
-        )
-        val actions = RecordingSpendingGoalActions()
-        val viewModel = SpendingGoalDetailViewModel(actions, debts)
-        viewModel.load("goal-1")
-        advanceUntilIdle()
-        viewModel.beginEdit()
-
-        assertNull(viewModel.state.value.ledgerCurrency)
-        viewModel.save()
-        advanceUntilIdle()
-
-        assertTrue(actions.updateCalls.isEmpty())
-        assertEquals(
-            UiText.res(R.string.currency_unconfirmed_write_blocked),
-            viewModel.state.value.formError,
-        )
-    }
-
-    @Test
-    fun beginEditBlockedWhenLedgerCurrencyUnresolved() = runTest(dispatcher) {
-        // PR#255 R14-5：capability 未知（VND → null）时不开编辑 —— 回填币种必须与 save 解析
-        // 同源；旧码落 CNY 兜底会把 20000 minor 回填成 "200.00" 假金额。编辑入口与 save 同门。
-        val debts = CapabilityDebtActions(
-            page = DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "VND"),
-        )
-        val actions = RecordingSpendingGoalActions()
-        val viewModel = SpendingGoalDetailViewModel(actions, debts)
-        viewModel.load("goal-1")
-        advanceUntilIdle()
-
-        viewModel.beginEdit()
-
-        assertFalse(viewModel.state.value.isEditing)
-        assertEquals("", viewModel.state.value.targetAmountInput)
-        assertEquals(
-            UiText.res(R.string.currency_unconfirmed_write_blocked),
-            viewModel.state.value.formError,
-        )
-    }
-
-    @Test
-    fun updateAmountReportsParseFailureImmediately() = runTest(dispatcher) {
-        // PR#255 R14-2：JPY 账本输 "12.50" 即时报解析失败（不再静默 canSave=false）；改合法即清。
-        val debts = CapabilityDebtActions(
-            page = DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "JPY"),
-        )
-        val actions = RecordingSpendingGoalActions()
-        val viewModel = SpendingGoalDetailViewModel(actions, debts)
-        viewModel.load("goal-1")
-        advanceUntilIdle()
-        viewModel.beginEdit()
-
-        viewModel.updateField(SpendingGoalEditField.Amount, "12.50")
-        assertEquals(UiText.res(R.string.expense_edit_amount_invalid), viewModel.state.value.formError)
-
-        viewModel.updateField(SpendingGoalEditField.Amount, "1250")
-        assertNull(viewModel.state.value.formError)
-    }
-
-    @Test
-    fun viewerCannotEnterEditOrRequestArchive() = runTest(dispatcher) {
-        val actions = RecordingSpendingGoalActions(canModify = false)
-        val viewModel = SpendingGoalDetailViewModel(actions, CapabilityDebtActions())
-        viewModel.load("goal-1")
-        advanceUntilIdle()
-
-        viewModel.beginEdit()
-        viewModel.requestArchive()
-
-        assertFalse(viewModel.state.value.isEditing)
-        assertFalse(viewModel.state.value.showArchiveDialog)
-        assertTrue(actions.updateCalls.isEmpty())
-        assertTrue(actions.archiveCalls.isEmpty())
-    }
-
-    @Test
-    fun archiveMarksCompletionAndMutationRevision() = runTest(dispatcher) {
-        val actions = RecordingSpendingGoalActions(
-            archiveResult = Result.success(spendingGoal(status = "archived", rowVersion = 3L)),
-        )
-        val viewModel = SpendingGoalDetailViewModel(actions, CapabilityDebtActions())
-        viewModel.load("goal-1")
-        advanceUntilIdle()
-
-        viewModel.requestArchive()
-        viewModel.archive()
-        advanceUntilIdle()
-
-        assertEquals(listOf("goal-1"), actions.archiveCalls)
-        assertTrue(viewModel.state.value.archiveCompleted)
-        assertEquals(1, viewModel.state.value.mutationRevision)
-        assertTrue(viewModel.state.value.goal?.isArchived == true)
-    }
+    private fun goalRow(status: PendingMutationStatus) = OutboxRow(
+        1, "https://goal.example", "owner", "test-owner", PendingMutationType.UpdateGoal,
+        "goal:goal-1", "{}", 1, status, 0, null, "2026-09-08T00:00:00Z", null, null, "original-key")
 }

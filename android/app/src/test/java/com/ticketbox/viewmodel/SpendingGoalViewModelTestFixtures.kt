@@ -45,21 +45,17 @@ internal data class SpendingGoalListCall(
     val includeArchived: Boolean,
 )
 
-internal data class SpendingGoalUpdateCall(
-    val publicId: String,
-    val update: GoalUpdate,
-)
-
 internal class RecordingSpendingGoalActions(
     private val canModify: Boolean = true,
     var goalsResult: Result<List<Goal>> = Result.success(emptyList()),
     var goalResult: Result<Goal> = Result.success(spendingGoal()),
-    var updateResult: Result<Goal> = Result.success(spendingGoal(rowVersion = 2L)),
     var archiveResult: Result<Goal> = Result.success(spendingGoal(status = "archived")),
 ) : ReportsActions by unsupportedSpendingGoalActions() {
     val goalsCalls = mutableListOf<SpendingGoalListCall>()
     val goalCalls = mutableListOf<String>()
-    val updateCalls = mutableListOf<SpendingGoalUpdateCall>()
+    val createCalls = mutableListOf<com.ticketbox.domain.model.GoalDraft>()
+    var createGate: (suspend () -> Unit)? = null
+    var goalGate: (suspend () -> Unit)? = null
     val archiveCalls = mutableListOf<String>()
 
     override fun canModifyLedger(): Boolean = canModify
@@ -71,15 +67,19 @@ internal class RecordingSpendingGoalActions(
 
     override suspend fun goal(publicId: String): Result<Goal> {
         goalCalls += publicId
+        val result = goalResult
+        goalGate?.invoke()
+        return result
+    }
+
+    override suspend fun createGoal(draft: com.ticketbox.domain.model.GoalDraft,
+        expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding): Result<Goal> {
+        createCalls += draft
+        createGate?.invoke()
         return goalResult
     }
 
-    override suspend fun updateGoal(publicId: String, update: GoalUpdate): Result<Goal> {
-        updateCalls += SpendingGoalUpdateCall(publicId, update)
-        return updateResult
-    }
-
-    override suspend fun archiveGoal(publicId: String): Result<Goal> {
+    override suspend fun archiveGoal(publicId: String, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding): Result<Goal> {
         archiveCalls += publicId
         return archiveResult
     }
@@ -120,3 +120,30 @@ private fun unsupportedSpendingGoalActions(): ReportsActions = Proxy.newProxyIns
         else -> throw UnsupportedOperationException(method.name)
     }
 } as ReportsActions
+
+internal class RecordingGoalEdits : com.ticketbox.data.repository.GoalEditActions {
+    val access = kotlinx.coroutines.flow.MutableStateFlow<com.ticketbox.data.repository.LedgerAccessContext?>(
+        com.ticketbox.data.repository.LedgerAccessContext(com.ticketbox.data.repository.LogicalSessionBinding(
+            "https://goal.example", "owner", "test-owner", "session-1", "binding-1"), true))
+    val rows = kotlinx.coroutines.flow.MutableStateFlow<List<com.ticketbox.data.repository.PendingGoalEdit>>(emptyList())
+    var currencyResult = Result.success(com.ticketbox.domain.model.CurrencyCode.CNY)
+    var currencyGate: (suspend () -> Unit)? = null
+    var saveGate: (suspend () -> Unit)? = null
+    var saveResult = Result.success(1L)
+    val saves = mutableListOf<GoalUpdate>()
+    override fun currentAccess() = access.value
+    override fun observeAccess() = access
+    override suspend fun currency(binding: com.ticketbox.data.repository.LogicalSessionBinding): Result<com.ticketbox.domain.model.CurrencyCode> {
+        val result = currencyResult
+        currencyGate?.invoke()
+        return result
+    }
+    override fun observeEdits(binding: com.ticketbox.data.repository.LogicalSessionBinding, publicId: String) = rows
+    override suspend fun save(binding: com.ticketbox.data.repository.LogicalSessionBinding, goal: Goal, update: GoalUpdate): Result<Long> {
+        saves += update
+        saveGate?.invoke()
+        return saveResult
+    }
+    override suspend fun recover(binding: com.ticketbox.data.repository.LogicalSessionBinding,
+        pending: com.ticketbox.data.repository.PendingGoalEdit, drop: Boolean) = Result.success(Unit)
+}

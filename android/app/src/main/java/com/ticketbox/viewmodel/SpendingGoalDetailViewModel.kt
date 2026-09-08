@@ -3,7 +3,9 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
-import com.ticketbox.data.repository.DebtActions
+import com.ticketbox.data.repository.GoalEditActions
+import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.PendingGoalEdit
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Goal
@@ -45,12 +47,13 @@ data class SpendingGoalDetailUiState(
     val isArchiving: Boolean = false,
     val archiveCompleted: Boolean = false,
     val mutationRevision: Int = 0,
-    /** 账本币种（R12-D，同 CreateSpendingGoalViewModel）：信封 capability 严格解析，null=未确认禁写。 */
+    val pendingEdits: List<PendingGoalEdit> = emptyList(),
     val ledgerCurrency: CurrencyCode? = null,
 ) {
+    val hasPendingEdit: Boolean get() = pendingEdits.any { !it.isDone }
     val canSave: Boolean
         get() = canModify &&
-            !isSaving &&
+            !isSaving && !hasPendingEdit &&
             ledgerCurrency != null &&
             name.trim().isNotEmpty() &&
             (ledgerCurrency.let { parseAmountCents(targetAmountInput, it)?.let { a -> a > 0L } == true })
@@ -58,69 +61,93 @@ data class SpendingGoalDetailUiState(
 
 class SpendingGoalDetailViewModel(
     private val reports: ReportsActions,
-    private val debts: DebtActions,
+    private val edits: GoalEditActions,
 ) : ViewModel() {
     private val _state = MutableStateFlow(
         SpendingGoalDetailUiState(
-            canModify = reports.canModifyLedger(),
+            canModify = edits.currentAccess()?.canModify == true,
         ),
     )
     val state: StateFlow<SpendingGoalDetailUiState> = _state.asStateFlow()
     private var loadJob: Job? = null
     private var loadGeneration = 0L
 
-    fun load(publicId: String = _state.value.publicId) {
-        val requestedId = publicId.trim()
-        if (requestedId.isEmpty()) return
-        val generation = ++loadGeneration
-        loadJob?.cancel()
-        _state.update {
-            SpendingGoalDetailUiState(
-                canModify = reports.canModifyLedger(),
-                publicId = requestedId,
-                isLoading = true,
-            )
-        }
-        loadJob = viewModelScope.launch {
-            // R12-D + R14-6：随每次 load 重解析账本币种（共享同源裁决：record 集合 × 信封
-            // capability，冲突/未知 → null 禁写；账本切换后重算）。
-            val page = debts.listDebts().getOrNull()
-            _state.update { it.copy(ledgerCurrency = resolveLedgerCurrency(page)) }
-            val result = reports.goal(requestedId)
-            if (generation != loadGeneration || _state.value.publicId != requestedId) return@launch
-            result.fold(
-                onSuccess = { goal ->
-                    _state.update {
-                        if (goal.isSpendingLimit) {
-                            it.copy(goal = goal, isLoading = false)
-                        } else {
-                            it.copy(
-                                isLoading = false,
-                                loadError = UiText.res(R.string.spending_goal_detail_wrong_type),
-                            )
-                        }
-                    }
-                },
-                onFailure = { error ->
-                    _state.update {
-                        it.copy(
-                            isLoading = false,
-                            loadError = error.toUiText(R.string.spending_goal_detail_load_failed),
-                        )
-                    }
-                },
-            )
+    private var taskBinding: LogicalSessionBinding? = edits.currentAccess()?.binding
+    private var observation: Job? = null
+    private var commandJob: Job? = null
+
+    init {
+        viewModelScope.launch {
+            edits.observeAccess().collect { access ->
+                val changed = access?.binding != taskBinding
+                _state.update { it.copy(canModify = access?.canModify == true) }
+                if (changed) {
+                    taskBinding = access?.binding
+                    commandJob?.cancel()
+                    observation?.cancel()
+                    loadJob?.cancel()
+                    loadGeneration += 1
+                    val id = _state.value.publicId
+                    _state.value = SpendingGoalDetailUiState(canModify = access?.canModify == true, publicId = id)
+                    if (access != null) load(id)
+                }
+            }
         }
     }
 
+    fun load(publicId: String = _state.value.publicId) {
+        val id = publicId.trim().takeIf { it.isNotEmpty() } ?: return
+        val binding = edits.currentAccess()?.binding ?: return
+        if (id == _state.value.publicId && _state.value.isEditing && taskBinding == binding) return
+        val sameTask = id == _state.value.publicId && taskBinding == binding
+        taskBinding = binding
+        val generation = ++loadGeneration
+        loadJob?.cancel()
+        observation?.cancel()
+        if (!sameTask) _state.value = SpendingGoalDetailUiState(edits.currentAccess()?.canModify == true, publicId = id)
+        _state.update { it.copy(isLoading = true, loadError = null) }
+        observeSubmission(binding, id)
+        loadJob = viewModelScope.launch {
+            val currency = edits.currency(binding)
+            if (!matches(binding, id, generation)) return@launch
+            _state.update { it.copy(ledgerCurrency = currency.getOrNull(),
+                goal = it.goal?.copy(homeCurrencyCode = currency.getOrNull()?.storageKey),
+                loadError = currency.exceptionOrNull()?.toUiText(R.string.currency_unconfirmed_write_blocked)) }
+            val result = reports.goal(id)
+            if (!matches(binding, id, generation)) return@launch
+            result.fold(onSuccess = { goal ->
+                _state.update { state ->
+                    if (!goal.isSpendingLimit || goal.ledgerId != binding.ledgerId) state.copy(isLoading = false,
+                        loadError = UiText.res(R.string.spending_goal_detail_wrong_type))
+                    else state.copy(isLoading = false,
+                        goal = if (state.goal == null || goal.rowVersion >= state.goal.rowVersion) goal.copy(homeCurrencyCode = state.ledgerCurrency?.storageKey) else state.goal)
+                }
+            }, onFailure = { error ->
+                _state.update { it.copy(isLoading = false, loadError = error.toUiText(R.string.spending_goal_detail_load_failed)) }
+            })
+        }
+    }
+
+    private fun observeSubmission(binding: LogicalSessionBinding, id: String) {
+        observation = viewModelScope.launch {
+            edits.observeEdits(binding, id).collect { rows ->
+                if (!matches(binding, id)) return@collect
+                val confirmed = rows.filter { it.isDone }.mapNotNull { it.confirmed }.maxByOrNull { it.rowVersion }
+                _state.update { state ->
+                    val newer = confirmed != null && (state.goal == null || confirmed.rowVersion > state.goal.rowVersion)
+                    state.copy(pendingEdits = rows, goal = if (newer) confirmed?.copy(homeCurrencyCode = state.ledgerCurrency?.storageKey) else state.goal,
+                        mutationRevision = state.mutationRevision + if (newer) 1 else 0)
+                }
+            }
+        }
+    }
+
+    private fun matches(binding: LogicalSessionBinding, id: String, generation: Long = loadGeneration): Boolean =
+        generation == loadGeneration && taskBinding == binding && edits.currentAccess()?.binding == binding && _state.value.publicId == id
+
     fun beginEdit() {
         val goal = _state.value.goal ?: return
-        if (!_state.value.canModify || goal.isArchived) return
-        // R14-5：账本币种未确认（null）不开编辑 —— 回填币种必须与 save 解析币种同源。
-        // 实证：ledgerCurrency 仅 load() 写入（协程内先于 goal 落定），编辑会话内不变
-        // （load 全量重置 isEditing）；唯一可达的不对称是本门拦截的 null 窗口 —— 旧码
-        // 落 FxContract.HomeCurrency 兜底回填，把非 CNY 账本的 goal minor 格式化成假金额
-        // （JPY 1200 → "12.00"），save 虽另有 R12-D 门，用户看到的已是谎言。
+        if (!_state.value.canModify || goal.isArchived || _state.value.hasPendingEdit) return
         val currency = _state.value.ledgerCurrency
         if (currency == null) {
             _state.update { it.copy(formError = UiText.res(R.string.currency_unconfirmed_write_blocked)) }
@@ -163,92 +190,66 @@ class SpendingGoalDetailViewModel(
         }
     }
 
-    fun previousMonth() {
-        shiftMonth(-1)
-    }
-
-    fun nextMonth() {
-        shiftMonth(1)
-    }
-
     fun save() {
         val current = _state.value
         val goal = current.goal ?: return
-        if (!current.canModify || current.isSaving || goal.isArchived) return
-        // R12-D：币种未确认禁写（不落 CNY 兜底）。
+        val binding = taskBinding ?: return
+        if (!matches(binding, goal.publicId) || edits.currentAccess()?.canModify != true ||
+            current.isSaving || current.hasPendingEdit || goal.isArchived) return
         val currency = current.ledgerCurrency
-        if (currency == null) {
-            _state.update { it.copy(formError = UiText.res(R.string.currency_unconfirmed_write_blocked)) }
-            return
-        }
-        val targetAmountCents = parseAmountCents(current.targetAmountInput, currency)
-        if (current.name.trim().isEmpty() || targetAmountCents == null || targetAmountCents <= 0L) {
+        val amount = currency?.let { parseAmountCents(current.targetAmountInput, it) }
+        if (current.name.trim().isEmpty() || amount == null || amount <= 0) {
             _state.update { it.copy(formError = UiText.res(R.string.spending_goal_edit_validation)) }
             return
         }
-        val generation = ++loadGeneration
-        loadJob?.cancel()
         _state.update { it.copy(isSaving = true, formError = null, message = null) }
-        viewModelScope.launch {
-            val result = reports.updateGoal(
-                publicId = goal.publicId,
-                update = GoalUpdate(
-                    expectedRowVersion = goal.rowVersion,
-                    name = current.name,
-                    month = current.month,
-                    targetAmountCents = targetAmountCents,
-                    category = current.category.trim(),
-                ),
-            )
-            if (generation != loadGeneration || _state.value.publicId != goal.publicId) return@launch
-            result.fold(
-                onSuccess = { updated ->
-                    _state.update {
-                        it.copy(
-                            goal = updated,
-                            isEditing = false,
-                            isSaving = false,
-                            formError = null,
-                            message = UiText.res(R.string.spending_goal_edit_saved),
-                            messageTone = MessageTone.Success,
-                            mutationRevision = it.mutationRevision + 1,
-                        )
-                    }
-                },
-                onFailure = { error ->
-                    _state.update {
-                        it.copy(
-                            isSaving = false,
-                            formError = error.toUiText(R.string.spending_goal_edit_failed),
-                        )
-                    }
-                },
-            )
+        commandJob = viewModelScope.launch {
+            val result = edits.save(binding, goal, GoalUpdate(goal.rowVersion, current.name, current.month,
+                amount, current.category.trim()))
+            if (!matches(binding, goal.publicId)) return@launch
+            result.fold(onSuccess = {
+                _state.update { it.copy(isSaving = false, isEditing = false,
+                    message = null, messageTone = MessageTone.Info) }
+            }, onFailure = { error ->
+                _state.update { it.copy(isSaving = false, formError = error.toUiText(R.string.spending_goal_edit_failed)) }
+            })
         }
     }
 
-    fun requestArchive() {
+    fun recover(pending: PendingGoalEdit, drop: Boolean) {
+        val binding = taskBinding ?: return
+        val id = _state.value.publicId
+        if (_state.value.isSaving || !matches(binding, id)) return
+        _state.update { it.copy(isSaving = true, formError = null) }
+        commandJob = viewModelScope.launch {
+            val result = edits.recover(binding, pending, drop)
+            if (!matches(binding, id)) return@launch
+            _state.update { it.copy(isSaving = false,
+                formError = result.exceptionOrNull()?.toUiText(R.string.spending_goal_edit_failed),
+                message = if (result.isSuccess) UiText.raw(if (drop) "已撤下本地修改，请核对目标后重新编辑。"
+                    else "正在重试原提交。") else null, messageTone = MessageTone.Info) }
+        }
+    }
+
+    fun showArchiveConfirmation(show: Boolean) {
+        if (_state.value.isArchiving) return
         val goal = _state.value.goal ?: return
-        if (_state.value.canModify && !goal.isArchived) {
-            _state.update { it.copy(showArchiveDialog = true, message = null) }
-        }
-    }
-
-    fun dismissArchive() {
-        if (!_state.value.isArchiving) {
-            _state.update { it.copy(showArchiveDialog = false) }
+        if (!show || _state.value.canModify && !goal.isArchived && !_state.value.hasPendingEdit) {
+            _state.update { it.copy(showArchiveDialog = show, message = null) }
         }
     }
 
     fun archive() {
         val goal = _state.value.goal ?: return
-        if (!_state.value.canModify || _state.value.isArchiving || goal.isArchived) return
+        val binding = taskBinding ?: return
+        if (!matches(binding, goal.publicId) || edits.currentAccess()?.canModify != true ||
+            _state.value.isArchiving || _state.value.hasPendingEdit || goal.isArchived) return
         val generation = ++loadGeneration
         loadJob?.cancel()
         _state.update { it.copy(isArchiving = true, formError = null, message = null) }
         viewModelScope.launch {
-            val result = reports.archiveGoal(goal.publicId)
-            if (generation != loadGeneration || _state.value.publicId != goal.publicId) return@launch
+            val result = reports.archiveGoal(goal.publicId, binding)
+            if (!matches(binding, goal.publicId, generation)) return@launch
             result.fold(
                 onSuccess = { archived ->
                     _state.update {
@@ -275,7 +276,7 @@ class SpendingGoalDetailViewModel(
         }
     }
 
-    private fun shiftMonth(delta: Long) {
+    fun shiftMonth(delta: Long) {
         _state.update {
             val nextMonth = runCatching { YearMonth.parse(it.month).plusMonths(delta) }
                 .getOrDefault(YearMonth.now())

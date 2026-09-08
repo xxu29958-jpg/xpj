@@ -115,14 +115,7 @@ class ReportsRepositoryTest {
                     targetAmountCents = 80000,
                     category = "吃饭",
                 ),
-            ).getOrThrow()
-            val updated = repository.updateGoal(
-                publicId = " goal-1 ",
-                update = GoalUpdate(
-                    expectedRowVersion = 1L,
-                    targetAmountCents = 90000,
-                    category = "购物",
-                ),
+                expectedBinding = repository.dashboardAccess()!!.binding,
             ).getOrThrow()
             val binding = repository.dashboardAccess()!!.binding
             val cards = repository.dashboardCards(binding, DashboardSurface.Android).getOrThrow()
@@ -139,11 +132,10 @@ class ReportsRepositoryTest {
             assertEquals(true, api.goalsCalls.single().includeArchived)
             assertEquals("UTC", api.goalsCalls.single().timezone)
             assertEquals(GoalProgressState.NearLimit, goals.single().progressState)
+            assertEquals("JPY", goals.single().homeCurrencyCode)
             assertEquals("餐饮", created.category)
-            assertEquals("购物", updated.category)
             assertEquals("本月餐饮", api.createGoalCalls.single().request.name)
             assertEquals("餐饮", api.createGoalCalls.single().request.category)
-            assertEquals("goal-1", api.updateGoalCalls.single().publicId)
             assertEquals("android", api.dashboardCardCalls.single())
             assertEquals("goals", api.updateDashboardCardCalls.single().request.cards.first().key)
             assertEquals("reports", savedCards.items[1].key)
@@ -227,6 +219,7 @@ class ReportsRepositoryTest {
                 month = "2026-05",
                 targetAmountCents = 80000,
             ),
+        expectedBinding = repository.dashboardAccess()!!.binding,
         )
         val cardsResult = repository.updateDashboardCards(
             binding = repository.dashboardAccess()!!.binding,
@@ -275,6 +268,7 @@ class ReportsRepositoryTest {
                 month = "2026-05",
                 targetAmountCents = 80000,
             ),
+        expectedBinding = repository.dashboardAccess()!!.binding,
         )
 
         assertTrue(result.isFailure)
@@ -567,6 +561,10 @@ private class ReportsApiHandler : InvocationHandler {
         }
         val values = args.orEmpty()
         return when (method.name) {
+            "runtimeCompatibility" -> com.ticketbox.data.remote.dto.RuntimeCompatibilityDto(
+                com.ticketbox.data.remote.CURRENT_TICKETBOX_API_VERSION, "compatible",
+                com.ticketbox.data.remote.dto.RuntimeProductCapabilitiesDto(
+                    com.ticketbox.data.remote.dto.RuntimeCurrencyCapabilityDto("1:1:JPY", "JPY", 0, "compatible")))
             "reportsOverview" -> {
                 @Suppress("UNCHECKED_CAST")
                 val query = values[0] as Map<String, String>

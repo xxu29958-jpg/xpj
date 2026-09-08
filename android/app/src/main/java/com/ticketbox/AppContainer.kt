@@ -289,6 +289,7 @@ class AppContainer(context: Context) {
             UpdateGoalDispatcher(
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.goalUpdateAdapter,
+                receiptAdapter = outboxAdapters.goalReceiptAdapter,
             ),
             // ADR-0042 Slice F: PATCH /api/income-plans/{publicId} via outbox.
             UpdateIncomePlanDispatcher(
@@ -374,6 +375,7 @@ class AppContainer(context: Context) {
     val debtAdjustmentRepository = repositories.debtAdjustmentRepository
     val repaymentDraftRepository = repositories.repaymentDraftRepository
     val reportsRepository = repositories.reportsRepository
+    val goalEditRepository = repositories.goalEditRepository
     val ruleRepository = repositories.ruleRepository
     val merchantRepository = repositories.merchantRepository
     val tagRepository = repositories.tagRepository

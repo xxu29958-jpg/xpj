@@ -93,6 +93,7 @@ class UpdateGoalDispatcherTest {
     private fun dispatcherFor(stub: ApiService) = UpdateGoalDispatcher(
         apiProvider = { stub },
         payloadAdapter = moshi().adapter(GoalUpdateRequestDto::class.java),
+        receiptAdapter = moshi().adapter(GoalDto::class.java),
     )
 
     @Test
@@ -102,7 +103,8 @@ class UpdateGoalDispatcherTest {
         val result = dispatcherFor(stub).dispatch(goalRow(idempotencyKey = "key-abc"))
 
         assertEquals("key-abc", stub.lastIdempotencyKey, "dispatcher must send the row's key")
-        assertEquals(DispatchResult.Success(newRowVersion = 2L), result)
+        assertTrue(result is DispatchResult.Success)
+        assertEquals(2L, result.newRowVersion)
     }
 
     @Test

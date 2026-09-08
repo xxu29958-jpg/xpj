@@ -135,9 +135,13 @@ internal class OutboxAdapterGraph {
     }
 
     // ADR-0042 Slice F: PATCH /api/goals/{publicId} adapter. Shared between
-    // UpdateGoalDispatcher and ReportsRepository.updateGoalAllowingOffline.
+    // UpdateGoalDispatcher and GoalEditRepository.save.
     val goalUpdateAdapter: JsonAdapter<GoalUpdateRequestDto> = lazyJsonAdapter {
         moshi.adapter(GoalUpdateRequestDto::class.java)
+    }
+
+    val goalReceiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.GoalDto> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.remote.dto.GoalDto::class.java)
     }
 
     // ADR-0042 Slice F: PATCH /api/income-plans/{publicId} adapter. Shared
