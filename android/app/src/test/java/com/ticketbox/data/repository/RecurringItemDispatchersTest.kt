@@ -169,6 +169,26 @@ class RecurringItemDispatchersTest {
         assertTrue(result is DispatchResult.RetryableFailure)
     }
 
+    @Test
+    fun `a missing create route cannot settle an unsent intention`() = runTest {
+        val stub = Stub(Result.failure(httpException(404, """{"error":"not_found"}""")))
+        val result = CreateRecurringItemDispatcher(
+            apiProvider = { stub },
+            payloadAdapter = moshi.adapter(RecurringItemCreateRequestDto::class.java),
+        ).dispatch(createRow())
+        assertTrue(result is DispatchResult.Failure)
+    }
+
+    @Test
+    fun `create cannot accept another ledgers receipt`() = runTest {
+        val stub = Stub(Result.success(itemDto().copy(ledgerId = "other-ledger")))
+        val result = CreateRecurringItemDispatcher(
+            apiProvider = { stub },
+            payloadAdapter = moshi.adapter(RecurringItemCreateRequestDto::class.java),
+        ).dispatch(createRow())
+        assertTrue(result is DispatchResult.Failure)
+    }
+
     private fun httpException(code: Int, body: String): HttpException {
         val mediaType = "application/json".toMediaTypeOrNull()
         val raw = Response.Builder()
