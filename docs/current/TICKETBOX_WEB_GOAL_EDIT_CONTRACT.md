@@ -41,11 +41,14 @@ operation/key fingerprint, OCC, currency binding, Android receipt and report
 consumers keep their semantics. Refusal preserves the original input/key/token;
 explicit review displays current facts and prepares a new proposal without writing.
 Create/archive and the shared recycle owner remain their existing consumers.
-Executed cloud RED found all three missing-entry cases. Candidate qualification,
-actual browser tasks and bounded review are still pending.
+Executed cloud RED found all three missing-entry cases. Real VM browser journeys
+at 360/768/1440px and bounded review are closed; the [PR qualification record](https://github.com/xxu29958-jpg/xpj/pull/394)
+holds the exact candidate/main gate results and final slice status.
 
 The 360px real browser exposed month navigation pushing identity/actions outside
 the shared header. Compact headers now wrap the month picker onto its own row;
 month-bearing pages and the editor retain all controls. The new Web OCC form adds
 one token carrier to the exact inventory (107 → 108); no token exemption or debt
-ceiling changes. Asset cache keys already derive from template/CSS contents.
+ceiling changes. Route classification and OpenAPI include the new HTML form;
+existing API paths and schemas are unchanged. Asset cache keys already derive
+from template/CSS contents.

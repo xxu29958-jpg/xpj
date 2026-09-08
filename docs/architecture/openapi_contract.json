@@ -2801,6 +2801,52 @@
         "title": "Body_web_forgive_member_debt_web_debts__public_id__forgive_post",
         "type": "object"
       },
+      "Body_web_goal_save_web_goals__public_id__edit_post": {
+        "properties": {
+          "category": {
+            "default": "",
+            "title": "Category",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "month": {
+            "default": "",
+            "title": "Month",
+            "type": "string"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          },
+          "review_latest": {
+            "default": false,
+            "title": "Review Latest",
+            "type": "boolean"
+          },
+          "target_amount_yuan": {
+            "default": "",
+            "title": "Target Amount Yuan",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_goal_save_web_goals__public_id__edit_post",
+        "type": "object"
+      },
       "Body_web_goals_archive_web_goals__public_id__archive_post": {
         "properties": {
           "ledger_id": {
@@ -40087,6 +40133,107 @@
           }
         },
         "summary": "Web Goals Archive",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/goals/{public_id}/edit": {
+      "get": {
+        "operationId": "web_goal_edit_web_goals__public_id__edit_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Goal Edit",
+        "tags": [
+          "web"
+        ]
+      },
+      "post": {
+        "operationId": "web_goal_save_web_goals__public_id__edit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_goal_save_web_goals__public_id__edit_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Goal Save",
         "tags": [
           "web"
         ]
