@@ -830,7 +830,7 @@ class BudgetViewModelBindingRaceTest {
     fun refreshIsSerializedBehindAnInFlightSave() = budgetTest {
         val pendingSave = CompletableDeferred<Result<Long>>()
         val fake = FakeBudgetActions(budget = budget(totalAmountCents = 500000)).apply {
-            saveResponder = { pendingSave.await() }
+            commands.saveResponder = { pendingSave.await() }
         }
         val vm = BudgetViewModel(fake, initialMonth = "2026-05")
         advanceUntilIdle()
