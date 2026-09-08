@@ -12,6 +12,7 @@ from app.config import reset_settings_cache
 from app.database import SessionLocal
 from app.models import BudgetAdvisorAuditLog, LedgerMember
 from app.services.budget_advisor_service import _providers as providers_module
+from tests._infra.currency import activate_test_currency_authority
 
 
 @pytest.fixture()
@@ -28,11 +29,10 @@ def live_provider_env(monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.fixture()
-def jpy_home_env(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
-    reset_settings_cache()
-    yield
-    reset_settings_cache()
+def confirmed_jpy_currency(identity):
+    with SessionLocal() as db:
+        activate_test_currency_authority(db, "JPY")
+        db.commit()
 
 
 def _patch_openai_call(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -158,8 +158,9 @@ def test_web_budget_advise_post_accepts_canonical_cny_decimal_text(
     ) in response.text
 
 
+@pytest.mark.currency_binding_unbound
 def test_web_budget_advise_post_accepts_canonical_jpy_integer_text(
-    jpy_home_env, web_client: TestClient, *, identity
+    confirmed_jpy_currency, web_client: TestClient, *, identity
 ) -> None:
     response = web_client.post(
         "/web/budget-advise",
@@ -181,13 +182,14 @@ def test_web_budget_advise_post_accepts_canonical_jpy_integer_text(
     ) in response.text
 
 
+@pytest.mark.currency_binding_unbound
 @pytest.mark.parametrize(
     "amount_text",
     ("12.5", "1e2", "abc", "9000000000001"),
     ids=("fraction", "exponent", "invalid", "c07-overflow"),
 )
 def test_web_budget_advise_post_rejects_noncanonical_or_out_of_range_jpy_text(
-    jpy_home_env,
+    confirmed_jpy_currency,
     web_client: TestClient,
     *,
     identity,

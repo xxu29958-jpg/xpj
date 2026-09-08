@@ -347,8 +347,8 @@ def upsert_monthly_budget(
     excluded_categories = _clean_excluded_categories(payload.excluded_categories)
     category_budget_rows = _clean_category_budget_rows(payload.category_budgets)
     now = now_utc()
-    # R13-2：无币种列的预算写也按 env 盖章口径入账 —— 先过绑定门（漂移/未决拒写，
-    # 否则 env 回摆后永久错值且无列可识别）。
+    # Currencyless budget columns use the confirmed installation's minor units.
+    # Establish the writer proof before changing those amounts.
     resolve_write_capability(db)
 
     budget = _get_any_budget(db, tenant_id=tenant_id, month=clean_month)

@@ -312,7 +312,7 @@ def test_received_split_web_edit_locks_agreed_facts_but_allows_metadata(
     assert after["tags"] == "家庭"
 
 
-def test_web_detail_money_posts_fail_closed_after_env_drift(
+def test_web_detail_money_posts_keep_confirmed_currency_despite_environment(
     web_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -342,19 +342,19 @@ def test_web_detail_money_posts_fail_closed_after_env_drift(
             },
             follow_redirects=False,
         )
-        assert items.status_code == 409, items.text
-        assert "服务端币种配置与已持久化的本位币绑定不一致" in items.text
+        assert items.status_code == 303, items.text
         api_items = web_client.get(
             f"/api/expenses/{expense_id}/items", headers=identity.app_headers
         )
         assert api_items.status_code == 200, api_items.json()
-        assert api_items.json()["items"] == []
+        assert api_items.json()["items_total_amount_cents"] == 1234
+        assert [item["name"] for item in api_items.json()["items"]] == ["牛奶"]
 
         split_snapshot = web_client.get(
             f"/api/expenses/{expense_id}", headers=identity.app_headers
         )
         assert split_snapshot.status_code == 200, split_snapshot.json()
-        assert split_snapshot.json()["row_version"] == initial_row_version
+        assert split_snapshot.json()["row_version"] == initial_row_version + 1
         splits = web_client.post(
             f"/web/expenses/{expense_id}/splits/save",
             data={
@@ -366,18 +366,22 @@ def test_web_detail_money_posts_fail_closed_after_env_drift(
             },
             follow_redirects=False,
         )
-        assert splits.status_code == 409, splits.text
-        assert "服务端币种配置与已持久化的本位币绑定不一致" in splits.text
+        assert splits.status_code == 303, splits.text
         api_splits = web_client.get(
             f"/api/expenses/{expense_id}/splits", headers=identity.app_headers
         )
         assert api_splits.status_code == 200, api_splits.json()
-        assert api_splits.json()["splits"] == []
+        assert api_splits.json()["splits_total_amount_cents"] == 1234
         final_snapshot = web_client.get(
             f"/api/expenses/{expense_id}", headers=identity.app_headers
         )
         assert final_snapshot.status_code == 200, final_snapshot.json()
-        assert final_snapshot.json()["row_version"] == initial_row_version
+        assert final_snapshot.json()["row_version"] == initial_row_version + 2
+        with SessionLocal() as db:
+            expense = db.get(Expense, expense_id)
+            assert expense is not None
+            assert expense.home_currency_code == "CNY"
+            assert expense.amount_cents == 1234
     finally:
         get_settings.cache_clear()
 

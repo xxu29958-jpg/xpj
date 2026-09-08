@@ -150,8 +150,7 @@ def create_debt(
         original_amount=payload.original_amount,
     )
     direction = _clean_direction(payload.direction)
-    # ADR-0061 C02 桥接门（PR#255 R9）：新 Debt 按 env 盖章 home_currency_code，
-    # env 与已持久事实漂移时 fail closed（空库首笔放行；先于任何新事实落库）。
+    # The confirmed installation supplies the new debt's currency and writer proof.
     resolve_write_capability(db)
     counterparty_type = _clean_counterparty_type(payload.counterparty_type)
     source_type = _clean_source_type(payload.source_type)

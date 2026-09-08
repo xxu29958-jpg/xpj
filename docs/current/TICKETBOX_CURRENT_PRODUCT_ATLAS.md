@@ -172,13 +172,12 @@ Do not drop these or open full lifecycle work while handling other journeys.
 remaining art/interaction details, then the exact full RC. Keep useful state
 feedback and efficient actions within each active capability change.
 
-**Active work:** #385–#394 are CLOSED, integrated and independently main-qualified.
+**Active work:** #385–#396 are CLOSED, integrated and independently main-qualified.
 [Member settlement evidence](TICKETBOX_MEMBER_SETTLEMENT_CONTINUITY_CONTRACT.md).
 [Spending-goal continuity evidence](TICKETBOX_PLANNING_GOAL_CONTINUITY_CONTRACT.md).
 
-**Next action:** qualify and integrate [Web income correction](TICKETBOX_WEB_INCOME_EDIT_CONTRACT.md)
-and [recurring form continuation](TICKETBOX_RECURRING_FORM_CONTINUITY_CONTRACT.md).
-Then correct initial currency choice and existing implicit-lock recovery;
+**Next action:** complete [currency choice and implicit-lock correction](TICKETBOX_CURRENCY_CHOICE_CORRECTION_CONTRACT.md),
+including money consumers and preservation of original offline intents;
 immutable historical money meaning cannot justify silently choosing and locking currency.
 Physical budget/income creation works; simplify Android's first-budget optional
 fields and correct the generic goal offline-viewing claim within Planning/convenience.

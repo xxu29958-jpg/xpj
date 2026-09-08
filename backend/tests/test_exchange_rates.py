@@ -8,7 +8,6 @@ from api_contract_helpers import confirm_expense_api
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from app.config import get_settings
 from app.database import SessionLocal
 from app.models import LedgerMember
 from app.services.exchange_rate_service import calculate_cny_cents, default_rate_date

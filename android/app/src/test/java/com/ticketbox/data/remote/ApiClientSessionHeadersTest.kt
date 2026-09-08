@@ -7,7 +7,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import okhttp3.Protocol
-import java.io.IOException
 import java.net.ServerSocket
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
@@ -15,7 +14,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertFalse
-import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 class ApiClientSessionHeadersTest {
     @Test
@@ -116,13 +115,15 @@ class ApiClientSessionHeadersTest {
     }
 
     @Test
-    fun bindingActivationRaceRemainsRetryableForTheOutbox() {
+    fun changedCurrencyBindingReturnsTheRefusalWithoutAnAutomaticRetry() {
+        var mutations = 0
         val client = buildApiHttpClient(null, { "tbx_session" }, { "owner" }, null, null)
             .newBuilder().addInterceptor { chain ->
                 val isRead = chain.request().method == "GET"
                 val body = if (isRead) {
-                    """{"api_version":"$CURRENT_TICKETBOX_API_VERSION","write_compatibility":"compatible","capabilities":{"currency":{"request_binding":"1:0:JPY"}}}"""
+                    """{"api_version":"$CURRENT_TICKETBOX_API_VERSION","write_compatibility":"compatible","capabilities":{"currency":{"request_binding":"1:1:CNY"}}}"""
                 } else {
+                    mutations++
                     """{"error":"currency_binding_revision_conflict","message":"Currency binding changed"}"""
                 }
                 Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1)
@@ -132,7 +133,11 @@ class ApiClientSessionHeadersTest {
         val request = Request.Builder().url("https://example.test/api/expenses/manual")
             .post("{}".toRequestBody()).build()
 
-        assertFailsWith<IOException> { client.newCall(request).execute().close() }
+        client.newCall(request).execute().use { response ->
+            assertEquals(409, response.code)
+            assertTrue(response.body.string().contains("currency_binding_revision_conflict"))
+        }
+        assertEquals(1, mutations)
     }
 }
 

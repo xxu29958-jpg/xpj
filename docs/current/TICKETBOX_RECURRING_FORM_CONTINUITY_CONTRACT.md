@@ -3,6 +3,9 @@
 Authority: full Goal and latest rulings → final Gmail contracts → exact code
 and runtime. Complete the existing Planning task without a new command owner.
 
+#396 CLOSED: integrated and independently main-qualified.
+[Qualification evidence](https://github.com/xxu29958-jpg/xpj/pull/396).
+
 ## Impact before construction
 
 The native create/edit forms call the correct recurring command, but refusal

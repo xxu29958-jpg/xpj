@@ -36,7 +36,6 @@ from app.routes.web_common import (
 )
 from app.services.currency_common import (
     average_minor_amount,
-    home_currency_code,
     minor_amount_label,
     minor_unit_digits,
     normalize_currency_code,
@@ -46,6 +45,7 @@ from app.services.owner_console_service._common import (
     _amount_yuan as _owner_amount_yuan,
 )
 from app.services.time_service import current_month
+from tests._infra.currency import activate_test_currency_authority
 
 
 class _RenderedText(HTMLParser):
@@ -79,12 +79,6 @@ def test_unknown_or_non_ascii_currency_code_fails_closed(
 @pytest.mark.parametrize(
     ("env_name", "env_value", "resolver"),
     [
-        pytest.param(
-            "FX_HOME_CURRENCY_CODE",
-            "KWD",
-            home_currency_code,
-            id="unknown-home",
-        ),
         pytest.param(
             "FX_SUPPORTED_CURRENCY_CODES",
             "CNY,KWD",
@@ -148,6 +142,7 @@ def test_foreign_expense_metadata_always_names_original_currency() -> None:
     assert ready_meta and "≈ ¥60.00" in ready_meta
 
 
+@pytest.mark.currency_binding_unbound
 @pytest.mark.parametrize(
     ("currency_code", "major_input", "invalid_input", "expected_minor"),
     [
@@ -165,7 +160,10 @@ def test_web_budget_write_and_reject_follow_home_currency_minor_units(
     invalid_input: str,
     expected_minor: int,
 ) -> None:
-    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", currency_code)
+    with SessionLocal() as db:
+        activate_test_currency_authority(db, currency_code)
+        db.commit()
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "CNY")
     get_settings.cache_clear()
     try:
         saved = web_client.post(
@@ -177,16 +175,12 @@ def test_web_budget_write_and_reject_follow_home_currency_minor_units(
             },
             follow_redirects=False,
         )
-        if currency_code == "CNY":
-            assert saved.status_code == 303, saved.text
-        else:
-            assert saved.status_code == 422, saved.text
-            assert "服务端币种配置与已持久化的本位币绑定不一致" in saved.text
+        assert saved.status_code == 303, saved.text
         with SessionLocal() as db:
             stored = db.scalar(
                 select(Budget.total_amount_cents).where(Budget.tenant_id == "owner").where(Budget.month == "2026-05")
             )
-        assert stored == (expected_minor if currency_code == "CNY" else None)
+        assert stored == expected_minor
 
         rejected = web_client.post(
             "/web/budgets/save",
@@ -202,7 +196,7 @@ def test_web_budget_write_and_reject_follow_home_currency_minor_units(
             unchanged = db.scalar(
                 select(Budget.total_amount_cents).where(Budget.tenant_id == "owner").where(Budget.month == "2026-05")
             )
-        assert unchanged == (expected_minor if currency_code == "CNY" else None)
+        assert unchanged == expected_minor
     finally:
         get_settings.cache_clear()
 

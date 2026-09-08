@@ -61,7 +61,7 @@ ERROR_MESSAGES = {
     "currency_not_supported": "暂不支持这个币种。",
     "currency_binding_drift": "服务端币种配置与账本已有记录的币种不一致，已停止写入；请检查服务端币种配置后再试。",
     "currency_binding_unresolved": "账本里还有早期人民币口径的计划/预算/周期数据，当前币种配置无法判定它们的单位，已停止写入；请先把服务端币种配置改回人民币，或联系维护者迁移后再切换。",
-    "currency_adoption_required": "当前安装需要先由拥有者在本机确认历史金额的本位币。",
+    "currency_adoption_required": "当前安装需要先由拥有者在电脑端选择并确认本位币。",
     "currency_adoption_currency_conflict": "历史金额证据与所选本位币不一致，已拒绝绑定；请先完成迁移或修复冲突事实。",
     "currency_binding_already_active": "当前安装已经完成本位币绑定。",
     "currency_binding_configuration_drift": "服务端币种配置与已持久化的本位币绑定不一致，已停止写入。",

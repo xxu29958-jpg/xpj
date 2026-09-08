@@ -61,6 +61,7 @@ class OutboxProtocolRefusalTest(private val refusal: String) {
         when (refusal) {
             "currency_adoption_required" -> assertEquals(ADOPTION_GUIDANCE, retained.lastError)
             "currency_binding_configuration_drift" -> assertEquals(DRIFT_GUIDANCE, retained.lastError)
+            "currency_binding_revision_conflict" -> assertTrue(retained.lastError.orEmpty().isNotBlank())
             "future_write_refusal" -> Unit
             else -> assertEquals(refusal, retained.lastError)
         }
@@ -96,7 +97,7 @@ class OutboxProtocolRefusalTest(private val refusal: String) {
         @JvmStatic
         @Parameterized.Parameters(name = "{0}")
         fun refusals() = listOf("runtime_version_mismatch", "client_upgrade_required", "future_write_refusal",
-            "currency_adoption_required", "currency_binding_configuration_drift")
+            "currency_adoption_required", "currency_binding_configuration_drift", "currency_binding_revision_conflict")
     }
 }
 

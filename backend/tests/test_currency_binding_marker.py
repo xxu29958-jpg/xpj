@@ -39,12 +39,11 @@ from app.services.recurring_candidate_confirmation_service import (
     _create_recurring_item_from_candidate,
     _RecurringCandidateMatch,
 )
+from tests._infra.currency import activate_test_currency_authority
 from tests.test_debt_binding_drift import (
-    _create_cny_debt,
     _idem_headers,
     _owner_account_id,
 )
-from tests._infra.currency import activate_test_currency_authority
 
 pytestmark = pytest.mark.currency_binding_unbound
 
