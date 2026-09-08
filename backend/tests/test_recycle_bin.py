@@ -397,6 +397,7 @@ def _seed_archived_recurring_for_label() -> None:
     with SessionLocal() as db:
         now = now_utc()
         item = RecurringItem(
+            home_currency_code="JPY",
             tenant_id="owner",
             merchant_key="recycle-currency-recurring",
             merchant_name="回收站固定支出",

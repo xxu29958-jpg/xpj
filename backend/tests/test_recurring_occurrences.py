@@ -19,7 +19,7 @@ def _create_series(client: TestClient, identity) -> dict:
     response = client.post(
         "/api/recurring/items",
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
-        json={
+        json={"home_currency_code": "CNY",
             "merchant": "房租",
             "baseline_amount_cents": 10_000,
             "next_expected_date": "2026-09-05",

@@ -47,6 +47,7 @@ def _manual_expense(
 
 def _candidate_payload(item: dict[str, Any]) -> dict[str, Any]:
     return {
+        "home_currency_code": item["home_currency_code"],
         "merchant": item["merchant"],
         "amount_cents": item["amount_cents"],
         "occurrence_count": item["occurrence_count"],

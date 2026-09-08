@@ -38,6 +38,7 @@ from app.models import (
     InstallationIdempotencyKey,
     InstallationOwnerClaim,
     MonthlyIncomePlan,
+    RecurringItem,
 )
 from app.services import permission_service
 from app.services.currency_binding_service import (
@@ -233,6 +234,7 @@ def _adopt_in_transaction(
     db.flush()
     _set_writer_proof(db, binding)
     db.execute(update(Budget).where(Budget.home_currency_code.is_(None)).values(home_currency_code=code))
+    db.execute(update(RecurringItem).where(RecurringItem.home_currency_code.is_(None)).values(home_currency_code=code))
     db.execute(update(ExchangeRate).where(ExchangeRate.home_currency_code.is_(None)).values(home_currency_code=code))
     db.execute(update(CsvImportRow).where(CsvImportRow.home_currency_code.is_(None)).values(home_currency_code=code))
     db.execute(update(MonthlyIncomePlan).where(MonthlyIncomePlan.home_currency_code.is_(None)).values(home_currency_code=code))

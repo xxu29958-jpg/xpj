@@ -189,7 +189,7 @@ from fastapi.testclient import TestClient
         (
             "POST",
             "/api/recurring/from-candidate",
-            {"json": {"merchant": "Store", "amount_cents": 1200}},
+            {"json": {"home_currency_code": "CNY", "merchant": "Store", "amount_cents": 1200}},
         ),
         ("POST", "/api/recurring/items/item_missing/archive", {}),
         ("POST", "/api/recurring/items/item_missing/pause", {}),

@@ -337,15 +337,15 @@ def confirmed_stream_query(
     return union_all(roots, offsets).subquery("confirmed_stream")
 
 
-def monthly_recurring_fixed_amount_query(
+def monthly_recurring_items_query(
     *,
     tenant_id: str,
     month: str,
     timezone_name: str | None = None,
-) -> Select[tuple[int]]:
+) -> Select[tuple[RecurringItem]]:
     start_utc, end_utc = month_bounds_utc(month, timezone_name)
     return (
-        select(func.coalesce(func.sum(RecurringItem.baseline_amount_cents), 0))
+        select(RecurringItem)
         .where(RecurringItem.tenant_id == tenant_id)
         .where(RecurringItem.frequency == "monthly")
         .where(RecurringItem.created_at < end_utc)

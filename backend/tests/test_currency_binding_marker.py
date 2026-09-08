@@ -306,6 +306,7 @@ def test_confirm_rejected_when_draft_currency_mismatches_debt(client: TestClient
 def _candidate_confirm_call(db, home_env: str):
     """R15b-4 的最小确认创建调用（fabricated candidate match，不依赖 insights 聚合）。"""
     match = _RecurringCandidateMatch(
+        home_currency_code="CNY",
         merchant="咖啡店",
         merchant_key="coffee",
         frequency="monthly",
@@ -313,6 +314,7 @@ def _candidate_confirm_call(db, home_env: str):
         candidate={},
     )
     payload = RecurringCandidateConfirmRequest(
+        home_currency_code="CNY",
         merchant="咖啡店",
         amount_cents=1200,
         frequency="monthly",

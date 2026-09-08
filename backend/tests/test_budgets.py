@@ -56,7 +56,7 @@ def _seed_recurring(
         # currency proof that a real writer would establish.
         resolve_write_capability(db)
         db.add(
-            RecurringItem(
+            RecurringItem(home_currency_code="CNY",
                 tenant_id=tenant_id,
                 merchant_key=merchant_key,
                 merchant_name=merchant_name,

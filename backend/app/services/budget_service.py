@@ -30,10 +30,11 @@ from app.services.currency_binding_service import (
 )
 from app.services.money_projection_service import project_recorded_amount
 from app.services.optimistic_concurrency import claim_row_with_token
+from app.services.recurring_service import recurring_monthly_total
 from app.services.spending_contract_service import (
     clean_month,
     confirmed_amount_query,
-    monthly_recurring_fixed_amount_query,
+    monthly_recurring_items_query,
 )
 from app.services.time_service import now_utc
 
@@ -158,19 +159,16 @@ def _fixed_amount_cents_for_month(
     tenant_id: str,
     month: str,
     timezone_name: str | None,
-) -> int:
-    amount = db.scalar(
-        monthly_recurring_fixed_amount_query(
+    home_currency_code: str,
+) -> int | None:
+    items = db.scalars(
+        monthly_recurring_items_query(
             tenant_id=tenant_id,
             month=month,
             timezone_name=timezone_name,
         )
     )
-    return projection_sum_to_int(
-        amount,
-        label="budget.fixed_recurring_total",
-        empty_is_zero=True,
-    )
+    return recurring_monthly_total(db, tenant_id=tenant_id, items=items, home_currency_code=home_currency_code, month=month)
 
 
 def _month_spend_by_category(
@@ -276,12 +274,9 @@ def _budget_response(
         label="budget.spent_total",
     )
     fixed_amount_cents = _fixed_amount_cents_for_month(
-        db, tenant_id=tenant_id, month=month, timezone_name=timezone_name
+        db, tenant_id=tenant_id, month=month, timezone_name=timezone_name, home_currency_code=home
     )
-    # Recurring amounts still use the confirmed installation binding until their
-    # captured-currency migration. Never label that total in another budget unit.
-    if fixed_amount_cents and home != require_runtime_home_currency_code(db):
-        fixed_amount_cents = None
+    if fixed_amount_cents is None:
         missing.add("UNKNOWN")
     (
         total_amount_cents,

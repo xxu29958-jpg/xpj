@@ -11,7 +11,7 @@ def _create_manual_item(client: TestClient, *, identity) -> dict:
     response = client.post(
         "/api/recurring/items",
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
-        json={
+        json={"home_currency_code": "CNY",
             "merchant": "宽带",
             "baseline_amount_cents": 12_000,
             "next_expected_date": "2026-09-08",

@@ -5,31 +5,33 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from app.schemas import RecurringCandidateConfirmRequest, RecurringItemCreateRequest
+from app.schemas import RecurringCandidateConfirmRequest, RecurringItemCreateRequest, RecurringItemUpdateRequest
 
 
 @pytest.mark.parametrize(
-    ("schema", "amount_field"),
+    ("schema", "amount_field", "basis"),
     [
-        (RecurringItemCreateRequest, "baseline_amount_cents"),
-        (RecurringCandidateConfirmRequest, "amount_cents"),
+        (RecurringItemCreateRequest, "baseline_amount_cents", {}),
+        (RecurringCandidateConfirmRequest, "amount_cents", {}),
+        (RecurringItemUpdateRequest, "baseline_amount_cents", {"expected_row_version": 1}),
     ],
 )
-def test_new_recurring_intent_cannot_silently_choose_a_currency(schema, amount_field):
+def test_new_recurring_intent_cannot_silently_choose_a_currency(schema, amount_field, basis):
     with pytest.raises(ValidationError, match="home_currency_code"):
-        schema.model_validate({"merchant": "Subscription", amount_field: 1200})
+        schema.model_validate({**basis, "merchant": "Subscription", amount_field: 1200})
 
 
 @pytest.mark.parametrize(
-    ("schema", "amount_field"),
+    ("schema", "amount_field", "basis"),
     [
-        (RecurringItemCreateRequest, "baseline_amount_cents"),
-        (RecurringCandidateConfirmRequest, "amount_cents"),
+        (RecurringItemCreateRequest, "baseline_amount_cents", {}),
+        (RecurringCandidateConfirmRequest, "amount_cents", {}),
+        (RecurringItemUpdateRequest, "baseline_amount_cents", {"expected_row_version": 1}),
     ],
 )
-def test_new_recurring_intent_keeps_explicit_yen_units(schema, amount_field):
+def test_new_recurring_intent_keeps_explicit_yen_units(schema, amount_field, basis):
     request = schema.model_validate(
-        {"merchant": "Subscription", amount_field: 1200, "home_currency_code": "JPY"},
+        {**basis, "merchant": "Subscription", amount_field: 1200, "home_currency_code": "JPY"},
     )
     assert request.home_currency_code == "JPY"
     assert getattr(request, amount_field) == 1200

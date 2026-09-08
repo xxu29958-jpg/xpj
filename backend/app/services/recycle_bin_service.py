@@ -329,7 +329,7 @@ def _archived_recurring_rows(db: Session, tenant_id: str, currency: str | None) 
             title=item.merchant_name,
             detail=recurring_item_monthly_detail(
                 item,
-                _money(item.baseline_amount_cents, currency),
+                _money(item.baseline_amount_cents, item.home_currency_code) if item.home_currency_code else "币种待确认",
             ),
             removed_at=item.archived_at,
             retention_label="长期保留",

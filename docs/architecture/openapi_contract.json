@@ -3503,6 +3503,11 @@
             "title": "Amount Cents",
             "type": "string"
           },
+          "home_currency_code": {
+            "default": "",
+            "title": "Home Currency Code",
+            "type": "string"
+          },
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
@@ -3530,6 +3535,11 @@
           "baseline_amount_yuan": {
             "default": "",
             "title": "Baseline Amount Yuan",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "default": "",
+            "title": "Home Currency Code",
             "type": "string"
           },
           "idempotency_key": {
@@ -3571,6 +3581,11 @@
           "expected_row_version": {
             "default": "",
             "title": "Expected Row Version",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "default": "",
+            "title": "Home Currency Code",
             "type": "string"
           },
           "idempotency_key": {
@@ -14002,6 +14017,12 @@
             "title": "Frequency",
             "type": "string"
           },
+          "home_currency_code": {
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Home Currency Code",
+            "type": "string"
+          },
           "last_seen_at": {
             "anyOf": [
               {
@@ -14044,6 +14065,7 @@
           }
         },
         "required": [
+          "home_currency_code",
           "merchant",
           "amount_cents"
         ],
@@ -14061,6 +14083,10 @@
           },
           "confidence": {
             "title": "Confidence",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "title": "Home Currency Code",
             "type": "string"
           },
           "last_seen_at": {
@@ -14088,6 +14114,7 @@
           }
         },
         "required": [
+          "home_currency_code",
           "merchant",
           "amount_cents",
           "occurrence_count",
@@ -14124,6 +14151,12 @@
             "title": "Baseline Amount Cents",
             "type": "integer"
           },
+          "home_currency_code": {
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Home Currency Code",
+            "type": "string"
+          },
           "merchant": {
             "maxLength": 255,
             "minLength": 1,
@@ -14144,6 +14177,7 @@
           }
         },
         "required": [
+          "home_currency_code",
           "merchant",
           "baseline_amount_cents"
         ],
@@ -14255,6 +14289,17 @@
               }
             ],
             "title": "Historical Average Amount Cents"
+          },
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
           },
           "last_amount_cents": {
             "format": "int64",
@@ -14408,6 +14453,12 @@
             "title": "Expected Row Version",
             "type": "integer"
           },
+          "home_currency_code": {
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Home Currency Code",
+            "type": "string"
+          },
           "merchant": {
             "anyOf": [
               {
@@ -14435,6 +14486,7 @@
           }
         },
         "required": [
+          "home_currency_code",
           "expected_row_version"
         ],
         "title": "RecurringItemUpdateRequest",
@@ -14475,6 +14527,17 @@
             ],
             "title": "Expense Row Version"
           },
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
+          },
           "next_due_date": {
             "anyOf": [
               {
@@ -14500,6 +14563,17 @@
               }
             ],
             "title": "Paid Amount Cents"
+          },
+          "paid_home_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid Home Currency Code"
           },
           "period": {
             "title": "Period",

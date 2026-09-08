@@ -28,6 +28,7 @@ class RecurringItem(Base):
         *money_check_constraints_for_table("recurring_items"),
         CheckConstraint("frequency IN ('monthly')", name="ck_recurring_items_frequency_valid"),
         CheckConstraint("status IN ('active', 'paused', 'archived')", name="ck_recurring_items_status_valid"),
+        CheckConstraint("home_currency_code IN ('CNY', 'USD', 'EUR', 'GBP', 'JPY', 'HKD', 'KRW')", name="ck_recurring_currency"),
         UniqueConstraint("tenant_id", "merchant_key", "frequency", name="uq_recurring_items_tenant_merchant_frequency"),
         UniqueConstraint("id", "tenant_id", name="uq_recurring_items_id_tenant"),
     )
@@ -46,6 +47,7 @@ class RecurringItem(Base):
     merchant_key: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     merchant_name: Mapped[str] = mapped_column(String(255), nullable=False)
     frequency: Mapped[str] = mapped_column(String(32), default="monthly", nullable=False, index=True)
+    home_currency_code: Mapped[str | None] = mapped_column(String(3), nullable=True)
     baseline_amount_cents: Mapped[int] = mapped_column(BigInteger, nullable=False)
     last_amount_cents: Mapped[int] = mapped_column(BigInteger, nullable=False)
     occurrence_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

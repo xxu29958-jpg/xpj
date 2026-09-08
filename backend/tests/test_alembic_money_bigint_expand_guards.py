@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from uuid import uuid4
 
 import pytest
 from alembic import command
@@ -16,7 +17,6 @@ from app.database._money_schema_attestation import (
     MoneySchemaAttestationError,
     read_money_schema_shape,
 )
-from app.models import RecurringItem
 from app.money_contract import (
     MONEY_COLUMNS_V1,
     MONEY_REMOVED_LEGACY_CHECKS_V1,
@@ -111,15 +111,13 @@ def test_final_shape_violation_blocks_without_partial_ddl() -> None:
     run_alembic(command.upgrade, PREVIOUS_REVISION)
     seed_owner()
     with SessionLocal() as db:
-        db.add(
-            RecurringItem(
-                tenant_id="owner",
-                merchant_key="legacy-zero",
-                merchant_name="legacy-zero",
-                baseline_amount_cents=0,
-                last_amount_cents=0,
-            )
-        )
+        db.execute(text("""
+            INSERT INTO recurring_items (public_id, tenant_id, merchant_key, merchant_name,
+                frequency, baseline_amount_cents, last_amount_cents, occurrence_count,
+                status, source, row_version, created_at, updated_at)
+            VALUES (:key, 'owner', 'legacy-zero', 'legacy-zero', 'monthly', 0,
+                0, 0, 'active', 'candidate', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        """), {"key": str(uuid4())})
         db.commit()
     before = relfilenode("bill_split_invitations")
     with pytest.raises(Exception, match="target shape"):

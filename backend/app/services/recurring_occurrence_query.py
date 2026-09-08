@@ -8,9 +8,12 @@ from datetime import date
 from sqlalchemy import exists, or_, select
 from sqlalchemy.orm import Session
 
+from app.errors import AppError
 from app.models import Expense, ExpenseOffsetFact, RecurringItem, RecurringOccurrence
 from app.money_contract import projection_sum_to_int
 from app.schemas._recurring_occurrence import RecurringOccurrenceResponse
+from app.services.currency_binding_service import require_runtime_home_currency_code
+from app.services.recurring_service import recurring_monthly_total
 from app.services.spending_contract_service import (
     clean_month,
     current_accounting_month,
@@ -128,14 +131,23 @@ def occurrence_response(
         series_row_version=item.row_version,
         row_version=row.row_version if row else 0,
         state=state,
+        home_currency_code=item.home_currency_code,
         planned_amount_cents=baseline,
         reserved_amount_cents=baseline if item.status == "active" and not valid else 0,
-        expense_public_id=expense.public_id if expense else None,
-        expense_id=expense.id if expense else None,
-        expense_row_version=expense.row_version if expense else None,
-        paid_amount_cents=expense.amount_cents if expense and valid else None,
+        **_occurrence_payment_fields(expense, valid=valid),
         next_due_date=next_due_date(item, paid),
     )
+
+
+def _occurrence_payment_fields(expense: Expense | None, *, valid: bool) -> dict:
+    paid = expense if valid else None
+    return {
+        "expense_public_id": expense.public_id if expense else None,
+        "expense_id": expense.id if expense else None,
+        "expense_row_version": expense.row_version if expense else None,
+        "paid_amount_cents": paid.amount_cents if paid else None,
+        "paid_home_currency_code": paid.home_currency_code if paid else None,
+    }
 
 
 def total_outstanding_recurring_cents(
@@ -148,7 +160,9 @@ def total_outstanding_recurring_cents(
         RecurringItem.frequency == "monthly",
     )))
     paid = fulfilled_periods(db, tenant_id=tenant_id, series_ids=[item.id for item in items])
-    return projection_sum_to_int(
-        sum(item.baseline_amount_cents for item in items if period not in paid.get(item.id, set())),
-        label="recurring.outstanding",
-    )
+    total = recurring_monthly_total(db, tenant_id=tenant_id,
+        items=[item for item in items if period not in paid.get(item.id, set())],
+        home_currency_code=require_runtime_home_currency_code(db), month=period.strftime("%Y-%m"))
+    if total is None:
+        raise AppError("recurring_projection_unavailable", "固定支出的币种或汇率待补充，暂时无法计算预算预留。", status_code=409)
+    return total

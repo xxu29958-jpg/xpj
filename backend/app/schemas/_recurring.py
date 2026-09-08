@@ -35,6 +35,7 @@ class RecurringItemTokenRequest(BaseModel):
 
 # v0.4-alpha3 — Recurring candidates (read-only insights)
 class RecurringCandidateItem(BaseModel):
+    home_currency_code: str
     merchant: str
     amount_cents: PositiveMoneyMinor
     occurrence_count: int
@@ -55,6 +56,7 @@ class RecurringCandidatesResponse(BaseModel):
 class RecurringCandidateConfirmRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    home_currency_code: str = Field(min_length=3, max_length=3)
     merchant: str = Field(min_length=1, max_length=255)
     amount_cents: PositiveMoneyMinor
     occurrence_count: int = Field(
@@ -81,6 +83,7 @@ class RecurringCandidateConfirmRequest(BaseModel):
 class RecurringItemCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    home_currency_code: str = Field(min_length=3, max_length=3)
     merchant: str = Field(min_length=1, max_length=255)
     baseline_amount_cents: PositiveMoneyMinor
     next_expected_date: date | None = None
@@ -89,6 +92,7 @@ class RecurringItemCreateRequest(BaseModel):
 class RecurringItemUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    home_currency_code: str = Field(min_length=3, max_length=3)
     merchant: str | None = Field(default=None, min_length=1, max_length=255)
     baseline_amount_cents: PositiveMoneyMinor | None = None
     next_expected_date: date | None = None
@@ -104,6 +108,7 @@ class RecurringItemUpdateRequest(BaseModel):
 class RecurringItemResponse(BaseModel):
     public_id: str
     ledger_id: str
+    home_currency_code: str | None = None
     merchant: str
     merchant_key: str
     frequency: str

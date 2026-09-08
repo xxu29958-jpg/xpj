@@ -49,7 +49,7 @@ def seed_minimal_data() -> None:
             )
         )
         db.add(
-            RecurringItem(
+            RecurringItem(home_currency_code="CNY",
                 tenant_id="owner",
                 merchant_key="netflix",
                 merchant_name="Netflix",

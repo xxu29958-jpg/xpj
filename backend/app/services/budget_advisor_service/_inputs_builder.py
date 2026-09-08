@@ -16,7 +16,6 @@ from app.ledger_scope import ledger_scoped_select
 from app.models import RecurringItem
 from app.money_contract import (
     projection_sum_to_int,
-    projection_values_sum_to_int,
 )
 from app.services.budget_advisor_service._models import (
     ALLOWED_INCOME_SOURCE_TYPES,
@@ -32,6 +31,7 @@ from app.services.monthly_report_service import (
     compose_budget_explanation,
     compose_monthly_report,
 )
+from app.services.recurring_service import recurring_monthly_total
 
 
 def build_budget_inputs(
@@ -68,7 +68,7 @@ def build_budget_inputs(
             timezone_name=timezone_name,
         ),
         income_plan=_income_plan(db, tenant_id=tenant_id, month=month),
-        recurring_total_monthly_cents=_recurring_total_monthly_cents(db, tenant_id=tenant_id),
+        recurring_total_monthly_cents=_recurring_total_monthly_cents(db, tenant_id=tenant_id, month=month, home=home_currency),
         recurring_active_count=_recurring_active_count(db, tenant_id=tenant_id),
     )
 
@@ -83,20 +83,15 @@ def _active_recurring_items(db: Session, *, tenant_id: str) -> list[RecurringIte
     )
 
 
-def _recurring_total_monthly_cents(db: Session, *, tenant_id: str) -> int:
+def _recurring_total_monthly_cents(db: Session, *, tenant_id: str, month: str, home: str) -> int:
     """Aggregate monthly recurring commitment. Coarse magnitude only —
     recurring rows are merchant-keyed (PII), so no per-item / per-merchant
     detail leaves the device; the advisor sees just the total."""
-    return projection_values_sum_to_int(
-        (
-            item.baseline_amount_cents
-            for item in _active_recurring_items(
-                db,
-                tenant_id=tenant_id,
-            )
-        ),
-        label="budget_advisor.recurring_total",
-    )
+    total = recurring_monthly_total(db, tenant_id=tenant_id, items=_active_recurring_items(db, tenant_id=tenant_id),
+        home_currency_code=home, month=month)
+    if total is None:
+        raise AppError("recurring_projection_unavailable", "固定支出的币种或汇率待补充，暂时无法生成预算建议。", status_code=409)
+    return total
 
 
 def _recurring_active_count(db: Session, *, tenant_id: str) -> int:

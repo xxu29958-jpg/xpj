@@ -170,7 +170,7 @@ def _insert_recurring_item() -> str:
     """Insert a RecurringItem directly (skip candidate detection seeding)."""
     now = now_utc()
     with SessionLocal() as db:
-        item = RecurringItem(
+        item = RecurringItem(home_currency_code="CNY",
             tenant_id="owner",
             merchant_key="rowver sub",
             merchant_name="RowVer Sub",

@@ -38,7 +38,7 @@ from app.routes.web_common import (
 )
 from app.routes.web_recurring_occurrences import router as occurrences_router
 from app.schemas import RecurringCandidateConfirmRequest
-from app.services.currency_binding_service import require_runtime_home_currency_code
+from app.services.currency_common import normalize_currency_code
 from app.services.insights_service import recurring_candidates
 from app.services.recurring_candidate_confirmation_service import confirm_recurring_candidate
 from app.services.recurring_item_command_service import (
@@ -52,10 +52,11 @@ from app.services.recurring_service import (
     list_recurring_items,
     pause_recurring_item,
     recurring_amount_anomalies,
+    recurring_monthly_total,
     restore_recurring_item,
     resume_recurring_item,
 )
-from app.services.spending_contract_service import accounting_zone
+from app.services.spending_contract_service import accounting_zone, current_accounting_month
 from app.services.time_service import now_utc
 
 logger = logging.getLogger(__name__)
@@ -88,7 +89,6 @@ def _candidate_review(
     candidate_rows: list[dict],
     *,
     review_merchant: str | None,
-    currency_code: str,
     can_write: bool,
     candidates_error: bool,
 ) -> dict | None:
@@ -98,7 +98,14 @@ def _candidate_review(
         (candidate for candidate in candidate_rows if str(candidate.get("merchant") or "") == review_merchant),
         None,
     )
-    return None if matched is None else candidate_review_prefill(matched, currency_code=currency_code)
+    return None if matched is None else candidate_review_prefill(matched)
+
+
+def _recurring_hero(db, *, selected_id, items, currency_code, due_dates):
+    active = [item for item in items if item.status == "active"]
+    total = recurring_monthly_total(db, tenant_id=selected_id, items=active,
+        home_currency_code=currency_code, month=current_accounting_month())
+    return hero_view(active, currency_code=currency_code, total_cents=total, due_dates=due_dates)
 
 
 def _render_recurring(
@@ -146,7 +153,6 @@ def _render_recurring(
         item_view(
             item,
             anomalies.get(item.public_id) or RecurringAmountAnomaly(),
-            currency_code=currency_code,
             due_date=due_dates[item.id],
         )
         for item in visible
@@ -157,7 +163,6 @@ def _render_recurring(
     ctx["candidates"] = [
         candidate_view(
             candidate,
-            currency_code=currency_code,
             ledger_id=selected_id,
         )
         for candidate in candidate_rows
@@ -167,11 +172,10 @@ def _render_recurring(
     ctx["review"] = _candidate_review(
         candidate_rows,
         review_merchant=review_merchant,
-        currency_code=currency_code,
         can_write=ctx["can_write"],
         candidates_error=candidates_error,
     )
-    ctx["hero"] = hero_view(all_items, currency_code=currency_code, due_dates=due_dates)
+    ctx["hero"] = _recurring_hero(db, selected_id=selected_id, items=all_items, currency_code=currency_code, due_dates=due_dates)
     ctx["status_filter"] = status or ""
     ctx["flash_message"] = flash_message
     ctx["error_message"] = error_message
@@ -212,6 +216,7 @@ def web_recurring_create(
     ledger_id: str = Form(default=""),
     merchant: str = Form(default=""),
     baseline_amount_yuan: str = Form(default=""),
+    home_currency_code: str = Form(default=""),
     next_expected_date: str = Form(default=""),
     idempotency_key: str = Form(default=""),
     review_latest: str = Form(default=""),
@@ -226,13 +231,13 @@ def web_recurring_create(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
-    draft = {"merchant": merchant, "baseline_amount_yuan": baseline_amount_yuan,
+    draft = {"merchant": merchant, "baseline_amount_yuan": baseline_amount_yuan, "home_currency_code": home_currency_code,
              "next_expected_date": next_expected_date, "idempotency_key": idempotency_key}
     if review_latest == "true":
         return _render_recurring(request=request, db=db, selected_id=selected_id, options=options,
                                  draft=draft, prepare_review=True)
     try:
-        currency_code = require_runtime_home_currency_code(db)
+        currency_code = normalize_currency_code(home_currency_code)
         amount_cents = parse_baseline_yuan(baseline_amount_yuan, currency_code=currency_code)
         expected_date = parse_optional_date(next_expected_date)
         create_manual_recurring_item(
@@ -240,6 +245,7 @@ def web_recurring_create(
             tenant_id=selected_id,
             idempotency_key=(idempotency_key or "").strip() or None,
             merchant=merchant,
+            home_currency_code=currency_code,
             baseline_amount_cents=amount_cents,
             next_expected_date=expected_date,
         )
@@ -262,6 +268,7 @@ def web_recurring_confirm_candidate(
     ledger_id: str = Form(default=""),
     merchant: str = Form(...),
     amount_cents: str = Form(...),
+    home_currency_code: str = Form(default=""),
     next_expected_date: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
@@ -281,6 +288,7 @@ def web_recurring_confirm_candidate(
         )
         payload = RecurringCandidateConfirmRequest(
             merchant=merchant,
+            home_currency_code=normalize_currency_code(home_currency_code),
             amount_cents=parsed_amount_cents,
             frequency="monthly",
             next_expected_date=parse_optional_date(next_expected_date),
@@ -305,6 +313,7 @@ def web_recurring_edit(
     ledger_id: str = Form(default=""),
     merchant: str = Form(default=""),
     baseline_amount_yuan: str = Form(default=""),
+    home_currency_code: str = Form(default=""),
     next_expected_date: str = Form(default=""),
     expected_row_version: str = Form(default=""),
     idempotency_key: str = Form(default=""),
@@ -319,7 +328,7 @@ def web_recurring_edit(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
-    draft = {"public_id": public_id, "merchant": merchant, "baseline_amount_yuan": baseline_amount_yuan,
+    draft = {"public_id": public_id, "merchant": merchant, "baseline_amount_yuan": baseline_amount_yuan, "home_currency_code": home_currency_code,
              "next_expected_date": next_expected_date, "idempotency_key": idempotency_key,
              "expected_row_version": expected_row_version}
     if review_latest == "true":
@@ -329,7 +338,7 @@ def web_recurring_edit(
     try:
         if parsed is None:
             raise AppError("invalid_request", _STALE_PAGE_FLASH, status_code=422)
-        currency_code = require_runtime_home_currency_code(db)
+        currency_code = normalize_currency_code(home_currency_code)
         amount_cents = parse_baseline_yuan(baseline_amount_yuan, currency_code=currency_code)
         expected_date = parse_optional_date(next_expected_date)
         update_recurring_item(
@@ -338,6 +347,7 @@ def web_recurring_edit(
             public_id=public_id,
             idempotency_key=(idempotency_key or "").strip() or None,
             expected_row_version=parsed,
+            home_currency_code=currency_code,
             merchant=merchant,
             merchant_provided=True,
             baseline_amount_cents=amount_cents,

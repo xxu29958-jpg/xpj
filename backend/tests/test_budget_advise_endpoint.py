@@ -256,7 +256,7 @@ def test_builder_sends_coarse_recurring_summary(identity) -> None:  # noqa: ARG0
     now = now_utc()
     with SessionLocal() as db:
         db.add(
-            RecurringItem(
+            RecurringItem(home_currency_code="CNY",
                 tenant_id="owner",
                 merchant_key="spotify",
                 merchant_name="Spotify",
@@ -273,7 +273,7 @@ def test_builder_sends_coarse_recurring_summary(identity) -> None:  # noqa: ARG0
             )
         )
         db.add(
-            RecurringItem(
+            RecurringItem(home_currency_code="CNY",
                 tenant_id="owner",
                 merchant_key="gym",
                 merchant_name="健身房会员",

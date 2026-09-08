@@ -20,7 +20,6 @@ from app.models import (
     ExpenseSplit,
     Ledger,
     LedgerMember,
-    RecurringItem,
 )
 from app.money_contract import MONEY_COLUMNS_V1
 from app.services.time_service import now_utc
@@ -302,15 +301,14 @@ def seed_boundary_facts() -> None:
                 amount_cents=-1,
             )
         )
-        db.add(
-            RecurringItem(
-                tenant_id="owner",
-                merchant_key="boundary-merchant",
-                merchant_name="boundary",
-                baseline_amount_cents=LEGACY_INT32_MAX,
-                last_amount_cents=LEGACY_INT32_MAX,
-            )
-        )
+        # Frozen pre-currency schema: current ORM columns do not describe this edge.
+        db.execute(text("""
+            INSERT INTO recurring_items (public_id, tenant_id, merchant_key, merchant_name,
+                frequency, baseline_amount_cents, last_amount_cents, occurrence_count,
+                status, source, row_version, created_at, updated_at)
+            VALUES (:key, 'owner', 'boundary-merchant', 'boundary', 'monthly', :amount,
+                :amount, 0, 'active', 'candidate', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        """), {"key": str(uuid4()), "amount": LEGACY_INT32_MAX})
         db.execute(text("""
             INSERT INTO budgets (public_id, tenant_id, month, total_amount_cents,
                 non_monthly_amount_cents, rollover_amount_cents, excluded_categories, created_at, updated_at)

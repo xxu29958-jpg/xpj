@@ -25,8 +25,9 @@ def _accepted_claim(monkeypatch, *, version=1):
 
 
 def test_create_replay_preserves_accepted_amount_and_revision(monkeypatch):
-    claim = _accepted_claim(monkeypatch)
-    response = commands._replayed_create(None, tenant_id="owner", outcome=claim)
+    _accepted_claim(monkeypatch)
+    response = commands.create_manual_recurring_item(None, tenant_id="owner", idempotency_key="original-key",
+        merchant="Subscription", home_currency_code="JPY", baseline_amount_cents=1200, next_expected_date=None)
     assert response.home_currency_code == "JPY"
     assert response.baseline_amount_cents == 1200
     assert response.row_version == 1
@@ -35,7 +36,7 @@ def test_create_replay_preserves_accepted_amount_and_revision(monkeypatch):
 def test_update_replay_preserves_accepted_amount_and_revision(monkeypatch):
     _accepted_claim(monkeypatch, version=2)
     response = commands.update_recurring_item(None, tenant_id="owner", public_id="recurring",
-        idempotency_key="original-key", expected_row_version=1, merchant=None, merchant_provided=False,
+        idempotency_key="original-key", expected_row_version=1, home_currency_code="JPY", merchant=None, merchant_provided=False,
         baseline_amount_cents=1200, baseline_provided=True, next_expected_date=None,
         next_expected_date_provided=False)
     assert response.home_currency_code == "JPY"

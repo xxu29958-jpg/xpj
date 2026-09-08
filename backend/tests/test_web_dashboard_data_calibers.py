@@ -180,7 +180,7 @@ def test_recurring_candidate_count_excludes_formalized_merchants(
     with SessionLocal() as db:
         assert unclaimed_recurring_candidate_count(db, tenant_id="owner") == 1
         db.add(
-            RecurringItem(
+            RecurringItem(home_currency_code="CNY",
                 tenant_id="owner",
                 merchant_key=normalize_merchant("国家电网"),
                 merchant_name="国家电网",

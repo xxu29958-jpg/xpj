@@ -10,19 +10,22 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
-from app.models import RecurringItem
+from app.models import ApiIdempotencyKey, RecurringItem
 from app.money_contract import MoneySign, ensure_money_minor
+from app.schemas import RecurringItemResponse
 from app.services.currency_binding_service import resolve_write_capability
+from app.services.currency_common import normalize_currency_code
 from app.services.idempotency import (
     IdempotencyOutcome,
     IdempotencyOutcomeKind,
     claim_idempotency_key,
-    claim_idempotent_request,
     fingerprint_request,
     mark_idempotency_succeeded,
 )
 from app.services.merchant_service import normalize_merchant
 from app.services.recurring_merchant_capacity import ensure_recurring_merchant_storage_shape
+from app.services.recurring_occurrence_query import next_due_dates
+from app.services.recurring_service import recurring_item_response
 from app.services.time_service import now_utc
 
 CREATE_RECURRING_OPERATION = "create_recurring_item"
@@ -73,11 +76,17 @@ def _get_item(db: Session, *, tenant_id: str, public_id: str) -> RecurringItem:
     return item
 
 
-def _classify_create_claim(outcome: IdempotencyOutcome) -> None:
+def _replayed_receipt(outcome: IdempotencyOutcome) -> RecurringItemResponse | None:
     if outcome.kind is IdempotencyOutcomeKind.IN_PROGRESS:
         raise AppError("idempotency_key_in_progress", status_code=409)
     if outcome.kind is IdempotencyOutcomeKind.FINGERPRINT_MISMATCH:
         raise AppError("idempotency_key_reused", status_code=422)
+    if outcome.kind is not IdempotencyOutcomeKind.HIT:
+        return None
+    body = outcome.row.response_body
+    if not body or not body.get("home_currency_code"):
+        raise AppError("recurring_original_requires_review", "原提交已被接受，但缺少原回执。请核对当前固定支出，勿重复创建。", status_code=409)
+    return RecurringItemResponse.model_validate(body)
 
 
 def _claim_create_intent(
@@ -86,6 +95,7 @@ def _claim_create_intent(
     tenant_id: str,
     idempotency_key: str | None,
     merchant: str,
+    home_currency_code: str,
     baseline_amount_cents: int,
     next_expected_date: date | None,
 ) -> IdempotencyOutcome:
@@ -93,10 +103,11 @@ def _claim_create_intent(
         raise AppError("idempotency_key_required", status_code=422)
     request_body = {
         "merchant": merchant,
+        "home_currency_code": home_currency_code,
         "baseline_amount_cents": baseline_amount_cents,
         "next_expected_date": next_expected_date.isoformat() if next_expected_date else None,
     }
-    outcome = claim_idempotency_key(
+    return claim_idempotency_key(
         db,
         tenant_id=tenant_id,
         idempotency_key=idempotency_key,
@@ -109,21 +120,15 @@ def _claim_create_intent(
         ),
         target_type="recurring_item",
     )
-    _classify_create_claim(outcome)
-    return outcome
 
 
-def _replayed_create(
-    db: Session,
-    *,
-    tenant_id: str,
-    outcome: IdempotencyOutcome,
-) -> RecurringItem | None:
-    if outcome.kind is not IdempotencyOutcomeKind.HIT:
-        return None
-    if not outcome.row.resource_id:
-        raise AppError("server_error", status_code=500)
-    return _get_item(db, tenant_id=tenant_id, public_id=outcome.row.resource_id)
+def _publish_receipt(db: Session, claim: ApiIdempotencyKey, item: RecurringItem) -> RecurringItemResponse:
+    dates = next_due_dates(db, tenant_id=item.tenant_id, items=[item])
+    response = recurring_item_response(item, next_due_date=dates[item.id])
+    mark_idempotency_succeeded(db, claim, resource_type="recurring_item", resource_id=item.public_id,
+        response_body=response.model_dump(mode="json"))
+    db.commit()
+    return response
 
 
 def _new_manual_item(
@@ -131,6 +136,7 @@ def _new_manual_item(
     *,
     tenant_id: str,
     merchant: str,
+    home_currency_code: str,
     baseline_amount_cents: int,
     next_expected_date: date | None,
 ) -> RecurringItem:
@@ -148,6 +154,7 @@ def _new_manual_item(
         tenant_id=tenant_id,
         merchant_key=merchant_key,
         merchant_name=merchant_name,
+        home_currency_code=home_currency_code,
         frequency="monthly",
         baseline_amount_cents=amount_cents,
         # The legacy column is non-null. occurrence_count=0 + source=manual are
@@ -182,38 +189,35 @@ def create_manual_recurring_item(
     tenant_id: str,
     idempotency_key: str | None,
     merchant: str,
+    home_currency_code: str,
     baseline_amount_cents: int,
     next_expected_date: date | None,
-) -> RecurringItem:
+) -> RecurringItemResponse:
     """Create one manual monthly commitment and durably replay the same intent."""
+    home = normalize_currency_code(home_currency_code)
     outcome = _claim_create_intent(
         db,
         tenant_id=tenant_id,
         idempotency_key=idempotency_key,
         merchant=merchant,
+        home_currency_code=home,
         baseline_amount_cents=baseline_amount_cents,
         next_expected_date=next_expected_date,
     )
-    replayed = _replayed_create(db, tenant_id=tenant_id, outcome=outcome)
+    replayed = _replayed_receipt(outcome)
     if replayed is not None:
         return replayed
     item = _new_manual_item(
         db,
         tenant_id=tenant_id,
         merchant=merchant,
+        home_currency_code=home,
         baseline_amount_cents=baseline_amount_cents,
         next_expected_date=next_expected_date,
     )
     resolve_write_capability(db)
     _insert_manual_item(db, tenant_id=tenant_id, item=item)
-    mark_idempotency_succeeded(
-        db,
-        outcome.row,
-        resource_type="recurring_item",
-        resource_id=item.public_id,
-    )
-    db.commit()
-    return item
+    return _publish_receipt(db, outcome.row, item)
 
 
 def _merchant_updates(
@@ -375,6 +379,7 @@ def _apply_recurring_item_update(
     tenant_id: str,
     public_id: str,
     expected_row_version: int,
+    home_currency_code: str,
     merchant: str | None,
     merchant_provided: bool,
     baseline_amount_cents: int | None,
@@ -385,6 +390,8 @@ def _apply_recurring_item_update(
     """Apply one already-admitted OCC update without committing it."""
     current = _get_item(db, tenant_id=tenant_id, public_id=public_id)
     _ensure_editable_revision(current, expected_row_version=expected_row_version)
+    if current.home_currency_code != home_currency_code:
+        raise AppError("recurring_currency_conflict", "输入币种与这项固定支出不同，请保留原金额并核对。", status_code=409)
     values = _collect_update_values(
         db,
         current=current,
@@ -449,38 +456,43 @@ def update_recurring_item(
     public_id: str,
     idempotency_key: str | None,
     expected_row_version: int,
+    home_currency_code: str,
     merchant: str | None,
     merchant_provided: bool,
     baseline_amount_cents: int | None,
     baseline_provided: bool,
     next_expected_date: date | None,
     next_expected_date_provided: bool,
-) -> RecurringItem:
+) -> RecurringItemResponse:
     """Own claim-before-OCC, mutation publication, and commit for one edit."""
-    claim = claim_idempotent_request(
+    if not idempotency_key:
+        raise AppError("idempotency_key_required", status_code=422)
+    home = normalize_currency_code(home_currency_code)
+    body = _recurring_update_body(
+        merchant=merchant, merchant_provided=merchant_provided,
+        baseline_amount_cents=baseline_amount_cents, baseline_provided=baseline_provided,
+        next_expected_date=next_expected_date, next_expected_date_provided=next_expected_date_provided,
+    )
+    body["home_currency_code"] = home
+    claim = claim_idempotency_key(
         db,
         idempotency_key=idempotency_key,
         tenant_id=tenant_id,
         operation="update_recurring_item",
         target_id=public_id,
-        body=_recurring_update_body(
-            merchant=merchant,
-            merchant_provided=merchant_provided,
-            baseline_amount_cents=baseline_amount_cents,
-            baseline_provided=baseline_provided,
-            next_expected_date=next_expected_date,
-            next_expected_date_provided=next_expected_date_provided,
-        ),
-        expected_row_version=expected_row_version,
+        request_fingerprint=fingerprint_request(operation="update_recurring_item", target_id=public_id,
+            body=body, expected_row_version=expected_row_version),
         target_type="recurring_item",
     )
-    if claim is None:
-        return _get_item(db, tenant_id=tenant_id, public_id=public_id)
+    replayed = _replayed_receipt(claim)
+    if replayed is not None:
+        return replayed
     item = _apply_recurring_item_update(
         db,
         tenant_id=tenant_id,
         public_id=public_id,
         expected_row_version=expected_row_version,
+        home_currency_code=home,
         merchant=merchant,
         merchant_provided=merchant_provided,
         baseline_amount_cents=baseline_amount_cents,
@@ -488,11 +500,4 @@ def update_recurring_item(
         next_expected_date=next_expected_date,
         next_expected_date_provided=next_expected_date_provided,
     )
-    mark_idempotency_succeeded(
-        db,
-        claim,
-        resource_type="recurring_item",
-        resource_id=public_id,
-    )
-    db.commit()
-    return item
+    return _publish_receipt(db, claim.row, item)

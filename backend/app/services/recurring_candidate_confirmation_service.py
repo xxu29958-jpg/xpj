@@ -18,6 +18,7 @@ from app.money_contract import (
 )
 from app.schemas import RecurringCandidateConfirmRequest
 from app.services.currency_binding_service import resolve_write_capability
+from app.services.currency_common import normalize_currency_code
 from app.services.insights_service import recurring_candidates
 from app.services.merchant_service import normalize_merchant
 from app.services.recurring_item_command_service import raise_recurring_item_conflict
@@ -33,6 +34,7 @@ class _RecurringCandidateMatch:
     merchant_key: str
     frequency: str
     amount_cents: int
+    home_currency_code: str
     candidate: dict
 
 
@@ -43,6 +45,7 @@ def _idempotent_formal_match(
     merchant_key: str,
     frequency: str,
     amount_cents: int,
+    home_currency_code: str,
 ) -> RecurringItem | None:
     """已 formal (非 archived) 且金额一致的既有项——幂等返回的命中条件。
 
@@ -62,6 +65,7 @@ def _idempotent_formal_match(
         formal is not None
         and formal.status != "archived"
         and formal.archived_at is None
+        and formal.home_currency_code == home_currency_code
         and projection_sum_to_int(
             formal.last_amount_cents,
             label="recurring_candidate.formal_last_amount",
@@ -84,6 +88,7 @@ def confirm_recurring_candidate(
     # 复审 agent-60: 幂等匹配必须含金额——已 formal 商家以不同金额重试时
     # 继续走候选匹配原路径 (恢复 404 守卫), 不静默返回既有项。
     merchant_key, frequency, amount_cents = _validated_candidate_intent(payload)
+    home = normalize_currency_code(payload.home_currency_code)
     if merchant_key:
         formal = _idempotent_formal_match(
             db,
@@ -91,6 +96,7 @@ def confirm_recurring_candidate(
             merchant_key=merchant_key,
             frequency=frequency,
             amount_cents=amount_cents,
+            home_currency_code=home,
         )
         if formal is not None:
             return formal
@@ -116,6 +122,7 @@ def confirm_recurring_candidate(
             merchant_key=merchant_key,
             frequency=frequency,
             amount_cents=amount_cents,
+            home_currency_code=home,
         )
         if formal is not None:
             return formal
@@ -180,6 +187,7 @@ def _require_recurring_candidate_match(
         tenant_id=tenant_id,
         merchant_key=merchant_key,
         amount_cents=amount_cents,
+        home_currency_code=normalize_currency_code(payload.home_currency_code),
         timezone_name=timezone_name,
     )
     if candidate is None:
@@ -190,6 +198,7 @@ def _require_recurring_candidate_match(
         merchant_key=merchant_key,
         frequency=_clean_frequency(payload.frequency),
         amount_cents=amount_cents,
+        home_currency_code=normalize_currency_code(payload.home_currency_code),
         candidate=candidate,
     )
 
@@ -216,6 +225,7 @@ def _create_recurring_item_from_candidate(
         tenant_id=tenant_id,
         merchant_key=match.merchant_key,
         merchant_name=_candidate_merchant_name(match),
+        home_currency_code=match.home_currency_code,
         frequency=match.frequency,
         baseline_amount_cents=match.amount_cents,
         last_amount_cents=match.amount_cents,
@@ -243,6 +253,7 @@ def _create_recurring_item_from_candidate(
             merchant_key=match.merchant_key,
             frequency=match.frequency,
             amount_cents=match.amount_cents,
+            home_currency_code=match.home_currency_code,
         )
         if replayed is not None:
             return replayed
@@ -287,9 +298,10 @@ def _find_recurring_candidate(
     tenant_id: str,
     merchant_key: str,
     amount_cents: int,
+    home_currency_code: str,
     timezone_name: str | None,
 ) -> dict | None:
-    for item in recurring_candidates(db, tenant_id=tenant_id, timezone_name=timezone_name):
+    for item in recurring_candidates(db, tenant_id=tenant_id, timezone_name=timezone_name, home_currency_code=home_currency_code):
         if normalize_merchant(item.get("merchant")) != merchant_key:
             continue
         if (
