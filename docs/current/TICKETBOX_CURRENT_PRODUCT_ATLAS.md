@@ -176,9 +176,10 @@ feedback and efficient actions within each active capability change.
 [Member settlement evidence](TICKETBOX_MEMBER_SETTLEMENT_CONTINUITY_CONTRACT.md).
 [Spending-goal continuity evidence](TICKETBOX_PLANNING_GOAL_CONTINUITY_CONTRACT.md).
 
-**Next action:** complete [Web spending-goal editing](TICKETBOX_WEB_GOAL_EDIT_CONTRACT.md):
-card entry → shared update command → preserved input and explicit conflict review
-→ canonical progress. Retire the API route's duplicate transaction owner.
+**Next action:** independently qualify #394's integrated Web spending-goal edit,
+then complete [Web income correction](TICKETBOX_WEB_INCOME_EDIT_CONTRACT.md):
+card entry → original effective month → shared revision/receipt owner → retained
+input and explicit conflict review. No second financial writer is introduced.
 Physical budget/income creation works; simplify Android's first-budget optional
 fields and correct the generic goal offline-viewing claim within Planning/convenience.
 Preserve draft #372 for the later detail wave.

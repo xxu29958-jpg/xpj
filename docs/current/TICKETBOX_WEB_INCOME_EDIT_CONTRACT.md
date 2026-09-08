@@ -35,4 +35,7 @@ writing. A consumed form with a changed second edit receives that review exit
 too. Source-type labels are shared by list/create/edit and their old inline copy
 is retired. Route classification, OCC inventory and OpenAPI include the new
 native form; existing API schemas and financial storage remain unchanged.
-Real browser tasks, bounded review and final cloud qualification are required.
+The pre-integration candidate passed real VM browser journeys at 360/768/1440px,
+including single-month delivery and consumed-form recovery. After integration
+with #394, the shared OCC carrier inventory is 109; the [PR qualification record](https://github.com/xxu29958-jpg/xpj/pull/395)
+holds final source, browser, bounded review and candidate/main evidence.
