@@ -272,10 +272,14 @@ class OutboxStatusViewModelTest {
         try {
             runCurrent()
             kotlin.test.assertFalse(vm.uiState.value.offersRetry(original))
+            val beforeRetry = vm.viewModelScope.coroutineContext.job.children.toSet()
             vm.retry(original)
+            vm.viewModelScope.coroutineContext.job.children.single { it !in beforeRetry }.join()
             runCurrent()
             assertEquals(listOf(original), harness.outbox.observeStatus().first().failed)
+            val beforeDrop = vm.viewModelScope.coroutineContext.job.children.toSet()
             vm.dropFailed(original)
+            vm.viewModelScope.coroutineContext.job.children.single { it !in beforeDrop }.join()
             runCurrent()
             assertTrue(harness.outbox.observeStatus().first().failed.isEmpty())
         } finally {
