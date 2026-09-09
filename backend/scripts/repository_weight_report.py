@@ -50,16 +50,20 @@ def measure_snapshot(sha: str, files: dict[str, str], excluded: dict[str, int]) 
 
 def compare_snapshots(base: dict, current: dict, policy_failures: list[str]) -> dict:
     failures = list(policy_failures)
+    advisories: list[str] = []
     for key in sorted(set(base["debt"]) | set(current["debt"])):
         before, after = base["debt"].get(key, 0), current["debt"].get(key, 0)
         if after > before:
-            failures.append(f"{key}: {before} -> {after}")
+            # Physical span includes SQL, fixtures, assertions and comments. It
+            # locates review work; it cannot decide where an owner must be split.
+            target = advisories if key.startswith(("files_over_", "long_functions:")) else failures
+            target.append(f"{key}: {before} -> {after}")
     added = new_suppressions(base["suppressions"], current["suppressions"])
     if added:
         failures.append(f"new suppression signatures: {len(added)}")
     delta = {key: value - base["totals"][key] for key, value in current["totals"].items()}
     verdict = "DEBT REGRESSION" if failures else "NO DEBT REGRESSION"
-    if not failures and delta["production_loc"] > 0:
+    if not failures and not advisories and delta["production_loc"] > 0:
         verdict = "HEALTHY GROWTH"
     return {
         "format_version": 1,
@@ -69,12 +73,12 @@ def compare_snapshots(base: dict, current: dict, policy_failures: list[str]) -> 
             "ownership": "Each file has one module/role/primary language; migrations count once in production.",
             "python_complexity": "Pinned Ruff C901, threshold 15, isolated and ignore-noqa; count and excess.",
             "android_complexity": "Recorded Detekt baseline IDs, not live unsuppressed findings; native CI remains required.",
-            "function_metrics": "Lizard CCN estimate (Python/Kotlin/Java/JS/TS/inline JS); PowerShell AST decisions; Inno lexical decision tokens, not CFG cyclomatic complexity. Threshold 15; physical function length >80.",
+            "function_metrics": "Lizard CCN estimate (Python/Kotlin/Java/JS/TS/inline JS); PowerShell AST decisions; Inno lexical decision tokens, not CFG cyclomatic complexity. Complexity threshold 15; physical function length >80 is a review signal.",
             "non_function_source": "CSS/XML/declarative config have no function cyclomatic metric; source size remains included. Template rendering, dynamic code and Inno preprocessing/nested routine semantics are not evaluated.",
-            "verdict_scope": "Measured size/known-debt/suppression gates only; not architecture or product acceptance.",
+            "verdict_scope": "Measured complexity/known-debt/suppression gates only. File size and physical span growth require responsibility review, not mechanical splitting. Not architecture or product acceptance.",
         },
         "base": base, "current": current, "delta": delta, "new_suppressions": len(added),
-        "added_suppression_records": added, "failures": failures, "verdict": verdict,
+        "added_suppression_records": added, "failures": failures, "advisories": advisories, "verdict": verdict,
         "changes": changed_sources(base["files"], current["files"]),
     }
 
@@ -140,7 +144,7 @@ def render_report(report: dict) -> str:
         lines.append(f"{label:<26} {current['totals'][key]:>10,}  {_delta(report['delta'][key]):>9}")
     lines.extend(_group_table(report, "modules"))
     lines.extend(_group_table(report, "languages"))
-    lines.append("\nMeasured debt — current / delta")
+    lines.append("\nMeasured counts — current / delta (physical size is advisory)")
     for key in sorted(set(base["debt"]) | set(current["debt"])):
         value = current["debt"].get(key, 0)
         lines.append(f"  {key:<52} {value:>6,}  {_delta(value - base['debt'].get(key, 0)):>7}")
@@ -152,6 +156,9 @@ def render_report(report: dict) -> str:
     lines.append("Tools: " + ", ".join(f"{key}={value}" for key, value in report["tools"].items()))
     lines.append(f"PowerShell parser: {current['powershell_parser'] or 'no PowerShell source'}")
     lines.extend(f"Coverage: {report['policy'][key]}" for key in ("android_complexity", "function_metrics", "non_function_source", "verdict_scope"))
+    if report["advisories"]:
+        lines.append("\nSize changes requiring review (not automatic complexity debt):")
+        lines.extend(f"  {advisory}" for advisory in report["advisories"])
     if report["failures"]:
         lines.append("\nFailures:")
         lines.extend(f"  {failure}" for failure in report["failures"])
