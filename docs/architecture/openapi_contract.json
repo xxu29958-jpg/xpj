@@ -1355,6 +1355,17 @@
       },
       "Body_page_budget_advise_run_web_budget_advise_post": {
         "properties": {
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
+          },
           "ledger_id": {
             "anyOf": [
               {
@@ -4784,6 +4795,18 @@
         "additionalProperties": false,
         "description": "Caller picks the month (YYYY-MM); other inputs are read from the\nuser's existing data (income plan, recurring items, confirmed\nexpenses, personal baseline) by the builder service.",
         "properties": {
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z]{3}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
+          },
           "month": {
             "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
             "title": "Month",
@@ -5092,6 +5115,36 @@
           "count"
         ],
         "title": "BudgetExcludedCategoryResponse",
+        "type": "object"
+      },
+      "BudgetInputsResponse": {
+        "properties": {
+          "breakdown": {
+            "$ref": "#/components/schemas/DiscretionaryResponse"
+          },
+          "home_currency_code": {
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "missing_rates": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectionGapDto"
+            },
+            "title": "Missing Rates",
+            "type": "array"
+          },
+          "month": {
+            "title": "Month",
+            "type": "string"
+          }
+        },
+        "required": [
+          "month",
+          "home_currency_code",
+          "breakdown",
+          "missing_rates"
+        ],
+        "title": "BudgetInputsResponse",
         "type": "object"
       },
       "BudgetMonthlyArchiveRequest": {
@@ -7698,25 +7751,46 @@
         "description": "Inspectable breakdown of \"本月可自由支配\".\n\nMirrors :class:`DiscretionaryBreakdown` so the UI can render the\nsubtraction step by step.",
         "properties": {
           "discretionary_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": 0.0,
-            "title": "Discretionary Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discretionary Cents"
           },
           "fixed_expenses_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": 0.0,
-            "title": "Fixed Expenses Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fixed Expenses Cents"
           },
           "monthly_income_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": 0.0,
-            "title": "Monthly Income Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Income Cents"
           },
           "reserved_buffer_cents": {
             "format": "int64",
@@ -7733,11 +7807,18 @@
             "type": "integer"
           },
           "spent_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Spent Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spent Amount Cents"
           }
         },
         "required": [
@@ -7963,6 +8044,11 @@
             "title": "Currency Code",
             "type": "string"
           },
+          "expected_row_version": {
+            "minimum": 0.0,
+            "title": "Expected Row Version",
+            "type": "integer"
+          },
           "home_currency_code": {
             "maxLength": 3,
             "minLength": 3,
@@ -7998,7 +8084,8 @@
           "currency_code",
           "home_currency_code",
           "rate_date",
-          "rate_to_cny"
+          "rate_to_cny",
+          "expected_row_version"
         ],
         "title": "ExchangeRateRequest",
         "type": "object"
@@ -8037,6 +8124,11 @@
             "title": "Rate To Cny",
             "type": "string"
           },
+          "row_version": {
+            "minimum": 1.0,
+            "title": "Row Version",
+            "type": "integer"
+          },
           "source": {
             "title": "Source",
             "type": "string"
@@ -8061,7 +8153,8 @@
           "rate_to_cny",
           "source",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "row_version"
         ],
         "title": "ExchangeRateResponse",
         "type": "object"
@@ -14171,6 +14264,44 @@
         "title": "PendingDuplicateCandidateResponse",
         "type": "object"
       },
+      "ProjectionGapDto": {
+        "properties": {
+          "home_currency_code": {
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "rate_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Date"
+          },
+          "source_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Currency Code"
+          }
+        },
+        "required": [
+          "source_currency_code",
+          "home_currency_code",
+          "rate_date"
+        ],
+        "title": "ProjectionGapDto",
+        "type": "object"
+      },
       "RecurringCandidateConfirmRequest": {
         "additionalProperties": false,
         "properties": {
@@ -19103,6 +19234,148 @@
         ]
       }
     },
+    "/api/budget/advisor/inputs": {
+      "get": {
+        "operationId": "get_advisor_inputs_api_budget_advisor_inputs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "month",
+            "required": true,
+            "schema": {
+              "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+              "title": "Month",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "timezone",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Timezone"
+            }
+          },
+          {
+            "in": "query",
+            "name": "home_currency_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Z]{3}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Home Currency Code"
+            }
+          },
+          {
+            "in": "query",
+            "name": "savings_target_cents",
+            "required": false,
+            "schema": {
+              "default": "0",
+              "maxLength": 13,
+              "pattern": "^(?:0|[1-9][0-9]{0,12})$",
+              "title": "Savings Target Cents",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reserved_buffer_cents",
+            "required": false,
+            "schema": {
+              "default": "0",
+              "maxLength": 13,
+              "pattern": "^(?:0|[1-9][0-9]{0,12})$",
+              "title": "Reserved Buffer Cents",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetInputsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Advisor Inputs",
+        "tags": [
+          "budget-advisor"
+        ]
+      }
+    },
     "/api/budget/advisor/status": {
       "get": {
         "operationId": "get_advisor_status_api_budget_advisor_status_get",
@@ -21776,6 +22049,23 @@
           },
           {
             "in": "query",
+            "name": "rate_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rate Date"
+            }
+          },
+          {
+            "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
@@ -21878,6 +22168,22 @@
               "format": "date",
               "title": "Rate Date",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
             }
           },
           {
@@ -37355,6 +37661,22 @@
               "title": "Run Advise",
               "type": "boolean"
             }
+          },
+          {
+            "in": "query",
+            "name": "home_currency_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Home Currency Code"
+            }
           }
         ],
         "responses": {
@@ -37418,6 +37740,46 @@
           }
         },
         "summary": "Page Budget Advise Run",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/budget-advise/rates": {
+      "get": {
+        "operationId": "page_budget_rates_web_budget_advise_rates_get",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Page Budget Rates",
+        "tags": [
+          "web"
+        ]
+      },
+      "post": {
+        "operationId": "save_budget_rate_web_budget_advise_rates_post",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Save Budget Rate",
         "tags": [
           "web"
         ]

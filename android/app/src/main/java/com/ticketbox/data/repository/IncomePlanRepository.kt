@@ -79,7 +79,7 @@ class IncomePlanRepository(
         val original = requireNotNull(describeSubmission(requireNotNull(current)))
         require(if (drop) original.canDrop else original.canRetry && canModifyLedger()) { "请先核对原收入提交。" }
         val changed = when (current.status) {
-            PendingMutationStatus.Done -> outbox.discardCompletedIncomeSubmission(bound, current)
+            PendingMutationStatus.Done -> outbox.discardCompletedOriginalSubmission(bound, current)
             PendingMutationStatus.Conflict -> outbox.resolveConflict(current.id, ConflictResolution.DropMine, bound)
             else -> outbox.resolveFailed(current.id, if (drop) FailedResolution.Drop else FailedResolution.Retry(), bound)
         }
@@ -116,7 +116,8 @@ class IncomePlanRepository(
             IncomePlanUpdateRequestDto(request.intentMonth, 0, request.label, request.sourceType, request.frequency,
                 request.incomeMonth, request.amountCents, request.payDay))
         val key = UUID.randomUUID().toString()
-        enqueue(bound, PendingMutationType.CreateIncomePlan, "income_plan_create:$key", payload, 0, key)
+        outbox.enqueue(boundRequest = bound, intent = payload.toMutationIntent(incomePlanSubmissionAdapter, 0, key),
+            validateTargetRows = ::requireIncomeTargetSettled)
     }
 
     override suspend fun enqueueUpdate(expectedBinding: LogicalSessionBinding, baseline: IncomePlan,
@@ -132,25 +133,15 @@ class IncomePlanRepository(
         val payload = IncomePlanSubmissionPayload(INCOME_PLAN_EDIT_PAYLOAD_REVISION, baseline.publicId, baseline.label,
             baseline.amountCents, currency.storageKey, expectedBinding.sessionGeneration, expectedBinding.bindingRevision,
             patch.toUpdateRequest().copy(expectedRowVersion = 0))
-        enqueue(bound, PendingMutationType.UpdateIncomePlan, incomePlanTarget(baseline.publicId), payload,
-            baseline.rowVersion, UUID.randomUUID().toString())
-    }
-
-    private suspend fun enqueue(bound: BoundLedgerRequest, type: PendingMutationType, target: String,
-        payload: IncomePlanSubmissionPayload, expectedVersion: Long, key: String): Long {
-        val encoded = incomePlanSubmissionAdapter.toJson(payload)
-        require(incomePlanSubmissionAdapter.readSupportedIncomeSubmission(encoded) != null) { "请检查收入月份、币种和提交内容。" }
-        return outbox.enqueue(boundRequest = bound, intent = PendingMutationIntent(type, target, encoded, expectedVersion, key),
-            validateTargetRows = { rows -> require(rows.none { it.status != PendingMutationStatus.Done }) {
-                "这条计划有待处理的提交，请先核对同步结果。"
-            } })
+        outbox.enqueue(boundRequest = bound, intent = payload.toMutationIntent(incomePlanSubmissionAdapter,
+            baseline.rowVersion, UUID.randomUUID().toString()), validateTargetRows = ::requireIncomeTargetSettled)
     }
 
     override suspend fun archive(expectedBinding: LogicalSessionBinding, publicId: String,
         expectedRowVersion: Long, intentMonth: String): Result<IncomePlan> = errors.safeCall {
         if (!canModifyLedger()) throw RepositoryException("当前角色为只读，无法修改账本。")
         val bound = guard.bindExact(expectedBinding)
-        requireNoUnresolvedSubmission(bound, publicId)
+        requireIncomeTargetSettled(outbox.activeForTarget(bound, incomePlanTarget(publicId)))
         bound.call {
             it.archiveIncomePlan(publicId, IncomePlanTokenRequestDto(expectedRowVersion, intentMonth)).toDomain()
         }
@@ -160,17 +151,18 @@ class IncomePlanRepository(
         expectedRowVersion: Long, intentMonth: String): Result<IncomePlan> = errors.safeCall {
         if (!canModifyLedger()) throw RepositoryException("当前角色为只读，无法修改账本。")
         val bound = guard.bindExact(expectedBinding)
-        requireNoUnresolvedSubmission(bound, publicId)
+        requireIncomeTargetSettled(outbox.activeForTarget(bound, incomePlanTarget(publicId)))
         bound.call {
             it.restoreIncomePlan(publicId, IncomePlanTokenRequestDto(expectedRowVersion, intentMonth)).toDomain()
         }
     }
 
-    private suspend fun requireNoUnresolvedSubmission(bound: BoundLedgerRequest, publicId: String) {
-        require(outbox.activeForTarget(bound, incomePlanTarget(publicId)).isEmpty()) {
-            "这条计划有待处理的提交，请先核对同步结果。"
-        }
-    }
 }
 
 private val INCOME_SUBMISSION_TYPES = setOf(PendingMutationType.CreateIncomePlan, PendingMutationType.UpdateIncomePlan)
+
+private fun requireIncomeTargetSettled(rows: List<OutboxRow>) {
+    require(rows.none { it.status != PendingMutationStatus.Done }) {
+        "这条计划有待处理的提交，请先核对同步结果。"
+    }
+}

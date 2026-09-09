@@ -52,7 +52,8 @@ from app.services.budget_advisor_service._audit import (
     reserve_live_call_budget,
 )
 from app.services.budget_advisor_service._inputs_builder import (
-    build_budget_inputs,
+    BudgetInputProjection,
+    read_budget_inputs,
 )
 from app.services.budget_advisor_service._models import (
     BudgetAdvice,
@@ -98,7 +99,8 @@ __all__ = [
     "OpenAiCompatBudgetAdvisor",
     "advisor_status_for_tenant",
     "assign_transaction_temp_id",
-    "build_budget_inputs",
+    "BudgetInputProjection",
+    "read_budget_inputs",
     "canonical_provider_name",
     "cleanup_session",
     "cleanup_expired_audit_logs",

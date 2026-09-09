@@ -12,6 +12,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationType
+import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.repository.PendingCategoryRuleSubmission
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
@@ -36,25 +37,30 @@ internal fun CategoryRuleSubmissionSummary(pending: PendingCategoryRuleSubmissio
             else -> R.string.sync_status_mutation_update_category_rule
         }))
         Text(request?.keyword ?: stringResource(R.string.category_rule_submission_unknown))
-        request?.category?.let { Text(it) }
-        if (request?.priority != null && request.enabled != null) Text(stringResource(
-            R.string.category_rule_card_priority_status, request.priority,
-            stringResource(if (request.enabled) R.string.category_rule_card_status_enabled else R.string.category_rule_card_status_disabled)))
-        if (request != null && request.amountMinCents == null && request.amountMaxCents == null) {
-            Text(stringResource(R.string.category_rule_amount_unlimited))
-        }
-        request?.sourceContains?.let { Text(stringResource(R.string.category_rule_condition_source_contains, it)) }
-        request?.tagContains?.let { Text(stringResource(R.string.category_rule_condition_tag, it)) }
-        request?.amountMinCents?.let { Text(stringResource(R.string.category_rule_condition_amount_min,
-            categoryRuleAmountText(it, request.homeCurrencyCode))) }
-        request?.amountMaxCents?.let { Text(stringResource(R.string.category_rule_condition_amount_max,
-            categoryRuleAmountText(it, request.homeCurrencyCode))) }
+        request?.let { CategoryRuleOriginalConditions(it) }
         TextButton(onClick = { details = !details }) { Text(stringResource(R.string.category_rule_submission_details)) }
         if (details) {
             Text(stringResource(R.string.category_rule_submission_key, pending.row.idempotencyKey.orEmpty()))
             Text(stringResource(R.string.category_rule_submission_version, pending.row.expectedRowVersion))
         }
     }
+}
+
+@Composable
+private fun CategoryRuleOriginalConditions(request: CategoryRuleRequest) {
+    request.category?.let { Text(it) }
+    if (request.priority != null && request.enabled != null) Text(stringResource(
+        R.string.category_rule_card_priority_status, request.priority,
+        stringResource(if (request.enabled) R.string.category_rule_card_status_enabled else R.string.category_rule_card_status_disabled)))
+    if (request.amountMinCents == null && request.amountMaxCents == null) {
+        Text(stringResource(R.string.category_rule_amount_unlimited))
+    }
+    request.sourceContains?.let { Text(stringResource(R.string.category_rule_condition_source_contains, it)) }
+    request.tagContains?.let { Text(stringResource(R.string.category_rule_condition_tag, it)) }
+    request.amountMinCents?.let { Text(stringResource(R.string.category_rule_condition_amount_min,
+        categoryRuleAmountText(it, request.homeCurrencyCode))) }
+    request.amountMaxCents?.let { Text(stringResource(R.string.category_rule_condition_amount_max,
+        categoryRuleAmountText(it, request.homeCurrencyCode))) }
 }
 
 @Composable

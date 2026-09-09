@@ -33,6 +33,14 @@ fun Throwable.toUiText(@StringRes fallback: Int): UiText {
 private fun errorCodeStringRes(code: String?): Int? = code?.let(errorCodeStringResByCode::get)
 
 private val errorCodeStringResByCode = mapOf(
+    "manual_rate_original_unverified" to R.string.advice_rate_submission_review,
+    "manual_rate_response_unverified" to R.string.advice_rate_submission_review,
+    "manual_rate_review_required" to R.string.advice_rate_submission_review,
+    "manual_rate_submission_unresolved" to R.string.advice_rate_unresolved,
+    "manual_rate_submission_changed" to R.string.advice_rate_changed,
+    "manual_rate_current_unverified" to R.string.advice_rate_changed,
+    "budget_advice_inputs_unverified" to R.string.advice_inputs_load_failed,
+    "money_projection_unavailable" to R.string.advice_missing_rates,
     "invalid_token" to R.string.error_invalid_token,
     "legacy_auth_removed" to R.string.error_legacy_auth_removed,
     "invalid_pairing_code" to R.string.error_invalid_pairing_code,

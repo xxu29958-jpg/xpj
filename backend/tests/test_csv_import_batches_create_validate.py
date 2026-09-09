@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv as csv_module
 from io import BytesIO
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -251,8 +252,9 @@ def test_csv_import_rejects_conflicting_amount_yuan_and_cents(client: TestClient
 def test_csv_import_foreign_amount_cents_is_original_minor_not_home_amount(client: TestClient, *, identity) -> None:
     rate = client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=negotiated_headers(client, identity.app_headers),
+        headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
         json={
+            "expected_row_version": 0,
             "home_currency_code": "CNY",
             "currency_code": "USD",
             "rate_date": "2026-05-04",

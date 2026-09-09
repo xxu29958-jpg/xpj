@@ -17,8 +17,8 @@ from __future__ import annotations
 from app.services.budget_baseline_service._models import (
     CategoryBaseline,
     DefaultBaseline,
+    PersonalBaseline,
 )
-from app.services.budget_baseline_service._personal import PersonalBaseline
 
 _FULL_TRUST_MONTHS = 6
 

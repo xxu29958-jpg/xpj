@@ -2,6 +2,7 @@
 
 from datetime import date
 from decimal import Decimal
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -11,11 +12,12 @@ from app.services.exchange_rate_service import resolve_payload_rate
 from tests._runtime_protocol import negotiated_headers
 
 
-def _put_rate(client, identity, home, rate):
+def _put_rate(client, identity, home, rate, *, expected_row_version=0):
     return client.put(
         "/api/exchange-rates/USD/2026-09-08",
-        headers=negotiated_headers(client, identity.app_headers),
+        headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
         json={
+            "expected_row_version": expected_row_version,
             "currency_code": "USD", "home_currency_code": home,
             "rate_date": "2026-09-08", "rate_to_cny": rate,
         },
@@ -32,8 +34,8 @@ def test_unadopted_rates_require_owner_choice_before_the_list_can_label_them(cli
 def test_manual_rate_requires_the_target_currency(client: TestClient, identity):
     response = client.put(
         "/api/exchange-rates/USD/2026-09-08",
-        headers=negotiated_headers(client, identity.app_headers),
-        json={"currency_code": "USD", "rate_date": "2026-09-08", "rate_to_cny": "7"},
+        headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": 0, "currency_code": "USD", "rate_date": "2026-09-08", "rate_to_cny": "7"},
     )
     assert response.status_code == 422
     rates = client.get("/api/exchange-rates", headers=identity.app_headers)
@@ -49,7 +51,7 @@ def test_manual_rate_pairs_coexist_and_updates_do_not_rewrite_the_other_pair(cli
     assert yen.json()["home_currency_code"] == "JPY"
     assert yuan.json()["public_id"] != yen.json()["public_id"]
 
-    updated = _put_rate(client, identity, "CNY", "7.2")
+    updated = _put_rate(client, identity, "CNY", "7.2", expected_row_version=yuan.json()["row_version"])
     assert updated.status_code == 200, updated.json()
     assert updated.json()["public_id"] == yuan.json()["public_id"]
     rates = client.get("/api/exchange-rates?currency_code=USD", headers=identity.app_headers)

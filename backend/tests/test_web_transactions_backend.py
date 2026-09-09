@@ -81,8 +81,9 @@ def _seed_confirmed(
 def _foreign_expense(web_client: TestClient, *, identity, rate: str = "7.0000") -> int:
     rate_response = web_client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=negotiated_headers(web_client, identity.app_headers),
+        headers={**negotiated_headers(web_client, identity.app_headers), "Idempotency-Key": str(uuid4())},
         json={
+            "expected_row_version": 0,
             "home_currency_code": "CNY",
             "currency_code": "USD",
             "rate_date": "2026-05-04",
@@ -286,8 +287,9 @@ def test_web_edit_ignores_mutable_rate_and_preserves_frozen_fx_snapshot(
 
     changed_rate = web_client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=negotiated_headers(web_client, identity.app_headers),
+        headers={**negotiated_headers(web_client, identity.app_headers), "Idempotency-Key": str(uuid4())},
         json={
+            "expected_row_version": 0,
             "home_currency_code": "CNY",
             "currency_code": "USD",
             "rate_date": "2026-05-04",
@@ -338,8 +340,9 @@ def test_api_amount_correction_preserves_frozen_rate_snapshot(
     before = _expense_payload(web_client, expense_id, identity=identity)
     changed_rate = web_client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=negotiated_headers(web_client, identity.app_headers),
+        headers={**negotiated_headers(web_client, identity.app_headers), "Idempotency-Key": str(uuid4())},
         json={
+            "expected_row_version": 0,
             "home_currency_code": "CNY",
             "currency_code": "USD",
             "rate_date": "2026-05-04",

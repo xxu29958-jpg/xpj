@@ -63,6 +63,7 @@ fun SyncStatusScreen(
             onOpenGoalEdit = navigation.onOpenGoalEdit,
             onOpenRuleSubmission = navigation.onOpenRuleSubmission,
             onOpenIncomeSubmission = navigation.onOpenIncomeSubmission,
+            onOpenRateSubmission = navigation.onOpenRateSubmission,
         )
     }
     SyncStatusScreenContent(state = state, actions = actions, onBack = onBack, onOpenInbox = navigation.onOpenInbox)
@@ -77,6 +78,7 @@ data class SyncStatusNavigation(
     val onOpenGoalEdit: (String) -> Unit,
     val onOpenRuleSubmission: (Long) -> Unit,
     val onOpenIncomeSubmission: (Long) -> Unit,
+    val onOpenRateSubmission: (Long) -> Unit,
 )
 
 /** Row callbacks grouped to keep the content API small and testable. */
@@ -93,6 +95,7 @@ internal data class SyncStatusActions(
     val onOpenGoalEdit: (String) -> Unit,
     val onOpenRuleSubmission: (Long) -> Unit,
     val onOpenIncomeSubmission: (Long) -> Unit,
+    val onOpenRateSubmission: (Long) -> Unit,
 )
 
 private data class SyncStatusActionButton(
@@ -170,8 +173,9 @@ private fun SyncStatusPageBody(
         return
     }
     val status = state.status
-    SyncStatusOverviewSection(status, state.correctionObservation.corrections, state.debtAdjustments.values.toList(), state.incomeSubmissions.values.toList())
+    SyncStatusOverviewSection(status, state.correctionObservation.corrections, state.debtAdjustments.values.toList(), state.incomeSubmissions.values.toList(), state.manualRates.values.toList())
     SyncStatusIncomeReviews(state, actions)
+    SyncStatusRateReviews(state, actions)
     SyncStatusBillSplitSection(state, actions)
     SyncStatusCorrectionSection(state, actions)
     SyncStatusUploadSection(state, onOpenInbox)
@@ -479,6 +483,7 @@ internal val syncStatusMutationLabelResources = mapOf(
     PendingMutationType.CreateIncomePlan to R.string.income_plan_submission_create,
     PendingMutationType.UpdateIncomePlan to R.string.sync_status_mutation_update_income_plan,
     PendingMutationType.SaveMonthlyBudget to R.string.budget_editor_save,
+    PendingMutationType.SaveManualExchangeRate to R.string.advice_rate_submit,
     PendingMutationType.CreateRecurringItem to R.string.sync_status_mutation_create_recurring_item,
     PendingMutationType.UpdateRecurringItem to R.string.sync_status_mutation_update_recurring_item,
     PendingMutationType.SetRecurringOccurrencePayment to R.string.sync_status_mutation_recurring_occurrence,

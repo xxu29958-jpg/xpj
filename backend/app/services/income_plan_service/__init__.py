@@ -30,6 +30,7 @@ from app.services.income_plan_service._money import (
     updated_income_amount_cents as _updated_income_amount_cents,
 )
 from app.services.income_plan_service._money import validate_income_plan_amount
+from app.services.money_projection_service import ProjectionGap
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.time_service import ensure_utc, now_utc, safe_zone
 
@@ -78,10 +79,12 @@ def list_applicable_income_plans(
 def income_forecast(
     db: Session, *, tenant_id: str, month: str, as_of: datetime | None = None,
     timezone_name: str | None = None,
+    home_currency_code: str | None = None, missing_rates: set[ProjectionGap] | None = None,
 ) -> IncomeForecast:
     return query_income_forecast(
         db, tenant_id=tenant_id, period=income_month_start(month),
         today=_income_as_of_date(as_of=as_of, timezone_name=timezone_name),
+        home_currency_code=home_currency_code, missing_rates=missing_rates,
     )
 
 

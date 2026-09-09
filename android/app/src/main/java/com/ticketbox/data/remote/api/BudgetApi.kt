@@ -11,6 +11,11 @@ import retrofit2.http.PUT
 import retrofit2.http.Query
 
 interface BudgetApi {
+    @GET("api/budget/advisor/inputs")
+    suspend fun budgetAdviceInputs(@Query("month") month: String,
+        @Query("timezone") timezone: String? = null,
+        @Query("home_currency_code") homeCurrencyCode: String? = null): com.ticketbox.data.remote.dto.BudgetAdviceInputsDto
+
     @GET("api/budgets/monthly")
     suspend fun monthlyBudget(
         @Query("month") month: String,

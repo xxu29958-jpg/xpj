@@ -4,7 +4,19 @@ from datetime import date, datetime
 from decimal import Decimal
 from uuid import uuid4
 
-from sqlalchemy import DDL, CheckConstraint, Date, DateTime, ForeignKey, Index, Numeric, String, UniqueConstraint, event
+from sqlalchemy import (
+    DDL,
+    CheckConstraint,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    UniqueConstraint,
+    event,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database_model_registry import Base
@@ -18,6 +30,7 @@ class ExchangeRate(Base):
     __table_args__ = (
         UniqueConstraint("tenant_id", "home_currency_code", "currency_code", "rate_date", name="uq_exchange_rates_tenant_pair_date"),
         CheckConstraint("rate_to_cny > 0", name="ck_exchange_rates_rate_positive"),
+        CheckConstraint("row_version >= 1", name="ck_exchange_rates_row_version_positive"),
         CheckConstraint(
             "home_currency_code IN ('CNY', 'USD', 'EUR', 'GBP', 'JPY', 'HKD', 'KRW') "
             "AND home_currency_code <> currency_code", name="ck_exchange_rates_home_currency",
@@ -41,6 +54,7 @@ class ExchangeRate(Base):
     source: Mapped[str] = mapped_column(String(32), default=FX_SOURCE_MANUAL, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    row_version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
 
 
 Index("ix_exchange_rates_tenant_currency_date", ExchangeRate.tenant_id, ExchangeRate.currency_code, ExchangeRate.rate_date)

@@ -303,6 +303,8 @@ class AppContainer(context: Context) {
                 payloadAdapter = outboxAdapters.budgetSaveAdapter,
                 receiptAdapter = outboxAdapters.budgetReceiptAdapter,
             ),
+            com.ticketbox.data.repository.ManualExchangeRateDispatcher(::outboxApi,
+                outboxAdapters.manualRateAdapter, outboxAdapters.manualRateReceiptAdapter),
             CreateRecurringItemDispatcher(
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.recurringCreateAdapter,

@@ -24,11 +24,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.setMain
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -556,7 +558,7 @@ class BudgetAdviceViewModelTest {
     @Test
     fun roleReprojectionOnSameLedgerRegatesWithoutWipingContent() = budgetTest {
         val accessFlow = MutableStateFlow<LedgerAccessState?>(
-            LedgerAccessState(ledgerId = "owner", role = "member"),
+            adviceAccess(ledgerId = "owner", role = "member"),
         )
         val fake = FakeBudgetActions(budget = budget(), accessFlow = accessFlow)
         val adviceViewModel = fixedAdviceViewModel(fake)
@@ -568,7 +570,7 @@ class BudgetAdviceViewModelTest {
         // Demotion member→viewer on the SAME ledger: re-gate to read-only
         // immediately, but the already-rendered result is not discarded.
         fake.canModify = false
-        accessFlow.value = LedgerAccessState(ledgerId = "owner", role = "viewer")
+        accessFlow.value = adviceAccess(ledgerId = "owner", role = "viewer")
         advanceUntilIdle()
 
         var state = adviceViewModel.uiState.value
@@ -578,7 +580,7 @@ class BudgetAdviceViewModelTest {
 
         // Promotion viewer→member: the gate opens again with content intact.
         fake.canModify = true
-        accessFlow.value = LedgerAccessState(ledgerId = "owner", role = "member")
+        accessFlow.value = adviceAccess(ledgerId = "owner", role = "member")
         advanceUntilIdle()
 
         state = adviceViewModel.uiState.value
@@ -590,14 +592,14 @@ class BudgetAdviceViewModelTest {
     @Test
     fun roleDemotionRestoresReadOnlyShortCircuit() = budgetTest {
         val accessFlow = MutableStateFlow<LedgerAccessState?>(
-            LedgerAccessState(ledgerId = "owner", role = "member"),
+            adviceAccess(ledgerId = "owner", role = "member"),
         )
         val fake = FakeBudgetActions(budget = budget(), accessFlow = accessFlow)
         val adviceViewModel = fixedAdviceViewModel(fake)
         advanceUntilIdle()
 
         fake.canModify = false
-        accessFlow.value = LedgerAccessState(ledgerId = "owner", role = "viewer")
+        accessFlow.value = adviceAccess(ledgerId = "owner", role = "viewer")
         advanceUntilIdle()
         assertFalse(adviceViewModel.uiState.value.canRequest)
 
@@ -624,7 +626,7 @@ class BudgetAdviceViewModelTest {
             reasonCode = "advisor_ready",
         )
         val accessFlow = MutableStateFlow<LedgerAccessState?>(
-            LedgerAccessState(ledgerId = "owner", role = "member"),
+            adviceAccess(ledgerId = "owner", role = "member"),
         )
         val fake = FakeBudgetActions(budget = budget(), cachedAdvice = cached, accessFlow = accessFlow)
         val adviceViewModel = fixedAdviceViewModel(fake)
@@ -633,7 +635,7 @@ class BudgetAdviceViewModelTest {
 
         // Ledger switch keeps the round-4 semantics: reset to Idle, then the
         // binding-scoped cache restore runs for the new ledger.
-        accessFlow.value = LedgerAccessState(ledgerId = "ledger-b", role = "member")
+        accessFlow.value = adviceAccess(ledgerId = "ledger-b", role = "member")
         advanceUntilIdle()
 
         val state = adviceViewModel.uiState.value
@@ -697,7 +699,7 @@ class BudgetAdviceRoleCapabilityTest {
     @Test
     fun ownerPromotionReoffersRoleGatedTerminalState() = budgetTest {
         val accessFlow = MutableStateFlow<LedgerAccessState?>(
-            LedgerAccessState(ledgerId = "owner", role = "member"),
+            adviceAccess(ledgerId = "owner", role = "member"),
         )
         val fake = FakeBudgetActions(budget = budget(), accessFlow = accessFlow)
         fake.adviceResponder = {
@@ -716,7 +718,7 @@ class BudgetAdviceRoleCapabilityTest {
         // Promotion member→owner on the SAME ledger: the backend gate now
         // permits the request, so the terminal state reverts to Idle (the user
         // still taps 生成 explicitly — nothing auto-requests).
-        accessFlow.value = LedgerAccessState(ledgerId = "owner", role = "owner")
+        accessFlow.value = adviceAccess(ledgerId = "owner", role = "owner")
         advanceUntilIdle()
 
         val state = adviceViewModel.uiState.value
@@ -729,7 +731,7 @@ class BudgetAdviceRoleCapabilityTest {
     @Test
     fun ownerPromotionKeepsReadyContent() = budgetTest {
         val accessFlow = MutableStateFlow<LedgerAccessState?>(
-            LedgerAccessState(ledgerId = "owner", role = "member"),
+            adviceAccess(ledgerId = "owner", role = "member"),
         )
         val fake = FakeBudgetActions(budget = budget(), accessFlow = accessFlow)
         val adviceViewModel = fixedAdviceViewModel(fake)
@@ -737,7 +739,7 @@ class BudgetAdviceRoleCapabilityTest {
         advanceUntilIdle()
         assertEquals(BudgetAdviceLoadState.Ready, adviceViewModel.uiState.value.loadState)
 
-        accessFlow.value = LedgerAccessState(ledgerId = "owner", role = "owner")
+        accessFlow.value = adviceAccess(ledgerId = "owner", role = "owner")
         advanceUntilIdle()
 
         val state = adviceViewModel.uiState.value
@@ -749,7 +751,7 @@ class BudgetAdviceRoleCapabilityTest {
     @Test
     fun ownerPromotionKeepsNotConfirmedTerminal() = budgetTest {
         val accessFlow = MutableStateFlow<LedgerAccessState?>(
-            LedgerAccessState(ledgerId = "owner", role = "member"),
+            adviceAccess(ledgerId = "owner", role = "member"),
         )
         val fake = FakeBudgetActions(budget = budget(), accessFlow = accessFlow)
         fake.adviceResponder = {
@@ -768,7 +770,7 @@ class BudgetAdviceRoleCapabilityTest {
         // _runner.py checks not_confirmed BEFORE owner_required: promoting
         // member→owner does NOT confirm the advisor, so the terminal state
         // must survive the promotion.
-        accessFlow.value = LedgerAccessState(ledgerId = "owner", role = "owner")
+        accessFlow.value = adviceAccess(ledgerId = "owner", role = "owner")
         advanceUntilIdle()
 
         val state = adviceViewModel.uiState.value
@@ -928,14 +930,12 @@ class BudgetAdviceInvalidationTest {
     }
 
     @Test
-    fun requestAfterMonthRolloverTargetsCurrentMonth() = budgetTest {
+    fun explicitGenerationKeepsTheDisplayedTaskMonth() = budgetTest {
         val fake = FakeBudgetActions(budget = budget())
-        // Constructed in 2026-05; the clock has moved to 2026-06 by request
-        // time (production resolves YearMonth.now() at request start).
+        // Generating after rate repair keeps the displayed month until an explicit month change.
         val adviceViewModel = BudgetAdviceViewModel(
             fake,
             initialMonth = "2026-05",
-            monthProvider = { "2026-06" },
         )
         advanceUntilIdle()
         assertEquals("2026-05", adviceViewModel.uiState.value.month)
@@ -944,8 +944,8 @@ class BudgetAdviceInvalidationTest {
         advanceUntilIdle()
 
         val state = adviceViewModel.uiState.value
-        assertEquals("2026-06", state.month)
-        assertEquals(listOf("2026-06"), fake.adviceMonths)
+        assertEquals("2026-05", state.month)
+        assertEquals(listOf("2026-05"), fake.adviceMonths)
         assertEquals(BudgetAdviceLoadState.Ready, state.loadState)
     }
 
@@ -1037,26 +1037,25 @@ class BudgetAdviceInvalidationTest {
     }
 }
 
-/** Pins the advice VM to a fixed month: production resolves the request month
- *  from the clock at request time (P2-17), so tests inject the same month they
- *  construct with to keep no-rollover behaviour deterministic. */
-private fun fixedAdviceViewModel(
+/** Await the initial read before exercising the enabled Generate action on a fixed task month. */
+@OptIn(ExperimentalCoroutinesApi::class)
+private fun TestScope.fixedAdviceViewModel(
     fake: FakeBudgetActions,
     month: String = "2026-05",
 ): BudgetAdviceViewModel = BudgetAdviceViewModel(
     fake,
     initialMonth = month,
-    monthProvider = { month },
-)
+).also { runCurrent() }
 
 internal class FakeBudgetActions(
     var budget: BudgetMonthly,
     canModify: Boolean = true,
     private val cachedAdvice: BudgetAdviceResult? = null,
-    private val accessFlow: Flow<LedgerAccessState?> = emptyFlow(),
+    private val accessFlow: Flow<LedgerAccessState?>? = null,
     private val activeAccessFlow: Flow<LedgerAccessContext?> = flowOf(planAccess(canModify = canModify)),
     val commands: FakeBudgetSaveActions = FakeBudgetSaveActions(),
-) : BudgetActions, BudgetSaveActions by commands {
+    val rates: FakeManualRateActions = FakeManualRateActions(),
+) : BudgetActions, BudgetSaveActions by commands, com.ticketbox.data.repository.ManualRateActions by rates {
     val loadedMonths = mutableListOf<String>()
     val adviceMonths = mutableListOf<String>()
     val cachedAdviceMonths = mutableListOf<String>()
@@ -1065,9 +1064,16 @@ internal class FakeBudgetActions(
     var monthlyBudgetResponder: (suspend (String) -> Result<BudgetMonthly>)? = null
     var adviceResponder: (suspend (String) -> Result<BudgetAdviceResult>)? = null
 
+    val inputMonths = mutableListOf<String>()
+    var inputResponse: com.ticketbox.data.remote.dto.BudgetAdviceInputsDto? = null
+    override suspend fun adviceInputs(expectedBinding: LogicalSessionBinding, month: String, homeCurrencyCode: String?): Result<com.ticketbox.data.remote.dto.BudgetAdviceInputsDto> {
+        inputMonths += month
+        return Result.success(inputResponse ?: com.ticketbox.data.remote.dto.BudgetAdviceInputsDto(month, homeCurrencyCode ?: "CNY",
+            com.ticketbox.data.remote.dto.DiscretionaryResponseDto(10000, 1000, 2000, 0, 0, 7000), emptyList()))
+    }
     override fun canModifyLedger(): Boolean = canModify
 
-    override suspend fun cachedBudgetAdvice(month: String): BudgetAdviceResult? {
+    override suspend fun cachedBudgetAdvice(month: String, homeCurrencyCode: String?): BudgetAdviceResult? {
         cachedAdviceMonths += month
         return cachedAdvice
     }
@@ -1082,7 +1088,9 @@ internal class FakeBudgetActions(
 
     override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> = activeAccessFlow
 
-    override fun observeLedgerAccessState(): Flow<LedgerAccessState?> = accessFlow
+    override fun observeLedgerAccessState(): Flow<LedgerAccessState?> = accessFlow ?: activeAccessFlow.map { access ->
+        access?.let { LedgerAccessState(it.binding, if (it.canModify) "owner" else "viewer") }
+    }
 
     override suspend fun monthlyBudget(month: String): Result<BudgetMonthly> {
         loadedMonths += month
@@ -1090,7 +1098,7 @@ internal class FakeBudgetActions(
         return Result.success(budget.copy(month = month))
     }
 
-    override suspend fun requestBudgetAdvice(month: String): Result<BudgetAdviceResult> {
+    override suspend fun requestBudgetAdvice(month: String, homeCurrencyCode: String?, expectedBinding: LogicalSessionBinding?): Result<BudgetAdviceResult> {
         adviceMonths += month
         adviceResponder?.let { return it(month) }
         return Result.success(
@@ -1198,3 +1206,6 @@ private fun categoryBudget(category: String, amountCents: Long): BudgetCategoryB
     remainingAmountCents = amountCents - 30000,
     overspentAmountCents = 0,
 )
+
+private fun adviceAccess(ledgerId: String, role: String): LedgerAccessState =
+    LedgerAccessState(planAccess().binding.copy(ledgerId = ledgerId), role)

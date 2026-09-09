@@ -40,15 +40,32 @@ data class IncomePlanSubmissionPayload(
         requireNotNull(request.amountCents), requireNotNull(request.payDay), homeCurrencyCode)
 
     fun acceptsReceipt(row: OutboxRow, receipt: IncomePlanDto): Boolean = supports(row) &&
+        acceptsReceiptIdentity(row, receipt) && acceptsReceiptMoney(receipt) && acceptsReceiptSchedule(receipt)
+
+    private fun acceptsReceiptIdentity(row: OutboxRow, receipt: IncomePlanDto): Boolean =
         receipt.publicId.isNotBlank() && (row.type == PendingMutationType.CreateIncomePlan || receipt.publicId == planPublicId) &&
-        receipt.rowVersion == row.expectedRowVersion + 1 && receipt.homeCurrencyCode == homeCurrencyCode &&
-        receipt.label == (request.label ?: originalLabel) && receipt.amountCents == (request.amountCents ?: originalAmountCents) &&
+        receipt.rowVersion == row.expectedRowVersion + 1 && receipt.status == "active" && receipt.archivedAt == null
+
+    private fun acceptsReceiptMoney(receipt: IncomePlanDto): Boolean = receipt.homeCurrencyCode == homeCurrencyCode &&
+        receipt.label == (request.label ?: originalLabel) && receipt.amountCents == (request.amountCents ?: originalAmountCents)
+
+    private fun acceptsReceiptSchedule(receipt: IncomePlanDto): Boolean =
         (request.sourceType == null || receipt.sourceType == request.sourceType) &&
         (request.frequency == null || receipt.frequency == request.frequency) &&
         (request.payDay == null || receipt.payDay == request.payDay) &&
         (request.incomeMonth == null || receipt.incomeMonth == request.incomeMonth) &&
-        (request.frequency != "monthly" || receipt.incomeMonth == null) &&
-        receipt.status == "active" && receipt.archivedAt == null
+        (request.frequency != "monthly" || receipt.incomeMonth == null)
+
+    internal fun toMutationIntent(adapter: JsonAdapter<IncomePlanSubmissionPayload>, expectedVersion: Long,
+        key: String): PendingMutationIntent {
+        val encoded = adapter.toJson(this)
+        require(adapter.readSupportedIncomeSubmission(encoded) != null) { "请检查收入月份、币种和提交内容。" }
+        val creating = revision == INCOME_PLAN_CREATE_PAYLOAD_REVISION
+        return PendingMutationIntent(
+            if (creating) PendingMutationType.CreateIncomePlan else PendingMutationType.UpdateIncomePlan,
+            if (creating) "income_plan_create:$key" else incomePlanTarget(planPublicId), encoded, expectedVersion, key,
+        )
+    }
 
     internal fun isSupported(): Boolean = validMonth(request.intentMonth) && originalLabel.isNotBlank() &&
         originalAmountCents >= 0 && request.expectedRowVersion == 0L &&

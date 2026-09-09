@@ -7,20 +7,26 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.ui.screens.plan.BudgetAdviceScreen
 import com.ticketbox.viewmodel.BudgetAdviceViewModel
 import com.ticketbox.viewmodel.budgetAdviceViewModelFactory
+import com.ticketbox.viewmodel.*
+import androidx.compose.runtime.LaunchedEffect
 
 @Composable
 internal fun BudgetAdviceRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
+    originalSubmissionId: Long? = null,
 ) {
     val viewModel: BudgetAdviceViewModel = viewModel(
         factory = budgetAdviceViewModelFactory(screenFactory.budgetRepository),
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    LaunchedEffect(originalSubmissionId) { originalSubmissionId?.let(viewModel::openRateSubmission) }
 
     BudgetAdviceScreen(
         state = state,
-        onRequestAdvice = viewModel::requestAdvice,
+        actions = com.ticketbox.ui.screens.plan.BudgetAdviceActions(viewModel::requestAdvice, viewModel::refreshInputs,
+            viewModel::shiftMonth, { viewModel.openRate(it) }, viewModel::editRate, viewModel::updateRateInput,
+            viewModel::saveRate, viewModel::closeRateEditor, viewModel::reviewRate, viewModel::recoverRate),
         onBack = onBack,
     )
 }

@@ -101,6 +101,8 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     # v1.1 AI budget advisor + income plan (PR-9)
     ("GET", "/web/budget-advise"): "local-only-rendering",
     ("POST", "/web/budget-advise"): "owner-live-provider",
+    ("GET", "/web/budget-advise/rates"): "local-only-rendering",
+    ("POST", "/web/budget-advise/rates"): "writer-only",
     ("GET", "/web/income-plans"): "local-only-rendering",
     ("GET", "/web/income-plans/{public_id}/edit"): "writer-only",
     ("POST", "/web/income-plans/{public_id}/edit"): "writer-only",

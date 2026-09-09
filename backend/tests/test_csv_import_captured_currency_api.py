@@ -1,5 +1,7 @@
 """The durable import preview and every apply request share the file's money."""
 
+from uuid import uuid4
+
 from sqlalchemy import select
 
 from app.database import SessionLocal
@@ -44,8 +46,8 @@ def test_mixed_currency_preview_paged_apply_and_replay_keep_each_rows_amount(cli
 def test_foreign_import_resolves_the_rows_rate_pair_under_a_different_default(client, identity):
     for home, rate in [("CNY", "7"), ("JPY", "150")]:
         response = client.put(
-            "/api/exchange-rates/USD/2026-09-08", headers=identity.app_headers,
-            json={"home_currency_code": home, "currency_code": "USD", "rate_date": "2026-09-08",
+            "/api/exchange-rates/USD/2026-09-08", headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+            json={"expected_row_version": 0, "home_currency_code": home, "currency_code": "USD", "rate_date": "2026-09-08",
                   "rate_to_cny": rate, "source": "manual"},
         )
         assert response.status_code == 200, response.json()

@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from html import unescape
 from urllib.parse import parse_qs, urlparse
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -229,8 +230,9 @@ def test_web_correction_can_change_original_currency_through_existing_fx_owner(
 ) -> None:
     rate = web_client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=negotiated_headers(web_client, identity.app_headers),
+        headers={**negotiated_headers(web_client, identity.app_headers), "Idempotency-Key": str(uuid4())},
         json={
+            "expected_row_version": 0,
             "home_currency_code": "CNY",
             "currency_code": "USD",
             "rate_date": "2026-05-04",

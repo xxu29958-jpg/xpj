@@ -43,6 +43,7 @@ from fastapi.testclient import TestClient
                     "currency_code": "USD",
                     "rate_date": "2026-05-24",
                     "rate_to_cny": "7.2000",
+                    "expected_row_version": 0,
                     "source": "manual",
                 }
             },

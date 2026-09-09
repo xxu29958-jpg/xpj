@@ -1,0 +1,22 @@
+{% set rate_context = {'ledger_id': selected_ledger_id, 'month': month, 'home_currency_code': currency_input.currency_code, 'savings_target_yuan': savings_target_yuan, 'reserved_buffer_yuan': reserved_buffer_yuan} %}
+<section class="product-panel product-panel--padded" aria-label="金额换算">
+  <div class="product-panel-header">
+    <h2 class="product-panel-title">金额换算</h2>
+    <a class="product-button product-button--quiet" href="/web/budget-advise/rates?{{ rate_context|urlencode }}">人工汇率</a>
+  </div>
+  {% if missing_rates %}
+  <p>以下换算还缺信息。原记录的金额和币种保持不变，补齐后再显示完整合计。</p>
+  {% for gap in missing_rates %}
+    {% if gap.source_currency_code and gap.rate_date %}
+    <div class="plan-row-meta">
+      <span>{{ gap.source_currency_code }} → {{ gap.home_currency_code }} · {{ gap.rate_date }}</span>
+      {% if can_write %}<a class="product-button product-button--small" href="/web/budget-advise/rates?{{ rate_context|urlencode }}&currency_code={{ gap.source_currency_code|urlencode }}&rate_date={{ gap.rate_date|string|urlencode }}">补录汇率</a>{% endif %}
+    </div>
+    {% else %}
+    <p role="status">部分历史记录的原币种或日期无法确认，请由安装管理者核对原记录；不会猜测币种或汇率。</p>
+    {% endif %}
+  {% endfor %}
+  {% else %}
+  <p class="meta">按记录的币种和日期折算为 {{ currency_input.currency_code }}。已填写的人工汇率可在这里查看和纠正。</p>
+  {% endif %}
+</section>

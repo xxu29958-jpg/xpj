@@ -147,7 +147,7 @@ class IncomePlanGlobalRecoveryTest {
                             composable("income-sync") {
                                 val global: OutboxStatusViewModel = viewModel(factory = globalFactory())
                                 SyncStatusScreen(global, {}, SyncStatusNavigation({}, {}, {}, {}, {}, {}, {},
-                                    { id -> navigation.navigate(incomePlanSubmissionRoute(id)) }))
+                                    { id -> navigation.navigate(incomePlanSubmissionRoute(id)) }, {}))
                             }
                             addPlanRoutes(MainProductRouteDependencies(
                                 MainNavigationRuntime(navigation, harness.shell, harness.screenFactory), navigation,

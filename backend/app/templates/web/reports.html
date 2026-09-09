@@ -3,6 +3,20 @@
 {% block title %}报表 · 小票夹{% endblock %}
 
 {% block content %}
+{% macro report_projection_gaps(gaps, month) %}
+  {% for gap in gaps %}
+    {% set rate_context = {'ledger_id': selected_ledger_id, 'month': month, 'home_currency_code': gap.home_currency_code} %}
+    <div class="text-meta" role="status">
+      {% if gap.source_currency_code and gap.rate_date %}
+        待补汇率 · {{ gap.source_currency_code }} → {{ gap.home_currency_code }} · {{ gap.rate_date }}
+        <a href="/web/budget-advise/rates?{{ rate_context|urlencode }}&amp;currency_code={{ gap.source_currency_code|urlencode }}&amp;rate_date={{ gap.rate_date|string|urlencode }}">补录汇率</a>
+      {% else %}
+        待补信息 · 原币种或日期尚未确认，请核对原记录。
+        <a href="/web/budget-advise/rates?{{ rate_context|urlencode }}">查看汇率</a>
+      {% endif %}
+    </div>
+  {% endfor %}
+{% endmacro %}
 {% set r = report %}
 {% set _earliest_month = six_month_trend[0].month if six_month_trend else r.month %}
 
@@ -139,18 +153,20 @@
     <div class="product-panel-header">
       <div>
         <div class="product-panel-title">月报摘要</div>
-        <div class="product-panel-subtitle">{{ monthly_report.year_month }} · 本月账单汇总</div>
+        <div class="product-panel-subtitle">{{ monthly_report.year_month }} · 本月账单汇总 · {{ monthly_report.home_currency_code }}</div>
       </div>
     </div>
     <div class="report-summary">
       <div>
         <span>本月合计</span>
-        <strong><small>{{ home_currency_symbol }}</small>{{ monthly_report.total_amount_yuan }}</strong>
+        <strong>{% if monthly_report.total_amount_yuan is not none %}<small>{{ monthly_report.home_currency_code }}</small>{{ monthly_report.total_amount_yuan }}{% else %}待补信息{% endif %}</strong>
       </div>
       <div>
         <span>较上月</span>
         <strong>
-          {% if monthly_report.delta_pct is not none %}
+          {% if monthly_report.delta_vs_previous_yuan is none %}
+            待补信息
+          {% elif monthly_report.delta_pct is not none %}
             {{ '%+.1f' % monthly_report.delta_pct }}%
           {% else %}
             —
@@ -162,12 +178,13 @@
       {% for c in monthly_report.top_categories[:4] %}
       <div class="report-ranked-row">
         <span>{{ c.category }}</span>
-        <strong class="num">{{ home_currency_symbol }}{{ c.amount_yuan }}</strong>
+        <strong class="num">{% if c.amount_yuan is not none %}{{ monthly_report.home_currency_code }} {{ c.amount_yuan }}{% else %}待补信息{% endif %}</strong>
       </div>
       {% else %}
       <div class="text-meta">本月还没有已确认账单。</div>
       {% endfor %}
     </div>
+    {{ report_projection_gaps(monthly_report.missing_rates, monthly_report.year_month) }}
   </section>
 
   <section class="product-panel product-panel--padded report-span-7">
@@ -184,15 +201,18 @@
           <strong>{{ item.category }}</strong>
           <span>{{ item.verdict_label }}</span>
         </div>
-        <strong class="num">{{ home_currency_symbol }}{{ item.actual_yuan }}</strong>
+        <strong class="num">{% if item.actual_yuan is not none %}{{ item.home_currency_code }} {{ item.actual_yuan }}{% else %}待补信息{% endif %}</strong>
         <span>
-          {% if item.p75_yuan %}
-            P75 {{ home_currency_symbol }}{{ item.p75_yuan }}
-          {% else %}
+          {% if item.p75_yuan is not none %}
+            P75 {{ item.home_currency_code }} {{ item.p75_yuan }}
+          {% elif item.verdict == 'no_history' %}
             无历史
+          {% else %}
+            待补信息
           {% endif %}
         </span>
       </div>
+      {{ report_projection_gaps(item.missing_rates, item.year_month) }}
       {% else %}
       <div class="text-meta">还没有可解释分类。</div>
       {% endfor %}

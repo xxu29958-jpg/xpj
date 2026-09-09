@@ -30,6 +30,7 @@ the user's existing financial data remains a separate, concrete approval step.
 | Authority and old success exit | `currency_binding_service` first-fact claim, env match, runtime projection and legacy debt envelope; `test_currency_binding_capability`, `test_currency_binding_marker`, runtime compatibility tests |
 | Money writers | Expense/manual/OCR/import, debt/repayment/proposal, split invitation, budget/goal/income/recurring/category rules; existing command and currency/FX tests, DB writer fences |
 | Parsing and FX | `currency_common`, `exchange_rate_service`, `fx_rate_provider`, scheduler; explicit source/home arguments must replace env-derived meaning, including pure-helper callers |
+| Budget inputs and manual rates (candidate) | API read, Web advice/monthly report and Android advice use common-currency projections; missing source/date/rates stay unknown and block paid generation. Manual rate creation/correction has one OCC/idempotent owner and original receipt; Web retains the task and Android uses the existing Outbox and both sync entries. Original pair/date/month/home/key/version survive recovery. Retired: blind rate upsert, raw budget-input sums and unused personal/spent readers. Direct proof: projection/HTTP/CSRF/form/receipt tests, rate-version migration, Android DTO/owner/cache/Route/Room. Exact cloud qualification remains open; period reports and insight aggregates remain the next consumer gap |
 | Persistence and recovery | Binding/audit/idempotency receipt, currency evidence inventory and SQL guards; migration tests; Android negotiated binding, queued payloads, dispatcher recovery and legacy gate |
 | Debt create intent | Web form and Android `DebtCreationRepository` capture currency; `CreateDebtDispatcher` maps the durable v1 intent to the wire request without replacing its meaning. `debt_command_service` owns create/replay; an old completed receipt is reusable only when its original request and persisted currency match. Request-contract, API replay and existing Room-payload tests verify these boundaries |
 | Changed command protocol | Debt create, manual FX, goal create/edit and recurring create/candidate/edit reuse the income command's version dependency before body validation. Old clients receive `client_upgrade_required`; runtime projection no longer promises unversioned write compatibility. Direct HTTP producers negotiate through the existing test client helper; protocol refusal tests use the original old request shape |
@@ -102,9 +103,13 @@ direct client/test producers are migrated; current cloud qualification is pendin
 Income creation now has an original idempotency key and accepted receipt, with
 Web raw-form retention and Android durable publication; qualification remains
 open. Native original forms reject a changed browser ledger while retaining
-their original fields. Missing-FX recovery and common-currency spending
-in advisor/insight consumers must close before the nonempty default-change
-command can be delivered.
+their original fields. Budget inputs now share the existing money projection
+owner with monthly report explanations. Manual rate recovery returns to the
+original task without automatic advisor calls; correction remains reachable
+after the gap disappears. The command protocol is updated with both clients,
+and missing-currency Web drafts require an explicit choice before parsing.
+These are candidates awaiting exact cloud and device qualification. Period
+report/insight consumers and the nonempty default-change command remain open.
 
 Qualification includes TDD, exact candidate cloud gates, bounded review, real
 Desktop/Android continuation and independent main qualification. No long local

@@ -80,7 +80,7 @@ def test_valid_configuration_preserves_confirmation_and_role_gates(monkeypatch: 
 def test_invalid_configuration_refuses_before_inputs_or_quota(monkeypatch: pytest.MonkeyPatch) -> None:
     inputs = Mock(side_effect=AssertionError("Invalid configuration must not build financial inputs"))
     quota = Mock(side_effect=AssertionError("Invalid configuration must not reserve a call"))
-    monkeypatch.setattr(_runner, "build_budget_inputs", inputs)
+    monkeypatch.setattr(_runner, "read_budget_inputs", inputs)
     monkeypatch.setattr(_runner, "_reserve_live_call", quota)
     with _configured(monkeypatch, MODEL=""):
         with pytest.raises(AppError) as error:

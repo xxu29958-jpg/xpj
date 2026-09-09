@@ -8,11 +8,11 @@ from datetime import date
 from sqlalchemy import exists, or_, select
 from sqlalchemy.orm import Session
 
-from app.errors import AppError
 from app.models import Expense, ExpenseOffsetFact, RecurringItem, RecurringOccurrence
 from app.money_contract import projection_sum_to_int
 from app.schemas._recurring_occurrence import RecurringOccurrenceResponse
 from app.services.currency_binding_service import require_runtime_home_currency_code
+from app.services.money_projection_service import ProjectionGap
 from app.services.recurring_service import recurring_monthly_total
 from app.services.spending_contract_service import (
     clean_month,
@@ -152,7 +152,8 @@ def _occurrence_payment_fields(expense: Expense | None, *, valid: bool) -> dict:
 
 def total_outstanding_recurring_cents(
     db: Session, *, tenant_id: str, month: str,
-) -> int:
+    home_currency_code: str | None = None, missing_rates: set[ProjectionGap] | None = None,
+) -> int | None:
     period = occurrence_period(month)
     items = list(db.scalars(select(RecurringItem).where(
         RecurringItem.tenant_id == tenant_id,
@@ -160,9 +161,7 @@ def total_outstanding_recurring_cents(
         RecurringItem.frequency == "monthly",
     )))
     paid = fulfilled_periods(db, tenant_id=tenant_id, series_ids=[item.id for item in items])
-    total = recurring_monthly_total(db, tenant_id=tenant_id,
+    return recurring_monthly_total(db, tenant_id=tenant_id,
         items=[item for item in items if period not in paid.get(item.id, set())],
-        home_currency_code=require_runtime_home_currency_code(db), month=period.strftime("%Y-%m"))
-    if total is None:
-        raise AppError("recurring_projection_unavailable", "固定支出的币种或汇率待补充，暂时无法计算预算预留。", status_code=409)
-    return total
+        home_currency_code=home_currency_code or require_runtime_home_currency_code(db),
+        month=period.strftime("%Y-%m"), missing_rates=missing_rates)

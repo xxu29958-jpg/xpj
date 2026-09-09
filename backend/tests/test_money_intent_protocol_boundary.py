@@ -22,9 +22,10 @@ from app.services.currency_binding_service import CurrencyCapability
 
 @pytest.mark.parametrize("method,path,body", [
     ("POST", "/api/debts", {"direction": "i_owe", "counterparty_type": "external", "principal_amount_cents": 1200}),
-    ("PUT", "/api/exchange-rates/USD/2026-09-08", {"currency_code": "USD", "rate_date": "2026-09-08", "rate_to_cny": "7"}),
+    ("PUT", "/api/exchange-rates/USD/2026-09-08", {
+        "currency_code": "USD", "home_currency_code": "JPY", "rate_date": "2026-09-08", "rate_to_cny": "150"}),
 ])
-@pytest.mark.parametrize("version", [None, "2026-09-07", "current"])
+@pytest.mark.parametrize("version", [None, "2026-09-07", "2026-09-08", "current"])
 def test_currency_intent_protocol_rejection_precedes_missing_money_context(version, method, path, body):
     app = FastAPI()
     add_exception_handlers(app)

@@ -169,25 +169,25 @@ def _view_model(payload: dict, *, currency_code: str) -> dict:
     }
 
 
-def _monthly_report_view_model(
-    report: MonthlyReport,
-    *,
-    currency_code: str,
-) -> dict:
+def _projected_amount(amount: int | None, currency_code: str) -> str | None:
+    return None if amount is None else _amount_yuan(amount, currency_code)
+
+
+def _monthly_report_view_model(report: MonthlyReport) -> dict:
+    home = report.home_currency_code
     return {
         "year_month": report.year_month,
-        "total_amount_yuan": _amount_yuan(report.total_cents, currency_code),
+        "home_currency_code": home,
+        "missing_rates": report.missing_rates,
+        "total_amount_yuan": _projected_amount(report.total_cents, home),
         "expense_count": report.expense_count,
-        "delta_vs_previous_yuan": _amount_yuan(
-            report.delta_vs_previous_cents,
-            currency_code,
-        ),
+        "delta_vs_previous_yuan": _projected_amount(report.delta_vs_previous_cents, home),
         "delta_pct": report.delta_pct,
         "top_categories": [
             {
                 "category": row.category,
                 "amount_cents": row.amount_cents,
-                "amount_yuan": _amount_yuan(row.amount_cents, currency_code),
+                "amount_yuan": _projected_amount(row.amount_cents, home),
                 "count": row.count,
             }
             for row in report.top_categories
@@ -195,30 +195,17 @@ def _monthly_report_view_model(
     }
 
 
-def _budget_explanation_view_model(
-    item: BudgetExplanation,
-    *,
-    currency_code: str,
-) -> dict:
+def _budget_explanation_view_model(item: BudgetExplanation) -> dict:
+    home = item.home_currency_code
     return {
         "category": item.category,
         "year_month": item.year_month,
-        "actual_yuan": _amount_yuan(item.actual_cents, currency_code),
-        "p50_yuan": (
-            _amount_yuan(item.p50_cents, currency_code)
-            if item.p50_cents is not None
-            else None
-        ),
-        "p75_yuan": (
-            _amount_yuan(item.p75_cents, currency_code)
-            if item.p75_cents is not None
-            else None
-        ),
-        "delta_vs_p75_yuan": (
-            _amount_yuan(item.delta_vs_p75_cents, currency_code)
-            if item.delta_vs_p75_cents is not None
-            else None
-        ),
+        "home_currency_code": home,
+        "missing_rates": item.missing_rates,
+        "actual_yuan": _projected_amount(item.actual_cents, home),
+        "p50_yuan": _projected_amount(item.p50_cents, home),
+        "p75_yuan": _projected_amount(item.p75_cents, home),
+        "delta_vs_p75_yuan": _projected_amount(item.delta_vs_p75_cents, home),
         "verdict": item.verdict,
         "verdict_label": _budget_verdict_label(item.verdict),
     }
@@ -230,6 +217,7 @@ def _budget_verdict_label(value: str) -> str:
         "on_track": "节奏正常",
         "over_p75": "高于 P75",
         "no_history": "历史不足",
+        "projection_unavailable": "待补信息",
     }
     return labels.get(value, value)
 
@@ -283,12 +271,13 @@ def _monthly_report_sections(
     timezone_name: str,
     currency_code: str,
 ) -> tuple[dict, list[dict]]:
-    """月报摘要 + 预算解释两段的 ctx 视图(从 route 拆出守 80 行债线)。"""
+    """Read both monthly projections in the captured display currency."""
     monthly_report = compose_monthly_report(
         db,
         tenant_id=tenant_id,
         year_month=month,
         timezone_name=timezone_name,
+        home_currency_code=currency_code,
     )
     explanations = [
         compose_budget_explanation(
@@ -297,21 +286,13 @@ def _monthly_report_sections(
             category=row.category,
             year_month=month,
             timezone_name=timezone_name,
+            home_currency_code=currency_code,
         )
         for row in monthly_report.top_categories[:5]
     ]
     return (
-        _monthly_report_view_model(
-            monthly_report,
-            currency_code=currency_code,
-        ),
-        [
-            _budget_explanation_view_model(
-                item,
-                currency_code=currency_code,
-            )
-            for item in explanations
-        ],
+        _monthly_report_view_model(monthly_report),
+        [_budget_explanation_view_model(item) for item in explanations],
     )
 
 

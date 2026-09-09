@@ -31,8 +31,9 @@ def _demote_owner_ledger_to_viewer() -> None:
 def test_exchange_rate_crud_is_ledger_scoped_and_viewer_read_only(client: TestClient, *, identity) -> None:
     created = client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=negotiated_headers(client, identity.app_headers),
+        headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
         json={
+            "expected_row_version": 0,
             "home_currency_code": "CNY",
             "currency_code": "USD",
             "rate_date": "2026-05-04",
@@ -59,8 +60,9 @@ def test_exchange_rate_crud_is_ledger_scoped_and_viewer_read_only(client: TestCl
 
     viewer_write = client.put(
         "/api/exchange-rates/USD/2026-05-05",
-        headers=negotiated_headers(client, identity.app_headers),
+        headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
         json={
+            "expected_row_version": 0,
             "home_currency_code": "CNY",
             "currency_code": "USD",
             "rate_date": "2026-05-05",
@@ -74,8 +76,9 @@ def test_exchange_rate_crud_is_ledger_scoped_and_viewer_read_only(client: TestCl
 def test_exchange_rate_put_rejects_path_body_mismatch(client: TestClient, *, identity) -> None:
     currency_mismatch = client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=negotiated_headers(client, identity.app_headers),
+        headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
         json={
+            "expected_row_version": 0,
             "home_currency_code": "CNY",
             "currency_code": "EUR",
             "rate_date": "2026-05-04",
@@ -88,8 +91,9 @@ def test_exchange_rate_put_rejects_path_body_mismatch(client: TestClient, *, ide
 
     date_mismatch = client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=negotiated_headers(client, identity.app_headers),
+        headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
         json={
+            "expected_row_version": 0,
             "home_currency_code": "CNY",
             "currency_code": "USD",
             "rate_date": "2026-05-05",
@@ -104,8 +108,9 @@ def test_exchange_rate_put_rejects_path_body_mismatch(client: TestClient, *, ide
 def test_manual_foreign_expense_uses_stored_daily_rate_and_stats_stay_cny(client: TestClient, *, identity) -> None:
     rate = client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=negotiated_headers(client, identity.app_headers),
+        headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
         json={
+            "expected_row_version": 0,
             "home_currency_code": "CNY",
             "currency_code": "USD",
             "rate_date": "2026-05-04",
@@ -161,8 +166,9 @@ def test_manual_foreign_expense_uses_stored_daily_rate_and_stats_stay_cny(client
 def test_foreign_expense_uses_payload_local_calendar_day_for_rate_lookup(client: TestClient, *, identity) -> None:
     rate = client.put(
         "/api/exchange-rates/USD/2026-05-01",
-        headers=negotiated_headers(client, identity.app_headers),
+        headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
         json={
+            "expected_row_version": 0,
             "home_currency_code": "CNY",
             "currency_code": "USD",
             "rate_date": "2026-05-01",
@@ -253,14 +259,14 @@ def test_jpy_expense_uses_zero_fraction_minor_units_and_missing_rate_stays_pendi
 def test_editing_spent_at_recomputes_fx_rate_date_when_caller_did_not_pin_it(client: TestClient, *, identity) -> None:
     day_one = client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=negotiated_headers(client, identity.app_headers),
-        json={"home_currency_code": "CNY", "currency_code": "USD", "rate_date": "2026-05-04", "rate_to_cny": "7.0000"},
+        headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": 0, "home_currency_code": "CNY", "currency_code": "USD", "rate_date": "2026-05-04", "rate_to_cny": "7.0000"},
     )
     assert day_one.status_code == 200, day_one.json()
     day_two = client.put(
         "/api/exchange-rates/USD/2026-05-05",
-        headers=negotiated_headers(client, identity.app_headers),
-        json={"home_currency_code": "CNY", "currency_code": "USD", "rate_date": "2026-05-05", "rate_to_cny": "8.0000"},
+        headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": 0, "home_currency_code": "CNY", "currency_code": "USD", "rate_date": "2026-05-05", "rate_to_cny": "8.0000"},
     )
     assert day_two.status_code == 200, day_two.json()
 

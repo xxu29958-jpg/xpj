@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from fastapi.testclient import TestClient
 
 from tests._runtime_protocol import negotiated_headers
@@ -258,8 +260,9 @@ def test_foreign_refund_uses_accounting_date_rate_and_freezes_snapshot(
 ) -> None:
     original_rate = client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=negotiated_headers(client, identity.app_headers),
+        headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
         json={
+            "expected_row_version": 0,
             "currency_code": "USD", "home_currency_code": "CNY",
             "rate_date": "2026-05-04",
             "rate_to_cny": "7",
@@ -269,8 +272,9 @@ def test_foreign_refund_uses_accounting_date_rate_and_freezes_snapshot(
     assert original_rate.status_code == 200, original_rate.text
     refund_rate = client.put(
         "/api/exchange-rates/USD/2026-05-05",
-        headers=negotiated_headers(client, identity.app_headers),
+        headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
         json={
+            "expected_row_version": 0,
             "currency_code": "USD", "home_currency_code": "CNY",
             "rate_date": "2026-05-05",
             "rate_to_cny": "8",
@@ -323,8 +327,9 @@ def test_foreign_refund_without_accounting_date_rate_refuses_without_mutation(
 ) -> None:
     seeded = client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=negotiated_headers(client, identity.app_headers),
+        headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
         json={
+            "expected_row_version": 0,
             "currency_code": "USD", "home_currency_code": "CNY",
             "rate_date": "2026-05-04",
             "rate_to_cny": "7",
@@ -400,8 +405,9 @@ def test_foreign_reversal_reuses_root_snapshot_without_a_new_rate(
 ) -> None:
     seeded = client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=negotiated_headers(client, identity.app_headers),
+        headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
         json={
+            "expected_row_version": 0,
             "currency_code": "USD", "home_currency_code": "CNY",
             "rate_date": "2026-05-04",
             "rate_to_cny": "7",

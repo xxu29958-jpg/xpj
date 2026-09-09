@@ -10,9 +10,7 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.schemas import ConfirmedExpenseStreamItem
-from app.services.budget_baseline_service._spent_reader import (
-    total_confirmed_spent_cents,
-)
+from app.services.budget_advisor_service import read_budget_inputs
 from app.services.category_service import list_category_summary
 from app.services.goal_spending_response import month_spend_totals
 from app.services.insight_radar_service import cashflow_radar
@@ -281,12 +279,13 @@ def _assert_refund_service_consumers() -> None:
                 "count": 1,
             }
         ]
-        assert total_confirmed_spent_cents(
+        assert read_budget_inputs(
             db,
             tenant_id="owner",
             month="2026-09",
             timezone_name="Asia/Shanghai",
-        ) == -300
+            home_currency_code="CNY",
+        ).breakdown.spent_amount_cents == -300
         goal_totals = month_spend_totals(
             db,
             tenant_id="owner",

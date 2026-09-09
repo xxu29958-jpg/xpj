@@ -129,18 +129,19 @@ class StatsBudgetViewModelTest {
 
 private class FakeStatsBudgetActions(
     var budget: BudgetMonthly,
-) : BudgetActions {
+) : BudgetActions, com.ticketbox.data.repository.ManualRateActions by FakeManualRateActions() {
     val access = MutableStateFlow<LedgerAccessContext?>(LedgerAccessContext(
         LogicalSessionBinding("https://example.test", "ledger-1", "owner", "session", "binding"), true))
     val requestedBindings = mutableListOf<LogicalSessionBinding>()
     var responder: (suspend (String) -> BudgetMonthly)? = null
+    override suspend fun adviceInputs(expectedBinding: LogicalSessionBinding, month: String, homeCurrencyCode: String?): Result<com.ticketbox.data.remote.dto.BudgetAdviceInputsDto> = Result.failure(UnsupportedOperationException())
     override fun canModifyLedger(): Boolean = true
 
     override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> = access
 
     override suspend fun monthlyBudget(month: String): Result<BudgetMonthly> = Result.success(responder?.invoke(month) ?: budget.copy(month = month))
 
-    override suspend fun requestBudgetAdvice(month: String): Result<BudgetAdviceResult> =
+    override suspend fun requestBudgetAdvice(month: String, homeCurrencyCode: String?, expectedBinding: LogicalSessionBinding?): Result<BudgetAdviceResult> =
         Result.failure(UnsupportedOperationException())
 
     override suspend fun monthlyBudget(

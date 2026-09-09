@@ -26,6 +26,7 @@ class ExchangeRateRequest(BaseModel):
     rate_date: date
     rate_to_cny: PositiveCanonicalDecimalInput
     source: str | None = Field(default=FX_SOURCE_MANUAL, max_length=32)
+    expected_row_version: int = Field(ge=0, strict=True)
 
 
 class ExchangeRateResponse(BaseModel):
@@ -39,6 +40,7 @@ class ExchangeRateResponse(BaseModel):
     source: str
     created_at: datetime
     updated_at: datetime
+    row_version: int = Field(ge=1, strict=True)
 
     @field_serializer("created_at", "updated_at")
     def serialize_datetime(self, value: datetime | None) -> str | None:

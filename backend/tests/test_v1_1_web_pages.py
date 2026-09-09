@@ -120,7 +120,8 @@ def test_income_plans_archive_and_restore(web_client: TestClient, *, identity) -
 
     archive_resp = web_client.post(
         f"/web/income-plans/{pid}/archive",
-        data={"intent_month": "2026-05", "expected_row_version": archive_token},
+        data={**hidden_post_forms(list_body)[f"/web/income-plans/{pid}/archive"],
+            "intent_month": "2026-05", "expected_row_version": archive_token},
         follow_redirects=False,
     )
     assert archive_resp.status_code == 303
@@ -141,7 +142,8 @@ def test_income_plans_archive_and_restore(web_client: TestClient, *, identity) -
 
     restore_resp = web_client.post(
         f"/web/income-plans/{pid}/restore",
-        data={"intent_month": "2026-05", "expected_row_version": restore_token},
+        data={**hidden_post_forms(after_archive)[f"/web/income-plans/{pid}/restore"],
+            "intent_month": "2026-05", "expected_row_version": restore_token},
         follow_redirects=False,
     )
     assert restore_resp.status_code == 303

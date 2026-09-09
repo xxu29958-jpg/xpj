@@ -9,7 +9,8 @@ from sqlalchemy import func, select
 
 from app.database import SessionLocal
 from app.models import ApiIdempotencyKey, Debt, Repayment
-from app.services.exchange_rate_service import upsert_exchange_rate
+from app.schemas import ExchangeRateRequest
+from app.services.exchange_rate_service import set_exchange_rate_idempotently
 from app.services.idempotency import fingerprint_request
 from tests._runtime_protocol import negotiated_headers
 
@@ -40,8 +41,9 @@ def test_foreign_repayment_uses_the_parent_currency_and_rate_pair(client: TestCl
     assert created.status_code == 201, created.json()
     with SessionLocal() as db:
         for home, rate in (("CNY", "7"), ("JPY", "150")):
-            upsert_exchange_rate(db, tenant_id="owner", currency_code="USD", home_currency_code=home,
-                                 rate_date=date(2026, 9, 8), rate_to_cny=Decimal(rate))
+            set_exchange_rate_idempotently(db, tenant_id="owner", actor_account_id=None, idempotency_key=str(uuid4()),
+                payload=ExchangeRateRequest(currency_code="USD", home_currency_code=home,
+                    rate_date=date(2026, 9, 8), rate_to_cny=rate, expected_row_version=0))
     public_id = created.json()["public_id"]
     paid = client.post(f"/api/debts/{public_id}/repayments",
                        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},

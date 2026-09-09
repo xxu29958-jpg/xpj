@@ -19,7 +19,7 @@ from app.money_contract import (
 from app.schemas import RecurringItemResponse
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.merchant_service import normalize_merchant
-from app.services.money_projection_service import project_recorded_amount
+from app.services.money_projection_service import ProjectionGap, project_recorded_amount
 from app.services.spending_contract_service import (
     accounting_zone,
     current_accounting_month,
@@ -51,13 +51,15 @@ class RecurringAmountAnomaly:
 
 def recurring_monthly_total(
     db: Session, *, tenant_id: str, items, home_currency_code: str | None, month: str,
+    missing_rates: set[ProjectionGap] | None = None,
 ) -> int | None:
     """Project captured commitments; a missing rate makes the whole total unknown."""
     period = date.fromisoformat(f"{month}-01")
     today = now_utc().astimezone(accounting_zone()).date()
     rate_date = min(today, period.replace(day=monthrange(period.year, period.month)[1]))
     amounts = [project_recorded_amount(db, tenant_id=tenant_id, amount_minor=item.baseline_amount_cents,
-        source_currency=item.home_currency_code, home_currency=home_currency_code, rate_date=rate_date) for item in items]
+        source_currency=item.home_currency_code, home_currency=home_currency_code, rate_date=rate_date,
+        missing_rates=missing_rates) for item in items]
     if any(amount is None for amount in amounts):
         return None
     return projection_values_sum_to_int(amounts, label="recurring.monthly_total")

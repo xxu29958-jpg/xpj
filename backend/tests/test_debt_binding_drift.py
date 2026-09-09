@@ -25,13 +25,13 @@ from app.runtime_compatibility_contract import (
     RUNTIME_COMPATIBILITY_SESSION_KEY,
     RuntimeCompatibilityRequest,
 )
-from app.schemas import RepaymentCreateRequest
+from app.schemas import ExchangeRateRequest, RepaymentCreateRequest
 from app.services.currency_binding_service import (
     assert_currency_binding_consistent,
     get_capability,
 )
 from app.services.debt_service._repayment import record_repayment
-from app.services.exchange_rate_service import apply_currency_payload, upsert_exchange_rate
+from app.services.exchange_rate_service import apply_currency_payload, set_exchange_rate_idempotently
 from app.services.time_service import now_utc
 from tests._infra.currency import activate_test_currency_authority
 from tests._runtime_protocol import negotiated_headers
@@ -261,7 +261,9 @@ def test_foreign_repayment_uses_confirmed_debt_basis_despite_environment(client:
     monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "CNY")
     paid_at = datetime(2026, 9, 8, 2, tzinfo=UTC)
     with SessionLocal() as db:
-        upsert_exchange_rate(db, tenant_id="owner", currency_code="USD", home_currency_code="JPY", rate_date=paid_at.date(), rate_to_cny=Decimal("150"))
+        set_exchange_rate_idempotently(db, tenant_id="owner", actor_account_id=None, idempotency_key=str(uuid4()),
+            payload=ExchangeRateRequest(currency_code="USD", home_currency_code="JPY", rate_date=paid_at.date(),
+                rate_to_cny="150", expected_row_version=0))
         record_repayment(db, tenant_id="owner", public_id=public_id, actor_account_id=_owner_account_id(),
             payload=RepaymentCreateRequest(original_currency="USD", original_amount=Decimal("1"), paid_at=paid_at, expected_row_version=1),
             idempotency_key=str(uuid4()))

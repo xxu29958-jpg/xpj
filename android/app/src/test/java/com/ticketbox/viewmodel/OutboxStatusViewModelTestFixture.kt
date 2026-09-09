@@ -34,8 +34,9 @@ internal fun outboxStatusHarness(): OutboxStatusHarness {
             OutboxAdapterGraph().debtAdjustmentAdapter),
         goalEdits = com.ticketbox.data.repository.GoalEditRepository(testApiServiceProvider(api, tokenStore), outbox,
             OutboxAdapterGraph().goalUpdateAdapter, OutboxAdapterGraph().goalReceiptAdapter, OutboxAdapterGraph().goalCreateAdapter),
-        budgetSaves = com.ticketbox.data.repository.BudgetSaveRepository(testApiServiceProvider(api, tokenStore), outbox,
-            OutboxAdapterGraph().budgetSaveAdapter, OutboxAdapterGraph().budgetReceiptAdapter),
+        budgetSaves = com.ticketbox.data.repository.BudgetRepository(testApiServiceProvider(api, tokenStore), outbox,
+            OutboxAdapterGraph().budgetSaveAdapter, OutboxAdapterGraph().budgetReceiptAdapter,
+            OutboxAdapterGraph().manualRateAdapter, OutboxAdapterGraph().manualRateReceiptAdapter),
         recurringItems = com.ticketbox.data.repository.RecurringRepository(testApiServiceProvider(api, tokenStore), outbox,
             OutboxAdapterGraph().recurringCreateAdapter, OutboxAdapterGraph().recurringUpdateAdapter),
         rules = com.ticketbox.data.repository.RuleRepository(binding, offlineMutations = OutboxAdapterGraph().let { adapters ->
@@ -52,7 +53,7 @@ internal data class OutboxStatusHarness(
     val incomePlans: IncomePlanRepository,
     val debtAdjustments: DebtAdjustmentRepository,
     val goalEdits: com.ticketbox.data.repository.GoalEditRepository,
-    val budgetSaves: com.ticketbox.data.repository.BudgetSaveActions,
+    val budgetSaves: com.ticketbox.data.repository.BudgetActions,
     val recurringItems: com.ticketbox.data.repository.RecurringManualMutationActions,
     val rules: com.ticketbox.data.repository.RuleRepository,
 )

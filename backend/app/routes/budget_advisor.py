@@ -18,18 +18,14 @@ from app.schemas import (
     BudgetSuggestionDto,
     DiscretionaryResponse,
 )
+from app.schemas._budget_advisor import BudgetInputsResponse
 from app.schemas._money import NonNegativeMoneyMinorText
 from app.services.budget_advisor_service import (
     BudgetAdvice,
     advisor_status_for_tenant,
+    read_budget_inputs,
     run_budget_advisor,
 )
-from app.services.budget_baseline_service import (
-    compute_monthly_discretionary,
-    total_confirmed_spent_cents,
-)
-from app.services.income_plan_service import total_monthly_income_cents
-from app.services.recurring_occurrence_query import total_outstanding_recurring_cents
 from app.services.spending_contract_service import current_accounting_month
 from app.tenants import AuthContext
 
@@ -59,33 +55,31 @@ def get_discretionary(
         label="budget_discretionary.reserved_buffer_cents",
     )
     month_label = month or current_accounting_month()
-    income = total_monthly_income_cents(
-        db,
-        tenant_id=auth.tenant_id,
-        month=month_label,
-    )
-    fixed = total_outstanding_recurring_cents(db, tenant_id=auth.tenant_id, month=month)
-    spent = total_confirmed_spent_cents(
-        db,
-        tenant_id=auth.tenant_id,
-        month=month_label,
-        timezone_name="Asia/Shanghai",
-    )
-    breakdown = compute_monthly_discretionary(
-        monthly_income_cents=income,
-        fixed_expenses_cents=fixed,
-        spent_amount_cents=spent,
+    projection = read_budget_inputs(
+        db, tenant_id=auth.tenant_id, month=month_label,
         savings_target_cents=savings_target,
         reserved_buffer_cents=reserved_buffer,
     )
-    return DiscretionaryResponse(
-        monthly_income_cents=breakdown.monthly_income_cents,
-        fixed_expenses_cents=breakdown.fixed_expenses_cents,
-        spent_amount_cents=breakdown.spent_amount_cents,
-        savings_target_cents=breakdown.savings_target_cents,
-        reserved_buffer_cents=breakdown.reserved_buffer_cents,
-        discretionary_cents=breakdown.discretionary_cents,
-    )
+    return DiscretionaryResponse.model_validate(projection.breakdown)
+
+
+@router.get("/advisor/inputs", response_model=BudgetInputsResponse)
+def get_advisor_inputs(
+    month: str = Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
+    timezone: str | None = Query(default=None),
+    home_currency_code: str | None = Query(default=None, pattern=r"^[A-Z]{3}$"),
+    savings_target_cents: Annotated[NonNegativeMoneyMinorText, Query()] = "0",
+    reserved_buffer_cents: Annotated[NonNegativeMoneyMinorText, Query()] = "0",
+    auth: AuthContext = Depends(get_current_app_context),
+    db: Session = Depends(get_db),
+) -> BudgetInputsResponse:
+    projection = read_budget_inputs(db, tenant_id=auth.tenant_id, month=month,
+        home_currency_code=home_currency_code, timezone_name=timezone or "Asia/Shanghai",
+        savings_target_cents=parse_canonical_money_minor(savings_target_cents, sign=MoneySign.NONNEGATIVE,
+            label="budget_inputs.savings_target_cents"),
+        reserved_buffer_cents=parse_canonical_money_minor(reserved_buffer_cents, sign=MoneySign.NONNEGATIVE,
+            label="budget_inputs.reserved_buffer_cents"))
+    return BudgetInputsResponse.model_validate(projection)
 
 
 @router.post("/advise", response_model=BudgetAdviseResponse)
@@ -101,6 +95,7 @@ def post_advise(
         actor_role=auth.role,
         month=payload.month,
         timezone_name=payload.timezone or "Asia/Shanghai",
+        home_currency_code=payload.home_currency_code,
     )
     return BudgetAdviseResponse(
         advice=_advice_to_dto(result.advice),

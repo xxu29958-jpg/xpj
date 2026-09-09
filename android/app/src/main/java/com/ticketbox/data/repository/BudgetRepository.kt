@@ -14,24 +14,24 @@ import kotlinx.coroutines.flow.map
 import java.time.YearMonth
 import java.util.TimeZone
 
-interface BudgetActions : BudgetSaveActions {
+interface BudgetActions : BudgetSaveActions, ManualRateActions {
     fun canModifyLedger(): Boolean
     fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?>
 
-    /** Role projection of the active session identity: re-emits on ledger
-     *  switches AND role-only re-projections (viewer↔member↔owner on the same
-     *  ledger). Carries the full role — member→owner matters (the live
-     *  advisor is owner-gated). */
+    /** One full binding/role projection for the advisor, including member-to-owner changes. */
     fun observeLedgerAccessState(): Flow<LedgerAccessState?> = emptyFlow()
     suspend fun monthlyBudget(month: String): Result<BudgetMonthly>
     suspend fun monthlyBudget(
         expectedBinding: LogicalSessionBinding,
         month: String,
     ): Result<BudgetMonthly>
-    suspend fun requestBudgetAdvice(month: String): Result<BudgetAdviceResult>
+    suspend fun requestBudgetAdvice(month: String, homeCurrencyCode: String? = null,
+        expectedBinding: LogicalSessionBinding? = null): Result<BudgetAdviceResult>
+    suspend fun adviceInputs(expectedBinding: LogicalSessionBinding, month: String,
+        homeCurrencyCode: String? = null): Result<com.ticketbox.data.remote.dto.BudgetAdviceInputsDto>
 
     /** Advice is scoped to this process and logical binding; accepted writes invalidate it. */
-    suspend fun cachedBudgetAdvice(month: String): BudgetAdviceResult? = null
+    suspend fun cachedBudgetAdvice(month: String, homeCurrencyCode: String? = null): BudgetAdviceResult? = null
 
     /** Drops the process-lifetime advice cache (all bindings). */
     fun invalidateBudgetAdvice() { }
@@ -44,16 +44,21 @@ interface BudgetActions : BudgetSaveActions {
 }
 
 data class LedgerAccessState(
-    val ledgerId: String?,
+    val binding: LogicalSessionBinding,
     val role: String?,
-)
+) {
+    val canModify: Boolean get() = ledgerRoleCanModify(role)
+}
 
 class BudgetRepository(
     private val apiProvider: ApiServiceProvider,
     outbox: OutboxRepository,
     saveAdapter: JsonAdapter<BudgetSavePayload>,
     receiptAdapter: JsonAdapter<BudgetMonthlyDto>,
-) : BudgetActions, BudgetSaveActions by BudgetSaveRepository(apiProvider, outbox, saveAdapter, receiptAdapter) {
+    rateAdapter: JsonAdapter<ManualRatePayload>,
+    rateReceiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.ExchangeRateDto>,
+) : BudgetActions, BudgetSaveActions by BudgetSaveRepository(apiProvider, outbox, saveAdapter, receiptAdapter),
+    ManualRateActions by ManualExchangeRateRepository(apiProvider, outbox, rateAdapter, rateReceiptAdapter) {
     private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
     private val errorHandler = NetworkErrorHandler(
         serverUrlProvider = { apiProvider.currentSession()?.serverUrl },
@@ -68,16 +73,29 @@ class BudgetRepository(
 
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
 
+    override suspend fun adviceInputs(expectedBinding: LogicalSessionBinding, month: String,
+        homeCurrencyCode: String?): Result<com.ticketbox.data.remote.dto.BudgetAdviceInputsDto> = errorHandler.safeCall {
+        val cleanMonth = validatedBudgetMonth(month).getOrThrow()
+        ledgerRequestGuard.bindExact(expectedBinding).call {
+            it.budgetAdviceInputs(cleanMonth, currentBudgetTimezoneId(), homeCurrencyCode)
+        }.also { result ->
+            if (result.month != cleanMonth || (homeCurrencyCode != null && result.homeCurrencyCode != homeCurrencyCode) ||
+                com.ticketbox.domain.model.CurrencyCode.fromStorageKeyOrNull(result.homeCurrencyCode) == null ||
+                result.missingRates.any { it.homeCurrencyCode != result.homeCurrencyCode }) {
+                throw RepositoryException("budget_advice_inputs_unverified", "budget_advice_inputs_unverified")
+            }
+            adviceCallStore.noteAdviceInputSnapshot("budget_inputs:$expectedBinding:$cleanMonth:${result.homeCurrencyCode}", result.toString())
+        }
+    }
+
     override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> =
         apiProvider.observeActiveLedgerAccess()
 
     override fun observeLedgerAccessState(): Flow<LedgerAccessState?> =
-        apiProvider.observeActiveLedgerIdentity()
-            .map { identity ->
-                LedgerAccessState(
-                    ledgerId = identity?.ledgerId,
-                    role = identity?.role,
-                )
+        apiProvider.observeSession()
+            .map { session ->
+                val binding = session?.toBoundSessionSnapshotOrNull()?.logicalBinding ?: return@map null
+                LedgerAccessState(binding, session.identity.role)
             }
             .distinctUntilChanged()
 
@@ -113,7 +131,7 @@ class BudgetRepository(
         }
     }
 
-    override suspend fun requestBudgetAdvice(month: String): Result<BudgetAdviceResult> {
+    override suspend fun requestBudgetAdvice(month: String, homeCurrencyCode: String?, expectedBinding: LogicalSessionBinding?): Result<BudgetAdviceResult> {
         if (!canModifyLedger()) {
             return Result.failure(
                 RepositoryException(
@@ -128,18 +146,18 @@ class BudgetRepository(
         // it starts. ONE logical-binding snapshot is captured up front and
         // scopes both the dedupe/cache key and the execution (the store's
         // bindExact re-validates it around the call).
-        val binding = ledgerRequestGuard.captureLogicalBinding()
+        val binding = expectedBinding ?: ledgerRequestGuard.captureLogicalBinding()
             ?: return Result.failure(RepositoryException("登录状态已失效，请重新绑定。"))
-        return adviceCallStore.attachOrRequest(binding, cleanMonth)
+        return adviceCallStore.attachOrRequest(binding, cleanMonth, homeCurrencyCode)
     }
 
     /** Process-lifetime last-successful advice for [month] under the CURRENT
      *  logical session binding — see [BudgetAdviceCallStore.cached]. */
-    override suspend fun cachedBudgetAdvice(month: String): BudgetAdviceResult? {
+    override suspend fun cachedBudgetAdvice(month: String, homeCurrencyCode: String?): BudgetAdviceResult? {
         val cleanMonth = validatedBudgetMonth(month)
             .getOrElse { return null }
         val binding = ledgerRequestGuard.captureLogicalBinding() ?: return null
-        return adviceCallStore.cached(binding, cleanMonth)
+        return adviceCallStore.cached(binding, cleanMonth, homeCurrencyCode)
     }
 
     override fun invalidateBudgetAdvice() = adviceCallStore.invalidate()

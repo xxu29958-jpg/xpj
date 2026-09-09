@@ -356,33 +356,21 @@ class IncomePlanViewModel(
         val binding = bindingGeneration
         viewModelScope.launch {
             val result = repository.restore(expectedBinding, publicId, expectedRowVersion, intentMonth)
-            handleSimpleResult(
-                result,
-                success = UiText.res(R.string.income_plan_restored),
-                binding = binding,
+            if (binding != bindingGeneration) return@launch
+            result.fold(
+                onSuccess = {
+                    _state.update { it.copy(flashMessage = UiText.res(R.string.income_plan_restored)) }
+                    onDataChanged()
+                    refresh()
+                },
+                onFailure = { err ->
+                    _state.update { it.copy(error = err.toUiText(R.string.error_generic)) }
+                },
             )
         }
     }
 
     fun dismissFlash() {
         _state.update { it.copy(flashMessage = null) }
-    }
-
-    private fun handleSimpleResult(
-        result: Result<IncomePlan>,
-        success: UiText,
-        binding: Int,
-    ) {
-        if (binding != bindingGeneration) return
-        result.fold(
-            onSuccess = {
-                _state.update { it.copy(flashMessage = success) }
-                onDataChanged()
-                refresh()
-            },
-            onFailure = { err ->
-                _state.update { it.copy(error = err.toUiText(R.string.error_generic)) }
-            },
-        )
     }
 }

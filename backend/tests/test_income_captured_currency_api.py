@@ -7,12 +7,11 @@ import pytest
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.errors import AppError
 from app.main import app
 from app.models import IncomePlanRevision, MonthlyIncomePlan
 from app.routes.web_app import _require_local as _web_require_local
 from app.services import income_plan_service, spending_contract_service
-from app.services.budget_advisor_service._inputs_builder import _income_plan
+from app.services.budget_advisor_service import read_budget_inputs
 from tests._web_native_form_support import hidden_post_forms
 
 
@@ -54,9 +53,14 @@ def test_mixed_income_has_no_false_total_and_manual_fx_does_not_rewrite_history(
     page = client.get("/web/income-plans?ledger_id=owner")
     assert page.status_code == 200
     assert "待补汇率" in page.text and "JPY" in page.text
-    with SessionLocal() as db, pytest.raises(AppError, match="汇率"):
-        _income_plan(db, tenant_id="owner", month="2026-09")
-    rate = client.put("/api/exchange-rates/JPY/2026-09-09", headers=identity.app_headers, json={
+    with SessionLocal() as db:
+        inputs = read_budget_inputs(db, tenant_id="owner", month="2026-09")
+        assert inputs.breakdown.monthly_income_cents is None
+        assert inputs.provider_inputs is None
+        assert [(gap.source_currency_code, gap.home_currency_code, gap.rate_date.isoformat())
+            for gap in inputs.missing_rates] == [("JPY", "CNY", "2026-09-09")]
+    rate = client.put("/api/exchange-rates/JPY/2026-09-09", headers={**identity.app_headers, "Idempotency-Key": str(uuid4())}, json={
+        "expected_row_version": 0,
         "home_currency_code": "CNY", "currency_code": "JPY", "rate_date": "2026-09-09",
         "rate_to_cny": "0.05", "source": "manual",
     })
@@ -65,7 +69,10 @@ def test_mixed_income_has_no_false_total_and_manual_fx_does_not_rewrite_history(
     assert converted["missing_currency_codes"] == []
     assert converted["expected_amount_cents"] == converted["scheduled_amount_cents"] == 6100
     with SessionLocal() as db:
-        assert sorted(row.amount_cents for row in _income_plan(db, tenant_id="owner", month="2026-09")) == [100, 6000]
+        inputs = read_budget_inputs(db, tenant_id="owner", month="2026-09")
+        assert inputs.missing_rates == ()
+        assert inputs.breakdown.monthly_income_cents == 6100
+        assert sorted(row.amount_cents for row in inputs.provider_inputs.income_plan) == [100, 6000]
         for record, expected in ((jpy, ("JPY", 1200)), (cny, ("CNY", 100))):
             plan = db.scalar(select(MonthlyIncomePlan).where(MonthlyIncomePlan.public_id == record["public_id"]))
             history = db.scalars(select(IncomePlanRevision).where(IncomePlanRevision.plan_id == plan.id)).all()

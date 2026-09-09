@@ -47,6 +47,19 @@ data class CategoryRulesUiState(
     val applicationRevision: Int = 0,
 )
 
+private fun CategoryRulesUiState.afterRuleApplication(result: RuleApplyConfirmedResult): CategoryRulesUiState = copy(
+    confirmedRulesPreview = result,
+    busy = false,
+    message = when {
+        result.unavailableCount > 0 -> UiText.res(R.string.category_rule_apply_currency_unavailable,
+            result.unavailableCount, result.missingCurrencyCodes.joinToString("、"))
+        result.changedCount == 0 -> UiText.res(R.string.category_rules_apply_none_changed)
+        else -> UiText.res(R.string.category_rules_apply_changed, result.changedCount)
+    },
+    messageTone = if (result.changedCount == 0) MessageTone.Info else MessageTone.Success,
+    applicationRevision = if (result.changedCount > 0) applicationRevision + 1 else applicationRevision,
+)
+
 class CategoryRulesViewModel(
     private val ruleRepository: RuleRepository,
     private val repository: ExpenseRepository,
@@ -318,26 +331,7 @@ class CategoryRulesViewModel(
                             _uiState.update { it.copy(ruleApplications = applications) }
                         }
                     if (ruleRepository.currentAccess()?.binding != origin) return@onSuccess
-                    _uiState.update {
-                        it.copy(
-                            confirmedRulesPreview = result,
-                            busy = false,
-                            message = if (result.unavailableCount > 0) {
-                                UiText.res(R.string.category_rule_apply_currency_unavailable, result.unavailableCount,
-                                    result.missingCurrencyCodes.joinToString("、"))
-                            } else if (result.changedCount == 0) {
-                                UiText.res(R.string.category_rules_apply_none_changed)
-                            } else {
-                                UiText.res(R.string.category_rules_apply_changed, result.changedCount)
-                            },
-                            messageTone = if (result.changedCount == 0) MessageTone.Info else MessageTone.Success,
-                            applicationRevision = if (result.changedCount > 0) {
-                                it.applicationRevision + 1
-                            } else {
-                                it.applicationRevision
-                            },
-                        )
-                    }
+                    _uiState.update { it.afterRuleApplication(result) }
                 }
                 .onFailure { error ->
                     if (ruleRepository.currentAccess()?.binding != origin) return@onFailure

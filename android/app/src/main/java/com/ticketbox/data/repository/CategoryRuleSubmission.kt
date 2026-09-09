@@ -68,13 +68,15 @@ internal fun describeCategoryRuleSubmission(
 internal fun OutboxRow.ruleId(): Long? = targetId.takeIf { it.startsWith("category_rule:") }
     ?.removePrefix("category_rule:")?.toLongOrNull()?.takeIf { it > 0 }
 
-internal fun CategoryRuleRequest.isCompleteRule(): Boolean {
-    val amountRule = amountMinCents != null || amountMaxCents != null
-    val supportedCurrency = CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode)?.storageKey == homeCurrencyCode
-    return !keyword.isNullOrBlank() && !category.isNullOrBlank() && enabled != null && priority != null &&
-        (homeCurrencyCode == null && !amountRule || homeCurrencyCode != null && supportedCurrency) &&
-        (amountMinCents == null || amountMinCents >= 0) && (amountMaxCents == null || amountMaxCents >= 0) &&
-        (amountMinCents == null || amountMaxCents == null || amountMinCents <= amountMaxCents)
+internal fun CategoryRuleRequest.isCompleteRule(): Boolean =
+    !keyword.isNullOrBlank() && !category.isNullOrBlank() && enabled != null && priority != null && hasValidAmountCondition()
+
+private fun CategoryRuleRequest.hasValidAmountCondition(): Boolean {
+    val currencyKnown = if (homeCurrencyCode == null) amountMinCents == null && amountMaxCents == null
+        else CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode)?.storageKey == homeCurrencyCode
+    val lower = amountMinCents ?: 0L
+    val upper = amountMaxCents ?: Long.MAX_VALUE
+    return currencyKnown && lower >= 0 && upper >= lower
 }
 
 internal fun CategoryRule.asRequest(): CategoryRuleRequest = CategoryRuleRequest(

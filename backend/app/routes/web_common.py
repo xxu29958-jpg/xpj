@@ -12,6 +12,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 from fastapi import Request
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
@@ -110,7 +111,7 @@ templates = Jinja2Templates(
 templates.env.filters["to_iso"] = _datetime_to_iso
 
 
-def preserve_original_ledger_form(request, db, *, options, selected, fields, task):
+def preserve_original_ledger_form(request, db, *, options, selected, fields, task) -> HTMLResponse | None:
     """Keep an original form in its ledger instead of retargeting it to the live session."""
     original = str(fields.get("ledger_id") or "")
     if original == selected:

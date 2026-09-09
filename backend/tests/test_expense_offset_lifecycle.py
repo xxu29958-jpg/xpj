@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from fastapi.testclient import TestClient
 
 from tests._runtime_protocol import negotiated_headers
@@ -9,11 +11,12 @@ from tests.expense_correction_support import idem, manual_confirmed
 from tests.test_bill_split import _seed_receiver, _split_headers
 
 
-def _seed_usd_rate(client: TestClient, identity, rate_date: str, rate: str) -> None:
+def _seed_usd_rate(client: TestClient, identity, rate_date: str, rate: str, *, expected_row_version: int = 0) -> dict:
     response = client.put(
         f"/api/exchange-rates/USD/{rate_date}",
-        headers=negotiated_headers(client, identity.app_headers),
+        headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
         json={
+            "expected_row_version": expected_row_version,
             "home_currency_code": "CNY",
             "currency_code": "USD",
             "rate_date": rate_date,
@@ -22,6 +25,7 @@ def _seed_usd_rate(client: TestClient, identity, rate_date: str, rate: str) -> N
         },
     )
     assert response.status_code == 200, response.text
+    return response.json()
 
 
 def _foreign_expense(client: TestClient, identity, merchant: str) -> dict:
@@ -89,12 +93,12 @@ def test_amount_only_offset_correction_reuses_its_frozen_rate_and_occ_baseline(
     *,
     identity,
 ) -> None:
-    for rate_date, rate in (("2026-05-04", "7"), ("2026-05-05", "8")):
-        _seed_usd_rate(client, identity, rate_date, rate)
+    original_rates = {rate_date: _seed_usd_rate(client, identity, rate_date, rate)
+        for rate_date, rate in (("2026-05-04", "7"), ("2026-05-05", "8"))}
     expense = _foreign_expense(client, identity, "更正汇率订单")
     created_body = _create_refund(client, identity, expense)
     offset = created_body["active_offsets"][0]
-    _seed_usd_rate(client, identity, "2026-05-05", "9")
+    _seed_usd_rate(client, identity, "2026-05-05", "9", expected_row_version=original_rates["2026-05-05"]["row_version"])
     payload = {
         "original_amount_minor": 2000,
         "accounting_date": "2026-05-05",

@@ -13,7 +13,7 @@ from app.models import IncomePlanRevision
 from app.money_contract import projection_sum_to_int
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import normalize_currency_code
-from app.services.money_projection_service import project_recorded_amount
+from app.services.money_projection_service import ProjectionGap, project_recorded_amount
 
 
 @dataclass(frozen=True)
@@ -102,15 +102,22 @@ def _sum_projection(values: list[int | None], *, label: str) -> int | None:
     return projection_sum_to_int(sum(value for value in values if value is not None), label=label)
 
 
-def query_income_forecast(db: Session, *, tenant_id: str, period: date, today: date) -> IncomeForecast:
-    home = require_runtime_home_currency_code(db)
+def query_income_forecast(
+    db: Session, *, tenant_id: str, period: date, today: date,
+    home_currency_code: str | None = None, missing_rates: set[ProjectionGap] | None = None,
+) -> IncomeForecast:
+    home = normalize_currency_code(home_currency_code or require_runtime_home_currency_code(db))
     rate_date = min(today, period.replace(day=monthrange(period.year, period.month)[1]))
     revisions = db.scalars(select(IncomePlanRevision).where(
         IncomePlanRevision.tenant_id == tenant_id,
     ))
-    return forecast_from_revisions(
+    forecast = forecast_from_revisions(
         revisions, period=period, today=today, home_currency_code=home,
         project_amount=lambda amount, code: project_recorded_amount(
             db, tenant_id=tenant_id, amount_minor=amount, source_currency=code, home_currency=home, rate_date=rate_date,
         ),
     )
+    if missing_rates is not None:
+        missing_rates.update(ProjectionGap(row.home_currency_code, home, rate_date)
+            for row, amount in forecast.projected_entries if amount is None)
+    return forecast

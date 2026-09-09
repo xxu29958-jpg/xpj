@@ -169,7 +169,7 @@ def test_rules_page_render_follows_zero_decimal_home(jpy_env, web_client: TestCl
 
     page = web_client.get("/web/rules?ledger_id=owner")
     assert page.status_code == 200, page.text
-    assert "≥ JPY ¥1200" in page.text
+    assert "≥ JPY ¥1,200" in page.text
     assert "¥12.00" not in page.text
 
 
@@ -192,7 +192,7 @@ def test_budget_advise_render_follows_zero_decimal_home(jpy_env, web_client: Tes
     assert "备用金（JPY）" in page.text
     assert "储蓄目标（元）" not in page.text
     assert "备用金（元）" not in page.text
-    assert 'step="1"' in page.text
+    assert 'name="savings_target_yuan" inputmode="numeric"' in page.text
 
 
 @pytest.mark.currency_binding_unbound
@@ -204,7 +204,7 @@ def test_budget_advise_suggestion_table_follows_zero_decimal_home(
 
     page = web_client.post(
         "/web/budget-advise",
-        data={"ledger_id": "owner", "month": "2026-05", "run_advise": "true"},
+        data={"ledger_id": "owner", "month": "2026-05", "home_currency_code": "JPY", "run_advise": "true"},
     )
     assert page.status_code == 200, page.text
     assert "¥1200" in page.text

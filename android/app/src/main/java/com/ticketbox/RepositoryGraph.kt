@@ -113,6 +113,8 @@ internal class RepositoryGraph(
         outbox = outbox,
         saveAdapter = outboxAdapters.budgetSaveAdapter,
         receiptAdapter = outboxAdapters.budgetReceiptAdapter,
+        rateAdapter = outboxAdapters.manualRateAdapter,
+        rateReceiptAdapter = outboxAdapters.manualRateReceiptAdapter,
     )
 
     val incomePlanRepository = IncomePlanRepository(

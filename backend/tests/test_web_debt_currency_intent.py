@@ -2,14 +2,15 @@
 
 import re
 from datetime import date
-from decimal import Decimal
 from html import unescape
+from uuid import uuid4
 
 from sqlalchemy import func, select
 
 from app.database import SessionLocal
 from app.models import Debt
-from app.services.exchange_rate_service import upsert_exchange_rate
+from app.schemas import ExchangeRateRequest
+from app.services.exchange_rate_service import set_exchange_rate_idempotently
 
 
 def _hidden(page: str, name: str) -> str:
@@ -42,8 +43,9 @@ def test_error_and_retry_keep_the_captured_currency_amount_and_key(web_client):
     assert "按发生日折算为 JPY" in rejected.text
     with SessionLocal() as db:
         assert db.scalar(select(func.count()).select_from(Debt)) == 0
-        upsert_exchange_rate(db, tenant_id="owner", currency_code="USD", home_currency_code="JPY",
-                             rate_date=date(2026, 9, 8), rate_to_cny=Decimal("150"))
+        set_exchange_rate_idempotently(db, tenant_id="owner", actor_account_id=None, idempotency_key=str(uuid4()),
+            payload=ExchangeRateRequest(currency_code="USD", home_currency_code="JPY",
+                rate_date=date(2026, 9, 8), rate_to_cny="150", expected_row_version=0))
     repaired = {**form, "amount_major": "1.25"}
     saved = web_client.post("/web/debts", data=repaired)
     assert saved.status_code == 200
