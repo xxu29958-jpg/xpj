@@ -117,7 +117,7 @@ slice. Full Internal Beta RC completion is still outstanding.
 | Batch remainder and saved CSV continuation | `STRONG_SLICE`; #381 and #384 CLOSED, integrated and main-qualified. Full capture journey remains | [Batch](TICKETBOX_CAPTURE_BATCH_CONTINUATION_CONTRACT.md), [CSV](TICKETBOX_CSV_IMPORT_CONTINUATION_CONTRACT.md) |
 | Confirmed facts and composite correction | `STRONG_SLICE`; #382 CLOSED, durable correction owner integrated and main-qualified; actual OS interruption remains to rehearse | [Correction contract](TICKETBOX_EXPENSE_CORRECTION_CONTINUITY_CONTRACT.md) |
 | Recognition and assisted entry | `STRONG_SLICE`; #353 CLOSED. Shared configured suggestions remain drafts. Debt image/binding continuity #386 CLOSED, integrated and main-qualified | [Journeys](TICKETBOX_USER_JOURNEYS_CONTRACT.md#recognition-and-assisted-entry), [Debt image contract](TICKETBOX_DEBT_BILL_BINDING_CONTRACT.md) |
-| Currency choice and correction | `PARTIAL`; explicit initial choice, changeable defaults and recorded-money consumers implemented in #397. Historical FX correction continuation remains | [Currency contract](TICKETBOX_CURRENCY_CHOICE_CORRECTION_CONTRACT.md) |
+| Currency choice and correction | `PARTIAL`; explicit initial choice, changeable defaults and recorded-money consumers integrated in #397; independent main qualification remains open. Historical FX correction continuation remains | [Currency contract](TICKETBOX_CURRENCY_CHOICE_CORRECTION_CONTRACT.md) |
 | One-bill manual FX recovery | `STRONG_SLICE`; #355 CLOSED. Shared pending Expense editor, canonical review and Android PatchExpense intent | [FX journey](TICKETBOX_USER_JOURNEYS_CONTRACT.md#missing-fx-rate-recovery) |
 | Manual expense and browser draft | `PARTIAL`; native draft flow established. Durable Android admission, original receipt replay and visible submission continuation are implemented candidates awaiting qualification | [Manual continuity](TICKETBOX_MANUAL_CREATION_CONTINUITY_CONTRACT.md), [Manual entry](TICKETBOX_USER_JOURNEYS_CONTRACT.md#manual-expense-entry) |
 | External debt, split and reimbursement | `STRONG_SLICE`; existing relationship owners and #361 context integrated; complete settlement journeys remain | [Debt context](TICKETBOX_USER_JOURNEYS_CONTRACT.md#external-debt-context), [Plan](../superpowers/plans/2026-09-05-debt-context.md) |
@@ -177,7 +177,7 @@ feedback and efficient actions within each active capability change.
 [Spending-goal continuity evidence](TICKETBOX_PLANNING_GOAL_CONTINUITY_CONTRACT.md).
 
 **Next action:** complete [currency choice and implicit-lock correction](TICKETBOX_CURRENCY_CHOICE_CORRECTION_CONTRACT.md),
-with #397 in final qualification. Close [manual creation continuity](TICKETBOX_MANUAL_CREATION_CONTINUITY_CONTRACT.md)
+with #397 merged and in independent main qualification. Close [manual creation continuity](TICKETBOX_MANUAL_CREATION_CONTINUITY_CONTRACT.md)
 next, then historical FX correction; preserve original offline intent throughout.
 Physical budget/income creation works; simplify Android's first-budget optional
 fields and correct the generic goal offline-viewing claim within Planning/convenience.

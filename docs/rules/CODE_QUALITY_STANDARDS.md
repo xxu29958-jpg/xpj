@@ -58,6 +58,7 @@ R8 release 编译、apksigner 指纹钉。
 - Production、Test、Tooling 分开；migrations 单列且纳入 Production；可选 Public edge Worker 运行源码也属于 Production，其部署配置属于 Tooling。
 - LOC 是物理源码行数，并提供 code/comment-only/blank 组成。每个文件只有一个模块、角色和主语言；HTML 内嵌 JS 的函数分析不重复增加 LOC。常用活动配置计入工具规模；文档、图片/字体/二进制、lockfile、generated/vendor/build output、Room schema JSON 和 analyzer baseline XML 不计 LOC。baseline XML 仍作为债务元数据读取。
 - 总 LOC 只看趋势；大文件 `>500/>800/>1000` 数量和物理函数跨度 `>80` 的增长保持显眼提示，要求按职责审查。SQL、注释、fixture 和线性断言的物理长度不自动等于复杂度债务，不得为计数碎拆唯一 owner、拆散合同或压缩排版。硬门仍比较实际 Ruff C901 数量/超额、Android 已登记 Detekt 债务与既有规则、源代码新 suppression，以及各语言/模块/角色的函数复杂度超额；不得增债后抬高 baseline。
+- 后端 `_audit_codebase.py` 的体积计数遵循同一审查口径，仍核对指标完整性。异常扫描仅识别严格的无参数 `db.rollback()` 随即 bare `raise` 为原错传播；吞错、异常转换、条件返回和业务调用仍受原硬门约束，不得为消计数缩窄必要的事务回滚。
 - 函数导航：Lizard 的 Python/Kotlin/Java/JS/TS（含 HTML JS）CCN **估计值**；PowerShell 原生 AST 的决策计数；Inno 的例程词法分支计数。后两者不冒充统一 CFG 圈复杂度；分别显示热点。复杂度 `>15` 仍作债务比较；物理跨度保留原始数据、增量和热点，不放宽已有 Ruff/Detekt 更严格的门。
 - CSS/XML/声明式配置不编造函数圈复杂度；模板渲染、动态字符串/嵌入代码、Inno 预处理与嵌套例程的语义不在这些估计的证明范围。分析器版本、覆盖边界与具体文件/行号随报告提供。数字不能自动证明架构健康、旧 writer 已退役或产品已完成。
 

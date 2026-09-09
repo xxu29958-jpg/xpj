@@ -725,10 +725,24 @@ def _collect_exception_handler_debt(
     else:
         t = ast.unparse(node.type)
         is_broad_or_bare = t in {"Exception", "BaseException"}
-        if is_broad_or_bare and node.lineno not in ble001_lines:
+        if is_broad_or_bare and node.lineno not in ble001_lines and not _is_rollback_reraise(node):
             broad.append((p, node.lineno, t))
     if _is_swallowed_broad_handler(node, is_broad_or_bare, ble001_lines):
         swallow.append((p, node.lineno))
+
+
+def _is_rollback_reraise(node: ast.ExceptHandler) -> bool:
+    """A failed transaction cleans up and propagates the original error unchanged."""
+    if len(node.body) != 2:
+        return False
+    cleanup, propagation = node.body
+    if not isinstance(propagation, ast.Raise) or propagation.exc is not None or propagation.cause is not None:
+        return False
+    if not isinstance(cleanup, ast.Expr) or not isinstance(cleanup.value, ast.Call):
+        return False
+    call = cleanup.value
+    return (isinstance(call.func, ast.Attribute) and isinstance(call.func.value, ast.Name)
+        and call.func.attr == "rollback" and not call.args and not call.keywords)
 
 
 def _is_swallowed_broad_handler(
