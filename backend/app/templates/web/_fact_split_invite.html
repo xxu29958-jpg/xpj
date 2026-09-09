@@ -1,7 +1,7 @@
 {# confirmed 事实页的「找家人分摊」发起卡。语义：发跨账本拆账邀请，
    与本账本内「家庭拆账」记录是两个概念（对照 Android 批 13）。
    契约：split_invite（None 则整卡不渲染）, expense, split_invite.members/
-   sent_rows, home_currency_symbol, currency_input, selected_ledger_id。 #}
+   sent_rows（含独立 amount_label）, currency_input, selected_ledger_id。 #}
 {% if split_invite %}
 <section class="product-panel product-panel--padded bsplit-invite-card" aria-label="找家人分摊">
   <div class="product-panel-header">
@@ -28,7 +28,7 @@
         </select>
       </div>
       <div class="product-field">
-        <label for="split-invite-amount">分摊金额（{{ home_currency_symbol }}）</label>
+        <label for="split-invite-amount">分摊金额（{{ currency_input.currency_symbol }}）</label>
         <input id="split-invite-amount" type="number" name="amount_yuan" value="{{ split_invite.amount_yuan|default(split_invite.remaining_yuan) }}" min="{{ currency_input.positive_amount_min }}" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="例如 {{ currency_input.amount_example }}" required>
       </div>
       {% if split_invite.requires_review %}
@@ -37,7 +37,7 @@
       <button type="submit" class="product-button product-button--primary">发起拆账</button>
       {% endif %}
     </div>
-    <p class="meta">本张账单还可分摊 {{ home_currency_symbol }}{{ split_invite.remaining_yuan }}。</p>
+    <p class="meta">本张账单还可分摊 {{ currency_input.currency_symbol }}{{ split_invite.remaining_yuan }}。</p>
   </form>
   {% endif %}
 
@@ -56,7 +56,7 @@
     {% for row in split_invite.sent_rows %}
       <tr>
         <td>{{ row.receiver_display_name or '—' }}</td>
-        <td class="amount">{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
+        <td class="amount">{{ row.amount_label }}</td>
         <td>
           {% if row.status == 'invited' %}<span class="product-status product-status--info">待处理</span>
           {% elif row.status == 'accepted' %}<span class="product-status product-status--success">已接受</span>

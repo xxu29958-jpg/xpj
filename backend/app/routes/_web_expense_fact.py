@@ -80,15 +80,13 @@ def _format_fact_value(
     field: str,
     value: object,
     snapshot: dict[str, object],
-    home_currency_code: str,
 ) -> str:
     if value is None or value == "":
         return "（空）"
     if field == "amount_cents":
-        return _minor_amount_label(value if isinstance(value, int) else None, home_currency_code)
+        return _snapshot_money(value, snapshot.get("home_currency_code"))
     if field == "original_amount_minor":
-        original_code = str(snapshot.get("original_currency_code") or home_currency_code)
-        return _minor_amount_label(value if isinstance(value, int) else None, original_code)
+        return _snapshot_money(value, snapshot.get("original_currency_code"))
     if field == "expense_time":
         return _snapshot_time_label(value)
     if field in {"items", "splits"} and isinstance(value, list):
@@ -96,9 +94,18 @@ def _format_fact_value(
     return str(value)
 
 
+def _snapshot_money(value: object, currency_code: object) -> str:
+    """A missing historical carrier cannot inherit today's currency or precision."""
+    if not isinstance(value, int):
+        return "（空）"
+    try:
+        return _minor_amount_label(value, currency_code if isinstance(currency_code, str) else None)
+    except AppError:
+        return f"{value:,} 最小单位（币种待核对）"
+
+
 def _snapshot_allocation_label(
     snapshot: dict[str, object],
-    home_currency_code: str,
 ) -> str | None:
     splits = snapshot.get("splits")
     amount_cents = snapshot.get("amount_cents")
@@ -110,14 +117,14 @@ def _snapshot_allocation_label(
     remaining = amount_cents - sum(amounts)
     if remaining == 0:
         return "已分完"
-    amount_label = _minor_amount_label(abs(remaining), home_currency_code)
+    amount_label = _snapshot_money(abs(remaining), snapshot.get("home_currency_code"))
     return f"还差 {amount_label} 未分配" if remaining > 0 else f"已拆超出 {amount_label}"
 
 
 def _item_snapshot_rows(
-    value: object,
-    home_currency_code: str,
+    snapshot: dict[str, object],
 ) -> list[dict[str, object]]:
+    value = snapshot.get("items")
     if not isinstance(value, list):
         return []
     rows: list[dict[str, object]] = []
@@ -131,10 +138,10 @@ def _item_snapshot_rows(
             facts.append(quantity)
         unit_price = raw_row.get("unit_price_cents")
         if isinstance(unit_price, int):
-            facts.append(f"单价 {_minor_amount_label(unit_price, home_currency_code)}")
+            facts.append(f"单价 {_snapshot_money(unit_price, snapshot.get('home_currency_code'))}")
         amount = raw_row.get("amount_cents")
         if isinstance(amount, int):
-            facts.append(f"金额 {_minor_amount_label(amount, home_currency_code)}")
+            facts.append(f"金额 {_snapshot_money(amount, snapshot.get('home_currency_code'))}")
         category = str(raw_row.get("category") or "").strip()
         if category:
             facts.append(category)
@@ -143,10 +150,10 @@ def _item_snapshot_rows(
 
 
 def _split_snapshot_rows(
-    value: object,
-    home_currency_code: str,
+    snapshot: dict[str, object],
     member_names: dict[int, str],
 ) -> list[dict[str, object]]:
+    value = snapshot.get("splits")
     if not isinstance(value, list):
         return []
     rows: list[dict[str, object]] = []
@@ -158,7 +165,7 @@ def _split_snapshot_rows(
         facts: list[str] = []
         amount = raw_row.get("amount_cents")
         if isinstance(amount, int):
-            facts.append(_minor_amount_label(amount, home_currency_code))
+            facts.append(_snapshot_money(amount, snapshot.get("home_currency_code")))
         note = str(raw_row.get("note") or "").strip()
         if note:
             facts.append(note)
@@ -171,17 +178,16 @@ def _collection_details(
     field: str,
     before: dict[str, object],
     after: dict[str, object],
-    home_currency_code: str,
     member_names: dict[int, str],
 ) -> dict[str, list[dict[str, object]]]:
     if field == "items":
         return {
-            "before_rows": _item_snapshot_rows(before.get(field), home_currency_code),
-            "after_rows": _item_snapshot_rows(after.get(field), home_currency_code),
+            "before_rows": _item_snapshot_rows(before),
+            "after_rows": _item_snapshot_rows(after),
         }
     return {
-        "before_rows": _split_snapshot_rows(before.get(field), home_currency_code, member_names),
-        "after_rows": _split_snapshot_rows(after.get(field), home_currency_code, member_names),
+        "before_rows": _split_snapshot_rows(before, member_names),
+        "after_rows": _split_snapshot_rows(after, member_names),
     }
 
 
@@ -189,13 +195,12 @@ def _split_timeline_changes(
     *,
     before: dict[str, object],
     after: dict[str, object],
-    home_currency_code: str,
     member_names: dict[int, str],
 ) -> list[dict[str, Any]]:
-    before_count = _format_fact_value("splits", before.get("splits"), before, home_currency_code)
-    after_count = _format_fact_value("splits", after.get("splits"), after, home_currency_code)
-    before_allocation = _snapshot_allocation_label(before, home_currency_code)
-    after_allocation = _snapshot_allocation_label(after, home_currency_code)
+    before_count = _format_fact_value("splits", before.get("splits"), before)
+    after_count = _format_fact_value("splits", after.get("splits"), after)
+    before_allocation = _snapshot_allocation_label(before)
+    after_allocation = _snapshot_allocation_label(after)
     allocation_changed = (
         before_allocation is not None and after_allocation is not None and before_allocation != after_allocation
     )
@@ -220,7 +225,6 @@ def _split_timeline_changes(
         field="splits",
         before=before,
         after=after,
-        home_currency_code=home_currency_code,
         member_names=member_names,
     )
     return changes
@@ -228,7 +232,6 @@ def _split_timeline_changes(
 
 def _timeline_changes(
     revision: dict[str, Any],
-    home_currency_code: str,
     *,
     member_names: dict[int, str] | None = None,
 ) -> list[dict[str, Any]]:
@@ -248,28 +251,26 @@ def _timeline_changes(
                 _split_timeline_changes(
                     before=before,
                     after=after,
-                    home_currency_code=home_currency_code,
                     member_names=resolved_member_names,
                 )
             )
             continue
         change: dict[str, Any] = {
             "label": _FACT_FIELD_LABELS[field],
-            "before": _format_fact_value(field, before.get(field), before, home_currency_code),
-            "after": _format_fact_value(field, after.get(field), after, home_currency_code),
+            "before": _format_fact_value(field, before.get(field), before),
+            "after": _format_fact_value(field, after.get(field), after),
         }
         if field == "items":
             change["details"] = _collection_details(
                 field=field,
                 before=before,
                 after=after,
-                home_currency_code=home_currency_code,
                 member_names=resolved_member_names,
             )
         changes.append(change)
         if field == "amount_cents" and "splits" not in changed_fields:
-            before_allocation = _snapshot_allocation_label(before, home_currency_code)
-            after_allocation = _snapshot_allocation_label(after, home_currency_code)
+            before_allocation = _snapshot_allocation_label(before)
+            after_allocation = _snapshot_allocation_label(after)
             if before_allocation and after_allocation and before_allocation != after_allocation:
                 changes.append(
                     {
@@ -289,7 +290,6 @@ def build_fact_timeline(
     *,
     tenant_id: str,
     expense_id: int,
-    home_currency_code: str,
     current_revision: int,
     snapshot_revision: int | None = None,
     page: int = 1,
@@ -322,7 +322,6 @@ def build_fact_timeline(
                 "is_correction": item.change_kind == "correction",
                 "changes": _timeline_changes(
                     revision,
-                    home_currency_code,
                     member_names=member_names,
                 ),
             }
@@ -404,7 +403,6 @@ def web_fact_context(
         db,
         tenant_id=selected_id,
         expense_id=expense_id,
-        home_currency_code=ctx["home_currency_code"],
         current_revision=expense.fact_revision,
         snapshot_revision=revision_snapshot,
         page=revision_page,

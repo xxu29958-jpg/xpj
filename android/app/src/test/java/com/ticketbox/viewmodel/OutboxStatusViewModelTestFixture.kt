@@ -16,12 +16,12 @@ import com.ticketbox.data.repository.testApiServiceProvider
 import com.ticketbox.data.repository.testServerSessionBinding
 import com.ticketbox.data.repository.boundSettingsStore
 
-internal fun outboxStatusHarness(): OutboxStatusHarness {
+internal fun outboxStatusHarness(onEnqueued: () -> Unit = {}): OutboxStatusHarness {
     val tokenStore = TestSessionFixture().apply { saveToken("session-token") }
     val api = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0))
     val binding = testServerSessionBinding(apiClient = api, settingsStore = boundSettingsStore(), tokenStore = tokenStore)
     val expenseRepository = com.ticketbox.data.repository.expenseRepositoryFixture(expenseDao = FakeExpenseDao(), binding = binding)
-    val outbox = testOutboxRepository(dao = FakePendingMutationDao())
+    val outbox = testOutboxRepository(dao = FakePendingMutationDao(), onEnqueued = onEnqueued)
     return OutboxStatusHarness(
         outbox = outbox,
         expenseRepository = expenseRepository,

@@ -13,13 +13,13 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.espresso.Espresso.closeSoftKeyboard
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.LedgerRequestGuard
@@ -59,7 +59,9 @@ class BudgetAdviceManualRateRecoveryTest {
             .fetchSemanticsNodes().isNotEmpty() }
         val rateInput = compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("advice_rate_value")), useUnmergedTree = true)
         rateInput.performScrollTo().performTextReplacement("20")
-        rateInput.assertTextEquals("20").performImeAction()
+        rateInput.assertTextEquals("20")
+        closeSoftKeyboard()
+        compose.waitForIdle()
         compose.onNodeWithTag("advice_rate_save").performScrollTo().assertIsDisplayed().assertIsEnabled().performClick()
         val row = fixture.awaitSavedRow(compose)
         val intent = requireNotNull(fixture.adapters.manualRateAdapter.fromJson(row.payload))

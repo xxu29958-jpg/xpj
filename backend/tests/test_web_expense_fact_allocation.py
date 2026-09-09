@@ -16,15 +16,16 @@ def test_split_timeline_prioritizes_changed_allocation_over_unchanged_line_count
             "change_kind": "correction",
             "changed_fields": ["splits"],
             "before": {
+                "home_currency_code": "CNY",
                 "amount_cents": 1_200,
                 "splits": [{"member_id": 7, "amount_cents": 1_200}],
             },
             "after": {
+                "home_currency_code": "CNY",
                 "amount_cents": 1_200,
                 "splits": [{"member_id": 7, "amount_cents": 1_100}],
             },
         },
-        "CNY",
         member_names={7: "我"},
     )
 

@@ -13,13 +13,13 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.espresso.Espresso.closeSoftKeyboard
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.remote.dto.ExchangeRateRequestDto
@@ -131,6 +131,8 @@ class ReportRateRecoveryConnectedTest {
     private fun enterRate(value: String) {
         val rateInput = compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("advice_rate_value")), useUnmergedTree = true)
         rateInput.performScrollTo().performTextReplacement(value)
-        rateInput.assertTextEquals(value).performImeAction()
+        rateInput.assertTextEquals(value)
+        closeSoftKeyboard()
+        compose.waitForIdle()
     }
 }

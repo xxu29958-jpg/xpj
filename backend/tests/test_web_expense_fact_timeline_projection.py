@@ -49,7 +49,6 @@ def test_timeline_reads_requested_page_and_exposes_reachability() -> None:
             object(),
             tenant_id="owner",
             expense_id=7,
-            home_currency_code="CNY",
             current_revision=120,
             page=2,
             page_size=50,
@@ -79,6 +78,7 @@ def test_collection_changes_expose_full_snapshots_without_inventing_row_identity
             "change_kind": "correction",
             "changed_fields": ["items", "splits"],
             "before": {
+                "home_currency_code": "CNY",
                 "amount_cents": 500,
                 "items": [
                     {
@@ -93,6 +93,7 @@ def test_collection_changes_expose_full_snapshots_without_inventing_row_identity
                 "splits": [{"position": 0, "member_id": 7, "amount_cents": 500, "note": "早餐"}],
             },
             "after": {
+                "home_currency_code": "CNY",
                 "amount_cents": 500,
                 "items": [
                     {
@@ -107,7 +108,6 @@ def test_collection_changes_expose_full_snapshots_without_inventing_row_identity
                 "splits": [{"position": 0, "member_id": 9, "amount_cents": 500, "note": None}],
             },
         },
-        "CNY",
         member_names={7: "小明"},
     )
 
@@ -170,10 +170,12 @@ def _disabled_member_revision_page() -> ExpenseRevisionListResponse:
                 reason="调整拆账",
                 changed_fields=["splits"],
                 before={
+                    "home_currency_code": "CNY",
                     "amount_cents": 500,
                     "splits": [{"member_id": 7, "amount_cents": 200}],
                 },
                 after={
+                    "home_currency_code": "CNY",
                     "amount_cents": 500,
                     "splits": [{"member_id": 7, "amount_cents": 300}],
                 },

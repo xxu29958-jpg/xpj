@@ -23,6 +23,7 @@ import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -186,7 +187,17 @@ class OutboxStatusViewModel(
             recoverAdjustment(row, false)
             return
         }
-        resolve(row) { outbox.resolveFailed(row.id, FailedResolution.Retry()) }
+        resolve(row) {
+            // A rendered button may carry an earlier failure; Room owns the current refusal.
+            val current = outbox.observeStatus().first().failed.singleOrNull { it.id == row.id } ?: return@resolve
+            if (!_uiState.value.accepts(current, expenseRepository.captureDeferredLedgerBinding())) return@resolve
+            if (_uiState.value.offersRetry(current)) {
+                outbox.resolveFailed(current.id, FailedResolution.Retry())
+            } else {
+                _uiState.update { it.copy(message = UiText.res(R.string.ledger_manual_original_unverified),
+                    messageTone = MessageTone.Danger) }
+            }
+        }
     }
 
     /** "放弃" — drop a FAILED row. */
@@ -341,10 +352,13 @@ data class OutboxStatusUiState(
             PendingMutationType.CreateGoal -> goalCreations[row.id]?.canRetry == true
             PendingMutationType.RecordDebtAdjustment -> debtAdjustments[row.id]?.canRetry == true
             PendingMutationType.CreateExpenseOffset -> row.id in retryableOffsetIds
-            else -> true
+            else -> !row.requiresManualExpenseReview()
         }
     }
 }
+
+private fun OutboxRow.requiresManualExpenseReview(): Boolean =
+    type == PendingMutationType.CreateExpense && lastError == "manual_create_original_unverified"
 
 private fun OutboxBinding?.matches(binding: LogicalSessionBinding?): Boolean =
     this != null && binding != null && ownerStorageKey == binding.ownerKey && ledgerId == binding.ledgerId &&

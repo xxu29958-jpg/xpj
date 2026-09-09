@@ -194,7 +194,7 @@ def test_installation_owner_desktop_can_complete_currency_adoption(
     assert preview.status_code == 200, preview.text
     assert "确认这台小票夹的本位币" in preview.text
     assert "不会换算或改写已有金额" in preview.text
-    assert "确认后不能在这里更改" in preview.text
+    assert "以后可以修改新录入的默认币种" in preview.text
     assert not re.search(r"[0-9a-f]{64}", preview.text)
 
     response = adoption_browser.client.post(
@@ -225,7 +225,8 @@ def test_installation_owner_desktop_can_complete_currency_adoption(
         headers=adoption_browser.headers,
     )
     assert completed.status_code == 200, completed.text
-    assert "本位币已确认" in completed.text
+    assert "默认币种已设置" in completed.text
+    assert 'href="/web/currency-adoption?change=true"' in completed.text
     assert "日元" in completed.text
     assert "JPY" in completed.text
 

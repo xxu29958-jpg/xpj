@@ -145,6 +145,7 @@ class ExpenseMappersTest {
         val entity = expenseDto(
             publicId = "691da31d-e8d7-49b0-bece-ec6f61c044b2",
             fixture = ExpenseDtoFixture(
+                currency = ExpenseDtoCurrencyFixture(originalCurrencyCode = "CNY", originalAmountMinor = 3680L),
                 media = ExpenseDtoMediaFixture(
                     thumbnailPath = "/api/expenses/1/thumbnail",
                     thumbnailDeletedAt = "2026-05-04T05:00:00Z",

@@ -82,7 +82,8 @@ class ReportsAnswerModelTest {
         )
 
         assertEquals(false, model.hasYearOverYearComparison)
-        assertEquals(0L, model.yearOverYearDeltaAmountCents)
+        // A zero baseline suppresses the comparison badge, not the known absolute difference.
+        assertEquals(12_000L, model.yearOverYearDeltaAmountCents)
     }
 
     @Test

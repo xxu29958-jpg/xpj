@@ -12,7 +12,7 @@ from app.money_contract import projection_sum_to_int, projection_values_sum_to_i
 from app.routes._web_session_common import resolve_web_actor_account_id
 from app.services import bill_split_service as bsplit
 from app.services.currency_binding_service import require_runtime_home_currency_code
-from app.services.currency_common import minor_amount_value
+from app.services.currency_common import minor_amount_label, minor_amount_value
 from app.services.invitation_members import list_members
 from app.services.spending_contract_service import accounting_zone
 from app.services.time_service import ensure_utc, now_utc
@@ -108,7 +108,7 @@ def build_split_invite_context(
             {
                 "public_id": inv.public_id,
                 "status": "expired" if is_expired else inv.status,
-                "amount_yuan": _cents_to_yuan(inv.amount_cents, inv.home_currency_code),
+                "amount_label": minor_amount_label(inv.amount_cents, inv.home_currency_code),
                 "receiver_display_name": inv.receiver_display_name_snapshot or "",
                 "expires_at": _fmt_local(inv.expires_at),
                 "is_cancellable": inv.status == "invited" and not is_expired,
