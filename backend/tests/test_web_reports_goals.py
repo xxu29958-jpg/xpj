@@ -6,6 +6,7 @@ import json
 import re
 from html import unescape
 from urllib.parse import parse_qs, urlsplit
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -38,6 +39,7 @@ def _create_expense(
         "/api/expenses/manual",
         headers=identity.gray_app_headers if gray else identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "home_currency_code": "CNY", "amount_cents": amount_cents,
             "merchant": merchant,
             "category": category,

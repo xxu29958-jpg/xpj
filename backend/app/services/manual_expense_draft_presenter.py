@@ -1,4 +1,4 @@
-"""Read-only draft binding and canonical creation acknowledgement for Web."""
+"""Read-only draft binding and original creation acknowledgement for Web."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Expense
 from app.services.dataset_authority_service import read_dataset_authority
+from app.services.expense_service import read_manual_creation_receipt
 from app.tenants import AuthContext
 
 
@@ -31,5 +32,9 @@ def manual_draft_ack(db: Session, auth: AuthContext | None, expense: Expense) ->
         return None
     client_ref = key[len(prefix):]
     if not re.fullmatch(r"[0-9a-f]{32}", client_ref):
+        return None
+    receipt = read_manual_creation_receipt(db, tenant_id=auth.ledger_id,
+        device_id=auth.device_id, client_ref=client_ref)
+    if receipt is None or receipt.id != expense.id:
         return None
     return {"scope": manual_draft_scope(db, auth), "clientRef": client_ref}

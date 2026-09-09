@@ -6,6 +6,8 @@ the 500-LOC file gate).
 """
 from __future__ import annotations
 
+from uuid import uuid4
+
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -27,6 +29,7 @@ def manual_expense(
         "/api/expenses/manual",
         headers=headers,
         json={
+            "client_ref": str(uuid4()),
             "home_currency_code": "CNY", "amount_cents": 1000,
             "merchant": merchant,
             "category": "餐饮",

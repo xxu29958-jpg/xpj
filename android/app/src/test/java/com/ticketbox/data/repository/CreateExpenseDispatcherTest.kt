@@ -49,6 +49,9 @@ internal class CreateExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestB
 
     private fun manualAdapter() = moshi().adapter(ExpenseManualCreateRequestDto::class.java)
 
+    private fun manualReceipt(): ExpenseDto = successExpenseDto().copy(originalAmountMinor = 1234,
+        amountCents = 1234, source = "手动记账")
+
     private fun createRow(clientRef: String?, targetId: String = "expense:local:abc-123"): OutboxRow {
         val payload = manualAdapter().toJson(
             ExpenseManualCreateRequestDto(
@@ -100,8 +103,28 @@ internal class CreateExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestB
     )
 
     @Test
+    fun malformedOrDifferentMoneyReceiptsCannotPublishIdentityOrCompleteTheOriginal() = runTest {
+        val row = createRow("abc-123")
+        val dto = manualReceipt()
+        for (bad in listOf(dto.copy(id = 0), dto.copy(publicId = null), dto.copy(rowVersion = 0),
+            dto.copy(status = "rejected"), dto.copy(status = "unknown"), dto.copy(originalCurrencyCode = "JPY"),
+            dto.copy(originalAmountMinor = 123400), dto.copy(homeCurrency = null), dto.copy(source = "Android截图"))) {
+            val writes = CapturedWriteback()
+            val result = dispatcherFor(ManualCreateApiStub(dto = bad), writes).dispatch(row)
+            assertEquals(DispatchResult.Failure(MANUAL_CREATE_RECEIPT_REVIEW), result)
+            assertEquals(0, writes.calls)
+        }
+        val body = requireNotNull(manualAdapter().fromJson(row.payloadJson)).copy(homeCurrencyCode = "CNY")
+        val mismatch = row.copy(payloadJson = manualAdapter().toJson(body))
+        assertEquals(DispatchResult.Failure(MANUAL_CREATE_RECEIPT_REVIEW),
+            dispatcherFor(ManualCreateApiStub(dto = dto.copy(homeCurrency = "JPY")), CapturedWriteback()).dispatch(mismatch))
+        val missingFx = dto.copy(status = "pending", amountCents = null, category = "自动分类")
+        assertTrue(dispatcherFor(ManualCreateApiStub(dto = missingFx), CapturedWriteback()).dispatch(row) is DispatchResult.Success)
+    }
+
+    @Test
     fun `dispatch posts client_ref, writes server identity back, returns new row_version`() = runTest {
-        val stub = ManualCreateApiStub(dto = successExpenseDto())
+        val stub = ManualCreateApiStub(dto = manualReceipt())
         val writeback = CapturedWriteback()
 
         val result = dispatcherFor(stub, writeback).dispatch(createRow(clientRef = "abc-123"))
@@ -110,12 +133,14 @@ internal class CreateExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestB
         assertEquals("owner", writeback.ledgerId)
         assertEquals("abc-123", writeback.clientRef, "write-back must resolve the local row by clientRef")
         assertEquals(42L, writeback.created?.id, "write-back must carry the server-assigned id")
-        assertEquals(DispatchResult.Success(newRowVersion = 2L), result)
+        assertTrue(result is DispatchResult.Success)
+        assertEquals(2L, result.newRowVersion)
+        assertEquals("{\"expenseId\":42}", result.receiptJson)
     }
 
     @Test
     fun `a row missing client_ref fails loudly instead of double-creating`() = runTest {
-        val stub = ManualCreateApiStub(dto = successExpenseDto())
+        val stub = ManualCreateApiStub(dto = manualReceipt())
         val writeback = CapturedWriteback()
 
         val result = dispatcherFor(stub, writeback).dispatch(createRow(clientRef = null))
@@ -130,8 +155,9 @@ internal class CreateExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestB
         val adapter = manualAdapter()
         val original = createRow("original-ref")
         val body = requireNotNull(adapter.fromJson(original.payloadJson))
-        listOf(body.copy(originalCurrency = null), body.copy(originalCurrency = ""), body.copy(originalAmount = null)).forEach { malformed ->
-            val stub = ManualCreateApiStub(dto = successExpenseDto())
+        listOf(body.copy(originalCurrency = null), body.copy(originalCurrency = ""), body.copy(originalAmount = null),
+            body.copy(clientRef = " ")).forEach { malformed ->
+            val stub = ManualCreateApiStub(dto = manualReceipt())
             val writeback = CapturedWriteback()
             val row = original.copy(payloadJson = adapter.toJson(malformed))
             assertTrue(dispatcherFor(stub, writeback).dispatch(row) is DispatchResult.Failure)
@@ -142,7 +168,7 @@ internal class CreateExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestB
 
     @Test
     fun anExplicitLegacyPaymentRetainsItsBodyWithoutSynthesizingHomeCurrency() = runTest {
-        val stub = ManualCreateApiStub(dto = successExpenseDto().copy(homeCurrency = "JPY"))
+        val stub = ManualCreateApiStub(dto = manualReceipt().copy(homeCurrency = "JPY"))
         val row = createRow("old-cny-intent")
         val result = dispatcherFor(stub, CapturedWriteback()).dispatch(row)
         assertTrue(result is DispatchResult.Success)
@@ -176,8 +202,31 @@ internal class CreateExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestB
     }
 
     @Test
+    fun `missing original receipt preserves the review identity without applying a latest fact`() = runTest {
+        for (expenseId in listOf<Long?>(71, null, -1)) {
+            val detail = expenseId?.let { ",\"expense_id\":$it" }.orEmpty()
+            val stub = ManualCreateApiStub(failure = httpException(409,
+                "{\"error\":\"manual_create_original_requires_review\",\"message\":\"Review original\"$detail}"))
+            val writeback = CapturedWriteback()
+            val original = createRow(clientRef = "abc-123")
+
+            val result = dispatcherFor(stub, writeback).dispatch(original)
+
+            val suffix = expenseId?.takeIf { it > 0 }?.let { ":$it" }.orEmpty()
+            assertEquals(DispatchResult.Failure("manual_create_original_requires_review$suffix"), result)
+            assertEquals(0, writeback.calls)
+            assertEquals("abc-123", stub.lastRequest?.clientRef)
+            val refused = original.copy(status = PendingMutationStatus.Failed, lastError = (result as DispatchResult.Failure).message)
+            assertTrue(refused.requiresManualCreateReview())
+            assertEquals(expenseId?.takeIf { it > 0 }, refused.manualCreateReviewExpenseId())
+            assertEquals(original.payloadJson, refused.payloadJson)
+            assertEquals(original.idempotencyKey, refused.idempotencyKey)
+        }
+    }
+
+    @Test
     fun `a write-back failure retries because the committed create re-POSTs idempotently`() = runTest {
-        val stub = ManualCreateApiStub(dto = successExpenseDto())
+        val stub = ManualCreateApiStub(dto = manualReceipt())
         val writeback = CapturedWriteback()
 
         val result = dispatcherFor(stub, writeback, onWriteback = { throw IllegalStateException("db locked") })

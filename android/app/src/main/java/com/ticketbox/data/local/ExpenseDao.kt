@@ -223,8 +223,8 @@ interface ExpenseDao {
     /**
      * issue #65 slice 4: write the server-assigned identity back onto the
      * optimistic offline-create row once its CreateExpense outbox row drains.
-     * [serverEntity] is the server's canonical row (``serverId`` + ``publicId`` +
-     * ``rowVersion`` set) carrying the original [ExpenseEntity.clientRef].
+     * [serverEntity] is the original accepted creation response carrying its [ExpenseEntity.clientRef].
+     * It establishes identity; a newer cached fact remains authoritative for money and fields.
      *
      * Resolves by clientRef and promotes the row IN PLACE (same Room PK), so the
      * domain id flips from its negative local stand-in to the real server id
@@ -247,17 +247,20 @@ interface ExpenseDao {
             "applyLocalCreateServerIdentity requires a server id from the create response"
         }
         val localId = localRowIdForClientRef(ledgerId, clientRef)
-        if (localId == null) {
-            upsertByServerIdForLedger(ledgerId, serverEntity)
+        val existingServer = findByServerId(ledgerId, serverId)
+        if (localId == null && existingServer == null) {
+            insert(serverEntity.copy(id = 0))
             return
         }
-        val existingServer = findByServerId(ledgerId, serverId)
-        if (existingServer != null && existingServer.id != localId) {
+        if (localId != null && existingServer != null && existingServer.id != localId) {
             deleteByLocalId(localId)
-            update(serverEntity.copy(id = existingServer.id))
-        } else {
-            update(serverEntity.copy(id = localId))
         }
+        val canonical = when {
+            existingServer == null -> serverEntity
+            existingServer.rowVersion > serverEntity.rowVersion -> existingServer
+            else -> serverEntity.withPreservedStreamProjection(existingServer)
+        }
+        update(canonical.copy(id = existingServer?.id ?: requireNotNull(localId), clientRef = clientRef))
     }
 
     @Query("DELETE FROM expenses")

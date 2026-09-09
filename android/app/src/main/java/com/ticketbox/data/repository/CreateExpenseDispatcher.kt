@@ -7,6 +7,9 @@ import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
+import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.ExpenseSourceValues
+import com.ticketbox.domain.model.parseExactMoneyMinor
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
@@ -25,9 +28,8 @@ import retrofit2.HttpException
  * On success the server-assigned identity (id / public_id / row_version) is
  * written back onto the optimistic local row via [applyServerIdentity] (resolved
  * by ``client_ref``), so the row's domain id flips from its negative local
- * stand-in to the real server id. The returned ``rowVersion`` cascades onto
- * same-target PENDING rows (a chained offline edit against the same
- * ``expense:local:{client_ref}`` gets the real token).
+ * stand-in to the real server id. Success leaves successor requests unchanged;
+ * the server resolves a local-ref first-write token from this original receipt.
  */
 class CreateExpenseDispatcher(
     private val apiProvider: (OutboxRow) -> ApiService,
@@ -35,6 +37,7 @@ class CreateExpenseDispatcher(
     private val applyServerIdentity: suspend (ledgerId: String, clientRef: String, created: ExpenseDto) -> Unit,
 ) : OutboxMutationDispatcher {
     override val type: PendingMutationType = PendingMutationType.CreateExpense
+    private val errors = NetworkErrorHandler(serverUrlProvider = { null }, context = "ManualCreate")
 
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
         val request = try {
@@ -50,8 +53,8 @@ class CreateExpenseDispatcher(
         // / token). A null ref is a malformed / pre-slice-4 row the server would
         // double-create on — surface it as a visible FAILED row, not a silent
         // duplicate.
-        val clientRef = request.clientRef
-            ?: return DispatchResult.Failure("CreateExpense row missing client_ref")
+        val clientRef = request.clientRef?.takeIf { it.isNotBlank() }
+            ?: return DispatchResult.Failure("manual_create_original_unverified")
         if (request.originalCurrency.isNullOrBlank() || request.originalAmount.isNullOrBlank()) {
             return DispatchResult.Failure("manual_create_original_unverified")
         }
@@ -78,9 +81,10 @@ class CreateExpenseDispatcher(
             return DispatchResult.Failure(e.message ?: "POST manual expense threw")
         }
 
+        if (!created.matchesManualCreation(request)) return DispatchResult.Failure(MANUAL_CREATE_RECEIPT_REVIEW)
         return try {
             applyServerIdentity(row.ledgerId, clientRef, created)
-            DispatchResult.Success(newRowVersion = created.rowVersion)
+            DispatchResult.Success(newRowVersion = created.rowVersion, receiptJson = manualCreationReceiptJson(created.id))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -93,8 +97,12 @@ class CreateExpenseDispatcher(
     }
 
     private fun mapHttpException(e: HttpException): DispatchResult {
-        val body = e.response()?.errorBody()?.string().orEmpty()
-        val message = extractServerMessage(body) ?: e.message().orEmpty()
+        val parsed = errors.parseHttpError(e)
+        if (parsed.errorCode == MANUAL_CREATE_RECEIPT_REVIEW) {
+            val id = parsed.expenseId?.takeIf { it > 0 }
+            return DispatchResult.Failure(MANUAL_CREATE_RECEIPT_REVIEW + (id?.let { ":$it" } ?: ""))
+        }
+        val message = parsed.outboxFailureMessage()
         return when (e.code()) {
             in 500..599, 408, 429 -> DispatchResult.RetryableFailure(message.ifEmpty { "server ${e.code()}" })
             // 400 / 422: a validation / payload-contract rejection
@@ -106,13 +114,23 @@ class CreateExpenseDispatcher(
         }
     }
 
-    private fun extractServerMessage(body: String): String? {
-        val key = "\"message\":\""
-        val start = body.indexOf(key)
-        if (start < 0) return null
-        val begin = start + key.length
-        val end = body.indexOf('"', begin)
-        if (end < 0) return null
-        return body.substring(begin, end)
-    }
 }
+
+internal const val MANUAL_CREATE_RECEIPT_REVIEW = "manual_create_original_requires_review"
+
+private fun ExpenseDto.matchesManualCreation(request: ExpenseManualCreateRequestDto): Boolean {
+    val currency = CurrencyCode.fromStorageKeyOrNull(request.originalCurrency) ?: return false
+    val amount = request.originalAmount?.let { parseExactMoneyMinor(it, currency) } ?: return false
+    return id > 0 && rowVersion > 0 && !publicId.isNullOrBlank() && status in setOf("pending", "confirmed") &&
+        source == ExpenseSourceValues.MANUAL_ENTRY &&
+        !homeCurrency.isNullOrBlank() && (request.homeCurrencyCode == null || request.homeCurrencyCode == homeCurrency) &&
+        originalCurrencyCode == currency.storageKey && originalAmountMinor == amount
+}
+
+internal fun OutboxRow.requiresManualCreateReview(): Boolean = type == PendingMutationType.CreateExpense &&
+    lastError?.substringBefore(':') in setOf("manual_create_original_unverified", MANUAL_CREATE_RECEIPT_REVIEW)
+
+/** The server may identify the existing fact; absent or invalid identity never opens another record. */
+internal fun OutboxRow.manualCreateReviewExpenseId(): Long? = lastError
+    ?.takeIf { type == PendingMutationType.CreateExpense && it.startsWith("$MANUAL_CREATE_RECEIPT_REVIEW:") }
+    ?.substringAfter(':')?.toLongOrNull()?.takeIf { it > 0 }

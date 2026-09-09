@@ -21,6 +21,7 @@ def manual_confirmed(
     client_ref: str | None = None,
 ) -> dict:
     payload = {
+        "client_ref": client_ref if client_ref is not None else str(uuid4()),
         "home_currency_code": "CNY",
         "amount_cents": amount_cents,
         "merchant": merchant,
@@ -30,8 +31,6 @@ def manual_confirmed(
     }
     if tags is not None:
         payload["tags"] = tags
-    if client_ref is not None:
-        payload["client_ref"] = client_ref
     response = client.post("/api/expenses/manual", headers=identity.app_headers, json=payload)
     assert response.status_code == 200, response.text
     return response.json()

@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from app.auth import get_current_writer_context
 from app.database import get_db
 from app.errors import AppError, add_exception_handlers
-from app.routes import debts, exchange_rates
+from app.routes import debts, exchange_rates, expenses
 from app.runtime_compatibility_contract import (
     CURRENT_API_VERSION,
     RUNTIME_COMPATIBILITY_SESSION_KEY,
@@ -24,13 +24,15 @@ from app.services.currency_binding_service import CurrencyCapability
     ("POST", "/api/debts", {"direction": "i_owe", "counterparty_type": "external", "principal_amount_cents": 1200}),
     ("PUT", "/api/exchange-rates/USD/2026-09-08", {
         "currency_code": "USD", "home_currency_code": "JPY", "rate_date": "2026-09-08", "rate_to_cny": "150"}),
+    ("POST", "/api/expenses/manual", {"home_currency_code": "CNY", "amount_cents": 1200}),
 ])
-@pytest.mark.parametrize("version", [None, "2026-09-07", "2026-09-08", "current"])
+@pytest.mark.parametrize("version", [None, "2026-09-07", "2026-09-08", "2026-09-09", "current"])
 def test_currency_intent_protocol_rejection_precedes_missing_money_context(version, method, path, body):
     app = FastAPI()
     add_exception_handlers(app)
     app.include_router(debts.router)
     app.include_router(exchange_rates.router)
+    app.include_router(expenses.router)
     app.dependency_overrides[get_current_writer_context] = lambda: SimpleNamespace(tenant_id="probe", account_id=1)
     app.dependency_overrides[get_db] = lambda: None
     headers = {} if version is None else {"Ticketbox-Api-Version": CURRENT_API_VERSION if version == "current" else version}

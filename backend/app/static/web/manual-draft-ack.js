@@ -1,4 +1,4 @@
-/* A full native landing renders this only for a canonical manual Expense. */
+/* Native landing emits this only after reading the original creation receipt. */
 (function (window, document) {
   "use strict";
   const marker = document.querySelector("[data-manual-draft-ack]");

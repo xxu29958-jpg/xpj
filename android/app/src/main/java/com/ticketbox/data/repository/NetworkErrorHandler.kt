@@ -86,6 +86,7 @@ internal class NetworkErrorHandler(
                         backendErrorUserMessage(it.error, it.message),
                         it.error.trim(),
                         conflict = it.toConflictDetails(),
+                        expenseId = it.expenseId,
                     )
                 }
         }
@@ -103,6 +104,7 @@ internal class NetworkErrorHandler(
         val message: String,
         val errorCode: String?,
         val conflict: RepositoryConflictDetails = RepositoryConflictDetails(),
+        val expenseId: Long? = null,
     ) {
         val conflictTagPublicId: String? get() = conflict.tag.publicId
         val conflictTagRowVersion: Long? get() = conflict.tag.rowVersion

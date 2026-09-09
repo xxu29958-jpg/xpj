@@ -9,11 +9,11 @@ from collections.abc import Iterator
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 
 from app.database import SessionLocal
 from app.middleware.csrf import CSRF_COOKIE_NAME
-from app.models import Account, AuthToken, Device, Expense, ExpenseRevision, LedgerMember
+from app.models import Account, ApiIdempotencyKey, AuthToken, Device, Expense, ExpenseRevision, LedgerMember
 from app.routes.web_auth import SESSION_COOKIE_NAME
 from app.routes.web_expense_create import _manual_expense_payload
 from app.services.dataset_authority_service import read_dataset_authority
@@ -30,6 +30,44 @@ pytestmark = [pytest.mark.real_db, pytest.mark.currency_binding_unbound]
 @pytest.fixture()
 def installed_web() -> Iterator[_InstalledWeb]:
     yield from installed_web_setup()
+
+
+def test_legacy_receipt_gap_retains_original_form_and_opens_existing_fact(installed_web):
+    session_token = _connect_local_session(installed_web, next_url="/web/expenses/new")
+    session_cookie = f"{SESSION_COOKIE_NAME}={session_token}"
+    page = installed_web.browser.get("/web/expenses/new", headers={"Cookie": session_cookie})
+    form = {**_hidden_fields(page.text), "amount_major": "23.45", "currency_code": "CNY",
+        "merchant": "原提交", "category": "餐饮", "spent_at": "2026-09-05T12:34", "note": "保留原输入"}
+    headers = {"Cookie": f"{session_cookie}; {CSRF_COOKIE_NAME}={page.cookies.get(CSRF_COOKIE_NAME)}",
+        "Origin": "http://127.0.0.1:8000"}
+    first = installed_web.browser.post("/web/expenses/new", data=form, headers=headers, follow_redirects=False)
+    assert first.status_code == 303, first.text
+    with SessionLocal() as db:
+        expense = db.scalar(select(Expense).where(Expense.tenant_id == installed_web.shared_ledger_id,
+            Expense.merchant == "原提交"))
+        assert expense is not None
+        expense_id = expense.id
+        # Simulate an accepted legacy create for which no original receipt exists.
+        db.execute(delete(ApiIdempotencyKey).where(ApiIdempotencyKey.tenant_id == expense.tenant_id,
+            ApiIdempotencyKey.operation == "create_manual_expense",
+            ApiIdempotencyKey.resource_id == str(expense_id)))
+        db.commit()
+
+    refused = installed_web.browser.post("/web/expenses/new", data=form, headers=headers, follow_redirects=False)
+
+    assert refused.status_code == 409, refused.text
+    assert _hidden_fields(refused.text)["client_ref"] == form["client_ref"]
+    assert _hidden_fields(refused.text)["home_currency_code"] == form["home_currency_code"]
+    assert 'value="23.45"' in refused.text and "保留原输入" in refused.text
+    assert 'data-manual-draft-result="blocked"' in refused.text
+    assert f'href="/web/expenses/{expense_id}/edit?ledger_id={installed_web.shared_ledger_id}"' in refused.text
+    assert "核对这笔已有账单" in refused.text
+    landed = installed_web.browser.get(first.headers["location"], headers={"Cookie": session_cookie})
+    assert landed.status_code == 200, landed.text
+    assert "data-manual-draft-ack=" not in landed.text
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(Expense).where(
+            Expense.tenant_id == installed_web.shared_ledger_id, Expense.merchant == "原提交")) == 1
 
 
 def _assert_confirmed_manual_fact(
@@ -193,7 +231,7 @@ def test_manual_expense_replay_uses_web_device_and_creates_one_confirmed_fact(
         client_ref=client_ref.group(1),
         location=first.headers["location"],
     )
-    # The acknowledgement must come from the saved Expense and authenticated
+    # The acknowledgement must come from the original receipt and authenticated
     # Device, never from a supplied query marker or a merely successful submit.
     landed = installed_web.browser.get(
         first.headers["location"] + "&manual_saved_ref=" + "b" * 32,

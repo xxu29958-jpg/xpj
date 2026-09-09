@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterator
+from uuid import uuid4
 
 import pytest
 from _web_bulk_test_support import seed_pending_with_amount as _seed_pending_with_amount
@@ -396,6 +397,7 @@ def test_primary_mutations_keep_real_csrf_and_occ_contracts(
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "home_currency_code": "CNY", "amount_cents": 1234,
             "merchant": "产品壳测试",
             "category": "其他",

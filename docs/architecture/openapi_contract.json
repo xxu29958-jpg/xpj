@@ -9352,16 +9352,10 @@
             "title": "Category"
           },
           "client_ref": {
-            "anyOf": [
-              {
-                "maxLength": 64,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Client Ref"
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Client Ref",
+            "type": "string"
           },
           "expense_time": {
             "anyOf": [
@@ -9516,6 +9510,9 @@
             "title": "Value Score"
           }
         },
+        "required": [
+          "client_ref"
+        ],
         "title": "ExpenseManualCreateRequest",
         "type": "object"
       },
@@ -23622,6 +23619,24 @@
         "operationId": "post_manual_expense_api_expenses_manual_post",
         "parameters": [
           {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -23652,9 +23667,6 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
-          },
-          {
-            "$ref": "#/components/parameters/TicketboxApiVersion"
           },
           {
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"

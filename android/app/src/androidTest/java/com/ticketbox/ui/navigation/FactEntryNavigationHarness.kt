@@ -16,8 +16,10 @@ import java.io.Closeable
 import kotlinx.coroutines.flow.first
 
 /** Only prepares dependencies and a real Room recovery row; all navigation stays in MainNavGraph. */
-internal class FactEntryNavigationHarness(context: Context) : Closeable {
-    val fixture = ExpenseCorrectionConnectedFixture(context)
+internal class FactEntryNavigationHarness(context: Context,
+    wrapApi: (com.ticketbox.data.remote.ApiService) -> com.ticketbox.data.remote.ApiService = { it },
+) : Closeable {
+    val fixture = ExpenseCorrectionConnectedFixture(context, wrapApi)
     private val graph = fixture.reopen()
     val shell = MainShellState()
     val models = object : ViewModelStoreOwner {

@@ -45,7 +45,7 @@ class ManualExpenseCurrencyRoomTest {
         var accept = false
         val bodies = mutableListOf<String>()
         val bindings = mutableListOf<String?>()
-        val accepted = fixture.network.current.copy(homeCurrency = "CNY", originalCurrencyCode = "CNY",
+        val accepted = fixture.network.current.copy(homeCurrency = "CNY", originalCurrencyCode = "CNY", source = "手动记账",
             originalAmountMinor = 1234, amountCents = 1234)
         val receipt = Moshi.Builder().add(KotlinJsonAdapterFactory()).build().adapter(ExpenseDto::class.java).toJson(accepted)
         val client = buildApiHttpClient(null, { "test-session" }, { "owner" }, null, null).newBuilder()

@@ -35,12 +35,16 @@ fun expenseLocalTargetId(clientRef: String): String = "$EXPENSE_TARGET_PREFIX$LO
  */
 fun expenseOutboxTargetId(expense: Expense): String {
     val clientRef = expense.clientRef
-    return if (expense.pendingSync && clientRef != null) {
+    return if (expense.pendingSync && !clientRef.isNullOrBlank()) {
         expenseLocalTargetId(clientRef)
     } else {
         expenseTargetId(expense.id)
     }
 }
+
+/** A local first write resolves against its original creation receipt, never the latest fact. */
+internal fun Expense.hasExpenseMutationBaseline(): Boolean = rowVersion > 0 ||
+    (rowVersion == 0L && pendingSync && !clientRef.isNullOrBlank())
 
 /**
  * The expense ref to send as a mutation route's path param — the part after ``expense:``

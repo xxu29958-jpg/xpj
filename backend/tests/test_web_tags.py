@@ -4,6 +4,7 @@ import re
 from html import unescape
 from html.parser import HTMLParser
 from urllib.parse import parse_qs, urlsplit
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -31,6 +32,7 @@ def _manual(
         "/api/expenses/manual",
         headers=headers,
         json={
+            "client_ref": str(uuid4()),
             "home_currency_code": "CNY", "amount_cents": amount_cents,
             "merchant": merchant,
             "category": "餐饮",

@@ -33,6 +33,7 @@ def _foreign_expense(client: TestClient, identity, merchant: str) -> dict:
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "original_currency_code": "USD",
             "original_amount_minor": 10000,
             "expense_time": "2026-05-04T08:00:00Z",

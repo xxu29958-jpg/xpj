@@ -23,6 +23,10 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Expense
+from app.services.manual_expense_receipt import (
+    local_ref_storage_key,
+    read_manual_creation_receipt,
+)
 
 __all__ = [
     "EDITABLE_STATUSES",
@@ -46,24 +50,13 @@ LOCAL_REF_PREFIX = "local:"
 # Issue #65 slice 3: ``Expense.row_version`` starts at 1 (models/expense.py), so
 # 0 is a free sentinel for "the client never saw the server row_version". A
 # ``local:{client_ref}`` mutation carrying this sentinel is a FIRST write through
-# the local ref — its OCC CAS applies to the row's CURRENT version instead of
-# false-409-ing (see ``resolve_expense_for_mutation``).
+# the local ref — its OCC CAS uses the accepted creation receipt's version.
+# Current state may already differ; that is a real conflict, never a fresh token.
 FIRST_WRITE_ROW_VERSION = 0
 
 
 def _is_local_ref(ref: int | str) -> bool:
     return isinstance(ref, str) and ref.startswith(LOCAL_REF_PREFIX)
-
-
-def local_ref_storage_key(device_id: int, client_ref: str) -> str:
-    """The ``Expense.draft_idempotency_key`` value for a device-local manual create.
-
-    Single source of truth for the ``{device_id}:{client_ref}`` composite so the
-    create side (which STORES it — ``create_manual_expense``) and the resolve side
-    (which looks it up — ``resolve_expense``) can never drift. A drift would make a
-    ``local:{client_ref}`` mutation silently miss its row.
-    """
-    return f"{device_id}:{client_ref}"
 
 
 def resolve_expense(
@@ -125,11 +118,11 @@ def resolve_expense_for_mutation(
       the client's own ``expected_row_version`` — OCC unchanged.
     * a ``local:{client_ref}`` FIRST write — the client never saw the server
       ``row_version`` so it sends the ``FIRST_WRITE_ROW_VERSION`` sentinel — the
-      row's CURRENT ``row_version``. The CAS then applies to current state with no
-      false 409, yet a *concurrent* writer that bumped the version between this
-      read and the service CAS still loses the CAS (rowcount=0 → real 409). The
-      caller keeps feeding the RAW sentinel to the idempotency claim, so a replay
-      stays a stable fingerprint (the current version may drift between replays).
+      original creation receipt's ``row_version``. If a later write changed the
+      fact, the CAS correctly refuses the stale original basis. An absent receipt
+      leaves the sentinel unchanged: the operation's own accepted key can still
+      replay, while a fresh write cannot claim an unknown basis. Callers retain
+      the RAW sentinel in the command fingerprint so retries remain identical.
 
     A server-id ref carrying the sentinel is NOT special-cased: ``effective`` stays
     0, the CAS finds no row at version 0 (real rows start at 1) and 409s — a synced
@@ -140,7 +133,10 @@ def resolve_expense_for_mutation(
         raise AppError("expense_not_found", status_code=404)
     effective = expected_row_version
     if _is_local_ref(ref) and expected_row_version == FIRST_WRITE_ROW_VERSION:
-        effective = expense.row_version
+        receipt = read_manual_creation_receipt(db, tenant_id=tenant_id,
+            device_id=device_id, client_ref=str(ref)[len(LOCAL_REF_PREFIX):])
+        if expense.source == "手动记账" and receipt is not None and receipt.id == expense.id:
+            effective = receipt.row_version
     return expense.id, effective
 
 

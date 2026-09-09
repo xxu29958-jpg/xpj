@@ -113,9 +113,10 @@ private fun LedgerPrimaryPane(
             }
         }
         val authorityTone = ledgerAuthorityTone(state)
-        if (!contentModel.showSupportingPane && ledgerStatusVisible(state, authorityTone)) {
+        if (!contentModel.showSupportingPane && (ledgerStatusVisible(state, authorityTone) || chromeState.lastManualCreation != null)) {
             item {
-                LedgerStatusContent(state = state, authorityTone = authorityTone)
+                LedgerStatusContent(state = state, authorityTone = authorityTone,
+                    onOpenManualSubmission = chromeState.lastManualCreation?.clientRef?.let { ref -> { actions.onOpenManualSubmission(ref) } })
             }
         }
         if (state.items.isEmpty()) {

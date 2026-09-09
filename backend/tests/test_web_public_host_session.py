@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import re
 from datetime import timedelta
+from uuid import uuid4
 
 import pytest
 from _web_public_session_support import PUBLIC_HOST
@@ -99,6 +100,7 @@ def test_public_bulk_form_native_post_uses_rendered_csrf_token(
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "home_currency_code": "CNY", "amount_cents": 1800,
             "merchant": "Public Native Batch",
             "category": "其他",

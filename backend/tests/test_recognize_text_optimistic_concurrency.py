@@ -79,6 +79,7 @@ def test_recognize_text_against_confirmed_returns_404(
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "home_currency_code": "CNY", "amount_cents": 1234,
             "merchant": "Stable Cafe",
             "category": "餐饮",

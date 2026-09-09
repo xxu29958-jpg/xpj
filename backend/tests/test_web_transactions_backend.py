@@ -95,6 +95,7 @@ def _foreign_expense(web_client: TestClient, *, identity, rate: str = "7.0000") 
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "original_currency_code": "USD",
             "original_amount_minor": 12345,
             "merchant": "Frozen FX Cafe",

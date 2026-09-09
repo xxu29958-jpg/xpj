@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
@@ -43,6 +44,7 @@ def _owner_device_id(identity) -> int:
 
 def _create_manual(client: TestClient, headers: dict[str, str], **overrides) -> dict:
     body = {
+        "client_ref": str(uuid4()),
         "home_currency_code": "CNY",
         "amount_cents": 1500,
         "merchant": "解析测试",

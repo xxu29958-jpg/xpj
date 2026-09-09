@@ -12,6 +12,7 @@ import time
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
@@ -34,6 +35,7 @@ def seed_confirmed_expense(
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "home_currency_code": "CNY", "amount_cents": amount_cents,
             "merchant": merchant,
             "category": category,

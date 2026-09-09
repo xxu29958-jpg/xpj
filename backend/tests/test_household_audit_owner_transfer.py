@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
@@ -368,6 +369,7 @@ def test_role_downgrade_makes_existing_token_read_only_immediately(client: TestC
         "/api/expenses/manual",
         headers=_bearer(member_token),
         json={
+            "client_ref": str(uuid4()),
             "home_currency_code": "CNY", "amount_cents": 1280,
             "merchant": "降级前可写",
             "category": "生活",
@@ -395,6 +397,7 @@ def test_role_downgrade_makes_existing_token_read_only_immediately(client: TestC
         "/api/expenses/manual",
         headers=_bearer(member_token),
         json={
+            "client_ref": str(uuid4()),
             "home_currency_code": "CNY", "amount_cents": 990,
             "merchant": "降级后不应写入",
             "category": "生活",

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="manual_submission_title">这笔手记的原提交</string>
+    <string name="manual_submission_view_original">查看原提交</string>
+    <string name="manual_submission_home">账单本位币：%1$s</string>
+    <string name="manual_submission_waiting">已保存到本机，等待服务器处理。原输入保留如下。</string>
+    <string name="manual_submission_sending">正在发送这笔原提交，请稍候。</string>
+    <string name="manual_submission_done">这笔手记已同步，可以查看账单当前状态。</string>
+    <string name="manual_submission_missing">未找到这笔手记的原提交。请核对同步记录和已有账单。</string>
+    <string name="manual_submission_unknown">原输入无法完整读取，请保留记录并核对。</string>
+    <string name="manual_submission_open">查看账单</string>
+    <string name="manual_submission_stop">停止本机重试</string>
+    <string name="manual_submission_stop_body">停止后会移除本机的待同步记录。服务器可能已接受这笔手记；停止重试不会撤销服务器账单，请先核对已有账单。</string>
+</resources>

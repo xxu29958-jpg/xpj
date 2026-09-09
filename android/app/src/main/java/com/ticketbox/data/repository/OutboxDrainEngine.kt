@@ -241,7 +241,8 @@ class OutboxDrainEngine(
         return when (result) {
             is DispatchResult.Success -> {
                 outbox.markDone(row.id, cacheRefreshVersion = result.cacheRefreshVersion, receiptJson = result.receiptJson)
-                result.newRowVersion?.takeIf { it != 0L }?.let { outbox.cascadeFreshToken(row.targetId, it) }
+                result.newRowVersion?.takeIf { it != 0L && row.type != PendingMutationType.CreateExpense }
+                    ?.let { outbox.cascadeFreshToken(row.targetId, it) }
                 if (row.type in ADVICE_INPUT_MUTATION_TYPES) onAdviceInputReplaySucceeded()
                 summary.copy(done = 1)
             }

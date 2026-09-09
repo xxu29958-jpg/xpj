@@ -89,7 +89,9 @@ internal class ExpenseCorrectionQueueContinuationTest(private val status: Pendin
             offsetVoidAdapter = moshi().adapter(ExpenseOffsetVoidOutboxPayload::class.java),
             correctionAdapter = adapters.correctionAdapter, billSplitReceiptAdapter = adapters.billSplitReceiptAdapter,
             billSplitCreateAdapter = adapters.billSplitCreateAdapter,
-            legacyCorrectionAdapter = adapters.legacyCorrectionAdapter))
+            legacyCorrectionAdapter = adapters.legacyCorrectionAdapter,
+                manualCreateAdapter = com.ticketbox.OutboxAdapterGraph().manualCreateAdapter,
+            ))
     }
 
     companion object {

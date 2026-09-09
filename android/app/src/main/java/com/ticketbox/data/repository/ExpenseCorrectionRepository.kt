@@ -81,7 +81,7 @@ internal class ExpenseCorrectionRepository(
                 if (pending.hasSupportedIntent && pending.row.lastError !in setOf("correction_target_unavailable", "correction_requires_review")) {
                     core.fetchAuthoritativeExpense(bound, requireNotNull(pending.expenseId))
                 }
-                outbox.discardCorrection(bound, pending.row)
+                outbox.discardOriginalExpense(bound, pending.row)
             }
             !drop && current.access?.canModify == true && pending.canRetry -> outbox.resolveFailed(rowId, FailedResolution.Retry())
             else -> throw RepositoryException("请核对当前事实后明确重新提交；原提交不能直接重试或覆盖。")

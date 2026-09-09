@@ -5,6 +5,7 @@ import com.squareup.moshi.Json
 data class ErrorDto(
     val error: String,
     val message: String,
+    @param:Json(name = "expense_id") val expenseId: Long? = null,
     // A recurring-item duplicate uses the existing resource identity and status
     // so create/edit consumers can steer to edit or restore instead of silently
     // creating another product fact.

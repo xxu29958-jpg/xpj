@@ -309,6 +309,10 @@ class ExpenseRepository(
 
     internal fun observeLedgerAccess(): Flow<LedgerAccessContext?> = core.apiProvider.observeActiveLedgerAccess()
 
+    internal suspend fun describeManualCreation(row: OutboxRow): ManualExpenseCreationProjection? = core.describeManualCreation(row)
+
+    internal suspend fun stopManualCreation(row: OutboxRow): Result<Unit> = core.stopManualCreation(row)
+
     override suspend fun createRepaymentDraftFromExpense(
         expectedBinding: LogicalSessionBinding,
         expense: Expense,

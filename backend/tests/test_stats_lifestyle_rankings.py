@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
@@ -74,8 +75,8 @@ def test_lifestyle_stats_returns_value_and_regret_rankings(
     client: TestClient, *, identity
 ) -> None:
     for payload in OWNER_EXPENSES:
-        _post_manual_expense(client, identity.app_headers, payload)
-    _post_manual_expense(client, identity.gray_app_headers, GRAY_EXPENSE)
+        _post_manual_expense(client, identity.app_headers, {**payload, "client_ref": str(uuid4())})
+    _post_manual_expense(client, identity.gray_app_headers, {**GRAY_EXPENSE, "client_ref": str(uuid4())})
 
     payload = _get_lifestyle_stats(client, identity.app_headers)
     assert [item["merchant"] for item in payload["frequent_merchants"][:3]] == [

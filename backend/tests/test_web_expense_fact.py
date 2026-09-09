@@ -273,6 +273,7 @@ def test_web_correction_preserves_absent_and_clears_blank_time_and_scores(web_cl
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "home_currency_code": "CNY", "amount_cents": 1234,
             "merchant": "待清空附加事实",
             "category": "餐饮",

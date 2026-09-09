@@ -36,35 +36,41 @@ class ManualExpenseSyncRetryTest {
 
     @Test
     fun staleRetryCannotRequeueAnUnverifiableOriginalOrWakeTheScheduler() = runTest(dispatcher) {
-        var scheduled = 0
-        val harness = outboxStatusHarness(onEnqueued = { scheduled += 1 })
-        val id = harness.outbox.enqueue(PendingMutationType.CreateExpense, "expense:local:original",
-            "{\"client_ref\":\"original\",\"amount_cents\":1200}", 0, "original-key")
-        harness.outbox.markFailed(id, "temporary failure")
-        val stale = harness.outbox.observeStatus().first().failed.single()
-        val vm = harness.viewModel()
-        try {
-            vm.uiState.first { it.bindingReady && it.status.failed.any { failed -> failed.id == id } }
-            assertTrue(vm.uiState.value.offersRetry(stale))
-            harness.outbox.markFailed(id, "manual_create_original_unverified")
-            val original = harness.outbox.observeStatus().first().failed.single()
-            val scheduledBeforeRetry = scheduled
+        for ((refusal, message) in listOf(
+            "manual_create_original_unverified" to R.string.ledger_manual_original_unverified,
+            "manual_create_original_requires_review:71" to R.string.error_manual_create_original_requires_review,
+            "manual_create_original_requires_review" to R.string.error_manual_create_original_requires_review,
+        )) {
+            var scheduled = 0
+            val harness = outboxStatusHarness(onEnqueued = { scheduled += 1 })
+            val id = harness.outbox.enqueue(PendingMutationType.CreateExpense, "expense:local:original",
+                "{\"client_ref\":\"original\",\"amount_cents\":1200}", 0, "original-key")
+            harness.outbox.markFailed(id, "temporary failure")
+            val stale = harness.outbox.observeStatus().first().failed.single()
+            val vm = harness.viewModel()
+            try {
+                vm.uiState.first { it.bindingReady && it.status.failed.any { failed -> failed.id == id } }
+                assertTrue(vm.uiState.value.offersRetry(stale))
+                harness.outbox.markFailed(id, refusal)
+                val original = harness.outbox.observeStatus().first().failed.single()
+                val scheduledBeforeRetry = scheduled
 
-            // The queued click still carries the old, apparently retryable snapshot.
-            vm.retry(stale)
-            runCurrent()
-            vm.retry(original)
-            runCurrent()
+                // The queued click still carries the old, apparently retryable snapshot.
+                vm.retry(stale)
+                runCurrent()
+                vm.retry(original)
+                runCurrent()
 
-            assertFalse(vm.uiState.value.offersRetry(original))
-            assertEquals(original, harness.outbox.observeStatus().first().failed.single())
-            assertEquals(0, harness.outbox.observeStatus().first().queueDepth)
-            assertEquals(scheduledBeforeRetry, scheduled)
-            assertEquals(UiText.res(R.string.ledger_manual_original_unverified), vm.uiState.value.message)
-            assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
-            assertNull(vm.uiState.value.busyRowId)
-        } finally {
-            vm.viewModelScope.coroutineContext.job.cancelAndJoin()
+                assertFalse(vm.uiState.value.offersRetry(original))
+                assertEquals(original, harness.outbox.observeStatus().first().failed.single())
+                assertEquals(0, harness.outbox.observeStatus().first().queueDepth)
+                assertEquals(scheduledBeforeRetry, scheduled)
+                assertEquals(UiText.res(message), vm.uiState.value.message)
+                assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
+                assertNull(vm.uiState.value.busyRowId)
+            } finally {
+                vm.viewModelScope.coroutineContext.job.cancelAndJoin()
+            }
         }
     }
 

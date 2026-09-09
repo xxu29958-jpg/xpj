@@ -47,6 +47,7 @@ def _create_foreign_manual_expense(
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "original_currency_code": "USD",
             "original_amount_minor": original_amount_minor,
             "spent_at": spent_at,
@@ -173,6 +174,7 @@ def test_missing_foreign_rate_stays_pending_without_fake_home_amount(
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "original_currency_code": "USD",
             "original_amount_minor": 12345,
             "spent_at": "2026-05-04T02:00:00Z",

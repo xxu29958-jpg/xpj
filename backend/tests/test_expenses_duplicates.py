@@ -185,6 +185,7 @@ def test_editing_duplicate_original_revalidates_stale_references(client: TestCli
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "home_currency_code": "CNY", "amount_cents": 5200,
             "merchant": "Same Store",
             "category": "生活",
@@ -197,6 +198,7 @@ def test_editing_duplicate_original_revalidates_stale_references(client: TestCli
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "home_currency_code": "CNY", "amount_cents": 5200,
             "merchant": "Same Store",
             "category": "生活",

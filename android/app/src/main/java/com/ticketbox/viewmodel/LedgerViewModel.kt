@@ -116,7 +116,7 @@ data class LedgerUiState(
     // the sheet), batch synced/queued/failed is reported PAGE-LEVEL via [message],
     // so the sheet must close on done EITHER WAY to reveal it. [batchDone] flips on
     // both success and failure; the screen acks via batchSettled() (mirrors the
-    // manualCreateDone pattern, but closes on both arms because the result is
+    // manualCreateResult pattern, but closes on both arms because the result is
     // page-level — see applyBatch). Fixes the optimistic close: the sheet used to
     // dismiss in the onApply lambda BEFORE applyConfirmedBatch resolved, so the
     // `applyingBatch` disable flag was dead and a typed tag string was lost on close.
@@ -125,9 +125,9 @@ data class LedgerUiState(
     val messageTone: MessageTone = MessageTone.Neutral,
     // Manual-create sheet outcome channel: the sheet stays open on failure
     // (so the typed form survives), shows [manualCreateError] inline, and only
-    // closes once [manualCreateDone] flips — the screen acks both via
+    // closes once [manualCreateResult] contains the saved original — the screen acks both via
     // manualCreateSettled() (mirrors ExpenseEditUiState.done).
-    val manualCreateDone: Boolean = false,
+    val manualCreateResult: Expense? = null,
     val manualCreateError: UiText? = null,
     // Most-recently-used merchants (with their last category) derived from the
     // FULL confirmed cache (not the filtered view) — quick-fill chips on the
@@ -524,7 +524,7 @@ class LedgerViewModel(
                     _uiState.update { state ->
                         val next = state.copy(
                             creatingManual = false,
-                            manualCreateDone = true,
+                            manualCreateResult = expense,
                             monthFilter = expenseLedgerMonth(expense) ?: state.monthFilter,
                             categoryFilter = "",
                             tagFilter = "",
@@ -554,7 +554,7 @@ class LedgerViewModel(
     /** Screen ack after the manual-create sheet closed (success) or was
      *  dismissed (gives up a failed attempt) — clears the outcome channel. */
     fun manualCreateSettled() {
-        _uiState.update { it.copy(manualCreateDone = false, manualCreateError = null) }
+        _uiState.update { it.copy(manualCreateResult = null, manualCreateError = null) }
     }
 
     /** 手记可写性门（R13-6）：只读账本或账本币种未确认时亮错并返回 true。 */

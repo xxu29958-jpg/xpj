@@ -12,6 +12,8 @@ renders charts.
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from fastapi.testclient import TestClient
 
 # ``web_client`` (loopback-gate-bypassed /web client) comes from conftest.py.
@@ -53,6 +55,7 @@ def _seed_overview_expense(client: TestClient, *, identity) -> None:
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "home_currency_code": "CNY", "amount_cents": 8800,
             "merchant": "海底捞",
             "category": "餐饮",

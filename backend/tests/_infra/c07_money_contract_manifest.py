@@ -80,7 +80,7 @@ POSITIVE_DECIMAL_REQUEST_FIELDS = (
     ),
 )
 NONNEGATIVE_DECIMAL_REQUEST_FIELDS = (
-    (ExpenseManualCreateRequest, "original_amount", {}),
+    (ExpenseManualCreateRequest, "original_amount", {"client_ref": "money-decimal-contract"}),
     (
         NotificationDraftCreateRequest,
         "original_amount",

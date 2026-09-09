@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -36,6 +37,21 @@ interface PendingMutationDao {
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(row: PendingMutationEntity): Long
+
+    /** Publish the command and its local projection in the same database transaction. */
+    @Transaction
+    suspend fun insertAndPublish(row: PendingMutationEntity, publish: suspend () -> Unit): Long {
+        val id = insert(row)
+        publish()
+        return id
+    }
+
+    @Transaction
+    suspend fun deleteAndPublish(id: Long, ownerKey: String, ledgerId: String, status: String, publish: suspend () -> Unit): Boolean {
+        val deleted = deleteIfStatus(id, ownerKey, ledgerId, status) > 0
+        if (deleted) publish()
+        return deleted
+    }
 
     /** Room commits a collection insert as one transaction, preserving input order in the returned ids. */
     @Insert(onConflict = OnConflictStrategy.ABORT)

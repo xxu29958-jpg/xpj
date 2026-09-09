@@ -87,12 +87,17 @@ internal fun ExpenseEditRoute(
         return
     }
 
+    if (expense.pendingSync) {
+        ManualExpenseSubmissionRoute(expense.clientRef.orEmpty(), screenFactory, onBack, onCompleted, onOpenRepaymentDrafts)
+        return
+    }
+
     // A1 责任分流：confirmed 账单的事实/更正是独立 Owner —— 旧编辑 VM 不再
     // 渲染 confirmed（save/reject/PUT affordance 物理失权），改交 Fact owner。
     // pending（及其它待整理状态）保持原编辑屏。
     if (expense.status == "confirmed") {
         ExpenseFactRoute(
-            expenseId = expenseId,
+            expenseId = expense.id,
             screenFactory = screenFactory,
             onExit = { adviceInputsChanged ->
                 if (adviceInputsChanged) onCompleted(true) else onBack()
