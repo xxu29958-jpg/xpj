@@ -60,7 +60,10 @@ lifecycle expansion. This closes one currency journey, not the full Goal or RC.
   correction requires its original key and OCC: missing values stay missing and
   are rejected before diff/claim. New GET and explicit conflict review remain
   the only preparations of new correction identities. The old POST-side UUID
-  fallback is retired; direct producers obtain keys from the real form.
+  fallback is retired; direct producers obtain keys from the real form. The rate
+  adapter is classified and checked as a writer route. Both confirmation and
+  correction rejection tests use the canonical actionable missing-rate message
+  while retaining their original no-mutation and rollback assertions.
 - Android uses one validated missing-rate projection, one encoded failure context
   in existing Outbox, and the existing rate editor/command. Fact and both sync
   containers have real navigation entries. Budget/report validation reuses the

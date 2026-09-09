@@ -61,18 +61,18 @@ internal fun ManualExpenseSubmissionRoute(
         val id = openedExpense
         if (id != null) {
             ExpenseEditRoute(id, screenFactory, onBack, onCompleted, related)
-            return@key
+        } else {
+            val vm: OutboxStatusViewModel = viewModel(key = "manual-submission-$clientRef",
+                factory = outboxStatusViewModelFactory(screenFactory.outboxRepository, screenFactory.repository,
+                    OutboxRecoveryRepositories(screenFactory.debtCreationRepository, screenFactory.recurringRepository.occurrences,
+                        screenFactory.incomePlanRepository, screenFactory.debtAdjustmentRepository, screenFactory.goalEditRepository,
+                        screenFactory.budgetRepository, screenFactory.recurringRepository, screenFactory.ruleRepository)))
+            SyncStatusScreen(vm, onBack, manualClientRef = clientRef, navigation = SyncStatusNavigation(
+                onOpenExpense = { if (it > 0 && binding != null &&
+                    binding == screenFactory.repository.captureDeferredLedgerBinding()) openedExpense = it },
+                onOpenInbox = {}, onOpenBudget = {}, onOpenRecurring = {}, onOpenGoalCreation = {}, onOpenGoalEdit = {},
+                onOpenRuleSubmission = {}, onOpenIncomeSubmission = {}, onOpenRateSubmission = {},
+                onRepairCorrectionRate = related.onRepairRate))
         }
-        val vm: OutboxStatusViewModel = viewModel(key = "manual-submission-$clientRef",
-            factory = outboxStatusViewModelFactory(screenFactory.outboxRepository, screenFactory.repository,
-                OutboxRecoveryRepositories(screenFactory.debtCreationRepository, screenFactory.recurringRepository.occurrences,
-                    screenFactory.incomePlanRepository, screenFactory.debtAdjustmentRepository, screenFactory.goalEditRepository,
-                    screenFactory.budgetRepository, screenFactory.recurringRepository, screenFactory.ruleRepository)))
-        SyncStatusScreen(vm, onBack, manualClientRef = clientRef, navigation = SyncStatusNavigation(
-            onOpenExpense = { if (it > 0 && binding != null &&
-                binding == screenFactory.repository.captureDeferredLedgerBinding()) openedExpense = it },
-            onOpenInbox = {}, onOpenBudget = {}, onOpenRecurring = {}, onOpenGoalCreation = {}, onOpenGoalEdit = {},
-            onOpenRuleSubmission = {}, onOpenIncomeSubmission = {}, onOpenRateSubmission = {},
-            onRepairCorrectionRate = related.onRepairRate))
     }
 }
