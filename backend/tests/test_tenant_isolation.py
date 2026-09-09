@@ -281,7 +281,7 @@ def test_confirmed_lifestyle_and_settings_are_tenant_scoped(client: TestClient, 
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": 9900,
+            "home_currency_code": "CNY", "amount_cents": 9900,
             "merchant": "owner高频商家",
             "category": "数码",
             "expense_time": "2026-05-05T01:00:00Z",

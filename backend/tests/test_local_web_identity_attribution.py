@@ -47,7 +47,7 @@ def test_real_web_mutation_is_attributed_to_installation_account_and_browser_dev
         "/api/expenses/manual",
         headers=current_protocol_headers({"Authorization": f"Bearer {session_token}"}),
         json={
-            "amount_cents": 1200,
+            "home_currency_code": "CNY", "amount_cents": 1200,
             "merchant": "本机身份归属",
             "category": "餐饮",
             "expense_time": "2026-09-05T00:00:00Z",

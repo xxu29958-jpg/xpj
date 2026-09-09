@@ -60,6 +60,7 @@ from app.services import dataset_backup_inventory, web_stats_service
 from app.services.budget_service import get_monthly_budget
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import minor_amount_major_number, minor_amount_value, minor_unit_digits
+from app.services.currency_default_service import is_installation_currency_owner
 from app.services.dashboard_service import list_dashboard_cards
 from app.services.goal_service import list_goals
 from app.services.insights_service import unclaimed_recurring_candidate_count
@@ -68,6 +69,7 @@ from app.services.spending_contract_service import default_accounting_timezone_n
 from app.services.stats_service import monthly_stats
 from app.services.time_service import current_month, now_utc
 from app.services.time_service import to_iso as _datetime_to_iso
+from app.tenants import AuthContext
 from app.version import BACKEND_VERSION, STATIC_ASSET_VERSION
 
 __all__ = [
@@ -149,6 +151,12 @@ def _base_ctx(
     selected = _selected_option(options, selected_ledger_id)
     pending_count, suspected_count = sidebar_counts or (0, 0)
     home = require_runtime_home_currency_code(db)
+    auth = getattr(request.state, "web_session_auth", None)
+    can_manage_currency = (
+        getattr(request.state, "web_session_platform", "") == "desktop"
+        and isinstance(auth, AuthContext) and auth.scope == "app"
+        and is_installation_currency_owner(db, auth.account_id)
+    )
     return {
         "backend_version": BACKEND_VERSION,
         "asset_version": STATIC_ASSET_VERSION,
@@ -161,6 +169,7 @@ def _base_ctx(
         "selected_ledger_is_default": selected.is_default,
         "is_viewer": selected.role == "viewer",
         "can_write": selected.role in ("owner", "member"),
+        "can_manage_installation_currency": can_manage_currency,
         "page_title": page_title,
         "ui_theme": _read_ui_theme(request),
         "show_month_picker": show_month_picker,

@@ -234,6 +234,7 @@ internal fun friendlyLastError(raw: String?, fallback: String): String {
 }
 
 internal val syncStatusExactErrorMessageResources = mapOf(
+    "manual_create_original_unverified" to R.string.ledger_manual_original_unverified,
     "budget_currency_conflict" to R.string.budget_save_currency_conflict,
     "budget_save_unsupported" to R.string.budget_save_unsupported,
     "budget_save_unverified" to R.string.budget_save_unverified,

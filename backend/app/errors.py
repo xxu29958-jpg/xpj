@@ -60,6 +60,7 @@ ERROR_MESSAGES = {
     "money_fold_conflict": "当前金额无法安全汇总，请刷新数据后再试。",
     "money_projection_unavailable": "换算所需的信息尚未补齐。请核对原币种和日期、补充汇率后再继续，原记录会保留。",
     "currency_not_supported": "暂不支持这个币种。",
+    "manual_currency_context_required": "这份草稿缺少币种依据，请先核对输入与已有流水。",
     "currency_binding_drift": "服务端币种配置与账本已有记录的币种不一致，已停止写入；请检查服务端币种配置后再试。",
     "currency_binding_unresolved": "账本里还有早期人民币口径的计划/预算/周期数据，当前币种配置无法判定它们的单位，已停止写入；请先把服务端币种配置改回人民币，或联系维护者迁移后再切换。",
     "currency_adoption_required": "当前安装需要先由拥有者在电脑端选择并确认本位币。",

@@ -254,7 +254,7 @@ def test_confirmed_search_and_reports_use_zero_fraction_home_amounts(
             in confirmed.text
         )
         assert f"{month} · 共 1 笔 ·" in confirmed.text
-        assert '<span class="lday-s">¥1,234</span>' in confirmed.text
+        assert '<span class="lday-s">本页 ¥1,234</span>' in confirmed.text
         assert "¥12.34" not in confirmed.text
 
         search = web_client.get(

@@ -115,7 +115,7 @@ def test_custom_category_choice_can_be_removed_without_rewriting_history(
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": 2600,
+            "home_currency_code": "CNY", "amount_cents": 2600,
             "merchant": "Unicode 咖啡店",
             "category": "咖啡",
             "client_ref": "web-library-category-choice",
@@ -177,7 +177,7 @@ def test_stale_category_removal_keeps_the_current_owner_retryable(
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": 1800,
+            "home_currency_code": "CNY", "amount_cents": 1800,
             "merchant": "并发测试商家",
             "category": "手作",
             "client_ref": "web-library-category-stale",
@@ -228,7 +228,7 @@ def test_referenced_category_removal_explains_the_required_next_step(
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": 3200,
+            "home_currency_code": "CNY", "amount_cents": 3200,
             "merchant": "规则引用商家",
             "category": "烘焙",
             "client_ref": "web-library-category-rule-reference",

@@ -3,7 +3,7 @@
 (function (window) {
   "use strict";
   const prefix = "ticketbox:manual-draft:v1:";
-  const fields = ["amount_major", "currency_code", "merchant", "category", "spent_at", "note"];
+  const fields = ["amount_major", "currency_code", "merchant", "category", "spent_at", "note", "home_currency_code"];
   const axes = ["datasetId", "clientGeneration", "accountId", "ledgerId", "deviceId"];
 
   function key(ref) {
@@ -29,6 +29,12 @@
   function fieldValues(values) {
     const result = {};
     fields.forEach(name => {
+      // Older drafts did not capture the home basis. Keep them discoverable;
+      // an empty basis cannot become today's default during restore or retry.
+      if (name === "home_currency_code" && values[name] === undefined) {
+        result[name] = "";
+        return;
+      }
       if (typeof values[name] !== "string") throw Error("invalid_draft_fields");
       result[name] = values[name];
     });

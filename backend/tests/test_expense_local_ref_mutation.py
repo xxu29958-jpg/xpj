@@ -36,6 +36,7 @@ def _create_local_expense(
     **overrides,
 ) -> dict:
     body = {
+        "home_currency_code": "CNY",
         "amount_cents": 1500,
         "merchant": "本地引用",
         "category": "餐饮",

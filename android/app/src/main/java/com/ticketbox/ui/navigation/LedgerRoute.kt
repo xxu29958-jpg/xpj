@@ -98,6 +98,7 @@ private fun ledgerScreenActions(
         shellState.openSecondaryPage(ProductSecondaryPage.TransactionsLibrary)
     },
     onManualCreate = ledgerViewModel::createManualExpense,
+    onPrepareManualCreate = ledgerViewModel::prepareManualEntry,
     onViewModeChange = ledgerViewModel::setViewMode,
     onEdit = { navController.openExpense(it.id) },
     onEnterSelection = ledgerViewModel::enterSelection,

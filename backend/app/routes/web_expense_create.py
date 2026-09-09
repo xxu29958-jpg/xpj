@@ -31,7 +31,6 @@ from app.routes.web_common import (
 )
 from app.schemas import ExpenseManualCreateRequest
 from app.services.category_service import list_ledger_category_options
-from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import (
     normalize_currency_code,
     supported_currency_codes,
@@ -75,6 +74,7 @@ def _manual_expense_context(
                 tenant_id=selected_id,
             ),
             "client_ref": client_ref or uuid4().hex,
+            "form_home_currency_code": current_values.get("home_currency_code", home),
             "currency_options": [
                 home,
                 *sorted(supported_currency_codes() - {home}),
@@ -138,6 +138,9 @@ def _manual_expense_payload(
     client_ref: str,
     home_currency: str,
 ) -> ExpenseManualCreateRequest:
+    if not home_currency:
+        raise AppError("manual_currency_context_required", "这份旧草稿缺少记账币种，输入仍保留。请先核对已有流水，再用新表单确认这笔支出。", status_code=409)
+    home_currency = normalize_currency_code(home_currency)
     code = normalize_currency_code(currency_code)
     amount_minor, amount_error = parse_amount_yuan(
         amount_major,
@@ -167,6 +170,7 @@ def _manual_expense_payload(
         "note": (note or "").strip() or None,
         "spent_at": parsed_time,
         "client_ref": clean_ref,
+        "home_currency_code": home_currency,
     }
     if code == home_currency:
         return ExpenseManualCreateRequest(
@@ -227,6 +231,7 @@ def web_manual_expense_create(
     client_ref: str = Form(default=""),
     amount_major: str = Form(default=""),
     currency_code: str = Form(default=""),
+    home_currency_code: str = Form(default=""),
     merchant: str = Form(default=""),
     category: str = Form(default=""),
     spent_at: str = Form(default=""),
@@ -246,6 +251,7 @@ def web_manual_expense_create(
     values = {
         "amount_major": amount_major,
         "currency_code": currency_code,
+        "home_currency_code": home_currency_code,
         "merchant": merchant,
         "category": category,
         "spent_at": spent_at,
@@ -266,7 +272,7 @@ def web_manual_expense_create(
             note=note,
             spent_at=spent_at,
             client_ref=client_ref,
-            home_currency=require_runtime_home_currency_code(db),
+            home_currency=home_currency_code,
         )
         created = create_manual_expense(db, payload, auth)
     except (AppError, ValidationError, InvalidOperation) as exc:

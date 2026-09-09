@@ -9,6 +9,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.viewmodel.LedgerUiState
 import com.ticketbox.viewmodel.LedgerViewMode
 
@@ -32,6 +33,7 @@ data class LedgerScreenActions(
     val onOpenGlobalSearch: () -> Unit = {},
     val onOpenLibrary: () -> Unit = {},
     val onManualCreate: (ExpenseDraft) -> Unit = {},
+    val onPrepareManualCreate: suspend () -> CurrencyCode? = { null },
     val onViewModeChange: (LedgerViewMode) -> Unit = {},
     val onEdit: (Expense) -> Unit = {},
     val onEnterSelection: (Long?) -> Unit = {},

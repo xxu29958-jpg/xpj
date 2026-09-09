@@ -90,6 +90,7 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("GET", "/web/library"): "local-only-rendering",
     ("GET", "/web/currency-adoption"): "desktop-installation-owner",
     ("POST", "/web/currency-adoption"): "desktop-installation-owner",
+    ("POST", "/web/currency-adoption/change"): "desktop-installation-owner",
     # Account flows
     ("GET", "/web/confirmed"): "local-only-rendering",
     ("POST", "/web/confirmed/batch-update"): "writer-only",

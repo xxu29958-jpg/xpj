@@ -52,6 +52,9 @@ class CreateExpenseDispatcher(
         // duplicate.
         val clientRef = request.clientRef
             ?: return DispatchResult.Failure("CreateExpense row missing client_ref")
+        if (request.originalCurrency.isNullOrBlank() || request.originalAmount.isNullOrBlank()) {
+            return DispatchResult.Failure("manual_create_original_unverified")
+        }
 
         return performCreate(row, request, clientRef)
     }

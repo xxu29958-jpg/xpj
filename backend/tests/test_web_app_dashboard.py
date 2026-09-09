@@ -155,7 +155,7 @@ def _seed_confirmed_expense(
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": amount_cents,
+            "home_currency_code": "CNY", "amount_cents": amount_cents,
             "merchant": merchant,
             "category": category,
             "expense_time": _current_month_expense_time(),

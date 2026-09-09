@@ -8,7 +8,7 @@ import pytest
 from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader
 
 from app.routes.web_common import _goals_top_rows
-from app.services.currency_common import minor_amount_label
+from app.services.currency_common import currency_input_metadata, minor_amount_label
 from app.services.recycle_bin_service import _goal_detail
 from app.services.web_search_service import WebSearchGroup, _search_goals
 
@@ -40,7 +40,8 @@ def test_overview_goal_uses_captured_currency_and_keeps_unknown_progress():
 def test_overview_template_has_no_fake_percent_or_bar_for_unknown_goal():
     html = _render("overview.html", cards={"goals_count": 1, "goals_top": [
         {"name": "待汇率目标", "percent": None, "state": "unavailable"}]},
-        overview_lanes=[{"cards": [{"key": "goals"}]}], selected_ledger_id="owner")
+        overview_lanes=[{"cards": [{"key": "goals"}]}], selected_ledger_id="owner",
+        currency_input=currency_input_metadata("CNY"))
     assert "暂不可计算" in html
     assert "None%" not in html
     assert 'aria-label="待汇率目标已使用' not in html

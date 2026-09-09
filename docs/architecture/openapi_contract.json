@@ -9375,6 +9375,20 @@
             ],
             "title": "Expense Time"
           },
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "maxLength": 3,
+                "minLength": 3,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Currency captured when this manual draft began; independent of the current default. Legacy requests may omit it only with complete original money, or to replay an accepted client_ref.",
+            "title": "Home Currency Code"
+          },
           "merchant": {
             "anyOf": [
               {

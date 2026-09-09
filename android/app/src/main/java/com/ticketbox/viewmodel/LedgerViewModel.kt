@@ -496,7 +496,7 @@ class LedgerViewModel(
 
     fun createManualExpense(draft: ExpenseDraft) {
         viewModelScope.launch {
-            if (blockManualCreateIfUnwritable()) return@launch
+            if (blockManualCreateIfUnwritable(draft)) return@launch
             if (draft.amountCents == null && draft.originalAmountMinor == null) {
                 _uiState.update {
                     it.copy(
@@ -516,7 +516,7 @@ class LedgerViewModel(
             }
             // R15b-1：离线乐观行按 VM 确认的账本币种落 home（门已保证非 null）——
             // JPY 安装手记乐观行与同步后权威行同口径。
-            repository.createManualExpense(draft.copy(ledgerHomeCurrency = _uiState.value.ledgerCurrency))
+            repository.createManualExpense(draft.copy(ledgerHomeCurrency = draft.ledgerHomeCurrency ?: _uiState.value.ledgerCurrency))
                 .onSuccess { expense ->
                     loadCategories()
                     loadTags()
@@ -558,7 +558,7 @@ class LedgerViewModel(
     }
 
     /** 手记可写性门（R13-6）：只读账本或账本币种未确认时亮错并返回 true。 */
-    private suspend fun blockManualCreateIfUnwritable(): Boolean {
+    private suspend fun blockManualCreateIfUnwritable(draft: ExpenseDraft): Boolean {
         if (!repository.canModifyLedger()) {
             _uiState.update {
                 it.copy(
@@ -570,6 +570,7 @@ class LedgerViewModel(
             }
             return true
         }
+        if (draft.ledgerHomeCurrency != null) return false
         // R13-6 + R15a-2：账本币种未确认时先重解析再裁决 —— 离线冷启动的一次性门闩解除
         // （init 解析失败后网络恢复，写尝试自带重解析，不再会话级锁死）；仍 null 才拦截
         // （不落 CNY 默认币种落 FX 放大；sheet 的初始币种已由 ledgerCurrency 引导，
@@ -589,11 +590,20 @@ class LedgerViewModel(
 
     private var currencyResolutionGeneration = 0L
 
+    suspend fun prepareManualEntry(): CurrencyCode? {
+        if (!repository.canModifyLedger()) return null
+        refreshLedgerCurrency()
+        return _uiState.value.ledgerCurrency
+    }
+
     /** （重新）解析账本币种（R15a-2）：代际守卫 last-writer-wins —— 并发解析旧结果不得
      *  后于新结果落定（快速切账本/恢复重试乱序安全）。 */
     private suspend fun refreshLedgerCurrency() {
         val generation = ++currencyResolutionGeneration
-        val resolved = CurrencyCode.fromStorageKeyOrNull(debts.listDebts().getOrNull()?.ledgerHomeCurrencyCode)
+        val resolved = debts.listDebts().fold(
+            onSuccess = { CurrencyCode.fromStorageKeyOrNull(it.ledgerHomeCurrencyCode) },
+            onFailure = { _uiState.value.ledgerCurrency },
+        )
         _uiState.update {
             if (generation != currencyResolutionGeneration) return@update it
             it.copy(ledgerCurrency = resolved)

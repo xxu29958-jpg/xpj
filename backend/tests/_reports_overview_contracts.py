@@ -22,7 +22,7 @@ def _manual_report_expense(
         "/api/expenses/manual",
         headers=headers,
         json={
-            "amount_cents": amount_cents,
+            "home_currency_code": "CNY", "amount_cents": amount_cents,
             "merchant": merchant,
             "category": category,
             "expense_time": expense_time,

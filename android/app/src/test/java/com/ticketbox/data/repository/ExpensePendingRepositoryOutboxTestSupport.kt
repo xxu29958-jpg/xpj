@@ -76,6 +76,7 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
 
     protected val draft = ExpenseDraft(
         amountCents = 12345L,
+        ledgerHomeCurrency = CurrencyCode.CNY,
         originalAmountMinor = 12345L,
         originalCurrencyCode = CurrencyCode.CNY,
         merchant = "新商家",

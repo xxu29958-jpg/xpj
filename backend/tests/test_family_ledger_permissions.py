@@ -754,7 +754,7 @@ def test_viewer_cannot_create_manual_expense(client: TestClient, *, identity) ->
     resp = client.post(
         "/api/expenses/manual",
         headers=_bearer(viewer_token),
-        json={"amount_cents": 1234, "merchant": "X", "category": "其他"},
+        json={"home_currency_code": "CNY", "amount_cents": 1234, "merchant": "X", "category": "其他"},
     )
     assert resp.status_code == 403
     assert resp.json()["error"] == "permission_denied"
@@ -768,7 +768,7 @@ def test_member_can_create_manual_expense(client: TestClient, *, identity) -> No
     resp = client.post(
         "/api/expenses/manual",
         headers=_bearer(member_token),
-        json={"amount_cents": 1234, "merchant": "X", "category": "其他"},
+        json={"home_currency_code": "CNY", "amount_cents": 1234, "merchant": "X", "category": "其他"},
     )
     assert resp.status_code == 200, resp.json()
 
@@ -827,7 +827,7 @@ def test_owner_can_change_member_between_writer_and_viewer(client: TestClient, *
     blocked_write = client.post(
         "/api/expenses/manual",
         headers=_bearer(member_token),
-        json={"amount_cents": 1234, "merchant": "X", "category": "其他"},
+        json={"home_currency_code": "CNY", "amount_cents": 1234, "merchant": "X", "category": "其他"},
     )
     assert blocked_write.status_code == 403
 
@@ -841,7 +841,7 @@ def test_owner_can_change_member_between_writer_and_viewer(client: TestClient, *
     allowed_write = client.post(
         "/api/expenses/manual",
         headers=_bearer(member_token),
-        json={"amount_cents": 1234, "merchant": "X", "category": "其他"},
+        json={"home_currency_code": "CNY", "amount_cents": 1234, "merchant": "X", "category": "其他"},
     )
     assert allowed_write.status_code == 200, allowed_write.json()
 

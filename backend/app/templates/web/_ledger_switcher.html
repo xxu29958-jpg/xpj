@@ -44,6 +44,11 @@
     </a>
     {% endif %}
     {% endfor %}
+    {% if can_manage_installation_currency|default(false) %}
+    <a class="row" href="/web/currency-adoption">
+      <div class="meta"><div class="name">默认币种</div><div class="sub">安装拥有者设置</div></div>
+    </a>
+    {% endif %}
     {# ≤40rem 顶栏只留 收票/我 — 搜索与外观收进本面板 (shell.css 的
        .ledger-mobile-links 仅在 ≤40rem 显示; 宽屏由 topbar 独立入口承担)。
        搜索是真实路由链接; 外观与 topbar 实例共用同一 _appearance_control.html

@@ -238,15 +238,13 @@ fun ExpenseEntity.toDomain(): Expense {
  *  is the device-unique idempotency ref the offline-aware create path mints and
  *  reuses on outbox replay; the online quick-add path leaves it null. */
 fun ExpenseDraft.toManualCreateRequest(clientRef: String? = null): ExpenseManualCreateRequestDto {
-    val submittedOriginalMinor = originalAmountMinor ?: amountCents
-    val submittedCurrency = originalCurrencyCode
-        ?: if (submittedOriginalMinor != null) FxContract.HomeCurrency else null
+    val homeCurrency = requireNotNull(ledgerHomeCurrency) { "Manual entry requires its captured home currency" }
+    val submittedOriginalMinor = requireNotNull(originalAmountMinor ?: amountCents) { "Manual entry requires an amount" }
+    val submittedCurrency = originalCurrencyCode ?: homeCurrency
     return ExpenseManualCreateRequestDto(
-        originalCurrency = submittedCurrency?.storageKey,
-        originalAmount = minorToMajorText(
-            submittedOriginalMinor,
-            submittedCurrency ?: FxContract.HomeCurrency,
-        ),
+        originalCurrency = submittedCurrency.storageKey,
+        originalAmount = minorToMajorText(submittedOriginalMinor, submittedCurrency),
+        homeCurrencyCode = homeCurrency.storageKey,
         spentAt = expenseTime,
         merchant = merchant,
         category = normalizeExpenseCategory(category),
@@ -275,9 +273,7 @@ fun ExpenseDraft.toManualCreateRequest(clientRef: String? = null): ExpenseManual
  */
 fun ExpenseDraft.toLocalCreateEntity(ledgerId: String, clientRef: String): ExpenseEntity {
     val submittedOriginalMinor = originalAmountMinor ?: amountCents
-    // R15b-1：乐观窗 home 币种取提交时 VM 确认的账本币种（旧码恒 CNY，JPY 安装手记
-    // 乐观行显示 ¥12.00 而同步后 ¥1,200）；缺省（非手记路径）维持 FxContract 兜底。
-    val homeCurrency = ledgerHomeCurrency ?: FxContract.HomeCurrency
+    val homeCurrency = requireNotNull(ledgerHomeCurrency) { "Manual entry requires its captured home currency" }
     val submittedCurrency = originalCurrencyCode ?: homeCurrency
     // home 腿诚实：显式 amountCents 优先；同币手记（original==home）原值即 home（同币
     // 不折算）；跨币不可折算 → null —— 显示走 forRecord 原始腿（R14-3），聚合跳过

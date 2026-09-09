@@ -44,6 +44,7 @@ private fun errorCodeStringRes(code: String?): Int? = code?.let(errorCodeStringR
 
 private val errorCodeStringResByCode = mapOf(
     "money_projection_unavailable" to R.string.error_money_projection_unavailable,
+    "manual_currency_context_required" to R.string.error_manual_currency_context_required,
     "invalid_token" to R.string.error_invalid_token,
     "legacy_auth_removed" to R.string.error_legacy_auth_removed,
     "invalid_pairing_code" to R.string.error_invalid_pairing_code,

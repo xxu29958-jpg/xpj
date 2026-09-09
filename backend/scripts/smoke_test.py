@@ -447,6 +447,7 @@ def _create_manual_expense_and_check_settings(base_url: str) -> None:
     manual_body = json.dumps(
         {
             "amount_cents": 1280,
+            "home_currency_code": "CNY",
             "merchant": "手动早餐",
             "category": "吃饭",
             "note": "上班路上",
@@ -481,7 +482,7 @@ def _create_manual_expense_and_check_settings(base_url: str) -> None:
             "Content-Type": "application/json",
             "Idempotency-Key": str(uuid.uuid4()),
         },
-        body=b'{"merchant":"missing amount"}',
+        body=b'{"merchant":"missing amount","home_currency_code":"CNY"}',
     )
     assert_error(result, 400, "amount_required")
     print("OK manual expense create")

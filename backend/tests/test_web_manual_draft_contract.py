@@ -32,10 +32,11 @@ vm.runInNewContext(fs.readFileSync(SCRIPT, 'utf8'), {window});
 const drafts = window.TicketboxManualDrafts;
 const scope = {datasetId:'dataset', clientGeneration:'generation', accountId:'account', ledgerId:'ledger', deviceId:'device'};
 const ref = 'a'.repeat(32);
-const fields = {amount_major:'28.50', currency_code:'CNY', merchant:'合成咖啡店', category:'其他', spent_at:'2026-09-06T12:30', note:'合成草稿', csrf_token:'never-store', token:'never-store'};
+const fields = {amount_major:'28.50', currency_code:'CNY', home_currency_code:'CNY', merchant:'合成咖啡店', category:'其他', spent_at:'2026-09-06T12:30', note:'合成草稿', csrf_token:'never-store', token:'never-store'};
 const record = drafts.save(scope, ref, 'editing', fields);
 assert.equal(record.clientRef, ref);
 assert.equal(drafts.read(ref).values.amount_major, '28.50');
+assert.equal(drafts.read(ref).values.home_currency_code, 'CNY');
 assert.equal(drafts.read(ref).values.csrf_token, undefined);
 assert.equal(drafts.read(ref).values.token, undefined);
 assert.equal(drafts.list(scope).length, 1);
@@ -52,6 +53,7 @@ assert.equal(drafts.list({...scope, deviceId:'replacement'}).length, 1);
 drafts.save(scope, ref, 'submitted', fields);
 assert.throws(() => drafts.save(scope, ref, 'editing', fields));
 assert.throws(() => drafts.save(scope, ref, 'submitted', {...fields, amount_major:'99'}));
+assert.throws(() => drafts.save(scope, ref, 'submitted', {...fields, home_currency_code:'JPY'}));
 assert.equal(drafts.save(scope, ref, 'submitted', fields).values.amount_major, '28.50');
 // Only the native rejection for this exact scope/ref permits correction.
 drafts.save(scope, ref, 'editing', fields, 'rejected');
@@ -61,6 +63,14 @@ assert.equal(drafts.acknowledge({scope, clientRef:'b'.repeat(32)}), false);
 assert.equal(drafts.acknowledge({scope, clientRef:ref}), true);
 assert.equal(drafts.read(ref), null);
 assert.equal(drafts.list(scope).length, 0);
+// Old snapshots remain readable and cannot silently inherit a new home basis.
+const legacy = {...record, values:{...record.values}};
+delete legacy.values.home_currency_code;
+entries.set(drafts.key(ref), JSON.stringify(legacy));
+assert.equal(drafts.read(ref).values.home_currency_code, undefined);
+assert.equal(drafts.save(scope, ref, 'submitted', legacy.values).values.home_currency_code, '');
+assert.throws(() => drafts.save(scope, ref, 'submitted', fields));
+entries.clear();
 // Unknown/corrupt data is not interpreted or overwritten as a fresh intent.
 entries.set(drafts.key(ref), JSON.stringify({...record, version:2}));
 assert.throws(() => drafts.read(ref));

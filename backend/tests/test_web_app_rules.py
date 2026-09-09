@@ -161,7 +161,7 @@ def _disabled_rule_with_recycled_category(
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": 2600,
+            "home_currency_code": "CNY", "amount_cents": 2600,
             "merchant": "规则分类商家",
             "category": "烘焙",
             "client_ref": "web-rule-recycled-category",

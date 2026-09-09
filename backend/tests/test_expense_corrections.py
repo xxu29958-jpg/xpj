@@ -116,7 +116,7 @@ def test_correction_can_explicitly_clear_time_and_scores(client: TestClient, *, 
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": 1280,
+            "home_currency_code": "CNY", "amount_cents": 1280,
             "merchant": "带评分的账单",
             "category": "餐饮",
             "expense_time": "2026-05-04T00:30:00Z",

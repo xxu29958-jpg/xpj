@@ -169,7 +169,7 @@ def test_recurring_candidate_count_excludes_formalized_merchants(
             "/api/expenses/manual",
             headers=identity.app_headers,
             json={
-                "amount_cents": 9900,
+                "home_currency_code": "CNY", "amount_cents": 9900,
                 "merchant": "国家电网",
                 "category": "居家",
                 "expense_time": f"{target_month}-10T04:00:00Z",

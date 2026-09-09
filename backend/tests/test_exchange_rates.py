@@ -307,7 +307,7 @@ def test_legacy_amount_payload_defaults_to_cny_rate_one(client: TestClient, *, i
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": 1280,
+            "home_currency_code": "CNY", "amount_cents": 1280,
             "merchant": "手动早餐",
             "category": "餐饮",
             "expense_time": "2026-05-04T00:30:00Z",

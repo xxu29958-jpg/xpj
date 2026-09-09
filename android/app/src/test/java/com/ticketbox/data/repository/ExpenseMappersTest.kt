@@ -72,6 +72,7 @@ class ExpenseMappersTest {
             amountCents = null,
             originalCurrencyCode = CurrencyCode.JPY,
             originalAmountMinor = 1200,
+            ledgerHomeCurrency = CurrencyCode.JPY,
             merchant = "东京交通",
             category = "交通",
             note = null,
@@ -82,6 +83,7 @@ class ExpenseMappersTest {
         ).toManualCreateRequest()
 
         assertEquals("JPY", request.originalCurrency)
+        assertEquals("JPY", request.homeCurrencyCode)
         assertEquals("1200", request.originalAmount)
         assertEquals("2026-05-04T04:00:00Z", request.spentAt)
         // 专用 create DTO（ExpenseManualCreateRequestDto）没有 expectedRowVersion
@@ -300,8 +302,8 @@ class ExpenseMappersTest {
     }
 
     @Test
-    fun categoryOnlyDraftDoesNotSubmitSyntheticCurrencyFields() {
-        val request = ExpenseDraft(
+    fun categoryOnlyDraftCannotBecomeAManualMoneyCreate() {
+        val draft = ExpenseDraft(
             amountCents = null,
             originalCurrencyCode = null,
             originalAmountMinor = null,
@@ -312,11 +314,8 @@ class ExpenseMappersTest {
             tags = null,
             valueScore = null,
             regretScore = null,
-        ).toManualCreateRequest()
-
-        assertEquals(null, request.originalCurrency)
-        assertEquals(null, request.originalAmount)
-        assertEquals("交通", request.category)
+        )
+        assertFailsWith<IllegalArgumentException> { draft.toManualCreateRequest() }
     }
 
     @Test

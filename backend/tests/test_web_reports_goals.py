@@ -38,7 +38,7 @@ def _create_expense(
         "/api/expenses/manual",
         headers=identity.gray_app_headers if gray else identity.app_headers,
         json={
-            "amount_cents": amount_cents,
+            "home_currency_code": "CNY", "amount_cents": amount_cents,
             "merchant": merchant,
             "category": category,
             "expense_time": expense_time,

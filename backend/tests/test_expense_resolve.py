@@ -43,6 +43,7 @@ def _owner_device_id(identity) -> int:
 
 def _create_manual(client: TestClient, headers: dict[str, str], **overrides) -> dict:
     body = {
+        "home_currency_code": "CNY",
         "amount_cents": 1500,
         "merchant": "解析测试",
         "category": "餐饮",

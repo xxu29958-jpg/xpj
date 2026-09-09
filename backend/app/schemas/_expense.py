@@ -76,6 +76,9 @@ class UploadResponse(BaseModel):
 class ExpenseManualCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    home_currency_code: str | None = Field(default=None, min_length=3, max_length=3,
+        description="Currency captured when this manual draft began; independent of the current default. "
+        "Legacy requests may omit it only with complete original money, or to replay an accepted client_ref.")
     amount_cents: NonNegativeMoneyMinor | None = None
     original_currency: str | None = Field(default=None, min_length=3, max_length=3)
     original_amount: NonNegativeCanonicalDecimalInput | None = None

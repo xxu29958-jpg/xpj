@@ -92,7 +92,7 @@ class StatsProjectionRepositoryTest {
         assertEquals(first.fetchedAt, saved.fetchedAt)
         assertEquals(first.value, saved.value)
         assertEquals("JPY", saved.value.homeCurrencyCode)
-        assertEquals(listOf("旅行", "旅行"), api.tags)
+        assertEquals(listOf<String?>("旅行", "旅行"), api.tags)
     }
 
     @Test

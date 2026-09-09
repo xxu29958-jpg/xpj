@@ -27,6 +27,7 @@ from tests._runtime_protocol import current_protocol_headers
 
 def _manual_payload(**overrides) -> dict:
     body = {
+        "home_currency_code": "CNY",
         "amount_cents": 1000,
         "merchant": "测试商家",
         "category": "餐饮",
@@ -112,6 +113,7 @@ def test_client_ref_replay_with_auto_classified_category_is_idempotent(
     # No category sent → the server auto-classifies the stored row. A faithful replay
     # (also omitting category) must still HIT, not 422 on the now-classified row.
     body = {
+        "home_currency_code": "CNY",
         "amount_cents": 4200,
         "merchant": "全家便利店",
         "expense_time": "2026-05-03T00:00:00Z",
@@ -162,6 +164,7 @@ def test_same_client_ref_different_note_is_rejected(client: TestClient, *, ident
 
 def test_null_client_ref_creates_distinct_rows(client: TestClient, *, identity) -> None:
     body = {
+        "home_currency_code": "CNY",
         "amount_cents": 1000,
         "merchant": "测试商家",
         "category": "餐饮",

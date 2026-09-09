@@ -6,7 +6,7 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
-from typing import Literal
+from typing import Literal, TypeVar
 from uuid import RFC_4122, UUID
 
 from sqlalchemy import select, update
@@ -80,6 +80,9 @@ class CurrencyAdoptionReceipt:
     activated_at: str
 
 
+_Receipt = TypeVar("_Receipt")
+
+
 def adoption_preview(db: Session) -> CurrencyAdoptionPreview:
     binding = _load_binding(db)
     if binding is None:
@@ -129,13 +132,15 @@ def _claim_idempotency_key(
     *,
     key: str,
     fingerprint: str,
-) -> InstallationIdempotencyKey | CurrencyAdoptionReceipt:
+    operation: str = INSTALLATION_ADOPTION_OPERATION,
+    receipt_type: type[_Receipt] = CurrencyAdoptionReceipt,
+) -> InstallationIdempotencyKey | _Receipt:
     existing = db.get(InstallationIdempotencyKey, key)
     if existing is None:
         now = now_utc()
         candidate = InstallationIdempotencyKey(
             idempotency_key=key,
-            operation=INSTALLATION_ADOPTION_OPERATION,
+            operation=operation,
             request_fingerprint=fingerprint,
             status="in_progress",
             receipt=None,
@@ -155,14 +160,14 @@ def _claim_idempotency_key(
             return candidate
     if existing is None:
         raise AppError("currency_binding_corrupt", status_code=503)
-    if existing.operation != INSTALLATION_ADOPTION_OPERATION or existing.request_fingerprint != fingerprint:
+    if existing.operation != operation or existing.request_fingerprint != fingerprint:
         raise AppError("idempotency_key_reused", status_code=422)
     if existing.status == "in_progress":
         raise AppError("idempotency_key_in_progress", status_code=409)
     if existing.status != "succeeded" or not isinstance(existing.receipt, dict):
         raise AppError("currency_binding_corrupt", status_code=503)
     try:
-        return CurrencyAdoptionReceipt(**existing.receipt)
+        return receipt_type(**existing.receipt)
     except TypeError as exc:
         raise AppError("currency_binding_corrupt", status_code=503) from exc
 

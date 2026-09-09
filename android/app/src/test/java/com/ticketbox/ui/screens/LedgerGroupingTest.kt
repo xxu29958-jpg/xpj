@@ -32,7 +32,7 @@ class LedgerGroupingTest {
             ),
         )
 
-        assertEquals(mapOf("CNY" to 4650L), group.amountsByCurrency)
+        assertEquals(mapOf<String?, Long?>("CNY" to 4650L), group.amountsByCurrency)
     }
 
     @Test
@@ -59,7 +59,7 @@ class LedgerGroupingTest {
 
         // 120.00 - 30.00 - 10.00: the gross root amount (12_000) plus the two
         // negative server contributions — never a recomputed net of amounts.
-        assertEquals(mapOf("CNY" to 8000L), group.amountsByCurrency)
+        assertEquals(mapOf<String?, Long?>("CNY" to 8000L), group.amountsByCurrency)
     }
 
     @Test
@@ -84,7 +84,7 @@ class LedgerGroupingTest {
             ),
         )
 
-        assertEquals(mapOf("CNY" to 0L), group.amountsByCurrency)
+        assertEquals(mapOf<String?, Long?>("CNY" to 0L), group.amountsByCurrency)
         assertEquals(2, group.itemCount)
     }
 
@@ -168,7 +168,7 @@ class LedgerGroupingTest {
             expenseRow(2, amountCents = 100).withRoot { it.copy(homeCurrencyCode = "JPY") },
             refund.copy(offset = refund.offset.copy(homeCurrencyCode = "JPY")),
         )
-        val expected = mapOf("CNY" to 100L, "JPY" to 50L)
+        val expected = mapOf<String?, Long?>("CNY" to 100L, "JPY" to 50L)
         assertEquals(expected, LedgerStreamGroup("2026-05-17", "date", items).amountsByCurrency)
         assertEquals(expected, com.ticketbox.viewmodel.LedgerUiState(items = items).summary.amountsByCurrency)
     }
@@ -181,7 +181,7 @@ class LedgerGroupingTest {
             expenseRow(3, amountCents = null),
             expenseRow(4, amountCents = 100),
         )
-        assertEquals(mapOf(null to null, "CNY" to null), LedgerStreamGroup("date", "date", items).amountsByCurrency)
+        assertEquals(mapOf<String?, Long?>(null to null, "CNY" to null), LedgerStreamGroup("date", "date", items).amountsByCurrency)
     }
 
     @Test
@@ -192,7 +192,7 @@ class LedgerGroupingTest {
             expenseRow(3, amountCents = Long.MAX_VALUE),
             expenseRow(4, amountCents = 1),
         )
-        assertEquals(mapOf("ZZZ" to 150L, "CNY" to null), LedgerStreamGroup("date", "date", items).amountsByCurrency)
+        assertEquals(mapOf<String?, Long?>("ZZZ" to 150L, "CNY" to null), LedgerStreamGroup("date", "date", items).amountsByCurrency)
     }
 }
 

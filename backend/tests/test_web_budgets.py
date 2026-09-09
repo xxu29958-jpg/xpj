@@ -196,7 +196,7 @@ def test_web_budgets_save_and_display_budget_dashboard(web_client: TestClient, *
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": 12500,
+            "home_currency_code": "CNY", "amount_cents": 12500,
             "merchant": "五月餐饮",
             "category": "餐饮",
             "expense_time": "2026-05-05T12:00:00Z",
@@ -206,7 +206,7 @@ def test_web_budgets_save_and_display_budget_dashboard(web_client: TestClient, *
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": 3000,
+            "home_currency_code": "CNY", "amount_cents": 3000,
             "merchant": "医保报销",
             "category": "医疗",
             "expense_time": "2026-05-06T12:00:00Z",
@@ -294,7 +294,7 @@ def test_web_budgets_selected_ledger_isolated(web_client: TestClient, *, identit
         "/api/expenses/manual",
         headers=identity.gray_app_headers,
         json={
-            "amount_cents": 6600,
+            "home_currency_code": "CNY", "amount_cents": 6600,
             "merchant": "灰度餐饮",
             "category": "餐饮",
             "expense_time": "2026-05-05T12:00:00Z",
@@ -315,7 +315,7 @@ def test_web_budgets_invalid_amount_shows_error_without_mutating(
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": 12500,
+            "home_currency_code": "CNY", "amount_cents": 12500,
             "merchant": "五月餐饮",
             "category": "餐饮",
             "expense_time": "2026-05-05T12:00:00Z",

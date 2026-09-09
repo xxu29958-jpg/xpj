@@ -19,7 +19,7 @@ def _create_confirmed(client: TestClient, *, identity, merchant: str = "Batch Ra
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": 1200,
+            "home_currency_code": "CNY", "amount_cents": 1200,
             "merchant": merchant,
             "category": "Initial",
             "expense_time": "2026-05-05T12:00:00Z",

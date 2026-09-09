@@ -243,7 +243,7 @@ def test_delete_revoked_device_preserves_expense_revision_actor_snapshot(
         "/api/expenses/manual",
         headers=_auth_headers(spare_token),
         json={
-            "amount_cents": 1880,
+            "home_currency_code": "CNY", "amount_cents": 1880,
             "merchant": "Revision Device Snapshot",
             "category": "Test",
             "expense_time": "2026-08-30T08:00:00Z",

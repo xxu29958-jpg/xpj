@@ -129,8 +129,8 @@ class ReportRateRecoveryConnectedTest {
     }
 
     private fun enterRate(value: String) {
-        compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("advice_rate_value")), useUnmergedTree = true)
-            .performScrollTo().performTextReplacement(value)
-            .assertTextEquals(value).performImeAction()
+        val rateInput = compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("advice_rate_value")), useUnmergedTree = true)
+        rateInput.performScrollTo().performTextReplacement(value)
+        rateInput.assertTextEquals(value).performImeAction()
     }
 }

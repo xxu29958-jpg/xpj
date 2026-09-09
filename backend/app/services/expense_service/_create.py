@@ -136,6 +136,16 @@ def _insert_manual_expense(
     actor_device_id: int,
 ) -> Expense:
     resolve_write_capability(db)
+    home = payload.home_currency_code
+    if home is None:
+        has_original_money = (payload.original_currency is not None or payload.original_currency_code is not None) and (
+            payload.original_amount is not None or payload.original_amount_minor is not None
+        )
+        if not has_original_money:
+            raise AppError("manual_currency_context_required", "这笔旧草稿缺少币种依据，尚未保存。请先核对输入与已有流水。", status_code=422)
+        # The legacy wire promised original payment money only. Its first accepted
+        # home projection remains unchanged; new producers capture both currencies.
+        home = require_runtime_home_currency_code(db)
     now = now_utc()
     expense = Expense(
         tenant_id=tenant_id,
@@ -163,7 +173,7 @@ def _insert_manual_expense(
     apply_currency_payload(
         db,
         tenant_id=tenant_id,
-        home_currency_code=require_runtime_home_currency_code(db),
+        home_currency_code=home,
         expense=expense,
         payload=payload,
         amount_was_explicit=payload.amount_cents is not None,

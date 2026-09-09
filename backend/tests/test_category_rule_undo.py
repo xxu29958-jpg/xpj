@@ -141,7 +141,7 @@ def test_undo_enabled_rule_requires_its_category_to_be_restored(
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": 2600,
+            "home_currency_code": "CNY", "amount_cents": 2600,
             "merchant": "规则恢复分类商家",
             "category": category,
             "client_ref": "rule-undo-recycled-category",

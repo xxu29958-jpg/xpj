@@ -57,9 +57,9 @@ class BudgetAdviceManualRateRecoveryTest {
         compose.onNodeWithText(context.getString(R.string.advice_rate_add)).performScrollTo().performClick()
         compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("advice_rate_value"), useUnmergedTree = true)
             .fetchSemanticsNodes().isNotEmpty() }
-        compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("advice_rate_value")), useUnmergedTree = true)
-            .performScrollTo().performTextReplacement("20")
-            .assertTextEquals("20").performImeAction()
+        val rateInput = compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("advice_rate_value")), useUnmergedTree = true)
+        rateInput.performScrollTo().performTextReplacement("20")
+        rateInput.assertTextEquals("20").performImeAction()
         compose.onNodeWithTag("advice_rate_save").performScrollTo().assertIsDisplayed().assertIsEnabled().performClick()
         val row = fixture.awaitSavedRow(compose)
         val intent = requireNotNull(fixture.adapters.manualRateAdapter.fromJson(row.payload))

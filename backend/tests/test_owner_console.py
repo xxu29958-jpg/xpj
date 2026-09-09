@@ -1120,7 +1120,7 @@ def test_owner_dashboard_budget_status_uses_primary_visible_ledger(
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": 12000,
+            "home_currency_code": "CNY", "amount_cents": 12000,
             "merchant": "预算状态餐饮",
             "category": "餐饮",
             "expense_time": f"{month}-05T12:00:00Z",
