@@ -55,6 +55,7 @@ class RecurringOccurrenceRoomContinuityTest {
         compose.waitUntil(10_000) { model.value?.uiState?.value?.canWrite == true }
         compose.onNodeWithTag("occurrence-state").assertTextEquals("本期尚未履约")
         compose.onNodeWithTag("occurrence-payment-1").performScrollTo().performClick()
+        compose.onNodeWithText("JPY ¥12,345", substring = true).performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("occurrence-submit").performScrollTo().performClick()
         compose.waitUntil(10_000) { fixture.stored().size == 1 }
         val original = fixture.stored().single()
@@ -76,6 +77,7 @@ class RecurringOccurrenceRoomContinuityTest {
         assertEquals(fixture.network.calls.first(), fixture.network.calls.last())
         assertEquals(original["idempotencyKey"], fixture.network.calls.last().second)
         assertEquals(0L, model.value?.uiState?.value?.occurrence?.reservedAmountCents)
+        compose.onNodeWithText("关联付款当前金额 JPY ¥12,345").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("查看关联账单").performScrollTo().performClick()
         assertEquals(listOf(1L), openedExpenses)
         completeUndo()
