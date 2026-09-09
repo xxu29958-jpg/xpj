@@ -465,6 +465,12 @@ detekt {
 }
 
 tasks.withType<dev.detekt.gradle.Detekt>().configureEach {
+    if (name.endsWith("UnitTest")) {
+        config.setFrom(
+            rootProject.file("detekt.yml"),
+            rootProject.file("detekt-tests.yml"),
+        )
+    }
     exclude { element ->
         element.file.absolutePath
             .replace('\\', '/')

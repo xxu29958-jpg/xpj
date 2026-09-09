@@ -2,7 +2,8 @@
 # in docs/rules/CODE_QUALITY_STANDARDS.md ("Kotlin / Android" table). Nothing
 # else is active on purpose: style/naming/etc. rule sets were never part of the
 # review baseline and would need their own sign-off before joining the gate.
-# Applied via the type-resolving :app:detektGrayDebug / :app:detektGrayDebugUnitTest
+# Applied via the type-resolving :app:detektGrayDebug / :app:detektGrayDebugUnitTest;
+# unit tests additionally use detekt-tests.yml for case/fixture structure.
 # (LongParameterList needs full analysis in detekt 2.x — the plain :app:detekt
 # task silently skips it). Pre-existing violations live in the per-variant
 # android/app/detekt-baseline-<variant>.xml files.
