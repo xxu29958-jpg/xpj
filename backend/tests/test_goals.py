@@ -239,12 +239,8 @@ def test_goals_permissions_and_ledger_isolation(client: TestClient, *, identity)
     owner_goal = client.post(
         "/api/goals",
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
-        json={
-            "home_currency_code": "CNY",
-            "name": "Owner Goal",
-            "month": "2026-05",
-            "target_amount_cents": 5000,
-        },
+        json={"name": "Owner Goal", "month": "2026-05",
+            "target_amount_cents": 5000, "home_currency_code": "CNY"},
     )
     assert owner_goal.status_code == 201, owner_goal.json()
     owner_public_id = owner_goal.json()["public_id"]
@@ -252,12 +248,8 @@ def test_goals_permissions_and_ledger_isolation(client: TestClient, *, identity)
     gray_goal = client.post(
         "/api/goals",
         headers={**identity.gray_app_headers, "Idempotency-Key": str(uuid4())},
-        json={
-            "home_currency_code": "CNY",
-            "name": "Gray Goal",
-            "month": "2026-05",
-            "target_amount_cents": 6000,
-        },
+        json={"name": "Gray Goal", "month": "2026-05",
+            "target_amount_cents": 6000, "home_currency_code": "CNY"},
     )
     assert gray_goal.status_code == 201, gray_goal.json()
     gray_public_id = gray_goal.json()["public_id"]
@@ -357,14 +349,12 @@ def test_goals_update_archive_and_validation(client: TestClient, *, identity) ->
     assert created.status_code == 201, created.json()
     public_id = created.json()["public_id"]
 
-    # ADR-0038 PR-2j: PATCH requires expected_row_version token.
-    # ADR-0042: PATCH also requires an Idempotency-Key (claimed before the OCC).
+    # The original currency, key and OCC travel together on the edit.
     updated = client.patch(
         f"/api/goals/{public_id}",
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
-            "home_currency_code": "CNY",
-            "expected_row_version": created.json()["row_version"],
+            "home_currency_code": "CNY", "expected_row_version": created.json()["row_version"],
             "name": "全月目标",
             "category": None,
             "target_amount_cents": 5000,
