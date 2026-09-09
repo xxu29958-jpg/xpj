@@ -18,11 +18,11 @@ from app.services.expense_revision_service import (
 )
 from app.services.ocr_service import ocr_draft_fields_after_clearing
 from app.services.optimistic_concurrency import claim_row_with_token
-from app.services.rule_service import (
+from app.services.rule_matching import (
     RuleMatch,
-    _casefold_join,
-    _merchant_context,
+    casefold_join,
     match_category_rule,
+    merchant_context,
 )
 
 # Categories that are considered "untouched" and safe for rule auto-fill.
@@ -205,11 +205,11 @@ def _haystack_for(
 ) -> str:
     field = (match_field or "merchant").strip().lower()
     if field == "merchant":
-        return _casefold_join(_merchant_context(expense, alias_map))
+        return casefold_join(merchant_context(expense, alias_map))
     if field in {"raw_text", "raw"}:
         return ocr_text.casefold()
     # "any" or unrecognized → match against merchant + ocr text + note
-    return _casefold_join([*_merchant_context(expense, alias_map), ocr_text, expense.note or ""])
+    return casefold_join([*merchant_context(expense, alias_map), ocr_text, expense.note or ""])
 
 
 def _changed_after_rule_application(expense: Expense, change: RuleApplicationChange) -> bool:

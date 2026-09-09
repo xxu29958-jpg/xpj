@@ -92,10 +92,7 @@ def _apply_rules_to_status(
     if not preview_token:
         raise AppError("preview_required", "请先预览影响范围，再确认应用规则。", status_code=409)
     expenses, scan_limit_reached = _rule_application_candidates(
-        db,
-        tenant_id=tenant_id,
-        status=status,
-        max_scan=max_scan,
+        db, tenant_id=tenant_id, status=status, max_scan=max_scan,
     )
     rules = _enabled_rules(db, tenant_id=tenant_id)
     authorize_currency_metadata_write(db)
@@ -119,46 +116,28 @@ def _apply_rules_to_status(
         if new_category == before_category:
             continue
         applied = _try_apply_rule_category(
-            db,
-            tenant_id=tenant_id,
-            status=status,
-            expense=expense,
-            rule_id=match.rule_id,
-            matched_keyword=match.matched_keyword,
-            before_category=before_category,
-            after_category=new_category,
-            now=now,
-            actor_account_id=actor_account_id,
-            actor_device_id=actor_device_id,
+            db, tenant_id=tenant_id, status=status, expense=expense,
+            rule_id=match.rule_id, matched_keyword=match.matched_keyword,
+            before_category=before_category, after_category=new_category, now=now,
+            actor_account_id=actor_account_id, actor_device_id=actor_device_id,
             expected_row_version=expected_version,
         )
         if applied is not None:
             changes.append(applied)
     if changes:
         batch = RuleApplicationBatch(
-            tenant_id=tenant_id,
-            status=audit_status,
-            pending_scanned=len(expenses),
-            changed_count=len(changes),
-            actor_account_id=actor_account_id,
-            actor_device_id=actor_device_id,
-            created_at=now,
+            tenant_id=tenant_id, status=audit_status, created_at=now,
+            pending_scanned=len(expenses), changed_count=len(changes),
+            actor_account_id=actor_account_id, actor_device_id=actor_device_id,
         )
         db.add(batch)
         db.flush()
         for expense_id, rule_id, matched_keyword, before_category, after_category in changes:
-            db.add(
-                RuleApplicationChange(
-                    tenant_id=tenant_id,
-                    batch_id=batch.id,
-                    expense_id=expense_id,
-                    rule_id=rule_id,
-                    matched_keyword=matched_keyword,
-                    before_category=before_category,
-                    after_category=after_category,
-                    status="applied",
-                    created_at=now,
-                )
-            )
+            db.add(RuleApplicationChange(
+                tenant_id=tenant_id, batch_id=batch.id, expense_id=expense_id,
+                rule_id=rule_id, matched_keyword=matched_keyword,
+                before_category=before_category, after_category=after_category,
+                status="applied", created_at=now,
+            ))
         db.commit()
     return len(expenses), len(changes), scan_limit_reached

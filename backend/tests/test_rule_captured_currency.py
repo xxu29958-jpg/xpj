@@ -8,7 +8,7 @@ from pydantic import ValidationError
 
 from app.models import CategoryRule, Expense
 from app.schemas import CategoryRuleCreateRequest, CategoryRuleUpdateRequest
-from app.services import rule_service
+from app.services import rule_matching, rule_service
 from app.services.rule_application_service import _preview
 
 
@@ -51,7 +51,7 @@ def _preview_with(monkeypatch, *, projected):
     def project(_db, **kwargs):
         observed.append(kwargs)
         return projected
-    monkeypatch.setattr(rule_service, "project_recorded_amount", project)
+    monkeypatch.setattr(rule_matching, "project_recorded_amount", project)
     monkeypatch.setattr(_preview, "_rule_application_candidates", lambda *a, **k: ([expense], False))
     monkeypatch.setattr(_preview, "_enabled_rules", lambda *a, **k: rules)
     monkeypatch.setattr(_preview, "enabled_merchant_alias_map", lambda *a, **k: {})
@@ -87,7 +87,7 @@ def test_automatic_classification_preserves_category_on_unknown_conversion(monke
     expense, rules = _expense(), _rules()
     monkeypatch.setattr(rule_service, "enabled_merchant_alias_map", lambda *a, **k: {})
     monkeypatch.setattr("app.services.learning_service.read_ocr_text", lambda *a, **k: None)
-    monkeypatch.setattr(rule_service, "project_recorded_amount", lambda *a, **k: None)
+    monkeypatch.setattr(rule_matching, "project_recorded_amount", lambda *a, **k: None)
     db = SimpleNamespace(scalars=lambda *a, **k: rules)
     assert rule_service.classify_expense(db, expense).category == "其他"
 
@@ -124,6 +124,25 @@ def test_keyword_rule_can_gain_explicit_units_and_metadata_toggle_preserves_them
     rule.home_currency_code, rule.amount_min_cents = "JPY", 1200
     rule_service.update_rule(SimpleNamespace(), rule, expected_row_version=2, enabled=False, commit=False)
     assert "home_currency_code" not in writes[1] and "amount_min_cents" not in writes[1]
+
+
+@pytest.mark.parametrize("saved, bounds, changes, error_code", [
+    ("JPY", (100, 500), {"amount_min_cents": 200}, "rule_currency_required"),
+    ("JPY", (100, 500), {"home_currency_code": None}, "rule_currency_mismatch"),
+    (None, (100, None), {"enabled": False}, "rule_currency_requires_adoption"),
+    (None, (100, None), {"amount_min_cents": None}, "rule_currency_requires_adoption"),
+    (None, (100, None), {"home_currency_code": "JPY"}, "rule_currency_requires_adoption"),
+    ("JPY", (100, 500), {"amount_min_cents": 600, "home_currency_code": "JPY"}, "invalid_request"),
+])
+def test_money_update_rejects_before_any_write(saved, bounds, changes, error_code):
+    from app.errors import AppError
+
+    rule = _rules()[0]
+    rule.home_currency_code = saved
+    rule.amount_min_cents, rule.amount_max_cents = bounds
+    with pytest.raises(AppError) as error:
+        rule_service.update_rule(SimpleNamespace(), rule, expected_row_version=1, **changes)
+    assert error.value.error == error_code
 
 
 def test_core_create_has_no_runtime_currency_fallback(monkeypatch):
@@ -163,7 +182,7 @@ def test_apply_rechecks_conversion_token_and_never_applies_unknown_fallback(monk
     db = SimpleNamespace()
     result = _apply.apply_rules_to_pending(db, tenant_id="owner", preview_token=original["preview_token"])
     assert result == (1, 0, False)
-    monkeypatch.setattr(rule_service, "project_recorded_amount", lambda *a, **k: 2000)
+    monkeypatch.setattr(rule_matching, "project_recorded_amount", lambda *a, **k: 2000)
     with pytest.raises(AppError) as error:
         _apply.apply_rules_to_pending(db, tenant_id="owner", preview_token=original["preview_token"])
     assert error.value.error == "preview_stale"

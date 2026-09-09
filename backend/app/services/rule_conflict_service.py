@@ -55,10 +55,23 @@ def _enabled_rules(db: Session, tenant_id: str) -> list[CategoryRule]:
 
 def _conditions_cover(high: CategoryRule, low: CategoryRule) -> bool:
     """Prove static coverage; never compare threshold integers across currencies."""
-    if high.source_contains and high.source_contains.casefold() not in (low.source_contains or "").casefold():
-        return False
-    if high.tag_contains and tag_key(high.tag_contains) != tag_key(low.tag_contains or ""):
-        return False
+    return (
+        _source_condition_covers(high.source_contains, low.source_contains)
+        and _tag_condition_covers(high.tag_contains, low.tag_contains)
+        and _amount_range_covers(high, low)
+    )
+
+
+def _source_condition_covers(high: str | None, low: str | None) -> bool:
+    return not high or high.casefold() in (low or "").casefold()
+
+
+def _tag_condition_covers(high: str | None, low: str | None) -> bool:
+    return not high or tag_key(high) == tag_key(low or "")
+
+
+def _amount_range_covers(high: CategoryRule, low: CategoryRule) -> bool:
+    """An unconstrained rule covers all amounts; bounded rules need the same currency."""
     if high.amount_min_cents is None and high.amount_max_cents is None:
         return True
     if high.home_currency_code is None or high.home_currency_code != low.home_currency_code:

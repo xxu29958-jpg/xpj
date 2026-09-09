@@ -169,10 +169,7 @@ def _preview_apply_rules_to_status(
     max_scan: int | None,
 ) -> dict:
     expenses, scan_limit_reached = _rule_application_candidates(
-        db,
-        tenant_id=tenant_id,
-        status=status,
-        max_scan=max_scan,
+        db, tenant_id=tenant_id, status=status, max_scan=max_scan,
     )
     rules = _enabled_rules(db, tenant_id=tenant_id)
     alias_map = enabled_merchant_alias_map(db, tenant_id=tenant_id)
@@ -183,9 +180,7 @@ def _preview_apply_rules_to_status(
 
     changed_count = 0
     skipped_non_default_category = _non_auto_fillable_category_count(
-        db,
-        tenant_id=tenant_id,
-        status=status,
+        db, tenant_id=tenant_id, status=status,
     )
     no_match_count = 0
     unchanged_count = 0
@@ -196,11 +191,7 @@ def _preview_apply_rules_to_status(
     for expense in expenses:
         current_category = normalize_category(expense.category or "其他")
         match = _matching_rule_category(
-            db,
-            expense,
-            rules,
-            alias_map,
-            ocr_text=ocr_text_by_id.get(int(expense.id), ""),
+            db, expense, rules, alias_map, ocr_text=ocr_text_by_id.get(int(expense.id), ""),
         )
         matches.append(match)
         if match.unavailable:
@@ -217,16 +208,12 @@ def _preview_apply_rules_to_status(
         changed_count += 1
         if len(items) >= capped:
             continue
-        items.append(
-            {
-                "id": expense.id,
-                "merchant": expense.merchant,
-                "current_category": current_category,
-                "suggested_category": suggested_category,
-                "rule_keyword": match.matched_keyword,
-                "reason": f"规则「{match.matched_keyword}」将分类改为 {suggested_category}",
-            }
-        )
+        items.append({
+            "id": expense.id, "merchant": expense.merchant,
+            "current_category": current_category, "suggested_category": suggested_category,
+            "rule_keyword": match.matched_keyword,
+            "reason": f"规则「{match.matched_keyword}」将分类改为 {suggested_category}",
+        })
 
     return {
         "scanned": len(expenses),
@@ -243,12 +230,7 @@ def _preview_apply_rules_to_status(
         "scan_limit_reached": scan_limit_reached,
         "scan_limit": _clamp_rule_application_scan_limit(max_scan),
         "preview_token": _rule_application_preview_token(
-            status=status,
-            max_scan=max_scan,
-            expenses=expenses,
-            rules=rules,
-            alias_map=alias_map,
-            ocr_text_by_id=ocr_text_by_id,
-            matches=matches,
+            status=status, max_scan=max_scan, expenses=expenses, rules=rules,
+            alias_map=alias_map, ocr_text_by_id=ocr_text_by_id, matches=matches,
         ),
     }

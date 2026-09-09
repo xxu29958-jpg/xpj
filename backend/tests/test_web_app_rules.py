@@ -88,9 +88,7 @@ def test_web_rules_create_then_delete(web_client: TestClient) -> None:
     page = web_client.get("/web/rules?ledger_id=owner")
     assert "测试关键词A" in page.text
     rule_id = _rule_id_for_keyword(page.text, "测试关键词A")
-    # Toggle — ADR-0038 PR-1 form-token: pull the hidden value out of
-    # the rendered page and ship it back, mirroring what the JS would
-    # submit from the browser.
+    # Submit the token carried by the rendered toggle form.
     toggle_token = _rule_token_for(page.text, rule_id, "toggle")
     resp = submit_rule_form(web_client,
         f"/web/rules/{rule_id}/toggle",

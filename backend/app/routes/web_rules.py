@@ -128,10 +128,7 @@ def _render_rules(
             limit=20,
         )
     ctx = _base_ctx(
-        request,
-        db=db,
-        options=options,
-        selected_ledger_id=selected_id,
+        request, db=db, options=options, selected_ledger_id=selected_id,
     )
     draft = rule_form_draft if rule_form_draft is not None else {
         "home_currency_code": ctx["home_currency_code"] or "", "idempotency_key": str(uuid4()),
