@@ -60,6 +60,7 @@ from app.services.expense_service._update import (
     undo_reject_expense,
     update_expense,
 )
+from app.services.manual_expense_receipt import read_manual_creation_receipt
 
 __all__ = [
     "EDITABLE_STATUSES",
@@ -68,6 +69,7 @@ __all__ = [
     "confirm_expense",
     "create_manual_expense",
     "create_notification_draft",
+    "read_manual_creation_receipt",
     "stage_pending_expense",
     "create_repayment_draft_from_expense",
     "ensure_image_file",

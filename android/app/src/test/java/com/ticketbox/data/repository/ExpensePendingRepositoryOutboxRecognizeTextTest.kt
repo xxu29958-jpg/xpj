@@ -44,6 +44,7 @@ internal class ExpensePendingRepositoryOutboxRecognizeTextTest : ExpensePendingR
             billSplitReceiptAdapter = com.ticketbox.OutboxAdapterGraph().billSplitReceiptAdapter,
             billSplitCreateAdapter = com.ticketbox.OutboxAdapterGraph().billSplitCreateAdapter,
             legacyCorrectionAdapter = com.ticketbox.OutboxAdapterGraph().legacyCorrectionAdapter,
+            manualCreateAdapter = com.ticketbox.OutboxAdapterGraph().manualCreateAdapter,
         ),
     )
 

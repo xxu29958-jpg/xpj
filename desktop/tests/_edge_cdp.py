@@ -7,11 +7,13 @@ import contextlib
 import hashlib
 import json
 import secrets
+import select
 import socket
 import struct
 import subprocess
 import time
 import urllib.request
+from collections import deque
 from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -91,6 +93,7 @@ class _WebSocket:
             self.close()
             raise _DevToolsTransportError(f"DevTools websocket handshake failed: {status}")
         self._next_id = 1
+        self._events: deque[dict[str, object]] = deque()
 
     def close(self) -> None:
         try:
@@ -167,12 +170,42 @@ class _WebSocket:
         while True:
             response = self._receive_json()
             if response.get("id") != request_id:
+                if "method" in response:
+                    self._events.append(response)
                 continue
             if "error" in response:
                 raise AssertionError(f"DevTools {method} failed: {response['error']}")
             result = response.get("result", {})
             assert isinstance(result, dict)
             return result
+
+    def _next_event(self, timeout: float) -> dict[str, object] | None:
+        if self._events:
+            return self._events.popleft()
+        # An idle document is not a broken transport. Do not poison SocketIO by
+        # allowing its per-command read timeout to expire while awaiting load.
+        readable, _, _ = select.select([self._socket], [], [], timeout)
+        return self._receive_json() if readable else None
+
+    def wait_for_document(self, frame_id: str, url_prefix: str, *, timeout: float) -> bool:
+        """Wait for the intended main document, never a bootstrap/subframe load."""
+        deadline = time.monotonic() + timeout
+        loader_id: str | None = None
+        while (remaining := deadline - time.monotonic()) > 0:
+            event = self._next_event(remaining)
+            if event is None:
+                return False
+            params = event.get("params", {})
+            if event.get("method") == "Page.frameNavigated":
+                frame = params.get("frame", {})
+                if frame.get("id") == frame_id:
+                    loader_id = frame.get("loaderId") if frame.get("url", "").startswith(url_prefix) else None
+            elif event.get("method") == "Page.lifecycleEvent" and loader_id is not None:
+                if (params.get("frameId"), params.get("loaderId"), params.get("name")) == (
+                    frame_id, loader_id, "load",
+                ):
+                    return True
+        return False
 
 
 def _wait_for_devtools(profile: Path, process: subprocess.Popen[bytes]) -> tuple[int, str]:
@@ -306,16 +339,9 @@ def _evaluate_script(page: _WebSocket, expression: str) -> object:
     return evaluated.get("result", {})
 
 
-def _wait_for_document(page: _WebSocket, navigation: dict[str, object]) -> None:
-    # Page.navigate starts navigation; its return does not establish a loaded document.
-    # Redirects are allowed, but the original about:blank page is never readiness evidence.
-    expression = 'document.readyState === "complete" && location.href !== "about:blank"'
-    deadline = time.monotonic() + 30.0
-    while time.monotonic() < deadline:
-        result = _evaluate_script(page, expression)
-        if isinstance(result, dict) and result.get("value") is True:
-            return
-        time.sleep(0.05)
+def _wait_for_document(page: _WebSocket, navigation: dict[str, object], url_prefix: str) -> None:
+    if page.wait_for_document(str(navigation["frameId"]), url_prefix, timeout=30.0):
+        return
     diagnostic = _layout_timeout_diagnostic(page, navigation, None)
     raise AssertionError("document did not become ready; " + json.dumps(diagnostic, sort_keys=True))
 
@@ -328,6 +354,7 @@ def _evaluate_page_once(
     width: int,
     height: int,
     expression: str,
+    document_url_prefix: str | None = None,
 ) -> object:
     profile.mkdir(parents=True)
     process = subprocess.Popen(
@@ -356,8 +383,10 @@ def _evaluate_page_once(
             "Emulation.setDeviceMetricsOverride",
             {"width": width, "height": height, "deviceScaleFactor": 1, "mobile": False},
         )
+        page.request("Page.enable")
+        page.request("Page.setLifecycleEventsEnabled", {"enabled": True})
         navigation = page.request("Page.navigate", {"url": url})
-        _wait_for_document(page, navigation)
+        _wait_for_document(page, navigation, document_url_prefix or url)
         deadline = time.monotonic() + 10.0
         remote: object = None
         while time.monotonic() < deadline:
@@ -381,6 +410,7 @@ def evaluate_page(
     width: int,
     height: int,
     expression: str,
+    document_url_prefix: str | None = None,
 ) -> object:
     failures: list[BaseException] = []
     for attempt in range(1, _EVALUATE_PAGE_ATTEMPTS + 1):
@@ -393,6 +423,7 @@ def evaluate_page(
                 width=width,
                 height=height,
                 expression=expression,
+                document_url_prefix=document_url_prefix,
             )
         except (OSError, _DevToolsTransportError) as exc:
             failures.append(exc)

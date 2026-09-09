@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 from datetime import UTC, datetime
 from io import StringIO
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
@@ -52,6 +53,7 @@ def _manual(
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "home_currency_code": "CNY", "amount_cents": amount_cents,
             "merchant": merchant,
             "category": category,

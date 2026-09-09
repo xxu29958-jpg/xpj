@@ -18,6 +18,7 @@ from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -133,6 +134,7 @@ def test_weekend_expense_resolves_to_prior_working_day_rate(client: TestClient, 
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "original_currency_code": "USD",
             "original_amount_minor": 10000,
             "spent_at": "2026-05-30T02:00:00Z",
@@ -158,6 +160,7 @@ def test_expense_before_any_rate_still_pending(client: TestClient, *, identity) 
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "original_currency_code": "USD",
             "original_amount_minor": 10000,
             "spent_at": "2026-05-01T02:00:00Z",

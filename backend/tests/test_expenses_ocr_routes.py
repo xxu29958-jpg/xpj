@@ -90,6 +90,7 @@ def test_ocr_routes_do_not_modify_confirmed_expense(client: TestClient, *, ident
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "home_currency_code": "CNY", "amount_cents": 1234,
             "merchant": "Stable Cafe",
             "category": "餐饮",

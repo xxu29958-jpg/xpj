@@ -15,7 +15,13 @@ def _browser(monkeypatch: pytest.MonkeyPatch, *, document_ready_at: float, probe
         clock.elapsed += seconds
 
     class Page:
-        def request(self, method, parameters):
+        def wait_for_document(self, _frame_id, _url_prefix, *, timeout):
+            clock.elapsed = min(document_ready_at, timeout)
+            return document_ready_at <= timeout
+
+        def request(self, method, parameters=None):
+            if method == "Page.navigate":
+                return {"frameId": "main"}
             if method != "Runtime.evaluate":
                 return {}
             clock.elapsed += 2.0

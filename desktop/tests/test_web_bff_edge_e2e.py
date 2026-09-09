@@ -338,6 +338,7 @@ def test_real_edge_navigates_manager_session_and_uses_bff_consumer(tmp_path: Pat
             width=820,
             height=660,
             expression=_EDGE_PROBE,
+            document_url_prefix=manager.expected_origin + "/web",
         )
 
     assert bootstrap_paths
@@ -391,6 +392,7 @@ def test_real_edge_theme_change_stays_in_the_browser(tmp_path: Path) -> None:
             width=820,
             height=660,
             expression=_THEME_PROBE,
+            document_url_prefix=manager.expected_origin + "/web",
         )
 
     assert json.loads(value) == {
@@ -485,6 +487,7 @@ def test_real_backend_bootstrap_pair_bridge_render_probe(
                 width=width,
                 height=height,
                 expression=_REAL_RENDER_PROBE,
+                document_url_prefix=manager.expected_origin + "/web",
             )
         except AssertionError as exc:
             try:

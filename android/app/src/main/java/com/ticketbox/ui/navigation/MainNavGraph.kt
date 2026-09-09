@@ -100,6 +100,7 @@ internal fun MainNavGraph(
                 onBindingCleared = onBindingCleared,
             )
         }
+        addManualExpenseSubmissionRoute(runtime)
         composable(
             route = EXPENSE_ROUTE,
             arguments = listOf(navArgument(EXPENSE_ID_ARG) { type = NavType.LongType }),

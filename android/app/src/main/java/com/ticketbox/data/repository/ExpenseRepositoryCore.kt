@@ -15,7 +15,6 @@ import com.ticketbox.data.remote.dto.AuthCheckDto
 import com.ticketbox.data.remote.dto.ConfirmedExpenseStreamItemDto
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
-import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseOffsetCreateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseRecognizeTextRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
@@ -92,8 +91,6 @@ internal class ExpenseRepositoryCore(
         get() = offlineMutations.replaceSplitsAdapter
     val recognizeTextAdapter: JsonAdapter<ExpenseRecognizeTextRequestDto>?
         get() = offlineMutations.recognizeTextAdapter
-    val manualCreateAdapter: JsonAdapter<ExpenseManualCreateRequestDto>?
-        get() = offlineMutations.manualCreateAdapter
     val offsetCreateAdapter: JsonAdapter<ExpenseOffsetCreateRequestDto>?
         get() = offlineMutations.offsetCreateAdapter
     val offsetVoidAdapter: JsonAdapter<ExpenseOffsetVoidOutboxPayload>?
@@ -489,7 +486,7 @@ internal class ExpenseRepositoryCore(
      * ``networkError = null`` call never hits the rethrow path.
      */
     fun canEnqueueStateTransition(expense: Expense): Boolean =
-        outbox != null && expenseStateTokenAdapter != null && expense.rowVersion != 0L
+        outbox != null && expenseStateTokenAdapter != null && expense.hasExpenseMutationBaseline()
 
     /**
      * ADR-0038 PR-2g.7/8: shared IOException → outbox fallback for the
@@ -530,7 +527,7 @@ internal class ExpenseRepositoryCore(
     ) {
         val outboxRef = outbox
         val adapter = expenseStateTokenAdapter
-        if (outboxRef == null || adapter == null || expense.rowVersion == 0L) {
+        if (outboxRef == null || adapter == null || !expense.hasExpenseMutationBaseline()) {
             throw networkError ?: IllegalStateException(
                 "enqueueStateTransition without outbox wiring — guard callers must pre-check canEnqueueStateTransition",
             )
@@ -554,45 +551,34 @@ internal class ExpenseRepositoryCore(
         )
     }
 
-    /**
-     * issue #65 slice 4: offline-aware manual create. The caller (online attempt
-     * failed with [java.io.IOException], or there's a queued sibling) writes the
-     * optimistic local row to Room and queues a [PendingMutationType.CreateExpense]
-     * row keyed by ``expense:local:{clientRef}``; the returned [Expense] is the
-     * optimistic projection surfaced to the UI immediately (negative local id,
-     * ``pendingSync = true``).
-     *
-     * Mirrors [enqueueStateTransition]'s session-race guard: re-checks the bound
-     * ledger is still active BEFORE writing so a mid-flight ledger switch can't
-     * land a stale-session create in the now-current ledger. ``onConfirmedCommitted``
-     * fires for the new confirmed row (轴 6 budget detection). The CreateExpense
-     * row carries ``expectedRowVersion = 0`` (no prior version) and no
-     * ``Idempotency-Key`` header — idempotency is the body ``client_ref``.
-     */
+    /** One bound transaction saves the original command and its optimistic negative-ID projection. */
     suspend fun enqueueLocalCreate(
         bound: BoundLedgerRequest,
-        outbox: OutboxRepository,
-        adapter: JsonAdapter<ExpenseManualCreateRequestDto>,
         draft: ExpenseDraft,
         clientRef: String,
     ): Expense {
         val entity = draft.toLocalCreateEntity(bound.ledgerId, clientRef)
         var rowId = 0L
-        outbox.enqueue(
+        offlineMutations.outbox.enqueue(
             boundRequest = bound,
             intent = PendingMutationIntent(
                 type = PendingMutationType.CreateExpense,
                 targetId = expenseLocalTargetId(clientRef),
-                payloadJson = adapter.toJson(draft.toManualCreateRequest(clientRef = clientRef)),
+                payloadJson = offlineMutations.manualCreateAdapter.toJson(draft.toManualCreateRequest(clientRef = clientRef)),
                 expectedRowVersion = FIRST_WRITE_ROW_VERSION,
             ),
             afterPersisted = {
                 rowId = expenseDao.insert(entity)
             },
         )
-        // The durable intent is committed before its optimistic projection in
-        // one binding lease. Process death can lose UI sugar, never the intent.
-        onConfirmedCommitted(bound.ledgerId)
+        // Notification cannot turn a committed original into an apparent save failure.
+        try {
+            onConfirmedCommitted(bound.ledgerId)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // The Room observation and ordinary sync still expose the saved original.
+        }
         return entity.copy(id = rowId).toDomain()
     }
 

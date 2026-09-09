@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.key
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -16,6 +17,7 @@ import com.ticketbox.ui.screens.LedgerScreen
 import com.ticketbox.ui.screens.LedgerScreenActions
 import com.ticketbox.viewmodel.LedgerExportOutcome
 import com.ticketbox.viewmodel.LedgerViewModel
+import kotlinx.coroutines.flow.map
 
 @Composable
 internal fun LedgerRoute(
@@ -23,10 +25,12 @@ internal fun LedgerRoute(
     shellState: MainShellState,
     screenFactory: MainScreenFactory,
 ) {
+    val binding by remember(screenFactory) { screenFactory.repository.observeLedgerAccess().map { it?.binding } }
+        .collectAsStateWithLifecycle(initialValue = screenFactory.repository.captureDeferredLedgerBinding())
     val ledgerFactory = remember(screenFactory, shellState) {
         screenFactory.repositoryViewModelFactory(shellState::markInsightsDataChanged)
     }
-    val ledgerViewModel: LedgerViewModel = viewModel(factory = ledgerFactory)
+    val ledgerViewModel: LedgerViewModel = viewModel(key = "ledger-$binding", factory = ledgerFactory)
     // Narrow hook (218-B4 review P2-23): manual creates and category batch
     // edits invalidate the advice cache; tag-only batches preserve it.
     LaunchedEffect(ledgerViewModel) {
@@ -69,7 +73,7 @@ internal fun LedgerRoute(
         }
     }
 
-    LedgerScreen(
+    key(binding) { LedgerScreen(
         state = state,
         launchRequest = LedgerLaunchRequest(
             openManualEntryRequested = shellState.launchAction.pending is LaunchAction.OpenManualEntry,
@@ -78,7 +82,7 @@ internal fun LedgerRoute(
             },
         ),
         actions = ledgerScreenActions(ledgerViewModel, navController, shellState),
-    )
+    ) }
 }
 
 private fun ledgerScreenActions(
@@ -101,6 +105,7 @@ private fun ledgerScreenActions(
     onPrepareManualCreate = ledgerViewModel::prepareManualEntry,
     onViewModeChange = ledgerViewModel::setViewMode,
     onEdit = { navController.openExpense(it.id) },
+    onOpenManualSubmission = { navController.navigate(manualExpenseSubmissionRoute(it)) },
     onEnterSelection = ledgerViewModel::enterSelection,
     onExitSelection = ledgerViewModel::exitSelection,
     onToggleSelect = ledgerViewModel::toggleSelected,

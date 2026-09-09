@@ -20,6 +20,7 @@
 
 <section class="product-panel product-panel--padded">
   {% if form_error %}<div class="product-feedback product-feedback--danger" role="alert">{{ form_error }}</div>{% endif %}
+  {% if manual_review_href %}<p><a class="product-state-action" href="{{ manual_review_href }}">核对这笔已有账单</a></p>{% endif %}
   <form class="manual-expense-form" method="post" action="/web/expenses/new" aria-label="手动记账表单"
         data-manual-draft-scope="{{ manual_draft_scope | tojson | forceescape }}"
         data-manual-draft-result="{{ manual_draft_result }}">

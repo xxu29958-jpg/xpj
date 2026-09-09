@@ -223,7 +223,7 @@ internal class MainShellState(val launchAction: LaunchActionState = LaunchAction
 
     fun surfaceRole(currentRoute: String?): SurfaceRole {
         return when {
-            currentRoute == EXPENSE_ROUTE -> SurfaceRole.Edit
+            currentRoute == EXPENSE_ROUTE || currentRoute == MANUAL_EXPENSE_SUBMISSION_ROUTE -> SurfaceRole.Edit
             activeDestination == MainProductDestination.Workspace -> SurfaceRole.Settings
             activeDestination is MainProductDestination.Secondary ->
                 (activeDestination as MainProductDestination.Secondary).page.surfaceRole

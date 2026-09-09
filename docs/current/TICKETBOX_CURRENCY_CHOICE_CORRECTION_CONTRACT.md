@@ -117,9 +117,11 @@ and missing-currency Web drafts require an explicit choice before parsing.
 These are candidates awaiting exact cloud and device qualification. Period
 reports, Stats/overview and Ledger list summaries are implemented candidates.
 The nonempty default-change command and captured manual draft currency are now
-implemented candidates. Historical correction and the manual command's durable
-admission/original-receipt gaps remain open; they must not be hidden by a green
-default-change check.
+integrated in #397; independent main qualification remains open. The following
+[manual creation candidate](TICKETBOX_MANUAL_CREATION_CONTINUITY_CONTRACT.md)
+replaces HTTP-first admission and latest-row replay, with its own qualification
+still required. Historical FX correction remains open; it must not be hidden by
+a green default-change check.
 
 Qualification includes TDD, exact candidate cloud gates, bounded review, real
 Desktop/Android continuation and independent main qualification. No long local

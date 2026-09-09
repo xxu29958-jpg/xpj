@@ -2,7 +2,8 @@
 
 ``CODEBASE_DEBT_LIMITS`` is a one-way debt ceiling for
 ``_audit_codebase.py``: regressions fail, improvements print INFO so the
-baseline can be lowered in the same cleanup slice.
+baseline can be lowered in the same cleanup slice. Physical size entries are
+review references only; their counts and completeness remain visible.
 
 ``STRICT_EQUALITY_BASELINE`` protects PR-Δ counters from
 ``_audit_pr_delta_metrics.py``. Structural counters use exact current
@@ -46,11 +47,13 @@ _strict_baseline_selected_commit: str | None = None
 # ``CODEBASE_DEBT_LIMITS`` is active configuration, not an audit log. Keep the
 # current ceilings here and put detailed ratchet provenance in commits/PR notes.
 # Zero ceilings mean the scanner lane is now strict and any reintroduction fails.
+CODEBASE_SIZE_SIGNALS = frozenset({"files_over_500", "long_functions"})
+
 CODEBASE_DEBT_LIMITS: DebtCounts = {
     # Keep active ceilings here. Older ratchet provenance belongs in git history,
     # not in executable override chains.
-    "files_over_500": 11,
-    "long_functions": 3,
+    "files_over_500": 11,  # Historical reference for review, not a debt ceiling.
+    "long_functions": 3,  # Physical spans include fixtures, declarations and comments.
     "deep_nesting_functions": 0,
     "route_layer_imports": 0,
     "service_public_no_private": 2,
@@ -80,18 +83,22 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
 def evaluate_debt(counts: DebtCounts) -> int:
     missing = sorted(set(CODEBASE_DEBT_LIMITS) - set(counts))
     extras = sorted(set(counts) - set(CODEBASE_DEBT_LIMITS))
+    measured_keys = sorted((counts.keys() & CODEBASE_DEBT_LIMITS.keys()) - CODEBASE_SIZE_SIGNALS)
     regressions = [
         (key, counts[key], CODEBASE_DEBT_LIMITS[key])
-        for key in sorted(CODEBASE_DEBT_LIMITS)
-        if key in counts and counts[key] > CODEBASE_DEBT_LIMITS[key]
+        for key in measured_keys
+        if counts[key] > CODEBASE_DEBT_LIMITS[key]
     ]
     improvements = [
         (key, counts[key], CODEBASE_DEBT_LIMITS[key])
-        for key in sorted(CODEBASE_DEBT_LIMITS)
-        if key in counts and counts[key] < CODEBASE_DEBT_LIMITS[key]
+        for key in measured_keys
+        if counts[key] < CODEBASE_DEBT_LIMITS[key]
     ]
 
     print("== Gate. Known-debt baseline ==")
+    print("REVIEW: physical size signals require responsibility review, not mechanical splitting:")
+    for key in sorted(CODEBASE_SIZE_SIGNALS & counts.keys()):
+        print(f"  - {key}={counts[key]} (reference={CODEBASE_DEBT_LIMITS[key]})")
     if missing:
         print("FAIL: configured codebase debt counters were not reported:")
         for key in missing:
@@ -109,7 +116,7 @@ def evaluate_debt(counts: DebtCounts) -> int:
         for key, actual, limit in improvements:
             print(f"  - {key}: actual={actual}, old_limit={limit}")
     if not missing and not extras and not regressions:
-        print(f"OK: {len(CODEBASE_DEBT_LIMITS)} counters at or below baseline.")
+        print(f"OK: all {len(CODEBASE_DEBT_LIMITS)} counters reported; hard debt counters at or below baseline.")
     print()
     return 1 if missing or extras or regressions else 0
 

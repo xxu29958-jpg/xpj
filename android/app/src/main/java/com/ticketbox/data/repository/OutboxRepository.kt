@@ -392,9 +392,7 @@ class OutboxRepository private constructor(
             validateTargetRows?.invoke(activeForTarget(binding, intent.targetId,
                 ACTIVE_STATUS_VALUES + PendingMutationStatus.Done.wireValue))
             val row = intent.toEntity(binding, nowIso())
-            val insertedId = dao.insert(row)
-            afterPersisted()
-            insertedId
+            dao.insertAndPublish(row, afterPersisted)
         }
         schedulePending()
         return id
@@ -625,13 +623,15 @@ class OutboxRepository private constructor(
         return rowcount > 0
     }
 
-    internal suspend fun discardCorrection(boundRequest: BoundLedgerRequest, row: OutboxRow): Boolean = withActiveBinding(boundRequest) { binding ->
-        check(row.type == PendingMutationType.CorrectExpense && row.status in setOf(
+    internal suspend fun discardOriginalExpense(boundRequest: BoundLedgerRequest, row: OutboxRow,
+        afterDeleted: suspend () -> Unit = {}): Boolean = withActiveBinding(boundRequest) { binding ->
+        check(row.type in setOf(PendingMutationType.CreateExpense, PendingMutationType.CorrectExpense) && row.status in setOf(
             PendingMutationStatus.Failed, PendingMutationStatus.Conflict, PendingMutationStatus.Done, PendingMutationStatus.Pending,
         ))
+        check(row.type != PendingMutationType.CreateExpense || row.status in setOf(PendingMutationStatus.Failed, PendingMutationStatus.Conflict))
         check(row.ownerKey == binding.ownerStorageKey && row.ledgerId == binding.ledgerId)
-        dao.deleteIfStatus(row.id, binding.ownerStorageKey, binding.ledgerId, row.status.wireValue) > 0
-    }.also { changed -> if (changed) schedulePending() }
+        dao.deleteAndPublish(row.id, binding.ownerStorageKey, binding.ledgerId, row.status.wireValue, afterDeleted)
+    }.also { changed -> if (changed) { schedulePending(); if (row.type == PendingMutationType.CreateExpense) notifyRowsDeleted(1) } }
 
     suspend fun markDone(id: Long, cacheRefreshVersion: Long? = null, receiptJson: String? = null) {
         dao.markDone(

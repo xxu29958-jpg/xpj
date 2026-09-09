@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterator
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import select
@@ -47,6 +48,7 @@ def test_real_web_mutation_is_attributed_to_installation_account_and_browser_dev
         "/api/expenses/manual",
         headers=current_protocol_headers({"Authorization": f"Bearer {session_token}"}),
         json={
+            "client_ref": str(uuid4()),
             "home_currency_code": "CNY", "amount_cents": 1200,
             "merchant": "本机身份归属",
             "category": "餐饮",

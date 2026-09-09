@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 from datetime import UTC, datetime
 from io import StringIO
+from uuid import uuid4
 
 import pytest
 from api_contract_helpers import (
@@ -23,6 +24,7 @@ def test_local_timezone_month_filter_matches_android_display_month(
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "home_currency_code": "CNY", "amount_cents": 1851,
             "merchant": "跨月边界账单",
             "category": "生活",
@@ -400,7 +402,7 @@ def test_confirmed_pagination_and_month_filters_are_server_side_contract(
         response = client.post(
             "/api/expenses/manual",
             headers=identity.app_headers,
-            json={**payload, "home_currency_code": "CNY", "note": f"分页测试 {index}"},
+            json={"client_ref": str(uuid4()), **payload, "home_currency_code": "CNY", "note": f"分页测试 {index}"},
         )
         assert response.status_code == 200
 
@@ -450,6 +452,7 @@ def test_lifestyle_recent_7_days_is_bounded_to_requested_month(client: TestClien
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "home_currency_code": "CNY", "amount_cents": 1200,
             "merchant": "Historical Month",
             "category": "数码",
@@ -461,6 +464,7 @@ def test_lifestyle_recent_7_days_is_bounded_to_requested_month(client: TestClien
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "home_currency_code": "CNY", "amount_cents": 9900,
             "merchant": "Current Real Week",
             "category": "数码",

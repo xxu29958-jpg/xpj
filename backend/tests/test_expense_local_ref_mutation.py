@@ -1,11 +1,11 @@
 """Issue #65 slice 3 — route accepts ``server-id`` or ``local:{client_ref}`` +
 the OCC first-write path.
 
-The 9 outbox-routed expense mutation routes now take a string ref and funnel it
+The expense mutation routes take a string ref and funnel it
 through ``resolve_expense_for_mutation``. The dangerous part is OCC: a
 ``local:{client_ref}`` that resolves to an already-synced server row, sent by a
 client that never saw the server ``row_version`` (the response-lost / first-write
-case), must NOT false-409 — yet a genuine concurrent writer and the normal
+case), uses its original accepted creation basis; a later writer and the normal
 server-id OCC path must still 409. These tests prove the two paths are orthogonal.
 
 ``# coverage: auth-401`` — no-auth coverage for these routes lives in the existing
@@ -17,11 +17,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from api_contract_helpers import patch_expense, upload_png
 from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
-from app.models import Account, AuthToken, Device, Expense
+from app.models import Account, ApiIdempotencyKey, AuthToken, Device, Expense
 from app.services.expense_query import local_ref_storage_key
 from app.services.identity_service import hash_secret, new_session_token
 from tests._runtime_protocol import current_protocol_headers
@@ -108,8 +107,8 @@ def test_local_ref_first_write_succeeds_no_false_409(
     client: TestClient, identity: TestIdentity
 ) -> None:
     """A ``local:{ref}`` mutation carrying the first-write sentinel (0) — the
-    client never saw the server row_version — applies to the current row instead
-    of false-409-ing."""
+    client never saw the server row_version — applies to its accepted creation
+    basis without guessing from current state."""
     _create_local_expense(client, identity.app_headers, client_ref="fw-1")
 
     resp = _correct(
@@ -120,12 +119,10 @@ def test_local_ref_first_write_succeeds_no_false_409(
     assert resp.json()["expense"]["merchant"] == "首写"
 
 
-def test_local_ref_first_write_applies_to_current_row_version(
+def test_local_ref_first_write_refuses_a_later_current_row_version(
     client: TestClient, identity: TestIdentity
 ) -> None:
-    """The sentinel reads the CURRENT row_version, not an assumed 1: after a
-    server-id edit bumps the row, a local-ref first-write still lands (no false
-    409)."""
+    """A later edit is a real conflict with the unobserved original creation basis."""
     created = _create_local_expense(client, identity.app_headers, client_ref="fw-2")
     server_id = created["id"]
     v0 = _row_version(client, server_id, identity=identity)
@@ -142,9 +139,10 @@ def test_local_ref_first_write_applies_to_current_row_version(
         client, "local:fw-2", version=0, key=str(uuid4()),
         headers=identity.app_headers, merchant="本地首写到当前版本",
     )
-    assert first_write.status_code == 201, first_write.text
-    assert first_write.json()["expense"]["merchant"] == "本地首写到当前版本"
-    assert first_write.json()["expense"]["row_version"] != v1, "the first-write CAS must still bump"
+    assert first_write.status_code == 409, first_write.text
+    assert first_write.json()["error"] == "state_conflict"
+    current = client.get(f"/api/expenses/{server_id}", headers=identity.app_headers)
+    assert (current.json()["merchant"], current.json()["row_version"]) == ("先抬版本", v1)
 
 
 def test_local_ref_resolves_same_row_as_server_id(
@@ -202,7 +200,7 @@ def test_local_ref_and_server_id_paths_are_orthogonal(
     server_id = created["id"]
     v0 = _row_version(client, server_id, identity=identity)
 
-    # (A) local-ref first-write applies to current → bumps the row.
+    # (A) local-ref first-write applies to the original accepted basis → bumps the row.
     a = _correct(
         client, "local:orth", version=0, key=str(uuid4()),
         headers=identity.app_headers, merchant="A",
@@ -330,33 +328,19 @@ def test_confirm_via_local_ref_resolves(
     assert resp.status_code == 200, resp.text
 
 
-def _create_confirmable_pending_local_ref(
-    client: TestClient,
-    identity: TestIdentity,
-    *,
-    client_ref: str,
-) -> None:
-    """Bind a real upload-created pending row to a device-local reference."""
-    expense_id = upload_png(client, identity=identity)
-    patched = patch_expense(
-        client,
-        expense_id,
-        headers=identity.app_headers,
-        fields={
-            "amount_cents": 1500,
-            "merchant": "本地确认",
-            "category": "餐饮",
-            "expense_time": "2026-05-05T00:00:00Z",
-        },
-    )
-    assert patched.status_code == 200, patched.text
-    assert patched.json()["status"] == "pending"
-    device_id = _owner_device_id(identity)
-    with SessionLocal() as db:
-        expense = db.get(Expense, expense_id)
-        assert expense is not None
-        expense.draft_idempotency_key = local_ref_storage_key(device_id, client_ref)
-        db.commit()
+def _create_confirmable_pending_local_ref(client, identity, *, client_ref):
+    """A real foreign manual acceptance is pending until its missing rate is supplied."""
+    pending = client.post("/api/expenses/manual", headers=identity.app_headers, json={
+        "client_ref": client_ref, "home_currency_code": "CNY", "original_currency": "JPY",
+        "original_amount": "300", "merchant": "本地确认", "category": "餐饮",
+        "expense_time": "2026-05-05T00:00:00Z"})
+    assert pending.status_code == 200, pending.text
+    assert (pending.json()["status"], pending.json()["amount_cents"]) == ("pending", None)
+    rate = client.put("/api/exchange-rates/JPY/2026-05-05",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())}, json={
+            "currency_code": "JPY", "home_currency_code": "CNY", "rate_date": "2026-05-05",
+            "rate_to_cny": "0.05", "source": "manual", "expected_row_version": 0})
+    assert rate.status_code == 200, rate.text
 
 
 def test_confirm_via_local_ref_first_write_runs_cas(
@@ -364,8 +348,8 @@ def test_confirm_via_local_ref_first_write_runs_cas(
 ) -> None:
     """An explicit-version route threads the EFFECTIVE version (not the raw
     sentinel) into its CAS. confirm short-circuits a ``confirmed`` row before the
-    CAS, so this drives a real upload-created ``pending`` row: a local-ref
-    first-write (sentinel 0) confirms it. Were confirm to pass the raw sentinel 0, its CAS
+    CAS, so this drives a real manual-created ``pending`` row: a local-ref
+    first-write (sentinel 0) uses its accepted creation version and confirms it. Were confirm to pass the raw sentinel 0, its CAS
     (``WHERE row_version == 0``) would rowcount-0 → 409; asserting it confirms
     proves the effective-version threading for the explicit-version family."""
     device_id = _owner_device_id(identity)
@@ -397,3 +381,18 @@ def test_confirm_unknown_local_ref_returns_404(
     )
     assert resp.status_code == 404, resp.text
     assert resp.json()["error"] == "expense_not_found"
+
+
+def test_fresh_local_mutation_without_original_receipt_cannot_claim_unknown_basis(client, identity):
+    created = _create_local_expense(client, identity.app_headers, client_ref="legacy-no-receipt")
+    with SessionLocal() as db:
+        claim = db.query(ApiIdempotencyKey).filter(ApiIdempotencyKey.operation == "create_manual_expense").one()
+        db.delete(claim)
+        db.commit()
+    refused = _correct(client, "local:legacy-no-receipt", version=0, key=str(uuid4()),
+        headers=identity.app_headers, merchant="Cannot assume latest")
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["error"] == "state_conflict"
+    current = client.get(f"/api/expenses/{created['id']}", headers=identity.app_headers)
+    assert current.json()["merchant"] == created["merchant"]
+    assert current.json()["row_version"] == created["row_version"]

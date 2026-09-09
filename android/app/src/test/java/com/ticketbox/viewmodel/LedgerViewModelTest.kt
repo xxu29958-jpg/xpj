@@ -346,13 +346,13 @@ class LedgerViewModelTest {
         advanceUntilIdle()
 
         val state = vm.uiState.value
-        assertTrue(state.manualCreateDone)
+        assertTrue(state.manualCreateResult != null)
         assertEquals(null, state.manualCreateError)
         assertEquals(UiText.res(R.string.ledger_msg_manual_saved), state.message)
         assertEquals(MessageTone.Success, state.messageTone)
 
         vm.manualCreateSettled()
-        assertTrue(!vm.uiState.value.manualCreateDone)
+        assertTrue(vm.uiState.value.manualCreateResult == null)
     }
 
     @Test
@@ -368,9 +368,11 @@ class LedgerViewModelTest {
         advanceUntilIdle()
 
         val state = vm.uiState.value
-        assertTrue(state.manualCreateDone)
+        assertTrue(state.manualCreateResult != null)
         assertEquals(UiText.res(R.string.ledger_msg_manual_saved_offline), state.message)
         assertEquals(MessageTone.Info, state.messageTone)
+        assertTrue(requireNotNull(state.manualCreateResult).pendingSync)
+        assertTrue(requireNotNull(state.manualCreateResult).id < 0)
     }
 
     @Test
@@ -404,7 +406,7 @@ class LedgerViewModelTest {
             UiText.res(R.string.currency_unconfirmed_write_blocked),
             vm.uiState.value.manualCreateError,
         )
-        assertFalse(vm.uiState.value.manualCreateDone)
+        assertTrue(vm.uiState.value.manualCreateResult == null)
     }
 
     @Test
@@ -424,7 +426,7 @@ class LedgerViewModelTest {
         val state = vm.uiState.value
         // done must NOT flip (the sheet stays open, preserving the typed
         // form); the failure surfaces through the sheet-inline channel.
-        assertTrue(!state.manualCreateDone)
+        assertTrue(state.manualCreateResult == null)
         assertEquals(UiText.res(R.string.ledger_msg_manual_save_failed), state.manualCreateError)
         assertTrue(!state.creatingManual)
 
@@ -1089,7 +1091,7 @@ class LedgerViewModelCurrencyRelatchTest {
         advanceUntilIdle()
 
         assertEquals(1, fake.manualCreateCallCount)
-        assertTrue(vm.uiState.value.manualCreateDone)
+        assertTrue(vm.uiState.value.manualCreateResult != null)
     }
 
     @Test

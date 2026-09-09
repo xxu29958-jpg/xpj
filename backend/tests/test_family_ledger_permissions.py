@@ -754,7 +754,7 @@ def test_viewer_cannot_create_manual_expense(client: TestClient, *, identity) ->
     resp = client.post(
         "/api/expenses/manual",
         headers=_bearer(viewer_token),
-        json={"home_currency_code": "CNY", "amount_cents": 1234, "merchant": "X", "category": "其他"},
+        json={"client_ref": str(uuid4()), "home_currency_code": "CNY", "amount_cents": 1234, "merchant": "X", "category": "其他"},
     )
     assert resp.status_code == 403
     assert resp.json()["error"] == "permission_denied"
@@ -768,7 +768,7 @@ def test_member_can_create_manual_expense(client: TestClient, *, identity) -> No
     resp = client.post(
         "/api/expenses/manual",
         headers=_bearer(member_token),
-        json={"home_currency_code": "CNY", "amount_cents": 1234, "merchant": "X", "category": "其他"},
+        json={"client_ref": str(uuid4()), "home_currency_code": "CNY", "amount_cents": 1234, "merchant": "X", "category": "其他"},
     )
     assert resp.status_code == 200, resp.json()
 
@@ -824,10 +824,14 @@ def test_owner_can_change_member_between_writer_and_viewer(client: TestClient, *
     check_viewer = client.get("/api/auth/check", headers=_bearer(member_token))
     assert check_viewer.status_code == 200
     assert check_viewer.json()["role"] == "viewer"
+    manual_body = {
+        "client_ref": str(uuid4()), "home_currency_code": "CNY",
+        "amount_cents": 1234, "merchant": "X", "category": "其他",
+    }
     blocked_write = client.post(
         "/api/expenses/manual",
         headers=_bearer(member_token),
-        json={"home_currency_code": "CNY", "amount_cents": 1234, "merchant": "X", "category": "其他"},
+        json=manual_body,
     )
     assert blocked_write.status_code == 403
 
@@ -841,7 +845,7 @@ def test_owner_can_change_member_between_writer_and_viewer(client: TestClient, *
     allowed_write = client.post(
         "/api/expenses/manual",
         headers=_bearer(member_token),
-        json={"home_currency_code": "CNY", "amount_cents": 1234, "merchant": "X", "category": "其他"},
+        json=manual_body,
     )
     assert allowed_write.status_code == 200, allowed_write.json()
 

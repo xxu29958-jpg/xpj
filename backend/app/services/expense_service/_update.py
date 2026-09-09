@@ -136,6 +136,8 @@ def _claim_pending_confirmation(
     tenant_id: str,
     expected_row_version: int,
 ) -> tuple[Expense, bool]:
+    if expected_row_version == 0:
+        raise AppError("state_conflict", status_code=409)
     expense = get_expense(db, expense_id, tenant_id)
     if expense.status == "confirmed":
         return expense, False
@@ -217,8 +219,9 @@ def confirm_expense(
     """ADR-0038 PR-2b: confirm with optimistic concurrency.
 
     Idempotency on terminal states is preserved: confirming an already
-    ``confirmed`` row returns 200 without inspecting the token. Stale
-    snapshot against a still-``pending`` row → 409 ``state_conflict``
+    ``confirmed`` row returns 200 with a known nonzero token. An unknown
+    zero basis cannot start a new command; accepted keys replay in the caller.
+    A stale snapshot against a still-``pending`` row → 409 ``state_conflict``
     via the DB-level ``row_version = expected`` predicate.
 
     ADR-0042: ``commit=False`` lets the idempotent confirm route fold the
@@ -255,11 +258,13 @@ def reject_expense(
     commit: bool = True,
     cleanup_duplicate_references: bool = True,
 ) -> Expense:
-    """Reject with OCC; terminal rejected rows are idempotent. Stale writable
-    rows fail with 409. ``commit=False`` lets the caller own the
+    """Reject with OCC; terminal rejected rows with nonzero tokens are idempotent.
+    Stale writable rows fail with 409. ``commit=False`` lets the caller own the
     transaction, including any deferred duplicate-reference cleanup.
     """
     resolve_write_capability(db)
+    if expected_row_version == 0:
+        raise AppError("state_conflict", status_code=409)
     now = now_utc()
     rowcount = claim_row_with_token(
         db,

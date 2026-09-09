@@ -446,6 +446,7 @@ def _upload_ticket_and_assert_pending(base_url: str) -> int:
 def _create_manual_expense_and_check_settings(base_url: str) -> None:
     manual_body = json.dumps(
         {
+            "client_ref": str(uuid.uuid4()),
             "amount_cents": 1280,
             "home_currency_code": "CNY",
             "merchant": "手动早餐",
@@ -464,7 +465,6 @@ def _create_manual_expense_and_check_settings(base_url: str) -> None:
         headers={
             **app_headers(base_url),
             "Content-Type": "application/json",
-            "Idempotency-Key": str(uuid.uuid4()),
         },
         body=manual_body,
     )
@@ -474,15 +474,17 @@ def _create_manual_expense_and_check_settings(base_url: str) -> None:
     assert_equal(manual_expense["category"], "餐饮", "manual create category alias")
     assert_equal(manual_expense["source"], "手动记账", "manual create source")
     assert_true(manual_expense["confirmed_at"].endswith("Z"), "manual confirmed_at should be ISO UTC")
+    missing_amount_body = json.dumps(
+        {"client_ref": str(uuid.uuid4()), "merchant": "missing amount", "home_currency_code": "CNY"},
+    ).encode("utf-8")
     result = request(
         "POST",
         f"{base_url}/api/expenses/manual",
         headers={
             **app_headers(base_url),
             "Content-Type": "application/json",
-            "Idempotency-Key": str(uuid.uuid4()),
         },
-        body=b'{"merchant":"missing amount","home_currency_code":"CNY"}',
+        body=missing_amount_body,
     )
     assert_error(result, 400, "amount_required")
     print("OK manual expense create")

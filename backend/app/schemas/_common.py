@@ -23,6 +23,7 @@ class ErrorResponse(BaseModel):
     message: str
     request_id: str | None = None
     public_id: str | None = None
+    expense_id: int | None = None
     status: str | None = None
     conflict_tag_public_id: str | None = None
     conflict_tag_row_version: int | None = None

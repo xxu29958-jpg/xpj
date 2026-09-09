@@ -18,9 +18,8 @@ import kotlin.test.assertTrue
 
 /**
  * issue #65 slice 4: offline-aware manual create end-to-end at the repository
- * layer. Covers the four Slice 4 acceptance lines that are testable without an
- * emulator: airplane-mode create shows immediately as a pending row, online
- * create stays direct, a create-response-loss lets a later edit address the row
+ * layer. Every create appears immediately as a pending local row before transport;
+ * a create-response-loss lets a later edit address the row
  * via ``local:{client_ref}``, and a synced create replaces the temp local
  * identity with the server identity.
  */
@@ -58,7 +57,7 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
     }
 
     private fun confirmedDto(id: Long = 42L, rowVersion: Long = 1L): ExpenseDto =
-        successExpenseDto().copy(id = id, status = "confirmed", rowVersion = rowVersion, publicId = "server-pub-$id")
+        successExpenseDto().copy(originalAmountMinor = 12345, source = "手动记账", id = id, status = "confirmed", rowVersion = rowVersion, publicId = "server-pub-$id")
 
     private fun outbox(dao: FakePendingMutationDao): OutboxRepository =
         testOutboxRepository(
@@ -175,7 +174,7 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
     }
 
     @Test
-    fun `online create stays direct, sends client_ref, enqueues nothing`() = runTest {
+    fun `online create persists the original and optimistic row before any transport`() = runTest {
         val dao = FakeExpenseDao()
         val pendingDao = FakePendingMutationDao()
         val outbox = outbox(pendingDao)
@@ -184,11 +183,15 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
 
         val expense = repo.createManualExpense(draft).getOrThrow()
 
-        assertEquals(42L, expense.id)
-        assertFalse(expense.pendingSync, "a server-confirmed create is not pendingSync")
-        assertNotNull(api.lastRequest?.clientRef, "the direct attempt must still send a client_ref (lost-response dedup)")
-        assertEquals(0, pendingDao.rows.size, "a successful online create enqueues nothing")
-        assertEquals(42L, dao.getConfirmed(activeLedger).single().serverId, "the confirmed server row is cached")
+        assertTrue(expense.id < 0L)
+        assertTrue(expense.pendingSync)
+        assertNull(api.lastRequest, "transport belongs only to CreateExpenseDispatcher")
+        val original = pendingDao.rows.values.single()
+        val request = requireNotNull(moshi().adapter(ExpenseManualCreateRequestDto::class.java).fromJson(original.payload))
+        assertEquals(expense.clientRef, request.clientRef)
+        assertEquals("expense:local:${expense.clientRef}", original.targetId)
+        assertEquals(expense.clientRef, dao.getConfirmed(activeLedger).single().clientRef)
+        assertNull(dao.getConfirmed(activeLedger).single().serverId)
     }
 
     @Test
@@ -208,8 +211,10 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
             .getOrThrow() as SaveOutcome.Queued
 
         assertEquals(0, api.updateExpenseCalls, "the FIFO guard must divert BEFORE any direct PATCH is attempted")
+        assertEquals(0L, pending.rowVersion, "a local record has never observed a server OCC version")
         assertEquals("新商家", outcome.expense.merchant)
         val patchRow = pendingDao.rows.values.single { it.type == PendingMutationType.PatchExpense.wireValue }
+        assertEquals(0L, patchRow.expectedRowVersion)
         assertEquals(
             "expense:local:${pending.clientRef}",
             patchRow.targetId,
@@ -256,7 +261,9 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
 
         val result = dispatcher.dispatch(row)
 
-        assertEquals(DispatchResult.Success(newRowVersion = 3L), result)
+        assertTrue(result is DispatchResult.Success)
+        assertEquals(3L, result.newRowVersion)
+        assertNotNull(result.receiptJson)
         val synced = dao.getConfirmed(activeLedger).single()
         assertEquals(77L, synced.serverId, "the temp local row is promoted to the server id")
         assertEquals(3L, synced.rowVersion)

@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 from datetime import timedelta
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from _web_overview_test_support import (
@@ -169,6 +170,7 @@ def test_recurring_candidate_count_excludes_formalized_merchants(
             "/api/expenses/manual",
             headers=identity.app_headers,
             json={
+                "client_ref": str(uuid4()),
                 "home_currency_code": "CNY", "amount_cents": 9900,
                 "merchant": "国家电网",
                 "category": "居家",

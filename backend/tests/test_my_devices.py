@@ -8,6 +8,8 @@ Device's intent merely because the Account matches.
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
@@ -243,6 +245,7 @@ def test_delete_revoked_device_preserves_expense_revision_actor_snapshot(
         "/api/expenses/manual",
         headers=_auth_headers(spare_token),
         json={
+            "client_ref": str(uuid4()),
             "home_currency_code": "CNY", "amount_cents": 1880,
             "merchant": "Revision Device Snapshot",
             "category": "Test",

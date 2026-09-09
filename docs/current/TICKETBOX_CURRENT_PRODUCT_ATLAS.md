@@ -117,9 +117,9 @@ slice. Full Internal Beta RC completion is still outstanding.
 | Batch remainder and saved CSV continuation | `STRONG_SLICE`; #381 and #384 CLOSED, integrated and main-qualified. Full capture journey remains | [Batch](TICKETBOX_CAPTURE_BATCH_CONTINUATION_CONTRACT.md), [CSV](TICKETBOX_CSV_IMPORT_CONTINUATION_CONTRACT.md) |
 | Confirmed facts and composite correction | `STRONG_SLICE`; #382 CLOSED, durable correction owner integrated and main-qualified; actual OS interruption remains to rehearse | [Correction contract](TICKETBOX_EXPENSE_CORRECTION_CONTINUITY_CONTRACT.md) |
 | Recognition and assisted entry | `STRONG_SLICE`; #353 CLOSED. Shared configured suggestions remain drafts. Debt image/binding continuity #386 CLOSED, integrated and main-qualified | [Journeys](TICKETBOX_USER_JOURNEYS_CONTRACT.md#recognition-and-assisted-entry), [Debt image contract](TICKETBOX_DEBT_BILL_BINDING_CONTRACT.md) |
-| Currency adoption | `STRONG_SLICE`; #354 CLOSED. Installation claim / Desktop consumer; old maintenance API retired | [Adoption journey](TICKETBOX_USER_JOURNEYS_CONTRACT.md#currency-adoption) |
+| Currency choice and correction | `PARTIAL`; explicit initial choice, changeable defaults and recorded-money consumers integrated in #397; independent main qualification remains open. Historical FX correction continuation remains | [Currency contract](TICKETBOX_CURRENCY_CHOICE_CORRECTION_CONTRACT.md) |
 | One-bill manual FX recovery | `STRONG_SLICE`; #355 CLOSED. Shared pending Expense editor, canonical review and Android PatchExpense intent | [FX journey](TICKETBOX_USER_JOURNEYS_CONTRACT.md#missing-fx-rate-recovery) |
-| Manual expense and browser draft | `STRONG_SLICE`; #359/#368 CLOSED. Native shared command and scoped draft; old-Device drafts readable for reconciliation, without automatic replay | [Manual entry](TICKETBOX_USER_JOURNEYS_CONTRACT.md#manual-expense-entry), [Convenience plan](../superpowers/plans/2026-09-05-consumer-art-convenience.md) |
+| Manual expense and browser draft | `PARTIAL`; native draft flow established. Durable Android admission, original receipt replay and visible submission continuation are implemented candidates awaiting qualification | [Manual continuity](TICKETBOX_MANUAL_CREATION_CONTINUITY_CONTRACT.md), [Manual entry](TICKETBOX_USER_JOURNEYS_CONTRACT.md#manual-expense-entry) |
 | External debt, split and reimbursement | `STRONG_SLICE`; existing relationship owners and #361 context integrated; complete settlement journeys remain | [Debt context](TICKETBOX_USER_JOURNEYS_CONTRACT.md#external-debt-context), [Plan](../superpowers/plans/2026-09-05-debt-context.md) |
 | Android external-debt creation and recovery | `STRONG_SLICE`; #369/#370 CLOSED. Original submitted intent and readable retry/discard; keyboard, OS interruption and unsubmitted editing restoration remain | [Convenience plan](../superpowers/plans/2026-09-05-consumer-art-convenience.md) |
 | Debt adjustment continuity | `STRONG_SLICE`; #379 CLOSED. Sole dispatcher preserves original submission and refreshes affected consumers | [Adjustment contract](TICKETBOX_DEBT_ADJUSTMENT_CONTINUITY_CONTRACT.md) |
@@ -145,8 +145,8 @@ completion percentages.
 
 | Package | Remaining user outcome / exit |
 |---|---|
-| First use and household | Explicit home-currency choice before first use, plus correction of an already implicit default binding while preserving historical amounts and currency meaning. The unconfigured CNY fallback currently lets the first financial write lock the choice. Owner/member/viewer must enter the intended household and recover connection without changing identity or losing intent |
-| Capture, facts and reference | Capture consumer gaps #387 closed; continue integrated search/reference/correction and remaining role/error journeys with one fact owner |
+| First use and household | Qualify explicit home-currency choice and changeable defaults while preserving historical money. The implicit first-write CNY activation has been retired. Owner/member/viewer must enter the intended household and recover connection without changing identity or losing intent |
+| Capture, facts and reference | Qualify manual creation continuity, then close historical currency correction through the existing manual-FX owner. Continue integrated search/reference/correction and remaining role/error journeys with one fact owner |
 | Relationships | Split creation #388, accepted-result continuation #391 and member settlement continuity #392 CLOSED. Continue integrated relationship journeys and remaining cross-client recovery evidence |
 | Planning and insights | Complete supported budget/goal/income/recurring/debt-plan tasks; overview/period review/data health reflect authoritative facts/corrections with useful empty/error/read-only states |
 | Backstage | Ordinary household can configure applicable capabilities, understand actual health and resume failed work; local governance, secrets and host authority retain their owners |
@@ -177,8 +177,8 @@ feedback and efficient actions within each active capability change.
 [Spending-goal continuity evidence](TICKETBOX_PLANNING_GOAL_CONTINUITY_CONTRACT.md).
 
 **Next action:** complete [currency choice and implicit-lock correction](TICKETBOX_CURRENCY_CHOICE_CORRECTION_CONTRACT.md),
-including money consumers and preservation of original offline intents;
-immutable historical money meaning cannot justify silently choosing and locking currency.
+with #397 merged and in independent main qualification. Close [manual creation continuity](TICKETBOX_MANUAL_CREATION_CONTINUITY_CONTRACT.md)
+next, then historical FX correction; preserve original offline intent throughout.
 Physical budget/income creation works; simplify Android's first-budget optional
 fields and correct the generic goal offline-viewing claim within Planning/convenience.
 Preserve draft #372 for the later detail wave.

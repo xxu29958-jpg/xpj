@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.SyncProblem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import com.ticketbox.data.repository.manualCreateReviewExpenseId
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,6 +48,7 @@ fun SyncStatusScreen(
     viewModel: OutboxStatusViewModel,
     onBack: () -> Unit,
     navigation: SyncStatusNavigation,
+    manualClientRef: String? = null,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val actions = remember(viewModel, navigation) {
@@ -66,7 +68,8 @@ fun SyncStatusScreen(
             onOpenRateSubmission = navigation.onOpenRateSubmission,
         )
     }
-    SyncStatusScreenContent(state = state, actions = actions, onBack = onBack, onOpenInbox = navigation.onOpenInbox)
+    SyncStatusScreenContent(state = state, actions = actions, onBack = onBack, onOpenInbox = navigation.onOpenInbox,
+        manualClientRef = manualClientRef)
 }
 
 data class SyncStatusNavigation(
@@ -111,6 +114,7 @@ internal fun SyncStatusScreenContent(
     actions: SyncStatusActions,
     onBack: () -> Unit,
     onOpenInbox: () -> Unit,
+    manualClientRef: String? = null,
 ) {
     // Dropping an offline edit is irreversible, so both paths require confirmation.
     var confirmingDrop by remember(state.binding) { mutableStateOf<SyncStatusDropSelection?>(null) }
@@ -147,6 +151,7 @@ internal fun SyncStatusScreenContent(
     ) {
         SyncStatusPageBody(
             state = state,
+            manualClientRef = manualClientRef,
             onOpenInbox = onOpenInbox,
             actions = actions.copy(
                 onDropMine = { confirmingDrop = SyncStatusDropSelection(it, failed = false, debtCreation = null,
@@ -167,12 +172,15 @@ private fun SyncStatusPageBody(
     state: OutboxStatusUiState,
     actions: SyncStatusActions,
     onOpenInbox: () -> Unit,
+    manualClientRef: String?,
 ) {
     if (!state.bindingReady) {
         Text(stringResource(if (state.binding == null) R.string.sync_status_binding_unavailable else R.string.sync_status_binding_loading))
         return
     }
     val status = state.status
+    ManualCreationSubmissionSection(state, actions, manualClientRef)
+    if (manualClientRef != null) return
     SyncStatusOverviewSection(status, state.correctionObservation.corrections, state.debtAdjustments.values.toList(), state.incomeSubmissions.values.toList(), state.manualRates.values.toList())
     SyncStatusIncomeReviews(state, actions)
     SyncStatusRateReviews(state, actions)
@@ -219,7 +227,8 @@ private fun SyncStatusPageBody(
     }
 }
 
-private val SEPARATE_RECOVERY_TYPES = setOf(PendingMutationType.CreateBillSplitInvitation, PendingMutationType.CorrectExpense, PendingMutationType.UploadScreenshot)
+private val SEPARATE_RECOVERY_TYPES = setOf(PendingMutationType.CreateExpense, PendingMutationType.CreateBillSplitInvitation,
+    PendingMutationType.CorrectExpense, PendingMutationType.UploadScreenshot)
 
 @Composable
 private fun SyncStatusUploadSection(state: OutboxStatusUiState, onOpenInbox: () -> Unit) {
@@ -279,7 +288,7 @@ private fun SyncStatusQuarantineSection(count: Int, clearEnabled: Boolean, onCle
 }
 
 @Composable
-private fun ConflictCard(
+internal fun ConflictCard(
     row: OutboxRow,
     busy: Boolean,
     actions: SyncStatusActions,
@@ -287,7 +296,7 @@ private fun ConflictCard(
     // Only expense mutations can refresh state and retry as "keep mine".
     val originalOffset = row.type == PendingMutationType.CreateExpenseOffset
     val canKeep = row.type !in com.ticketbox.viewmodel.incomePlanSubmissionTypes && !originalOffset && row.type !in com.ticketbox.viewmodel.categoryRuleSubmissionTypes &&
-        row.type !in setOf(PendingMutationType.CorrectExpense, PendingMutationType.CreateBillSplitInvitation) && row.targetId.startsWith("expense:")
+        row.type !in setOf(PendingMutationType.CreateExpense, PendingMutationType.CorrectExpense, PendingMutationType.CreateBillSplitInvitation) && row.targetId.startsWith("expense:")
     SettingsOpenPanel(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
     ) {
@@ -328,7 +337,7 @@ private fun ConflictCard(
 }
 
 @Composable
-private fun FailedCard(
+internal fun FailedCard(
     row: OutboxRow,
     debtCreation: PendingDebtCreation?,
     busy: Boolean,
@@ -362,6 +371,9 @@ private fun FailedCard(
             SyncStatusRecoveryActions(
                 primary = if (row.type == PendingMutationType.CreateExpenseOffset && onRetry == null) {
                     offsetReviewAction(row, busy, actions)
+                } else if (row.manualCreateReviewExpenseId() != null) {
+                    SyncStatusActionButton(text = stringResource(R.string.ledger_manual_review_existing), enabled = !busy,
+                        onClick = { row.manualCreateReviewExpenseId()?.let(actions.onOpenExpense) })
                 } else if (expired || onRetry == null) {
                     null
                 } else {

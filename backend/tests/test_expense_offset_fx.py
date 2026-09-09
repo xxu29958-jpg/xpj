@@ -43,6 +43,7 @@ def test_foreign_refund_uses_accounting_date_rate_and_freezes_snapshot(
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "original_currency_code": "USD",
             "original_amount_minor": 10000,
             "expense_time": "2026-05-04T08:00:00Z",
@@ -98,6 +99,7 @@ def test_foreign_refund_without_accounting_date_rate_refuses_without_mutation(
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "original_currency_code": "USD",
             "original_amount_minor": 10000,
             "expense_time": "2026-05-04T08:00:00Z",
@@ -152,6 +154,7 @@ def test_foreign_reversal_reuses_root_snapshot_without_a_new_rate(
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "original_currency_code": "USD",
             "original_amount_minor": 10000,
             "expense_time": "2026-05-04T08:00:00Z",

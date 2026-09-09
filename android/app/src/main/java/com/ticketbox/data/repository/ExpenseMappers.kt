@@ -267,7 +267,7 @@ fun ExpenseDraft.toManualCreateRequest(clientRef: String? = null): ExpenseManual
  * ``draft_idempotency_key``; ``publicId`` is a unique device-local sentinel that
  * the sync write-back replaces with the server's. Manual creates are confirmed
  * on the server immediately, so the row is cached as ``status = "confirmed"``
- * with ``source = 手动记账`` and ``rowVersion = 1`` (the server's create default).
+ * with ``source = 手动记账`` and ``rowVersion = 0`` until the original receipt arrives.
  * Mirrors [toManualCreateRequest] for the FX-derived amount fields so the
  * optimistic row matches what the server will return.
  */
@@ -313,7 +313,7 @@ fun ExpenseDraft.toLocalCreateEntity(ledgerId: String, clientRef: String): Expen
         createdAt = Instant.now().toString(),
         confirmedAt = Instant.now().toString(),
         updatedAt = null,
-        rowVersion = 1,
+        rowVersion = ExpenseRepositoryCore.FIRST_WRITE_ROW_VERSION,
         clientRef = clientRef,
     )
 }

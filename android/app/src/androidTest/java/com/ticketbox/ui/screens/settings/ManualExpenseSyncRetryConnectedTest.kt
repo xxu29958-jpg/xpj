@@ -44,9 +44,30 @@ class ManualExpenseSyncRetryConnectedTest {
         composeRule.runOnIdle { assertEquals(1, retries) }
     }
 
+    @Test
+    fun missingReceiptOpensOnlyTheServerIdentifiedFactWithoutRetry() {
+        var opened: Long? = null
+        show("manual_create_original_requires_review:71", open = { opened = it }) { error("Unverifiable receipt cannot retry") }
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        composeRule.onNodeWithText(context.getString(R.string.error_manual_create_original_requires_review)).performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.sync_status_failed_button_retry)).assertDoesNotExist()
+        composeRule.onNodeWithText(context.getString(R.string.ledger_manual_review_existing)).performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(71L, opened) }
+    }
+
+    @Test
+    fun missingReceiptWithoutIdentityNeverOpensAnUnrelatedFact() {
+        show("manual_create_original_requires_review", open = { error("No original identity") }) { error("No retry") }
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        composeRule.onNodeWithText(context.getString(R.string.error_manual_create_original_requires_review)).performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.ledger_manual_review_existing)).assertDoesNotExist()
+        composeRule.onNodeWithText(context.getString(R.string.sync_status_failed_button_retry)).assertDoesNotExist()
+    }
+
     private fun show(
         lastError: String,
         payloadJson: String = "{\"client_ref\":\"original\",\"original_currency\":\"CNY\",\"original_amount\":\"12.00\"}",
+        open: (Long) -> Unit = {},
         retry: () -> Unit,
     ) {
         val row = OutboxRow(id = 11, serverUrl = "https://qa.invalid", ledgerId = "ledger",
@@ -57,10 +78,11 @@ class ManualExpenseSyncRetryConnectedTest {
         composeRule.setContent {
             TicketboxTheme(skin = AppSkin.Default) {
                 SyncStatusScreenContent(
-                    state = OutboxStatusUiState(bindingReady = true, status = OutboxStatus(0, emptyList(), listOf(row))),
+                    state = OutboxStatusUiState(bindingReady = true, status = OutboxStatus(0, emptyList(), listOf(row)),
+                        manualCreations = mapOf(row.id to com.ticketbox.data.repository.ManualExpenseCreationProjection(row, null))),
                     actions = SyncStatusActions(onOpenRateSubmission = {}, onOpenIncomeSubmission = {},
                         onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {},
-                        onOpenRecurring = {}, onOpenBudget = {}, onOpenExpense = {}, onKeepMine = {},
+                        onOpenRecurring = {}, onOpenBudget = {}, onOpenExpense = open, onKeepMine = {},
                         onDropMine = {}, onRetry = { retry() }, onDropFailed = {}, onClearQuarantined = {}),
                     onBack = {}, onOpenInbox = {},
                 )

@@ -114,7 +114,7 @@ internal class ExpensePendingRepository(
         // FIFO guard; ``pathRef`` is the matching mutation-route path param.
         val targetId = expenseOutboxTargetId(optimistic)
         val pathRef = parseExpenseTargetRef(targetId) ?: id.toString()
-        if (outbox == null || adapter == null || token == null || token == 0L) {
+        if (outbox == null || adapter == null || token == null || !optimistic.hasExpenseMutationBaseline()) {
             // Outbox wiring missing OR baseline lacked a token — direct-only;
             // any failure (incl. IOException) surfaces as Result.failure so we
             // don't pretend we saved.

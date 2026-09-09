@@ -65,7 +65,9 @@ internal fun testExpenseOfflineMutationWiring(
     return ExpenseOfflineMutationWiring(outbox = outbox, correctionAdapter = adapters.correctionAdapter,
         billSplitReceiptAdapter = adapters.billSplitReceiptAdapter,
         billSplitCreateAdapter = adapters.billSplitCreateAdapter,
-        legacyCorrectionAdapter = adapters.legacyCorrectionAdapter)
+        legacyCorrectionAdapter = adapters.legacyCorrectionAdapter,
+        manualCreateAdapter = com.ticketbox.OutboxAdapterGraph().manualCreateAdapter,
+    )
 }
 
 /** Real facade with a fake DAO whose binding follows the exact supplied session owner. */

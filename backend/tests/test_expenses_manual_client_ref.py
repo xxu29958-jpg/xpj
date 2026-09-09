@@ -3,10 +3,10 @@
 ``POST /api/expenses/manual`` with a ``client_ref`` dedups on the server-built
 ``{device_id}:{client_ref}`` composite (stored in ``expenses.draft_idempotency_key``):
 
-* same device + same ref + same body → one row, the existing expense returned (HIT);
+* same device + same ref + same body → one row and the original response (HIT);
 * same device + same ref + materially different body → ``idempotency_key_reused`` (422);
-* a concurrent insert that loses the unique-index race re-resolves to the winner's row;
-* ``client_ref`` absent → no dedup, every call is a fresh row (unchanged pre-#65 path);
+* the shared receipt claim serializes concurrent original submissions;
+* absent, null or blank ``client_ref`` → refusal before a fact is created;
 * the device prefix namespaces refs, so two devices may reuse the same ref independently.
 
 The fingerprint is taken from the REQUEST, so the server auto-classifying ``category`` (or
@@ -15,6 +15,7 @@ defaulting ``expense_time``) on the stored row never makes a faithful replay loo
 
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
@@ -162,33 +163,15 @@ def test_same_client_ref_different_note_is_rejected(client: TestClient, *, ident
     assert _count_manual_rows() == 1
 
 
-def test_null_client_ref_creates_distinct_rows(client: TestClient, *, identity) -> None:
-    body = {
-        "home_currency_code": "CNY",
-        "amount_cents": 1000,
-        "merchant": "测试商家",
-        "category": "餐饮",
-        "expense_time": "2026-05-02T00:00:00Z",
-    }
-    first = client.post("/api/expenses/manual", headers=identity.app_headers, json=body)
-    second = client.post("/api/expenses/manual", headers=identity.app_headers, json=body)
-    assert first.status_code == 200, first.text
-    assert second.status_code == 200, second.text
-
-    assert second.json()["id"] != first.json()["id"]
-    assert _count_manual_rows() == 2
-
-
-def test_empty_client_ref_is_treated_as_no_ref(client: TestClient, *, identity) -> None:
-    # An empty-string client_ref (client bug) must NOT dedup as the key "{device_id}:";
-    # it falls back to the no-ref path, so two such calls create two distinct rows.
-    first = _post_manual(client, identity.app_headers, client_ref="")
-    second = _post_manual(client, identity.app_headers, client_ref="")
-    assert first.status_code == 200, first.text
-    assert second.status_code == 200, second.text
-
-    assert second.json()["id"] != first.json()["id"]
-    assert _count_manual_rows() == 2
+@pytest.mark.parametrize("fields", [{}, {"client_ref": None}, {"client_ref": ""}, {"client_ref": "   "}])
+def test_missing_original_reference_is_refused_without_creating(client: TestClient, *, identity, fields) -> None:
+    body = _manual_payload()
+    body.pop("client_ref")
+    body.update(fields)
+    response = client.post("/api/expenses/manual", headers=identity.app_headers, json=body)
+    assert response.status_code == 422, response.text
+    assert response.json()["error"] == "invalid_request"
+    assert _count_manual_rows() == 0
 
 
 def test_same_client_ref_different_device_creates_distinct_rows(
@@ -207,27 +190,14 @@ def test_same_client_ref_different_device_creates_distinct_rows(
     assert _count_manual_rows() == 2
 
 
-def test_unique_index_race_resolves_to_existing_row(
-    client: TestClient, *, identity, monkeypatch
-) -> None:
-    # Drive the IntegrityError fallback: force the pre-insert lookup to miss once so the
-    # INSERT runs and loses the unique-index race, then the except-branch re-resolves to
-    # the row that already committed (no duplicate, no false 422).
-    created = _post_manual(client, identity.app_headers, client_ref="ref-race")
+def test_receipt_replay_does_not_reenter_expense_insert_or_current_lookup(client, identity, monkeypatch):
+    created = _post_manual(client, identity.app_headers, client_ref="ref-original")
     assert created.status_code == 200, created.text
-
-    original = create_module._find_manual_expense_by_key
-    state = {"miss_next": True}
-
-    def lookup_missing_once(db, tenant_id, key):
-        if state["miss_next"]:
-            state["miss_next"] = False
-            return None
-        return original(db, tenant_id, key)
-
-    monkeypatch.setattr(create_module, "_find_manual_expense_by_key", lookup_missing_once)
-
-    replay = _post_manual(client, identity.app_headers, client_ref="ref-race")
+    def reject_current_lookup(*_args, **_kwargs):
+        pytest.fail("The original receipt must bypass latest expense lookup")
+    monkeypatch.setattr(create_module, "_find_manual_expense_by_key", reject_current_lookup)
+    monkeypatch.setattr(create_module, "_insert_manual_expense", reject_current_lookup)
+    replay = _post_manual(client, identity.app_headers, client_ref="ref-original")
     assert replay.status_code == 200, replay.text
-    assert replay.json()["id"] == created.json()["id"]
+    assert replay.json() == created.json()
     assert _count_manual_rows() == 1

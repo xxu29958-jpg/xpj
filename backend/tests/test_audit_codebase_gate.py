@@ -8,6 +8,8 @@ import sys
 import textwrap
 from pathlib import Path
 
+import pytest
+
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
@@ -189,19 +191,34 @@ _N_PLUS_ONE_IGNORED_CASES = {
 
 def test_codebase_known_debt_baseline_returns_zero() -> None:
     gate = _load_gate()
-    assert gate.evaluate_debt(dict(gate.CODEBASE_DEBT_LIMITS)) == 0
+    assert gate.evaluate_debt(dict(gate.CODEBASE_DEBT_LIMITS, files_over_500=0, long_functions=0)) == 0
+
+
+def test_codebase_size_signals_remain_visible_without_fragmenting_owners(capsys) -> None:
+    gate = _load_gate()
+    counts = dict(gate.CODEBASE_DEBT_LIMITS, files_over_500=13, long_functions=5)
+    assert gate.evaluate_debt(counts) == 0
+    output = capsys.readouterr().out
+    assert "REVIEW" in output and "files_over_500=13" in output and "long_functions=5" in output
+
+
+def test_codebase_missing_size_signal_still_fails() -> None:
+    gate = _load_gate()
+    counts = dict(gate.CODEBASE_DEBT_LIMITS, files_over_500=0)
+    counts.pop("long_functions", None)
+    assert gate.evaluate_debt(counts) == 1
 
 
 def test_codebase_debt_regression_returns_one() -> None:
     gate = _load_gate()
-    counts = dict(gate.CODEBASE_DEBT_LIMITS)
-    counts["long_functions"] += 1
+    counts = dict(gate.CODEBASE_DEBT_LIMITS, files_over_500=0, long_functions=0)
+    counts["deep_nesting_functions"] += 1
     assert gate.evaluate_debt(counts) == 1
 
 
 def test_codebase_debt_extra_counter_returns_one() -> None:
     gate = _load_gate()
-    counts = dict(gate.CODEBASE_DEBT_LIMITS)
+    counts = dict(gate.CODEBASE_DEBT_LIMITS, files_over_500=0, long_functions=0)
     counts["new_unmanaged_smell"] = 1
     assert gate.evaluate_debt(counts) == 1
 
@@ -211,12 +228,36 @@ def test_codebase_main_propagates_audit_regression(monkeypatch) -> None:
     gate = _load_gate()
 
     def fake_audit() -> dict[str, int]:
-        counts = dict(gate.CODEBASE_DEBT_LIMITS)
-        counts["long_functions"] += 1
+        counts = dict(gate.CODEBASE_DEBT_LIMITS, files_over_500=0, long_functions=0)
+        counts["deep_nesting_functions"] += 1
         return counts
 
     monkeypatch.setattr(mod, "AUDITS", (fake_audit,))
     assert mod.main() == 1
+
+
+@pytest.mark.parametrize(("handler", "expected"), [
+    ("db.rollback()\nraise", 0),
+    ("raise", 1),
+    ("db.commit()\nraise", 1),
+    ("write_elsewhere()\nraise", 1),
+    ("db.rollback(savepoint=True)\nraise", 1),
+    ("db.rollback()\nreturn None", 1),
+    ("if recover():\n    return None\nraise", 1),
+    ("db.rollback()\nraise OtherError()", 1),
+    ("db.rollback()\nraise original", 1),
+    ("pass", 1),
+    ("...", 1),
+])
+def test_exception_audit_distinguishes_original_reraise_from_swallow_or_conversion(tmp_path, monkeypatch, handler, expected):
+    source = tmp_path / "transaction.py"
+    source.write_text("def submit(db):\n    try:\n        write(db)\n    except Exception:\n" +
+        textwrap.indent(handler, "        ") + "\n", encoding="utf-8")
+    mod = _load()
+    monkeypatch.setattr(mod, "walk", lambda *_roots: [source])
+    counts = mod.audit_bare_except()
+    assert counts["broad_exception"] == expected
+    assert counts["swallowed_exceptions"] == (1 if handler in {"pass", "..."} else 0)
 
 
 def test_n_plus_one_flags_business_loop_query() -> None:

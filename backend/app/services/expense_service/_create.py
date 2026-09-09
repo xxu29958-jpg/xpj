@@ -9,7 +9,7 @@ from app.errors import AppError
 from app.fx_constants import DEFAULT_HOME_CURRENCY_CODE
 from app.ledger_scope import ledger_scoped_select
 from app.models import Expense
-from app.schemas import ExpenseManualCreateRequest, NotificationDraftCreateRequest
+from app.schemas import ExpenseManualCreateRequest, ExpenseResponse, NotificationDraftCreateRequest
 from app.services import permission_service
 from app.services.category_preference_service import ensure_category_preference_for_name
 from app.services.classify_service import classify_expense
@@ -23,7 +23,7 @@ from app.services.exchange_rate_service import (
     apply_currency_payload,
     validate_currency_payload_money_command,
 )
-from app.services.expense_query import local_ref_storage_key
+from app.services.expense_response_service import expense_to_response
 from app.services.expense_revision_service import record_confirmation_revision
 from app.services.expense_service._helpers import (
     NOTIFICATION_DRAFT_SOURCE_LABELS,
@@ -37,7 +37,18 @@ from app.services.expense_service._helpers import (
     _notification_draft_key,
 )
 from app.services.file_service import SavedUpload
-from app.services.idempotency import fingerprint_request
+from app.services.idempotency import (
+    IdempotencyOutcomeKind,
+    claim_idempotency_key,
+    mark_idempotency_succeeded,
+)
+from app.services.manual_expense_receipt import (
+    _manual_receipt,
+    _manual_receipt_key,
+    _manual_request_fingerprint,
+    _manual_review_error,
+    local_ref_storage_key,
+)
 from app.services.session_credential_lock import lock_and_revalidate_mutation_actor
 from app.services.tag_service import normalize_tags, sync_expense_tags
 from app.services.time_service import ensure_utc, now_utc
@@ -95,34 +106,8 @@ def stage_pending_expense(
     return expense
 
 
-def _manual_request_fingerprint(payload: ExpenseManualCreateRequest) -> str:
-    """sha256 of the user-supplied manual-create body (issue #65 slice 1).
-
-    Computed from the REQUEST as sent — never from the stored row — so the server's
-    own mutations (auto-classify of ``category``, the ``expense_time`` → ``now``
-    default, FX rate-derived ``amount_cents``) can't make a faithful replay look like
-    a different request. ``client_ref`` is excluded: it IS the key, not part of the
-    intent it guards.
-    """
-    body = payload.model_dump(mode="json", exclude_unset=True, exclude={"client_ref"})
-    return fingerprint_request(
-        operation="create_manual_expense",
-        target_id=None,
-        body=body,
-        expected_row_version=None,
-    )
-
-
 def _find_manual_expense_by_key(db: Session, tenant_id: str, key: str) -> Expense | None:
     return db.scalar(ledger_scoped_select(Expense, tenant_id).where(Expense.draft_idempotency_key == key))
-
-
-def _resolve_existing_manual_create(existing: Expense, fingerprint: str) -> Expense:
-    """A row already owns this ``(device_id, client_ref)`` key: idempotent HIT iff the
-    request fingerprint matches, else the ref was reused for a different expense."""
-    if existing.draft_request_fingerprint != fingerprint:
-        raise AppError("idempotency_key_reused", status_code=422)
-    return existing
 
 
 def _insert_manual_expense(
@@ -130,8 +115,8 @@ def _insert_manual_expense(
     payload: ExpenseManualCreateRequest,
     tenant_id: str,
     *,
-    draft_idempotency_key: str | None,
-    draft_request_fingerprint: str | None,
+    draft_idempotency_key: str,
+    draft_request_fingerprint: str,
     actor_account_id: int,
     actor_device_id: int,
 ) -> Expense:
@@ -197,62 +182,45 @@ def _insert_manual_expense(
             actor_account_id=actor_account_id,
             actor_device_id=actor_device_id,
         )
-    db.commit()
+    db.flush()
     db.refresh(expense)
     return expense
 
 
-def create_manual_expense(db: Session, payload: ExpenseManualCreateRequest, auth: AuthContext) -> Expense:
+def create_manual_expense(db: Session, payload: ExpenseManualCreateRequest, auth: AuthContext) -> ExpenseResponse:
+    """Accept the original manual request and its typed response in one transaction."""
     lock_and_revalidate_mutation_actor(
         db, auth, actor_account_id=auth.account_id, ledger_id=auth.ledger_id,
     )
     permission_service.require_write_expense(auth)
-    validate_currency_payload_money_command(
-        payload,
-        amount_was_explicit=payload.amount_cents is not None,
-    )
     tenant_id = auth.tenant_id
-    if not payload.client_ref:
-        # No client-supplied ref (absent, or empty-string from a client bug) — no
-        # dedup; every call is a fresh row. Unchanged pre-#65 behavior. Treating ""
-        # as "no ref" (not as the key "{device_id}:") avoids both a 422 on a real
-        # expense and silently collapsing distinct creates into one.
-        return _insert_manual_expense(
-            db,
-            payload,
-            tenant_id,
-            draft_idempotency_key=None,
-            draft_request_fingerprint=None,
-            actor_account_id=auth.account_id,
-            actor_device_id=auth.device_id,
-        )
-
-    # Issue #65 slice 1: device-scoped idempotent create. The composite key lives in
-    # the expense's own ``draft_idempotency_key`` (unique per tenant) so slice 3 can
-    # later resolve a ``local:{client_ref}`` mutation by it; the device prefix is built
-    # server-side from the authenticated token, never trusted from the body.
     key = local_ref_storage_key(auth.device_id, payload.client_ref)
     fingerprint = _manual_request_fingerprint(payload)
-    existing = _find_manual_expense_by_key(db, tenant_id, key)
-    if existing is not None:
-        return _resolve_existing_manual_create(existing, fingerprint)
     try:
-        return _insert_manual_expense(
-            db,
-            payload,
-            tenant_id,
-            draft_idempotency_key=key,
-            draft_request_fingerprint=fingerprint,
-            actor_account_id=auth.account_id,
-            actor_device_id=auth.device_id,
-        )
-    except IntegrityError:
-        # A concurrent request won the (tenant_id, draft_idempotency_key) unique race
-        # between our lookup and flush — re-read and treat it as the canonical row.
-        db.rollback()
+        claim = claim_idempotency_key(db, tenant_id=tenant_id,
+            idempotency_key=_manual_receipt_key(auth.device_id, payload.client_ref),
+            operation="create_manual_expense", request_fingerprint=fingerprint, target_type="expense")
+        if claim.kind is IdempotencyOutcomeKind.FINGERPRINT_MISMATCH:
+            raise AppError("idempotency_key_reused", status_code=422)
+        if claim.kind is IdempotencyOutcomeKind.IN_PROGRESS:
+            raise AppError("idempotency_key_in_progress", status_code=409)
+        if claim.kind is IdempotencyOutcomeKind.HIT:
+            return _manual_receipt(claim.row)
         existing = _find_manual_expense_by_key(db, tenant_id, key)
         if existing is not None:
-            return _resolve_existing_manual_create(existing, fingerprint)
+            if existing.draft_request_fingerprint != fingerprint:
+                raise AppError("idempotency_key_reused", status_code=422)
+            raise _manual_review_error(existing.id)
+        validate_currency_payload_money_command(payload, amount_was_explicit=payload.amount_cents is not None)
+        expense = _insert_manual_expense(db, payload, tenant_id, draft_idempotency_key=key,
+            draft_request_fingerprint=fingerprint, actor_account_id=auth.account_id, actor_device_id=auth.device_id)
+        receipt = expense_to_response(db, tenant_id=tenant_id, expense=expense)
+        mark_idempotency_succeeded(db, claim.row, resource_type="expense", resource_id=str(receipt.id),
+            response_body=receipt.model_dump(mode="json"))
+        db.commit()
+        return receipt
+    except Exception:
+        db.rollback()
         raise
 
 

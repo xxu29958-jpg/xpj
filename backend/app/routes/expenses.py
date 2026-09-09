@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Header, Query
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_app_context, get_current_writer_context
+from app.auth import get_current_app_context, get_current_protocol_writer_context, get_current_writer_context
 from app.database import get_db
 from app.errors import AppError
 from app.schemas import (
@@ -118,11 +118,10 @@ def get_pending_expenses(
 @router.post("/manual", response_model=ExpenseResponse)
 def post_manual_expense(
     payload: ExpenseManualCreateRequest,
-    auth: AuthContext = Depends(get_current_writer_context),
+    auth: AuthContext = Depends(get_current_protocol_writer_context),
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
-    expense = create_manual_expense(db, payload, auth)
-    return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
+    return create_manual_expense(db, payload, auth)
 
 
 @router.post("/notification-drafts", response_model=ExpenseResponse)

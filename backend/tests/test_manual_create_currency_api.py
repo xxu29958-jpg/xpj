@@ -30,7 +30,7 @@ def test_manual_create_and_replay_preserve_captured_jpy_under_current_cny(client
             row.original_amount_minor, row.amount_cents) == ("JPY", "JPY", 12, 12)
 
 
-def test_unaccepted_legacy_bare_money_is_refused_but_accepted_original_key_can_recover(client, identity):
+def test_unaccepted_legacy_money_is_refused_and_existing_key_without_receipt_requires_review(client, identity):
     body = {"amount_cents": 12, "client_ref": "legacy-amount", "category": "餐饮"}
     refused = client.post("/api/expenses/manual", json=body, headers=identity.app_headers)
     assert refused.status_code == 422, refused.text
@@ -47,7 +47,10 @@ def test_unaccepted_legacy_bare_money_is_refused_but_accepted_original_key_can_r
         db.commit()
         saved_id = row.id
     recovered = client.post("/api/expenses/manual", json=body, headers=identity.app_headers)
-    assert recovered.status_code == 200, recovered.text
-    assert (recovered.json()["id"], recovered.json()["home_currency"], recovered.json()["amount_cents"]) == (saved_id, "JPY", 12)
+    assert recovered.status_code == 409, recovered.text
+    assert recovered.json()["error"] == "manual_create_original_requires_review"
+    assert recovered.json()["expense_id"] == saved_id
     with SessionLocal() as db:
         assert db.scalar(select(func.count()).select_from(Expense)) == 1
+        row = db.get(Expense, saved_id)
+        assert (row.home_currency_code, row.amount_cents) == ("JPY", 12)

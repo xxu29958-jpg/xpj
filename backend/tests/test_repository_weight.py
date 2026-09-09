@@ -103,7 +103,7 @@ def test_whole_repository_totals_use_exact_blobs_and_count_each_file_once(repo, 
 @pytest.mark.parametrize("limit,old_lines,new_lines,delta", [
     (500, 450, 501, -398), (800, 750, 801, -698), (1000, 950, 1001, -898),
 ])
-def test_large_file_debt_fails_even_when_total_loc_decreases(repo, tmp_path, limit, old_lines, new_lines, delta) -> None:
+def test_large_file_growth_stays_visible_for_review_even_when_total_loc_decreases(repo, tmp_path, limit, old_lines, new_lines, delta) -> None:
     base = commit_files(repo, {
         "backend/app/static/a.js": "const a = 1;\n" * old_lines,
         "backend/app/static/b.js": "const b = 1;\n" * old_lines,
@@ -111,12 +111,15 @@ def test_large_file_debt_fails_even_when_total_loc_decreases(repo, tmp_path, lim
     head = commit_files(repo, {
         "backend/app/static/a.js": "const a = 1;\n" * new_lines,
         "backend/app/static/b.js": "const b = 1;\n",
-    }, "concentrated debt")
+    }, "concentrated source")
     result, report = run_weight(repo, base, head, tmp_path)
-    assert result.returncode == 1, result.stdout + result.stderr
+    assert result.returncode == 0, result.stdout + result.stderr
     assert report["delta"]["production_loc"] == delta
     assert report["current"]["debt"][f"files_over_{limit}"] == 1
-    assert f"files_over_{limit}" in "\n".join(report["failures"])
+    assert report["failures"] == []
+    assert f"files_over_{limit}" in "\n".join(report["advisories"])
+    assert "Size changes requiring review" in result.stdout
+    assert report["verdict"] != "HEALTHY GROWTH"
 
 
 def test_real_c901_cannot_be_hidden_by_a_new_noqa(repo, tmp_path) -> None:
@@ -265,7 +268,7 @@ def test_function_map_finds_actual_complex_consumers(repo, tmp_path, path, langu
 
 
 @pytest.mark.parametrize("body_lines", [1, 81])
-def test_kotlin_annotation_target_is_not_a_function_but_real_long_functions_still_fail(repo, tmp_path, body_lines):
+def test_kotlin_annotation_target_is_not_a_function_and_real_spans_remain_reviewable(repo, tmp_path, body_lines):
     path = "android/app/src/test/java/CurrencyTest.kt"
     base = commit_files(repo, {path: "\n"}, "empty")
     body = "    println(value)\n" * body_lines
@@ -274,11 +277,13 @@ def test_kotlin_annotation_target_is_not_a_function_but_real_long_functions_stil
               "    }\n" + "\n" * 85 + "}\n")
     head = commit_files(repo, {path: source}, "annotated Kotlin test")
     result, report = run_weight(repo, base, head, tmp_path)
-    assert result.returncode == (1 if body_lines > 80 else 0), result.stdout + result.stderr
+    assert result.returncode == 0, result.stdout + result.stderr
     functions = report["current"]["functions"]
     assert [row["name"] for row in functions] == ["render"]
     assert functions[0]["line"] == 3
     assert functions[0]["length"] == body_lines + 3
+    assert bool(report["advisories"]) == (body_lines > 80)
+    assert report["failures"] == []
 
 
 def test_kotlin_real_getter_keeps_its_complexity_and_location(repo, tmp_path):

@@ -224,6 +224,8 @@ internal fun friendlyLastError(raw: String?, fallback: String): String {
     val text = raw?.trim().orEmpty()
     if (text.isEmpty()) return fallback
     return when {
+        text.substringBefore(':') == com.ticketbox.data.repository.MANUAL_CREATE_RECEIPT_REVIEW ->
+            stringResource(R.string.error_manual_create_original_requires_review)
         text.startsWith("max_attempts_exceeded") -> stringResource(R.string.sync_status_error_max_attempts)
         text.startsWith("no_dispatcher_registered") -> stringResource(R.string.sync_status_error_no_dispatcher)
         text.startsWith("outbox_row_expired") -> stringResource(R.string.sync_status_error_expired)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from decimal import Decimal, InvalidOperation
+from urllib.parse import urlencode
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -56,6 +57,7 @@ def _manual_expense_context(
     client_ref: str | None = None,
     error: str | None = None,
     draft_result: str = "",
+    review_expense_id: int | None = None,
 ) -> dict:
     context = _base_ctx(
         request,
@@ -84,6 +86,10 @@ def _manual_expense_context(
             "form_device_public_id": form_device_public_id,
             "manual_draft_scope": manual_draft_scope(db, _session_writer_auth(request, selected_id)),
             "manual_draft_result": draft_result,
+            "manual_review_href": (
+                f"/web/expenses/{review_expense_id}/edit?{urlencode({'ledger_id': selected_id})}"
+                if type(review_expense_id) is int and review_expense_id > 0 else None
+            ),
             "spent_at": current_values.get("spent_at")
             or now_utc()
             .astimezone(accounting_zone())
@@ -278,6 +284,10 @@ def web_manual_expense_create(
     except (AppError, ValidationError, InvalidOperation) as exc:
         db.rollback()
         message, status_code, draft_result = _manual_expense_failure(exc)
+        review_id = (
+            (exc.details or {}).get("expense_id")
+            if isinstance(exc, AppError) and exc.error == "manual_create_original_requires_review" else None
+        )
         return templates.TemplateResponse(
             request=request,
             name="expense_new.html",
@@ -292,6 +302,7 @@ def web_manual_expense_create(
                 form_ledger_id=ledger_id,
                 form_device_public_id=expected_device_public_id,
                 draft_result=draft_result,
+                review_expense_id=review_id,
             ),
             status_code=status_code,
         )

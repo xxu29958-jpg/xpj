@@ -124,6 +124,7 @@ def test_manual_foreign_expense_uses_stored_daily_rate_and_stats_stay_cny(client
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "original_currency_code": "USD",
             "original_amount_minor": 12345,
             "merchant": "海外咖啡",
@@ -182,6 +183,7 @@ def test_foreign_expense_uses_payload_local_calendar_day_for_rate_lookup(client:
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "original_currency_code": "USD",
             "original_amount_minor": 100,
             "merchant": "Local midnight coffee",
@@ -202,6 +204,7 @@ def test_jpy_expense_uses_zero_fraction_minor_units_and_missing_rate_stays_pendi
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "original_currency_code": "JPY",
             "original_amount_minor": 1200,
             "spent_at": "2026-05-04T02:00:00Z",
@@ -239,6 +242,7 @@ def test_jpy_expense_uses_zero_fraction_minor_units_and_missing_rate_stays_pendi
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "original_currency_code": "JPY",
             "original_amount_minor": 1200,
             "merchant": "东京交通",
@@ -274,6 +278,7 @@ def test_editing_spent_at_recomputes_fx_rate_date_when_caller_did_not_pin_it(cli
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "original_currency_code": "USD",
             "original_amount_minor": 10000,
             "merchant": "跨日期咖啡",
@@ -307,6 +312,7 @@ def test_legacy_amount_payload_defaults_to_cny_rate_one(client: TestClient, *, i
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "home_currency_code": "CNY", "amount_cents": 1280,
             "merchant": "手动早餐",
             "category": "餐饮",
@@ -341,6 +347,7 @@ def test_expense_write_rejects_client_submitted_exchange_rate(client: TestClient
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "original_currency": "USD",
             "original_amount": "12.34",
             "spent_at": "2026-05-15T02:00:00Z",
@@ -384,6 +391,7 @@ def test_ecb_daily_xml_cross_rate_can_be_stored_as_home_rate(client: TestClient,
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "original_currency": "USD",
             "original_amount": "12.34",
             "spent_at": "2026-05-15T02:00:00Z",

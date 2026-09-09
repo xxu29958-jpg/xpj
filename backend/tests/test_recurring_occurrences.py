@@ -33,6 +33,7 @@ def _payment(client: TestClient, identity) -> dict:
     response = client.post(
         "/api/expenses/manual", headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "home_currency_code": "CNY", "amount_cents": 10_000, "merchant": "房租", "category": "餐饮",
             "expense_time": "2026-09-05T12:00:00Z", "note": "本期完整付款",
         },
@@ -204,7 +205,7 @@ def test_occurrence_enforces_ledger_writer_and_explicit_payload(client: TestClie
     assert client.get(path, headers=other_headers).status_code == 404
     foreign = client.post(
         "/api/expenses/manual", headers=other_headers,
-        json={"home_currency_code": "CNY", "amount_cents": 10_000, "merchant": "另一笔付款", "category": "餐饮"},
+        json={"client_ref": str(uuid4()), "home_currency_code": "CNY", "amount_cents": 10_000, "merchant": "另一笔付款", "category": "餐饮"},
     )
     assert foreign.status_code == 200, foreign.json()
     blocked = client.put(

@@ -73,6 +73,7 @@ internal class ExpenseCorrectionConnectedFixture(
     lateinit var graph: RepositoryGraph
     lateinit var uploadIntents: UploadIntentRepository
     val expenseDao get() = requireNotNull(database).expenseDao()
+    val pendingDao get() = requireNotNull(database).pendingMutationDao()
     var failCachePublication = false
     var confirmedCallbacks = 0
     var adviceCallbacks = 0
