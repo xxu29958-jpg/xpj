@@ -6,6 +6,9 @@ data class ErrorDto(
     val error: String,
     val message: String,
     @param:Json(name = "expense_id") val expenseId: Long? = null,
+    @param:Json(name = "currency_code") val currencyCode: String? = null,
+    @param:Json(name = "home_currency_code") val homeCurrencyCode: String? = null,
+    @param:Json(name = "rate_date") val rateDate: String? = null,
     // A recurring-item duplicate uses the existing resource identity and status
     // so create/edit consumers can steer to edit or restore instead of silently
     // creating another product fact.

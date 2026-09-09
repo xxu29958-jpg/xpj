@@ -15,8 +15,12 @@ internal fun NetworkErrorHandler.ParsedError.outboxFailureMessage(): String =
 /** An HTTP refusal needs positive domain evidence before it can retire an original command. */
 internal fun mapOutboxHttpException(error: HttpException): DispatchResult {
     val parsed = outboxHttpErrors.parseHttpError(error)
+    return mapOutboxHttpError(error.code(), parsed)
+}
+
+internal fun mapOutboxHttpError(statusCode: Int, parsed: NetworkErrorHandler.ParsedError): DispatchResult {
     val message = parsed.message
-    return when (error.code()) {
+    return when (statusCode) {
         409 -> when (parsed.errorCode) {
             "state_conflict" -> DispatchResult.Conflict(message)
             BUDGET_CURRENCY_CONFLICT -> DispatchResult.Conflict(BUDGET_CURRENCY_CONFLICT)

@@ -62,7 +62,7 @@ internal fun ExpenseEditRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
     onCompleted: (adviceInputsChanged: Boolean) -> Unit,
-    onOpenRepaymentDrafts: (String) -> Unit,
+    related: ExpenseFactNavigation,
 ) {
     val editViewModel: ExpenseEditViewModel = viewModel(
         key = "expense-edit-$expenseId",
@@ -88,7 +88,7 @@ internal fun ExpenseEditRoute(
     }
 
     if (expense.pendingSync) {
-        ManualExpenseSubmissionRoute(expense.clientRef.orEmpty(), screenFactory, onBack, onCompleted, onOpenRepaymentDrafts)
+        ManualExpenseSubmissionRoute(expense.clientRef.orEmpty(), screenFactory, onBack, onCompleted, related)
         return
     }
 
@@ -102,7 +102,7 @@ internal fun ExpenseEditRoute(
             onExit = { adviceInputsChanged ->
                 if (adviceInputsChanged) onCompleted(true) else onBack()
             },
-            onOpenRepaymentDrafts = onOpenRepaymentDrafts,
+            related = related,
         )
         return
     }

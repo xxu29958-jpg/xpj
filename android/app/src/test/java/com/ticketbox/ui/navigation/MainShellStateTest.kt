@@ -9,6 +9,12 @@ import org.junit.Test
 
 class MainShellStateTest {
     @Test
+    fun historicalRateContinuationRemainsASecondaryPageInsideTheProductShell() {
+        assertEquals(MainProductDestination.Secondary(ProductSecondaryPage.BudgetAdvice), mainProductDestination(CORRECTION_RATE_ROUTE))
+        assertEquals(SurfaceRole.Edit, MainShellState().surfaceRole(CORRECTION_RATE_ROUTE))
+    }
+
+    @Test
     fun bottomTabsDescribeFiveProductTaskDomains() {
         assertEquals(
             listOf("inbox", "transactions", "obligations", "plans", "insights"),

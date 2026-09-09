@@ -14,7 +14,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.data.remote.dto.MissingExchangeRateDto
-import com.ticketbox.viewmodel.canEnterManualRate
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyProjectionGap
 import com.ticketbox.domain.model.ReportsOverview

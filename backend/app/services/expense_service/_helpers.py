@@ -193,7 +193,11 @@ def _expense_has_pending_fx(expense: Expense) -> bool:
 
 def _ensure_expense_can_confirm(expense: Expense) -> None:
     if _expense_has_pending_fx(expense):
-        raise AppError("exchange_rate_pending", status_code=409)
+        raise AppError("exchange_rate_pending", status_code=409, details={
+            "currency_code": expense.original_currency_code,
+            "home_currency_code": expense.home_currency_code,
+            "rate_date": expense.exchange_rate_date.isoformat() if expense.exchange_rate_date else None,
+        })
     if expense.amount_cents is None:
         raise AppError("amount_required", status_code=400)
 

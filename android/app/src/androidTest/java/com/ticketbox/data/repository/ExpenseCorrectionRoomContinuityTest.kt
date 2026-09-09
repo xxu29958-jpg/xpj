@@ -51,7 +51,7 @@ class ExpenseCorrectionRoomContinuityTest {
         compose.setContent {
             val vm = model.value ?: return@setContent
             val state by vm.uiState.collectAsState()
-            TicketboxTheme(skin = AppSkin.Paper) { ExpenseFactScreen(state, vm, {}) }
+            TicketboxTheme(skin = AppSkin.Paper) { ExpenseFactScreen(state, vm, {}, { _, _ -> }) }
         }
         compose.waitUntil(10_000) { model.value?.uiState?.value?.expenseLoadState == ExpenseDetailDataLoadState.Loaded }
         compose.onNodeWithText("更正这笔账单").performScrollTo().performClick()
@@ -121,7 +121,7 @@ class ExpenseCorrectionRoomContinuityTest {
                     graph.incomePlanRepository, graph.debtAdjustmentRepository, graph.goalEditRepository, graph.budgetRepository, graph.recurringRepository, graph.ruleRepository)).create(OutboxStatusViewModel::class.java)
         }
         compose.setContent { TicketboxTheme(skin = AppSkin.Paper) {
-            SyncStatusScreen(requireNotNull(global), {}, navigation = com.ticketbox.ui.screens.settings.SyncStatusNavigation({ opened = it }, {}, {}, {}, {}, {}, {}, {}, {}))
+            SyncStatusScreen(requireNotNull(global), {}, navigation = com.ticketbox.ui.screens.settings.SyncStatusNavigation({ opened = it }, {}, {}, {}, {}, {}, {}, {}, {}, onRepairCorrectionRate = { _, _ -> }))
         } }
         compose.waitUntil(10_000) { global?.uiState?.value?.correctionObservation?.corrections?.size == 1 }
         compose.onNodeWithText("原因：全局恢复原提交").performScrollTo().assertIsDisplayed()
@@ -188,7 +188,7 @@ class ExpenseCorrectionRoomContinuityTest {
                     graph.incomePlanRepository, graph.debtAdjustmentRepository, graph.goalEditRepository, graph.budgetRepository, graph.recurringRepository, graph.ruleRepository)).create(OutboxStatusViewModel::class.java)
         }
         compose.setContent { TicketboxTheme(skin = AppSkin.Paper) {
-            SyncStatusScreen(requireNotNull(global), {}, navigation = com.ticketbox.ui.screens.settings.SyncStatusNavigation({}, {}, {}, {}, {}, {}, {}, {}, {}))
+            SyncStatusScreen(requireNotNull(global), {}, navigation = com.ticketbox.ui.screens.settings.SyncStatusNavigation({}, {}, {}, {}, {}, {}, {}, {}, {}, onRepairCorrectionRate = { _, _ -> }))
         } }
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         for (code in listOf("runtime_version_mismatch", "client_upgrade_required")) {
@@ -241,7 +241,7 @@ class ExpenseCorrectionRoomContinuityTest {
                     graph.incomePlanRepository, graph.debtAdjustmentRepository, graph.goalEditRepository, graph.budgetRepository, graph.recurringRepository, graph.ruleRepository)).create(OutboxStatusViewModel::class.java)
         }
         compose.setContent { TicketboxTheme(skin = AppSkin.Paper) {
-            SyncStatusScreen(requireNotNull(global), {}, navigation = com.ticketbox.ui.screens.settings.SyncStatusNavigation({}, {}, {}, {}, {}, {}, {}, {}, {}))
+            SyncStatusScreen(requireNotNull(global), {}, navigation = com.ticketbox.ui.screens.settings.SyncStatusNavigation({}, {}, {}, {}, {}, {}, {}, {}, {}, onRepairCorrectionRate = { _, _ -> }))
         } }
         compose.waitUntil(10_000) { global?.uiState?.value?.correctionObservation?.corrections?.singleOrNull()?.row?.id == id }
         val status = requireNotNull(global).uiState.value.status
@@ -293,7 +293,7 @@ class ExpenseCorrectionRoomContinuityTest {
                     graph.incomePlanRepository, graph.debtAdjustmentRepository, graph.goalEditRepository, graph.budgetRepository, graph.recurringRepository, graph.ruleRepository)).create(OutboxStatusViewModel::class.java)
         }
         compose.setContent { TicketboxTheme(skin = AppSkin.Paper) {
-            SyncStatusScreen(requireNotNull(global), {}, navigation = com.ticketbox.ui.screens.settings.SyncStatusNavigation({ opened = it }, {}, {}, {}, {}, {}, {}, {}, {}))
+            SyncStatusScreen(requireNotNull(global), {}, navigation = com.ticketbox.ui.screens.settings.SyncStatusNavigation({ opened = it }, {}, {}, {}, {}, {}, {}, {}, {}, onRepairCorrectionRate = { _, _ -> }))
         } }
         compose.waitUntil(10_000) { global?.uiState?.value?.correctionObservation?.corrections?.singleOrNull()?.delivered == true }
         compose.onNodeWithText("更正已送达；部分事实尚待刷新。").performScrollTo().assertIsDisplayed()

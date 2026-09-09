@@ -29,6 +29,8 @@ from app.routes._web_correction_form import (
     CorrectionFormData,
     CorrectionParseOutcome,
     correction_form_data,
+    correction_form_projection,
+    correction_original_fields,
     parse_correction_form,
     refresh_correction_source_flags,
     web_correction_idempotency_body,
@@ -51,11 +53,15 @@ from app.routes.web_common import (
     _resolve_selected_ledger_id,
     _web_redirect,
     parse_form_row_version_token,
+    preserve_original_ledger_form,
     templates,
 )
+from app.routes.web_expense_correction_rate import correction_rate_context
+from app.routes.web_expense_correction_rate import router as rate_router
 from app.services.expense_service import get_expense
 
 router = APIRouter(prefix="/web", tags=["web"])
+router.include_router(rate_router)
 
 
 def _fact_redirect(
@@ -139,6 +145,7 @@ def _correction_error_response(
     field_errors: dict[str, str] | None = None,
     conflict: bool = False,
     form_values: dict[str, str] | None = None,
+    rate_recovery: dict | None = None,
 ) -> Response:
     return correction_form_error_response(
         db,
@@ -154,6 +161,7 @@ def _correction_error_response(
         receipt_item_rows=None if parsed.item_sources_stale else parsed.item_form_rows,
         split_form_rows=None if parsed.split_sources_stale else parsed.split_form_rows,
         return_context=form.return_context,
+        rate_recovery=rate_recovery,
     )
 
 
@@ -165,9 +173,9 @@ def _claim_correction_submission(
     expense_id: int,
     form: CorrectionFormData,
 ) -> tuple[str, ClaimedWebCorrection | None]:
-    key = form.idempotency_key.strip() or str(uuid4())
+    key = form.idempotency_key
     submitted_row_version = parse_form_row_version_token(form.expected_row_version)
-    if submitted_row_version is None:
+    if not key.strip() or submitted_row_version is None:
         return key, None
     return key, claim_web_correction(
         db,
@@ -183,7 +191,7 @@ def _claim_correction_submission(
 def _current_scalar_form_values(values: dict[str, str]) -> dict[str, str]:
     """Keep the user's explanation, but never pair stale scalars with a fresh CAS token."""
 
-    return {"reason": values.get("reason", ""), "idempotency_key": ""}
+    return {"reason": values.get("reason", ""), "idempotency_key": str(uuid4())}
 
 
 def _submission_error_response(
@@ -202,7 +210,7 @@ def _submission_error_response(
         if claimed.error.conflict:
             values = _current_scalar_form_values(values)
         elif claimed.error.rotate_idempotency_key:
-            values = {**values, "idempotency_key": ""}
+            values = {**values, "idempotency_key": str(uuid4())}
         message = claimed.error.error or "提交参数不正确，请检查后重试。"
         if claimed.error.conflict and (parsed.item_sources_stale or parsed.split_sources_stale):
             message = f"{message} {parsed.error}"
@@ -285,7 +293,7 @@ def _command_failure_response(
         ):
             message = f"{message} {parsed.error}"
     elif command.rotate_idempotency_key:
-        values = {**values, "idempotency_key": ""}
+        values = {**values, "idempotency_key": str(uuid4())}
     field_errors = {"splits": message} if command.error_code == "expense_split_total_exceeds_parent" else None
     return _correction_error_response(
         db,
@@ -300,6 +308,8 @@ def _command_failure_response(
         field_errors=field_errors,
         conflict=command.conflict,
         form_values=values,
+        rate_recovery=(correction_rate_context(db, selected_id, command.error_details)
+            if command.error_code == "exchange_rate_pending" else None),
     )
 
 
@@ -333,6 +343,10 @@ def _handle_correction_post(
     key, claimed = _claim_correction_submission(
         db, request, selected_id=selected_id, expense_id=expense_id, form=form
     )
+    if claimed is None:
+        return _correction_error_response(db, request, options, selected_id, expense_id,
+            form, correction_form_projection(form), status_code=422,
+            message="原更正的提交标识或版本无法确认。输入已保留，请先核对账单，再重新打开更正。")
     if claimed is not None and claimed.replayed:
         return _fact_redirect(
             expense_id,
@@ -390,11 +404,16 @@ def web_correct_post(
     request: Request,
     ledger_id: str = Form(default=""),
     form: CorrectionFormData = Depends(correction_form_data),
+    original_fields: dict = Depends(correction_original_fields),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
+        fields=original_fields, task="保存原账单更正")
+    if retained is not None:
+        return retained
     _require_selected_ledger_write(options, selected_id)
     return _handle_correction_post(
         db,

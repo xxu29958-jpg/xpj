@@ -66,6 +66,7 @@ fun SyncStatusScreen(
             onOpenRuleSubmission = navigation.onOpenRuleSubmission,
             onOpenIncomeSubmission = navigation.onOpenIncomeSubmission,
             onOpenRateSubmission = navigation.onOpenRateSubmission,
+            onRepairCorrectionRate = navigation.onRepairCorrectionRate,
         )
     }
     SyncStatusScreenContent(state = state, actions = actions, onBack = onBack, onOpenInbox = navigation.onOpenInbox,
@@ -82,6 +83,7 @@ data class SyncStatusNavigation(
     val onOpenRuleSubmission: (Long) -> Unit,
     val onOpenIncomeSubmission: (Long) -> Unit,
     val onOpenRateSubmission: (Long) -> Unit,
+    val onRepairCorrectionRate: com.ticketbox.ui.screens.expense.fact.CorrectionRateAction,
 )
 
 /** Row callbacks grouped to keep the content API small and testable. */
@@ -99,6 +101,7 @@ internal data class SyncStatusActions(
     val onOpenRuleSubmission: (Long) -> Unit,
     val onOpenIncomeSubmission: (Long) -> Unit,
     val onOpenRateSubmission: (Long) -> Unit,
+    val onRepairCorrectionRate: com.ticketbox.ui.screens.expense.fact.CorrectionRateAction,
 )
 
 private data class SyncStatusActionButton(
@@ -249,7 +252,10 @@ private fun SyncStatusCorrectionSection(state: OutboxStatusUiState, actions: Syn
             options = CorrectionSubmissionOptions(state.correctionObservation.access?.canModify == true, state.busyRowId != null, false),
             actions = CorrectionSubmissionActions(
                 recover = { drop -> if (drop) actions.onDropFailed(pending.row) else actions.onRetry(pending.row) },
-                reviewFact = pending.expenseId?.let { id -> { actions.onOpenExpense(id) } }),
+                reviewFact = pending.expenseId?.let { id -> { actions.onOpenExpense(id) } },
+                repairRate = state.correctionObservation.access?.binding?.let { binding ->
+                    { gap -> actions.onRepairCorrectionRate(binding, gap) }
+                }),
         )
     }
 }

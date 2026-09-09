@@ -39,6 +39,7 @@ class CorrectionCommandOutcome:
 
     error: str | None = None
     error_code: str | None = None
+    error_details: dict[str, object] | None = None
     error_status: int = 422
     conflict: bool = False
     rotate_idempotency_key: bool = False
@@ -59,6 +60,7 @@ def _command_error(exc: AppError) -> CorrectionCommandOutcome:
     return CorrectionCommandOutcome(
         error=exc.message,
         error_code=exc.error,
+        error_details=exc.details,
         error_status=web_form_error_status(exc),
         rotate_idempotency_key=exc.error in _ROTATE_IDEMPOTENCY_ERRORS,
     )
