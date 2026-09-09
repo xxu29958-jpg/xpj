@@ -123,7 +123,7 @@ slice. Full Internal Beta RC completion is still outstanding.
 | External debt, split and reimbursement | `STRONG_SLICE`; existing relationship owners and #361 context integrated; complete settlement journeys remain | [Debt context](TICKETBOX_USER_JOURNEYS_CONTRACT.md#external-debt-context), [Plan](../superpowers/plans/2026-09-05-debt-context.md) |
 | Android external-debt creation and recovery | `STRONG_SLICE`; #369/#370 CLOSED. Original submitted intent and readable retry/discard; keyboard, OS interruption and unsubmitted editing restoration remain | [Convenience plan](../superpowers/plans/2026-09-05-consumer-art-convenience.md) |
 | Debt adjustment continuity | `STRONG_SLICE`; #379 CLOSED. Sole dispatcher preserves original submission and refreshes affected consumers | [Adjustment contract](TICKETBOX_DEBT_ADJUSTMENT_CONTINUITY_CONTRACT.md) |
-| Budgets and goals | `STRONG_SLICE`; existing owners and #364 first-step form integrated; complete outcomes and refresh/session draft recovery remain | [Budget journey](TICKETBOX_USER_JOURNEYS_CONTRACT.md#budget-first-step) |
+| Budgets and goals | `STRONG_SLICE`; existing owners and Web first-step form integrated. Compact Android first use and accurate query feedback are candidates; durable offline Goal query reopening and remaining draft recovery need completion | [Budget journey](TICKETBOX_USER_JOURNEYS_CONTRACT.md#budget-first-step), [Query boundary](TICKETBOX_USER_JOURNEYS_CONTRACT.md#planning-query-status-and-offline-reading) |
 | Recurring occurrence and income plans | `STRONG_SLICE`; #373/#377 CLOSED. Actual payment association and server-month revision/recovery use shared owners; plans stay distinct from income accounting | [Recurring](TICKETBOX_RECURRING_OCCURRENCE_CONTRACT.md), [Income plans](TICKETBOX_INCOME_PLAN_CONTRACT.md) |
 | Reports, projections and data health | `STRONG_SLICE`; #380 CLOSED. Canonical unclassified scope and exact major-expense return navigation; integrated interpretation and state feedback remain | [Insight navigation contract](TICKETBOX_INSIGHT_FACT_NAVIGATION_CONTRACT.md) |
 | First use, connection and household entry | `STRONG_SLICE`; invitation, real local Web identity and #378 original-code continuation integrated; full Owner/member/viewer rehearsal remains | [Household journeys](TICKETBOX_USER_JOURNEYS_CONTRACT.md#household-invitation), [Desktop first use](TICKETBOX_DESKTOP_FIRST_USE_CONTRACT.md) |
@@ -179,8 +179,10 @@ feedback and efficient actions within each active capability change.
 **Next action:** complete [currency choice and implicit-lock correction](TICKETBOX_CURRENCY_CHOICE_CORRECTION_CONTRACT.md),
 with #397 merged and in independent main qualification. Close [manual creation continuity](TICKETBOX_MANUAL_CREATION_CONTINUITY_CONTRACT.md)
 next, then historical FX correction; preserve original offline intent throughout.
-Physical budget/income creation works; simplify Android's first-budget optional
-fields and correct the generic goal offline-viewing claim within Planning/convenience.
+Physical budget/income creation works. Qualify the compact Android budget entry
+and accurate query feedback, then close previously read Goal list/detail reopening
+offline through the existing query owner, with visible data time and full binding
+isolation. Do not equate an original submission receipt with a current query.
 Preserve draft #372 for the later detail wave.
 The full Goal and all remaining packages above stay active.
 

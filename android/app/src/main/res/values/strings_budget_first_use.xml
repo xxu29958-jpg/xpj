@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="budget_editor_optional_show">更多设置（可选）</string>
+    <string name="budget_editor_optional_hide">收起可选设置</string>
+</resources>

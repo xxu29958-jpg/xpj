@@ -58,13 +58,13 @@ internal fun BudgetAdviceScreen(
         ),
         slots = AppSecondaryPageSlots(
             status = {
-                AppDataAuthorityStrip(
-                    tone = when {
-                        !state.canRequest -> DataAuthorityTone.ReadOnly
-                        state.loadState == BudgetAdviceLoadState.Loading -> DataAuthorityTone.Refreshing
-                        else -> DataAuthorityTone.Backend
-                    },
-                )
+                val authorityTone = when {
+                    !state.canRequest -> DataAuthorityTone.ReadOnly
+                    state.inputsLoading || state.loadState == BudgetAdviceLoadState.Loading -> DataAuthorityTone.Refreshing
+                    state.inputs != null || state.result != null -> DataAuthorityTone.Backend
+                    else -> null
+                }
+                authorityTone?.let { AppDataAuthorityStrip(tone = it) }
             },
         ),
     ) {

@@ -127,7 +127,7 @@ explicit local-intent discard. Evidence belongs in the
 
 ## Budget first step
 
-A first-time Web budget writer starts with one total and one native Save in one
+A first-time Web or Android budget writer starts with one total and one Save in one
 compact task region. Rollover, reserves, exclusions and category budgets remain
 available under optional settings; configured budgets and rejected drafts expose
 them immediately. The existing command, current month/ledger binding,
@@ -137,9 +137,35 @@ new financial default or second draft owner is implied.
 Progressive enhancement closes first-use options only after installing the
 validation-reveal handler. A browser-rejected input reopens its section and
 receives native focus; without scripts every original input remains visible.
-Durable refresh/session draft recovery is still a completion task. Evidence for
-the compact form lives in the migrated qualification notes; current end-user and
-visual acceptance remains in the atlas's Planning/Insights delivery package.
+Android retains the existing ViewModel draft and Room submission owners. Its
+optional section belongs to the original month and full binding; configured
+budgets and raw advanced input, including invalid input, stay visible. Original
+currency, OCC, queue admission and both global recovery entries are unchanged.
+The Route producer verifies total-only admission and acceptance, visible advanced
+validation and month/binding isolation. Web durable refresh/session draft recovery
+and exact Android runtime qualification remain completion tasks in the atlas.
+
+## Planning query status and offline reading
+
+A displayed query result, an original submitted command and a saved draft are
+different things. Shared source labels must not promise offline storage merely
+because a request completed or another operation is running. Empty first loads
+and failed reads must not appear successful; existing result, error, permission
+and original-submission feedback retain their own meanings.
+
+The presentation change covers spending-goal list/detail/create, debt-goal
+list/detail/create and budget advice. Shared Ledger, Inbox, Stats and Settings
+callers retain their actual cache branches; expense detail/splits and recycle
+retain explicit read-only feedback. No query, protocol, persistence or mutation
+owner changes. Goal VM and Room recovery producers remain applicable; the old
+blank-form/failed-read success labels and generic offline promise are retired.
+
+Goal queries currently preserve only active ViewModel results and specific
+submission receipts, not a durable complete query. The next capability is to
+reopen previously read goals offline through the existing query owner, retaining
+their recorded currencies, unknown progress and data time. This does not imply
+offline authority for permissions, governance or live tool health, nor a promise
+that every page works offline.
 
 ## Recycle recovery
 

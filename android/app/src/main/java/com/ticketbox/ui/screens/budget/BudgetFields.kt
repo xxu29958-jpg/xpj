@@ -11,6 +11,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppAmountInput
@@ -59,7 +60,7 @@ internal fun CategoryInputRow(
                 enabled = enabled,
             ),
             actions = AppTextInputActions(onValueChange = { onChange(it, row.amount) }),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().testTag("budget_category_name"),
         )
         Row(
             modifier = Modifier.fillMaxWidth(),

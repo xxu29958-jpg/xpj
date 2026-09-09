@@ -19,7 +19,6 @@ import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
-import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppPrimaryButton
@@ -31,7 +30,6 @@ import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
-import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.budget.MonthSwitcher
@@ -109,9 +107,6 @@ fun CreateSpendingGoalScreen(
 @Composable
 private fun CreateSpendingGoalStatusStack(state: CreateSpendingGoalUiState) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        AppDataAuthorityStrip(
-            tone = if (state.isSubmitting) DataAuthorityTone.Refreshing else DataAuthorityTone.Backend,
-        )
         if (!state.canModify) {
             AppStatusBanner(message = UiText.res(R.string.common_readonly_ledger), tone = MessageTone.Info)
         }

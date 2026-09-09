@@ -93,13 +93,11 @@ internal fun SpendingGoalsScreen(
 @Composable
 private fun SpendingGoalsStatus(state: SpendingGoalsUiState) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        AppDataAuthorityStrip(
-            tone = when {
-                !state.canModify -> DataAuthorityTone.ReadOnly
-                state.isLoading -> DataAuthorityTone.Refreshing
-                else -> DataAuthorityTone.Backend
-            },
-        )
+        if (state.isLoading || state.goals.isNotEmpty()) {
+            AppDataAuthorityStrip(
+                tone = if (state.isLoading) DataAuthorityTone.Refreshing else DataAuthorityTone.Backend,
+            )
+        }
         if (!state.canModify) {
             AppStatusBanner(
                 message = UiText.res(R.string.common_readonly_ledger),

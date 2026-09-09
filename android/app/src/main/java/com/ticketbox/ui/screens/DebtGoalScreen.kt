@@ -172,9 +172,11 @@ private fun DebtGoalScreenBody(
 @Composable
 private fun DebtGoalStatusStack(state: DebtGoalUiState) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        AppDataAuthorityStrip(
-            tone = if (state.isLoading) DataAuthorityTone.Refreshing else DataAuthorityTone.Backend,
-        )
+        if (state.isLoading || state.goals.isNotEmpty() || state.selectedGoal != null) {
+            AppDataAuthorityStrip(
+                tone = if (state.isLoading) DataAuthorityTone.Refreshing else DataAuthorityTone.Backend,
+            )
+        }
         state.flashMessage?.let { msg ->
             AppStatusBanner(message = msg, tone = MessageTone.Success)
         }

@@ -67,10 +67,12 @@ class BudgetDraftContinuityTest {
         owner.budget = owner.budget.copy(homeCurrencyCode = "CNY")
         access.value = LedgerAccessContext(originalBinding.copy(ownerKey = "other-owner"), canModify = true)
         advanceUntilIdle()
+        assertEquals(access.value.binding, vm.uiState.value.binding)
         assertEquals("CNY", vm.uiState.value.form.homeCurrencyCode)
         assertEquals("3000", vm.uiState.value.form.totalAmount)
         access.value = LedgerAccessContext(originalBinding, canModify = true)
         advanceUntilIdle()
+        assertEquals(originalBinding, vm.uiState.value.binding)
         assertEquals(original, vm.uiState.value.form)
         assertEquals(0, owner.commands.savedRequests.size)
     }

@@ -1,6 +1,7 @@
 package com.ticketbox.ui.screens.budget
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
@@ -12,7 +13,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
@@ -24,6 +30,7 @@ import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.viewmodel.BudgetUiState
+import com.ticketbox.viewmodel.BudgetFormState
 
 internal data class BudgetEditorActions(
     val onTotalAmountChange: (String) -> Unit,
@@ -41,6 +48,9 @@ internal fun BudgetEditorSection(
     state: BudgetUiState,
     actions: BudgetEditorActions,
 ) {
+    var showOptional by rememberSaveable(state.binding, state.month) { mutableStateOf(false) }
+    val hasOptionalContent = state.budget?.configured == true || state.form.hasOptionalInput()
+    val expanded = showOptional || hasOptionalContent
     BudgetOpenSection(
         title = stringResource(R.string.budget_editor_title),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
@@ -59,8 +69,20 @@ internal fun BudgetEditorSection(
             return@BudgetOpenSection
         }
         CompositionLocalProvider(LocalCurrencyDisplay provides CurrencyDisplay(currency)) {
-            BudgetCoreFields(state, actions)
-            BudgetCategoryFields(state, actions)
+            MoneyField(
+                state = AppAmountInputState(stringResource(R.string.budget_editor_total_label), currency,
+                    state.form.totalAmount, stringResource(R.string.budget_editor_total_placeholder),
+                    enabled = !state.saving && !state.hasPendingSave),
+                onValueChange = actions.onTotalAmountChange,
+                modifier = Modifier.testTag("budget_total_amount"),
+            )
+            if (expanded) {
+                Column(modifier = Modifier.testTag("budget_optional_fields"),
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
+                    BudgetOptionalAmounts(state, actions)
+                    BudgetCategoryFields(state, actions)
+                }
+            }
         }
         Button(
             modifier = Modifier.fillMaxWidth(),
@@ -75,21 +97,21 @@ internal fun BudgetEditorSection(
                 },
             )
         }
+        if (!hasOptionalContent) {
+            TextButton(onClick = { showOptional = !showOptional }, modifier = Modifier.testTag("budget_optional_toggle")) {
+                Text(stringResource(if (expanded) R.string.budget_editor_optional_hide else R.string.budget_editor_optional_show))
+            }
+        }
     }
 }
 
 @Composable
-private fun BudgetCoreFields(
+private fun BudgetOptionalAmounts(
     state: BudgetUiState,
     actions: BudgetEditorActions,
 ) {
     val enabled = !state.saving && !state.hasPendingSave
     val currency = LocalCurrencyDisplay.current.homeCurrency
-    MoneyField(
-        state = AppAmountInputState(stringResource(R.string.budget_editor_total_label), currency,
-            state.form.totalAmount, stringResource(R.string.budget_editor_total_placeholder), enabled = enabled),
-        onValueChange = actions.onTotalAmountChange,
-    )
     Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
         MoneyField(
             state = AppAmountInputState(stringResource(R.string.budget_editor_rollover_label), currency,
@@ -118,6 +140,11 @@ private fun BudgetCoreFields(
         modifier = Modifier.fillMaxWidth(),
     )
 }
+
+/** Keep raw draft fields (including invalid input) visible without copying form or error state. */
+private fun BudgetFormState.hasOptionalInput(): Boolean =
+    rolloverAmount.isNotEmpty() || nonMonthlyAmount.isNotEmpty() || excludedCategories.isNotEmpty() ||
+        categoryRows.size > 1 || categoryRows.any { it.category.isNotEmpty() || it.amount.isNotEmpty() }
 
 @Composable
 private fun BudgetCategoryFields(
