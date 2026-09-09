@@ -34,7 +34,7 @@ class RecurringRepositoryOutboxFallbackTest {
 
     private fun successDto(): RecurringItemDto = RecurringItemDto(
         publicId = "recurring-1",
-        ledgerId = "family",
+        ledgerId = "owner",
         merchant = "房租",
         merchantKey = "房租",
         frequency = "monthly",
@@ -213,6 +213,13 @@ class RecurringRepositoryOutboxFallbackTest {
         assertEquals(outcome.idempotencyKey, row.idempotencyKey)
         assertTrue("\"expected_row_version\":7" in row.payload)
         assertTrue("\"next_expected_date\":null" in row.payload)
+        val foreign = harness.repository.updateAllowingOffline(
+            expectedBinding = harness.binding,
+            baseline = baseline.copy(ledgerId = "another-ledger"),
+            patch = RecurringItemPatch(baselineAmountCents = 355000, homeCurrencyCode = "CNY"),
+        )
+        assertTrue(foreign.isFailure, "An old ledger's record cannot become an intent in the active ledger")
+        assertEquals(1, dao.rows.size)
     }
 
     @Test
