@@ -328,6 +328,9 @@ class RecurringRepositoryOutboxFallbackTest {
         )
         val legacy = harness.repository.observePendingIntents().first().single { it.idempotencyKey == "legacy-key" }
         assertEquals(null, legacy.homeCurrencyCode)
+        assertEquals("旧月票", legacy.merchant)
+        assertEquals(1200L, legacy.baselineAmountCents)
+        assertTrue(!legacy.hasSupportedIntent && !legacy.canRetry)
         assertEquals(originalJson, dao.rows.values.single { it.idempotencyKey == "legacy-key" }.payload)
     }
 }

@@ -46,24 +46,30 @@ import com.ticketbox.viewmodel.OutboxStatusViewModel
 fun SyncStatusScreen(
     viewModel: OutboxStatusViewModel,
     onBack: () -> Unit,
-    onOpenExpense: (Long) -> Unit,
-    onOpenInbox: () -> Unit,
-    onOpenBudget: (String) -> Unit,
+    navigation: SyncStatusNavigation,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val actions = remember(viewModel, onOpenExpense, onOpenBudget) {
+    val actions = remember(viewModel, navigation) {
         SyncStatusActions(
-            onOpenExpense = onOpenExpense,
+            onOpenExpense = navigation.onOpenExpense,
             onKeepMine = viewModel::keepMine,
             onDropMine = viewModel::dropMine,
             onRetry = viewModel::retry,
             onDropFailed = viewModel::dropFailed,
             onClearQuarantined = viewModel::clearQuarantined,
-            onOpenBudget = onOpenBudget,
+            onOpenBudget = navigation.onOpenBudget,
+            onOpenRecurring = navigation.onOpenRecurring,
         )
     }
-    SyncStatusScreenContent(state = state, actions = actions, onBack = onBack, onOpenInbox = onOpenInbox)
+    SyncStatusScreenContent(state = state, actions = actions, onBack = onBack, onOpenInbox = navigation.onOpenInbox)
 }
+
+data class SyncStatusNavigation(
+    val onOpenExpense: (Long) -> Unit,
+    val onOpenInbox: () -> Unit,
+    val onOpenBudget: (String) -> Unit,
+    val onOpenRecurring: () -> Unit,
+)
 
 /** Row callbacks grouped to keep the content API small and testable. */
 internal data class SyncStatusActions(
@@ -74,6 +80,7 @@ internal data class SyncStatusActions(
     val onDropFailed: (OutboxRow) -> Unit,
     val onClearQuarantined: () -> Unit,
     val onOpenBudget: (String) -> Unit,
+    val onOpenRecurring: () -> Unit,
 )
 
 private data class SyncStatusActionButton(
@@ -128,11 +135,11 @@ internal fun SyncStatusScreenContent(
             onOpenInbox = onOpenInbox,
             actions = actions.copy(
                 onDropMine = { confirmingDrop = SyncStatusDropSelection(it, failed = false, debtCreation = null,
-                    recurringOccurrence = state.recurringOccurrences[it.id], incomeEdit = state.incomeEdits[it.id], debtAdjustment = state.debtAdjustments[it.id], budgetSave = state.budgetSaves[it.id]) },
+                    recurringOccurrence = state.recurringOccurrences[it.id], incomeEdit = state.incomeEdits[it.id], debtAdjustment = state.debtAdjustments[it.id], budgetSave = state.budgetSaves[it.id], recurringOriginal = state.recurringItems[it.id]) },
                 onDropFailed = { row ->
                     if (row.type in setOf(PendingMutationType.CorrectExpense, PendingMutationType.CreateBillSplitInvitation)) actions.onDropFailed(row)
                     else confirmingDrop = SyncStatusDropSelection(row, failed = true, debtCreation = state.failedDebtCreations[row.id],
-                        recurringOccurrence = state.recurringOccurrences[row.id], incomeEdit = state.incomeEdits[row.id], debtAdjustment = state.debtAdjustments[row.id], budgetSave = state.budgetSaves[row.id])
+                        recurringOccurrence = state.recurringOccurrences[row.id], incomeEdit = state.incomeEdits[row.id], debtAdjustment = state.debtAdjustments[row.id], budgetSave = state.budgetSaves[row.id], recurringOriginal = state.recurringItems[row.id])
                 },
                 onClearQuarantined = { confirmingClearQuarantined = true },
             ),

@@ -57,14 +57,14 @@ class OutboxStatusViewModelTest {
 
     @Test
     fun originalOffsetCannotBeRebasedByGlobalKeepMine() = runTest(dispatcher) {
-        val harness = harness()
+        val harness = outboxStatusHarness()
         val id = harness.outbox.enqueue(PendingMutationType.CreateExpenseOffset, "expense:7",
             "{\"kind\":\"refund\",\"original_amount_minor\":1000,\"accounting_date\":\"2026-09-03\",\"reason\":\"Original refund\",\"expected_row_version\":7}",
             7, "original-refund-key")
         harness.outbox.markConflict(id, "state_conflict")
         val original = harness.outbox.observeStatus().first().conflicts.single()
         val vm = outboxStatusViewModelFactory(harness.outbox, harness.expenseRepository,
-            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits, harness.budgetSaves))
+            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits, harness.budgetSaves, harness.recurringItems))
             .create(OutboxStatusViewModel::class.java)
         try {
             runCurrent()
@@ -81,13 +81,13 @@ class OutboxStatusViewModelTest {
 
     @Test
     fun rejectedKeepMineShowsFeedbackAndDropClearsIt() = runTest(dispatcher) {
-        val harness = harness()
+        val harness = outboxStatusHarness()
         val rowId = harness.outbox.enqueue(PendingMutationType.PatchExpense,
             "expense:local:client-1", "{}", 1L)
         harness.outbox.markConflict(rowId, "state conflict")
         val row = harness.outbox.observeStatus().first { it.conflicts.isNotEmpty() }.conflicts.single()
         val vm = OutboxStatusViewModel(harness.outbox, harness.expenseRepository,
-            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits, harness.budgetSaves))
+            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits, harness.budgetSaves, harness.recurringItems))
         runCurrent()
 
         vm.keepMine(row)
@@ -105,13 +105,13 @@ class OutboxStatusViewModelTest {
 
     @Test
     fun unsupportedIncomeRetryKeepsTheOriginalFailedRecord() = runTest(dispatcher) {
-        val harness = harness()
+        val harness = outboxStatusHarness()
         val id = harness.outbox.enqueue(type = PendingMutationType.UpdateIncomePlan,
             targetId = "income_plan:old", payloadJson = "{\"amount_cents\":120000}", expectedRowVersion = 1L)
         harness.outbox.markFailed(id, "unsupported original intent")
         val row = harness.outbox.observeStatus().first().failed.single()
         val vm = outboxStatusViewModelFactory(harness.outbox, harness.expenseRepository,
-            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits, harness.budgetSaves))
+            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits, harness.budgetSaves, harness.recurringItems))
             .create(OutboxStatusViewModel::class.java)
         runCurrent()
         kotlin.test.assertNotNull(vm.uiState.value.incomeEdits[id])
@@ -125,7 +125,7 @@ class OutboxStatusViewModelTest {
     @Test
     fun unretryableAdjustmentsKeepOriginalFailedRecordsAndAllowExplicitDrop() = runTest(dispatcher) {
         for (supported in listOf(false, true)) {
-            val harness = harness()
+            val harness = outboxStatusHarness()
             val id = if (supported) {
                 val binding = assertNotNull(harness.debtAdjustments.currentAccess()).binding
                 harness.debtAdjustments.save(binding, sampleDebt().copy(rowVersion = 7), -5_000, "减免").getOrThrow()
@@ -137,7 +137,7 @@ class OutboxStatusViewModelTest {
             harness.outbox.markFailed(id, if (supported) "debt_adjustment_negative_remaining" else "unsupported original intent")
             val original = harness.outbox.observeStatus().first().failed.single()
             val vm = outboxStatusViewModelFactory(harness.outbox, harness.expenseRepository,
-                OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits, harness.budgetSaves))
+                OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits, harness.budgetSaves, harness.recurringItems))
                 .create(OutboxStatusViewModel::class.java)
             runCurrent()
             val described = assertNotNull(vm.uiState.value.debtAdjustments[id])
@@ -177,7 +177,7 @@ class OutboxStatusViewModelTest {
 
     @Test
     fun reopenedSyncStatusKeepsOriginalAdjustmentContextWhilePendingThenInFlight() = runTest(dispatcher) {
-        val harness = harness()
+        val harness = outboxStatusHarness()
         val binding = assertNotNull(harness.debtAdjustments.currentAccess()).binding
         val debt = sampleDebt().copy(rowVersion = 7)
         val id = harness.debtAdjustments.save(binding, debt, -5_000, "减免").getOrThrow()
@@ -186,7 +186,7 @@ class OutboxStatusViewModelTest {
 
         // Open the global entry after persistence; no canonical Debt read or retry is needed.
         val vm = outboxStatusViewModelFactory(harness.outbox, harness.expenseRepository,
-            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits, harness.budgetSaves))
+            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits, harness.budgetSaves, harness.recurringItems))
             .create(OutboxStatusViewModel::class.java)
         runCurrent()
 
@@ -226,13 +226,13 @@ class OutboxStatusViewModelTest {
 
     @Test
     fun uploadRecoveryCannotUseTheGenericRetryOrFreshTokenExit() = runTest(dispatcher) {
-        val harness = harness()
+        val harness = outboxStatusHarness()
         val id = harness.outbox.enqueue(PendingMutationType.UploadScreenshot, "upload_batch:original", "original-payload",
             0, "original-key")
         harness.outbox.markFailed(id, "upload_intent_unsupported")
         val original = harness.outbox.observeStatus().first().failed.single()
         val vm = OutboxStatusViewModel(harness.outbox, harness.expenseRepository,
-            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits, harness.budgetSaves))
+            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits, harness.budgetSaves, harness.recurringItems))
         runCurrent()
 
         vm.retry(original)
@@ -253,13 +253,13 @@ class OutboxStatusViewModelTest {
 
     @Test
     fun terminalGoalRefusalCannotBeRequeuedFromTheGlobalRecoveryEntrance() = runTest(dispatcher) {
-        val harness = harness()
+        val harness = outboxStatusHarness()
         val id = harness.outbox.enqueue(PendingMutationType.UpdateGoal, "goal:original",
             "{\"expected_row_version\":0,\"target_amount_cents\":1200}", 1, "original-goal-key")
         harness.outbox.markFailed(id, "目标参数已失效")
         val original = harness.outbox.observeStatus().first().failed.single()
         val vm = outboxStatusViewModelFactory(harness.outbox, harness.expenseRepository,
-            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits, harness.budgetSaves))
+            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits, harness.budgetSaves, harness.recurringItems))
             .create(OutboxStatusViewModel::class.java)
         try {
             runCurrent()
@@ -280,15 +280,48 @@ class OutboxStatusViewModelTest {
     }
 
     @Test
+    fun globalRecurringRecoveryRetainsItsOriginalCurrencyVersionAndKey() = runTest(dispatcher) {
+        val harness = outboxStatusHarness()
+        val payload = OutboxAdapterGraph().recurringUpdateAdapter.toJson(
+            com.ticketbox.data.remote.dto.RecurringItemUpdateRequestDto(expectedRowVersion = 7,
+                baselineAmountCents = 1200, homeCurrencyCode = "JPY"),
+        )
+        val id = harness.outbox.enqueue(PendingMutationType.UpdateRecurringItem, "recurring_item:original",
+            payload, 7, "recurring-original-key")
+        harness.outbox.markFailed(id, "max_attempts_exceeded(10): connection interrupted")
+        val original = harness.outbox.observeStatus().first().failed.single()
+        val vm = outboxStatusViewModelFactory(harness.outbox, harness.expenseRepository,
+            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments,
+                harness.goalEdits, harness.budgetSaves, harness.recurringItems)).create(OutboxStatusViewModel::class.java)
+        try {
+            val ready = vm.uiState.first { it.recurringItems.containsKey(id) }
+            assertTrue(ready.offersRetry(original))
+            assertEquals("JPY", ready.recurringItems[id]?.homeCurrencyCode)
+            assertEquals(1200L, ready.recurringItems[id]?.baselineAmountCents)
+            assertNull(harness.recurringItems.describeManualIntent(original.copy(ledgerId = "another-ledger")))
+            vm.keepMine(original)
+            runCurrent()
+            assertEquals(original, harness.outbox.observeStatus().first().failed.single())
+            vm.retry(original)
+            val retried = harness.outbox.observeActiveByTypes(setOf(PendingMutationType.UpdateRecurringItem))
+                .first { rows -> rows.singleOrNull()?.status == PendingMutationStatus.Pending }.single()
+            vm.uiState.first { it.busyRowId == null }
+            assertEquals(original.payloadJson, retried.payloadJson)
+            assertEquals(original.expectedRowVersion, retried.expectedRowVersion)
+            assertEquals(original.idempotencyKey, retried.idempotencyKey)
+        } finally { vm.viewModelScope.coroutineContext.job.cancelAndJoin() }
+    }
+
+    @Test
     fun globalBudgetRecoveryReplaysOnlyTheOriginalSupportedCommand() = runTest(dispatcher) {
-        val harness = harness()
+        val harness = outboxStatusHarness()
         val payload = OutboxAdapterGraph().budgetSaveAdapter.toJson(com.ticketbox.data.repository.BudgetSavePayload(
             1, "2026-09", "UTC", com.ticketbox.data.remote.dto.BudgetMonthlyUpdateRequestDto("JPY", null, 1200)))
         val id = harness.outbox.enqueue(PendingMutationType.SaveMonthlyBudget, "monthly_budget:2026-09", payload, 0, "budget-original-key")
         harness.outbox.markFailed(id, "budget_save_unverified")
         val original = harness.outbox.observeStatus().first().failed.single()
         val vm = outboxStatusViewModelFactory(harness.outbox, harness.expenseRepository,
-            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits, harness.budgetSaves))
+            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits, harness.budgetSaves, harness.recurringItems))
             .create(OutboxStatusViewModel::class.java)
         try {
             runCurrent()
@@ -322,42 +355,46 @@ class OutboxStatusViewModelTest {
         } finally { vm.viewModelScope.coroutineContext.job.cancelAndJoin() }
     }
 
-    private fun harness(): Harness {
-        val tokenStore = TestSessionFixture().apply { saveToken("session-token") }
-        val api = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0))
-        val expenseRepository = com.ticketbox.data.repository.expenseRepositoryFixture(
-            expenseDao = FakeExpenseDao(),
-            binding = testServerSessionBinding(
-                apiClient = api,
-                settingsStore = boundSettingsStore(),
-                tokenStore = tokenStore,
-            ),
-        )
-        val outbox = testOutboxRepository(dao = FakePendingMutationDao())
-        return Harness(
-            outbox = outbox,
-            expenseRepository = expenseRepository,
-            debtCreation = DebtCreationRepository(
-                testApiServiceProvider(api, tokenStore), outbox, OutboxAdapterGraph().debtCreateAdapter,
-            ),
-            incomePlans = IncomePlanRepository(testApiServiceProvider(api, tokenStore), outbox,
-                OutboxAdapterGraph().incomePlanUpdateAdapter),
-            debtAdjustments = DebtAdjustmentRepository(testApiServiceProvider(api, tokenStore), outbox,
-                OutboxAdapterGraph().debtAdjustmentAdapter),
-            goalEdits = com.ticketbox.data.repository.GoalEditRepository(testApiServiceProvider(api, tokenStore), outbox,
-                OutboxAdapterGraph().goalUpdateAdapter, OutboxAdapterGraph().goalReceiptAdapter),
-            budgetSaves = com.ticketbox.data.repository.BudgetSaveRepository(testApiServiceProvider(api, tokenStore), outbox,
-                OutboxAdapterGraph().budgetSaveAdapter, OutboxAdapterGraph().budgetReceiptAdapter),
-        )
-    }
+}
 
-    private data class Harness(
-        val outbox: OutboxRepository,
-        val expenseRepository: ExpenseRepository,
-        val debtCreation: DebtCreationRepository,
-        val incomePlans: IncomePlanRepository,
-        val debtAdjustments: DebtAdjustmentRepository,
-        val goalEdits: com.ticketbox.data.repository.GoalEditRepository,
-        val budgetSaves: com.ticketbox.data.repository.BudgetSaveActions,
+private fun outboxStatusHarness(): Harness {
+    val tokenStore = TestSessionFixture().apply { saveToken("session-token") }
+    val api = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0))
+    val expenseRepository = com.ticketbox.data.repository.expenseRepositoryFixture(
+        expenseDao = FakeExpenseDao(),
+        binding = testServerSessionBinding(
+            apiClient = api,
+            settingsStore = boundSettingsStore(),
+            tokenStore = tokenStore,
+        ),
+    )
+    val outbox = testOutboxRepository(dao = FakePendingMutationDao())
+    return Harness(
+        outbox = outbox,
+        expenseRepository = expenseRepository,
+        debtCreation = DebtCreationRepository(
+            testApiServiceProvider(api, tokenStore), outbox, OutboxAdapterGraph().debtCreateAdapter,
+        ),
+        incomePlans = IncomePlanRepository(testApiServiceProvider(api, tokenStore), outbox,
+            OutboxAdapterGraph().incomePlanUpdateAdapter),
+        debtAdjustments = DebtAdjustmentRepository(testApiServiceProvider(api, tokenStore), outbox,
+            OutboxAdapterGraph().debtAdjustmentAdapter),
+        goalEdits = com.ticketbox.data.repository.GoalEditRepository(testApiServiceProvider(api, tokenStore), outbox,
+            OutboxAdapterGraph().goalUpdateAdapter, OutboxAdapterGraph().goalReceiptAdapter),
+        budgetSaves = com.ticketbox.data.repository.BudgetSaveRepository(testApiServiceProvider(api, tokenStore), outbox,
+            OutboxAdapterGraph().budgetSaveAdapter, OutboxAdapterGraph().budgetReceiptAdapter),
+        recurringItems = com.ticketbox.data.repository.RecurringRepository(testApiServiceProvider(api, tokenStore), outbox,
+            OutboxAdapterGraph().recurringCreateAdapter, OutboxAdapterGraph().recurringUpdateAdapter),
     )
 }
+
+private data class Harness(
+    val outbox: OutboxRepository,
+    val expenseRepository: ExpenseRepository,
+    val debtCreation: DebtCreationRepository,
+    val incomePlans: IncomePlanRepository,
+    val debtAdjustments: DebtAdjustmentRepository,
+    val goalEdits: com.ticketbox.data.repository.GoalEditRepository,
+    val budgetSaves: com.ticketbox.data.repository.BudgetSaveActions,
+    val recurringItems: com.ticketbox.data.repository.RecurringManualMutationActions,
+)

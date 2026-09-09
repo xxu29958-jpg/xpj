@@ -71,7 +71,8 @@ internal fun NavGraphBuilder.addWorkspaceRoute(
             SettingsRoute(
                 navigation = SettingsDestinationNavigation(onOpenExpense = runtime.navController::openExpense,
                     onOpenInbox = { shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox) },
-                    onOpenBudget = { month -> runtime.navController.navigate(budgetRoute(month)) }, onCloseRoot = onBack),
+                    onOpenBudget = { month -> runtime.navController.navigate(budgetRoute(month)) },
+                    onOpenRecurring = { shellState.openSecondaryPage(ProductSecondaryPage.Recurring) }, onCloseRoot = onBack),
                 screenFactory = screenFactory,
                 preferenceControls = workspaceControls.preferences,
                 onBindingCleared = workspaceControls.onBindingCleared,
@@ -241,12 +242,16 @@ internal fun NavGraphBuilder.addObligationRoutes(
                     screenFactory.outboxRepository, screenFactory.repository,
                     com.ticketbox.viewmodel.OutboxRecoveryRepositories(screenFactory.debtCreationRepository,
                         screenFactory.recurringRepository.occurrences, screenFactory.incomePlanRepository,
-                        screenFactory.debtAdjustmentRepository, screenFactory.goalEditRepository, screenFactory.budgetRepository),
+                        screenFactory.debtAdjustmentRepository, screenFactory.goalEditRepository, screenFactory.budgetRepository, screenFactory.recurringRepository),
                 ),
             )
-            SyncStatusScreen(viewModel = vm, onBack = onBack, onOpenExpense = runtime.navController::openExpense,
-                onOpenInbox = { shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox) },
-                onOpenBudget = { month -> runtime.navController.navigate(budgetRoute(month)) })
+            SyncStatusScreen(viewModel = vm, onBack = onBack,
+                navigation = com.ticketbox.ui.screens.settings.SyncStatusNavigation(
+                    onOpenExpense = runtime.navController::openExpense,
+                    onOpenInbox = { shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox) },
+                    onOpenBudget = { month -> runtime.navController.navigate(budgetRoute(month)) },
+                    onOpenRecurring = { shellState.openSecondaryPage(ProductSecondaryPage.Recurring) },
+                ))
         }
         composable(
             route = REPAYMENT_DRAFT_ROUTE,

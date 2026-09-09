@@ -54,4 +54,6 @@ data class RecurringPendingIntent(
     val nextExpectedDateChanged: Boolean = false,
     val nextExpectedDate: String? = null,
     val homeCurrencyCode: String? = null,
+    val hasSupportedIntent: Boolean = false,
+    val canRetry: Boolean = false,
 )

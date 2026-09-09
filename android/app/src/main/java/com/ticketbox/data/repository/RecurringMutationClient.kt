@@ -1,6 +1,7 @@
 package com.ticketbox.data.repository
 
 import com.squareup.moshi.JsonAdapter
+import com.squareup.moshi.JsonReader
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.RecurringItemCreateRequestDto
@@ -12,6 +13,7 @@ import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import okio.Buffer
 
 /** Captures manual commands in the existing outbox before its dispatcher can send them. */
 internal class RecurringMutationClient(
@@ -25,9 +27,33 @@ internal class RecurringMutationClient(
     override fun observePendingIntents(): Flow<List<RecurringPendingIntent>> {
         val outboxRef = outbox ?: return flowOf(emptyList())
         return outboxRef.observeActiveByTypes(RECURRING_OUTBOX_TYPES, includeCompleted = true).map { rows ->
-            rows.map { row -> parsePendingIntent(row, createAdapter, updateAdapter) }
+            rows.mapNotNull(::describeManualIntent)
         }
     }
+
+    override fun describeManualIntent(row: OutboxRow): RecurringPendingIntent? {
+        val binding = requestGuard.captureLogicalBinding() ?: return null
+        val origin = canonicalServerOriginOrNull(binding.serverUrl) ?: return null
+        if (row.type !in RECURRING_OUTBOX_TYPES || row.ownerKey != binding.ownerKey || row.ledgerId != binding.ledgerId ||
+            canonicalServerOriginOrNull(row.serverUrl) != origin) return null
+        return parsePendingIntent(row, createAdapter, updateAdapter)
+    }
+
+    override suspend fun recoverManualIntent(binding: LogicalSessionBinding, row: OutboxRow, drop: Boolean): Result<Unit> =
+        errorHandler.safeCall {
+            val bound = requestGuard.bindExact(binding)
+            val original = checkNotNull(describeManualIntent(row)) { "原提交不属于当前连接，请重新核对。" }
+            check(drop || canModify()) { "当前角色为只读，无法修改账本。" }
+            check(drop || original.canRetry) { RECURRING_ORIGINAL_UNSUPPORTED }
+            val queue = checkNotNull(outbox) { "固定支出提交暂不可用，请重新打开应用。" }
+            when (row.status) {
+                PendingMutationStatus.Conflict -> if (drop) queue.resolveConflict(row.id, ConflictResolution.DropMine, bound)
+                PendingMutationStatus.Failed -> queue.resolveFailed(row.id,
+                    if (drop) FailedResolution.Drop else FailedResolution.Retry(), bound)
+                else -> Unit
+            }
+            Unit
+        }
 
     override suspend fun createAllowingOffline(
         expectedBinding: LogicalSessionBinding,
@@ -66,6 +92,7 @@ internal class RecurringMutationClient(
                 nextExpectedDateChanged = true,
                 nextExpectedDate = request.nextExpectedDate,
                 homeCurrencyCode = request.homeCurrencyCode,
+                hasSupportedIntent = true,
             )
         }
     }
@@ -75,6 +102,7 @@ internal class RecurringMutationClient(
         baseline: RecurringItem,
         patch: RecurringItemPatch,
     ): Result<RecurringPendingIntent> {
+        if (baseline.ledgerId != expectedBinding.ledgerId) return recurringValidationFailure("recurring_ledger_conflict")
         validatePatch(baseline, patch)?.let { return recurringValidationFailure(it) }
         if (!canModify()) return recurringValidationFailure("permission_denied")
         val outboxRef = outbox ?: return recurringValidationFailure("recurring_command_owner_unavailable")
@@ -104,6 +132,7 @@ internal class RecurringMutationClient(
                 nextExpectedDateChanged = request.nextExpectedDate.changed,
                 nextExpectedDate = request.nextExpectedDate.value,
                 homeCurrencyCode = request.homeCurrencyCode,
+                hasSupportedIntent = true,
             )
         }
     }
@@ -123,7 +152,7 @@ private fun parsePendingIntent(
             .takeIf { it != row.targetId && it.isNotBlank() },
     )
     // Unsupported originals remain visible and stored verbatim for explicit review.
-    return runCatching {
+    val parsed = runCatching {
         when (row.type) {
             PendingMutationType.CreateRecurringItem -> {
                 val request = requireNotNull(createAdapter?.fromJson(row.payloadJson))
@@ -133,6 +162,7 @@ private fun parsePendingIntent(
                     nextExpectedDateChanged = true,
                     nextExpectedDate = request.nextExpectedDate,
                     homeCurrencyCode = request.homeCurrencyCode,
+                    hasSupportedIntent = request.matchesOriginal(row),
                 )
             }
             else -> {
@@ -143,11 +173,40 @@ private fun parsePendingIntent(
                     nextExpectedDateChanged = request.nextExpectedDate.changed,
                     nextExpectedDate = request.nextExpectedDate.value,
                     homeCurrencyCode = request.homeCurrencyCode,
+                    hasSupportedIntent = request.matchesOriginal(row),
                 )
             }
         }
-    }.getOrDefault(original)
+    }.getOrElse { readLegacyRecurringSummary(row.payloadJson, original) }
+    return parsed.copy(canRetry = parsed.hasSupportedIntent && row.status == PendingMutationStatus.Failed &&
+        (row.lastError?.startsWith("max_attempts_exceeded(") == true ||
+            row.lastError in setOf("client_upgrade_required", "runtime_version_mismatch")))
 }
+
+/** Read-only legacy summary; integers are read as Long, never through floating point or a new default. */
+private fun readLegacyRecurringSummary(json: String, original: RecurringPendingIntent): RecurringPendingIntent = runCatching {
+    var summary = original
+    JsonReader.of(Buffer().writeUtf8(json)).use { reader ->
+        reader.beginObject()
+        while (reader.hasNext()) {
+            val field = reader.nextName()
+            if (reader.peek() == JsonReader.Token.NULL) {
+                reader.nextNull<Unit>()
+                if (field == "next_expected_date") summary = summary.copy(nextExpectedDateChanged = true)
+                continue
+            }
+            summary = when (field) {
+                "merchant" -> summary.copy(merchant = reader.nextString())
+                "baseline_amount_cents" -> summary.copy(baselineAmountCents = reader.nextLong())
+                "home_currency_code" -> summary.copy(homeCurrencyCode = reader.nextString())
+                "next_expected_date" -> summary.copy(nextExpectedDateChanged = true, nextExpectedDate = reader.nextString())
+                else -> { reader.skipValue(); summary }
+            }
+        }
+        reader.endObject()
+    }
+    summary
+}.getOrDefault(original)
 
 private fun RecurringItemPatch.toWireRequest(rowVersion: Long): RecurringItemUpdateRequestDto =
     RecurringItemUpdateRequestDto(

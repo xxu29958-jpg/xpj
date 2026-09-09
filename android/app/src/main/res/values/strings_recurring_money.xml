@@ -3,4 +3,14 @@
     <string name="recurring_form_error_currency">原记录的币种尚未确认或已不匹配。已保留填写内容，请先核对原记录。</string>
     <string name="recurring_amount_currency_unknown">原金额（币种待确认）</string>
     <string name="recurring_pending_state_done">已同步</string>
+    <string name="recurring_total_empty">暂无计划金额</string>
+    <string name="recurring_total_unavailable">部分金额待确认币种或合计</string>
+    <string name="recurring_original_amount_unknown">%1$d（原数值，币种待确认）</string>
+    <string name="recurring_original_attention">请核对这份固定支出原提交，再继续处理。</string>
+    <string name="recurring_original_open">查看固定支出</string>
+    <string name="recurring_original_unsupported">原提交信息不完整，暂不能重试。已保留原填写内容，请先核对固定支出。</string>
+    <string name="recurring_original_drop">停止并移除原提交</string>
+    <string name="recurring_original_drop_explanation">停止本机重试并移除这份原提交。它可能已到达服务器，这不会撤销已保存的固定支出；请先查看当前记录。</string>
+    <string name="recurring_error_ledger">这条固定支出不属于当前账本，请重新打开记录。</string>
+    <string name="recurring_error_command_owner">固定支出提交暂不可用，请重新打开应用；填写内容已保留。</string>
 </resources>

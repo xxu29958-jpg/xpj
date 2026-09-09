@@ -3,6 +3,7 @@ package com.ticketbox.ui.screens
 import com.ticketbox.ui.screens.recurring.recurringHeroModel
 import com.ticketbox.viewmodel.RecurringListLoadState
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 
 class RecurringCurrencyTotalsTest {
@@ -13,6 +14,7 @@ class RecurringCurrencyTotalsTest {
         val cny = recurringHeroModel(listOf(first, second), RecurringListLoadState.Loaded)
         val mixed = recurringHeroModel(listOf(first, second.copy(homeCurrencyCode = "JPY")), RecurringListLoadState.Loaded)
         assertNotEquals(cny, mixed)
+        assertEquals(mapOf("CNY" to 1200L, "JPY" to 1200L), mixed.amountsByCurrency)
     }
 
     @Test
@@ -21,5 +23,6 @@ class RecurringCurrencyTotalsTest {
         val cny = recurringHeroModel(listOf(plan), RecurringListLoadState.Loaded)
         val unknown = recurringHeroModel(listOf(plan.copy(homeCurrencyCode = null)), RecurringListLoadState.Loaded)
         assertNotEquals(cny, unknown)
+        assertEquals(mapOf("UNKNOWN" to null), unknown.amountsByCurrency)
     }
 }

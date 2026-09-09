@@ -89,6 +89,7 @@ internal data class SettingsDestinationNavigation(
     val onOpenExpense: (Long) -> Unit,
     val onOpenInbox: () -> Unit,
     val onOpenBudget: (String) -> Unit,
+    val onOpenRecurring: () -> Unit,
     val onSecondaryActiveChange: (Boolean) -> Unit = {},
     val onCloseRoot: () -> Unit = {},
 )
@@ -129,6 +130,7 @@ internal data class SettingsRouteRepositories(
     val debtAdjustments: com.ticketbox.data.repository.DebtAdjustmentActions,
     val goalEdits: com.ticketbox.data.repository.GoalEditActions,
     val budgetSaves: com.ticketbox.data.repository.BudgetSaveActions,
+    val recurringItems: com.ticketbox.data.repository.RecurringManualMutationActions,
 )
 
 @Composable
@@ -383,13 +385,13 @@ internal fun SettingsDestinationHost(
                     repositories.outboxRepository,
                     repositories.expenseRepository,
                     com.ticketbox.viewmodel.OutboxRecoveryRepositories(repositories.debtCreationRepository,
-                        repositories.recurringOccurrences, repositories.incomePlans, repositories.debtAdjustments, repositories.goalEdits, repositories.budgetSaves),
+                        repositories.recurringOccurrences, repositories.incomePlans, repositories.debtAdjustments, repositories.goalEdits, repositories.budgetSaves, repositories.recurringItems),
                 ),
             )
             SyncStatusScreen(
-                onOpenExpense = navigation.onOpenExpense,
-                onOpenInbox = navigation.onOpenInbox,
-                onOpenBudget = navigation.onOpenBudget,
+                navigation = com.ticketbox.ui.screens.settings.SyncStatusNavigation(
+                    navigation.onOpenExpense, navigation.onOpenInbox, navigation.onOpenBudget, navigation.onOpenRecurring,
+                ),
                 viewModel = vm,
                 onBack = { route = SettingsDestination.Root },
             )

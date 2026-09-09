@@ -10,7 +10,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
-import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.ui.asString
@@ -21,7 +20,6 @@ import com.ticketbox.viewmodel.RecurringManualSaveFeedback
 import com.ticketbox.viewmodel.RecurringUiState
 
 internal data class RecurringEditorEnvironment(
-    val currencyDisplay: CurrencyDisplay,
     val conflict: RecurringConflictModel?,
     val onRefresh: () -> Unit,
     val onDismiss: () -> Unit,
@@ -77,9 +75,7 @@ internal fun RecurringEditorSheetHost(
             session = editor.session,
             uiState = uiState,
             actions = actions,
-            environment = environment.copy(
-                currencyDisplay = CurrencyDisplay.forRecord(editor.session.homeCurrencyCode ?: "UNKNOWN"),
-            ),
+            environment = environment,
         )
     }
 }

@@ -110,11 +110,11 @@ class DebtCreationRecoveryTest {
             viewModel = remember {
                 outboxStatusViewModelFactory(factory.outboxRepository, factory.repository,
                     com.ticketbox.viewmodel.OutboxRecoveryRepositories(factory.debtCreationRepository, null,
-                        factory.incomePlanRepository, factory.debtAdjustmentRepository, factory.goalEditRepository, factory.budgetRepository))
+                        factory.incomePlanRepository, factory.debtAdjustmentRepository, factory.goalEditRepository, factory.budgetRepository, factory.recurringRepository))
                     .create(OutboxStatusViewModel::class.java)
             }
             TicketboxTheme(skin = AppSkin.Default) {
-                SyncStatusScreen(viewModel, onBack = {}, onOpenExpense = {}, onOpenInbox = {}, onOpenBudget = {})
+                SyncStatusScreen(viewModel, onBack = {}, navigation = com.ticketbox.ui.screens.settings.SyncStatusNavigation({}, {}, {}, {}))
             }
         }
         compose.waitUntil(5_000) { ::viewModel.isInitialized && viewModel.uiState.value.status.failed.size == 2 }

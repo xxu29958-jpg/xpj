@@ -27,6 +27,7 @@ internal data class SyncStatusDropSelection(
     val incomeEdit: com.ticketbox.data.repository.PendingIncomePlanEdit? = null,
     val debtAdjustment: com.ticketbox.data.repository.PendingDebtAdjustment? = null,
     val budgetSave: com.ticketbox.data.repository.PendingBudgetSave? = null,
+    val recurringOriginal: com.ticketbox.data.repository.RecurringPendingIntent? = null,
 )
 
 private data class DropConfirmationText(val title: String, val text: String, val confirmWord: String)
@@ -51,6 +52,7 @@ internal fun SyncStatusDropDialog(
                 selection.recurringOccurrence?.let { com.ticketbox.ui.screens.recurring.RecurringOccurrenceIntentSummary(it) }
                 selection.incomeEdit?.let { com.ticketbox.ui.screens.IncomePlanIntentSummary(it) }
                 selection.debtAdjustment?.let { com.ticketbox.ui.screens.DebtAdjustmentIntentSummary(it) }
+                selection.recurringOriginal?.let { com.ticketbox.ui.screens.recurring.RecurringManualIntentSummary(it) }
                 selection.budgetSave?.let { com.ticketbox.ui.screens.budget.BudgetSaveIntentSummary(it) }
                 Text(copy.text)
             }
@@ -73,6 +75,10 @@ private fun dropConfirmationText(selection: SyncStatusDropSelection): DropConfir
     val debtCreation = row.type == PendingMutationType.CreateDebt
     val label = stringResource(syncStatusMutationLabelResources.getValue(row.type))
     return when {
+        row.type in setOf(PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem) -> DropConfirmationText(
+            stringResource(R.string.recurring_original_drop), stringResource(R.string.recurring_original_drop_explanation),
+            stringResource(R.string.recurring_original_drop),
+        )
         row.type == PendingMutationType.SaveMonthlyBudget -> DropConfirmationText(
             stringResource(R.string.budget_save_drop), stringResource(R.string.budget_save_drop_explanation),
             stringResource(R.string.budget_save_drop),

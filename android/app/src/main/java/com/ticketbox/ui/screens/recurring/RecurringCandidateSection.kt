@@ -12,7 +12,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
-import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.ui.components.AppAdaptiveAmountRowDefaults
 import com.ticketbox.ui.components.AppAdaptiveAmountRowStyle
@@ -22,7 +21,6 @@ import com.ticketbox.ui.components.AppListStateContent
 import com.ticketbox.ui.components.AppListStateSpec
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.AppSectionGroup
-import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -45,7 +43,6 @@ internal data class RecurringCandidateSectionOptions(
 @Composable
 internal fun RecurringCandidatesCard(
     section: RecurringListSectionModel<RecurringCandidate>,
-    currencyDisplay: CurrencyDisplay,
     options: RecurringCandidateSectionOptions,
     onRetry: () -> Unit,
     actions: RecurringCandidateActions,
@@ -84,7 +81,6 @@ internal fun RecurringCandidatesCard(
                     candidates.take(8).forEach { candidate ->
                         RecurringCandidateRow(
                             candidate = candidate,
-                            currencyDisplay = currencyDisplay,
                             canModify = options.canModify,
                             actions = actions,
                         )
@@ -123,14 +119,13 @@ private fun RecurringCandidatesQuietFailure(
 @Composable
 private fun RecurringCandidateRow(
     candidate: RecurringCandidate,
-    currencyDisplay: CurrencyDisplay,
     canModify: Boolean,
     actions: RecurringCandidateActions,
 ) {
     val merchantFallback = stringResource(R.string.recurring_candidate_merchant_fallback)
     val content = @Composable {
         AppAdaptiveEditAmountRow(
-            amount = formatDisplayAmount(candidate.amountCents, currencyDisplay),
+            amount = recurringRecordedAmountText(candidate.amountCents, candidate.homeCurrencyCode),
             style = AppAdaptiveAmountRowStyle(
                 role = AppAmountRole.Compact,
                 trailingWeight = AppAdaptiveAmountRowDefaults.listTrailingWeight,

@@ -50,7 +50,7 @@ class RecurringScreenModelsTest {
         )
         val hero = recurringHeroModel(items, RecurringListLoadState.Loaded)
         assertEquals(true, hero.factual)
-        assertEquals(420_00, hero.totalCents)
+        assertEquals(mapOf("CNY" to 420_00L), hero.amountsByCurrency)
         assertEquals(2, hero.activeCount)
         assertEquals("2026-09-01", hero.nearestNextDate)
     }
@@ -63,7 +63,7 @@ class RecurringScreenModelsTest {
         assertEquals(false, failed.factual)
         val loaded = recurringHeroModel(emptyList(), RecurringListLoadState.Loaded)
         assertEquals(true, loaded.factual)
-        assertEquals(0L, loaded.totalCents)
+        assertEquals(emptyMap(), loaded.amountsByCurrency)
         assertNull(loaded.nearestNextDate)
     }
 
@@ -85,7 +85,7 @@ class RecurringScreenModelsTest {
             itemsLoadState = RecurringListLoadState.Loaded,
         )
         val hero = recurringScreenDerived(state, RecurringTab.Upcoming).hero
-        assertEquals(300_00, hero.totalCents)
+        assertEquals(mapOf("CNY" to 300_00L), hero.amountsByCurrency)
         assertEquals(1, hero.activeCount)
     }
 

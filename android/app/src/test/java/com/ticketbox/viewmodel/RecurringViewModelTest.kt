@@ -806,6 +806,9 @@ private class FakeRecurringManualActions(
     var updateCalls: Int = 0
         private set
 
+    override fun describeManualIntent(row: com.ticketbox.data.repository.OutboxRow): RecurringPendingIntent? = null
+    override suspend fun recoverManualIntent(binding: LogicalSessionBinding, row: com.ticketbox.data.repository.OutboxRow,
+        drop: Boolean): Result<Unit> = Result.failure(IllegalStateException("recovery not configured"))
     override fun observePendingIntents(): Flow<List<RecurringPendingIntent>> = merge(pendingIntentsFlow, queued)
     override suspend fun createAllowingOffline(
         expectedBinding: LogicalSessionBinding,

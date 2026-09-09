@@ -298,8 +298,9 @@ private fun planBudgetFallbackSummary(state: BudgetUiState): String = when {
 @Composable
 private fun planRecurringSummary(state: RecurringUiState): String {
     val active = state.items.filter { it.status.equals("active", ignoreCase = true) }
-    val activeAmount = active.sumOf { it.baselineAmountCents }
-    val currency = LocalCurrencyDisplay.current
+    val amounts = com.ticketbox.ui.screens.recurring.recurringTotalLines(
+        com.ticketbox.ui.screens.recurring.recurringHeroModel(state.items, state.itemsLoadState),
+    ).joinToString(" · ")
     return when {
         state.itemsLoadState == RecurringListLoadState.Failed && active.isEmpty() ->
             state.message?.asString() ?: stringResource(R.string.plan_recurring_error)
@@ -313,19 +314,19 @@ private fun planRecurringSummary(state: RecurringUiState): String {
             stringResource(
                 R.string.plan_recurring_summary_partial,
                 active.size,
-                formatDisplayAmount(activeAmount, currency),
+                amounts,
             )
         state.candidates.isNotEmpty() ->
             stringResource(
                 R.string.plan_recurring_summary_with_candidates,
                 active.size,
-                formatDisplayAmount(activeAmount, currency),
+                amounts,
                 state.candidates.size,
             )
         else -> stringResource(
             R.string.plan_recurring_summary,
             active.size,
-            formatDisplayAmount(activeAmount, currency),
+            amounts,
         )
     }
 }

@@ -29,6 +29,8 @@ interface RecurringQueryActions {
 
 interface RecurringManualMutationActions {
     fun observePendingIntents(): Flow<List<RecurringPendingIntent>> = flowOf(emptyList())
+    fun describeManualIntent(row: OutboxRow): RecurringPendingIntent?
+    suspend fun recoverManualIntent(binding: LogicalSessionBinding, row: OutboxRow, drop: Boolean): Result<Unit>
     suspend fun createAllowingOffline(
         expectedBinding: LogicalSessionBinding,
         draft: RecurringItemDraft,

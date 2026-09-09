@@ -4,6 +4,7 @@ import androidx.annotation.StringRes
 import com.ticketbox.R
 import com.ticketbox.data.repository.RecurringDateEdit
 import com.ticketbox.data.repository.RecurringItemPatch
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.data.repository.RecurringPendingKind
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
@@ -41,7 +42,7 @@ internal val recurringDefaultTab: RecurringTab = RecurringTab.Active
 internal data class RecurringHeroModel(
     /** false = 列表尚未给出可读事实（读取中 / 待刷新），总额不可信，不渲染数字。 */
     val factual: Boolean,
-    val totalCents: Long,
+    val amountsByCurrency: Map<String, Long?>,
     val activeCount: Int,
     val nearestNextDate: String?,
 )
@@ -53,7 +54,10 @@ internal fun recurringHeroModel(
     val active = items.filter { it.status == "active" }
     return RecurringHeroModel(
         factual = items.isNotEmpty() || loadState == RecurringListLoadState.Loaded,
-        totalCents = active.sumOf { it.baselineAmountCents },
+        amountsByCurrency = active.groupBy { it.homeCurrencyCode ?: "UNKNOWN" }.toSortedMap().mapValues { (code, rows) ->
+            if (CurrencyCode.fromStorageKeyOrNull(code) == null) null
+            else runCatching { rows.fold(0L) { total, item -> Math.addExact(total, item.baselineAmountCents) } }.getOrNull()
+        },
         activeCount = active.size,
         nearestNextDate = active.mapNotNull { it.nextDueDate }.minOrNull(),
     )

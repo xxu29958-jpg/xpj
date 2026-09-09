@@ -105,6 +105,7 @@ internal data class RecurringPendingRowModel(
     @param:StringRes val titleFallbackRes: Int,
     /** 展示用金额：intent 新值优先，UPDATE 无新值时回落已发布基线（上下文，不计 hero）。 */
     val amountCents: Long?,
+    val homeCurrencyCode: String?,
     @param:StringRes val kindLabelRes: Int,
     @param:StringRes val stateLabelRes: Int,
     /** CONFLICT/FAILED 指引去既有全局同步入口；本片不造局部 resolve 按钮。 */
@@ -142,6 +143,7 @@ internal fun resolveRecurringPendingRow(
             R.string.recurring_item_merchant_fallback
         },
         amountCents = intent.baselineAmountCents ?: baseline?.baselineAmountCents,
+        homeCurrencyCode = if (intent.baselineAmountCents != null) intent.homeCurrencyCode else baseline?.homeCurrencyCode,
         kindLabelRes = recurringPendingKindLabelRes(intent.kind),
         stateLabelRes = recurringPendingStateLabelRes(intent.state),
         stateGuidanceRes = recurringPendingStateGuidanceRes(intent.state),
