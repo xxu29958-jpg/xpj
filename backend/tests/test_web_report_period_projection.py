@@ -154,17 +154,17 @@ def test_navigation_export_and_rate_recovery_keep_original_report_task(period_pa
     assert {link.path for link in followed} == {"/web/reports", "/web/reports/export.csv", "/web/budget-advise/rates"}
     for link in followed:
         query = parse_qs(link.query)
-        assert query["ledger_id"] == ["family"] and query["month"] == ["2026-05"]
-        assert query["home_currency_code"] == ["JPY"] and query["merchant_category"] == ["餐饮"]
-        assert "granularity" in query and "ranking_metric" in query
+        assert (query["ledger_id"], query["month"], query["home_currency_code"], query["merchant_category"]) == (
+            ["family"], ["2026-05"], ["JPY"], ["餐饮"])
+        assert {"granularity", "ranking_metric"} <= query.keys()
         if link.path.endswith("/rates"):
             assert query["return_to"] == ["reports"]
     csv_link = next(link for link in followed if link.path.endswith(".csv"))
     exported = period_page.client.get(csv_link.geturl())
     assert exported.status_code == 200
     args = next(kwargs for name, kwargs in period_page.calls if name == "export")
-    assert args["home_currency_code"] == "JPY" and args["month"] == "2026-05"
-    assert args["merchant_category"] == "餐饮" and args["ranking_metric"] == "amount" and args["granularity"] == "week"
+    assert (args["home_currency_code"], args["month"], args["merchant_category"],
+        args["ranking_metric"], args["granularity"]) == ("JPY", "2026-05", "餐饮", "amount", "week")
 
 
 def test_month_navigation_encodes_filters_and_keeps_captured_currency(period_page):
