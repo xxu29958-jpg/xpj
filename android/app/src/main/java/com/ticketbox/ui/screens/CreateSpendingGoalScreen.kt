@@ -45,9 +45,10 @@ fun CreateSpendingGoalScreen(
     initialMonth: String = YearMonth.now().toString(),
     onBack: () -> Unit,
     onCreated: () -> Unit,
+    originalId: Long? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    LaunchedEffect(initialMonth) { viewModel.reset(initialMonth) }
+    LaunchedEffect(viewModel, initialMonth, originalId) { viewModel.reset(initialMonth, originalId) }
     LaunchedEffect(state.createdPublicId) {
         if (state.createdPublicId != null) {
             onCreated()
@@ -68,7 +69,8 @@ fun CreateSpendingGoalScreen(
         refresh = AppSecondaryRefreshState(isRefreshing = false, onRefresh = {}),
         slots = AppSecondaryPageSlots(
             status = { CreateSpendingGoalStatusStack(state = state)
-                if (state.ledgerCurrency == null) androidx.compose.material3.TextButton(onClick = viewModel::retryCurrency) {
+                state.pending?.let { GoalCreationSubmissionStatus(it, state.isSubmitting, state.canModify, viewModel::recover) }
+                if (state.ledgerCurrency == null && state.originalSubmissionId == null) androidx.compose.material3.TextButton(onClick = viewModel::retryCurrency) {
                     Text(stringResource(R.string.common_retry))
                 }
             },
@@ -81,19 +83,19 @@ fun CreateSpendingGoalScreen(
             },
         ),
     ) {
-        item {
+        if (state.pending == null) item {
             DebtGoalOpenSection(
                 title = stringResource(R.string.spending_goal_create_month_section),
                 subtitle = stringResource(R.string.spending_goal_create_month_hint),
             ) {
                 MonthSwitcher(
                     month = displayMonthLabel(state.month),
-                    onPreviousMonth = viewModel::previousMonth,
-                    onNextMonth = viewModel::nextMonth,
+                    onPreviousMonth = { viewModel.shiftMonth(-1) },
+                    onNextMonth = { viewModel.shiftMonth(1) },
                 )
             }
         }
-        item {
+        if (state.pending == null) item {
             DebtGoalOpenSection(
                 title = stringResource(R.string.spending_goal_create_form_section),
                 subtitle = stringResource(R.string.spending_goal_create_form_hint),
@@ -129,7 +131,7 @@ private fun SpendingGoalForm(
                 label = stringResource(R.string.spending_goal_create_name_label),
                 value = state.name,
                 placeholder = stringResource(R.string.spending_goal_create_name_placeholder),
-                enabled = !state.isSubmitting && state.canModify,
+                enabled = state.editable,
             ),
             actions = AppTextInputActions(onValueChange = viewModel::updateName),
             modifier = Modifier.fillMaxWidth(),
@@ -141,7 +143,7 @@ private fun SpendingGoalForm(
                 currency = currency,
                 value = state.targetAmountInput,
                 placeholder = stringResource(R.string.components_amount_input_placeholder),
-                enabled = !state.isSubmitting && state.canModify,
+                enabled = state.editable,
                 isError = state.formError != null && state.targetAmountInput.isBlank(),
             ),
             actions = AppAmountInputActions(onValueChange = viewModel::updateTargetAmount),
@@ -155,7 +157,7 @@ private fun SpendingGoalForm(
                 label = stringResource(R.string.spending_goal_create_category_label),
                 value = state.category,
                 placeholder = stringResource(R.string.spending_goal_create_category_placeholder),
-                enabled = !state.isSubmitting && state.canModify,
+                enabled = state.editable,
             ),
             actions = AppTextInputActions(onValueChange = viewModel::updateCategory),
             modifier = Modifier.fillMaxWidth(),

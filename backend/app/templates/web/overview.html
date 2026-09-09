@@ -217,12 +217,13 @@
       <div class="insight-progress-row">
         <div class="insight-progress-meta">
           <span>{{ goal.name }}</span>
-          <strong class="num{% if goal.state == 'over_limit' %} text-danger{% endif %}">{{ goal.percent }}%</strong>
+          {% if goal.percent is not none %}<strong class="num{% if goal.state == 'over_limit' %} text-danger{% endif %}">{{ goal.percent }}%</strong>
+          {% else %}<span class="text-muted">暂不可计算 · 币种或汇率待补充</span>{% endif %}
         </div>
-        <progress class="product-progress"
+        {% if goal.percent is not none %}<progress class="product-progress"
                   max="100"
                   value="{{ goal.percent }}"
-                  aria-label="{{ goal.name }}已使用 {{ goal.percent }}%"></progress>
+                  aria-label="{{ goal.name }}已使用 {{ goal.percent }}%"></progress>{% endif %}
       </div>
       {% endfor %}
     </div>

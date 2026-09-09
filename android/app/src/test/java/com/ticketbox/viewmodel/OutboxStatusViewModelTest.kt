@@ -280,6 +280,41 @@ class OutboxStatusViewModelTest {
     }
 
     @Test
+    fun globalGoalCreationRetriesOnlyItsOriginalCapturedIntent() = runTest(dispatcher) {
+        val harness = outboxStatusHarness()
+        val payload = """{"name":"日元目标","month":"2026-09","target_amount_cents":1200,"home_currency_code":"JPY"}"""
+        val id = harness.outbox.enqueue(PendingMutationType.CreateGoal, "goal_create:original-goal-key",
+            payload, 0, "original-goal-key")
+        harness.outbox.markFailed(id, "client_upgrade_required")
+        val original = harness.outbox.observeStatus().first().failed.single()
+        val vm = outboxStatusViewModelFactory(harness.outbox, harness.expenseRepository,
+            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments,
+                harness.goalEdits, harness.budgetSaves, harness.recurringItems)).create(OutboxStatusViewModel::class.java)
+        try {
+            runCurrent()
+            assertEquals("JPY", vm.uiState.value.goalCreations[id]?.request?.homeCurrencyCode)
+            assertTrue(vm.uiState.value.offersRetry(original))
+            vm.retry(original)
+            val retried = harness.outbox.observeActiveByTypes(setOf(PendingMutationType.CreateGoal))
+                .first { rows -> rows.singleOrNull()?.status == PendingMutationStatus.Pending }.single()
+            vm.uiState.first { it.busyRowId == null }
+            assertEquals(original.payloadJson, retried.payloadJson)
+            assertEquals(original.idempotencyKey, retried.idempotencyKey)
+            assertEquals(original.expectedRowVersion, retried.expectedRowVersion)
+            val unsupportedId = harness.outbox.enqueue(PendingMutationType.CreateGoal, "goal_create:legacy-key",
+                """{"name":"旧目标","month":"2026-09","target_amount_cents":1200}""", 0, "legacy-key")
+            harness.outbox.markFailed(unsupportedId, "client_upgrade_required")
+            val unsupported = harness.outbox.observeStatus().first().failed.single()
+            runCurrent()
+            assertFalse(vm.uiState.value.offersRetry(unsupported))
+            vm.retry(unsupported)
+            runCurrent()
+            vm.uiState.first { it.busyRowId == null }
+            assertEquals(unsupported, harness.outbox.observeStatus().first().failed.single())
+        } finally { vm.viewModelScope.coroutineContext.job.cancelAndJoin() }
+    }
+
+    @Test
     fun globalRecurringRecoveryRetainsItsOriginalCurrencyVersionAndKey() = runTest(dispatcher) {
         val harness = outboxStatusHarness()
         val payload = OutboxAdapterGraph().recurringUpdateAdapter.toJson(
@@ -380,7 +415,7 @@ private fun outboxStatusHarness(): Harness {
         debtAdjustments = DebtAdjustmentRepository(testApiServiceProvider(api, tokenStore), outbox,
             OutboxAdapterGraph().debtAdjustmentAdapter),
         goalEdits = com.ticketbox.data.repository.GoalEditRepository(testApiServiceProvider(api, tokenStore), outbox,
-            OutboxAdapterGraph().goalUpdateAdapter, OutboxAdapterGraph().goalReceiptAdapter),
+            OutboxAdapterGraph().goalUpdateAdapter, OutboxAdapterGraph().goalReceiptAdapter, OutboxAdapterGraph().goalCreateAdapter),
         budgetSaves = com.ticketbox.data.repository.BudgetSaveRepository(testApiServiceProvider(api, tokenStore), outbox,
             OutboxAdapterGraph().budgetSaveAdapter, OutboxAdapterGraph().budgetReceiptAdapter),
         recurringItems = com.ticketbox.data.repository.RecurringRepository(testApiServiceProvider(api, tokenStore), outbox,

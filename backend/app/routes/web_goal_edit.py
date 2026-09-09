@@ -23,7 +23,7 @@ from app.routes.web_common import (
 )
 from app.routes.web_goals import _parse_amount_yuan
 from app.schemas import GoalUpdateRequest
-from app.services.currency_binding_service import require_runtime_home_currency_code
+from app.services.currency_common import currency_input_metadata, normalize_currency_code
 from app.services.goal_service import get_goal
 from app.services.goal_update_command import update_goal_idempotently
 
@@ -48,13 +48,19 @@ def _render_editor(
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id)
     current = {
         "name": goal.name, "month": goal.month, "category": goal.category or "",
-        "target_amount_yuan": _amount_yuan(goal.target_amount_cents, ctx["home_currency_code"]),
+        "target_amount_yuan": _amount_yuan(goal.target_amount_cents, goal.home_currency_code) if goal.home_currency_code else "",
+        "home_currency_code": goal.home_currency_code or "",
         "expected_row_version": str(goal.row_version),
     }
+    values = values if values is not None else {**current, "idempotency_key": str(uuid4())}
+    try:
+        form_currency = currency_input_metadata(values.get("home_currency_code"))
+    except AppError:
+        form_currency = {}
+    currency_matches = bool(form_currency) and values["home_currency_code"] == goal.home_currency_code
     ctx.update(
-        goal=goal, current=current, values=values if values is not None else {
-            **current, "idempotency_key": str(uuid4()),
-        }, error=error, conflict=conflict,
+        goal=goal, current=current, values=values, form_currency=form_currency,
+        currency_matches=currency_matches, error=error, conflict=conflict,
     )
     return templates.TemplateResponse(
         request=request, name="goal_edit.html", context=ctx, status_code=status_code,
@@ -76,6 +82,7 @@ def web_goal_save(
     ledger_id: str = Form(default=""), name: str = Form(default=""),
     month: str = Form(default=""), target_amount_yuan: str = Form(default=""),
     category: str = Form(default=""), expected_row_version: str = Form(default=""),
+    home_currency_code: str = Form(default=""),
     idempotency_key: str = Form(default=""), review_latest: bool = Form(default=False),
     _local: None = LocalOnly, db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -84,19 +91,23 @@ def web_goal_save(
         "name": name, "month": month, "target_amount_yuan": target_amount_yuan,
         "category": category, "expected_row_version": expected_row_version,
         "idempotency_key": idempotency_key,
+        "home_currency_code": home_currency_code,
     }
     if review_latest:
         # Explicit review only renders a new proposal. It never submits a write.
-        values.update(expected_row_version=str(goal.row_version), idempotency_key=str(uuid4()))
+        if home_currency_code == goal.home_currency_code:
+            values.update(expected_row_version=str(goal.row_version), idempotency_key=str(uuid4()))
         return _render_editor(request, db, options, selected_id, goal, values=values)
     try:
         version = parse_form_row_version_token(expected_row_version)
         if version is None:
             raise AppError("state_conflict", status_code=409)
+        currency = normalize_currency_code(home_currency_code)
         payload = GoalUpdateRequest(
             name=name, month=month, category=category.strip() or None,
+            home_currency_code=currency,
             target_amount_cents=_parse_amount_yuan(
-                target_amount_yuan, currency_code=require_runtime_home_currency_code(db),
+                target_amount_yuan, currency_code=currency,
             ), expected_row_version=version,
         )
         result = update_goal_idempotently(

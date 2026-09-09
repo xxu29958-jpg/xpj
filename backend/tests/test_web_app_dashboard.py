@@ -137,12 +137,12 @@ def _seed_goal(
     category: str | None = None,
 ) -> None:
     month = current_month("Asia/Shanghai")
-    body = {"name": name, "month": month, "target_amount_cents": target_amount_cents}
+    body = {"home_currency_code": "CNY", "name": name, "month": month, "target_amount_cents": target_amount_cents}
     if category is not None:
         body["category"] = category
     resp = client.post(
         "/api/goals?timezone=Asia/Shanghai",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json=body,
     )
     assert resp.status_code == 201, resp.text

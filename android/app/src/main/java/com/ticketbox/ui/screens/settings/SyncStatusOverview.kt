@@ -21,6 +21,19 @@ import com.ticketbox.viewmodel.OutboxStatusUiState
 
 @Composable
 internal fun SyncStatusOriginalIntentSummary(row: OutboxRow, state: OutboxStatusUiState, actions: SyncStatusActions) {
+    state.goalEdits[row.id]?.let { original ->
+        original.request?.let { request ->
+            com.ticketbox.ui.screens.plan.SpendingGoalOriginalSummary(request.name, request.month,
+                request.targetAmountCents, request.homeCurrencyCode)
+        }
+        row.targetId.takeIf { it.startsWith("goal:") && it.length > 5 }?.removePrefix("goal:")?.let { publicId ->
+            TextButton(onClick = { actions.onOpenGoalEdit(publicId) }) { Text(stringResource(R.string.goal_submission_open)) }
+        }
+    }
+    state.goalCreations[row.id]?.let { original ->
+        com.ticketbox.ui.screens.GoalCreationIntentSummary(original)
+        TextButton(onClick = { actions.onOpenGoalCreation(row.id) }) { Text(stringResource(R.string.goal_creation_open)) }
+    }
     state.recurringItems[row.id]?.let { original ->
         com.ticketbox.ui.screens.recurring.RecurringManualIntentSummary(original)
         TextButton(onClick = actions.onOpenRecurring) { Text(stringResource(R.string.recurring_original_open)) }

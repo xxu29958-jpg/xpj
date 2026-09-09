@@ -46,6 +46,7 @@ def _has_legacy_currencyless_money_facts(connection: Connection) -> bool:
                     OR EXISTS (
                         SELECT 1 FROM goals
                          WHERE target_amount_cents IS NOT NULL
+                           AND to_jsonb(goals)->>'home_currency_code' IS NULL
                     )
                     OR EXISTS (SELECT 1 FROM monthly_income_plans WHERE to_jsonb(monthly_income_plans)->>'home_currency_code' IS NULL)
                     OR EXISTS (SELECT 1 FROM recurring_items WHERE to_jsonb(recurring_items)->>'home_currency_code' IS NULL)

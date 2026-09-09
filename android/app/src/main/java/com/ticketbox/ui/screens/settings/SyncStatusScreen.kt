@@ -59,6 +59,8 @@ fun SyncStatusScreen(
             onClearQuarantined = viewModel::clearQuarantined,
             onOpenBudget = navigation.onOpenBudget,
             onOpenRecurring = navigation.onOpenRecurring,
+            onOpenGoalCreation = navigation.onOpenGoalCreation,
+            onOpenGoalEdit = navigation.onOpenGoalEdit,
         )
     }
     SyncStatusScreenContent(state = state, actions = actions, onBack = onBack, onOpenInbox = navigation.onOpenInbox)
@@ -69,6 +71,8 @@ data class SyncStatusNavigation(
     val onOpenInbox: () -> Unit,
     val onOpenBudget: (String) -> Unit,
     val onOpenRecurring: () -> Unit,
+    val onOpenGoalCreation: (Long) -> Unit,
+    val onOpenGoalEdit: (String) -> Unit,
 )
 
 /** Row callbacks grouped to keep the content API small and testable. */
@@ -81,6 +85,8 @@ internal data class SyncStatusActions(
     val onClearQuarantined: () -> Unit,
     val onOpenBudget: (String) -> Unit,
     val onOpenRecurring: () -> Unit,
+    val onOpenGoalCreation: (Long) -> Unit,
+    val onOpenGoalEdit: (String) -> Unit,
 )
 
 private data class SyncStatusActionButton(
@@ -135,11 +141,11 @@ internal fun SyncStatusScreenContent(
             onOpenInbox = onOpenInbox,
             actions = actions.copy(
                 onDropMine = { confirmingDrop = SyncStatusDropSelection(it, failed = false, debtCreation = null,
-                    recurringOccurrence = state.recurringOccurrences[it.id], incomeEdit = state.incomeEdits[it.id], debtAdjustment = state.debtAdjustments[it.id], budgetSave = state.budgetSaves[it.id], recurringOriginal = state.recurringItems[it.id]) },
+                    recurringOccurrence = state.recurringOccurrences[it.id], incomeEdit = state.incomeEdits[it.id], debtAdjustment = state.debtAdjustments[it.id], budgetSave = state.budgetSaves[it.id], recurringOriginal = state.recurringItems[it.id], goalCreation = state.goalCreations[it.id], goalEdit = state.goalEdits[it.id]) },
                 onDropFailed = { row ->
                     if (row.type in setOf(PendingMutationType.CorrectExpense, PendingMutationType.CreateBillSplitInvitation)) actions.onDropFailed(row)
                     else confirmingDrop = SyncStatusDropSelection(row, failed = true, debtCreation = state.failedDebtCreations[row.id],
-                        recurringOccurrence = state.recurringOccurrences[row.id], incomeEdit = state.incomeEdits[row.id], debtAdjustment = state.debtAdjustments[row.id], budgetSave = state.budgetSaves[row.id], recurringOriginal = state.recurringItems[row.id])
+                        recurringOccurrence = state.recurringOccurrences[row.id], incomeEdit = state.incomeEdits[row.id], debtAdjustment = state.debtAdjustments[row.id], budgetSave = state.budgetSaves[row.id], recurringOriginal = state.recurringItems[row.id], goalCreation = state.goalCreations[row.id], goalEdit = state.goalEdits[row.id])
                 },
                 onClearQuarantined = { confirmingClearQuarantined = true },
             ),
@@ -460,6 +466,7 @@ internal val syncStatusMutationLabelResources = mapOf(
     PendingMutationType.UpdateMerchantAlias to R.string.sync_status_mutation_update_merchant_alias,
     PendingMutationType.DeleteMerchantAlias to R.string.sync_status_mutation_delete_merchant_alias,
     PendingMutationType.UpdateGoal to R.string.sync_status_mutation_update_goal,
+    PendingMutationType.CreateGoal to R.string.goal_creation_label,
     PendingMutationType.UpdateIncomePlan to R.string.sync_status_mutation_update_income_plan,
     PendingMutationType.SaveMonthlyBudget to R.string.budget_editor_save,
     PendingMutationType.CreateRecurringItem to R.string.sync_status_mutation_create_recurring_item,

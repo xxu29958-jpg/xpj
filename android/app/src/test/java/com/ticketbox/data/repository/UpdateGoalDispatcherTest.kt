@@ -49,6 +49,7 @@ class UpdateGoalDispatcherTest {
         updatedAt = "2026-05-20T13:00:00.000Z",
         rowVersion = 2L,
         archivedAt = null,
+        homeCurrencyCode = "JPY",
     )
 
     private fun goalRow(idempotencyKey: String?): OutboxRow = OutboxRow(
@@ -58,7 +59,7 @@ class UpdateGoalDispatcherTest {
         type = PendingMutationType.UpdateGoal,
         targetId = "goal:goal-1",
         payloadJson = moshi().adapter(GoalUpdateRequestDto::class.java)
-            .toJson(GoalUpdateRequestDto(expectedRowVersion = 0L, targetAmountCents = 90000)),
+            .toJson(GoalUpdateRequestDto(expectedRowVersion = 1L, targetAmountCents = 90000, homeCurrencyCode = "JPY")),
         expectedRowVersion = 1L,
         status = PendingMutationStatus.InFlight,
         retryCount = 0,
@@ -118,6 +119,20 @@ class UpdateGoalDispatcherTest {
         val result = dispatcherFor(stub).dispatch(goalRow(idempotencyKey = null))
 
         assertTrue(result is DispatchResult.Failure, "null-key row must FAIL visibly: $result")
+    }
+
+    @Test
+    fun missingCurrencyOrWrongAcceptedReceiptCannotSettleTheOriginalEdit() = runTest {
+        val row = goalRow("original-key")
+        val legacy = row.copy(payloadJson = """{"expected_row_version":0,"target_amount_cents":90000}""")
+        val stub = Stub(Result.success(updatedGoalDto()))
+        assertTrue(dispatcherFor(stub).dispatch(legacy) is DispatchResult.Failure)
+        assertEquals(null, stub.lastIdempotencyKey)
+        listOf(updatedGoalDto().copy(homeCurrencyCode = "CNY"), updatedGoalDto().copy(rowVersion = 4),
+            updatedGoalDto().copy(targetAmountCents = 1200)).forEach { wrong ->
+            assertTrue(dispatcherFor(Stub(Result.success(wrong))).dispatch(row) is DispatchResult.Failure)
+        }
+        assertEquals("original-key", row.idempotencyKey)
     }
 
     @Test

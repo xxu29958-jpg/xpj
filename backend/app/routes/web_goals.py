@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -20,9 +23,9 @@ from app.routes.web_common import (
     templates,
 )
 from app.schemas import GoalCreateRequest
-from app.services.currency_binding_service import require_runtime_home_currency_code
-from app.services.currency_common import major_amount_to_minor
-from app.services.goal_service import archive_goal, create_goal, list_goals
+from app.services.currency_common import currency_input_metadata, major_amount_to_minor, normalize_currency_code
+from app.services.goal_create_command import create_spending_goal_idempotently
+from app.services.goal_service import archive_goal, list_goals
 from app.services.time_service import current_month
 
 router = APIRouter(prefix="/web/goals", tags=["web"])
@@ -50,17 +53,19 @@ def _parse_amount_yuan(raw: str, *, currency_code: str) -> int:
     return result
 
 
-def _goal_view(goal, *, currency_code: str) -> dict:
-    percent = min(120, max(0, int(goal.progress_percent)))
+def _goal_view(goal) -> dict:
+    currency_code = goal.home_currency_code
+    percent = min(100, max(0, goal.progress_percent)) if goal.progress_percent is not None else None
     return {
         "public_id": goal.public_id,
         "name": goal.name,
         "month": goal.month,
         "category": goal.category or "总支出",
-        "target_yuan": _amount_yuan(goal.target_amount_cents, currency_code),
-        "spent_yuan": _amount_yuan(goal.spent_amount_cents, currency_code),
-        "remaining_yuan": _amount_yuan(goal.remaining_amount_cents, currency_code),
-        "progress_percent": int(goal.progress_percent),
+        "home_currency_code": currency_code,
+        "target_yuan": _amount_yuan(goal.target_amount_cents, currency_code) if currency_code else "币种待确认",
+        "spent_yuan": _amount_yuan(goal.spent_amount_cents, currency_code) if currency_code else "",
+        "remaining_yuan": _amount_yuan(goal.remaining_amount_cents, currency_code) if currency_code else "",
+        "progress_percent": goal.progress_percent,
         "bar_percent": percent,
         "progress_state": goal.progress_state,
         "status": goal.status,
@@ -79,6 +84,8 @@ def _render_goals(
     include_archived: bool,
     message: str | None = None,
     error: str | None = None,
+    values: dict[str, str] | None = None,
+    status_code: int = 200,
 ) -> HTMLResponse:
     timezone_name = get_settings().ocr_default_timezone
     goals = list_goals(
@@ -100,18 +107,21 @@ def _render_goals(
         {
             "month": month,
             "include_archived": include_archived,
-            "goals": [
-                _goal_view(
-                    goal,
-                    currency_code=ctx["home_currency_code"],
-                )
-                for goal in goals
-            ],
+            "goals": [_goal_view(goal) for goal in goals],
             "message": message,
             "error": error,
         }
     )
-    return templates.TemplateResponse(request=request, name="goals.html", context=ctx)
+    values = values if values is not None else {
+        "name": "", "category": "", "target_amount_yuan": "", "month": month,
+        "home_currency_code": ctx["home_currency_code"], "idempotency_key": str(uuid4()),
+    }
+    try:
+        form_currency = currency_input_metadata(values.get("home_currency_code"))
+    except AppError:
+        form_currency = {}
+    ctx.update(values=values, form_currency=form_currency)
+    return templates.TemplateResponse(request=request, name="goals.html", context=ctx, status_code=status_code)
 
 
 @router.get("", response_class=HTMLResponse)
@@ -147,6 +157,8 @@ def web_goals_create(
     name: str = Form(default=""),
     target_amount_yuan: str = Form(default=""),
     category: str = Form(default=""),
+    home_currency_code: str = Form(default=""),
+    idempotency_key: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -155,19 +167,24 @@ def web_goals_create(
     _require_selected_ledger_write(options, selected_id)
     timezone_name = get_settings().ocr_default_timezone
     target_month = (month or "").strip() or current_month(timezone_name)
+    values = {"name": name, "month": month, "target_amount_yuan": target_amount_yuan,
+        "category": category, "home_currency_code": home_currency_code, "idempotency_key": idempotency_key}
     try:
-        presentation_currency = require_runtime_home_currency_code(db)
+        presentation_currency = normalize_currency_code(home_currency_code)
         payload = GoalCreateRequest(
             name=name,
             month=target_month,
+            home_currency_code=presentation_currency,
             target_amount_cents=_parse_amount_yuan(
                 target_amount_yuan,
                 currency_code=presentation_currency,
             ),
             category=category.strip() or None,
         )
-        create_goal(db, tenant_id=selected_id, payload=payload, timezone_name=timezone_name)
-    except AppError as exc:
+        create_spending_goal_idempotently(db, tenant_id=selected_id, payload=payload,
+            idempotency_key=idempotency_key, timezone_name=timezone_name)
+    except (AppError, ValidationError) as exc:
+        db.rollback()
         return _render_goals(
             request=request,
             db=db,
@@ -175,7 +192,9 @@ def web_goals_create(
             selected_id=selected_id,
             month=target_month,
             include_archived=False,
-            error=exc.message,
+            error=exc.message if isinstance(exc, AppError) else "请检查目标名称、月份、金额和币种。输入已保留。",
+            values=values,
+            status_code=exc.status_code if isinstance(exc, AppError) else 422,
         )
     return _web_redirect("/web/goals", selected_id, month=target_month, msg="目标已保存。")
 

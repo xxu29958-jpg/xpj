@@ -25,7 +25,8 @@ class GoalEditRepositoryTest {
         assertEquals("goal:goal-1", original.targetId)
         assertEquals(1, original.expectedRowVersion)
         assertEquals("", f.adapters.goalUpdateAdapter.fromJson(original.payload)?.category)
-        assertEquals(0, f.adapters.goalUpdateAdapter.fromJson(original.payload)?.expectedRowVersion)
+        assertEquals(1, f.adapters.goalUpdateAdapter.fromJson(original.payload)?.expectedRowVersion)
+        assertEquals("JPY", f.adapters.goalUpdateAdapter.fromJson(original.payload)?.homeCurrencyCode)
         assertTrue(f.save().isFailure)
         assertEquals(listOf(original), f.dao.rows.values.toList())
     }
@@ -81,6 +82,26 @@ class GoalEditRepositoryTest {
         val f = GoalEditFixture()
         assertEquals(CurrencyCode.JPY, f.repository.currency(f.binding).getOrThrow())
     }
+
+    @Test fun editCannotRelabelAnExistingGoalAndLegacyIntentStaysReadableWithoutRetry() = runTest {
+        val f = GoalEditFixture()
+        val goal = f.current.toDomain()
+        assertTrue(f.repository.save(f.binding, goal,
+            GoalUpdate(goal.rowVersion, targetAmountCents = 1200, homeCurrencyCode = "CNY")).isFailure)
+        assertTrue(f.dao.rows.isEmpty())
+        val id = f.save().getOrThrow()
+        f.outbox.markFailed(id, "client_upgrade_required")
+        val pending = f.pending()
+        assertTrue(pending.canRetry)
+        val raw = pending.row.payloadJson.replace("\"home_currency_code\":\"JPY\",", "")
+            .replace(",\"home_currency_code\":\"JPY\"", "")
+        val legacy = f.repository.describeEdit(pending.row.copy(payloadJson = raw))!!
+        assertEquals(35000, legacy.request?.targetAmountCents)
+        assertEquals(null, legacy.request?.homeCurrencyCode)
+        assertFalse(legacy.canRetry)
+        assertEquals(raw, legacy.row.payloadJson)
+        assertEquals(null, f.repository.describeEdit(pending.row.copy(serverUrl = "https://other.example")))
+    }
 }
 
 private class GoalEditFixture {
@@ -92,7 +113,8 @@ private class GoalEditFixture {
     val keys = mutableListOf<String?>()
     var loseAck = false
     var current = GoalDto("goal-1", "owner", "餐饮", "spending_limit", "monthly", "2026-09", "餐饮",
-        20000, 8000, 12000, 40, "on_track", "active", "2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z", 1, null)
+        20000, 8000, 12000, 40, "on_track", "active", "2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z", 1, null,
+        homeCurrencyCode = "JPY")
     private val results = mutableMapOf<String, GoalDto>()
     private val api = object : com.ticketbox.data.remote.ApiService by FakeApiService(mutableListOf(), 0) {
         override suspend fun runtimeCompatibility() = com.ticketbox.data.remote.dto.RuntimeCompatibilityDto(
@@ -104,7 +126,8 @@ private class GoalEditFixture {
             keys += idempotencyKey
             val result = results.getOrPut(requireNotNull(idempotencyKey)) {
                 check(request.expectedRowVersion == current.rowVersion)
-                current.copy(targetAmountCents = 35000, remainingAmountCents = 27000, rowVersion = 2).also { current = it }
+                current.copy(targetAmountCents = 35000, remainingAmountCents = 27000, category = null,
+                    rowVersion = current.rowVersion + 1).also { current = it }
             }
             if (loseAck) throw IOException("lost synthetic acknowledgement")
             return result
@@ -113,10 +136,11 @@ private class GoalEditFixture {
     private val provider = testApiServiceProvider(object : ApiServiceFactory {
         override fun create(baseUrl: String, tokenProvider: () -> String?) = api
     }, session)
-    val repository = GoalEditRepository(provider, outbox, adapters.goalUpdateAdapter, adapters.goalReceiptAdapter)
+    val repository = GoalEditRepository(provider, outbox, adapters.goalUpdateAdapter, adapters.goalReceiptAdapter,
+        adapters.goalCreateAdapter)
     val binding = repository.currentAccess()!!.binding
     suspend fun save(goal: com.ticketbox.domain.model.Goal = current.toDomain()) =
-        repository.save(binding, goal, GoalUpdate(goal.rowVersion, targetAmountCents = 35000, category = ""))
+        repository.save(binding, goal, GoalUpdate(goal.rowVersion, targetAmountCents = 35000, category = "", homeCurrencyCode = "JPY"))
     suspend fun pending() = repository.observeEdits(binding, "goal-1").first().last()
     fun engine() = OutboxDrainEngine(outbox, listOf(UpdateGoalDispatcher({ api },
         adapters.goalUpdateAdapter, adapters.goalReceiptAdapter)), maxAttempts = 1)

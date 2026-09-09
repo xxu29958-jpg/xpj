@@ -72,6 +72,8 @@ internal fun NavGraphBuilder.addWorkspaceRoute(
                 navigation = SettingsDestinationNavigation(onOpenExpense = runtime.navController::openExpense,
                     onOpenInbox = { shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox) },
                     onOpenBudget = { month -> runtime.navController.navigate(budgetRoute(month)) },
+                    onOpenGoalCreation = { id -> runtime.navController.navigate(spendingGoalCreationRoute(id)) },
+                    onOpenGoalEdit = { id -> runtime.navController.navigate(spendingGoalEditRoute(id)) },
                     onOpenRecurring = { shellState.openSecondaryPage(ProductSecondaryPage.Recurring) }, onCloseRoot = onBack),
                 screenFactory = screenFactory,
                 preferenceControls = workspaceControls.preferences,
@@ -81,14 +83,23 @@ internal fun NavGraphBuilder.addWorkspaceRoute(
     }
 }
 
+internal fun spendingGoalEditRoute(id: String): String = "${ProductSecondaryPage.SpendingGoal.route}?goal=${android.net.Uri.encode(id)}"
+
+internal fun spendingGoalCreationRoute(id: Long): String = "${ProductSecondaryPage.SpendingGoal.route}?create=$id"
+
 internal fun budgetRoute(month: String): String = "${ProductSecondaryPage.Budget.route}?month=$month"
 
 internal fun NavGraphBuilder.addPlanRoutes(
     dependencies: MainProductRouteDependencies,
 ) {
     with(dependencies) {
-        composable(ProductSecondaryPage.SpendingGoal.route) {
+        composable(route = "${ProductSecondaryPage.SpendingGoal.route}?create={create}&goal={goal}",
+            arguments = listOf(navArgument("create") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("goal") { type = NavType.StringType; nullable = true; defaultValue = null }),
+        ) { entry ->
             SpendingGoalsRoute(
+                originalCreationId = entry.arguments?.getString("create")?.toLongOrNull(),
+                originalGoalPublicId = entry.arguments?.getString("goal"),
                 screenFactory = screenFactory,
                 onBack = onBack,
             )
@@ -272,6 +283,8 @@ private fun NavGraphBuilder.addObligationSyncRoute(dependencies: MainProductRout
                     onOpenExpense = runtime.navController::openExpense,
                     onOpenInbox = { shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox) },
                     onOpenBudget = { month -> runtime.navController.navigate(budgetRoute(month)) },
+                    onOpenGoalCreation = { id -> runtime.navController.navigate(spendingGoalCreationRoute(id)) },
+                    onOpenGoalEdit = { id -> runtime.navController.navigate(spendingGoalEditRoute(id)) },
                     onOpenRecurring = { shellState.openSecondaryPage(ProductSecondaryPage.Recurring) },
                 ))
         }

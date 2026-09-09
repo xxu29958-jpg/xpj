@@ -13,7 +13,6 @@ import com.ticketbox.domain.model.DashboardSurface
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtBillSuggestion
 import com.ticketbox.domain.model.Goal
-import com.ticketbox.domain.model.GoalDraft
 import com.ticketbox.domain.model.GoalProgressState
 import com.ticketbox.domain.model.GoalUpdate
 import com.ticketbox.domain.model.ReportsOverview
@@ -370,9 +369,6 @@ private class FakeCreateReportsActions(
 
     override suspend fun goals(month: String?, includeArchived: Boolean): Result<List<Goal>> =
         Result.success(emptyList())
-
-    override suspend fun createGoal(draft: GoalDraft, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding): Result<Goal> =
-        Result.failure(UnsupportedOperationException())
 
     override suspend fun goal(publicId: String): Result<Goal> =
         Result.failure(UnsupportedOperationException())

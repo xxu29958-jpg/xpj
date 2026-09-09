@@ -32,6 +32,7 @@ from app.models import (
     CsvImportRow,
     Device,
     ExchangeRate,
+    Goal,
     IncomePlanRevision,
     InstallationCurrencyAuditLog,
     InstallationCurrencyBinding,
@@ -235,6 +236,7 @@ def _adopt_in_transaction(
     _set_writer_proof(db, binding)
     db.execute(update(Budget).where(Budget.home_currency_code.is_(None)).values(home_currency_code=code))
     db.execute(update(RecurringItem).where(RecurringItem.home_currency_code.is_(None)).values(home_currency_code=code))
+    db.execute(update(Goal).where(Goal.goal_type == "spending_limit", Goal.home_currency_code.is_(None)).values(home_currency_code=code))
     db.execute(update(ExchangeRate).where(ExchangeRate.home_currency_code.is_(None)).values(home_currency_code=code))
     db.execute(update(CsvImportRow).where(CsvImportRow.home_currency_code.is_(None)).values(home_currency_code=code))
     db.execute(update(MonthlyIncomePlan).where(MonthlyIncomePlan.home_currency_code.is_(None)).values(home_currency_code=code))

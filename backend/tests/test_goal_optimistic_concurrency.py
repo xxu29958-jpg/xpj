@@ -31,8 +31,9 @@ def _idem_headers(identity) -> dict[str, str]:
 def _create_goal(client: TestClient, *, identity, name: str = "Goal A") -> dict:
     response = client.post(
         "/api/goals",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
+            "home_currency_code": "CNY",
             "name": name,
             "month": "2026-05",
             "category": "餐饮",
@@ -49,8 +50,8 @@ def test_goal_patch_without_token_returns_422(
     goal = _create_goal(client, identity=identity)
     response = client.patch(
         f"/api/goals/{goal['public_id']}",
-        headers=identity.app_headers,
-        json={"name": "Renamed"},
+        headers=_idem_headers(identity),
+        json={"home_currency_code": "CNY", "name": "Renamed"},
     )
     assert response.status_code == 422, response.text
 
@@ -62,14 +63,14 @@ def test_goal_patch_with_stale_token_returns_409(
     bump = client.patch(
         f"/api/goals/{goal['public_id']}",
         headers=_idem_headers(identity),
-        json={"expected_row_version": goal["row_version"], "name": "First"},
+        json={"home_currency_code": "CNY", "expected_row_version": goal["row_version"], "name": "First"},
     )
     assert bump.status_code == 200, bump.text
 
     stale = client.patch(
         f"/api/goals/{goal['public_id']}",
         headers=_idem_headers(identity),
-        json={"expected_row_version": goal["row_version"], "name": "Stale"},
+        json={"home_currency_code": "CNY", "expected_row_version": goal["row_version"], "name": "Stale"},
     )
     assert stale.status_code == 409, stale.text
     assert stale.json()["error"] == "state_conflict"
@@ -83,6 +84,7 @@ def test_goal_patch_unknown_returns_404(client: TestClient, *, identity) -> None
         "/api/goals/no-such-public-id",
         headers=_idem_headers(identity),
         json={
+            "home_currency_code": "CNY",
             "expected_row_version": 999999,
             "name": "Bogus",
         },
@@ -111,6 +113,7 @@ def test_two_sessions_goal_patch_race_only_first_writer_wins(
             tenant_id="owner",
             public_id=public_id,
             payload=GoalUpdateRequest(
+                home_currency_code="CNY",
                 expected_row_version=shared_version,
                 name="Writer A",
             ),
@@ -122,6 +125,7 @@ def test_two_sessions_goal_patch_race_only_first_writer_wins(
                 tenant_id="owner",
                 public_id=public_id,
                 payload=GoalUpdateRequest(
+                    home_currency_code="CNY",
                     expected_row_version=shared_version,
                     name="Writer B",
                 ),
@@ -156,6 +160,7 @@ def test_goal_patch_against_archived_returns_409(
         f"/api/goals/{goal['public_id']}",
         headers=_idem_headers(identity),
         json={
+            "home_currency_code": "CNY",
             "expected_row_version": archived.json()["row_version"],
             "name": "Cannot Edit",
         },

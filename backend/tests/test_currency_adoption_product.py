@@ -28,6 +28,7 @@ from app.services.identity_service import (
     new_session_token,
 )
 from tests._infra.env import ADMIN_TEST_DATABASE_URL
+from tests._web_native_form_support import hidden_post_forms
 from tests.desktop_activation_support import activate, pair_desktop
 
 pytestmark = [pytest.mark.currency_binding_unbound, pytest.mark.real_db]
@@ -161,7 +162,7 @@ def test_explicit_jpy_choice_drives_real_goal_write_despite_cny_environment(
     assert page.status_code == 200
     created = browser.client.post(
         "/web/goals/create", headers=browser.headers,
-        data={"csrf_token": _hidden_value(page.text, "csrf_token"),
+        data={**hidden_post_forms(page.text)["/web/goals/create"],
               "name": "明确选择日元后的目标", "target_amount_yuan": "1000", "month": "2026-09"},
         follow_redirects=False,
     )
@@ -170,6 +171,7 @@ def test_explicit_jpy_choice_drives_real_goal_write_despite_cny_environment(
         goal = db.scalar(select(Goal).where(Goal.name == "明确选择日元后的目标"))
         assert goal is not None
         assert goal.target_amount_cents == 1000
+        assert goal.home_currency_code == "JPY"
         assert db.get(InstallationCurrencyBinding, 1).home_currency_code == "JPY"
 
 

@@ -374,6 +374,7 @@ def _seed_archived_goal_for_label() -> None:
             tenant_id="owner",
             name="回收站目标",
             goal_type="spending_limit",
+            home_currency_code="CNY",
             period="monthly",
             month="2026-06",
             category="餐饮",

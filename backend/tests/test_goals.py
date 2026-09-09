@@ -116,8 +116,9 @@ def _seed_goal_progress_expenses(client: TestClient, identity: object) -> None:
 def _create_total_spending_goal(client: TestClient, identity: object) -> None:
     total_goal = client.post(
         "/api/goals?timezone=UTC",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
+            "home_currency_code": "CNY",
             "name": "本月总支出",
             "month": "2026-05",
             "target_amount_cents": 5000,
@@ -134,8 +135,9 @@ def _create_total_spending_goal(client: TestClient, identity: object) -> None:
 def _assert_duplicate_total_goal_rejected(client: TestClient, identity: object) -> None:
     duplicate_total = client.post(
         "/api/goals?timezone=UTC",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
+            "home_currency_code": "CNY",
             "name": "重复总目标",
             "month": "2026-05",
             "target_amount_cents": 7000,
@@ -148,8 +150,9 @@ def _assert_duplicate_total_goal_rejected(client: TestClient, identity: object) 
 def _create_category_spending_goal(client: TestClient, identity: object) -> None:
     category_goal = client.post(
         "/api/goals?timezone=UTC",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
+            "home_currency_code": "CNY",
             "name": "控制餐饮",
             "month": "2026-05",
             "category": "吃饭",
@@ -168,8 +171,9 @@ def _create_category_spending_goal(client: TestClient, identity: object) -> None
 def _assert_duplicate_category_goal_rejected(client: TestClient, identity: object) -> None:
     duplicate_category = client.post(
         "/api/goals?timezone=UTC",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
+            "home_currency_code": "CNY",
             "name": "重复餐饮目标",
             "month": "2026-05",
             "category": "餐饮",
@@ -208,8 +212,9 @@ def test_goals_progress_uses_timezone_and_confirmed_at_fallback(client: TestClie
     )
     goal = client.post(
         "/api/goals?timezone=Asia/Shanghai",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
+            "home_currency_code": "CNY",
             "name": "生活目标",
             "month": "2026-05",
             "category": "生活",
@@ -233,8 +238,9 @@ def test_goals_progress_uses_timezone_and_confirmed_at_fallback(client: TestClie
 def test_goals_permissions_and_ledger_isolation(client: TestClient, *, identity) -> None:
     owner_goal = client.post(
         "/api/goals",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
+            "home_currency_code": "CNY",
             "name": "Owner Goal",
             "month": "2026-05",
             "target_amount_cents": 5000,
@@ -245,8 +251,9 @@ def test_goals_permissions_and_ledger_isolation(client: TestClient, *, identity)
 
     gray_goal = client.post(
         "/api/goals",
-        headers=identity.gray_app_headers,
+        headers={**identity.gray_app_headers, "Idempotency-Key": str(uuid4())},
         json={
+            "home_currency_code": "CNY",
             "name": "Gray Goal",
             "month": "2026-05",
             "target_amount_cents": 6000,
@@ -281,8 +288,9 @@ def test_goals_permissions_and_ledger_isolation(client: TestClient, *, identity)
     _assert_permission_denied(
         client.post(
             "/api/goals",
-            headers=identity.app_headers,
+            headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
             json={
+                "home_currency_code": "CNY",
                 "name": "Viewer Write",
                 "month": "2026-05",
                 "target_amount_cents": 7000,
@@ -294,7 +302,7 @@ def test_goals_permissions_and_ledger_isolation(client: TestClient, *, identity)
         client.patch(
             f"/api/goals/{owner_public_id}",
             headers=identity.app_headers,
-            json={"name": "Viewer Patch"},
+            json={"home_currency_code": "CNY", "name": "Viewer Patch"},
         ),
         label="viewer goal patch",
     )
@@ -315,16 +323,17 @@ def test_goals_permissions_and_ledger_isolation(client: TestClient, *, identity)
 def test_goals_update_archive_and_validation(client: TestClient, *, identity) -> None:
     invalid_month = client.post(
         "/api/goals",
-        headers=identity.app_headers,
-        json={"name": "Bad Month", "month": "2026-13", "target_amount_cents": 1000},
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "name": "Bad Month", "month": "2026-13", "target_amount_cents": 1000},
     )
     assert invalid_month.status_code == 422
     assert invalid_month.json()["error"] == "invalid_request"
 
     invalid_type = client.post(
         "/api/goals",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
+            "home_currency_code": "CNY",
             "name": "Saving Target",
             "month": "2026-05",
             "goal_type": "saving_target",
@@ -336,8 +345,9 @@ def test_goals_update_archive_and_validation(client: TestClient, *, identity) ->
 
     created = client.post(
         "/api/goals",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
+            "home_currency_code": "CNY",
             "name": "餐饮目标",
             "month": "2026-05",
             "category": "餐饮",
@@ -353,6 +363,7 @@ def test_goals_update_archive_and_validation(client: TestClient, *, identity) ->
         f"/api/goals/{public_id}",
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
+            "home_currency_code": "CNY",
             "expected_row_version": created.json()["row_version"],
             "name": "全月目标",
             "category": None,
@@ -384,6 +395,7 @@ def test_goals_update_archive_and_validation(client: TestClient, *, identity) ->
         f"/api/goals/{public_id}",
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
+            "home_currency_code": "CNY",
             "expected_row_version": archived.json()["row_version"],
             "name": "不能修改",
         },
@@ -399,8 +411,8 @@ def test_goal_restore_into_taken_slot_returns_409(client: TestClient, *, identit
     (pre-check) rather than a raw IntegrityError."""
     first = client.post(
         "/api/goals",
-        headers=identity.app_headers,
-        json={"name": "餐饮甲", "month": "2026-05", "category": "餐饮", "target_amount_cents": 3000},
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "name": "餐饮甲", "month": "2026-05", "category": "餐饮", "target_amount_cents": 3000},
     )
     assert first.status_code == 201, first.json()
     first_id = first.json()["public_id"]
@@ -411,8 +423,8 @@ def test_goal_restore_into_taken_slot_returns_409(client: TestClient, *, identit
     # A new active goal now holds the (2026-05, 餐饮) slot the archived one vacated.
     second = client.post(
         "/api/goals",
-        headers=identity.app_headers,
-        json={"name": "餐饮乙", "month": "2026-05", "category": "餐饮", "target_amount_cents": 4000},
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "name": "餐饮乙", "month": "2026-05", "category": "餐饮", "target_amount_cents": 4000},
     )
     assert second.status_code == 201, second.json()
 

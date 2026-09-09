@@ -146,6 +146,10 @@ internal class OutboxAdapterGraph {
         moshi.adapter(com.ticketbox.data.remote.dto.GoalDto::class.java)
     }
 
+    val goalCreateAdapter: JsonAdapter<com.ticketbox.data.remote.dto.GoalCreateRequestDto> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.remote.dto.GoalCreateRequestDto::class.java)
+    }
+
     // ADR-0042 Slice F: PATCH /api/income-plans/{publicId} adapter. Shared
     // between UpdateIncomePlanDispatcher and IncomePlanRepository.enqueueUpdate.
     val incomePlanUpdateAdapter: JsonAdapter<com.ticketbox.data.repository.IncomePlanEditPayload> = lazyJsonAdapter {

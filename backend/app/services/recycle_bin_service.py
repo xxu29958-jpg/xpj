@@ -34,7 +34,6 @@ from app.money_contract import projection_sum_to_int
 from app.services.budget_service import list_archived_budgets, restore_monthly_budget
 from app.services.category_preference_service import restore_category_preference
 from app.services.classify_service import undo_delete_rule
-from app.services.currency_binding_service import runtime_home_currency_code
 from app.services.currency_common import minor_amount_label
 from app.services.goal_service import restore_goal
 from app.services.income_plan_service import restore_income_plan
@@ -72,14 +71,13 @@ class RecycleBinListing:
 
 
 def list_recycle_bin_items(db: Session, *, tenant_id: str) -> RecycleBinListing:
-    currency = runtime_home_currency_code(db)
     rows: list[RecycleBinItem] = []
     rows.extend(_archived_budget_rows(db, tenant_id))
     rows.extend(_soft_deleted_category_preference_rows(db, tenant_id))
     rows.extend(_soft_deleted_merchant_catalog_rows(db, tenant_id))
     rows.extend(_archived_income_rows(db, tenant_id))
-    rows.extend(_archived_recurring_rows(db, tenant_id, currency))
-    rows.extend(_archived_goal_rows(db, tenant_id, currency))
+    rows.extend(_archived_recurring_rows(db, tenant_id))
+    rows.extend(_archived_goal_rows(db, tenant_id))
     rows.extend(_soft_deleted_rule_rows(db, tenant_id))
     rows.extend(_soft_deleted_alias_rows(db, tenant_id))
     rows.extend(_tag_undo_rows(db, tenant_id))
@@ -314,7 +312,7 @@ def _soft_deleted_merchant_catalog_rows(
     ]
 
 
-def _archived_recurring_rows(db: Session, tenant_id: str, currency: str | None) -> list[RecycleBinItem]:
+def _archived_recurring_rows(db: Session, tenant_id: str) -> list[RecycleBinItem]:
     rows = db.scalars(
         select(RecurringItem)
         .where(RecurringItem.tenant_id == tenant_id)
@@ -339,7 +337,7 @@ def _archived_recurring_rows(db: Session, tenant_id: str, currency: str | None) 
     ]
 
 
-def _archived_goal_rows(db: Session, tenant_id: str, currency: str | None) -> list[RecycleBinItem]:
+def _archived_goal_rows(db: Session, tenant_id: str) -> list[RecycleBinItem]:
     rows = db.scalars(
         select(Goal)
         .where(Goal.tenant_id == tenant_id)
@@ -352,7 +350,7 @@ def _archived_goal_rows(db: Session, tenant_id: str, currency: str | None) -> li
             kind_label="目标",
             resource_id=item.public_id,
             title=item.name,
-            detail=_goal_detail(item, currency),
+            detail=_goal_detail(item),
             removed_at=item.archived_at,
             retention_label="长期保留",
             expected_row_version=item.row_version,
@@ -453,11 +451,13 @@ def _income_detail(item: MonthlyIncomePlan) -> str:
     return f"{frequency} · {_money(item.amount_cents, item.home_currency_code)} · {item.pay_day} 号"
 
 
-def _goal_detail(item: Goal, currency: str | None) -> str:
+def _goal_detail(item: Goal) -> str:
     if item.goal_type == "debt_repayment":
         return "还债目标"
     scope = item.category or "总支出"
-    return f"{item.month} · {scope} · 目标 {_money(item.target_amount_cents, currency)}"
+    amount = (f"{item.home_currency_code} {_money(item.target_amount_cents, item.home_currency_code)}"
+        if item.home_currency_code else f"{item.target_amount_cents}（最小单位，币种待确认）")
+    return f"{item.month} · {scope} · 目标 {amount}"
 
 
 def _budget_detail(db: Session, item: Budget) -> str:

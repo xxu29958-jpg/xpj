@@ -13,6 +13,7 @@ from app.database import SessionLocal
 from app.main import app
 from app.models import LedgerMember
 from app.routes.web_app import _require_local as _web_require_local
+from tests._web_native_form_support import hidden_post_forms
 
 
 @pytest.fixture()
@@ -285,9 +286,13 @@ def test_web_goals_create_archive_and_viewer_guard(web_client: TestClient, *, id
         expense_time="2026-05-08T12:00:00Z",
      identity=identity)
 
+    form_page = web_client.get("/web/goals?ledger_id=owner&month=2026-05")
+    assert form_page.status_code == 200
+    fields = hidden_post_forms(form_page.text)["/web/goals/create"]
     created = web_client.post(
         "/web/goals/create",
         data={
+            **fields,
             "ledger_id": "owner",
             "month": "2026-05",
             "name": "本月餐饮",
@@ -301,7 +306,7 @@ def test_web_goals_create_archive_and_viewer_guard(web_client: TestClient, *, id
     page = web_client.get("/web/goals?ledger_id=owner&month=2026-05")
     assert page.status_code == 200
     assert "本月餐饮" in page.text
-    assert "¥640.00 / ¥800.00" in page.text
+    assert "CNY 640.00 / 800.00" in page.text
     assert "80%" in page.text
     assert "保存目标" in page.text
     # C2 计划片: goals 正文迁 product 计划域 — 挂 plans 域模块; 旧 pages/goals.css
@@ -330,6 +335,7 @@ def test_web_goals_create_archive_and_viewer_guard(web_client: TestClient, *, id
     denied = web_client.post(
         "/web/goals/create",
         data={
+            **fields,
             "ledger_id": "owner",
             "month": "2026-05",
             "name": "只读目标",

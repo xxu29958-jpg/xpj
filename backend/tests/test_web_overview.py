@@ -53,8 +53,8 @@ def _seed_goal(client: TestClient, *, identity) -> None:
     month = current_month("Asia/Shanghai")
     resp = client.post(
         "/api/goals?timezone=Asia/Shanghai",
-        headers=identity.app_headers,
-        json={"name": "餐饮月度上限", "month": month, "target_amount_cents": 80000},
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "name": "餐饮月度上限", "month": month, "target_amount_cents": 80000},
     )
     assert resp.status_code == 201, resp.text
 

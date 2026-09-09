@@ -75,12 +75,11 @@ class ApiIdempotencyKey(Base):
     # canonical(operation + target + body + expected_row_version) sha256 hex (64).
     request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False)
-    # Locate an ordinary mutated resource so replay can re-serialise current state.
+    # Identify the resource affected by the accepted command.
     resource_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     resource_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    # Aggregate commands have no single canonical resource that can reconstruct
-    # their result counts.  Store only their successful typed payload; ordinary
-    # resource mutations keep this NULL and continue re-serialising current state.
+    # Commands retain their accepted typed result here when safe replay requires
+    # the original receipt. Later resource edits do not change that receipt.
     response_body: Mapped[dict[str, object] | None] = mapped_column(JSON(), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=now_utc, nullable=False

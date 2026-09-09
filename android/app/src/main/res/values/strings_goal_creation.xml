@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="goal_creation_label">创建消费目标</string>
+    <string name="goal_creation_pending">目标已保存在本机，等待同步。确认结果前，请继续使用这份原提交。</string>
+    <string name="goal_creation_uncertain">还无法确认目标是否已创建。重试会核对同一份提交。</string>
+    <string name="goal_creation_failed">原创建需要核对，内容已保留。</string>
+    <string name="goal_creation_open">查看原创建</string>
+    <string name="goal_creation_drop">停止本机重试</string>
+    <string name="goal_creation_unreadable">原创建内容暂时无法读取。记录已保留，请先核对目标列表。</string>
+    <string name="goal_submission_stop_body">这只停止本机继续发送，不会撤销服务器可能已接受的目标创建或修改。请先核对目标，再决定是否重新提交。</string>
+    <string name="goal_submission_open">查看原目标</string>
+    <string name="goal_creation_missing">这份原创建已不在当前队列中。请先核对目标列表；不会替换为其它提交。</string>
+</resources>

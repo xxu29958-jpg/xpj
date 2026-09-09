@@ -285,6 +285,11 @@ class AppContainer(context: Context) {
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.recognizeTextAdapter,
             ),
+            com.ticketbox.data.repository.CreateGoalDispatcher(
+                apiProvider = ::outboxApi,
+                payloadAdapter = outboxAdapters.goalCreateAdapter,
+                receiptAdapter = outboxAdapters.goalReceiptAdapter,
+            ),
             // ADR-0042 Slice F: PATCH /api/goals/{publicId} via outbox.
             UpdateGoalDispatcher(
                 apiProvider = ::outboxApi,

@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_app_context, get_current_writer_context
+from app.auth import get_current_app_context, get_current_protocol_writer_context, get_current_writer_context
 from app.config import get_settings
 from app.database import get_db
 from app.schemas import (
@@ -16,6 +16,7 @@ from app.schemas import (
     GoalTokenRequest,
     GoalUpdateRequest,
 )
+from app.services.goal_create_command import create_spending_goal_idempotently
 from app.services.goal_debt_repayment_service import (
     acknowledge_integrity_review,
     list_debt_repayment_goals,
@@ -99,15 +100,19 @@ def get_goal_detail(
 def post_goal(
     payload: GoalCreateRequest,
     timezone: str | None = None,
-    auth: AuthContext = Depends(get_current_writer_context),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: AuthContext = Depends(get_current_protocol_writer_context),
     db: Session = Depends(get_db),
 ) -> GoalResponse:
     timezone_name = timezone or get_settings().ocr_default_timezone
-    return create_goal(
+    if payload.goal_type.strip() == "debt_repayment":
+        return create_goal(db, tenant_id=auth.tenant_id, payload=payload, timezone_name=timezone_name)
+    return create_spending_goal_idempotently(
         db,
         tenant_id=auth.tenant_id,
         payload=payload,
         timezone_name=timezone_name,
+        idempotency_key=idempotency_key,
     )
 
 
@@ -117,7 +122,7 @@ def patch_goal(
     payload: GoalUpdateRequest,
     timezone: str | None = None,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    auth: AuthContext = Depends(get_current_writer_context),
+    auth: AuthContext = Depends(get_current_protocol_writer_context),
     db: Session = Depends(get_db),
 ) -> GoalResponse:
     timezone_name = timezone or get_settings().ocr_default_timezone

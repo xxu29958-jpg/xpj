@@ -34,26 +34,17 @@ import com.ticketbox.ui.components.AppContentStateSlot
 import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppProgressBar
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.screens.plan.spendingGoalAmountText
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
-import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalGoalTokens
 import com.ticketbox.ui.design.StateTone
 import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.ui.screens.debtGoalEvaluationLabelRes
 import com.ticketbox.viewmodel.ReportGoalsLoadState
-import kotlin.math.roundToInt
-
-private data class GoalDisplayModel(
-    val goal: Goal,
-    val progressFraction: Float,
-    val progressPercent: Int,
-    val priority: Int,
-)
 
 private data class GoalAmountLine(
     val label: String,
@@ -72,11 +63,7 @@ internal fun GoalsSummaryCard(
     val bodyKind = remember(loadState, visibleGoals.size) {
         goalsSummaryBodyKind(loadState = loadState, visibleGoalCount = visibleGoals.size)
     }
-    val averagePercent = if (visibleGoals.isEmpty()) {
-        0
-    } else {
-        visibleGoals.map { it.progressPercent.coerceIn(0, 100) }.average().roundToInt()
-    }
+    val averagePercent = goalAveragePercent(visibleGoals)
 
     StatsInsightSurface(modifier = modifier) {
         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
@@ -212,7 +199,7 @@ private fun GoalsSummaryStateSlot(kind: GoalsSummaryBodyKind) {
 private fun GoalPortfolioRail(
     goalCount: Int,
     attentionCount: Int,
-    averagePercent: Int,
+    averagePercent: Int?,
 ) {
     val goalTokens = LocalGoalTokens.current
     val goalTone = if (attentionCount > 0) goalTokens.nearLimit else goalTokens.onTrack
@@ -229,13 +216,14 @@ private fun GoalPortfolioRail(
                 style = MaterialTheme.typography.labelMedium,
             )
             Text(
-                text = stringResource(R.string.stats_reports_goal_percent, averagePercent.coerceAtLeast(0)),
+                text = averagePercent?.let { stringResource(R.string.stats_reports_goal_percent, it) }
+                    ?: stringResource(R.string.spending_goal_amount_unavailable),
                 color = goalTone.fg,
                 style = MaterialTheme.typography.labelLarge.tabularNum(),
                 fontWeight = FontWeight.SemiBold,
             )
         }
-        AppProgressBar(
+        if (averagePercent != null) AppProgressBar(
             fraction = averagePercent / 100f,
             tone = progressTone,
             height = AppSpacing.smallGap,
@@ -252,7 +240,6 @@ private fun GoalPortfolioRail(
 private fun GoalPriorityRow(model: GoalDisplayModel) {
     val goal = model.goal
     val tone = goalTone(model)
-    val currencyDisplay = com.ticketbox.domain.model.CurrencyDisplay.forRecord(goal.homeCurrencyCode ?: stringResource(R.string.spending_goal_currency_unknown))
     val debtEvaluation = goal.debtRepayment.takeIf { goal.isDebtRepayment }
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         Row(
@@ -266,7 +253,8 @@ private fun GoalPriorityRow(model: GoalDisplayModel) {
             GoalPriorityTextColumn(model = model, modifier = Modifier.weight(1f))
             if (debtEvaluation != null) {
                 Text(
-                    text = stringResource(R.string.stats_reports_goal_percent, model.progressPercent.coerceAtLeast(0)),
+                    text = model.progressPercent?.let { stringResource(R.string.stats_reports_goal_percent, it) }
+                        ?: stringResource(R.string.spending_goal_amount_unavailable),
                     color = tone.fg,
                     style = MaterialTheme.typography.labelLarge.tabularNum(),
                     fontWeight = AppTextHierarchy.body.weight,
@@ -274,7 +262,7 @@ private fun GoalPriorityRow(model: GoalDisplayModel) {
                 )
             } else {
                 AppEndAlignedAmountText(
-                    text = formatDisplayAmount(goal.targetAmountCents, currencyDisplay),
+                    text = spendingGoalAmountText(goal.targetAmountCents, goal.homeCurrencyCode),
                     modifier = Modifier.weight(0.56f),
                     role = AppAmountRole.Compact,
                     color = tone.fg,
@@ -286,25 +274,36 @@ private fun GoalPriorityRow(model: GoalDisplayModel) {
                 lines = listOf(
                     GoalAmountLine(
                         stringResource(R.string.stats_reports_goal_spent_label),
-                        formatDisplayAmount(goal.spentAmountCents, currencyDisplay),
+                        spendingGoalAmountText(goal.spentAmountCents, goal.homeCurrencyCode),
                     ),
                     GoalAmountLine(
                         stringResource(R.string.stats_reports_goal_remaining_label),
-                        formatDisplayAmount(goal.remainingAmountCents, currencyDisplay),
+                        spendingGoalAmountText(goal.remainingAmountCents, goal.homeCurrencyCode),
                     ),
                 ),
             )
         }
+        GoalSummaryProgress(model, tone)
+    }
+}
+
+@Composable
+private fun GoalSummaryProgress(model: GoalDisplayModel, tone: StateTone) {
+    val progress = model.progressFraction
+    if (progress != null) {
         AppProgressBar(
-            fraction = model.progressFraction,
+            fraction = progress,
             tone = tone,
             height = AppSpacing.miniGap,
             contentDescription = stringResource(
                 R.string.stats_reports_goal_progress_a11y,
-                goal.name,
-                model.progressPercent,
+                model.goal.name,
+                requireNotNull(model.progressPercent),
             ),
         )
+    } else {
+        Text(stringResource(R.string.spending_goal_progress_unavailable),
+            color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
     }
 }
 
@@ -378,6 +377,7 @@ private fun goalStatusText(goal: Goal): String {
                 GoalProgressState.NearLimit -> R.string.stats_reports_goal_status_near
                 GoalProgressState.OnTrack -> R.string.stats_reports_goal_status_on_track
                 GoalProgressState.Archived -> R.string.stats_reports_goal_status_archived
+                GoalProgressState.Unavailable -> R.string.spending_goal_amount_unavailable
                 GoalProgressState.Idle -> R.string.stats_reports_goal_status_idle
             },
         )
@@ -408,41 +408,6 @@ private fun goalContextText(goal: Goal): String {
     }
 }
 
-private fun goalDisplayModels(goals: List<Goal>): List<GoalDisplayModel> =
-    goals
-        .filterNot { it.isArchived }
-        .map { goal ->
-            val debtEvaluation = goal.debtRepayment
-            val progressFraction = if (goal.isDebtRepayment && debtEvaluation != null) {
-                debtEvaluation.planFraction
-            } else {
-                goal.progress
-            }.coerceIn(0f, 1f)
-            val progressPercent = if (goal.isDebtRepayment && debtEvaluation != null) {
-                (progressFraction * 100).roundToInt()
-            } else {
-                goal.progressPercent
-            }
-            val priority = when {
-                debtEvaluation?.needsReview == true || debtEvaluation?.isNotEvaluable == true -> 0
-                goal.progressState == GoalProgressState.OverLimit -> 0
-                goal.progressState == GoalProgressState.NearLimit -> 1
-                goal.progressState == GoalProgressState.Idle -> 3
-                else -> 2
-            }
-            GoalDisplayModel(
-                goal = goal,
-                progressFraction = progressFraction,
-                progressPercent = progressPercent,
-                priority = priority,
-            )
-        }
-        .sortedWith(
-            compareBy<GoalDisplayModel> { it.priority }
-                .thenByDescending { it.progressPercent }
-                .thenBy { it.goal.name },
-        )
-
 @Composable
 private fun goalTone(model: GoalDisplayModel): StateTone {
     val goalTokens = LocalGoalTokens.current
@@ -450,7 +415,7 @@ private fun goalTone(model: GoalDisplayModel): StateTone {
     val tone = when {
         debtEvaluation?.needsReview == true || debtEvaluation?.isNotEvaluable == true -> goalTokens.nearLimit
         model.goal.progressState == GoalProgressState.OverLimit -> goalTokens.exceeded
-        model.goal.progressState == GoalProgressState.NearLimit -> goalTokens.nearLimit
+        model.goal.progressState == GoalProgressState.NearLimit || model.progressFraction == null -> goalTokens.nearLimit
         model.goal.progressState == GoalProgressState.OnTrack -> goalTokens.onTrack
         model.goal.progressState == GoalProgressState.Archived -> goalTokens.expired
         else -> goalTokens.idle

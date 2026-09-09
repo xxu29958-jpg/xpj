@@ -13,15 +13,14 @@ from app.services.category_service import normalize_category
 from app.services.currency_binding_service import (
     resolve_write_capability,
 )
+from app.services.currency_common import normalize_currency_code
 from app.services.goal_spending_response import goal_response, month_spend_totals
 from app.services.optimistic_concurrency import bump_row_version, claim_row_with_token
 from app.services.spending_contract_service import clean_month
 from app.services.time_service import now_utc
 
-# ADR-0049 §6 slice 6 adds ``debt_repayment``; this module stays the facade — the
-# debt-only create/build logic lives in ``goal_debt_repayment_service`` and the
-# create/get dispatch below routes to it. ``spending_limit`` keeps every existing
-# code path unchanged.
+# Spending targets own captured money; debt-clearance goals delegate to their
+# linked-debt evaluator and have no monetary target.
 VALID_GOAL_TYPES = {"spending_limit", "debt_repayment"}
 VALID_PERIODS = {"monthly"}
 
@@ -153,13 +152,12 @@ def list_goals(
         Goal.id.asc(),
     )
     goals = list(db.scalars(statement))
-    totals = month_spend_totals(
-        db,
-        tenant_id=tenant_id,
-        month=month,
-        timezone_name=timezone_name,
-    )
-    return [goal_response(goal, totals) for goal in goals]
+    totals_by_currency = {
+        currency: month_spend_totals(db, tenant_id=tenant_id, month=month,
+            timezone_name=timezone_name, home_currency_code=currency)
+        for currency in {goal.home_currency_code for goal in goals}
+    }
+    return [goal_response(goal, totals_by_currency[goal.home_currency_code]) for goal in goals]
 
 
 def get_goal_response(
@@ -181,6 +179,7 @@ def get_goal_response(
         db,
         tenant_id=tenant_id,
         month=goal.month,
+        home_currency_code=goal.home_currency_code,
         timezone_name=timezone_name,
     )
     return goal_response(goal, totals)
@@ -192,7 +191,9 @@ def create_goal(
     tenant_id: str,
     payload: GoalCreateRequest,
     timezone_name: str | None = None,
+    commit: bool = True,
 ) -> GoalResponse:
+    """Spending creation may join the caller's accepted-receipt transaction."""
     goal_type = _clean_goal_type(payload.goal_type)
     if goal_type == "debt_repayment":
         # ADR-0049 §6: debt goals link explicit Debt ids — no month/category/target
@@ -206,8 +207,8 @@ def create_goal(
     if payload.month is None or payload.target_amount_cents is None:
         raise AppError("invalid_request", status_code=422)
     target_amount_cents = _clean_target_amount(payload.target_amount_cents)
+    currency = normalize_currency_code(payload.home_currency_code)
     now = now_utc()
-    # R13-2：无币种列的目标写按 env 口径入账 —— 先过绑定门（漂移/未决拒写）。
     resolve_write_capability(db)
     period = _clean_period(payload.period)
     month = _clean_month(payload.month)
@@ -229,13 +230,14 @@ def create_goal(
         month=month,
         category=category,
         target_amount_cents=target_amount_cents,
+        home_currency_code=currency,
         status="active",
         created_at=now,
         updated_at=now,
     )
     db.add(goal)
     try:
-        db.commit()
+        db.flush()
     except IntegrityError:
         db.rollback()
         _raise_duplicate_goal()
@@ -244,9 +246,13 @@ def create_goal(
         db,
         tenant_id=tenant_id,
         month=goal.month,
+        home_currency_code=goal.home_currency_code,
         timezone_name=timezone_name,
     )
-    return goal_response(goal, totals)
+    response = goal_response(goal, totals)
+    if commit:
+        db.commit()
+    return response
 
 
 def update_goal(
@@ -258,22 +264,10 @@ def update_goal(
     timezone_name: str | None = None,
     commit: bool = True,
 ) -> GoalResponse:
-    """ADR-0038 PR-2j: atomic optimistic-concurrency PATCH.
+    """Update an active target using its captured currency and original row version.
 
-    Validates the new fields then runs ``UPDATE goals SET ...,
-    updated_at = now WHERE id, tenant_id, status='active', updated_at =
-    expected``. ``rowcount == 0`` disambiguates: row vanished /
-    no longer active → 404 ``goal_not_found``; else → 409
-    ``state_conflict``. Archived check happens at the DB predicate
-    layer so a peer archiving between the read and this PATCH
-    surfaces as state_conflict, not a silent overwrite of an
-    archived row.
-
-    ADR-0042: ``commit=False`` lets the route commit the OCC claim together
-    with the idempotency-key success record in a single transaction (§4.5);
-    the row is still flushed + expired so the re-read sees the post-UPDATE
-    state. The OCC-conflict path always rolls back its own placeholder
-    regardless of ``commit``.
+    ``commit=False`` lets the command commit the mutation and accepted receipt
+    together. A concurrent edit/archive cannot be overwritten by a stale form.
     """
     validated_target = validate_goal_update_money_command(payload)
     goal = get_goal(db, tenant_id=tenant_id, public_id=public_id)
@@ -284,10 +278,11 @@ def update_goal(
     if goal.status == "archived":
         raise AppError("invalid_request", "目标已归档，不能继续修改。", status_code=409)
 
-    # R13-2：目标编辑若改金额字段则按 env 口径入账 —— 先过绑定门（漂移/未决拒写；
-    # 未改金额的纯元数据 PATCH 也过门从简——门的 metadata 豁免只在 apply_currency_payload）。
     resolve_write_capability(db)
-    updates = payload.model_dump(exclude_unset=True, exclude={"expected_row_version"})
+    currency = normalize_currency_code(payload.home_currency_code)
+    if goal.home_currency_code != currency:
+        raise AppError("goal_currency_conflict", "输入币种与原目标不同，请保留原金额并核对目标。", status_code=409)
+    updates = payload.model_dump(exclude_unset=True, exclude={"expected_row_version", "home_currency_code"})
     goal_id = goal.id
     new_name = goal.name
     new_month = goal.month
@@ -328,7 +323,7 @@ def update_goal(
                 "target_amount_cents": new_target,
                 "updated_at": now,
             },
-            extra_where=(Goal.status == "active",),
+            extra_where=(Goal.status == "active", Goal.home_currency_code == currency),
             synchronize_session=False,
         )
     except IntegrityError:
@@ -352,6 +347,7 @@ def update_goal(
         db,
         tenant_id=tenant_id,
         month=goal.month,
+        home_currency_code=goal.home_currency_code,
         timezone_name=timezone_name,
     )
     return goal_response(goal, totals)
@@ -373,6 +369,7 @@ def _goal_response_by_type(db: Session, goal: Goal, *, timezone_name: str | None
         db,
         tenant_id=goal.tenant_id,
         month=goal.month,
+        home_currency_code=goal.home_currency_code,
         timezone_name=timezone_name,
     )
     return goal_response(goal, totals)

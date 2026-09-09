@@ -142,8 +142,9 @@ def test_rule_row_version_starts_at_one_and_increments(client: TestClient, *, id
 def _create_goal(client: TestClient, *, identity) -> dict:
     response = client.post(
         "/api/goals",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
+            "home_currency_code": "CNY",
             "name": "RowVer Goal",
             "month": "2026-05",
             "category": "餐饮",
@@ -160,7 +161,7 @@ def test_goal_row_version_starts_at_one_and_increments(client: TestClient, *, id
     updated = client.patch(
         f"/api/goals/{goal['public_id']}",
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
-        json={"target_amount_cents": 6000, "expected_row_version": goal["row_version"]},
+        json={"home_currency_code": "CNY", "target_amount_cents": 6000, "expected_row_version": goal["row_version"]},
     )
     assert updated.status_code == 200, updated.text
     assert updated.json()["row_version"] == 2

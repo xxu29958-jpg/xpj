@@ -53,13 +53,15 @@
             {% if goal.is_over_limit %}<span class="product-status product-status--danger">已超出</span>{% endif %}
           </span>
         </div>
-        <span class="plan-goal-amount">{{ home_currency_symbol }}{{ goal.spent_yuan }} / {{ home_currency_symbol }}{{ goal.target_yuan }}</span>
+        <span class="plan-goal-amount">{{ goal.home_currency_code or '' }} {{ goal.spent_yuan or '暂不可计算' }} / {{ goal.target_yuan }}</span>
       </div>
+      {% if goal.progress_percent is not none %}
       <progress class="plan-progress{% if goal.is_over_limit %} is-over{% endif %}" value="{{ goal.bar_percent }}" max="100" aria-label="目标进度 {{ goal.progress_percent }}%"></progress>
       <div class="plan-progress-meta">
         <span>{{ goal.progress_percent }}%</span>
-        <span>剩余 {{ home_currency_symbol }}{{ goal.remaining_yuan }}</span>
+        <span>剩余 {{ goal.home_currency_code }} {{ goal.remaining_yuan }}</span>
       </div>
+      {% else %}<p class="product-feedback" role="status">币种或汇率待补充，暂时无法计算进度。目标金额已保留。</p>{% endif %}
       {% if can_write and not goal.is_archived %}
       <div class="budget-actions">
       <a class="product-button product-button--quiet product-button--small" href="/web/goals/{{ goal.public_id }}/edit?ledger_id={{ selected_ledger_id }}&month={{ month }}">编辑目标</a>
@@ -90,24 +92,27 @@
   </div>
   <form method="post" action="/web/goals/create" class="budget-form">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <input type="hidden" name="month" value="{{ month }}">
+    <input type="hidden" name="month" value="{{ values.month }}">
+    <input type="hidden" name="home_currency_code" value="{{ values.home_currency_code }}">
+    <input type="hidden" name="idempotency_key" value="{{ values.idempotency_key }}">
     {{ csrf_field|safe }}
     <div class="product-form-grid">
       <div class="product-field">
         <label for="goal-create-name">目标名称</label>
-        <input id="goal-create-name" class="product-input" type="text" name="name" maxlength="80" placeholder="本月餐饮" required>
+        <input id="goal-create-name" class="product-input" type="text" name="name" value="{{ values.name }}" maxlength="80" placeholder="本月餐饮" required>
       </div>
       <div class="product-field">
-        <label for="goal-create-amount">目标金额（{{ currency_input.currency_code }} · {{ currency_input.currency_symbol }}，{{ currency_input.amount_input_hint }}）</label>
-        <input id="goal-create-amount" class="product-input" type="number" name="target_amount_yuan" step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_example }}" required>
+        <label for="goal-create-amount">目标金额（{{ form_currency.currency_code or '币种待确认' }}，{{ form_currency.amount_input_hint }}）</label>
+        <input id="goal-create-amount" class="product-input" type="text" name="target_amount_yuan" value="{{ values.target_amount_yuan }}" inputmode="{{ form_currency.inputmode or 'text' }}" placeholder="{{ form_currency.amount_example }}" required>
       </div>
       <div class="product-field">
         <label for="goal-create-category">分类（留空为总支出）</label>
-        <input id="goal-create-category" class="product-input" type="text" name="category" maxlength="64" placeholder="餐饮">
+        <input id="goal-create-category" class="product-input" type="text" name="category" value="{{ values.category }}" maxlength="64" placeholder="餐饮">
       </div>
     </div>
     <div class="budget-actions">
-      <button class="product-button product-button--primary" type="submit">保存目标</button>
+      {% if form_currency %}<button class="product-button product-button--primary" type="submit">保存目标</button>
+      {% else %}<p role="status">原表单缺少可确认的币种，输入已保留。请重新打开目标页后核对新表单。</p>{% endif %}
     </div>
   </form>
 </section>

@@ -20,7 +20,6 @@ import com.ticketbox.data.remote.dto.ReportsOverviewDto
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.DashboardCardUpdate
 import com.ticketbox.domain.model.DashboardSurface
-import com.ticketbox.domain.model.GoalDraft
 import com.ticketbox.domain.model.GoalProgressState
 import com.ticketbox.domain.model.GoalUpdate
 import com.ticketbox.domain.model.ReportGranularity
@@ -108,15 +107,6 @@ class ReportsRepositoryTest {
             val repository = repository(api)
 
             val goals = repository.goals(month = " 2026-05 ", includeArchived = true).getOrThrow()
-            val created = repository.createGoal(
-                GoalDraft(
-                    name = " 本月餐饮 ",
-                    month = " 2026-05 ",
-                    targetAmountCents = 80000,
-                    category = "吃饭",
-                ),
-                expectedBinding = repository.dashboardAccess()!!.binding,
-            ).getOrThrow()
             val binding = repository.dashboardAccess()!!.binding
             val cards = repository.dashboardCards(binding, DashboardSurface.Android).getOrThrow()
             val savedCards = repository.updateDashboardCards(
@@ -132,10 +122,7 @@ class ReportsRepositoryTest {
             assertEquals(true, api.goalsCalls.single().includeArchived)
             assertEquals("UTC", api.goalsCalls.single().timezone)
             assertEquals(GoalProgressState.NearLimit, goals.single().progressState)
-            assertEquals("JPY", goals.single().homeCurrencyCode)
-            assertEquals("餐饮", created.category)
-            assertEquals("本月餐饮", api.createGoalCalls.single().request.name)
-            assertEquals("餐饮", api.createGoalCalls.single().request.category)
+            assertEquals("CNY", goals.single().homeCurrencyCode)
             assertEquals("android", api.dashboardCardCalls.single())
             assertEquals("goals", api.updateDashboardCardCalls.single().request.cards.first().key)
             assertEquals("reports", savedCards.items[1].key)
@@ -213,14 +200,7 @@ class ReportsRepositoryTest {
         val api = ReportsApiHandler()
         val repository = repository(api, role = "viewer")
 
-        val goalResult = repository.createGoal(
-            GoalDraft(
-                name = "本月餐饮",
-                month = "2026-05",
-                targetAmountCents = 80000,
-            ),
-        expectedBinding = repository.dashboardAccess()!!.binding,
-        )
+        val goalResult = repository.createDebtGoal("清偿", listOf("debt-a"), repository.dashboardAccess()!!.binding)
         val cardsResult = repository.updateDashboardCards(
             binding = repository.dashboardAccess()!!.binding,
             updates = listOf(DashboardCardUpdate("goals", visible = true, position = 0)),
@@ -262,14 +242,7 @@ class ReportsRepositoryTest {
         }
         val repository = repository(api)
 
-        val result = repository.createGoal(
-            GoalDraft(
-                name = "本月餐饮",
-                month = "2026-05",
-                targetAmountCents = 80000,
-            ),
-        expectedBinding = repository.dashboardAccess()!!.binding,
-        )
+        val result = repository.createDebtGoal("清偿", listOf("debt-a"), repository.dashboardAccess()!!.binding)
 
         assertTrue(result.isFailure)
         assertEquals("当前角色为只读，无法修改账本。", result.exceptionOrNull()?.message)
@@ -724,6 +697,7 @@ private fun goalDto(
     updatedAt = "2026-05-13T00:00:00Z",
     rowVersion = 1L,
     archivedAt = archivedAt,
+    homeCurrencyCode = "CNY",
 )
 
 private fun debtGoalDto(

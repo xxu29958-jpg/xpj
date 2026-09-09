@@ -31,11 +31,12 @@ private val recurringSubmissionTypes = setOf(
     PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem, PendingMutationType.SetRecurringOccurrencePayment,
 )
 private val originalSubmissionTypes = setOf(
-    PendingMutationType.CorrectExpense, PendingMutationType.UpdateGoal, PendingMutationType.SaveMonthlyBudget,
+    PendingMutationType.CorrectExpense, PendingMutationType.UpdateGoal, PendingMutationType.CreateGoal, PendingMutationType.SaveMonthlyBudget,
 ) + recurringSubmissionTypes
 
 private val submissionFailureResources = mapOf(
     PendingMutationType.UpdateGoal to R.string.spending_goal_recovery_unavailable,
+    PendingMutationType.CreateGoal to R.string.spending_goal_recovery_unavailable,
     PendingMutationType.SaveMonthlyBudget to R.string.budget_save_attention,
     PendingMutationType.CreateRecurringItem to R.string.recurring_original_attention,
     PendingMutationType.UpdateRecurringItem to R.string.recurring_original_attention,
@@ -109,6 +110,9 @@ class OutboxStatusViewModel(
                     }.map { it.id }.toSet(),
                     recurringOccurrences = occurrenceDescriptions, incomeEdits = incomeDescriptions,
                     goalEdits = (status.failed + status.conflicts).mapNotNull { row -> recoveries.goalEdits.describeEdit(row)?.let { row.id to it } }.toMap(),
+                    goalCreations = (status.failed + status.conflicts).mapNotNull { row ->
+                        recoveries.goalEdits.describeCreation(row)?.let { row.id to it }
+                    }.toMap(),
                     recurringItems = (status.failed + status.conflicts).mapNotNull { row ->
                         recoveries.recurringItems.describeManualIntent(row)?.let { row.id to it }
                     }.toMap(),
@@ -119,7 +123,7 @@ class OutboxStatusViewModel(
 
     /** "用我的覆盖" — re-apply my change on top of the server's latest. */
     fun keepMine(row: OutboxRow) {
-        if (row.type in recurringSubmissionTypes || row.type in setOf(PendingMutationType.CreateBillSplitInvitation, PendingMutationType.SaveMonthlyBudget)) return
+        if (row.type in originalSubmissionTypes || row.type == PendingMutationType.CreateBillSplitInvitation) return
         val binding = expenseRepository.captureDeferredLedgerBinding()
         if (!_uiState.value.accepts(row, binding)) return
         if (row.type in setOf(PendingMutationType.CorrectExpense, PendingMutationType.UploadScreenshot)) return
@@ -221,17 +225,8 @@ class OutboxStatusViewModel(
         resolve(row) {
             val result = when (row.type) {
                 PendingMutationType.CreateBillSplitInvitation -> expenseRepository.recoverBillSplitCreation(binding, row.id, drop)
-                PendingMutationType.UpdateGoal -> recoveries.goalEdits.describeEdit(row)?.let {
-                    recoveries.goalEdits.recover(binding, it, drop)
-                } ?: Result.failure(IllegalStateException())
-                PendingMutationType.SaveMonthlyBudget -> recoveries.budgetSaves.describeSave(row)?.let {
-                    recoveries.budgetSaves.recoverSave(binding, it, drop)
-                } ?: Result.failure(IllegalStateException())
-                PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem ->
-                    recoveries.recurringItems.recoverManualIntent(binding, row, drop)
-                PendingMutationType.SetRecurringOccurrencePayment ->
-                    recoveries.recurringOccurrences?.recover(binding, row, drop) ?: Result.failure(IllegalStateException())
-                else -> expenseRepository.recoverCorrection(binding, row.id, drop)
+                else -> recoveries.recoverPlanningSubmission(binding, row, drop)
+                    ?: expenseRepository.recoverCorrection(binding, row.id, drop)
             }
             result.onFailure { error ->
                 if (expenseRepository.captureDeferredLedgerBinding() == binding) {
@@ -317,6 +312,7 @@ data class OutboxStatusUiState(
     val recurringOccurrences: Map<Long, com.ticketbox.data.repository.PendingOccurrencePayment> = emptyMap(),
     val incomeEdits: Map<Long, com.ticketbox.data.repository.PendingIncomePlanEdit> = emptyMap(),
     val goalEdits: Map<Long, com.ticketbox.data.repository.PendingGoalEdit> = emptyMap(),
+    val goalCreations: Map<Long, com.ticketbox.data.repository.PendingGoalCreation> = emptyMap(),
     val budgetSaves: Map<Long, com.ticketbox.data.repository.PendingBudgetSave> = emptyMap(),
     val recurringItems: Map<Long, com.ticketbox.data.repository.RecurringPendingIntent> = emptyMap(),
     val debtAdjustments: Map<Long, com.ticketbox.data.repository.PendingDebtAdjustment> = emptyMap(),
@@ -334,7 +330,8 @@ data class OutboxStatusUiState(
             recurringOccurrences[row.id]?.canRetry == true && correctionObservation.access?.canModify == true
         PendingMutationType.SaveMonthlyBudget -> budgetSaves[row.id]?.canRetry == true && correctionObservation.access?.canModify == true
         PendingMutationType.UpdateIncomePlan -> incomeEdits[row.id]?.hasSupportedIntent == true
-        PendingMutationType.UpdateGoal -> goalEdits[row.id]?.canRetry == true
+        PendingMutationType.UpdateGoal -> goalEdits[row.id]?.canRetry == true && correctionObservation.access?.canModify == true
+        PendingMutationType.CreateGoal -> goalCreations[row.id]?.canRetry == true && correctionObservation.access?.canModify == true
         PendingMutationType.RecordDebtAdjustment -> debtAdjustments[row.id]?.canRetry == true
         PendingMutationType.CreateExpenseOffset -> row.id in retryableOffsetIds
         else -> true
@@ -358,3 +355,23 @@ data class OutboxRecoveryRepositories(
     val budgetSaves: com.ticketbox.data.repository.BudgetSaveActions,
     val recurringItems: com.ticketbox.data.repository.RecurringManualMutationActions,
 )
+
+/** Route plan submissions to their existing command owner, including original-intent validation. */
+private suspend fun OutboxRecoveryRepositories.recoverPlanningSubmission(
+    binding: LogicalSessionBinding, row: OutboxRow, drop: Boolean,
+): Result<Unit>? = when (row.type) {
+    PendingMutationType.CreateGoal -> goalEdits.describeCreation(row)?.let {
+        goalEdits.recoverCreation(binding, it, drop)
+    } ?: Result.failure(IllegalStateException())
+    PendingMutationType.UpdateGoal -> goalEdits.describeEdit(row)?.let {
+        goalEdits.recover(binding, it, drop)
+    } ?: Result.failure(IllegalStateException())
+    PendingMutationType.SaveMonthlyBudget -> budgetSaves.describeSave(row)?.let {
+        budgetSaves.recoverSave(binding, it, drop)
+    } ?: Result.failure(IllegalStateException())
+    PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem ->
+        recurringItems.recoverManualIntent(binding, row, drop)
+    PendingMutationType.SetRecurringOccurrencePayment ->
+        recurringOccurrences?.recover(binding, row, drop) ?: Result.failure(IllegalStateException())
+    else -> null
+}

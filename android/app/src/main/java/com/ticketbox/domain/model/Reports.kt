@@ -79,6 +79,7 @@ data class ReportsOverview(
 
 enum class GoalProgressState(val apiValue: String) {
     Idle("not_started"),
+    Unavailable("unavailable"),
     OnTrack("on_track"),
     NearLimit("near_limit"),
     OverLimit("over_limit"),
@@ -86,7 +87,7 @@ enum class GoalProgressState(val apiValue: String) {
 
     companion object {
         fun fromApiValue(value: String): GoalProgressState =
-            entries.firstOrNull { it.apiValue == value } ?: Idle
+            entries.firstOrNull { it.apiValue == value } ?: Unavailable
     }
 }
 
@@ -101,23 +102,21 @@ data class Goal(
     val period: String,
     val month: String,
     val category: String?,
-    val targetAmountCents: Long,
-    val spentAmountCents: Long,
-    val remainingAmountCents: Long,
-    val progressPercent: Int,
+    val targetAmountCents: Long?,
+    val spentAmountCents: Long?,
+    val remainingAmountCents: Long?,
+    val progressPercent: Int?,
     val progressState: GoalProgressState,
     val status: String,
     val createdAt: String,
     val updatedAt: String,
     val rowVersion: Long,
     val archivedAt: String?,
-    // ADR-0049 §6 (slice 7): populated only for goalType == "debt_repayment".
-    // The spending-shape numeric fields above are coalesced to 0 for a debt goal
-    // (the debt-goal UI reads this evaluation block, not the spend fields).
+    // Debt goals carry a non-monetary evaluation; their spend fields remain null.
     val debtRepayment: DebtRepaymentEvaluation? = null,
     val homeCurrencyCode: String? = null,
 ) {
-    val progress: Float = (progressPercent / 100f).coerceIn(0f, 1f)
+    val progress: Float? = progressPercent?.let { (it / 100f).coerceIn(0f, 1f) }
     val isArchived: Boolean = status == "archived" || archivedAt != null
     val isOverLimit: Boolean = progressState == GoalProgressState.OverLimit
     val isDebtRepayment: Boolean = goalType == GOAL_TYPE_DEBT_REPAYMENT
@@ -129,6 +128,7 @@ data class GoalDraft(
     val month: String,
     val targetAmountCents: Long,
     val category: String? = null,
+    val homeCurrencyCode: String,
 )
 
 data class GoalUpdate(
@@ -137,6 +137,7 @@ data class GoalUpdate(
     val month: String? = null,
     val targetAmountCents: Long? = null,
     val category: String? = null,
+    val homeCurrencyCode: String,
 )
 
 enum class DashboardSurface(val apiValue: String) {

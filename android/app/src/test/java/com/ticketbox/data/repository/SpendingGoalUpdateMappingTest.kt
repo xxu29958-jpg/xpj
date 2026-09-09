@@ -10,8 +10,10 @@ class SpendingGoalUpdateMappingTest {
         val request = GoalUpdate(
             expectedRowVersion = 4L,
             category = "  ",
+            homeCurrencyCode = "JPY",
         ).toRequest()
 
         assertEquals("", request.category)
+        assertEquals("JPY", request.homeCurrencyCode)
     }
 }

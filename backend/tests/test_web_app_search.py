@@ -11,6 +11,7 @@ from sqlalchemy import select, text
 from app.database import SessionLocal
 from app.models import Expense
 from app.services.learning_service import OcrFactDraft, record_ocr_fact
+from tests._web_native_form_support import hidden_post_forms
 
 
 def _create_pending(client: TestClient, *, identity) -> int:
@@ -66,9 +67,12 @@ def test_web_search_finds_current_ledger_entities(web_client: TestClient, *, ide
         follow_redirects=False,
     )
     assert rule.status_code in {303, 307}
+    goal_page = web_client.get("/web/goals?ledger_id=owner&month=2026-05")
+    assert goal_page.status_code == 200
     goal = web_client.post(
         "/web/goals/create",
         data={
+            **hidden_post_forms(goal_page.text)["/web/goals/create"],
             "ledger_id": "owner",
             "month": "2026-05",
             "name": "SearchGoal Groceries",

@@ -66,6 +66,7 @@ enum class PendingMutationType(val wireValue: String) {
     UpdateMerchantAlias("update_merchant_alias"),
     DeleteMerchantAlias("delete_merchant_alias"),
     UpdateGoal("update_goal"),
+    CreateGoal("create_goal"),
     UpdateIncomePlan("update_income_plan"),
     SaveMonthlyBudget("save_monthly_budget"),
     CreateRecurringItem("create_recurring_item"),

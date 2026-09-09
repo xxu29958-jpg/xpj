@@ -502,7 +502,7 @@ internal class StubApi(
         goalType: String?,
         timezone: String?,
     ): GoalListResponseDto = ledgerUnsupported()
-    override suspend fun createGoal(request: GoalCreateRequestDto, timezone: String?): GoalDto = ledgerUnsupported()
+    override suspend fun createGoal(request: GoalCreateRequestDto, timezone: String?, idempotencyKey: String?): GoalDto = ledgerUnsupported()
     override suspend fun goal(publicId: String, timezone: String?): GoalDto = ledgerUnsupported()
     override suspend fun updateGoal(
         publicId: String,

@@ -20,8 +20,8 @@ def _budget(*, spent=100, remaining=1100):
         missing_currency_codes=[] if spent is not None else ["CNY"])
 
 
-def test_overview_uses_budget_currency_independently_of_goal_reporting_currency():
-    result = _dashboard_budget_goals_block(_budget(), [], currency_code="CNY")
+def test_overview_uses_the_budgets_captured_currency():
+    result = _dashboard_budget_goals_block(_budget(), [])
     assert result["budget_home_currency_code"] == "JPY"
     assert result["budget_total_yuan"] == "1200"
     assert result["budget_remaining_yuan"] == "1100"
@@ -29,7 +29,7 @@ def test_overview_uses_budget_currency_independently_of_goal_reporting_currency(
 
 def test_missing_conversion_has_no_fake_budget_progress_or_available_amount():
     budget = _budget(spent=None, remaining=None)
-    overview = _dashboard_budget_goals_block(budget, [], currency_code="CNY")
+    overview = _dashboard_budget_goals_block(budget, [])
     page = _budget_view(budget, currency_code="JPY")
     assert overview["budget_remaining_cents"] is None
     assert overview["budget_top"][0]["percent"] is None

@@ -3,7 +3,7 @@
 from datetime import date
 from types import SimpleNamespace
 
-from app.services import budget_service
+from app.services import money_projection_service
 
 
 def _row(amount, currency, category="餐饮"):
@@ -13,9 +13,9 @@ def _row(amount, currency, category="餐饮"):
 
 def test_budget_spend_does_not_add_unconverted_units(monkeypatch):
     rows = [_row(100, "CNY"), _row(1200, "JPY"), _row(50, "CNY", "交通")]
-    monkeypatch.setattr(budget_service, "project_recorded_amount", lambda db, **kw:
+    monkeypatch.setattr(money_projection_service, "project_recorded_amount", lambda db, **kw:
         kw["amount_minor"] if kw["source_currency"] == kw["home_currency"] else None)
-    spend, missing = budget_service._project_category_spend(object(), tenant_id="owner", home="CNY", rows=rows)
+    spend, missing = money_projection_service.project_category_spend(object(), tenant_id="owner", home="CNY", rows=rows)
     assert spend["餐饮"].amount_cents is None
     assert spend["餐饮"].count == 2
     assert spend["交通"].amount_cents == 50
@@ -27,8 +27,8 @@ def test_refund_projection_keeps_its_sign_and_captured_currency(monkeypatch):
     def project(db, **kw):
         calls.append(kw)
         return -6000
-    monkeypatch.setattr(budget_service, "project_recorded_amount", project)
-    spend, missing = budget_service._project_category_spend(object(), tenant_id="owner", home="CNY", rows=[_row(-1200, "JPY")])
+    monkeypatch.setattr(money_projection_service, "project_recorded_amount", project)
+    spend, missing = money_projection_service.project_category_spend(object(), tenant_id="owner", home="CNY", rows=[_row(-1200, "JPY")])
     assert spend["餐饮"].amount_cents == -6000
     assert missing == set()
     assert calls[0]["source_currency"] == "JPY"

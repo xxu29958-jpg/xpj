@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
 from app.schemas._money import (
     NonNegativeMoneyAggregate,
@@ -51,12 +51,21 @@ class GoalCreateRequest(BaseModel):
     month: str | None = Field(default=None, min_length=7, max_length=7)
     category: str | None = Field(default=None, max_length=64)
     target_amount_cents: PositiveMoneyMinor | None = None
+    home_currency_code: str | None = Field(default=None, min_length=3, max_length=3)
     # debt_repayment shape: the Debt ids whose clearance the goal tracks. Required
     # (non-empty) for debt_repayment and rejected for spending_limit (service-enforced).
     debt_public_ids: list[str] | None = Field(default=None)
     # ADR-0049 §7.0 / 8e-6c: optional payoff deadline for a debt_repayment goal (drives the
     # three-state). Rejected for spending_limit (service-enforced). NULL = no deadline.
     target_date: date | None = None
+
+    @model_validator(mode="after")
+    def require_target_currency(self):
+        if self.goal_type.strip() == "spending_limit" and self.home_currency_code is None:
+            raise ValueError("home_currency_code is required for a spending target")
+        if self.goal_type.strip() == "debt_repayment" and self.home_currency_code is not None:
+            raise ValueError("debt_repayment has no home_currency_code or monetary target")
+        return self
 
 
 class GoalUpdateRequest(BaseModel):
@@ -73,6 +82,7 @@ class GoalUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     expected_row_version: int
+    home_currency_code: str = Field(min_length=3, max_length=3)
     name: str | None = Field(default=None, min_length=1, max_length=80)
     month: str | None = Field(default=None, min_length=7, max_length=7)
     category: str | None = Field(default=None, max_length=64)
@@ -217,6 +227,7 @@ class GoalResponse(BaseModel):
     name: str
     goal_type: str
     period: str
+    home_currency_code: str | None = None
     # None for debt_repayment goals (ADR-0049 §6); always set for spending_limit.
     month: str | None = None
     category: str | None = None

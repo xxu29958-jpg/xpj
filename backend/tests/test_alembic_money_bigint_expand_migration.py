@@ -17,7 +17,6 @@ from app.database._managed_postgres_migration_runtime import _prearmed_transacti
 from app.models import (
     ExpenseItem,
     ExpenseSplit,
-    Goal,
     OcrFact,
 )
 from app.money_contract import MONEY_MINOR_MAX
@@ -248,46 +247,25 @@ def test_goal_type_shape_rejects_null_truth_leaks_after_c07() -> None:
     seed_owner()
     run_alembic(command.upgrade, HEAD_REVISION)
 
-    with SessionLocal() as db:
-        spending = Goal(
-            tenant_id="owner",
-            name="spending shape",
-            goal_type="spending_limit",
-            period="monthly",
-            month="2026-07",
-            target_amount_cents=1,
-        )
-        debt = Goal(
-            tenant_id="owner",
-            name="debt shape",
-            goal_type="debt_repayment",
-            period="monthly",
-            month=None,
-            target_amount_cents=None,
-        )
-        db.add_all((spending, debt))
-        db.commit()
-        spending_id = spending.id
-        debt_id = debt.id
-
-        spending.target_amount_cents = None
-        with pytest.raises(IntegrityError):
-            db.commit()
-        db.rollback()
-
-        spending = db.get(Goal, spending_id)
-        assert spending is not None
-        spending.month = None
-        with pytest.raises(IntegrityError):
-            db.commit()
-        db.rollback()
-
-        debt = db.get(Goal, debt_id)
-        assert debt is not None
-        debt.month = "2026-07"
-        with pytest.raises(IntegrityError):
-            db.commit()
-        db.rollback()
+    # This verifies the frozen C07 schema, before captured goal currency existed.
+    # Keep its producer on that actual table shape instead of today's ORM model.
+    with engine.begin() as connection:
+        connection.execute(text("""
+            INSERT INTO goals (public_id, tenant_id, name, goal_type, period, month,
+                target_amount_cents, status, created_at, updated_at)
+            VALUES ('c07-spending-shape', 'owner', 'spending shape', 'spending_limit',
+                'monthly', '2026-07', 1, 'active', now(), now()),
+                ('c07-debt-shape', 'owner', 'debt shape', 'debt_repayment',
+                'monthly', NULL, NULL, 'active', now(), now())
+        """))
+    rejected_updates = (
+        "UPDATE goals SET target_amount_cents = NULL WHERE public_id = 'c07-spending-shape'",
+        "UPDATE goals SET month = NULL WHERE public_id = 'c07-spending-shape'",
+        "UPDATE goals SET month = '2026-07' WHERE public_id = 'c07-debt-shape'",
+    )
+    for statement in rejected_updates:
+        with pytest.raises(IntegrityError), engine.begin() as connection:
+            connection.execute(text(statement))
 
 
 def test_existing_cross_currency_snapshot_is_not_reinterpreted() -> None:

@@ -212,11 +212,10 @@ fun createDebtGoalViewModelFactory(
 
 @Suppress("UNCHECKED_CAST")
 fun createSpendingGoalViewModelFactory(
-    reportsRepository: ReportsActions,
     edits: com.ticketbox.data.repository.GoalEditActions,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return CreateSpendingGoalViewModel(reportsRepository, edits) as T
+        return CreateSpendingGoalViewModel(edits) as T
     }
 }
 

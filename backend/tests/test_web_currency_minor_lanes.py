@@ -281,7 +281,9 @@ def test_zero_fraction_no_js_forms_and_dashboard_share_input_contract(
 
     goals = web_client.get("/web/goals?ledger_id=owner&month=2026-05")
     assert goals.status_code == 200, goals.text
-    assert 'name="target_amount_yuan" step="1" min="1" inputmode="numeric"' in goals.text
+    assert 'name="home_currency_code" value="JPY"' in goals.text
+    assert 'name="target_amount_yuan" value="" inputmode="numeric"' in goals.text
+    assert "目标金额（JPY，仅支持整数）" in goals.text
 
     rules = web_client.get("/web/rules?ledger_id=owner")
     assert rules.status_code == 200, rules.text

@@ -6,7 +6,6 @@ import com.ticketbox.domain.model.DashboardCardUpdate
 import com.ticketbox.domain.model.DashboardCards
 import com.ticketbox.domain.model.DashboardSurface
 import com.ticketbox.domain.model.Goal
-import com.ticketbox.domain.model.GoalDraft
 import com.ticketbox.domain.model.GoalProgressState
 import com.ticketbox.domain.model.GoalUpdate
 import com.ticketbox.domain.model.ReportGranularity
@@ -228,9 +227,6 @@ private class RecordingReportsActions : ReportsActions {
 
     override suspend fun goals(month: String?, includeArchived: Boolean): Result<List<Goal>> =
         goalsResponder?.invoke() ?: Result.success(emptyList())
-
-    override suspend fun createGoal(draft: GoalDraft, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding): Result<Goal> =
-        Result.failure(UnsupportedOperationException())
 
     override suspend fun createDebtGoal(name: String, debtPublicIds: List<String>, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding): Result<Goal> =
         Result.failure(UnsupportedOperationException())

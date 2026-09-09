@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_app_context, get_current_writer_context
+from app.auth import get_current_app_context, get_current_protocol_writer_context, get_current_writer_context
 from app.database import get_db
 from app.schemas import (
     RecurringCandidateConfirmRequest,
@@ -103,7 +103,7 @@ def get_recurring_items(
 def post_recurring_item(
     payload: RecurringItemCreateRequest,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    auth: AuthContext = Depends(get_current_writer_context),
+    auth: AuthContext = Depends(get_current_protocol_writer_context),
     db: Session = Depends(get_db),
 ) -> RecurringItemResponse:
     return create_manual_recurring_item(
@@ -121,7 +121,7 @@ def post_recurring_item(
 def post_recurring_from_candidate(
     payload: RecurringCandidateConfirmRequest,
     timezone: str | None = Query(default=None),
-    auth: AuthContext = Depends(get_current_writer_context),
+    auth: AuthContext = Depends(get_current_protocol_writer_context),
     db: Session = Depends(get_db),
 ) -> RecurringItemResponse:
     item = confirm_recurring_candidate(
@@ -157,7 +157,7 @@ def patch_recurring_item(
     public_id: str,
     payload: RecurringItemUpdateRequest,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    auth: AuthContext = Depends(get_current_writer_context),
+    auth: AuthContext = Depends(get_current_protocol_writer_context),
     db: Session = Depends(get_db),
 ) -> RecurringItemResponse:
     return update_recurring_item(

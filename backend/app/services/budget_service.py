@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
@@ -12,7 +11,6 @@ from app.money_contract import (
     MoneySign,
     ensure_money_minor,
     projection_sum_to_int,
-    projection_values_sum_to_int,
 )
 from app.schemas import (
     BudgetCategoryRequest,
@@ -28,7 +26,7 @@ from app.services.currency_binding_service import (
     require_runtime_home_currency_code,
     resolve_write_capability,
 )
-from app.services.money_projection_service import project_recorded_amount
+from app.services.money_projection_service import CategorySpend, project_category_spend, sum_projected_amounts
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.recurring_service import recurring_monthly_total
 from app.services.spending_contract_service import (
@@ -37,12 +35,6 @@ from app.services.spending_contract_service import (
     monthly_recurring_items_query,
 )
 from app.services.time_service import now_utc
-
-
-@dataclass(frozen=True)
-class CategorySpend:
-    amount_cents: int | None = 0
-    count: int = 0
 
 
 def _clean_month(month: str) -> str:
@@ -184,31 +176,7 @@ def _month_spend_by_category(
         month=month,
         timezone_name=timezone_name,
     ))
-    return _project_category_spend(db, tenant_id=tenant_id, home=home_currency_code, rows=rows)
-
-
-def _project_category_spend(db: Session, *, tenant_id: str, home: str, rows) -> tuple[dict[str, CategorySpend], set[str]]:
-    spend: dict[str, CategorySpend] = {}
-    missing: set[str] = set()
-    for row in rows:
-        category = normalize_category(row.category)
-        current = spend.get(category, CategorySpend())
-        amount = project_recorded_amount(db, tenant_id=tenant_id, amount_minor=row.amount_cents,
-            source_currency=row.home_currency_code, home_currency=home, rate_date=row.stream_date)
-        if amount is None:
-            missing.add(row.home_currency_code or "UNKNOWN")
-        spend[category] = CategorySpend(
-            amount_cents=_sum_known((current.amount_cents, amount), label="budget.category_spend_total"),
-            count=current.count + 1,
-        )
-    return spend, missing
-
-
-def _sum_known(values, *, label: str) -> int | None:
-    amounts = list(values)
-    if any(amount is None for amount in amounts):
-        return None
-    return projection_values_sum_to_int(amounts, label=label)
+    return project_category_spend(db, tenant_id=tenant_id, home=home_currency_code, rows=rows)
 
 
 def _build_excluded_breakdown(
@@ -223,7 +191,7 @@ def _build_excluded_breakdown(
         for category, spend in sorted(spend_by_category.items())
         if category in excluded_set
     ]
-    return breakdown, _sum_known(
+    return breakdown, sum_projected_amounts(
         (item.amount_cents for item in breakdown),
         label="budget.excluded_total",
     )
@@ -269,7 +237,7 @@ def _budget_response(
     excluded_categories = _parse_excluded_categories(budget.excluded_categories if budget else None)
     excluded_set = set(excluded_categories)
     excluded_breakdown, excluded_amount_cents = _build_excluded_breakdown(spend_by_category, excluded_set)
-    spent_amount_cents = _sum_known(
+    spent_amount_cents = sum_projected_amounts(
         (spend.amount_cents for category, spend in spend_by_category.items() if category not in excluded_set),
         label="budget.spent_total",
     )

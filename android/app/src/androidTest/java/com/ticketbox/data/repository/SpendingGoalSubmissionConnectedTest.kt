@@ -2,6 +2,7 @@ package com.ticketbox.data.repository
 
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.performClick
 import androidx.lifecycle.viewModelScope
 import androidx.test.platform.app.InstrumentationRegistry
@@ -9,6 +10,7 @@ import com.ticketbox.R
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.GoalDto
 import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
+import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.ui.screens.plan.SpendingGoalDetailScreen
 import com.ticketbox.ui.theme.TicketboxTheme
@@ -38,6 +40,7 @@ class SpendingGoalSubmissionConnectedTest {
         targetAmountCents = 20_000, spentAmountCents = 8_000, remainingAmountCents = 12_000,
         progressPercent = 40, progressState = "on_track", status = "active", rowVersion = 2,
         createdAt = "2026-09-01T00:00:00Z", updatedAt = "2026-09-02T00:00:00Z", archivedAt = null,
+        homeCurrencyCode = "JPY",
     )
     private var remoteWrites = 0
     private var loseAck = true
@@ -60,6 +63,7 @@ class SpendingGoalSubmissionConnectedTest {
             keys += idempotencyKey
             val result = committed.getOrPut(requireNotNull(idempotencyKey)) {
                 check(request.expectedRowVersion == original.rowVersion)
+                check(request.homeCurrencyCode == "JPY" && request.targetAmountCents == 35_000L)
                 original.copy(targetAmountCents = 35_000, remainingAmountCents = 27_000, rowVersion = 3).also { canonical = it }
             }
             if (loseAck) throw IOException("Synthetic lost acknowledgement")
@@ -112,10 +116,25 @@ class SpendingGoalSubmissionConnectedTest {
         compose.waitUntil(10_000) { model.state.value.goal?.rowVersion == 3L && !model.state.value.isLoading }
         assertEquals(35_000L, model.state.value.goal?.targetAmountCents)
         assertEquals(27_000L, model.state.value.goal?.remainingAmountCents)
+        assertEquals("JPY", model.state.value.goal?.homeCurrencyCode)
         val stored = fixture.stored().single()
         assertEquals(originalRow["payload"], stored["payload"])
         assertEquals(originalRow["idempotencyKey"], stored["idempotencyKey"])
         check(!stored["receiptJson"].isNullOrBlank())
+    }
+
+    @Test
+    fun stoppingRequiresReviewOfTheOriginalMoneyAndCancelKeepsTheSubmission() {
+        openAndSave()
+        val row = runBlocking { fixture.outbox.observeActiveByTypes(setOf(PendingMutationType.UpdateGoal)).first().single() }
+        runBlocking { fixture.outbox.markFailed(row.id, "client_upgrade_required") }
+        compose.waitUntil(10_000) { model.state.value.pendingEdits.any { it.canDrop } }
+        val originalRows = fixture.stored()
+        compose.onNodeWithText(context.getString(R.string.spending_goal_submission_drop)).performClick()
+        compose.onNodeWithText(context.getString(R.string.goal_submission_stop_body)).assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.common_cancel)).performClick()
+        assertEquals(originalRows, fixture.stored())
+        assertEquals(0, remoteWrites)
     }
 
     private fun openAndSave() {
@@ -125,7 +144,10 @@ class SpendingGoalSubmissionConnectedTest {
         compose.setContent { TicketboxTheme(skin = AppSkin.Paper) { SpendingGoalDetailScreen(model, {}) } }
         compose.waitUntil(10_000) { model.state.value.goal != null }
         compose.onNodeWithText(context.getString(R.string.spending_goal_edit_action)).performClick()
-        compose.runOnIdle { model.updateField(SpendingGoalEditField.Amount, "350.00") }
+        compose.runOnIdle {
+            assertEquals("20000", model.state.value.targetAmountInput)
+            model.updateField(SpendingGoalEditField.Amount, "35000")
+        }
         compose.onNodeWithText(context.getString(R.string.spending_goal_edit_save)).performClick()
         compose.waitUntil(10_000) { !model.state.value.isSaving }
 

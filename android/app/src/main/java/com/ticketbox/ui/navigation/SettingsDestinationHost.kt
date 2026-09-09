@@ -90,6 +90,8 @@ internal data class SettingsDestinationNavigation(
     val onOpenInbox: () -> Unit,
     val onOpenBudget: (String) -> Unit,
     val onOpenRecurring: () -> Unit,
+    val onOpenGoalCreation: (Long) -> Unit,
+    val onOpenGoalEdit: (String) -> Unit,
     val onSecondaryActiveChange: (Boolean) -> Unit = {},
     val onCloseRoot: () -> Unit = {},
 )
@@ -390,7 +392,7 @@ internal fun SettingsDestinationHost(
             )
             SyncStatusScreen(
                 navigation = com.ticketbox.ui.screens.settings.SyncStatusNavigation(
-                    navigation.onOpenExpense, navigation.onOpenInbox, navigation.onOpenBudget, navigation.onOpenRecurring,
+                    navigation.onOpenExpense, navigation.onOpenInbox, navigation.onOpenBudget, navigation.onOpenRecurring, navigation.onOpenGoalCreation, navigation.onOpenGoalEdit,
                 ),
                 viewModel = vm,
                 onBack = { route = SettingsDestination.Root },

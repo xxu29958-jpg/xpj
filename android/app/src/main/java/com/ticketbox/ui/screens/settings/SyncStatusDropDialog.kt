@@ -28,6 +28,8 @@ internal data class SyncStatusDropSelection(
     val debtAdjustment: com.ticketbox.data.repository.PendingDebtAdjustment? = null,
     val budgetSave: com.ticketbox.data.repository.PendingBudgetSave? = null,
     val recurringOriginal: com.ticketbox.data.repository.RecurringPendingIntent? = null,
+    val goalCreation: com.ticketbox.data.repository.PendingGoalCreation? = null,
+    val goalEdit: com.ticketbox.data.repository.PendingGoalEdit? = null,
 )
 
 private data class DropConfirmationText(val title: String, val text: String, val confirmWord: String)
@@ -52,6 +54,11 @@ internal fun SyncStatusDropDialog(
                 selection.recurringOccurrence?.let { com.ticketbox.ui.screens.recurring.RecurringOccurrenceIntentSummary(it) }
                 selection.incomeEdit?.let { com.ticketbox.ui.screens.IncomePlanIntentSummary(it) }
                 selection.debtAdjustment?.let { com.ticketbox.ui.screens.DebtAdjustmentIntentSummary(it) }
+                selection.goalEdit?.request?.let { request ->
+                    com.ticketbox.ui.screens.plan.SpendingGoalOriginalSummary(request.name, request.month,
+                        request.targetAmountCents, request.homeCurrencyCode)
+                }
+                selection.goalCreation?.let { com.ticketbox.ui.screens.GoalCreationIntentSummary(it) }
                 selection.recurringOriginal?.let { com.ticketbox.ui.screens.recurring.RecurringManualIntentSummary(it) }
                 selection.budgetSave?.let { com.ticketbox.ui.screens.budget.BudgetSaveIntentSummary(it) }
                 Text(copy.text)
@@ -75,6 +82,10 @@ private fun dropConfirmationText(selection: SyncStatusDropSelection): DropConfir
     val debtCreation = row.type == PendingMutationType.CreateDebt
     val label = stringResource(syncStatusMutationLabelResources.getValue(row.type))
     return when {
+        row.type == PendingMutationType.CreateGoal || row.type == PendingMutationType.UpdateGoal -> DropConfirmationText(
+            stringResource(R.string.goal_creation_drop), stringResource(R.string.goal_submission_stop_body),
+            stringResource(R.string.goal_creation_drop),
+        )
         row.type in setOf(PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem) -> DropConfirmationText(
             stringResource(R.string.recurring_original_drop), stringResource(R.string.recurring_original_drop_explanation),
             stringResource(R.string.recurring_original_drop),

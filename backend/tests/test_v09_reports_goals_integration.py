@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -59,10 +60,11 @@ def _create_goal(
         "name": name,
         "month": month,
         "target_amount_cents": target_amount_cents,
+        "home_currency_code": "CNY",
     }
     if category is not None:
         body["category"] = category
-    response = client.post(f"/api/goals?timezone={timezone}", headers=headers, json=body)
+    response = client.post(f"/api/goals?timezone={timezone}", headers={**headers, "Idempotency-Key": str(uuid4())}, json=body)
     assert response.status_code == 201, response.json()
     return response.json()
 
@@ -359,8 +361,9 @@ def _assert_viewer_goal_writes_are_denied(
     _assert_permission_denied(
         client.post(
             "/api/goals?timezone=UTC",
-            headers=identity.app_headers,
+            headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
             json={
+                "home_currency_code": "CNY",
                 "name": "Viewer Write",
                 "month": "2026-05",
                 "target_amount_cents": 3000,
@@ -372,7 +375,7 @@ def _assert_viewer_goal_writes_are_denied(
         client.patch(
             f"/api/goals/{owner_goal['public_id']}?timezone=UTC",
             headers=identity.app_headers,
-            json={"target_amount_cents": 3000},
+            json={"home_currency_code": "CNY", "target_amount_cents": 3000},
         ),
         label="viewer goal patch",
     )

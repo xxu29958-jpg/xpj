@@ -196,33 +196,23 @@ def _budget_top_rows(budget, *, currency_code: str) -> list[dict]:
     return out
 
 
-def _goals_top_rows(goals, *, currency_code: str) -> list[dict]:
-    rows = sorted(goals, key=lambda goal: goal.progress_percent, reverse=True)[:3]
+def _goals_top_rows(goals) -> list[dict]:
+    rows = sorted(goals, key=lambda goal: (goal.progress_percent is None, goal.progress_percent), reverse=True)[:3]
     return [
         {
             "name": goal.name,
-            "target_yuan": _amount_yuan(
-                projection_sum_to_int(
-                    goal.target_amount_cents,
-                    label="web.goal_target",
-                ),
-                currency_code,
-            ),
-            "spent_yuan": _amount_yuan(
-                projection_sum_to_int(
-                    goal.spent_amount_cents,
-                    label="web.goal_spent",
-                ),
-                currency_code,
-            ),
-            "percent": min(int(goal.progress_percent), 100),
+            "home_currency_code": goal.home_currency_code,
+            "target_yuan": _amount_yuan(goal.target_amount_cents, goal.home_currency_code) if goal.home_currency_code else None,
+            "spent_yuan": _amount_yuan(goal.spent_amount_cents, goal.home_currency_code)
+                if goal.home_currency_code and goal.spent_amount_cents is not None else None,
+            "percent": goal.progress_percent,
             "state": goal.progress_state,
         }
         for goal in rows
     ]
 
 
-def _dashboard_budget_goals_block(budget, goals, *, currency_code: str) -> dict:
+def _dashboard_budget_goals_block(budget, goals) -> dict:
     home = budget.home_currency_code
     return {
         "budget_configured": budget.configured,
@@ -236,7 +226,7 @@ def _dashboard_budget_goals_block(budget, goals, *, currency_code: str) -> dict:
         "budget_top": _budget_top_rows(budget, currency_code=home),
         "goals_count": len(goals),
         "goals_risk_count": sum(1 for goal in goals if goal.progress_state in {"near_limit", "over_limit"}),
-        "goals_top": _goals_top_rows(goals, currency_code=currency_code),
+        "goals_top": _goals_top_rows(goals),
     }
 
 
@@ -329,11 +319,7 @@ def _dashboard_cards(
         "recurring_active_count": active_recurring,
         "recurring_paused_count": paused_recurring,
         "recurring_candidate_count": candidate_count,
-        **_dashboard_budget_goals_block(
-            budget,
-            goals,
-            currency_code=home,
-        ),
+        **_dashboard_budget_goals_block(budget, goals),
         **_dashboard_status_counts_block(db, ledger_id, now),
     }
 
