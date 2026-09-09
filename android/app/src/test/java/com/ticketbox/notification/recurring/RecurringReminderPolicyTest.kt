@@ -47,6 +47,7 @@ class RecurringReminderPolicyTest {
         rowVersion = 1L,
         pausedAt = null,
         archivedAt = null,
+        homeCurrencyCode = "CNY",
     )
 
     @Test

@@ -44,6 +44,7 @@ internal class RecurringItemFixture {
         rowVersion = rowVersion,
         pausedAt = null,
         archivedAt = null,
+        homeCurrencyCode = "CNY",
     )
 }
 

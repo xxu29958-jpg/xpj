@@ -163,6 +163,7 @@ class RecurringEditorRestorationTest {
         rowVersion = 7L,
         pausedAt = null,
         archivedAt = null,
+        homeCurrencyCode = "CNY",
     )
 
     private companion object {

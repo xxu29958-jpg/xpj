@@ -305,6 +305,7 @@ data class RecurringCandidate(
     val lastSeenAt: String?,
     val confidence: String,
     val reason: String,
+    val homeCurrencyCode: String? = null,
 )
 
 data class DataQualitySummary(

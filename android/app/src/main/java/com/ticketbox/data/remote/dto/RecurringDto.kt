@@ -58,6 +58,8 @@ data class RecurringItemCreateRequestDto(
     val baselineAmountCents: Long,
     @param:Json(name = "next_expected_date")
     val nextExpectedDate: String? = null,
+    @param:Json(name = "home_currency_code")
+    val homeCurrencyCode: String,
 )
 
 @JsonClass(generateAdapter = true)
@@ -69,8 +71,11 @@ data class RecurringItemUpdateRequestDto(
     val baselineAmountCents: Long? = null,
     @param:Json(name = "next_expected_date")
     val nextExpectedDate: RecurringOptionalDate = RecurringOptionalDate.unchanged(),
+    @param:Json(name = "home_currency_code")
+    val homeCurrencyCode: String,
 )
 
+@JsonClass(generateAdapter = true)
 data class RecurringCandidateConfirmRequestDto(
     val merchant: String,
     @param:Json(name = "amount_cents")
@@ -78,6 +83,8 @@ data class RecurringCandidateConfirmRequestDto(
     val frequency: String = "monthly",
     @param:Json(name = "next_expected_date")
     val nextExpectedDate: String? = null,
+    @param:Json(name = "home_currency_code")
+    val homeCurrencyCode: String,
 )
 
 data class RecurringItemDto(
@@ -122,6 +129,8 @@ data class RecurringItemDto(
     val archivedAt: String?,
     @param:Json(name = "next_due_date")
     val nextDueDate: String? = null,
+    @param:Json(name = "home_currency_code")
+    val homeCurrencyCode: String? = null,
 )
 
 // ADR-0038 PR-A: OCC token body for pause/resume. Mirrors the backend

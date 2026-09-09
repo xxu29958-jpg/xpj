@@ -32,12 +32,12 @@ interface RecurringManualMutationActions {
     suspend fun createAllowingOffline(
         expectedBinding: LogicalSessionBinding,
         draft: RecurringItemDraft,
-    ): Result<RecurringSaveOutcome>
+    ): Result<RecurringPendingIntent>
     suspend fun updateAllowingOffline(
         expectedBinding: LogicalSessionBinding,
         baseline: RecurringItem,
         patch: RecurringItemPatch,
-    ): Result<RecurringSaveOutcome>
+    ): Result<RecurringPendingIntent>
 }
 
 interface RecurringLifecycleActions {

@@ -119,6 +119,7 @@ internal fun occurrenceConnectedItem() = RecurringItem(
     currentMonthAmountCents = null, historicalAverageAmountCents = null, amountDeltaPercent = null,
     createdAt = "2026-09-01T00:00:00Z", updatedAt = "2026-09-01T00:00:00Z", rowVersion = 7, pausedAt = null,
     archivedAt = null, nextDueDate = "2026-09-05",
+    homeCurrencyCode = "CNY",
 )
 
 private fun occurrenceConnectedPayment() = ConfirmedStreamItem.ExpenseRow("2026-09-05", 12_345,

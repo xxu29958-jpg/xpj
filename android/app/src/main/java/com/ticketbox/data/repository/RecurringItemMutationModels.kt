@@ -6,6 +6,7 @@ data class RecurringItemDraft(
     val merchant: String,
     val baselineAmountCents: Long,
     val nextExpectedDate: String?,
+    val homeCurrencyCode: String,
 )
 
 data class RecurringDateEdit(
@@ -22,6 +23,7 @@ data class RecurringItemPatch(
     val merchant: String? = null,
     val baselineAmountCents: Long? = null,
     val nextExpectedDate: RecurringDateEdit = RecurringDateEdit.unchanged(),
+    val homeCurrencyCode: String,
 )
 
 enum class RecurringPendingKind {
@@ -33,6 +35,7 @@ enum class RecurringPendingState {
     WAITING,
     CONFLICT,
     FAILED,
+    DONE,
 }
 
 /**
@@ -50,9 +53,5 @@ data class RecurringPendingIntent(
     val baselineAmountCents: Long? = null,
     val nextExpectedDateChanged: Boolean = false,
     val nextExpectedDate: String? = null,
+    val homeCurrencyCode: String? = null,
 )
-
-sealed interface RecurringSaveOutcome {
-    data class Synced(val item: RecurringItem) : RecurringSaveOutcome
-    data class Queued(val intent: RecurringPendingIntent) : RecurringSaveOutcome
-}

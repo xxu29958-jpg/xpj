@@ -154,11 +154,12 @@ private fun recurringPendingStateLabelRes(state: RecurringPendingState): Int = w
     RecurringPendingState.WAITING -> R.string.recurring_pending_state_waiting
     RecurringPendingState.CONFLICT -> R.string.recurring_pending_state_conflict
     RecurringPendingState.FAILED -> R.string.recurring_pending_state_failed
+    RecurringPendingState.DONE -> R.string.recurring_pending_state_done
 }
 
 @StringRes
 private fun recurringPendingStateGuidanceRes(state: RecurringPendingState): Int? = when (state) {
-    RecurringPendingState.WAITING -> null
+    RecurringPendingState.WAITING, RecurringPendingState.DONE -> null
     RecurringPendingState.CONFLICT,
     RecurringPendingState.FAILED -> R.string.recurring_pending_state_guidance
 }

@@ -24,4 +24,5 @@ data class RecurringItem(
     val pausedAt: String?,
     val archivedAt: String?,
     val nextDueDate: String? = null,
+    val homeCurrencyCode: String? = null,
 )

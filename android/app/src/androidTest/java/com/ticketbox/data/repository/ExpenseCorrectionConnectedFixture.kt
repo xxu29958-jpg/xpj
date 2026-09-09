@@ -347,7 +347,8 @@ private fun correctionRecurringItem() = RecurringItemDto(publicId = "navigation-
     merchant = "家庭固定支出", merchantKey = "家庭固定支出", frequency = "monthly", baselineAmountCents = 1000,
     lastAmountCents = 1000, occurrenceCount = 1, lastSeenAt = null, nextExpectedDate = null, status = "active",
     confidence = null, source = "manual", createdAt = "2026-09-06T00:00:00Z", updatedAt = "2026-09-06T00:00:00Z",
-    rowVersion = 2, pausedAt = null, archivedAt = null)
+    rowVersion = 2, pausedAt = null, archivedAt = null,
+    homeCurrencyCode = "CNY")
 
 private fun correctionSession() = LocalSessionRecord(sessionGeneration = "correction-session", bindingRevision = "correction-binding",
     serverId = "60000000-0000-4000-8000-000000000001", dataGeneration = "60000000-0000-4000-8000-000000000002",

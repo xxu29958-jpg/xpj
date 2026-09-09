@@ -51,6 +51,7 @@ class RecurringRepositoryOutboxFallbackTest {
         rowVersion = 1,
         pausedAt = null,
         archivedAt = null,
+        homeCurrencyCode = "CNY",
     )
 
     private fun moshi(): Moshi = Moshi.Builder()
@@ -134,11 +135,11 @@ class RecurringRepositoryOutboxFallbackTest {
 
         val outcome = harness.repository.createAllowingOffline(
             expectedBinding = harness.binding,
-            draft = RecurringItemDraft("房租", 350000, "2026-09-01"),
+            draft = RecurringItemDraft("房租", 350000, "2026-09-01", homeCurrencyCode = "CNY"),
         ).getOrThrow()
 
         assertEquals(null, api.createKey, "Only the existing Outbox dispatcher may send the saved intent")
-        assertTrue(outcome is RecurringSaveOutcome.Queued)
+        assertEquals(RecurringPendingKind.CREATE, outcome.kind)
         assertEquals(1, dao.rows.size)
     }
 
@@ -148,14 +149,14 @@ class RecurringRepositoryOutboxFallbackTest {
         val harness = harness(api)
         val outcome = harness.repository.createAllowingOffline(
             expectedBinding = harness.binding,
-            draft = RecurringItemDraft("房租", 350000, null),
+            draft = RecurringItemDraft("房租", 350000, null, homeCurrencyCode = "CNY"),
         )
         assertTrue(outcome.isFailure)
         assertEquals(null, api.createKey)
     }
 
     @Test
-    fun `manual create IOException queues same durable intent key without fabricating fact`() = runTest {
+    fun `offline create stores the original intent without attempting HTTP`() = runTest {
         val dao = FakePendingMutationDao()
         val outbox = testOutboxRepository(dao = dao)
         val api = ApiStub(ApiResult.Throw(IOException("offline")))
@@ -163,21 +164,22 @@ class RecurringRepositoryOutboxFallbackTest {
 
         val outcome = harness.repository.createAllowingOffline(
             expectedBinding = harness.binding,
-            draft = RecurringItemDraft("房租", 350000, null),
-        ).getOrThrow() as RecurringSaveOutcome.Queued
+            draft = RecurringItemDraft("房租", 350000, null, homeCurrencyCode = "CNY"),
+        ).getOrThrow()
 
-        assertEquals(RecurringPendingKind.CREATE, outcome.intent.kind)
-        assertEquals("房租", outcome.intent.merchant)
+        assertEquals(RecurringPendingKind.CREATE, outcome.kind)
+        assertEquals("房租", outcome.merchant)
         val row = dao.rows.values.single()
         assertEquals(PendingMutationType.CreateRecurringItem.wireValue, row.type)
         assertEquals(PendingMutationStatus.Pending.wireValue, row.status)
         assertEquals(0, row.expectedRowVersion)
-        assertEquals(api.createKey, row.idempotencyKey)
+        assertEquals(null, api.createKey)
+        assertEquals(outcome.idempotencyKey, row.idempotencyKey)
         assertTrue(row.targetId.endsWith(requireNotNull(row.idempotencyKey)))
     }
 
     @Test
-    fun `edit IOException queues OCC patch and preserves observed provenance in published baseline`() = runTest {
+    fun `edit stores its original OCC basis and preserves published observations`() = runTest {
         val dao = FakePendingMutationDao()
         val outbox = testOutboxRepository(dao = dao)
         val api = ApiStub(
@@ -193,21 +195,23 @@ class RecurringRepositoryOutboxFallbackTest {
             patch = RecurringItemPatch(
                 baselineAmountCents = 355000,
                 nextExpectedDate = RecurringDateEdit.changed(null),
+                homeCurrencyCode = "CNY",
             ),
-        ).getOrThrow() as RecurringSaveOutcome.Queued
+        ).getOrThrow()
 
-        assertEquals(RecurringPendingKind.UPDATE, outcome.intent.kind)
-        assertEquals(baseline.publicId, outcome.intent.publicId)
-        assertEquals(null, outcome.intent.nextExpectedDate)
-        assertTrue(outcome.intent.nextExpectedDateChanged)
+        assertEquals(RecurringPendingKind.UPDATE, outcome.kind)
+        assertEquals(baseline.publicId, outcome.publicId)
+        assertEquals(null, outcome.nextExpectedDate)
+        assertTrue(outcome.nextExpectedDateChanged)
         assertEquals(360000, baseline.lastAmountCents, "published observation must stay untouched")
         assertEquals(8, baseline.occurrenceCount)
         val row = dao.rows.values.single()
         assertEquals(PendingMutationType.UpdateRecurringItem.wireValue, row.type)
         assertEquals("recurring_item:${baseline.publicId}", row.targetId)
         assertEquals(7, row.expectedRowVersion)
-        assertEquals(api.updateKey, row.idempotencyKey)
-        assertTrue("\"expected_row_version\":0" in row.payload)
+        assertEquals(null, api.updateKey)
+        assertEquals(outcome.idempotencyKey, row.idempotencyKey)
+        assertTrue("\"expected_row_version\":7" in row.payload)
         assertTrue("\"next_expected_date\":null" in row.payload)
     }
 
@@ -220,7 +224,7 @@ class RecurringRepositoryOutboxFallbackTest {
 
         val result = harness.repository.createAllowingOffline(
             expectedBinding = harness.binding,
-            draft = RecurringItemDraft("房租", 350000, null),
+            draft = RecurringItemDraft("房租", 350000, null, homeCurrencyCode = "CNY"),
         )
 
         assertTrue(result.isFailure)
@@ -237,26 +241,26 @@ class RecurringRepositoryOutboxFallbackTest {
         val failures = listOf(
             harness.repository.createAllowingOffline(
                 harness.binding,
-                RecurringItemDraft(" ", 1, null),
+                RecurringItemDraft(" ", 1, null, homeCurrencyCode = "CNY"),
             ),
             harness.repository.createAllowingOffline(
                 harness.binding,
-                RecurringItemDraft("房租", 0, null),
+                RecurringItemDraft("房租", 0, null, homeCurrencyCode = "CNY"),
             ),
             harness.repository.updateAllowingOffline(
                 harness.binding,
                 baseline.copy(publicId = ""),
-                RecurringItemPatch(merchant = "新名称"),
+                RecurringItemPatch(merchant = "新名称", homeCurrencyCode = "CNY"),
             ),
             harness.repository.updateAllowingOffline(
                 harness.binding,
                 baseline.copy(rowVersion = 0),
-                RecurringItemPatch(merchant = "新名称"),
+                RecurringItemPatch(merchant = "新名称", homeCurrencyCode = "CNY"),
             ),
             harness.repository.updateAllowingOffline(
                 harness.binding,
                 baseline,
-                RecurringItemPatch(),
+                RecurringItemPatch(homeCurrencyCode = "CNY"),
             ),
         )
 
@@ -270,7 +274,7 @@ class RecurringRepositoryOutboxFallbackTest {
             ),
             failures.map { (it.exceptionOrNull() as RepositoryException).errorCode },
         )
-        assertTrue(failures.all(Result<RecurringSaveOutcome>::isFailure))
+        assertTrue(failures.all(Result<RecurringPendingIntent>::isFailure))
         assertEquals(null, api.createKey)
         assertEquals(null, api.updateKey)
     }
@@ -284,7 +288,7 @@ class RecurringRepositoryOutboxFallbackTest {
             type = PendingMutationType.CreateRecurringItem,
             targetId = "recurring_item_create:create-key",
             payloadJson = adapters.adapter(RecurringItemCreateRequestDto::class.java).toJson(
-                RecurringItemCreateRequestDto("房租", 350000, "2026-09-01"),
+                RecurringItemCreateRequestDto("房租", 350000, "2026-09-01", homeCurrencyCode = "CNY"),
             ),
             expectedRowVersion = 0,
             idempotencyKey = "create-key",
@@ -293,7 +297,7 @@ class RecurringRepositoryOutboxFallbackTest {
             type = PendingMutationType.UpdateRecurringItem,
             targetId = "recurring_item:recurring-1",
             payloadJson = adapters.adapter(RecurringItemUpdateRequestDto::class.java).toJson(
-                RecurringItemUpdateRequestDto(expectedRowVersion = 0, baselineAmountCents = 355000),
+                RecurringItemUpdateRequestDto(expectedRowVersion = 7, baselineAmountCents = 355000, homeCurrencyCode = "CNY"),
             ),
             expectedRowVersion = 7,
             idempotencyKey = "update-key",
@@ -307,5 +311,16 @@ class RecurringRepositoryOutboxFallbackTest {
         assertEquals(listOf(RecurringPendingState.WAITING, RecurringPendingState.CONFLICT), intents.map { it.state })
         assertEquals(listOf("房租", null), intents.map { it.merchant })
         assertEquals(listOf(350000L, 355000L), intents.map { it.baselineAmountCents })
+        val originalJson = """{"merchant":"旧月票","baseline_amount_cents":1200}"""
+        outbox.enqueue(
+            type = PendingMutationType.CreateRecurringItem,
+            targetId = "recurring_item_create:legacy-key",
+            payloadJson = originalJson,
+            expectedRowVersion = 0,
+            idempotencyKey = "legacy-key",
+        )
+        val legacy = harness.repository.observePendingIntents().first().single { it.idempotencyKey == "legacy-key" }
+        assertEquals(null, legacy.homeCurrencyCode)
+        assertEquals(originalJson, dao.rows.values.single { it.idempotencyKey == "legacy-key" }.payload)
     }
 }

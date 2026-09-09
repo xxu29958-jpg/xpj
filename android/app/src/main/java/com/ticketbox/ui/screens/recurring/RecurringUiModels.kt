@@ -175,6 +175,7 @@ internal fun buildRecurringItemPatch(
     }
     if (merchantEdit == null && amountEdit == null && !dateEdit.changed) return null
     return RecurringItemPatch(
+        homeCurrencyCode = requireNotNull(baseline.homeCurrencyCode),
         merchant = merchantEdit,
         baselineAmountCents = amountEdit,
         nextExpectedDate = dateEdit,

@@ -425,6 +425,7 @@ fun FrequentMerchantDto.toDomain(): FrequentMerchant = FrequentMerchant(
 )
 
 fun RecurringCandidateItemDto.toDomain(): RecurringCandidate = RecurringCandidate(
+    homeCurrencyCode = homeCurrencyCode,
     merchant = merchant,
     amountCents = amountCents,
     occurrenceCount = occurrenceCount,

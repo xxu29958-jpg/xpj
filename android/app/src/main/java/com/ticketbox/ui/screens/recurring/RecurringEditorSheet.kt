@@ -77,7 +77,9 @@ internal fun RecurringEditorSheetHost(
             session = editor.session,
             uiState = uiState,
             actions = actions,
-            environment = environment,
+            environment = environment.copy(
+                currencyDisplay = CurrencyDisplay.forRecord(editor.session.homeCurrencyCode ?: "UNKNOWN"),
+            ),
         )
     }
 }
@@ -94,10 +96,9 @@ internal fun RecurringEditorSheet(
     actions: RecurringItemActions,
     environment: RecurringEditorEnvironment,
 ) {
-    // 与 IncomePlan 表单同一约定：display home 仅作展示兜底，写面由 VM 账本 binding 守门。
-    val currency = environment.currencyDisplay.homeCurrency
+    // The open editor retains its original currency when the app default changes.
     val ownerState = recurringEditorOwnerState(session, uiState)
-    RecurringEditorRebaseEffect(session, ownerState, uiState.itemsLoadState, currency)
+    RecurringEditorRebaseEffect(session, ownerState, uiState.itemsLoadState)
     RecurringSubmitSettleEffect(
         session = session,
         feedback = ownerState.attemptFeedback,
@@ -132,11 +133,12 @@ private fun RecurringEditorRebaseEffect(
     session: RecurringEditorSession,
     ownerState: RecurringEditorOwnerState,
     ownerLoadState: RecurringListLoadState,
-    currency: CurrencyCode,
 ) {
     LaunchedEffect(ownerState.conflict?.attemptId, ownerLoadState, ownerState.freshOwner?.rowVersion) {
         val conflict = ownerState.conflict ?: return@LaunchedEffect
         val previousBaseline = session.editing ?: return@LaunchedEffect
+        val currency = CurrencyCode.fromStorageKeyOrNull(session.homeCurrencyCode) ?: return@LaunchedEffect
+        if (ownerState.freshOwner?.homeCurrencyCode != session.homeCurrencyCode) return@LaunchedEffect
         if (ownerLoadState != RecurringListLoadState.Loaded || !ownerState.ownerIsFresh) return@LaunchedEffect
         val parsedAmount = parseAmountCents(session.amountText, currency) ?: return@LaunchedEffect
         val previousOverlaps = session.rebaseUi
@@ -153,7 +155,7 @@ private fun RecurringEditorRebaseEffect(
                 previousOverlappingFields = previousOverlaps,
             ),
         )
-        session.applyRebase(rebase, conflict.attemptId, currency)
+        session.applyRebase(rebase, conflict.attemptId)
     }
 }
 
@@ -164,7 +166,9 @@ private fun RecurringEditorContent(
     actions: RecurringItemActions,
     environment: RecurringEditorEnvironment,
 ) {
-    val currency = environment.currencyDisplay.homeCurrency
+    val currency = CurrencyCode.fromStorageKeyOrNull(session.homeCurrencyCode)
+    val currencyMatches = ownerState.freshOwner == null ||
+        ownerState.freshOwner.homeCurrencyCode == session.homeCurrencyCode
     RecurringEditorForm(
         title = stringResource(
             if (session.editing == null) R.string.recurring_form_title_create else R.string.recurring_form_title_edit,
@@ -184,11 +188,14 @@ private fun RecurringEditorContent(
             primaryText = stringResource(
                 recurringPrimaryActionTextRes(session.submitUi.awaiting, ownerState.stage),
             ),
-            primaryEnabled = !session.submitUi.awaiting && ownerState.stage != RecurringRebaseStage.LoadingOwner,
+            primaryEnabled = currency != null && currencyMatches && !session.submitUi.awaiting &&
+                ownerState.stage != RecurringRebaseStage.LoadingOwner,
         ),
         callbacks = recurringEditorCallbacks(session, ownerState, actions, environment),
         feedback = RecurringEditorFeedback(
-            errorText = session.submitUi.error,
+            errorText = if (currency == null || !currencyMatches) {
+                stringResource(R.string.recurring_form_error_currency)
+            } else { session.submitUi.error },
             conflict = environment.conflict,
             conflictStatus = recurringConflictStatus(ownerState.stage),
             overlaps = session.overlapComparisons(ownerState, currency),
@@ -199,8 +206,9 @@ private fun RecurringEditorContent(
 
 private fun RecurringEditorSession.overlapComparisons(
     ownerState: RecurringEditorOwnerState,
-    currency: CurrencyCode,
+    currency: CurrencyCode?,
 ): List<RecurringOverlapComparison> {
+    if (currency == null || ownerState.freshOwner?.homeCurrencyCode != homeCurrencyCode) return emptyList()
     if (ownerState.stage != RecurringRebaseStage.Overlapping) return emptyList()
     // 展示面优先新鲜 owner；OCC 保存基线仍是 session.editing。
     val freshOwner = recurringOverlapDisplayOwner(ownerState.freshOwner, editing) ?: return emptyList()
@@ -232,6 +240,7 @@ private fun recurringEditorCallbacks(
 ): RecurringEditorFormCallbacks {
     val merchantError = stringResource(R.string.recurring_form_error_merchant)
     val amountError = stringResource(R.string.recurring_form_error_amount)
+    val currencyError = stringResource(R.string.recurring_form_error_currency)
     return RecurringEditorFormCallbacks(
         onMerchant = { session.merchant = it },
         onAmount = { session.amountText = it },
@@ -251,9 +260,9 @@ private fun recurringEditorCallbacks(
             } else {
                 session.submit(
                     actions = actions,
-                    currency = environment.currencyDisplay.homeCurrency,
                     merchantError = merchantError,
                     amountError = amountError,
+                    currencyError = currencyError,
                     onDismiss = environment.onDismiss,
                 )
             }
