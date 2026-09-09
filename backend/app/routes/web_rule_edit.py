@@ -17,6 +17,7 @@ from app.routes.web_common import (
     _resolve_selected_ledger_id,
     _web_redirect,
     parse_form_row_version_token,
+    preserve_original_ledger_form,
     templates,
 )
 from app.routes.web_rule_forms import (
@@ -75,7 +76,8 @@ def web_rule_save(
     idempotency_key: str = Form(""), review_latest: bool = Form(False),
     _local: None = LocalOnly, db: Session = Depends(get_db),
 ):
-    options, selected_id, rule = _edit_scope(request, db, ledger_id, rule_id)
+    options = _list_ledger_options(db)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     values = {
         "keyword": keyword, "category": category, "priority": priority,
         "amount_min_yuan": amount_min_yuan, "amount_max_yuan": amount_max_yuan,
@@ -83,6 +85,12 @@ def web_rule_save(
         "home_currency_code": home_currency_code, "expected_row_version": expected_row_version,
         "idempotency_key": idempotency_key,
     }
+    retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
+        fields={**values, "ledger_id": ledger_id, "review_latest": review_latest}, task="修改分类规则")
+    if retained is not None:
+        return retained
+    _require_selected_ledger_write(options, selected_id)
+    rule = find_rule_for_tenant(db, tenant_id=selected_id, rule_id=rule_id)
     if review_latest:
         if rule is not None and rule_form_currency_matches(rule, values):
             values.update(expected_row_version=str(rule.row_version), idempotency_key=str(uuid4()))

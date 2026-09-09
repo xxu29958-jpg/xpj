@@ -268,7 +268,7 @@ def test_web_rule_cannot_create_for_a_category_that_is_in_recycle_bin(
         follow_redirects=False,
     )
 
-    assert rejected.status_code == 422
+    assert rejected.status_code == 409
     assert "目标分类「烘焙」已在回收站" in rejected.text
     assert "请先恢复分类，再创建规则" in rejected.text
     assert 'href="/web/recycle-bin?ledger_id=owner"' in rejected.text

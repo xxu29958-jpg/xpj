@@ -29,7 +29,7 @@ internal fun outboxStatusHarness(): OutboxStatusHarness {
             testApiServiceProvider(api, tokenStore), outbox, OutboxAdapterGraph().debtCreateAdapter,
         ),
         incomePlans = IncomePlanRepository(testApiServiceProvider(api, tokenStore), outbox,
-            OutboxAdapterGraph().incomePlanUpdateAdapter),
+            OutboxAdapterGraph().incomePlanSubmissionAdapter, OutboxAdapterGraph().incomePlanReceiptAdapter),
         debtAdjustments = DebtAdjustmentRepository(testApiServiceProvider(api, tokenStore), outbox,
             OutboxAdapterGraph().debtAdjustmentAdapter),
         goalEdits = com.ticketbox.data.repository.GoalEditRepository(testApiServiceProvider(api, tokenStore), outbox,

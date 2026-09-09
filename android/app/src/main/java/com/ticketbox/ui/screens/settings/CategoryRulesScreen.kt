@@ -37,6 +37,7 @@ import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleDraftForm
+import com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleInputError
 import com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleEditorCard
 import com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleList
 import com.ticketbox.ui.screens.settings.categoryrules.ConfirmedRuleApplyPanel
@@ -372,7 +373,7 @@ private fun CategoryRuleEditorSlot(
                     val rule = form.editingRule
                     if (rule == null) actions.rules.onCreate(request) else actions.rules.onUpdate(rule, request)
                 },
-                onFailure = { error -> editor.onFormChange(form.copy(localMessage = error.message)) },
+                onFailure = { error -> editor.onFormChange(form.copy(localMessage = UiText.res((error as? CategoryRuleInputError)?.resourceId ?: R.string.category_rule_validation_fields))) },
             )
         },
         onCancel = { editor.onFormChange(null) },

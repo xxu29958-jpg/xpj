@@ -790,6 +790,14 @@ class OutboxRepository private constructor(
         resolveStatus(id, PendingMutationStatus.Failed, resolution == FailedResolution.Drop,
             (resolution as? FailedResolution.Retry)?.freshToken, boundRequest)
 
+    /** The Income owner has reviewed this completed original; remove only its local record. */
+    internal suspend fun discardCompletedIncomeSubmission(boundRequest: BoundLedgerRequest, row: OutboxRow): Boolean {
+        require(row.type in setOf(PendingMutationType.CreateIncomePlan, PendingMutationType.UpdateIncomePlan))
+        require(row.status == PendingMutationStatus.Done)
+        boundRequest.requireStillActiveFor(requireNotNull(row.bindingOrNull()))
+        return resolveStatus(row.id, PendingMutationStatus.Done, true, null, boundRequest)
+    }
+
     /** One status-checked recovery owner; only an actual replay or deletion wakes successors. */
     private suspend fun resolveStatus(id: Long, status: PendingMutationStatus, drop: Boolean, freshToken: Long?, boundRequest: BoundLedgerRequest? = null): Boolean {
         val requeue = if (status == PendingMutationStatus.Conflict) dao::requeueConflictWithFreshToken

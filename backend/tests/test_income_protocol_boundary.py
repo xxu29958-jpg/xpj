@@ -7,7 +7,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.auth import get_current_writer_context
+from app.auth import get_current_app_context, get_current_writer_context
 from app.database import get_db
 from app.errors import AppError, add_exception_handlers
 from app.routes import income_plans, recycle_bin
@@ -93,6 +93,41 @@ def test_income_protocol_rejection_precedes_month_validation(version, method, pa
     response = TestClient(app).request(method, path, json=body, headers=headers)
     assert response.status_code == (422 if version == "current" else 409)
     assert response.json()["error"] == ("invalid_request" if version == "current" else "client_upgrade_required")
+
+
+@pytest.mark.parametrize("version", [None, "2026-09-07", "current"])
+def test_income_create_protocol_rejection_precedes_new_key_requirement(version) -> None:
+    app = FastAPI()
+    add_exception_handlers(app)
+    app.include_router(income_plans.router)
+    app.dependency_overrides[get_current_writer_context] = lambda: SimpleNamespace(tenant_id="probe", account_id=1)
+    app.dependency_overrides[get_db] = lambda: None
+    headers = {} if version is None else {
+        "Ticketbox-Api-Version": CURRENT_API_VERSION if version == "current" else version,
+        "Ticketbox-Currency-Binding": "1:1:CNY",
+    }
+    response = TestClient(app).post("/api/income-plans", headers=headers, json={
+        "intent_month": "2026-09", "home_currency_code": "JPY", "label": "Original income",
+        "amount_cents": 1200, "pay_day": 1,
+    })
+    assert response.status_code == (422 if version == "current" else 409)
+    assert response.json()["error"] == ("idempotency_key_required" if version == "current" else "client_upgrade_required")
+
+
+@pytest.mark.parametrize("role,scope", [("viewer", "app"), ("owner", "admin"), ("owner", "upload")])
+def test_income_create_replay_still_requires_current_business_writer_authority(monkeypatch, role, scope) -> None:
+    app = FastAPI()
+    add_exception_handlers(app)
+    app.include_router(income_plans.router)
+    app.dependency_overrides[get_current_app_context] = lambda: SimpleNamespace(role=role, scope=scope)
+    app.dependency_overrides[get_db] = lambda: None
+    monkeypatch.setattr(income_plans, "create_income_plan_idempotently",
+        lambda *_a, **_k: pytest.fail("Current authority must be checked before accepting or replaying"))
+    response = TestClient(app).post("/api/income-plans", headers={
+        "Ticketbox-Api-Version": CURRENT_API_VERSION, "Idempotency-Key": "already-accepted",
+    }, json={"intent_month": "2026-09", "home_currency_code": "JPY", "label": "Original income",
+        "amount_cents": 1200, "pay_day": 1})
+    assert response.status_code == 403 and response.json()["error"] == "permission_denied"
 
 
 @pytest.mark.parametrize("case", [

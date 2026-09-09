@@ -71,7 +71,7 @@ class GoalGlobalRecoveryTest {
                 GoalUpdateRequestDto(2, "交通", "2026-09", targetAmountCents = 1200, homeCurrencyCode = currency), null)))
         compose.setContent { TicketboxTheme(skin = AppSkin.Default) {
             CompositionLocalProvider(LocalCurrencyDisplay provides CurrencyDisplay(CurrencyCode.CNY)) {
-                SyncStatusScreenContent(state, SyncStatusActions(onOpenRuleSubmission = {}, onOpenGoalEdit = { opened = "goal:$it" },
+                SyncStatusScreenContent(state, SyncStatusActions(onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = { opened = "goal:$it" },
                     onOpenGoalCreation = { opened = "creation:$it" }, onOpenRecurring = {}, onOpenBudget = {},
                     onOpenExpense = {}, onKeepMine = { error("Unexpected write") }, onDropMine = { dropped = it },
                     onRetry = { error("Unexpected retry") }, onDropFailed = { dropped = it }, onClearQuarantined = {}), {}, {})

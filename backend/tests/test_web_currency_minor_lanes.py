@@ -137,6 +137,7 @@ def _seed_jpy_amount_rule() -> None:
                 enabled=True,
                 priority=100,
                 amount_min_cents=1200,
+                home_currency_code="JPY",
                 created_at=timestamp,
                 updated_at=timestamp,
             )
@@ -168,7 +169,7 @@ def test_rules_page_render_follows_zero_decimal_home(jpy_env, web_client: TestCl
 
     page = web_client.get("/web/rules?ledger_id=owner")
     assert page.status_code == 200, page.text
-    assert "≥ ¥1200" in page.text
+    assert "≥ JPY ¥1200" in page.text
     assert "¥12.00" not in page.text
 
 

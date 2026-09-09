@@ -33,12 +33,15 @@ private val recurringSubmissionTypes = setOf(
 internal val categoryRuleSubmissionTypes = setOf(
     PendingMutationType.CreateCategoryRule, PendingMutationType.UpdateCategoryRule, PendingMutationType.DeleteCategoryRule,
 )
+internal val incomePlanSubmissionTypes = setOf(PendingMutationType.CreateIncomePlan, PendingMutationType.UpdateIncomePlan)
 private val writerSubmissionTypes = setOf(
     PendingMutationType.UpdateGoal, PendingMutationType.CreateGoal, PendingMutationType.SaveMonthlyBudget,
-) + recurringSubmissionTypes + categoryRuleSubmissionTypes
+) + recurringSubmissionTypes + categoryRuleSubmissionTypes + incomePlanSubmissionTypes
 private val originalSubmissionTypes = writerSubmissionTypes + PendingMutationType.CorrectExpense
 
 private val submissionFailureResources = mapOf(
+    PendingMutationType.CreateIncomePlan to R.string.income_plan_submission_unavailable,
+    PendingMutationType.UpdateIncomePlan to R.string.income_plan_submission_unavailable,
     PendingMutationType.UpdateGoal to R.string.spending_goal_recovery_unavailable,
     PendingMutationType.CreateGoal to R.string.spending_goal_recovery_unavailable,
     PendingMutationType.SaveMonthlyBudget to R.string.budget_save_attention,
@@ -51,21 +54,9 @@ private val submissionFailureResources = mapOf(
 )
 
 /**
- * ADR-0038 PR-2g.11: the user-facing half of the offline outbox.
- *
- * The dispatchers (PR-2g.3–.9) queue offline mutations and the drain
- * engine parks 409s as CONFLICT rows / dead rows as FAILED. Without a
- * surface to resolve those, the ADR invariant ("client never silently
- * overwrites; the user explicitly keeps or drops") is never delivered.
- * This VM observes [OutboxRepository.observeStatus] and exposes the
- * resolve branches.
- *
- * Token re-fetch for "keep mine": a 409 means the row's
- * ``expected_row_version`` is stale, and the 409 body intentionally
- * carries no fresh token (ADR §41), so we re-GET the resource. v1
- * supports the expense family (``expense:<id>`` — every dispatcher in
- * PR-2g.3–.9 targets it); other families (category_rule / merchant_alias)
- * are drop-only here and gain keep-mine in a follow-up.
+ * Both Sync entrances observe the active binding's outbox and reuse each command owner's recovery.
+ * Original planning submissions retain their captured request and key; only legacy expense edits
+ * may explicitly request a fresh expense version for Keep Mine.
  */
 class OutboxStatusViewModel(
     private val outbox: OutboxRepository,
@@ -78,9 +69,10 @@ class OutboxStatusViewModel(
     init {
         viewModelScope.launch {
             combine(outbox.observeStatus(), expenseRepository.observeCorrections(),
-                recoveries.debtAdjustments.observeAdjustments(), expenseRepository.observeLedgerAccess()) { status, corrections, adjustments, access ->
-                Triple(status, corrections, adjustments) to access
-            }.collect { (observations, access) ->
+                recoveries.debtAdjustments.observeAdjustments(), expenseRepository.observeLedgerAccess(),
+                outbox.observeActiveByTypes(incomePlanSubmissionTypes, includeCompleted = true)) { status, corrections, adjustments, access, incomeRows ->
+                Triple(Triple(status, corrections, adjustments), access, incomeRows)
+            }.collect { (observations, access, incomeRows) ->
                 val (observedStatus, corrections, adjustments) = observations
                 val binding = access?.binding?.takeIf { it == expenseRepository.captureDeferredLedgerBinding() }
                 val status = observedStatus.takeIf { it.binding.matches(binding) }
@@ -96,8 +88,8 @@ class OutboxStatusViewModel(
                 val occurrenceDescriptions = (status.failed + status.conflicts).mapNotNull { row ->
                     recoveries.recurringOccurrences?.describe(row)?.let { row.id to it }
                 }.toMap()
-                val incomeDescriptions = (status.failed + status.conflicts).mapNotNull { row ->
-                    recoveries.incomePlans.describeEdit(row)?.let { row.id to it }
+                val incomeDescriptions = incomeRows.mapNotNull { row ->
+                    recoveries.incomePlans.describeSubmission(row)?.let { row.id to it }
                 }.toMap()
                 val adjustmentDescriptions = currentAdjustments.filter {
                     it.row.status != com.ticketbox.data.local.PendingMutationStatus.Done
@@ -115,7 +107,7 @@ class OutboxStatusViewModel(
                     retryableOffsetIds = status.failed.filter { row ->
                         row.type == PendingMutationType.CreateExpenseOffset && expenseRepository.canReplayExpenseOffset(row)
                     }.map { it.id }.toSet(),
-                    recurringOccurrences = occurrenceDescriptions, incomeEdits = incomeDescriptions,
+                    recurringOccurrences = occurrenceDescriptions, incomeSubmissions = incomeDescriptions,
                     goalEdits = (status.failed + status.conflicts).mapNotNull { row -> recoveries.goalEdits.describeEdit(row)?.let { row.id to it } }.toMap(),
                     goalCreations = (status.failed + status.conflicts).mapNotNull { row ->
                         recoveries.goalEdits.describeCreation(row)?.let { row.id to it }
@@ -162,7 +154,7 @@ class OutboxStatusViewModel(
         }
     }
 
-    /** "放弃我的改动" — discard the queued change; the server's version wins. */
+    /** Stop this local submission; the command owner does not undo a possible server acceptance. */
     fun dropMine(row: OutboxRow) {
         if (!_uiState.value.accepts(row, expenseRepository.captureDeferredLedgerBinding())) return
         if (row.type == PendingMutationType.UploadScreenshot) return
@@ -189,10 +181,6 @@ class OutboxStatusViewModel(
         }
         if (row.type == PendingMutationType.RecordDebtAdjustment) {
             recoverAdjustment(row, false)
-            return
-        }
-        if (row.type == PendingMutationType.UpdateIncomePlan && recoveries.incomePlans.describeEdit(row)?.hasSupportedIntent != true) {
-            _uiState.update { it.copy(message = UiText.res(R.string.income_plan_edit_unsupported), messageTone = MessageTone.Danger) }
             return
         }
         resolve(row) { outbox.resolveFailed(row.id, FailedResolution.Retry()) }
@@ -320,7 +308,7 @@ data class OutboxStatusUiState(
     val billSplitCreations: Map<Long, com.ticketbox.data.repository.PendingBillSplitCreation> = emptyMap(),
     val failedDebtCreations: Map<Long, PendingDebtCreation> = emptyMap(),
     val recurringOccurrences: Map<Long, com.ticketbox.data.repository.PendingOccurrencePayment> = emptyMap(),
-    val incomeEdits: Map<Long, com.ticketbox.data.repository.PendingIncomePlanEdit> = emptyMap(),
+    val incomeSubmissions: Map<Long, com.ticketbox.data.repository.PendingIncomePlanSubmission> = emptyMap(),
     val goalEdits: Map<Long, com.ticketbox.data.repository.PendingGoalEdit> = emptyMap(),
     val goalCreations: Map<Long, com.ticketbox.data.repository.PendingGoalCreation> = emptyMap(),
     val budgetSaves: Map<Long, com.ticketbox.data.repository.PendingBudgetSave> = emptyMap(),
@@ -343,7 +331,7 @@ data class OutboxStatusUiState(
             PendingMutationType.SetRecurringOccurrencePayment ->
                 recurringOccurrences[row.id]?.canRetry == true
             PendingMutationType.SaveMonthlyBudget -> budgetSaves[row.id]?.canRetry == true
-            PendingMutationType.UpdateIncomePlan -> incomeEdits[row.id]?.hasSupportedIntent == true
+            in incomePlanSubmissionTypes -> incomeSubmissions[row.id]?.canRetry == true
             PendingMutationType.UpdateGoal -> goalEdits[row.id]?.canRetry == true
             PendingMutationType.CreateGoal -> goalCreations[row.id]?.canRetry == true
             PendingMutationType.RecordDebtAdjustment -> debtAdjustments[row.id]?.canRetry == true
@@ -376,6 +364,9 @@ data class OutboxRecoveryRepositories(
 private suspend fun OutboxRecoveryRepositories.recoverPlanningSubmission(
     binding: LogicalSessionBinding, row: OutboxRow, drop: Boolean,
 ): Result<Unit>? = when (row.type) {
+    in incomePlanSubmissionTypes -> incomePlans.describeSubmission(row)?.let {
+        incomePlans.recoverSubmission(binding, it, drop)
+    } ?: Result.failure(IllegalStateException())
     in categoryRuleSubmissionTypes -> rules.describeSubmission(row)?.let {
         rules.recoverSubmission(binding, it, drop)
     } ?: Result.failure(IllegalStateException())

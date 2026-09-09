@@ -1438,7 +1438,13 @@
             "type": "string"
           },
           "home_currency_code": {
+            "default": "",
             "title": "Home Currency Code",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
             "type": "string"
           },
           "income_month": {
@@ -1475,6 +1481,7 @@
             "title": "Income Month Year"
           },
           "intent_month": {
+            "default": "",
             "title": "Intent Month",
             "type": "string"
           },
@@ -1499,16 +1506,17 @@
             "title": "Pay Day",
             "type": "string"
           },
+          "review_new": {
+            "default": false,
+            "title": "Review New",
+            "type": "boolean"
+          },
           "source_type": {
             "default": "salary",
             "title": "Source Type",
             "type": "string"
           }
         },
-        "required": [
-          "home_currency_code",
-          "intent_month"
-        ],
         "title": "Body_post_create_web_income_plans_create_post",
         "type": "object"
       },
@@ -27586,6 +27594,22 @@
         "operationId": "create_plan_api_income_plans_post",
         "parameters": [
           {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
             "description": "Required API contract version from the runtime compatibility handshake.",
             "in": "header",
             "name": "Ticketbox-Api-Version",
@@ -41506,8 +41530,7 @@
                 "$ref": "#/components/schemas/Body_post_create_web_income_plans_create_post"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {

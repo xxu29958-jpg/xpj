@@ -39,7 +39,7 @@ import com.ticketbox.data.repository.ReplaceSplitsDispatcher
 import com.ticketbox.data.repository.RetryOcrDispatcher
 import com.ticketbox.data.repository.CategoryRuleDispatcher
 import com.ticketbox.data.repository.UpdateGoalDispatcher
-import com.ticketbox.data.repository.UpdateIncomePlanDispatcher
+import com.ticketbox.data.repository.IncomePlanDispatcher
 import com.ticketbox.data.repository.UpdateMerchantAliasDispatcher
 import com.ticketbox.data.repository.UpdateRecurringItemDispatcher
 import com.ticketbox.data.repository.VoidExpenseOffsetDispatcher
@@ -294,10 +294,10 @@ class AppContainer(context: Context) {
                 receiptAdapter = outboxAdapters.goalReceiptAdapter,
             ),
             // ADR-0042 Slice F: PATCH /api/income-plans/{publicId} via outbox.
-            UpdateIncomePlanDispatcher(
-                apiProvider = ::outboxApi,
-                payloadAdapter = outboxAdapters.incomePlanUpdateAdapter,
-            ),
+            IncomePlanDispatcher(PendingMutationType.CreateIncomePlan, ::outboxApi,
+                outboxAdapters.incomePlanSubmissionAdapter, outboxAdapters.incomePlanReceiptAdapter),
+            IncomePlanDispatcher(PendingMutationType.UpdateIncomePlan, ::outboxApi,
+                outboxAdapters.incomePlanSubmissionAdapter, outboxAdapters.incomePlanReceiptAdapter),
             com.ticketbox.data.repository.SaveMonthlyBudgetDispatcher(
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.budgetSaveAdapter,

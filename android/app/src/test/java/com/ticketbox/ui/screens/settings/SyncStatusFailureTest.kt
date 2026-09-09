@@ -22,6 +22,19 @@ import kotlin.test.assertTrue
  */
 class SyncStatusFailureTest {
 
+    @Test fun `unverified completed income prevents the all-settled caption`() {
+        val pending = com.ticketbox.data.repository.PendingIncomePlanSubmission(
+            row(id = 44).copy(type = PendingMutationType.UpdateIncomePlan, status = PendingMutationStatus.Done), null)
+        val overview = syncStatusOverview(OutboxStatus(0, emptyList(), emptyList()), emptyList(), emptyList(), listOf(pending))
+        assertEquals(1, overview.reviewRequiredCount)
+        assertEquals(1, overview.needsActionCount)
+        assertEquals(0, overview.failedCount)
+        assertFalse(overview.isSettled)
+        val active = pending.copy(row = pending.row.copy(status = PendingMutationStatus.Failed))
+        assertEquals(0, syncStatusOverview(OutboxStatus(0, emptyList(), listOf(active.row)), emptyList(), emptyList(),
+            listOf(active)).reviewRequiredCount)
+    }
+
     @Test
     fun `reaper-expired marker is terminal (no retry)`() {
         assertTrue(isExpiredFailure("outbox_row_expired"))

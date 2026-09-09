@@ -24,6 +24,7 @@ from app.routes.web_common import (
     _resolve_selected_ledger_id,
     _web_redirect,
     parse_form_row_version_token,
+    preserve_original_ledger_form,
     templates,
 )
 from app.routes.web_rule_forms import (
@@ -212,7 +213,6 @@ def web_rules_create(
 ) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
-    _require_selected_ledger_write(options, selected_id)
     draft = {
         "keyword": keyword,
         "category": category,
@@ -224,6 +224,11 @@ def web_rules_create(
         "home_currency_code": home_currency_code,
         "idempotency_key": idempotency_key,
     }
+    retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
+        fields={**draft, "ledger_id": ledger_id, "review_new": review_new}, task="添加分类规则")
+    if retained is not None:
+        return retained
+    _require_selected_ledger_write(options, selected_id)
     if review_new:
         draft["idempotency_key"] = str(uuid4())
         return _render_rules(request, db, options=options, selected_id=selected_id, rule_form_draft=draft)
@@ -292,6 +297,11 @@ def web_rules_toggle(
 ) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
+        fields={"ledger_id": ledger_id, "expected_row_version": expected_row_version,
+            "idempotency_key": idempotency_key, "enabled": enabled}, task="启用或停用分类规则")
+    if retained is not None:
+        return retained
     _require_selected_ledger_write(options, selected_id)
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:

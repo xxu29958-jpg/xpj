@@ -10,7 +10,7 @@ import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.OutboxStatus
-import com.ticketbox.data.repository.PendingIncomePlanEdit
+import com.ticketbox.data.repository.PendingIncomePlanSubmission
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.OutboxStatusUiState
@@ -36,7 +36,7 @@ class SyncStatusScreenConfirmTest {
         var opened: Long? = null
         val original = outboxRow(PendingMutationStatus.Conflict, "state_conflict")
             .copy(type = PendingMutationType.CreateExpenseOffset)
-        setScreenContent(conflicts = listOf(original), actions = SyncStatusActions(onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
+        setScreenContent(conflicts = listOf(original), actions = SyncStatusActions(onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
             onOpenExpense = { opened = it }, onKeepMine = { error("Original refund cannot be rebased") },
             onDropMine = {}, onRetry = {}, onDropFailed = {}, onClearQuarantined = {},
         ))
@@ -54,7 +54,7 @@ class SyncStatusScreenConfirmTest {
         var opened: Long? = null
         val original = outboxRow(PendingMutationStatus.Failed, "offset_create_requires_review")
             .copy(type = PendingMutationType.CreateExpenseOffset)
-        setScreenContent(failed = listOf(original), actions = SyncStatusActions(onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
+        setScreenContent(failed = listOf(original), actions = SyncStatusActions(onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
             onOpenExpense = { opened = it }, onKeepMine = {}, onDropMine = {},
             onRetry = { error("Unverifiable original cannot replay") }, onDropFailed = {}, onClearQuarantined = {},
         ))
@@ -72,7 +72,7 @@ class SyncStatusScreenConfirmTest {
         val row = outboxRow(status = PendingMutationStatus.Conflict)
         setScreenContent(
             conflicts = listOf(row),
-            actions = SyncStatusActions(onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
+            actions = SyncStatusActions(onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
         onOpenExpense = {},
                 onKeepMine = {},
                 onDropMine = { dropped = it },
@@ -102,7 +102,7 @@ class SyncStatusScreenConfirmTest {
             status = OutboxStatus(0, listOf(original), emptyList())))
         var dropped: OutboxRow? = null
         composeRule.setContent { TicketboxTheme(skin = AppSkin.Default) {
-            SyncStatusScreenContent(state.value, SyncStatusActions(onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {}, onOpenExpense = {}, onKeepMine = {},
+            SyncStatusScreenContent(state.value, SyncStatusActions(onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {}, onOpenExpense = {}, onKeepMine = {},
                 onDropMine = { dropped = it }, onRetry = {}, onDropFailed = {}, onClearQuarantined = {}), {}, onOpenInbox = {})
         } }
         composeRule.onNodeWithText("放弃我的改动").performScrollTo().performClick()
@@ -122,7 +122,7 @@ class SyncStatusScreenConfirmTest {
         val row = outboxRow(status = PendingMutationStatus.Failed)
         setScreenContent(
             failed = listOf(row),
-            actions = SyncStatusActions(onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
+            actions = SyncStatusActions(onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
         onOpenExpense = {},
                 onKeepMine = {},
                 onDropMine = {},
@@ -152,7 +152,7 @@ class SyncStatusScreenConfirmTest {
         val row = outboxRow(status = PendingMutationStatus.Failed, lastError = "outbox_row_expired")
         setScreenContent(
             failed = listOf(row),
-            actions = SyncStatusActions(onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
+            actions = SyncStatusActions(onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
         onOpenExpense = {},
                 onKeepMine = {},
                 onDropMine = {},
@@ -175,8 +175,8 @@ class SyncStatusScreenConfirmTest {
         val row = outboxRow(status = PendingMutationStatus.Failed).copy(
             type = PendingMutationType.UpdateIncomePlan, targetId = "income_plan:old",
         )
-        setScreenContent(failed = listOf(row), incomeEdits = mapOf(row.id to PendingIncomePlanEdit(row, null)),
-            actions = SyncStatusActions(onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {}, onOpenExpense = {}, onKeepMine = {}, onDropMine = {}, onRetry = { error("Unsupported retry") },
+        setScreenContent(failed = listOf(row), incomeSubmissions = mapOf(row.id to PendingIncomePlanSubmission(row, null)),
+            actions = SyncStatusActions(onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {}, onOpenExpense = {}, onKeepMine = {}, onDropMine = {}, onRetry = { error("Unsupported retry") },
                 onDropFailed = {}, onClearQuarantined = {}))
         val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext
         composeRule.onNodeWithText(context.getString(com.ticketbox.R.string.income_plan_edit_unsupported)).assertIsDisplayed()
@@ -189,7 +189,7 @@ class SyncStatusScreenConfirmTest {
         var clearCount = 0
         setScreenContent(
             quarantinedCount = 2,
-            actions = SyncStatusActions(onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
+            actions = SyncStatusActions(onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
         onOpenExpense = {},
                 onKeepMine = {},
                 onDropMine = {},
@@ -215,7 +215,7 @@ class SyncStatusScreenConfirmTest {
     fun protocolRefusalExplainsTheUpgradeAndKeepsOriginalRetry() {
         var retried: OutboxRow? = null
         val original = outboxRow(PendingMutationStatus.Failed, lastError = "runtime_version_mismatch")
-        setScreenContent(failed = listOf(original), actions = SyncStatusActions(onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
+        setScreenContent(failed = listOf(original), actions = SyncStatusActions(onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
         onOpenExpense = {},
             onKeepMine = {}, onDropMine = {}, onRetry = { retried = it }, onDropFailed = {}, onClearQuarantined = {},
         ))
@@ -230,7 +230,7 @@ class SyncStatusScreenConfirmTest {
     fun failedUploadOpensItsOriginalInboxGroupInsteadOfUsingGenericRetry() {
         val original = outboxRow(PendingMutationStatus.Failed, "upload_payload_unsupported")
             .copy(type = PendingMutationType.UploadScreenshot, targetId = "upload_batch:original")
-        setScreenContent(failed = listOf(original), actions = SyncStatusActions(onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
+        setScreenContent(failed = listOf(original), actions = SyncStatusActions(onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
             onOpenExpense = {}, onKeepMine = {}, onDropMine = {},
             onRetry = { error("An upload must use the original group's recovery") },
             onDropFailed = {}, onClearQuarantined = {},
@@ -245,7 +245,7 @@ class SyncStatusScreenConfirmTest {
         conflicts: List<OutboxRow> = emptyList(),
         failed: List<OutboxRow> = emptyList(),
         quarantinedCount: Int = 0,
-        incomeEdits: Map<Long, PendingIncomePlanEdit> = emptyMap(),
+        incomeSubmissions: Map<Long, PendingIncomePlanSubmission> = emptyMap(),
         actions: SyncStatusActions,
     ) {
         composeRule.setContent {
@@ -253,7 +253,7 @@ class SyncStatusScreenConfirmTest {
                 SyncStatusScreenContent(
                     state = OutboxStatusUiState(
                         bindingReady = true,
-                        incomeEdits = incomeEdits,
+                        incomeSubmissions = incomeSubmissions,
                         status = OutboxStatus(
                             queueDepth = 0,
                             conflicts = conflicts,

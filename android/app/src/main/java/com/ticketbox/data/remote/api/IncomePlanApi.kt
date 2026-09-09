@@ -19,6 +19,7 @@ interface IncomePlanApi {
     @POST("api/income-plans")
     suspend fun createIncomePlan(
         @Body request: com.ticketbox.data.remote.dto.IncomePlanCreateRequestDto,
+        @Header("Idempotency-Key") idempotencyKey: String,
     ): com.ticketbox.data.remote.dto.IncomePlanDto
 
     @PATCH("api/income-plans/{publicId}")

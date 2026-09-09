@@ -192,7 +192,8 @@ def _assert_web_viewer_rule_posts_denied(web_client: TestClient, *, ledger_id: s
             (
                 "rules toggle",
                 "/web/rules/999/toggle",
-                {"ledger_id": ledger_id, "expected_row_version": 999999},
+                {"ledger_id": ledger_id, "expected_row_version": 999999,
+                    "enabled": "true", "idempotency_key": str(uuid4())},
             ),
             (
                 "rules delete",

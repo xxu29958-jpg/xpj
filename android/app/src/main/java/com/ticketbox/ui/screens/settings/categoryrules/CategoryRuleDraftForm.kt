@@ -1,5 +1,7 @@
 package com.ticketbox.ui.screens.settings.categoryrules
 
+import com.ticketbox.R
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.CurrencyCode
@@ -11,7 +13,7 @@ data class CategoryRuleDraftForm(
     val category: String = "",
     val priorityText: String = "10",
     val editingRule: CategoryRule? = null,
-    val localMessage: String? = null,
+    val localMessage: UiText? = null,
     val minimumAmount: String = "",
     val maximumAmount: String = "",
     val homeCurrencyCode: String? = null,
@@ -22,12 +24,12 @@ data class CategoryRuleDraftForm(
     } == true
 
     fun toRequest(): Result<CategoryRuleRequest> = runCatching {
-        require(keyword.isNotBlank() && category.isNotBlank()) { "请填写关键词和分类。" }
-        val priority = requireNotNull(priorityText.toIntOrNull()) { "优先级需要填写整数。" }
-        require(!hasUnconfirmedOriginalAmount) { "原规则金额币种尚未确认，原数值已保留，请先核对。" }
+        requireInput(keyword.isNotBlank() && category.isNotBlank(), R.string.category_rule_validation_fields)
+        val priority = priorityText.toIntOrNull() ?: throw CategoryRuleInputError(R.string.category_rule_validation_priority)
+        requireInput(!hasUnconfirmedOriginalAmount, R.string.category_rule_currency_review)
         val min = parseBound(minimumAmount)
         val max = parseBound(maximumAmount)
-        require(min == null || max == null || min <= max) { "金额下限不能大于上限。" }
+        requireInput(min == null || max == null || min <= max, R.string.category_rule_validation_range)
         CategoryRuleRequest(keyword.trim(), category.trim(), editingRule?.enabled ?: true, priority,
             min, max, editingRule?.sourceContains, editingRule?.tagContains,
             homeCurrencyCode = homeCurrencyCode.takeIf { min != null || max != null || editingRule?.homeCurrencyCode != null })
@@ -35,8 +37,8 @@ data class CategoryRuleDraftForm(
 
     private fun parseBound(raw: String): Long? {
         if (raw.isBlank()) return null
-        val selected = requireNotNull(currency) { "请先选择金额条件使用的币种。" }
-        return requireNotNull(parseAmountCents(raw, selected)?.takeIf { it >= 0 }) { "请按所选币种填写有效金额。" }
+        val selected = currency ?: throw CategoryRuleInputError(R.string.category_rule_validation_currency)
+        return parseAmountCents(raw, selected)?.takeIf { it >= 0 } ?: throw CategoryRuleInputError(R.string.category_rule_validation_amount)
     }
 
     companion object {
@@ -48,4 +50,10 @@ data class CategoryRuleDraftForm(
                 homeCurrencyCode = rule.homeCurrencyCode)
         }
     }
+}
+
+internal class CategoryRuleInputError(val resourceId: Int) : IllegalArgumentException()
+
+private fun requireInput(valid: Boolean, resourceId: Int) {
+    if (!valid) throw CategoryRuleInputError(resourceId)
 }

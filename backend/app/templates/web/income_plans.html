@@ -101,59 +101,79 @@
       <h2 class="product-panel-title">添加收入计划</h2>
       <p class="product-panel-subtitle">真正稳定的收入再设为每月固定。</p>
     </div>
-    <form method="post" action="/web/income-plans/create" class="budget-form">
+    {% set draft = income_form_draft or {} %}
+    {% if income_form_error %}<div id="income-create-error" class="product-feedback product-feedback--danger" role="alert">{{ income_form_error }}</div>{% endif %}
+    <form method="post" action="/web/income-plans/create" class="budget-form"{% if income_form_error %} aria-describedby="income-create-error"{% endif %}>
       {{ csrf_field|safe }}
-      <input type="hidden" name="home_currency_code" value="{{ home_currency_code }}">
+      <input type="hidden" name="home_currency_code" value="{{ draft.get('home_currency_code', '') }}">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-        <input type="hidden" name="intent_month" value="{{ intent_month }}">
+      <input type="hidden" name="intent_month" value="{{ draft.get('intent_month', '') }}">
+      <input type="hidden" name="idempotency_key" value="{{ draft.get('idempotency_key', '') }}">
+      <p class="meta">本次每月计划从 {{ draft.get('intent_month') or '待确认月份' }} 生效。失败重试保留原月份和金额。</p>
       <div class="product-field">
         <label for="income-create-label">名称</label>
-        <input id="income-create-label" class="product-input" type="text" name="label" maxlength="64" required placeholder="例如：我的工资">
+        <input id="income-create-label" class="product-input" type="text" name="label" maxlength="64" required placeholder="例如：我的工资" value="{{ draft.get('label', '') }}">
       </div>
       <div class="product-field">
         <label for="income-create-type">类型</label>
         <select id="income-create-type" class="product-input" name="source_type">
+          {% if draft.get('source_type', 'salary') not in source_type_labels %}<option value="{{ draft.get('source_type', '') }}" selected>{{ draft.get('source_type') or '请选择类型' }}</option>{% endif %}
           {% for value, label in source_type_labels.items() %}
-          <option value="{{ value }}">{{ label }}</option>
+          <option value="{{ value }}" {% if value == draft.get('source_type', 'salary') %}selected{% endif %}>{{ label }}</option>
           {% endfor %}
         </select>
       </div>
       <div class="product-field">
         <label for="income-create-frequency">计划频率</label>
         <select id="income-create-frequency" class="product-input" name="frequency">
-          <option value="one_time" selected>单次预计</option>
-          <option value="monthly">每月固定</option>
+          {% if draft.get('frequency', 'one_time') not in ['one_time', 'monthly'] %}<option value="{{ draft.get('frequency', '') }}" selected>{{ draft.get('frequency') or '请选择频率' }}</option>{% endif %}
+          <option value="one_time" {% if draft.get('frequency', 'one_time') == 'one_time' %}selected{% endif %}>单次预计</option>
+          <option value="monthly" {% if draft.get('frequency') == 'monthly' %}selected{% endif %}>每月固定</option>
         </select>
       </div>
       <fieldset class="income-month-fields">
         <legend>预计月份（单次计划填写）</legend>
+        {% if draft.get('income_month') %}
+        <label class="product-field">原预计月份<input type="text" name="income_month" value="{{ draft.income_month }}" placeholder="例如：2026-09"></label>
+        {% else %}
         <div class="product-field">
           <label for="income-create-year" class="sr-only">预计年份</label>
           <select id="income-create-year" class="product-input" name="income_month_year" aria-label="预计年份">
+            {% if draft.get('income_month_year') not in (income_year_options | map('string') | list) %}<option value="{{ draft.get('income_month_year', '') }}" selected>{{ draft.get('income_month_year') or '请选择年份' }}</option>{% endif %}
             {% for year in income_year_options %}
-            <option value="{{ year }}" {% if year|string == income_default_year %}selected{% endif %}>{{ year }} 年</option>
+            <option value="{{ year }}" {% if year|string == draft.get('income_month_year') %}selected{% endif %}>{{ year }} 年</option>
             {% endfor %}
           </select>
         </div>
         <div class="product-field">
           <label for="income-create-month" class="sr-only">预计月份</label>
           <select id="income-create-month" class="product-input" name="income_month_number" aria-label="预计月份">
+            {% if draft.get('income_month_number') not in (range(1, 13) | map('string') | list) %}<option value="{{ draft.get('income_month_number', '') }}" selected>{{ draft.get('income_month_number') or '请选择月份' }}</option>{% endif %}
             {% for month in range(1, 13) %}
-            <option value="{{ month }}" {% if month|string == income_default_month %}selected{% endif %}>{{ month }} 月</option>
+            <option value="{{ month }}" {% if month|string == draft.get('income_month_number') %}selected{% endif %}>{{ month }} 月</option>
             {% endfor %}
           </select>
         </div>
+        {% endif %}
       </fieldset>
       <div class="product-field">
-        <label for="income-create-amount">预计金额（{{ currency_input.currency_symbol }}）</label>
-        <input id="income-create-amount" class="product-input" type="number" name="amount_yuan" step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}" placeholder="{{ currency_input.amount_placeholder }}" inputmode="{{ currency_input.inputmode }}" required>
+        <label for="income-create-amount">预计金额（{{ draft.get('home_currency_code') or '币种待确认' }}）</label>
+        <input id="income-create-amount" class="product-input" type="text" name="amount_yuan" placeholder="{{ income_form_currency.amount_placeholder or '请输入金额' }}" inputmode="{{ income_form_currency.inputmode or 'decimal' }}" value="{{ draft.get('amount_yuan', '') }}" required>
       </div>
       <div class="product-field">
         <label for="income-create-payday">预计收入日（1-31，短月取月末）</label>
-        <input id="income-create-payday" class="product-input" type="number" name="pay_day" min="1" max="31" required value="10">
+        <input id="income-create-payday" class="product-input" type="text" name="pay_day" inputmode="numeric" required value="{{ draft.get('pay_day', '10') }}">
       </div>
       <div class="budget-actions">
+        {% if not income_form_currency or not draft.get('intent_month') %}
+        <p class="meta">原币种或生效月份尚未确认。输入已保留，请核对后再创建。</p>
+        <a class="product-button" href="/web/income-plans?ledger_id={{ selected_ledger_id }}" target="_blank" rel="noopener">另页准备新计划</a>
+        {% elif income_form_review %}
+        <p class="meta">这份表单需要重新核对。请先核对已有计划，再保留输入准备新计划；这一步不会保存。</p>
+        <button class="product-button" type="submit" name="review_new" value="true">已核对，准备新计划</button>
+        {% else %}
         <button class="product-button product-button--primary" type="submit">添加</button>
+        {% endif %}
       </div>
     </form>
   </section>

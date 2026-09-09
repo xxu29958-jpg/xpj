@@ -3,6 +3,8 @@ package com.ticketbox.data.repository
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodes
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
@@ -70,11 +72,11 @@ class CategoryRuleSubmissionConnectedTest {
         model = CategoryRulesViewModel(graph.ruleRepository, graph.expenseRepository)
         showScreen()
         compose.onNodeWithText("添加规则").performClick()
-        compose.onNodeWithText("商家关键词").performTextInput("旅行")
-        compose.onNodeWithText("推荐分类").performTextInput("交通")
+        compose.onAllNodes(hasSetTextAction())[0].performScrollTo().performTextInput("旅行")
+        compose.onAllNodes(hasSetTextAction())[1].performScrollTo().performTextInput("交通")
         compose.onNodeWithText("选择金额币种").performScrollTo().performClick()
         compose.onNodeWithText("JPY · 日元").performClick()
-        compose.onNodeWithText("金额下限（可不填）").performScrollTo().performTextInput("1200")
+        compose.onAllNodes(hasSetTextAction())[3].performScrollTo().performTextInput("1200")
         compose.onNodeWithText("添加规则").performScrollTo().performClick()
         compose.waitUntil(10_000) { model.uiState.value.pendingSubmissions.isNotEmpty() }
         val original = fixture.stored().single()

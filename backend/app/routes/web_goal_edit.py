@@ -19,6 +19,7 @@ from app.routes.web_common import (
     _resolve_selected_ledger_id,
     _web_redirect,
     parse_form_row_version_token,
+    preserve_original_ledger_form,
     templates,
 )
 from app.routes.web_goals import _parse_amount_yuan
@@ -34,10 +35,14 @@ def _edit_scope(request: Request, db: Session, ledger_id: str, public_id: str):
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
+    return options, selected_id, _editor_goal(db, selected_id, public_id)
+
+
+def _editor_goal(db, selected_id: str, public_id: str):
     goal = get_goal(db, tenant_id=selected_id, public_id=public_id)
     if goal.goal_type != "spending_limit":
         raise AppError("goal_not_found", status_code=404)
-    return options, selected_id, goal
+    return goal
 
 
 def _render_editor(
@@ -86,13 +91,20 @@ def web_goal_save(
     idempotency_key: str = Form(default=""), review_latest: bool = Form(default=False),
     _local: None = LocalOnly, db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    options, selected_id, goal = _edit_scope(request, db, ledger_id, public_id)
+    options = _list_ledger_options(db)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     values = {
         "name": name, "month": month, "target_amount_yuan": target_amount_yuan,
         "category": category, "expected_row_version": expected_row_version,
         "idempotency_key": idempotency_key,
         "home_currency_code": home_currency_code,
     }
+    retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
+        fields={**values, "ledger_id": ledger_id, "review_latest": review_latest}, task="修改支出目标")
+    if retained is not None:
+        return retained
+    _require_selected_ledger_write(options, selected_id)
+    goal = _editor_goal(db, selected_id, public_id)
     if review_latest:
         # Explicit review only renders a new proposal. It never submits a write.
         if home_currency_code == goal.home_currency_code:

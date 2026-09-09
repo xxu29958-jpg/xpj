@@ -67,7 +67,10 @@ def test_rule_edit_refusal_retains_raw_amount_original_currency_key_and_occ(monk
     from app.routes import web_rule_edit as editor
 
     rule = SimpleNamespace(id=3, home_currency_code="JPY", row_version=9) if rule_exists else None
-    monkeypatch.setattr(editor, "_edit_scope", lambda *a: ([], "owner", rule))
+    monkeypatch.setattr(editor, "_list_ledger_options", lambda _db: [])
+    monkeypatch.setattr(editor, "_resolve_selected_ledger_id", lambda *a, **k: "owner")
+    monkeypatch.setattr(editor, "_require_selected_ledger_write", lambda *a: None)
+    monkeypatch.setattr(editor, "find_rule_for_tenant", lambda *a, **k: rule)
     command = Mock(side_effect=AppError("state_conflict" if rule else "rule_not_found", status_code=409 if rule else 404))
     monkeypatch.setattr(editor, "update_rule_idempotently", command)
     render = Mock(return_value="retained")

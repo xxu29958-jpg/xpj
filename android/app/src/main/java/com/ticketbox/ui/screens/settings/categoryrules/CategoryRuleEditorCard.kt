@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
+import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppAction
 import com.ticketbox.ui.components.AppActionRow
 import com.ticketbox.ui.design.AppSpacing
@@ -38,7 +39,7 @@ internal fun CategoryRuleEditorCard(
             onCancel = onCancel,
         )
         form.localMessage?.let {
-            Text(it, color = MaterialTheme.colorScheme.secondary)
+            Text(it.asString(), color = MaterialTheme.colorScheme.secondary)
         }
     }
 }

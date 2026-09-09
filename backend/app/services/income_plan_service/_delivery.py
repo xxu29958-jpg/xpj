@@ -1,19 +1,62 @@
-"""Settle an income edit and its original typed result in one transaction."""
+"""Settle income commands and their original typed results in one transaction."""
 
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.models import IncomePlanRevision, MonthlyIncomePlan
-from app.schemas import IncomePlanResponse, IncomePlanUpdateRequest
+from app.schemas import IncomePlanCreateRequest, IncomePlanResponse, IncomePlanUpdateRequest
 from app.services.idempotency import (
+    IdempotencyOutcome,
     IdempotencyOutcomeKind,
     claim_idempotency_key,
     fingerprint_request,
     mark_idempotency_succeeded,
 )
 
-from . import update_income_plan
+from . import create_income_plan, update_income_plan
+
+
+def _income_create_receipt(claim: IdempotencyOutcome) -> IncomePlanResponse:
+    try:
+        result = IncomePlanResponse.model_validate(claim.row.response_body)
+        if result.public_id != claim.row.resource_id or not result.home_currency_code:
+            raise ValueError("Incomplete original receipt")
+        return result
+    except (ValidationError, ValueError) as exc:
+        raise AppError("income_plan_response_unverified",
+            "原提交已被接受，但缺少可核对的原回执。请保留提交并核对收入计划。", status_code=409) from exc
+
+
+def create_income_plan_idempotently(
+    db: Session, *, tenant_id: str, payload: IncomePlanCreateRequest,
+    actor_account_id: int | None, idempotency_key: str | None,
+) -> IncomePlanResponse:
+    if not idempotency_key:
+        raise AppError("idempotency_key_required", status_code=422)
+    if len(idempotency_key) > 64:
+        raise AppError("invalid_request", status_code=422)
+    claim = claim_idempotency_key(
+        db, tenant_id=tenant_id, idempotency_key=idempotency_key,
+        operation="create_income_plan", target_type="income_plan", target_id=None,
+        request_fingerprint=fingerprint_request(operation="create_income_plan", target_id=None,
+            body={"actor_account_id": actor_account_id, "intent": payload.model_dump(mode="json")},
+            expected_row_version=None),
+    )
+    if claim.kind is IdempotencyOutcomeKind.IN_PROGRESS:
+        raise AppError("idempotency_key_in_progress", status_code=409)
+    if claim.kind is IdempotencyOutcomeKind.FINGERPRINT_MISMATCH:
+        raise AppError("idempotency_key_reused", status_code=422)
+    if claim.kind is IdempotencyOutcomeKind.HIT:
+        return _income_create_receipt(claim)
+    plan = create_income_plan(db, tenant_id=tenant_id, actor_account_id=actor_account_id,
+        commit=False, **payload.model_dump())
+    result = IncomePlanResponse.model_validate(plan, from_attributes=True)
+    mark_idempotency_succeeded(db, claim.row, resource_type="income_plan", resource_id=result.public_id,
+        response_body=result.model_dump(mode="json"))
+    db.commit()
+    return result
 
 
 def _income_receipt_result(db: Session, *, tenant_id: str, public_id: str, body) -> IncomePlanResponse:

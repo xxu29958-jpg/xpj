@@ -1,6 +1,7 @@
 """Native income editing must retain the rendered month and immutable intent."""
 
 from datetime import UTC, datetime
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import select
@@ -25,7 +26,7 @@ def web_income(client, monkeypatch):
 
 
 def _create(client, identity):
-    response = client.post("/api/income-plans", headers=negotiated_headers(client, identity.app_headers), json={"home_currency_code": "CNY",
+    response = client.post("/api/income-plans", headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())}, json={"home_currency_code": "CNY",
         "label": "工资计划", "frequency": "monthly", "source_type": "salary",
         "amount_cents": 100000, "pay_day": 5, "intent_month": "2026-08",
     })

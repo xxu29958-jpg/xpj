@@ -24,7 +24,7 @@ internal data class SyncStatusDropSelection(
     val failed: Boolean,
     val debtCreation: PendingDebtCreation?,
     val recurringOccurrence: com.ticketbox.data.repository.PendingOccurrencePayment? = null,
-    val incomeEdit: com.ticketbox.data.repository.PendingIncomePlanEdit? = null,
+    val incomeSubmission: com.ticketbox.data.repository.PendingIncomePlanSubmission? = null,
     val debtAdjustment: com.ticketbox.data.repository.PendingDebtAdjustment? = null,
     val budgetSave: com.ticketbox.data.repository.PendingBudgetSave? = null,
     val recurringOriginal: com.ticketbox.data.repository.RecurringPendingIntent? = null,
@@ -53,7 +53,7 @@ internal fun SyncStatusDropDialog(
             ) {
                 selection.debtCreation?.let { DebtCreationIntentSummary(it) }
                 selection.recurringOccurrence?.let { com.ticketbox.ui.screens.recurring.RecurringOccurrenceIntentSummary(it) }
-                selection.incomeEdit?.let { com.ticketbox.ui.screens.IncomePlanIntentSummary(it) }
+                selection.incomeSubmission?.let { com.ticketbox.ui.screens.IncomePlanIntentSummary(it) }
                 selection.debtAdjustment?.let { com.ticketbox.ui.screens.DebtAdjustmentIntentSummary(it) }
                 selection.goalEdit?.request?.let { request ->
                     com.ticketbox.ui.screens.plan.SpendingGoalOriginalSummary(request.name, request.month,
@@ -104,7 +104,12 @@ private fun dropConfirmationText(selection: SyncStatusDropSelection): DropConfir
             stringResource(R.string.debt_adjustment_drop), stringResource(R.string.debt_adjustment_drop_explanation),
             stringResource(R.string.debt_adjustment_drop),
         )
-        row.type == PendingMutationType.UpdateIncomePlan -> DropConfirmationText(
+        selection.incomeSubmission?.requiresReview == true -> DropConfirmationText(
+            stringResource(R.string.income_plan_submission_stop_record),
+            stringResource(R.string.income_plan_submission_stop_record_explanation),
+            stringResource(R.string.income_plan_submission_stop_record),
+        )
+        row.type in com.ticketbox.viewmodel.incomePlanSubmissionTypes -> DropConfirmationText(
             stringResource(R.string.income_plan_edit_drop),
             stringResource(R.string.income_plan_edit_drop_explanation),
             stringResource(R.string.income_plan_edit_drop),

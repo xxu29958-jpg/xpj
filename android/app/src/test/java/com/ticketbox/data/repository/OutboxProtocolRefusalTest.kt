@@ -35,8 +35,8 @@ class OutboxProtocolRefusalTest(private val refusal: String) {
         val clock = Clock.fixed(Instant.parse("2026-09-30T23:55:00Z"), ZoneOffset.UTC)
         val dao = FakePendingMutationDao()
         val outbox = testOutboxRepository(dao, clock)
-        val adapter = Moshi.Builder().add(KotlinJsonAdapterFactory()).build().adapter(IncomePlanEditPayload::class.java)
-        val payload = IncomePlanEditPayload(1, "plan-1", "工资", 10000, "CNY", "session", "binding",
+        val adapter = Moshi.Builder().add(KotlinJsonAdapterFactory()).build().adapter(IncomePlanSubmissionPayload::class.java)
+        val payload = IncomePlanSubmissionPayload(1, "plan-1", "工资", 10000, "CNY", "session", "binding",
             IncomePlanUpdateRequestDto("2026-09", 0, amountCents = 12000))
         val id = outbox.enqueue(PendingMutationType.UpdateIncomePlan, "income_plan:plan-1", adapter.toJson(payload), 7, "original-key")
         val original = dao.rows.getValue(id)
@@ -44,7 +44,7 @@ class OutboxProtocolRefusalTest(private val refusal: String) {
         val client = buildApiHttpClient(null, { "synthetic-session" }, { "owner" }, null, null)
             .newBuilder().addInterceptor(transport::respond).build()
         val api = buildApiService("https://example.test/", client)
-        val engine = OutboxDrainEngine(outbox, listOf(UpdateIncomePlanDispatcher({ api }, adapter)), now = clock::millis)
+        val engine = OutboxDrainEngine(outbox, listOf(IncomePlanDispatcher(PendingMutationType.UpdateIncomePlan, { api }, adapter, com.ticketbox.OutboxAdapterGraph().incomePlanReceiptAdapter)), now = clock::millis)
         var committedNotifications = 0
         engine.onAdviceInputReplaySucceeded = { committedNotifications++ }
 

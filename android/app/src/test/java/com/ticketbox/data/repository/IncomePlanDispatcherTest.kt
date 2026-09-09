@@ -19,7 +19,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * ADR-0042 Slice F: [UpdateIncomePlanDispatcher] replay contract.
+ * ADR-0042 Slice F: [IncomePlanDispatcher] replay contract.
  *
  * Mirrors [UpdateGoalDispatcherTest] / [UpdateCategoryRuleDispatcherTest]:
  * replays the row's intent-time key, routes ``idempotency_key_in_progress`` ->
@@ -27,7 +27,7 @@ import kotlin.test.assertTrue
  * Failure, and fails loud on a keyless row. The update response carries the
  * plan's bumped ``row_version``, surfaced as ``Success.newRowVersion``.
  */
-class UpdateIncomePlanDispatcherTest {
+class IncomePlanDispatcherTest {
 
     private fun moshi(): Moshi {
         return Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
@@ -58,8 +58,8 @@ class UpdateIncomePlanDispatcherTest {
             ledgerId = "owner",
             type = PendingMutationType.UpdateIncomePlan,
             targetId = "income_plan:plan-1",
-            payloadJson = moshi().adapter(IncomePlanEditPayload::class.java)
-                .toJson(IncomePlanEditPayload(1, "plan-1", "工资", 1400000, "CNY", "test-session", "test-binding",
+            payloadJson = moshi().adapter(IncomePlanSubmissionPayload::class.java)
+                .toJson(IncomePlanSubmissionPayload(1, "plan-1", "工资", 1400000, "CNY", "test-session", "test-binding",
                     IncomePlanUpdateRequestDto(intentMonth = "2026-09", expectedRowVersion = 0L, amountCents = 1500000))),
             expectedRowVersion = 1L,
             status = PendingMutationStatus.InFlight,
@@ -92,10 +92,12 @@ class UpdateIncomePlanDispatcherTest {
         }
     }
 
-    private fun dispatcherFor(stub: ApiService): UpdateIncomePlanDispatcher {
-        return UpdateIncomePlanDispatcher(
+    private fun dispatcherFor(stub: ApiService): IncomePlanDispatcher {
+        return IncomePlanDispatcher(
+            type = PendingMutationType.UpdateIncomePlan,
             apiProvider = { stub },
-            payloadAdapter = moshi().adapter(IncomePlanEditPayload::class.java),
+            payloadAdapter = moshi().adapter(IncomePlanSubmissionPayload::class.java),
+            receiptAdapter = moshi().adapter(IncomePlanDto::class.java),
         )
     }
 
@@ -107,7 +109,9 @@ class UpdateIncomePlanDispatcherTest {
             val result = dispatcherFor(stub).dispatch(planRow(idempotencyKey = "key-abc"))
 
             assertEquals("key-abc", stub.lastIdempotencyKey, "dispatcher must send the row's key")
-            assertEquals(DispatchResult.Success(), result)
+            assertTrue(result is DispatchResult.Success)
+            assertEquals(2L, result.newRowVersion)
+            assertEquals(updatedPlanDto(), moshi().adapter(IncomePlanDto::class.java).fromJson(requireNotNull(result.receiptJson)))
         }
     }
 
@@ -170,6 +174,13 @@ class UpdateIncomePlanDispatcherTest {
 
             assertTrue(result is DispatchResult.Failure, "422 must be a visible Failure: $result")
         }
+    }
+
+    @Test
+    fun missingOriginalResourceCannotAcknowledgeAnUnsentCommand() = runTest {
+        val result = dispatcherFor(Stub(Result.failure(httpException(404,
+            """{"error":"not_found","message":"Synthetic missing resource"}""")))).dispatch(planRow("original-key"))
+        assertTrue(result is DispatchResult.Failure)
     }
 
     private fun httpException(code: Int, body: String): HttpException {

@@ -25,7 +25,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
-import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.IncomeFrequency
 import com.ticketbox.domain.model.IncomeSourceType
 import com.ticketbox.ui.asString
@@ -75,7 +74,6 @@ internal data class IncomePlanDraftChoiceCallbacks(
 @Composable
 internal fun IncomePlanDraftForm(
     state: IncomePlanDraftFormState,
-    currency: CurrencyDisplay,
     fieldCallbacks: IncomePlanDraftFieldCallbacks,
     choiceCallbacks: IncomePlanDraftChoiceCallbacks,
 ) {
@@ -100,7 +98,6 @@ internal fun IncomePlanDraftForm(
     )
     IncomePlanDraftAmountField(
         state = state,
-        fallbackCurrency = currency,
         onAmount = fieldCallbacks.onAmount,
         onRetryCurrency = fieldCallbacks.onRetryCurrency,
     )
@@ -189,7 +186,6 @@ private fun <T> IncomePlanDraftChoiceField(
 @Composable
 private fun IncomePlanDraftAmountField(
     state: IncomePlanDraftFormState,
-    fallbackCurrency: CurrencyDisplay,
     onAmount: (String) -> Unit,
     onRetryCurrency: (() -> Unit)?,
 ) {
@@ -199,18 +195,17 @@ private fun IncomePlanDraftAmountField(
     } else {
         stringResource(R.string.income_plan_sheet_label_amount_monthly)
     }
-    if (onRetryCurrency != null && draft.homeCurrency == null) {
-        IncomePlanDraftCurrencyStatusRow(
-            label = amountLabel,
-            pending = state.currencyPending,
-            onRetry = onRetryCurrency,
-        )
+    val capturedCurrency = draft.homeCurrency
+    if (capturedCurrency == null) {
+        if (onRetryCurrency != null) IncomePlanDraftCurrencyStatusRow(
+            label = amountLabel, pending = state.currencyPending, onRetry = onRetryCurrency,
+        ) else Text(stringResource(R.string.currency_unconfirmed_write_blocked))
         return
     }
     AppAmountInput(
         state = AppAmountInputState(
             label = amountLabel,
-            currency = draft.homeCurrency ?: fallbackCurrency.homeCurrency,
+            currency = capturedCurrency,
             value = draft.amountYuanInput,
             placeholder = stringResource(R.string.components_amount_input_placeholder),
             enabled = !state.isSubmitting,

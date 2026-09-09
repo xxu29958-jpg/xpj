@@ -1,6 +1,7 @@
 """Income creation, reporting and native editing retain each amount's denomination."""
 
 from datetime import UTC, datetime
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import select
@@ -25,7 +26,7 @@ def income_browser(client, monkeypatch):
 
 
 def _create(client, identity, currency, amount):
-    response = client.post("/api/income-plans", headers=identity.app_headers, json={
+    response = client.post("/api/income-plans", headers={**identity.app_headers, "Idempotency-Key": str(uuid4())}, json={
         "intent_month": "2026-09", "label": f"{currency} plan", "source_type": "salary",
         "frequency": "monthly", "amount_cents": amount, "pay_day": 1, "home_currency_code": currency,
     })

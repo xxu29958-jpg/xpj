@@ -34,6 +34,7 @@ from app.routes.web_common import (
     _resolve_selected_ledger_id,
     _web_redirect,
     parse_form_row_version_token,
+    preserve_original_ledger_form,
     templates,
 )
 from app.routes.web_recurring_occurrences import router as occurrences_router
@@ -230,9 +231,13 @@ def web_recurring_create(
     """
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
-    _require_selected_ledger_write(options, selected_id)
     draft = {"merchant": merchant, "baseline_amount_yuan": baseline_amount_yuan, "home_currency_code": home_currency_code,
              "next_expected_date": next_expected_date, "idempotency_key": idempotency_key}
+    retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
+        fields={**draft, "ledger_id": ledger_id, "review_latest": review_latest}, task="添加固定支出")
+    if retained is not None:
+        return retained
+    _require_selected_ledger_write(options, selected_id)
     if review_latest == "true":
         return _render_recurring(request=request, db=db, selected_id=selected_id, options=options,
                                  draft=draft, prepare_review=True)
@@ -279,6 +284,11 @@ def web_recurring_confirm_candidate(
     409 conflict/archived 消费 details 给出可行动下一步。"""
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
+        fields={"ledger_id": ledger_id, "merchant": merchant, "amount_cents": amount_cents,
+            "home_currency_code": home_currency_code, "next_expected_date": next_expected_date}, task="采用固定支出建议")
+    if retained is not None:
+        return retained
     _require_selected_ledger_write(options, selected_id)
     try:
         parsed_amount_cents = parse_canonical_money_minor(
@@ -327,10 +337,14 @@ def web_recurring_edit(
     重放拿成功而不是 false-409。"""
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
-    _require_selected_ledger_write(options, selected_id)
     draft = {"public_id": public_id, "merchant": merchant, "baseline_amount_yuan": baseline_amount_yuan, "home_currency_code": home_currency_code,
              "next_expected_date": next_expected_date, "idempotency_key": idempotency_key,
              "expected_row_version": expected_row_version}
+    retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
+        fields={**draft, "ledger_id": ledger_id, "review_latest": review_latest}, task="修改固定支出")
+    if retained is not None:
+        return retained
+    _require_selected_ledger_write(options, selected_id)
     if review_latest == "true":
         return _render_recurring(request=request, db=db, selected_id=selected_id, options=options,
                                  draft=draft, prepare_review=True)

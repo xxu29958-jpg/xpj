@@ -63,11 +63,11 @@ internal class FakeIncomePlanEditRepository(
     var updateGate: (suspend () -> Unit)? = null
     var listGate: (suspend () -> Unit)? = null
 
-    override fun describeEdit(row: com.ticketbox.data.repository.OutboxRow): com.ticketbox.data.repository.PendingIncomePlanEdit? = null
-    override fun observeEdits(expectedBinding: LogicalSessionBinding) =
-        kotlinx.coroutines.flow.flowOf(emptyList<com.ticketbox.data.repository.PendingIncomePlanEdit>())
-    override suspend fun recoverEdit(expectedBinding: LogicalSessionBinding,
-        pending: com.ticketbox.data.repository.PendingIncomePlanEdit, drop: Boolean) = Result.success(Unit)
+    override fun describeSubmission(row: com.ticketbox.data.repository.OutboxRow): com.ticketbox.data.repository.PendingIncomePlanSubmission? = null
+    override fun observeSubmissions(expectedBinding: LogicalSessionBinding) =
+        kotlinx.coroutines.flow.flowOf(emptyList<com.ticketbox.data.repository.PendingIncomePlanSubmission>())
+    override suspend fun recoverSubmission(expectedBinding: LogicalSessionBinding,
+        pending: com.ticketbox.data.repository.PendingIncomePlanSubmission, drop: Boolean) = Result.success(Unit)
 
     override fun canModifyLedger(): Boolean = activeAccessFlow.value?.canModify ?: false
 
@@ -87,7 +87,7 @@ internal class FakeIncomePlanEditRepository(
     override suspend fun create(
         expectedBinding: LogicalSessionBinding,
         draft: IncomePlanDraft,
-    ): Result<IncomePlan> = throw UnsupportedOperationException("create not used in edit tests")
+    ): Result<Long> = throw UnsupportedOperationException("create not used in edit tests")
 
     override suspend fun enqueueUpdate(
         expectedBinding: LogicalSessionBinding,

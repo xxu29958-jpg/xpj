@@ -122,7 +122,7 @@ class OutboxDrainEngine(
         /** Mutation kinds whose replay moves the budget advisor's server-side
          *  inputs (_inputs_builder.py: confirmed-expense aggregates, income
          *  plans). Create/confirm/patch change confirmed-expense rows;
-         *  income-plan update changes the income leg. Excluded on purpose:
+         *  income-plan create/update change the income leg. Excluded on purpose:
          *  pending-side kinds (reject / OCR / recognize / not-duplicate /
          *  items-mismatch) never touch confirmed aggregates; splits only
          *  re-share an unchanged total; rules / aliases / goals / budgets are not
@@ -139,6 +139,7 @@ class OutboxDrainEngine(
             PendingMutationType.CreateExpenseOffset,
             PendingMutationType.PatchExpense,
             PendingMutationType.CorrectExpense,
+            PendingMutationType.CreateIncomePlan,
             PendingMutationType.UpdateIncomePlan,
             PendingMutationType.CreateRecurringItem,
             PendingMutationType.UpdateRecurringItem,

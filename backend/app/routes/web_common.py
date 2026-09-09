@@ -90,6 +90,7 @@ __all__ = [
     "_offset_stream_view",
     "_require_local",
     "_require_selected_ledger_write",
+    "preserve_original_ledger_form",
     "_resolve_selected_ledger_id",
     "_safe_same_site_redirect_path",
     "_selected_option",
@@ -107,6 +108,17 @@ templates = Jinja2Templates(
     context_processors=[csrf_context],
 )
 templates.env.filters["to_iso"] = _datetime_to_iso
+
+
+def preserve_original_ledger_form(request, db, *, options, selected, fields, task):
+    """Keep an original form in its ledger instead of retargeting it to the live session."""
+    original = str(fields.get("ledger_id") or "")
+    if original == selected:
+        return None
+    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected, page_title="原提交已保留")
+    ctx.update(original_fields=fields, original_ledger_id=original, original_task=task)
+    return templates.TemplateResponse(request=request, name="original_ledger_form.html", context=ctx,
+        status_code=409, headers={"Cache-Control": "no-store"})
 
 _VALID_UI_THEMES = {"paper", "midnight"}
 

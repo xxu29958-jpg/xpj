@@ -85,7 +85,7 @@ def test_original_edit_result_survives_a_later_edit_and_stale_commands_do_not_pu
 
     server_now = datetime(2026, 9, 30, 15, 30, tzinfo=UTC)
     monkeypatch.setattr(income_plan_service, "now_utc", lambda: server_now)
-    created = client.post("/api/income-plans", headers=negotiated_headers(client, identity.app_headers), json={"home_currency_code": "CNY",
+    created = client.post("/api/income-plans", headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())}, json={"home_currency_code": "CNY",
         "intent_month": "2026-08", "label": "原计划", "amount_cents": 10000, "pay_day": 31,
     })
     assert created.status_code == 201

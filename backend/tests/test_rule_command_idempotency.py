@@ -3,7 +3,7 @@
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.errors import AppError
@@ -27,6 +27,8 @@ def _create(client, identity, *, key=None, body=None):
 
 
 def test_create_replay_keeps_original_receipt_after_later_edit_and_delete(client, identity):
+    with SessionLocal() as db:
+        baseline_ids = set(db.scalars(select(CategoryRule.id)))
     key = str(uuid4())
     original = _create(client, identity, key=key)
     path = f"/api/rules/categories/{original['id']}"
@@ -38,7 +40,7 @@ def test_create_replay_keeps_original_receipt_after_later_edit_and_delete(client
     assert deleted.status_code == 200, deleted.text
     assert _create(client, identity, key=key) == original
     with SessionLocal() as db:
-        assert db.scalar(select(func.count()).select_from(CategoryRule)) == 1
+        assert set(db.scalars(select(CategoryRule.id))) == baseline_ids | {original["id"]}
         receipt = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == key))
         assert receipt.response_body == original
         assert receipt.resource_id == str(original["id"])
@@ -74,6 +76,8 @@ def test_create_key_cannot_relabel_any_original_field(client, identity, changes)
 @pytest.mark.parametrize("updating", [False, True])
 def test_receipt_failure_rolls_back_business_write_and_claim(client, identity, monkeypatch, updating):
     original = _create(client, identity) if updating else None
+    with SessionLocal() as db:
+        baseline_ids = set(db.scalars(select(CategoryRule.id)))
     key = str(uuid4())
     mark = commands.mark_idempotency_succeeded
 
@@ -88,15 +92,16 @@ def test_receipt_failure_rolls_back_business_write_and_claim(client, identity, m
     assert failed.status_code == 503, failed.text
     with SessionLocal() as db:
         assert db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == key)) is None
+        assert set(db.scalars(select(CategoryRule.id))) == baseline_ids
         if original:
             rule = db.get(CategoryRule, original["id"])
             assert rule.enabled is True
             assert rule.row_version == original["row_version"]
-        else:
-            assert db.scalar(select(func.count()).select_from(CategoryRule)) == 0
     monkeypatch.setattr(commands, "mark_idempotency_succeeded", mark)
     retried = client.request(method, path, headers=_headers(identity, key), json=body)
     assert retried.status_code == 200, retried.text
+    with SessionLocal() as db:
+        assert set(db.scalars(select(CategoryRule.id))) == baseline_ids | {retried.json()["id"]}
 
 
 def test_missing_accepted_receipt_never_fetches_latest_as_success(client, identity):

@@ -75,6 +75,7 @@ internal fun NavGraphBuilder.addWorkspaceRoute(
                     onOpenGoalCreation = { id -> runtime.navController.navigate(spendingGoalCreationRoute(id)) },
                     onOpenGoalEdit = { id -> runtime.navController.navigate(spendingGoalEditRoute(id)) },
                     onOpenRuleSubmission = { id -> runtime.navController.navigate(categoryRuleSubmissionRoute(id)) },
+                    onOpenIncomeSubmission = { id -> runtime.navController.navigate(incomePlanSubmissionRoute(id)) },
                     onOpenRecurring = { shellState.openSecondaryPage(ProductSecondaryPage.Recurring) }, onCloseRoot = onBack),
                 screenFactory = screenFactory,
                 preferenceControls = workspaceControls.preferences,
@@ -87,6 +88,8 @@ internal fun NavGraphBuilder.addWorkspaceRoute(
 internal fun spendingGoalEditRoute(id: String): String = "${ProductSecondaryPage.SpendingGoal.route}?goal=${android.net.Uri.encode(id)}"
 
 internal fun spendingGoalCreationRoute(id: Long): String = "${ProductSecondaryPage.SpendingGoal.route}?create=$id"
+
+internal fun incomePlanSubmissionRoute(id: Long): String = "${ProductSecondaryPage.IncomePlans.route}?submission=$id"
 
 internal fun budgetRoute(month: String): String = "${ProductSecondaryPage.Budget.route}?month=$month"
 
@@ -139,8 +142,11 @@ internal fun NavGraphBuilder.addPlanRoutes(
                 },
             )
         }
-        composable(ProductSecondaryPage.IncomePlans.route) {
+        composable(route = "${ProductSecondaryPage.IncomePlans.route}?submission={submission}",
+            arguments = listOf(navArgument("submission") { type = NavType.StringType; nullable = true; defaultValue = null }),
+        ) { entry ->
             IncomePlanRoute(
+                originalSubmissionId = entry.arguments?.getString("submission")?.toLongOrNull(),
                 screenFactory = screenFactory,
                 onBack = onBack,
                 onDataChanged = {
@@ -287,6 +293,7 @@ private fun NavGraphBuilder.addObligationSyncRoute(dependencies: MainProductRout
                     onOpenGoalCreation = { id -> runtime.navController.navigate(spendingGoalCreationRoute(id)) },
                     onOpenGoalEdit = { id -> runtime.navController.navigate(spendingGoalEditRoute(id)) },
                     onOpenRuleSubmission = { id -> runtime.navController.navigate(categoryRuleSubmissionRoute(id)) },
+                    onOpenIncomeSubmission = { id -> runtime.navController.navigate(incomePlanSubmissionRoute(id)) },
                     onOpenRecurring = { shellState.openSecondaryPage(ProductSecondaryPage.Recurring) },
                 ))
         }

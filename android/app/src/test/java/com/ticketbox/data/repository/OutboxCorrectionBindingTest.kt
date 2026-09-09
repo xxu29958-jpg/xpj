@@ -138,7 +138,7 @@ private class CorrectionBindingFixture(private val delayedType: PendingMutationT
         rules = RuleRepository(binding, offlineMutations = CategoryRuleOfflineMutationWiring(
             outbox, adapters.categoryRuleUpdateAdapter, adapters.categoryRuleDeleteAdapter,
             adapters.categoryRuleSubmissionAdapter, adapters.categoryRuleReceiptAdapter)),
-        incomePlans = IncomePlanRepository(binding.apiProvider, outbox, adapters.incomePlanUpdateAdapter),
+        incomePlans = IncomePlanRepository(binding.apiProvider, outbox, adapters.incomePlanSubmissionAdapter, adapters.incomePlanReceiptAdapter),
         debtAdjustments = DebtAdjustmentRepository(binding.apiProvider, outbox, adapters.debtAdjustmentAdapter),
         goalEdits = GoalEditRepository(binding.apiProvider, outbox, adapters.goalUpdateAdapter, adapters.goalReceiptAdapter, adapters.goalCreateAdapter),
             budgetSaves = BudgetSaveRepository(binding.apiProvider, outbox, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter)))

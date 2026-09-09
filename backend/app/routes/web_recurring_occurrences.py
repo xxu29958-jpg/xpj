@@ -20,6 +20,7 @@ from app.routes.web_common import (
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _web_redirect,
+    preserve_original_ledger_form,
     templates,
 )
 from app.schemas._recurring_occurrence import RecurringOccurrenceWriteRequest
@@ -101,8 +102,6 @@ def web_set_recurring_occurrence(
 ):
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
-    _require_selected_ledger_write(options, selected)
-    actor_id, _ = resolve_web_actor(db, request, selected)
     attempt = {
         "action": action, "expense_public_id": expense_public_id,
         "expected_expense_row_version": expected_expense_row_version,
@@ -110,6 +109,12 @@ def web_set_recurring_occurrence(
         "expected_series_row_version": expected_series_row_version,
         "idempotency_key": idempotency_key,
     }
+    retained = preserve_original_ledger_form(request, db, options=options, selected=selected,
+        fields={**attempt, "ledger_id": ledger_id, "month": month}, task="关联固定支出付款")
+    if retained is not None:
+        return retained
+    _require_selected_ledger_write(options, selected)
+    actor_id, _ = resolve_web_actor(db, request, selected)
     try:
         if action not in {"link", "clear"}:
             raise AppError("invalid_request", status_code=422)

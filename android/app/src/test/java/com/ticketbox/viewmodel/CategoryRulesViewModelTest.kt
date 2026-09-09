@@ -240,12 +240,12 @@ class CategoryRulesViewModelTest {
         vm.createCategoryRule(CategoryRuleRequest("旅行", "交通", true, 10, 1200, homeCurrencyCode = "JPY"))
         val pending = vm.uiState.first { it.pendingSubmissions.isNotEmpty() }.pendingSubmissions.single()
         queue.markDone(pending.row.id, receiptJson = com.ticketbox.OutboxAdapterGraph().categoryRuleReceiptAdapter.toJson(accepted))
-        advanceUntilIdle()
+        vm.uiState.first { it.pendingSubmissions.singleOrNull()?.confirmed?.homeCurrencyCode == "JPY" }
         canonical = emptyList()
         vm.loadCategoryRules()
-        advanceUntilIdle()
-        assertTrue(vm.uiState.value.categoryRules.isEmpty())
-        assertEquals("JPY", vm.uiState.value.pendingSubmissions.single().confirmed?.homeCurrencyCode)
+        val refreshed = vm.uiState.first { !it.categoryRulesLoading && it.categoryRules.isEmpty() }
+        assertTrue(refreshed.categoryRules.isEmpty())
+        assertEquals("JPY", refreshed.pendingSubmissions.single().confirmed?.homeCurrencyCode)
     }
 
     private fun harness(api: ApiService, tokenStore: TestSessionFixture = TestSessionFixture().apply { saveToken("session-token") },

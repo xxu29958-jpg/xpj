@@ -16,6 +16,7 @@ import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.OutboxWriteBlock
 import com.ticketbox.data.repository.PendingExpenseCorrection
 import com.ticketbox.data.repository.PendingDebtAdjustment
+import com.ticketbox.data.repository.PendingIncomePlanSubmission
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.OutboxStatusUiState
 
@@ -48,7 +49,12 @@ internal fun SyncStatusOriginalIntentSummary(row: OutboxRow, state: OutboxStatus
         com.ticketbox.ui.screens.recurring.RecurringOccurrenceIntentSummary(it)
         TextButton(onClick = actions.onOpenRecurring) { Text(stringResource(R.string.recurring_original_open)) }
     }
-    state.incomeEdits[row.id]?.let { com.ticketbox.ui.screens.IncomePlanIntentSummary(it) }
+    state.incomeSubmissions[row.id]?.let { original ->
+        com.ticketbox.ui.screens.IncomePlanIntentSummary(original)
+        TextButton(onClick = { actions.onOpenIncomeSubmission(row.id) }) {
+            Text(stringResource(R.string.income_plan_submission_open))
+        }
+    }
     state.debtAdjustments[row.id]?.let { com.ticketbox.ui.screens.DebtAdjustmentIntentSummary(it) }
     state.budgetSaves[row.id]?.let { pending ->
         com.ticketbox.ui.screens.budget.BudgetSaveIntentSummary(pending)
@@ -78,21 +84,24 @@ internal fun syncStatusOverview(
     status: OutboxStatus,
     corrections: List<PendingExpenseCorrection>,
     adjustments: List<PendingDebtAdjustment>,
+    incomeSubmissions: List<PendingIncomePlanSubmission> = emptyList(),
 ): SyncStatusOverview =
     SyncStatusOverview(
         queuedCount = status.queueDepth.coerceAtLeast(0),
         conflictCount = status.conflicts.size,
         failedCount = status.failed.size,
         quarantinedCount = status.quarantinedCount.coerceAtLeast(0),
-        reviewRequiredCount = corrections.count { !it.delivered && it.row.status == PendingMutationStatus.Done },
+        reviewRequiredCount = corrections.count { !it.delivered && it.row.status == PendingMutationStatus.Done } +
+            incomeSubmissions.count { it.requiresReview },
         refreshRequiredCount = corrections.count { it.refreshRequired },
         stoppedCount = adjustments.count { it.row.status == PendingMutationStatus.Abandoned },
         writeBlock = status.writeBlock,
     )
 
 @Composable
-internal fun SyncStatusOverviewSection(status: OutboxStatus, corrections: List<PendingExpenseCorrection>, adjustments: List<PendingDebtAdjustment>) {
-    val overview = syncStatusOverview(status, corrections, adjustments)
+internal fun SyncStatusOverviewSection(status: OutboxStatus, corrections: List<PendingExpenseCorrection>,
+    adjustments: List<PendingDebtAdjustment>, incomeSubmissions: List<PendingIncomePlanSubmission>) {
+    val overview = syncStatusOverview(status, corrections, adjustments, incomeSubmissions)
     SettingsSection(
         title = stringResource(R.string.sync_status_overview_title),
         icon = Icons.Filled.Sync,
@@ -129,6 +138,21 @@ internal fun SyncStatusOverviewSection(status: OutboxStatus, corrections: List<P
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
+        }
+    }
+}
+
+@Composable
+internal fun SyncStatusIncomeReviews(state: OutboxStatusUiState, actions: SyncStatusActions) {
+    val reviews = state.incomeSubmissions.values.filter { it.requiresReview }
+    if (reviews.isEmpty()) return
+    SettingsSection(title = stringResource(R.string.sync_status_section_needs_action), icon = Icons.Filled.Sync) {
+        reviews.forEach { original ->
+            Text(stringResource(R.string.income_plan_submission_review))
+            SyncStatusOriginalIntentSummary(original.row, state, actions)
+            TextButton(enabled = state.busyRowId == null, onClick = { actions.onDropFailed(original.row) }) {
+                Text(stringResource(R.string.income_plan_submission_stop_record))
+            }
         }
     }
 }

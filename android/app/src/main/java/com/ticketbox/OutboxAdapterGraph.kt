@@ -158,9 +158,13 @@ internal class OutboxAdapterGraph {
     }
 
     // ADR-0042 Slice F: PATCH /api/income-plans/{publicId} adapter. Shared
-    // between UpdateIncomePlanDispatcher and IncomePlanRepository.enqueueUpdate.
-    val incomePlanUpdateAdapter: JsonAdapter<com.ticketbox.data.repository.IncomePlanEditPayload> = lazyJsonAdapter {
-        moshi.adapter(com.ticketbox.data.repository.IncomePlanEditPayload::class.java)
+    // between IncomePlanDispatcher and IncomePlanRepository.enqueueUpdate.
+    val incomePlanReceiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.IncomePlanDto> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.remote.dto.IncomePlanDto::class.java)
+    }
+
+    val incomePlanSubmissionAdapter: JsonAdapter<com.ticketbox.data.repository.IncomePlanSubmissionPayload> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.repository.IncomePlanSubmissionPayload::class.java)
     }
 
     val budgetSaveAdapter: JsonAdapter<com.ticketbox.data.repository.BudgetSavePayload> = lazyJsonAdapter {

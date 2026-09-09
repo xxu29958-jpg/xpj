@@ -99,6 +99,7 @@ def create_income_plan(
     intent_month: str | None = None,
     actor_account_id: int | None = None,
     now: datetime | None = None,
+    commit: bool = True,
 ) -> MonthlyIncomePlan:
     """Insert a new active income row."""
 
@@ -139,7 +140,8 @@ def create_income_plan(
     append_income_revision(
         db, row, period=period, intent_period=intent_period, change_kind="create", actor_account_id=actor_account_id, when=when,
     )
-    db.commit()
+    if commit:
+        db.commit()
     db.refresh(row)
     return row
 

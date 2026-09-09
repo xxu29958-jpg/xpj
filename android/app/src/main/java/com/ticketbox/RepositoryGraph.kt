@@ -119,7 +119,8 @@ internal class RepositoryGraph(
         apiProvider = apiServiceProvider,
         // The editor persists its month-bearing original intent before dispatch.
         outbox = outbox,
-        incomePlanUpdateAdapter = outboxAdapters.incomePlanUpdateAdapter,
+        incomePlanSubmissionAdapter = outboxAdapters.incomePlanSubmissionAdapter,
+        incomePlanReceiptAdapter = outboxAdapters.incomePlanReceiptAdapter,
     )
 
     val debtRepository = DebtRepository(

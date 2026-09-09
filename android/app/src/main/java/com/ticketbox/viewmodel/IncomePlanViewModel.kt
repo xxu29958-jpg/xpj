@@ -5,8 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.IncomePlanActions
 import com.ticketbox.data.repository.IncomePlanDraft
-import com.ticketbox.data.repository.PendingIncomePlanEdit
-import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.data.repository.PendingIncomePlanSubmission
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.IncomePlan
@@ -41,19 +40,16 @@ data class IncomePlanUiState(
     val forecastMonth: String? = null,
     val forecastCurrencyCode: String? = null,
     val missingCurrencyCodes: List<String> = emptyList(),
-    val pendingEdits: List<PendingIncomePlanEdit> = emptyList(),
+    val pendingSubmissions: List<PendingIncomePlanSubmission> = emptyList(),
+    val selectedSubmissionId: Long? = null,
+    val binding: LogicalSessionBinding? = null,
     val currentMonthSummary: IncomePlanMonthSummary = IncomePlanMonthSummary(),
     val error: UiText? = null,
     val addDraft: IncomePlanDraftUi = IncomePlanDraftUi(intentMonth = "", incomeMonthInput = ""),
     val isSubmitting: Boolean = false,
     val flashMessage: UiText? = null,
-    /**
-     * 一次性信号：[submitDraft] 真正成功后置 true；底部抽屉屏只在它为 true 时关闭（关时调
-     * [resetDraft] 一并清掉本信号 + 草稿，镜像 LedgerViewModel.manualCreateDone 的 ack 约定）。
-     * failure 不置位 → 抽屉保留、表单错误可见（修「乐观关闭」：旧逻辑按本地 `addDraft.isValid`
-     * 关闭、无视 create() 结果，后端失败时静默丢失）。
-     */
-    val addSucceeded: Boolean = false,
+    /** The editor closes only after the original creation is durable in Room. */
+    val addSubmitted: Boolean = false,
 )
 
 enum class IncomePlanLoadState {
@@ -140,26 +136,32 @@ class IncomePlanViewModel(
     private var activeBinding: LogicalSessionBinding? = null
     private var activeCanModify = false
     private var queueJob: Job? = null
+    private var requestedSubmissionId: Long? = null
 
     init {
         viewModelScope.launch {
             repository.observeActiveLedgerAccess()
                 .distinctUntilChanged()
                 .collect { access ->
-                    activeBinding = access?.binding
                     activeCanModify = access?.canModify ?: false
+                    if (activeBinding == access?.binding) {
+                        _state.update { it.copy(canModify = activeCanModify) }
+                        return@collect
+                    }
+                    val selected = requestedSubmissionId.takeIf { activeBinding == null }
+                    requestedSubmissionId = null
+                    activeBinding = access?.binding
                     bindingGeneration += 1
-                    _state.value = IncomePlanUiState(
-                        canModify = access?.canModify ?: false,
-                    )
+                    _state.value = IncomePlanUiState(canModify = activeCanModify, binding = activeBinding,
+                        selectedSubmissionId = selected)
                     queueJob?.cancel()
                     if (access != null) {
                         queueJob = viewModelScope.launch {
                             var completed = emptySet<Long>()
-                            repository.observeEdits(access.binding).collect { rows ->
+                            repository.observeSubmissions(access.binding).collect { rows ->
                                 if (activeBinding != access.binding) return@collect
-                                val done = rows.filter { it.row.status == PendingMutationStatus.Done }.map { it.row.id }.toSet()
-                                _state.update { it.copy(pendingEdits = rows.filter { row -> row.row.status != PendingMutationStatus.Done }) }
+                                val done = rows.filter { it.isConfirmed }.map { it.row.id }.toSet()
+                                _state.update { it.copy(pendingSubmissions = rows) }
                                 if ((done - completed).isNotEmpty()) { onDataChanged(); refresh() }
                                 completed = done
                             }
@@ -168,6 +170,11 @@ class IncomePlanViewModel(
                     }
                 }
         }
+    }
+
+    fun openSubmission(originalSubmissionId: Long) {
+        if (activeBinding == null) requestedSubmissionId = originalSubmissionId
+        _state.update { it.copy(selectedSubmissionId = originalSubmissionId) }
     }
 
     fun refresh() {
@@ -273,11 +280,12 @@ class IncomePlanViewModel(
     fun resetDraft() {
         _state.update { it.copy(addDraft = IncomePlanDraftUi(intentMonth = it.forecastMonth.orEmpty(),
             incomeMonthInput = it.forecastMonth.orEmpty(), homeCurrency = CurrencyCode.fromStorageKeyOrNull(it.forecastCurrencyCode)),
-            isSubmitting = false, addSucceeded = false) }
+            isSubmitting = false, addSubmitted = false) }
     }
 
     fun submitDraft() {
         val expectedBinding = activeBinding ?: return
+        if (_state.value.isSubmitting || !activeCanModify) return
         if (_state.value.addDraft.homeCurrency == null) {
             // R12-D：币种未确认禁写（不落 CNY 兜底）。
             _state.update {
@@ -306,18 +314,17 @@ class IncomePlanViewModel(
             val result = repository.create(expectedBinding, draft)
             if (binding != bindingGeneration) return@launch
             result.fold(
-                onSuccess = {
+                onSuccess = { rowId ->
                     _state.update {
                         it.copy(
+                            selectedSubmissionId = rowId,
                             isSubmitting = false,
                             addDraft = IncomePlanDraftUi(intentMonth = it.forecastMonth.orEmpty(),
                                 incomeMonthInput = it.forecastMonth.orEmpty(), homeCurrency = it.addDraft.homeCurrency),
-                            flashMessage = UiText.res(R.string.income_plan_added),
-                            addSucceeded = true,
+                            flashMessage = UiText.res(R.string.income_plan_submission_saved),
+                            addSubmitted = true,
                         )
                     }
-                    onDataChanged()
-                    refresh()
                 },
                 onFailure = { err ->
                     _state.update {
@@ -333,11 +340,11 @@ class IncomePlanViewModel(
         }
     }
 
-    fun recoverEdit(pending: PendingIncomePlanEdit, drop: Boolean) {
+    fun recoverSubmission(pending: PendingIncomePlanSubmission, drop: Boolean) {
         val binding = activeBinding ?: return
-        if (pending !in _state.value.pendingEdits) return
+        if (pending !in _state.value.pendingSubmissions) return
         viewModelScope.launch {
-            repository.recoverEdit(binding, pending, drop).onFailure { error ->
+            repository.recoverSubmission(binding, pending, drop).onFailure { error ->
                 if (activeBinding == binding) _state.update { it.copy(error = error.toUiText(R.string.error_generic)) }
             }
         }

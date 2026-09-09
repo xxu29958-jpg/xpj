@@ -122,6 +122,7 @@ internal fun IncomePlanRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
     onDataChanged: () -> Unit = {},
+    originalSubmissionId: Long? = null,
 ) {
     val incomePlanViewModel: IncomePlanViewModel = viewModel(
         key = IncomePlanViewModelKey,
@@ -139,10 +140,12 @@ internal fun IncomePlanRoute(
             onDataChanged = onDataChanged,
         ),
     )
+    LaunchedEffect(incomePlanViewModel, originalSubmissionId) {
+        originalSubmissionId?.let(incomePlanViewModel::openSubmission)
+    }
     IncomePlanScreen(
         viewModel = incomePlanViewModel,
         editViewModel = incomePlanEditViewModel,
-        currency = LocalCurrencyDisplay.current,
         onBack = onBack,
     )
 }

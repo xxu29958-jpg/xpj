@@ -176,7 +176,7 @@ class IncomePlanViewModelTest {
     }
 
     @Test
-    fun submitDraftHappyPathClearsAndRefreshes() = runTest(dispatcher) {
+    fun submitDraftClosesOnlyAfterDurablePublicationAndDoesNotInventAcceptance() = runTest(dispatcher) {
         val repo = FakeRepository()
         val viewModel = IncomePlanViewModel(repo)
         advanceUntilIdle()
@@ -187,12 +187,15 @@ class IncomePlanViewModelTest {
         viewModel.submitDraft()
         advanceUntilIdle()
         assertEquals(1, repo.createCalls)
+        assertEquals(1, repo.listActiveCalls)
+        assertEquals(1L, viewModel.state.value.selectedSubmissionId)
+        assertTrue(viewModel.state.value.activePlans.isEmpty())
         assertEquals(IncomeSourceType.SALARY, repo.lastDraft?.sourceType)
         assertEquals(IncomeFrequency.ONE_TIME, repo.lastDraft?.frequency)
         assertNotNull(repo.lastDraft?.incomeMonth)
         assertEquals(1_000_000L, repo.lastDraft?.amountCents)
         assertEquals(10, repo.lastDraft?.payDay)
-        assertEquals(UiText.res(R.string.income_plan_added), viewModel.state.value.flashMessage)
+        assertEquals(UiText.res(R.string.income_plan_submission_saved), viewModel.state.value.flashMessage)
         assertEquals("", viewModel.state.value.addDraft.label) // reset
     }
 
@@ -315,9 +318,9 @@ class IncomePlanViewModelTest {
         viewModel.submitDraft()
         advanceUntilIdle()
 
-        assertTrue(viewModel.state.value.addSucceeded)
+        assertTrue(viewModel.state.value.addSubmitted)
         viewModel.resetDraft()
-        assertFalse(viewModel.state.value.addSucceeded)
+        assertFalse(viewModel.state.value.addSubmitted)
     }
 
     @Test
@@ -333,7 +336,7 @@ class IncomePlanViewModelTest {
         viewModel.submitDraft()
         advanceUntilIdle()
 
-        assertFalse(viewModel.state.value.addSucceeded)
+        assertFalse(viewModel.state.value.addSubmitted)
     }
 
     @Test
@@ -466,7 +469,7 @@ class IncomePlanViewModelTest {
         var active: IncomePlanListing = IncomePlanListing(emptyList(), 0L, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0, homeCurrencyCode = "CNY"),
         private val archived: List<IncomePlan> = emptyList(),
         private val canModify: Boolean = true,
-        private val createResult: Result<IncomePlan>? = null,
+        private val createResult: Result<Long>? = null,
     ) : IncomePlanActions {
         val activeAccessFlow = MutableStateFlow<LedgerAccessContext?>(
             incomePlanAccess(canModify = canModify),
@@ -478,11 +481,11 @@ class IncomePlanViewModelTest {
         var activeResponder: (suspend (Int) -> Result<IncomePlanListing>)? = null
         var restoreResponder: (suspend () -> Result<IncomePlan>)? = null
 
-        override fun describeEdit(row: com.ticketbox.data.repository.OutboxRow): com.ticketbox.data.repository.PendingIncomePlanEdit? = null
-        override fun observeEdits(expectedBinding: LogicalSessionBinding) =
-            kotlinx.coroutines.flow.flowOf(emptyList<com.ticketbox.data.repository.PendingIncomePlanEdit>())
-        override suspend fun recoverEdit(expectedBinding: LogicalSessionBinding,
-            pending: com.ticketbox.data.repository.PendingIncomePlanEdit, drop: Boolean) = Result.success(Unit)
+        override fun describeSubmission(row: com.ticketbox.data.repository.OutboxRow): com.ticketbox.data.repository.PendingIncomePlanSubmission? = null
+        override fun observeSubmissions(expectedBinding: LogicalSessionBinding) =
+            kotlinx.coroutines.flow.flowOf(emptyList<com.ticketbox.data.repository.PendingIncomePlanSubmission>())
+        override suspend fun recoverSubmission(expectedBinding: LogicalSessionBinding,
+            pending: com.ticketbox.data.repository.PendingIncomePlanSubmission, drop: Boolean) = Result.success(Unit)
 
         override fun canModifyLedger(): Boolean = canModify
 
@@ -504,10 +507,10 @@ class IncomePlanViewModelTest {
         override suspend fun create(
             expectedBinding: LogicalSessionBinding,
             draft: IncomePlanDraft,
-        ): Result<IncomePlan> {
+        ): Result<Long> {
             createCalls += 1
             lastDraft = draft
-            return createResult ?: Result.success(incomeViewModelStub(draft.label))
+            return createResult ?: Result.success(1L)
         }
 
         override suspend fun enqueueUpdate(expectedBinding: LogicalSessionBinding, baseline: IncomePlan,

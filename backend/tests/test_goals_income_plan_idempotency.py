@@ -52,7 +52,7 @@ def _create_plan(
 ) -> dict:
     resp = client.post(
         "/api/income-plans",
-        headers=negotiated_headers(client, identity.app_headers),
+        headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
         json={"home_currency_code": "CNY", "intent_month": "2026-05",
             "label": label,
             "source_type": "salary",

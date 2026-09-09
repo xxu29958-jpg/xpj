@@ -99,13 +99,13 @@ class OutboxStatusViewModelTest {
         val vm = outboxStatusViewModelFactory(harness.outbox, harness.expenseRepository,
             OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtAdjustments, harness.goalEdits, harness.budgetSaves, harness.recurringItems, harness.rules))
             .create(OutboxStatusViewModel::class.java)
-        runCurrent()
-        kotlin.test.assertNotNull(vm.uiState.value.incomeEdits[id])
+        vm.uiState.first { it.bindingReady && it.incomeSubmissions.containsKey(id) }
         vm.retry(row)
-        runCurrent()
+        vm.uiState.first { it.message != null && it.busyRowId == null }
         assertEquals(row, harness.outbox.observeStatus().first().failed.single())
-        assertEquals(UiText.res(R.string.income_plan_edit_unsupported), vm.uiState.value.message)
+        assertEquals(UiText.raw("请先核对原收入提交。"), vm.uiState.value.message)
         assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
+        vm.viewModelScope.coroutineContext.job.cancelAndJoin()
     }
 
     @Test

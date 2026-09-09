@@ -1,6 +1,7 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.PendingMutationType
+import com.ticketbox.data.local.PendingMutationStatus
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -10,6 +11,71 @@ import kotlin.test.assertEquals
  *  and success-only firing. Split out of OutboxDrainEngineTest when the
  *  class crossed the LargeClass cap. */
 class OutboxDrainAdviceInvalidationTest {
+    @Test
+    fun incomeCreationReplayInvalidatesAdviceAfterDoneWithoutAnIncomeScreen() = runTest {
+        val dao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(dao)
+        val engine = OutboxDrainEngine(outbox,
+            listOf(TypedStubDispatcher(type = PendingMutationType.CreateIncomePlan)))
+        val rowId = outbox.enqueue(PendingMutationType.CreateIncomePlan,
+            "income_plan_create:original", "{}", 0L, "original")
+        var fired = 0
+        engine.onAdviceInputReplaySucceeded = {
+            assertEquals(PendingMutationStatus.Done.wireValue, dao.rows.getValue(rowId).status)
+            fired += 1
+        }
+
+        assertEquals(1, engine.drainOnce().done)
+        assertEquals(1, fired)
+        assertEquals(0, engine.drainOnce().done)
+        assertEquals(1, fired, "An already settled create must not invalidate again")
+    }
+
+    @Test
+    fun unacceptedIncomeCreationNeverPublishesAdviceInputSuccess() = runTest {
+        val refusals = listOf(
+            DispatchResult.RetryableFailure("offline"),
+            DispatchResult.Failure("client_upgrade_required"),
+            DispatchResult.Conflict("original requires review"),
+            DispatchResult.Discarded("not an accepted creation"),
+        )
+        for (result in refusals) {
+            val (engine, outbox) = withDispatcher(TypedStubDispatcher(
+                type = PendingMutationType.CreateIncomePlan, result = result))
+            var fired = 0
+            engine.onAdviceInputReplaySucceeded = { fired += 1 }
+            outbox.enqueue(PendingMutationType.CreateIncomePlan,
+                "income_plan_create:original", "{}", 0L, "original")
+
+            assertEquals(0, engine.drainOnce().done, result.toString())
+            assertEquals(0, fired, result.toString())
+        }
+    }
+
+    @Test
+    fun incomeCreationInvalidatesOnlyWhenItsOriginalBindingIsDrained() = runTest {
+        val originalBinding = testOutboxBinding()
+        var binding = originalBinding
+        val dao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(dao, bindingProvider = { binding })
+        val engine = OutboxDrainEngine(outbox,
+            listOf(TypedStubDispatcher(type = PendingMutationType.CreateIncomePlan)))
+        val notifiedBindings = mutableListOf<OutboxBinding>()
+        engine.onAdviceInputReplaySucceeded = { notifiedBindings += binding }
+        val rowId = outbox.enqueue(PendingMutationType.CreateIncomePlan,
+            "income_plan_create:original", "{}", 0L, "original")
+
+        outbox.withBindingTransition { binding = originalBinding.copy(ledgerId = "other-ledger") }
+        assertEquals(0, engine.drainOnce().attempted)
+        assertEquals(emptyList(), notifiedBindings)
+        assertEquals(PendingMutationStatus.Pending.wireValue, dao.rows.getValue(rowId).status)
+
+        outbox.withBindingTransition { binding = originalBinding }
+        assertEquals(1, engine.drainOnce().done)
+        assertEquals(listOf(originalBinding), notifiedBindings)
+        assertEquals(PendingMutationStatus.Done.wireValue, dao.rows.getValue(rowId).status)
+    }
+
     @Test
     fun adviceInputReplaySuccessFiresInvalidationSeam() = runTest {
         // 218-B4 review: advice generated between queue and replay used the

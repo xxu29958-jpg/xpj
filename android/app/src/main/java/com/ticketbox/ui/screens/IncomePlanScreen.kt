@@ -15,17 +15,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Restore
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import com.ticketbox.data.local.PendingMutationStatus
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -46,6 +45,7 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppAction
+import com.ticketbox.ui.components.AppBusyGuardedSheet
 import com.ticketbox.ui.components.AppContentStateCopy
 import com.ticketbox.ui.components.AppContentStatePresentation
 import com.ticketbox.ui.components.AppContentStateSpec
@@ -101,12 +101,11 @@ private data class AddIncomePlanSheetActions(
 fun IncomePlanScreen(
     viewModel: IncomePlanViewModel,
     editViewModel: IncomePlanEditViewModel,
-    currency: CurrencyDisplay,
     onBack: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val editState by editViewModel.state.collectAsStateWithLifecycle()
-    var showAddSheet by rememberSaveable { mutableStateOf(false) }
+    var showAddSheet by rememberSaveable(state.binding) { mutableStateOf(false) }
 
     IncomePlanSideEffects(
         state, editState, viewModel, editViewModel, closeAddSheet = { showAddSheet = false },
@@ -134,7 +133,7 @@ fun IncomePlanScreen(
                 if (state.canModify) {
                     AppSecondaryButton(
                         text = stringResource(R.string.income_plan_add_action_short),
-                        enabled = state.forecastMonth != null,
+                        enabled = state.forecastMonth != null && !state.isSubmitting,
                         leadingIcon = Icons.Default.Add,
                         onClick = {
                             viewModel.resetDraft()
@@ -156,7 +155,6 @@ fun IncomePlanScreen(
     IncomePlanAddSheetHost(
         showAddSheet = showAddSheet,
         state = state,
-        currency = currency,
         viewModel = viewModel,
         onDismiss = {
             showAddSheet = false
@@ -185,11 +183,9 @@ private fun IncomePlanSideEffects(
         delay(FlashDismissMillis)
         editViewModel.dismissFlash()
     }
-    // 成功才关抽屉：只在 create() 真正成功(addSucceeded)时收起，失败保留抽屉让 validationError 可见
-    // （修「乐观关闭」——旧逻辑在 onSubmit 里按本地 addDraft.isValid 关闭、无视网络结果）。resetDraft()
-    // 一并清掉一次性信号 + 草稿；effect 体全程非挂起，关闭被打断也不会把 addSucceeded 卡在 true。
-    LaunchedEffect(state.addSucceeded) {
-        if (!state.addSucceeded) return@LaunchedEffect
+    // Room publication closes the editor; accepted delivery remains visible in the original submission card.
+    LaunchedEffect(state.addSubmitted) {
+        if (!state.addSubmitted) return@LaunchedEffect
         closeAddSheet()
         viewModel.resetDraft()
     }
@@ -216,7 +212,8 @@ private fun LazyListScope.incomePlanBody(
     // 反馈横幅落在页头下方（/web flash 同位）：只在有消息时占位，避免空 item
     // 在 spacedBy 下留出幽灵间距。flashMessage→Success / error→Danger。
     state.flashMessage?.let { msg ->
-        item { AppStatusBanner(message = msg, tone = MessageTone.Success) }
+        item { AppStatusBanner(message = msg, tone = if (msg == UiText.res(R.string.income_plan_submission_saved))
+            MessageTone.Info else MessageTone.Success) }
     }
     editFlash?.let { msg ->
         item { AppStatusBanner(message = msg, tone = MessageTone.Success) }
@@ -229,8 +226,9 @@ private fun LazyListScope.incomePlanBody(
             IncomeTotalSummary(state)
         }
     }
-    if (state.pendingEdits.isNotEmpty()) {
-        item { IncomePlanPendingEdits(state.pendingEdits, viewModel::recoverEdit) }
+    if (state.pendingSubmissions.isNotEmpty() || state.selectedSubmissionId != null) {
+        item { key(state.binding) { IncomePlanPendingSubmissions(state.pendingSubmissions, state.selectedSubmissionId,
+            state.canModify, viewModel::recoverSubmission) } }
     }
     when (bodyState) {
         IncomePlanBodyState.Loading,
@@ -270,7 +268,7 @@ private fun LazyListScope.incomePlanSections(
                 IncomePlanRow(
                     plan = plan,
                     // 行本体即编辑入口；归档收进编辑器（W2-C）。
-                    onClick = if (state.canModify && state.pendingEdits.none { it.row.targetId == "income_plan:${plan.publicId}" })
+                    onClick = if (state.canModify && state.pendingSubmissions.none { it.row.targetId == "income_plan:${plan.publicId}" && it.row.status != PendingMutationStatus.Done })
                         ({ onEditPlan(plan) }) else null,
                 )
             }
@@ -282,7 +280,8 @@ private fun LazyListScope.incomePlanSections(
         items(state.archivedPlans, key = { "archived-${it.publicId}" }) { plan ->
             IncomePlanRow(
                 plan = plan,
-                trailingAction = if (state.canModify) {
+                trailingAction = if (state.canModify && state.pendingSubmissions.none {
+                    it.row.targetId == "income_plan:${plan.publicId}" && it.row.status != PendingMutationStatus.Done }) {
                     IncomePlanRowAction(
                         icon = Icons.Default.Restore,
                         description = stringResource(R.string.income_plan_card_restore_action),
@@ -465,24 +464,21 @@ private fun IncomePlanRowSummary(
     }
 }
 
-/** 添加抽屉宿主：表单与编辑共享 [IncomePlanDraftForm]；成功才由 addSucceeded ack 关闭。 */
-@OptIn(ExperimentalMaterial3Api::class)
+/** 添加抽屉宿主：表单与编辑共享 [IncomePlanDraftForm]；原提交持久化后由 addSubmitted 关闭。 */
 @Composable
 private fun IncomePlanAddSheetHost(
     showAddSheet: Boolean,
     state: IncomePlanUiState,
-    currency: CurrencyDisplay,
     viewModel: IncomePlanViewModel,
     onDismiss: () -> Unit,
 ) {
     if (!showAddSheet) return
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    AppBusyGuardedSheet(
+        isSubmitting = state.isSubmitting,
+        onDismiss = onDismiss,
     ) {
         AddIncomePlanSheet(
             state = state,
-            currency = currency,
             actions = AddIncomePlanSheetActions(
                 onLabel = viewModel::updateDraftLabel,
                 onSourceType = viewModel::updateDraftSource,
@@ -501,16 +497,15 @@ private fun IncomePlanAddSheetHost(
 @Composable
 private fun AddIncomePlanSheet(
     state: IncomePlanUiState,
-    currency: CurrencyDisplay,
     actions: AddIncomePlanSheetActions,
 ) {
     AppSheetScaffold(title = stringResource(R.string.income_plan_sheet_title)) {
+        if (!state.canModify) Text(stringResource(R.string.common_readonly_ledger))
         IncomePlanDraftForm(
             state = IncomePlanDraftFormState(
                 draft = state.addDraft,
-                isSubmitting = state.isSubmitting,
+                isSubmitting = state.isSubmitting || !state.canModify,
             ),
-            currency = currency,
             fieldCallbacks = IncomePlanDraftFieldCallbacks(
                 onLabel = actions.onLabel,
                 onAmount = actions.onAmount,
@@ -531,7 +526,7 @@ private fun AddIncomePlanSheet(
                     stringResource(R.string.income_plan_sheet_save)
                 },
                 onClick = actions.onSubmit,
-                enabled = !state.isSubmitting,
+                enabled = !state.isSubmitting && state.canModify,
             ),
             secondary = AppAction(
                 text = stringResource(R.string.common_cancel),
