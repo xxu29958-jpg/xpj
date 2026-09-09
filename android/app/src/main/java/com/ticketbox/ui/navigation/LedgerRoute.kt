@@ -1,8 +1,6 @@
 package com.ticketbox.ui.navigation
 
 import android.content.ActivityNotFoundException
-import android.content.Context
-import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
@@ -13,7 +11,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
-import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.ui.screens.LedgerLaunchRequest
 import com.ticketbox.ui.screens.LedgerScreen
 import com.ticketbox.ui.screens.LedgerScreenActions
@@ -153,19 +150,4 @@ private fun ApplyPendingLedgerDrill(
             null -> Unit
         }
     }
-}
-
-private fun writeCsvExport(
-    context: Context,
-    uri: Uri,
-    exportFile: CsvExport,
-    onResult: (Boolean) -> Unit,
-) {
-    runCatching {
-        context.contentResolver.openOutputStream(uri)?.use { output ->
-            output.write(exportFile.bytes)
-        } ?: error("Output stream is null")
-    }
-        .onSuccess { onResult(true) }
-        .onFailure { onResult(false) }
 }

@@ -15,6 +15,7 @@ class RepositoryException(
     message: String,
     val errorCode: String? = null,
     val conflict: RepositoryConflictDetails = RepositoryConflictDetails(),
+    val localFailure: LocalRepositoryFailure? = null,
 ) : RuntimeException(message) {
     val conflictTagPublicId: String? get() = conflict.tag.publicId
     val conflictTagRowVersion: Long? get() = conflict.tag.rowVersion
@@ -29,6 +30,14 @@ class RepositoryException(
     val conflictAliasDeleted: Boolean? get() = conflict.alias.deleted
     val conflictRecurringPublicId: String? get() = conflict.recurring.publicId
     val conflictRecurringStatus: String? get() = conflict.recurring.status
+}
+
+/** Client validation outcomes are separate from the server's error-code protocol. */
+enum class LocalRepositoryFailure {
+    ManualRateReviewRequired,
+    ManualRateUnresolved,
+    ManualRateChanged,
+    BudgetInputsUnverified,
 }
 
 data class RepositoryConflictDetails(

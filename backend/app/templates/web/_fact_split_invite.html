@@ -17,6 +17,7 @@
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <input type="hidden" name="idempotency_key" value="{{ split_invite.idempotency_key }}">
     <input type="hidden" name="expected_row_version" value="{{ split_invite.expected_row_version }}">
+    {% for name, value in edit_return_fields.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
     <div class="split-invite-fields">
       <div class="product-field">
         <label for="split-invite-receiver">分摊给</label>
@@ -31,7 +32,7 @@
         <input id="split-invite-amount" type="number" name="amount_yuan" value="{{ split_invite.amount_yuan|default(split_invite.remaining_yuan) }}" min="{{ currency_input.positive_amount_min }}" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="例如 {{ currency_input.amount_example }}" required>
       </div>
       {% if split_invite.requires_review %}
-      <a href="/web/expenses/{{ expense.id }}/edit?ledger_id={{ selected_ledger_id|urlencode }}" class="product-button product-button--primary">重新核对账单后发起</a>
+      <a href="{{ edit_current_href }}" class="product-button product-button--primary">重新核对账单后发起</a>
       {% else %}
       <button type="submit" class="product-button product-button--primary">发起拆账</button>
       {% endif %}
@@ -69,6 +70,7 @@
           <form method="post" action="/web/bill-splits/{{ row.public_id }}/cancel" class="inline-form">
             <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
             <input type="hidden" name="return_expense_id" value="{{ expense.id }}">
+            {% for name, value in edit_return_fields.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
             <button type="submit" class="product-button product-button--quiet product-button--small" data-confirm="撤回这份拆账邀请？">撤回</button>
           </form>
           {% else %}

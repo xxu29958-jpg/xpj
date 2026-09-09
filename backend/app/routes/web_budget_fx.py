@@ -1,11 +1,12 @@
-"""Manual FX editing returns to the original budget task through the existing rate owner."""
+"""Manual FX editing returns to the original money task through the existing rate owner."""
 
 from datetime import date
+from urllib.parse import urlencode
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Form, Request, Response
 from fastapi.responses import HTMLResponse
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -28,8 +29,39 @@ from app.services.exchange_rate_service import list_exchange_rates, set_exchange
 from app.services.spending_contract_service import current_accounting_month
 
 router = APIRouter(prefix="/rates", tags=["web"])
-_TASK_FIELDS = ("ledger_id", "month", "home_currency_code", "savings_target_yuan", "reserved_buffer_yuan")
+_TASK_FIELDS = ("ledger_id", "month", "home_currency_code", "savings_target_yuan", "reserved_buffer_yuan",
+    "return_to", "granularity", "ranking_metric", "merchant_category")
 _RATE_FIELDS = ("currency_code", "rate_date", "rate_to_cny", "expected_row_version", "idempotency_key")
+
+
+class BudgetRateForm(BaseModel):
+    """Raw native fields survive validation before the command owner parses them."""
+
+    ledger_id: str = ""
+    month: str = ""
+    home_currency_code: str = ""
+    savings_target_yuan: str = ""
+    reserved_buffer_yuan: str = ""
+    return_to: str = ""
+    granularity: str = ""
+    ranking_metric: str = ""
+    merchant_category: str = ""
+    currency_code: str = ""
+    rate_date: str = ""
+    rate_to_cny: str = ""
+    expected_row_version: str = ""
+    idempotency_key: str = ""
+    review_latest: str = ""
+
+
+def _task_return(values):
+    params = {"month": values["month"], "home_currency_code": values["home_currency_code"]}
+    if values["return_to"] == "reports":
+        params.update(granularity=values["granularity"] or "day", ranking_metric=values["ranking_metric"] or "amount",
+            merchant_category=values["merchant_category"])
+        return "/web/reports", params, "期间报表"
+    params.update(savings_target_yuan=values["savings_target_yuan"], reserved_buffer_yuan=values["reserved_buffer_yuan"])
+    return "/web/budget-advise", params, "预算"
 
 
 def _current_rates(db, selected, values):
@@ -55,8 +87,10 @@ def _render_rates(request, db, options, selected, values, *, error=None, conflic
     except (AppError, ValueError):
         rates = []
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected, page_title="人工汇率")
+    path, params, label = _task_return(values)
     ctx.update(values=values, rates=rates, error=error, conflict=conflict,
-        rate_task={key: values[key] for key in _TASK_FIELDS}, currency_codes=sorted(supported_currency_codes()))
+        rate_task={key: values[key] for key in _TASK_FIELDS}, currency_codes=sorted(supported_currency_codes()),
+        return_href=path + "?" + urlencode({"ledger_id": values["ledger_id"], **params}), return_label=label)
     return templates.TemplateResponse(request=request, name="budget_rates.html", context=ctx,
         status_code=status_code, headers={"Cache-Control": "no-store"})
 
@@ -88,8 +122,9 @@ def _rate_payload(values):
 
 
 @router.post("", response_class=HTMLResponse)
-async def save_budget_rate(request: Request, db: Session = Depends(get_db), _local: None = LocalOnly) -> Response:
-    raw = await request.form()
+def save_budget_rate(request: Request, form: BudgetRateForm = Form(),
+    db: Session = Depends(get_db), _local: None = LocalOnly) -> Response:
+    raw = form.model_dump()
     values = {key: str(raw.get(key, "")) for key in (*_TASK_FIELDS, *_RATE_FIELDS)}
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, values["ledger_id"] or None, options, request=request)
@@ -112,7 +147,6 @@ async def save_budget_rate(request: Request, db: Session = Depends(get_db), _loc
         error = exc.message if isinstance(exc, AppError) else "请检查币种、日期和汇率。原输入已保留。"
         return _render_rates(request, db, options, selected, values, error=error, conflict=conflict,
             status_code=exc.status_code if isinstance(exc, AppError) else 422)
-    return _web_redirect("/web/budget-advise", ledger_id=selected, month=values["month"],
-        home_currency_code=values["home_currency_code"], savings_target_yuan=values["savings_target_yuan"],
-        reserved_buffer_yuan=values["reserved_buffer_yuan"],
-        message=f"{receipt.currency_code} → {receipt.home_currency_code} · {receipt.rate_date} 的提交已确认。以下按当前汇率重新计算。")
+    path, params, _ = _task_return(values)
+    return _web_redirect(path, ledger_id=selected, **params,
+        msg=f"{receipt.currency_code} → {receipt.home_currency_code} · {receipt.rate_date} 的提交已确认。以下按当前汇率重新计算。")

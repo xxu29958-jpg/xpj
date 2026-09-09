@@ -47,44 +47,44 @@ class ManualExchangeRateRepository(private val provider: ApiServiceProvider, pri
             requireManualRate(rows.all { row -> validRateBaseline(row) &&
                 (currencyCode == null || row.currencyCode == currencyCode) &&
                 (homeCurrencyCode == null || row.homeCurrencyCode == homeCurrencyCode) &&
-                (rateDate == null || row.rateDate == rateDate) }, "manual_rate_current_unverified")
+                (rateDate == null || row.rateDate == rateDate) }, LocalRepositoryFailure.ManualRateChanged)
             requireManualRate(rows.distinctBy { Triple(it.currencyCode, it.homeCurrencyCode, it.rateDate) }.size == rows.size,
-                "manual_rate_current_unverified")
+                LocalRepositoryFailure.ManualRateChanged)
         }
     }
 
     override suspend fun enqueueRate(expectedBinding: LogicalSessionBinding, month: String,
         request: ExchangeRateRequestDto, originalPublicId: String?): Result<Long> = errors.safeCall {
-        requireManualRate(ledgerRoleCanModify(provider.currentLedgerRole()), "permission_denied")
+        if (!ledgerRoleCanModify(provider.currentLedgerRole())) throw RepositoryException("permission_denied", "permission_denied")
         val bound = guard.bindExact(expectedBinding)
         val payload = ManualRatePayload(1, month, originalPublicId, request)
-        requireManualRate(payload.isSupported(), "manual_rate_original_unverified")
+        requireManualRate(payload.isSupported(), LocalRepositoryFailure.ManualRateReviewRequired)
         requireManualRate(observeRates(expectedBinding).first().none {
             it.row.targetId == manualRateTarget(request) && !it.isConfirmed
-        }, "manual_rate_submission_unresolved")
+        }, LocalRepositoryFailure.ManualRateUnresolved)
         outbox.enqueue(boundRequest = bound, intent = PendingMutationIntent(PendingMutationType.SaveManualExchangeRate,
             manualRateTarget(request), payloadAdapter.toJson(payload), request.expectedRowVersion, UUID.randomUUID().toString()),
-            validateTargetRows = { rows -> requireManualRate(rows.none { it.status != PendingMutationStatus.Done }, "manual_rate_submission_unresolved") })
+            validateTargetRows = { rows -> requireManualRate(rows.none { it.status != PendingMutationStatus.Done }, LocalRepositoryFailure.ManualRateUnresolved) })
     }
 
     override suspend fun recoverRate(expectedBinding: LogicalSessionBinding, pending: PendingManualRateSubmission,
         drop: Boolean): Result<Unit> = errors.safeCall {
         val bound = guard.bindExact(expectedBinding)
         val original = observeRates(expectedBinding).first().firstOrNull { it.row.id == pending.row.id }
-        requireManualRate(original?.row == pending.row, "manual_rate_submission_changed")
+        requireManualRate(original?.row == pending.row, LocalRepositoryFailure.ManualRateChanged)
         requireNotNull(original)
-        requireManualRate(if (drop) original.canDrop else original.canRetry && ledgerRoleCanModify(provider.currentLedgerRole()), "manual_rate_review_required")
+        requireManualRate(if (drop) original.canDrop else original.canRetry && ledgerRoleCanModify(provider.currentLedgerRole()), LocalRepositoryFailure.ManualRateReviewRequired)
         val changed = when (original.row.status) {
             PendingMutationStatus.Done -> outbox.discardCompletedOriginalSubmission(bound, original.row)
             PendingMutationStatus.Conflict -> outbox.resolveConflict(original.row.id, ConflictResolution.DropMine, bound)
             else -> outbox.resolveFailed(original.row.id, if (drop) FailedResolution.Drop else FailedResolution.Retry(), bound)
         }
-        requireManualRate(changed, "manual_rate_submission_changed")
+        requireManualRate(changed, LocalRepositoryFailure.ManualRateChanged)
     }
 }
 
-private fun requireManualRate(accepted: Boolean, code: String) {
-    if (!accepted) throw RepositoryException(code, code)
+private fun requireManualRate(accepted: Boolean, reason: LocalRepositoryFailure) {
+    if (!accepted) throw RepositoryException(reason.name, localFailure = reason)
 }
 
 private fun validRateBaseline(row: ExchangeRateDto): Boolean = row.rowVersion > 0 && row.publicId.isNotBlank() &&

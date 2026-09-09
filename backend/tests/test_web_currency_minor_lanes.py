@@ -237,7 +237,12 @@ def test_render_lanes_still_work_on_cny_default(web_client: TestClient, *, ident
         r"<small>\s*储蓄目标\s*</small>\s*<strong>\s*−\s*¥12\.00\s*</strong>",
         advise.text,
     )
-    assert 'step="0.01"' in advise.text
+    assert re.search(
+        r'<input(?=[^>]*\bname="savings_target_yuan")'
+        r'(?=[^>]*\btype="text")(?=[^>]*\binputmode="decimal")'
+        r'(?=[^>]*\bvalue="12")[^>]*>',
+        advise.text,
+    )
 
 
 @pytest.mark.currency_binding_unbound

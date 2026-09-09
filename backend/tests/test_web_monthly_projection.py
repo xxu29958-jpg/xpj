@@ -48,13 +48,16 @@ def monthly_page(monkeypatch):
     monkeypatch.setattr(web_reports, "require_runtime_home_currency_code", lambda _db: "JPY")
     monkeypatch.setattr(web_reports, "_sidebar_counts", lambda *_a: {})
     monkeypatch.setattr(web_reports, "six_month_summary", lambda *_a, **_k: [])
-    monkeypatch.setattr(web_reports, "_top_expenses_view", lambda *_a, **_k: [])
+    monkeypatch.setattr(web_reports, "_top_expenses_view", lambda *_a, **_k: {
+        "top_expenses": [], "top_expenses_missing_rates": (),
+    })
     monkeypatch.setattr(web_reports, "_base_ctx", lambda _request, **kw: {
         "selected_ledger_id": kw["selected_ledger_id"], "home_currency_symbol": "CN¥",
     })
-    monkeypatch.setattr(web_reports, "reports_overview", lambda _db, **kw: kw)
+    monkeypatch.setattr(web_reports, "reports_overview", lambda _db, **kw: {**kw, "missing_rates": ()})
     monkeypatch.setattr(web_reports, "_view_model", lambda payload, **_k: {
         **payload, "merchant_category": "", "total_amount_yuan": "0.00", "year_over_year_delta_amount_yuan": "0.00",
+        "total_amount_cents": 0, "previous_total_amount_cents": 0, "merchant_amount_unavailable": False,
         "count": 0, "previous_count": 0, "trend": [], "category_comparison": [], "merchant_ranking": [],
     })
     root = Path(__file__).resolve().parents[1] / "app/templates/web"
@@ -125,7 +128,8 @@ def test_missing_rate_keeps_unknown_summary_and_history_visible_with_exact_recov
     assert "无历史" not in html and "历史不足" not in html and "0.00" not in html and "None" not in html
     queries = _rate_queries(html)
     assert queries and all(query == {"ledger_id": ["family"], "month": ["2026-05"],
-        "home_currency_code": ["JPY"], "currency_code": ["USD"], "rate_date": ["2026-04-17"]} for query in queries)
+        "home_currency_code": ["JPY"], "currency_code": ["USD"], "rate_date": ["2026-04-17"],
+        "return_to": ["reports"], "granularity": ["day"], "ranking_metric": ["amount"]} for query in queries)
 
 
 @pytest.mark.parametrize("source,day", [(None, date(2026, 4, 17)), ("USD", None)])
@@ -140,7 +144,8 @@ def test_incomplete_gap_does_not_invent_a_currency_or_date(monthly_page, source,
     assert "补录汇率" not in html
     queries = _rate_queries(html)
     assert queries and all(query == {"ledger_id": ["family"], "month": ["2026-05"],
-        "home_currency_code": ["JPY"]} for query in queries)
+        "home_currency_code": ["JPY"], "return_to": ["reports"],
+        "granularity": ["day"], "ranking_metric": ["amount"]} for query in queries)
 
 
 def test_missing_previous_rate_does_not_hide_the_known_current_total(monthly_page):

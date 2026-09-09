@@ -37,18 +37,19 @@ internal data class ReportsTrendEvidence(
 internal data class ReportsAnswerModel(
     val month: String,
     val granularity: ReportGranularity,
-    val totalAmountCents: Long,
+    val totalAmountCents: Long?,
     val count: Int,
     val previousMonth: String,
     val hasPreviousMonthComparison: Boolean,
-    val previousTotalAmountCents: Long,
-    val monthDeltaAmountCents: Long,
+    val previousTotalAmountCents: Long?,
+    val monthDeltaAmountCents: Long?,
     val monthDeltaPercent: Long?,
     val yearOverYearMonth: String,
     val hasYearOverYearComparison: Boolean,
-    val yearOverYearDeltaAmountCents: Long,
+    val yearOverYearDeltaAmountCents: Long?,
     val trendPoints: List<ReportTrendChartPoint>,
-    val trendEvidence: ReportsTrendEvidence,
+    val trendEvidence: ReportsTrendEvidence?,
+    val homeCurrencyCode: String,
 )
 
 internal fun reportsAnswerModel(overview: ReportsOverview): ReportsAnswerModel =
@@ -66,28 +67,31 @@ private fun reportsAnswerModel(
     overview: ReportsOverview,
     trendPoints: List<ReportTrendChartPoint>,
 ): ReportsAnswerModel {
-    val monthDelta = overview.totalAmountCents - overview.previousTotalAmountCents
-    val hasPreviousMonthComparison = overview.previousCount > 0 && overview.previousTotalAmountCents > 0L
-    val hasYearOverYearComparison = overview.yearOverYearCount > 0 && overview.yearOverYearTotalAmountCents > 0L
+    val current = overview.totalAmountCents
+    val previous = overview.previousTotalAmountCents
+    val monthDelta = if (current != null && previous != null) current - previous else null
+    val hasPreviousMonthComparison = monthDelta != null && overview.previousCount > 0 && previous != null && previous > 0L
+    val hasYearOverYearComparison = overview.yearOverYearDeltaAmountCents != null && overview.yearOverYearCount > 0 && overview.yearOverYearTotalAmountCents?.let { it > 0L } == true
     return ReportsAnswerModel(
         month = overview.month,
         granularity = overview.granularity,
-        totalAmountCents = overview.totalAmountCents.coerceAtLeast(0L),
+        totalAmountCents = overview.totalAmountCents?.coerceAtLeast(0L),
         count = overview.count.coerceAtLeast(0),
         previousMonth = overview.previousMonth,
         hasPreviousMonthComparison = hasPreviousMonthComparison,
-        previousTotalAmountCents = overview.previousTotalAmountCents.coerceAtLeast(0L),
+        previousTotalAmountCents = overview.previousTotalAmountCents?.coerceAtLeast(0L),
         monthDeltaAmountCents = monthDelta,
         monthDeltaPercent = if (hasPreviousMonthComparison) {
-            percentChange(monthDelta, overview.previousTotalAmountCents)
+            percentChange(requireNotNull(monthDelta), requireNotNull(previous))
         } else {
             null
         },
         yearOverYearMonth = overview.yearOverYearMonth,
         hasYearOverYearComparison = hasYearOverYearComparison,
-        yearOverYearDeltaAmountCents = if (hasYearOverYearComparison) overview.yearOverYearDeltaAmountCents else 0L,
+        yearOverYearDeltaAmountCents = overview.yearOverYearDeltaAmountCents,
         trendPoints = trendPoints,
-        trendEvidence = reportsTrendEvidence(trendPoints),
+        trendEvidence = if (overview.totalAmountCents == null || overview.trend.any { it.amountCents == null }) null else reportsTrendEvidence(trendPoints),
+        homeCurrencyCode = overview.homeCurrencyCode,
     )
 }
 

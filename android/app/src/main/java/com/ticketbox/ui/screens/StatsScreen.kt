@@ -67,6 +67,9 @@ data class StatsReportActions(
     val onDrillToLedger: (String) -> Unit,
     val onGranularityChange: (ReportGranularity) -> Unit,
     val onRankingMetricChange: (ReportRankingMetric) -> Unit,
+    val onMerchantCategoryChange: (String?) -> Unit = {},
+    val onRepairRates: (com.ticketbox.domain.model.CurrencyProjectionGap?) -> Unit = {},
+    val onExport: () -> Unit = {},
 )
 
 /**
@@ -335,16 +338,17 @@ internal fun overviewMonthComparison(state: StatsUiState): MonthComparison? {
 }
 
 private fun ReportsOverview.toAuthoritativeMonthComparison(): MonthComparison? {
-    if (previousCount <= 0 || previousTotalAmountCents <= 0L) return null
-    val currentAmount = totalAmountCents.coerceAtLeast(0L)
-    val delta = currentAmount - previousTotalAmountCents
+    val previousAmount = previousTotalAmountCents ?: return null
+    val currentAmount = totalAmountCents?.coerceAtLeast(0L) ?: return null
+    if (previousCount <= 0 || previousAmount <= 0L) return null
+    val delta = currentAmount - previousAmount
     return MonthComparison(
         currentMonth = month,
         previousMonth = previousMonth,
         currentAmountCents = currentAmount,
-        previousAmountCents = previousTotalAmountCents,
+        previousAmountCents = previousAmount,
         deltaAmountCents = delta,
-        percentChange = moneyPercent(delta, previousTotalAmountCents),
+        percentChange = moneyPercent(delta, previousAmount),
     )
 }
 

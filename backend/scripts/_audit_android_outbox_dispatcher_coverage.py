@@ -181,11 +181,32 @@ def parse_registered_classes(app_container_source: str) -> set[str]:
     return {cls for cls, _ in _registered_calls(app_container_source)}
 
 
+def _typed_intent_types(source: str) -> set[str]:
+    """Inspect explicit constructor types, including a factory's conditional choice.
+
+    This is construction coverage; real owner/Room tests establish reachability.
+    Metadata and payload arguments cannot stand in for the mutation's type.
+    """
+    types = set()
+    for match in re.finditer(r"\bPendingMutationIntent\s*\(", source):
+        depth = 1
+        for index in range(match.end(), len(source)):
+            depth += (source[index] == "(") - (source[index] == ")")
+            if depth != 0:
+                continue
+            arguments = _arguments(source[match.end():index])
+            named = next((part for part in arguments if re.match(r"type\s*=", part)), None)
+            expression = named if named is not None else next(iter(arguments), "")
+            types.update(re.findall(r"\bPendingMutationType\.(\w+)\b(?!\s*\()", expression))
+            break
+    return types
+
+
 def parse_enqueues(files: dict[str, str], enum_types: set[str]) -> dict[str, set[str]]:
     """Map enqueued ``PendingMutationType`` -> the files that enqueue it.
 
-    Count explicit ``type =`` fields and shared ``enqueue(bound, type, ...)``
-    calls. Keep invalid references so evaluation can reject them.
+    Count explicit fields, enqueue arguments and typed intent constructions.
+    Keep invalid references so evaluation can reject them.
     """
     out: dict[str, set[str]] = {}
     pattern = re.compile(r"\btype\s*=\s*PendingMutationType\.(\w+)\b(?!\s*\()")
@@ -200,6 +221,8 @@ def parse_enqueues(files: dict[str, str], enum_types: set[str]) -> dict[str, set
                 out.setdefault(constant, set()).add(name)
         for match in positional.finditer(source):
             out.setdefault(match[1], set()).add(name)
+        for constant in _typed_intent_types(source):
+            out.setdefault(constant, set()).add(name)
     return out
 
 

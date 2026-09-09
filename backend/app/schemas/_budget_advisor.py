@@ -56,6 +56,7 @@ class BudgetInputsResponse(BaseModel):
     home_currency_code: str
     breakdown: DiscretionaryResponse
     missing_rates: list[ProjectionGapDto]
+    inputs_fingerprint: str | None
 
 
 class BudgetAdviseRequest(BaseModel):

@@ -1885,6 +1885,21 @@
             "title": "Return Filter",
             "type": "string"
           },
+          "return_granularity": {
+            "default": "",
+            "title": "Return Granularity",
+            "type": "string"
+          },
+          "return_home_currency_code": {
+            "default": "",
+            "title": "Return Home Currency Code",
+            "type": "string"
+          },
+          "return_merchant_category": {
+            "default": "",
+            "title": "Return Merchant Category",
+            "type": "string"
+          },
           "return_month": {
             "default": "",
             "title": "Return Month",
@@ -1898,6 +1913,11 @@
           "return_query": {
             "default": "",
             "title": "Return Query",
+            "type": "string"
+          },
+          "return_ranking_metric": {
+            "default": "",
+            "title": "Return Ranking Metric",
             "type": "string"
           },
           "return_tag": {
@@ -2148,6 +2168,21 @@
             "title": "Return Filter",
             "type": "string"
           },
+          "return_granularity": {
+            "default": "",
+            "title": "Return Granularity",
+            "type": "string"
+          },
+          "return_home_currency_code": {
+            "default": "",
+            "title": "Return Home Currency Code",
+            "type": "string"
+          },
+          "return_merchant_category": {
+            "default": "",
+            "title": "Return Merchant Category",
+            "type": "string"
+          },
           "return_month": {
             "default": "",
             "title": "Return Month",
@@ -2161,6 +2196,11 @@
           "return_query": {
             "default": "",
             "title": "Return Query",
+            "type": "string"
+          },
+          "return_ranking_metric": {
+            "default": "",
+            "title": "Return Ranking Metric",
             "type": "string"
           },
           "return_tag": {
@@ -2338,6 +2378,21 @@
             "title": "Return Filter",
             "type": "string"
           },
+          "return_granularity": {
+            "default": "",
+            "title": "Return Granularity",
+            "type": "string"
+          },
+          "return_home_currency_code": {
+            "default": "",
+            "title": "Return Home Currency Code",
+            "type": "string"
+          },
+          "return_merchant_category": {
+            "default": "",
+            "title": "Return Merchant Category",
+            "type": "string"
+          },
           "return_month": {
             "default": "",
             "title": "Return Month",
@@ -2351,6 +2406,11 @@
           "return_query": {
             "default": "",
             "title": "Return Query",
+            "type": "string"
+          },
+          "return_ranking_metric": {
+            "default": "",
+            "title": "Return Ranking Metric",
             "type": "string"
           },
           "return_tag": {
@@ -3094,6 +3154,21 @@
             "title": "Return Filter",
             "type": "string"
           },
+          "return_granularity": {
+            "default": "",
+            "title": "Return Granularity",
+            "type": "string"
+          },
+          "return_home_currency_code": {
+            "default": "",
+            "title": "Return Home Currency Code",
+            "type": "string"
+          },
+          "return_merchant_category": {
+            "default": "",
+            "title": "Return Merchant Category",
+            "type": "string"
+          },
           "return_month": {
             "default": "",
             "title": "Return Month",
@@ -3107,6 +3182,11 @@
           "return_query": {
             "default": "",
             "title": "Return Query",
+            "type": "string"
+          },
+          "return_ranking_metric": {
+            "default": "",
+            "title": "Return Ranking Metric",
             "type": "string"
           },
           "return_tag": {
@@ -3188,6 +3268,21 @@
             "title": "Return Filter",
             "type": "string"
           },
+          "return_granularity": {
+            "default": "",
+            "title": "Return Granularity",
+            "type": "string"
+          },
+          "return_home_currency_code": {
+            "default": "",
+            "title": "Return Home Currency Code",
+            "type": "string"
+          },
+          "return_merchant_category": {
+            "default": "",
+            "title": "Return Merchant Category",
+            "type": "string"
+          },
           "return_month": {
             "default": "",
             "title": "Return Month",
@@ -3201,6 +3296,11 @@
           "return_query": {
             "default": "",
             "title": "Return Query",
+            "type": "string"
+          },
+          "return_ranking_metric": {
+            "default": "",
+            "title": "Return Ranking Metric",
             "type": "string"
           },
           "return_tag": {
@@ -3742,6 +3842,21 @@
             "title": "Return Filter",
             "type": "string"
           },
+          "return_granularity": {
+            "default": "",
+            "title": "Return Granularity",
+            "type": "string"
+          },
+          "return_home_currency_code": {
+            "default": "",
+            "title": "Return Home Currency Code",
+            "type": "string"
+          },
+          "return_merchant_category": {
+            "default": "",
+            "title": "Return Merchant Category",
+            "type": "string"
+          },
           "return_month": {
             "default": "",
             "title": "Return Month",
@@ -3755,6 +3870,11 @@
           "return_query": {
             "default": "",
             "title": "Return Query",
+            "type": "string"
+          },
+          "return_ranking_metric": {
+            "default": "",
+            "title": "Return Ranking Metric",
             "type": "string"
           },
           "return_tag": {
@@ -4148,6 +4268,21 @@
             "title": "Return Filter",
             "type": "string"
           },
+          "return_granularity": {
+            "default": "",
+            "title": "Return Granularity",
+            "type": "string"
+          },
+          "return_home_currency_code": {
+            "default": "",
+            "title": "Return Home Currency Code",
+            "type": "string"
+          },
+          "return_merchant_category": {
+            "default": "",
+            "title": "Return Merchant Category",
+            "type": "string"
+          },
           "return_month": {
             "default": "",
             "title": "Return Month",
@@ -4161,6 +4296,11 @@
           "return_query": {
             "default": "",
             "title": "Return Query",
+            "type": "string"
+          },
+          "return_ranking_metric": {
+            "default": "",
+            "title": "Return Ranking Metric",
             "type": "string"
           },
           "return_tag": {
@@ -4293,6 +4433,56 @@
             "default": 0,
             "title": "Return Expense Id",
             "type": "integer"
+          },
+          "return_filter": {
+            "default": "",
+            "title": "Return Filter",
+            "type": "string"
+          },
+          "return_granularity": {
+            "default": "",
+            "title": "Return Granularity",
+            "type": "string"
+          },
+          "return_home_currency_code": {
+            "default": "",
+            "title": "Return Home Currency Code",
+            "type": "string"
+          },
+          "return_merchant_category": {
+            "default": "",
+            "title": "Return Merchant Category",
+            "type": "string"
+          },
+          "return_month": {
+            "default": "",
+            "title": "Return Month",
+            "type": "string"
+          },
+          "return_page": {
+            "default": "",
+            "title": "Return Page",
+            "type": "string"
+          },
+          "return_query": {
+            "default": "",
+            "title": "Return Query",
+            "type": "string"
+          },
+          "return_ranking_metric": {
+            "default": "",
+            "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_tag": {
+            "default": "",
+            "title": "Return Tag",
+            "type": "string"
+          },
+          "return_to": {
+            "default": "",
+            "title": "Return To",
+            "type": "string"
           }
         },
         "title": "Body_web_split_cancel_web_bill_splits__public_id__cancel_post",
@@ -4322,6 +4512,56 @@
           "receiver_account_id": {
             "title": "Receiver Account Id",
             "type": "integer"
+          },
+          "return_filter": {
+            "default": "",
+            "title": "Return Filter",
+            "type": "string"
+          },
+          "return_granularity": {
+            "default": "",
+            "title": "Return Granularity",
+            "type": "string"
+          },
+          "return_home_currency_code": {
+            "default": "",
+            "title": "Return Home Currency Code",
+            "type": "string"
+          },
+          "return_merchant_category": {
+            "default": "",
+            "title": "Return Merchant Category",
+            "type": "string"
+          },
+          "return_month": {
+            "default": "",
+            "title": "Return Month",
+            "type": "string"
+          },
+          "return_page": {
+            "default": "",
+            "title": "Return Page",
+            "type": "string"
+          },
+          "return_query": {
+            "default": "",
+            "title": "Return Query",
+            "type": "string"
+          },
+          "return_ranking_metric": {
+            "default": "",
+            "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_tag": {
+            "default": "",
+            "title": "Return Tag",
+            "type": "string"
+          },
+          "return_to": {
+            "default": "",
+            "title": "Return To",
+            "type": "string"
           }
         },
         "required": [
@@ -4359,6 +4599,21 @@
             "title": "Return Filter",
             "type": "string"
           },
+          "return_granularity": {
+            "default": "",
+            "title": "Return Granularity",
+            "type": "string"
+          },
+          "return_home_currency_code": {
+            "default": "",
+            "title": "Return Home Currency Code",
+            "type": "string"
+          },
+          "return_merchant_category": {
+            "default": "",
+            "title": "Return Merchant Category",
+            "type": "string"
+          },
           "return_month": {
             "default": "",
             "title": "Return Month",
@@ -4372,6 +4627,11 @@
           "return_query": {
             "default": "",
             "title": "Return Query",
+            "type": "string"
+          },
+          "return_ranking_metric": {
+            "default": "",
+            "title": "Return Ranking Metric",
             "type": "string"
           },
           "return_tag": {
@@ -4563,6 +4823,21 @@
             "title": "Return Filter",
             "type": "string"
           },
+          "return_granularity": {
+            "default": "",
+            "title": "Return Granularity",
+            "type": "string"
+          },
+          "return_home_currency_code": {
+            "default": "",
+            "title": "Return Home Currency Code",
+            "type": "string"
+          },
+          "return_merchant_category": {
+            "default": "",
+            "title": "Return Merchant Category",
+            "type": "string"
+          },
           "return_month": {
             "default": "",
             "title": "Return Month",
@@ -4576,6 +4851,11 @@
           "return_query": {
             "default": "",
             "title": "Return Query",
+            "type": "string"
+          },
+          "return_ranking_metric": {
+            "default": "",
+            "title": "Return Ranking Metric",
             "type": "string"
           },
           "return_tag": {
@@ -5126,6 +5406,17 @@
             "title": "Home Currency Code",
             "type": "string"
           },
+          "inputs_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inputs Fingerprint"
+          },
           "missing_rates": {
             "items": {
               "$ref": "#/components/schemas/ProjectionGapDto"
@@ -5142,7 +5433,8 @@
           "month",
           "home_currency_code",
           "breakdown",
-          "missing_rates"
+          "missing_rates",
+          "inputs_fingerprint"
         ],
         "title": "BudgetInputsResponse",
         "type": "object"
@@ -5441,6 +5733,88 @@
           "total_amount_cents"
         ],
         "title": "BudgetMonthlyUpdateRequest",
+        "type": "object"
+      },
+      "BudgetRateForm": {
+        "description": "Raw native fields survive validation before the command owner parses them.",
+        "properties": {
+          "currency_code": {
+            "default": "",
+            "title": "Currency Code",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "granularity": {
+            "default": "",
+            "title": "Granularity",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "default": "",
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "merchant_category": {
+            "default": "",
+            "title": "Merchant Category",
+            "type": "string"
+          },
+          "month": {
+            "default": "",
+            "title": "Month",
+            "type": "string"
+          },
+          "ranking_metric": {
+            "default": "",
+            "title": "Ranking Metric",
+            "type": "string"
+          },
+          "rate_date": {
+            "default": "",
+            "title": "Rate Date",
+            "type": "string"
+          },
+          "rate_to_cny": {
+            "default": "",
+            "title": "Rate To Cny",
+            "type": "string"
+          },
+          "reserved_buffer_yuan": {
+            "default": "",
+            "title": "Reserved Buffer Yuan",
+            "type": "string"
+          },
+          "return_to": {
+            "default": "",
+            "title": "Return To",
+            "type": "string"
+          },
+          "review_latest": {
+            "default": "",
+            "title": "Review Latest",
+            "type": "string"
+          },
+          "savings_target_yuan": {
+            "default": "",
+            "title": "Savings Target Yuan",
+            "type": "string"
+          }
+        },
+        "title": "BudgetRateForm",
         "type": "object"
       },
       "BudgetSuggestionDto": {
@@ -16022,11 +16396,18 @@
       "ReportCategoryComparisonResponse": {
         "properties": {
           "amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Cents"
           },
           "category": {
             "title": "Category",
@@ -16037,44 +16418,72 @@
             "type": "integer"
           },
           "delta_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Delta Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta Amount Cents"
           },
           "delta_count": {
             "title": "Delta Count",
             "type": "integer"
           },
           "previous_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Previous Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Amount Cents"
           },
           "previous_count": {
             "title": "Previous Count",
             "type": "integer"
           },
           "year_over_year_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Year Over Year Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year Over Year Amount Cents"
           },
           "year_over_year_count": {
             "title": "Year Over Year Count",
             "type": "integer"
           },
           "year_over_year_delta_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Year Over Year Delta Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year Over Year Delta Amount Cents"
           },
           "year_over_year_delta_count": {
             "title": "Year Over Year Delta Count",
@@ -16100,11 +16509,18 @@
       "ReportMerchantRankingResponse": {
         "properties": {
           "amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Cents"
           },
           "count": {
             "title": "Count",
@@ -16126,11 +16542,18 @@
       "ReportTrendPointResponse": {
         "properties": {
           "amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Cents"
           },
           "bucket": {
             "title": "Bucket",
@@ -16171,6 +16594,10 @@
             "title": "Granularity",
             "type": "string"
           },
+          "home_currency_code": {
+            "title": "Home Currency Code",
+            "type": "string"
+          },
           "merchant_category": {
             "anyOf": [
               {
@@ -16189,6 +16616,13 @@
             "title": "Merchant Ranking",
             "type": "array"
           },
+          "missing_rates": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectionGapDto"
+            },
+            "title": "Missing Rates",
+            "type": "array"
+          },
           "month": {
             "title": "Month",
             "type": "string"
@@ -16202,11 +16636,18 @@
             "type": "string"
           },
           "previous_total_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Previous Total Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Total Amount Cents"
           },
           "ranking_metric": {
             "title": "Ranking Metric",
@@ -16217,11 +16658,18 @@
             "type": "string"
           },
           "total_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Total Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Amount Cents"
           },
           "trend": {
             "items": {
@@ -16235,11 +16683,18 @@
             "type": "integer"
           },
           "year_over_year_delta_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Year Over Year Delta Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year Over Year Delta Amount Cents"
           },
           "year_over_year_delta_count": {
             "title": "Year Over Year Delta Count",
@@ -16250,15 +16705,24 @@
             "type": "string"
           },
           "year_over_year_total_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Year Over Year Total Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year Over Year Total Amount Cents"
           }
         },
         "required": [
           "month",
+          "home_currency_code",
+          "missing_rates",
           "timezone",
           "granularity",
           "total_amount_cents",
@@ -33390,6 +33854,23 @@
             }
           },
           {
+            "in": "query",
+            "name": "home_currency_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Z]{3}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Home Currency Code"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -33552,6 +34033,23 @@
                 }
               ],
               "title": "Timezone"
+            }
+          },
+          {
+            "in": "query",
+            "name": "home_currency_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Z]{3}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Home Currency Code"
             }
           },
           {
@@ -37680,7 +38178,7 @@
           },
           {
             "in": "query",
-            "name": "message",
+            "name": "msg",
             "required": false,
             "schema": {
               "anyOf": [
@@ -37691,7 +38189,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Message"
+              "title": "Msg"
             }
           }
         ],
@@ -37784,6 +38282,16 @@
       },
       "post": {
         "operationId": "save_budget_rate_web_budget_advise_rates_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/BudgetRateForm"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -37794,6 +38302,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Save Budget Rate",
@@ -39979,6 +40497,46 @@
               "title": "Return Query",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "return_home_currency_code",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Home Currency Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_granularity",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Granularity",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_ranking_metric",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Ranking Metric",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_merchant_category",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Merchant Category",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -40101,6 +40659,44 @@
           },
           {
             "in": "query",
+            "name": "flash_type",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Flash Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "rev_page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Rev Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "rev_snapshot",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rev Snapshot"
+            }
+          },
+          {
+            "in": "query",
             "name": "return_to",
             "required": false,
             "schema": {
@@ -40161,40 +40757,42 @@
           },
           {
             "in": "query",
-            "name": "flash_type",
+            "name": "return_home_currency_code",
             "required": false,
             "schema": {
               "default": "",
-              "title": "Flash Type",
+              "title": "Return Home Currency Code",
               "type": "string"
             }
           },
           {
             "in": "query",
-            "name": "rev_page",
+            "name": "return_granularity",
             "required": false,
             "schema": {
-              "default": 1,
-              "minimum": 1,
-              "title": "Rev Page",
-              "type": "integer"
+              "default": "",
+              "title": "Return Granularity",
+              "type": "string"
             }
           },
           {
             "in": "query",
-            "name": "rev_snapshot",
+            "name": "return_ranking_metric",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "minimum": 1,
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Rev Snapshot"
+              "default": "",
+              "title": "Return Ranking Metric",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_merchant_category",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Merchant Category",
+              "type": "string"
             }
           }
         ],
@@ -44071,6 +44669,22 @@
           },
           {
             "in": "query",
+            "name": "home_currency_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Home Currency Code"
+            }
+          },
+          {
+            "in": "query",
             "name": "ledger_id",
             "required": false,
             "schema": {
@@ -44213,6 +44827,22 @@
                 }
               ],
               "title": "Merchant Category"
+            }
+          },
+          {
+            "in": "query",
+            "name": "home_currency_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Home Currency Code"
             }
           },
           {

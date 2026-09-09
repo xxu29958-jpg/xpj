@@ -43,6 +43,23 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ReportsRepositoryTest {
+    @Test fun readAndExportUseCapturedProjectionAndRejectOldBinding() = runTest {
+        val api = ReportsApiHandler()
+        val repo = repository(api)
+        val binding = requireNotNull(repo.dashboardAccess()).binding
+        val query = ReportsOverviewQuery(month = "2026-05", homeCurrencyCode = "JPY", timezone = "Asia/Tokyo")
+        assertTrue(repo.reportsOverview(query, binding).isFailure)
+        assertEquals("JPY", api.reportCalls.single().homeCurrencyCode)
+        assertEquals("Asia/Tokyo", api.reportCalls.single().timezone)
+        repo.exportReportsOverviewCsv(query, binding).getOrThrow()
+        assertEquals("JPY", api.csvReportCalls.single().homeCurrencyCode)
+        val old = binding.copy(bindingRevision = "old")
+        assertTrue(repo.reportsOverview(query, old).isFailure)
+        assertTrue(repo.exportReportsOverviewCsv(query, old).isFailure)
+        assertEquals(1, api.reportCalls.size)
+        assertEquals(1, api.csvReportCalls.size)
+    }
+
     @Test
     fun reportsOverviewForwardsNormalizedQueryAndMapsDomain() = withReportsTimezone("Asia/Shanghai") {
         runTest {
@@ -439,6 +456,7 @@ private data class ReportsOverviewCall(
     val merchantCategory: String?,
     val rankingMetric: String,
     val timezone: String?,
+    val homeCurrencyCode: String?,
 )
 
 private data class GoalsCall(
@@ -540,6 +558,7 @@ private class ReportsApiHandler : InvocationHandler {
                     merchantCategory = query["merchant_category"],
                     rankingMetric = query.getValue("ranking_metric"),
                     timezone = query["timezone"],
+                    homeCurrencyCode = query["home_currency_code"],
                 )
                 reportsDto(
                     granularity = query.getValue("granularity"),
@@ -556,6 +575,7 @@ private class ReportsApiHandler : InvocationHandler {
                     merchantCategory = query["merchant_category"],
                     rankingMetric = query.getValue("ranking_metric"),
                     timezone = query["timezone"],
+                    homeCurrencyCode = query["home_currency_code"],
                 )
                 Response.success("csv".toResponseBody("text/csv".toMediaType()))
             }
@@ -672,6 +692,8 @@ private fun reportsDto(
             yearOverYearDeltaCount = 1,
         ),
     ),
+    homeCurrencyCode = "CNY",
+    missingRates = emptyList(),
 )
 
 private fun goalDto(

@@ -15,12 +15,20 @@ internal fun BudgetAdviceRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
     originalSubmissionId: Long? = null,
+    reportContext: ReportRateContext? = null,
 ) {
     val viewModel: BudgetAdviceViewModel = viewModel(
         factory = budgetAdviceViewModelFactory(screenFactory.budgetRepository),
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     LaunchedEffect(originalSubmissionId) { originalSubmissionId?.let(viewModel::openRateSubmission) }
+
+    LaunchedEffect(reportContext, state.binding) {
+        if (reportContext != null && state.binding != null && originalSubmissionId == null) {
+            viewModel.openReportRate(reportContext.binding, reportContext.month, reportContext.homeCurrencyCode,
+                reportContext.sourceCurrencyCode, reportContext.rateDate)
+        }
+    }
 
     BudgetAdviceScreen(
         state = state,

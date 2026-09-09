@@ -121,6 +121,24 @@ def test_positional_enqueue_is_a_producer_but_catalogues_and_comments_are_not():
     }
 
 
+def test_typed_intent_factory_counts_only_its_type_argument_not_catalogue_metadata():
+    mod = importlib.import_module("_audit_android_outbox_dispatcher_coverage")
+    source = '''
+        return PendingMutationIntent(
+            if (creating) PendingMutationType.CreateIncomePlan else PendingMutationType.UpdateIncomePlan,
+            target, encode(PendingMutationType.Unknown), version, key)
+        outbox.enqueue(boundRequest = bound, intent = PendingMutationIntent(PendingMutationType.SaveManualExchangeRate,
+            target, encoded, version, key))
+        // PendingMutationIntent(PendingMutationType.Unknown, target, body, 0, key)
+        val note = "PendingMutationIntent(PendingMutationType.Unknown, target, body, 0, key)"
+        val catalog = setOf(PendingMutationType.DeleteCategoryRule)
+    '''
+    assert mod.parse_enqueues({"TypedIntents.kt": source}, set()) == {
+        "CreateIncomePlan": {"TypedIntents.kt"}, "UpdateIncomePlan": {"TypedIntents.kt"},
+        "SaveManualExchangeRate": {"TypedIntents.kt"},
+    }
+
+
 def test_missing_one_parameterized_registration_still_fails_for_its_actual_producer():
     mod = importlib.import_module("_audit_android_outbox_dispatcher_coverage")
     source = _registry("PendingMutationType.CreateCategoryRule", "PendingMutationType.UpdateCategoryRule")

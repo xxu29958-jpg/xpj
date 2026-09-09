@@ -44,6 +44,7 @@ internal data class StatsOverviewHeaderModel(
     val recent7DaysAmountCents: Long?,
     val comparison: MonthComparison?,
     val tagScope: TagScopeInsightModel? = null,
+    val comparisonHomeCurrencyCode: String?,
 )
 
 @Composable
@@ -97,7 +98,7 @@ private fun OverviewAmountHeader(
                 minFontSize = 22.sp,
             )
             when {
-                hasCurrentConfirmedSpend -> header.comparison?.let { MonthDeltaPill(it, currencyDisplay) }
+                hasCurrentConfirmedSpend -> header.comparison?.let { MonthDeltaPill(it, CurrencyDisplay.forRecord(header.comparisonHomeCurrencyCode)) }
                 header.comparison?.let { it.previousAmountCents > 0L } == true -> Text(
                     text = stringResource(R.string.stats_overview_empty_month_comparison_hint),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

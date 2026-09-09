@@ -59,9 +59,10 @@ def project_category_spend(
 def project_recorded_amount(
     db: Session, *, tenant_id: str, amount_minor: int, source_currency: str | None,
     home_currency: str | None, rate_date: date | None, missing_rates: set[ProjectionGap] | None = None,
+    rate_cache: dict | None = None,
 ) -> int | None:
     amount = _convert_recorded_amount(db, tenant_id=tenant_id, amount_minor=amount_minor,
-        source_currency=source_currency, home_currency=home_currency, rate_date=rate_date)
+        source_currency=source_currency, home_currency=home_currency, rate_date=rate_date, rate_cache=rate_cache)
     if amount is None and missing_rates is not None and home_currency is not None:
         missing_rates.add(ProjectionGap(source_currency, home_currency, rate_date))
     return amount
@@ -69,7 +70,7 @@ def project_recorded_amount(
 
 def _convert_recorded_amount(
     db: Session, *, tenant_id: str, amount_minor: int, source_currency: str | None,
-    home_currency: str | None, rate_date: date | None,
+    home_currency: str | None, rate_date: date | None, rate_cache: dict | None,
 ) -> int | None:
     if source_currency is None or home_currency is None:
         return None
@@ -77,10 +78,15 @@ def _convert_recorded_amount(
         return amount_minor
     if rate_date is None:
         return None
-    rate, _, _, _ = resolve_payload_rate(
-        db, tenant_id=tenant_id, currency_code=source_currency,
-        home_currency_code=home_currency, rate_date=rate_date,
-    )
+    # Callers own this cache for one read only. Cache the rate, never rounded amounts.
+    key = (tenant_id, source_currency, home_currency, rate_date)
+    if rate_cache is not None and key in rate_cache:
+        rate = rate_cache[key]
+    else:
+        rate, _, _, _ = resolve_payload_rate(db, tenant_id=tenant_id, currency_code=source_currency,
+            home_currency_code=home_currency, rate_date=rate_date)
+        if rate_cache is not None:
+            rate_cache[key] = rate
     converted = calculate_cny_cents(
         home_currency_code=home_currency, original_currency_code=source_currency,
         original_amount_minor=abs(amount_minor), exchange_rate_to_cny=rate,

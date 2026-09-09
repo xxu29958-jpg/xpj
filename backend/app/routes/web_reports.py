@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.routes._web_expense_return_context import flow_href
+from app.routes._web_expense_return_context import ExpenseReturnContext, flow_href, return_context_params
 from app.routes._web_report_money_views import (
     category_comparison_view as _category_comparison_view,
 )
@@ -21,11 +21,14 @@ from app.routes._web_report_money_views import (
     percent as _percent,
 )
 from app.routes._web_report_money_views import (
+    projected_amount as _projected_amount,
+)
+from app.routes._web_report_money_views import projection_gaps_view
+from app.routes._web_report_money_views import (
     six_month_average_amount_yuan as _six_month_average_amount_yuan,
 )
 from app.routes.web_common import (
     LocalOnly,
-    _amount_yuan,
     _base_ctx,
     _list_ledger_options,
     _resolve_selected_ledger_id,
@@ -33,6 +36,7 @@ from app.routes.web_common import (
     templates,
 )
 from app.services.currency_binding_service import require_runtime_home_currency_code
+from app.services.currency_common import currency_input_metadata, normalize_currency_code
 from app.services.monthly_report_service import (
     BudgetExplanation,
     MonthlyReport,
@@ -43,9 +47,9 @@ from app.services.reports_service import (
     export_reports_overview_csv,
     reports_overview,
     six_month_summary,
+    top_expenses_for_month,
 )
 from app.services.spending_contract_service import accounting_datetime_label
-from app.services.stats_service import top_expenses_for_month
 from app.services.time_service import current_month
 
 router = APIRouter(prefix="/web/reports", tags=["web"])
@@ -64,113 +68,29 @@ def _clean_ranking_metric(value: str | None) -> str:
     return clean if clean in _RANKING_METRICS else "amount"
 
 
-def _trend_view(points: list[dict], *, currency_code: str) -> list[dict]:
-    maximum = max(
-        [_money(point["amount_cents"], "trend") for point in points]
-        or [0]
-    )
-    return [
-        {
-            "bucket": point["bucket"],
-            "label": point["label"],
-            "amount_yuan": _amount_yuan(
-                _money(point["amount_cents"], "trend"),
-                currency_code,
-            ),
-            "amount_cents": _money(point["amount_cents"], "trend"),
-            "count": int(point["count"]),
-            "percent": _percent(
-                _money(point["amount_cents"], "trend"),
-                maximum,
-            ),
-        }
-        for point in points
-    ]
+def _amount_rows_view(rows: list[dict], *, currency_code: str) -> list[dict]:
+    amounts = [_money(row["amount_cents"], "row_amount") for row in rows]
+    maximum = max((amount for amount in amounts if amount is not None), default=0)
+    return [{**row, "amount_cents": amount, "amount_yuan": _projected_amount(amount, currency_code),
+        "count": int(row["count"]), "percent": _percent(amount, maximum)} for row, amount in zip(rows, amounts, strict=True)]
 
 
-def _merchant_ranking_view(
-    rows: list[dict],
-    *,
-    currency_code: str,
-) -> list[dict]:
-    maximum = max(
-        [_money(row["amount_cents"], "merchant") for row in rows]
-        or [0]
-    )
-    return [
-        {
-            "merchant": row["merchant"],
-            "amount_yuan": _amount_yuan(
-                _money(row["amount_cents"], "merchant"),
-                currency_code,
-            ),
-            "amount_cents": _money(row["amount_cents"], "merchant"),
-            "count": int(row["count"]),
-            "percent": _percent(
-                _money(row["amount_cents"], "merchant"),
-                maximum,
-            ),
-        }
-        for row in rows
-    ]
-
-
-def _view_model(payload: dict, *, currency_code: str) -> dict:
-    return {
-        "month": payload["month"],
-        "timezone": payload["timezone"],
-        "granularity": payload["granularity"],
-        "ranking_metric": payload["ranking_metric"],
-        "merchant_category": payload["merchant_category"] or "",
-        "total_amount_yuan": _amount_yuan(
-            _money(payload["total_amount_cents"], "overview_total"),
-            currency_code,
-        ),
-        "count": int(payload["count"]),
-        "previous_month": payload["previous_month"],
-        "previous_total_amount_yuan": _amount_yuan(
-            _money(
-                payload["previous_total_amount_cents"],
-                "overview_previous_total",
-            ),
-            currency_code,
-        ),
-        "previous_count": int(payload["previous_count"]),
-        "year_over_year_month": payload["year_over_year_month"],
-        "year_over_year_total_amount_yuan": _amount_yuan(
-            _money(
-                payload["year_over_year_total_amount_cents"],
-                "overview_yoy_total",
-            ),
-            currency_code,
-        ),
-        "year_over_year_count": int(payload["year_over_year_count"]),
-        "year_over_year_delta_amount_yuan": _amount_yuan(
-            _money(
-                payload["year_over_year_delta_amount_cents"],
-                "overview_yoy_delta",
-            ),
-            currency_code,
-        ),
-        "year_over_year_delta_amount_cents": _money(
-            payload["year_over_year_delta_amount_cents"],
-            "overview_yoy_delta",
-        ),
-        "year_over_year_delta_count": int(payload["year_over_year_delta_count"]),
-        "trend": _trend_view(payload["trend"], currency_code=currency_code),
-        "merchant_ranking": _merchant_ranking_view(
-            payload["merchant_ranking"],
-            currency_code=currency_code,
-        ),
-        "category_comparison": _category_comparison_view(
-            payload["category_comparison"],
-            currency_code=currency_code,
-        ),
-    }
-
-
-def _projected_amount(amount: int | None, currency_code: str) -> str | None:
-    return None if amount is None else _amount_yuan(amount, currency_code)
+def _view_model(payload: dict) -> dict:
+    home = payload["home_currency_code"]
+    view = {**payload, "merchant_category": payload["merchant_category"] or "",
+        "missing_rates": projection_gaps_view(payload["missing_rates"])}
+    for field in ("total_amount", "previous_total_amount", "year_over_year_total_amount", "year_over_year_delta_amount"):
+        amount = _money(payload[f"{field}_cents"], field)
+        view[f"{field}_cents"] = amount
+        view[f"{field}_yuan"] = _projected_amount(amount, home)
+    view.update(trend=_amount_rows_view(payload["trend"], currency_code=home),
+        merchant_ranking=_amount_rows_view(payload["merchant_ranking"], currency_code=home),
+        category_comparison=_category_comparison_view(payload["category_comparison"], currency_code=home))
+    view["merchant_amount_unavailable"] = (
+        any(row["category"] == view["merchant_category"] and row["amount_cents"] is None
+            for row in payload["category_comparison"])
+        if view["merchant_category"] else payload["total_amount_cents"] is None)
+    return view
 
 
 def _monthly_report_view_model(report: MonthlyReport) -> dict:
@@ -223,44 +143,23 @@ def _budget_verdict_label(value: str) -> str:
 
 
 def _top_expenses_view(
-    db: Session,
-    *,
-    tenant_id: str,
-    month: str,
-    timezone_name: str,
-    presentation_currency_code: str,
-) -> list[dict[str, str]]:
-    """Highest-amount confirmed expenses for the month (former /web/stats panel).
-
-    This was the only content unique to the deleted /web/stats page, so it moves
-    here when stats is merged into reports (UI/UX 批 14).
-    """
-    rows: list[dict[str, str]] = []
-    for e in top_expenses_for_month(
-        db, tenant_id=tenant_id, month=month, timezone_name=timezone_name
-    ):
-        rows.append(
-            {
-                "merchant": e.merchant or "未填写商家",
-                "edit_href": flow_href(
-                    f"/web/expenses/{e.id}/edit", ledger_id=tenant_id,
-                    return_to="reports", return_month=month,
-                ),
-                # The record's frozen unit wins; presentation authority only
-                # covers legacy rows that predate the carrier.
-                "amount_yuan": _amount_yuan(
-                    e.amount_cents,
-                    e.home_currency_code or presentation_currency_code,
-                ),
-                "category": e.category or "未分类",
-                "expense_time": accounting_datetime_label(
-                    e.expense_time,
-                    timezone_name,
-                    pattern="%Y-%m-%d",
-                ),
-            }
-        )
-    return rows
+    db: Session, *, tenant_id: str, month: str, timezone_name: str, presentation_currency_code: str,
+    return_context: ExpenseReturnContext,
+) -> dict:
+    projection = top_expenses_for_month(db, tenant_id=tenant_id, month=month,
+        timezone_name=timezone_name, home_currency_code=presentation_currency_code)
+    rows = []
+    for item in projection.items:
+        expense = item.expense
+        rows.append({
+            "merchant": expense.merchant or "未填写商家",
+            "edit_href": flow_href(f"/web/expenses/{expense.id}/edit", ledger_id=tenant_id,
+                **return_context.as_kwargs()),
+            "amount_yuan": _projected_amount(item.amount_cents, projection.home_currency_code),
+            "category": expense.category or "未分类",
+            "expense_time": accounting_datetime_label(expense.expense_time, timezone_name, pattern="%Y-%m-%d"),
+        })
+    return {"top_expenses": rows, "top_expenses_missing_rates": projection.missing_rates}
 
 
 def _monthly_report_sections(
@@ -296,34 +195,27 @@ def _monthly_report_sections(
     )
 
 
-def _report_export_query(
-    *,
-    ledger_id: str,
-    month: str,
-    granularity: str,
-    ranking_metric: str,
-    merchant_category: str | None,
-) -> str:
-    return urlencode(
-        {
-            "ledger_id": ledger_id,
-            "month": month,
-            "granularity": granularity,
-            "ranking_metric": ranking_metric,
-            "merchant_category": (merchant_category or "").strip(),
-        }
-    )
-
-
 def _six_month_history_view(rows: list[dict], *, currency_code: str) -> dict:
     """Keep the history chart, accessible table, and average on the same series."""
+    amounts_known = all(row["amount_cents"] is not None and row["budget_cents"] is not None for row in rows)
     return {
-        "six_month_trend": rows,
-        "six_month_average_amount_yuan": _six_month_average_amount_yuan(
-            rows,
-            currency_code=currency_code,
-        ),
+        "six_month_trend": [{**row, "missing_rates": projection_gaps_view(row["missing_rates"])} for row in rows],
+        "six_month_average_amount_yuan": _six_month_average_amount_yuan(rows, currency_code=currency_code),
+        "overspent_months": sum(row["amount_cents"] > row["budget_cents"] > 0 for row in rows) if amounts_known else None,
     }
+
+
+def _report_projection_context(payload, history, top, monthly, explanations) -> dict:
+    home = payload["home_currency_code"]
+    currency = currency_input_metadata(home)
+    gaps = [*payload["missing_rates"], *top["top_expenses_missing_rates"]]
+    for projection in [*history, *explanations, *([monthly] if monthly else [])]:
+        gaps.extend(projection["missing_rates"])
+    return {"report": _view_model(payload), "monthly_report": monthly, "budget_explanations": explanations,
+        "report_missing_rates": projection_gaps_view(dict.fromkeys(gaps)), **top,
+        "home_currency_code": home, "home_currency_symbol": currency["currency_symbol"],
+        "home_currency_minor_digits": currency["minor_unit_digits"],
+        **_six_month_history_view(history, currency_code=home)}
 
 
 @router.get("", response_class=HTMLResponse)
@@ -333,6 +225,7 @@ def web_reports(
     granularity: str | None = None,
     ranking_metric: str | None = None,
     merchant_category: str | None = Query(default=None, max_length=64),
+    home_currency_code: str | None = None,
     ledger_id: str | None = None,
     msg: str | None = None,
     flash_type: str | None = None,
@@ -341,7 +234,7 @@ def web_reports(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
-    home = require_runtime_home_currency_code(db)
+    home = normalize_currency_code(home_currency_code or require_runtime_home_currency_code(db))
     timezone_name = get_settings().ocr_default_timezone
     target_month = (month or "").strip() or current_month(timezone_name)
     selected_granularity = _clean_granularity(granularity)
@@ -354,6 +247,7 @@ def web_reports(
         granularity=selected_granularity,
         ranking_metric=selected_metric,
         merchant_category=merchant_category,
+        home_currency_code=home,
     )
     monthly_report_vm, budget_explanations = _monthly_report_sections(
         db,
@@ -379,31 +273,22 @@ def web_reports(
         timezone_name=timezone_name,
         currency_code=home,
     )
+    origin = ExpenseReturnContext(return_to="reports", return_month=target_month,
+        return_home_currency_code=home, return_granularity=selected_granularity,
+        return_ranking_metric=selected_metric, return_merchant_category=merchant_category or "")
+    report_query = {"ledger_id": selected_id, **return_context_params(**origin.as_kwargs())}
+    top = _top_expenses_view(db, tenant_id=selected_id, month=target_month,
+        timezone_name=timezone_name, presentation_currency_code=home, return_context=origin)
     ctx.update(
         {
             "flash_message": msg or "",
             "flash_type": flash_type if flash_type in ("success", "error") else "",
-            "report": _view_model(payload, currency_code=home),
-            "monthly_report": monthly_report_vm,
-            "budget_explanations": budget_explanations,
-            "report_export_query": _report_export_query(
-                ledger_id=selected_id,
-                month=target_month,
-                granularity=selected_granularity,
-                ranking_metric=selected_metric,
-                merchant_category=merchant_category,
-            ),
+            **_report_projection_context(payload, six_month_trend, top, monthly_report_vm, budget_explanations),
+            "report_export_query": urlencode(report_query),
             "month": target_month,
+            "month_picker_query": report_query,
             "granularity_options": [("day", "日"), ("week", "周"), ("month", "月")],
             "ranking_metric_options": [("amount", "金额"), ("count", "笔数")],
-            "top_expenses": _top_expenses_view(
-                db,
-                tenant_id=selected_id,
-                month=target_month,
-                timezone_name=timezone_name,
-                presentation_currency_code=home,
-            ),
-            **_six_month_history_view(six_month_trend, currency_code=home),
         }
     )
     return templates.TemplateResponse(request=request, name="reports.html", context=ctx)
@@ -416,6 +301,7 @@ def web_reports_csv(
     granularity: str | None = None,
     ranking_metric: str | None = None,
     merchant_category: str | None = Query(default=None, max_length=64),
+    home_currency_code: str | None = None,
     ledger_id: str | None = None,
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
@@ -426,6 +312,7 @@ def web_reports_csv(
     target_month = (month or "").strip() or current_month(timezone_name)
     selected_granularity = _clean_granularity(granularity)
     selected_metric = _clean_ranking_metric(ranking_metric)
+    home = normalize_currency_code(home_currency_code or require_runtime_home_currency_code(db))
     content = "\ufeff" + export_reports_overview_csv(
         db,
         month=target_month,
@@ -434,6 +321,7 @@ def web_reports_csv(
         granularity=selected_granularity,
         ranking_metric=selected_metric,
         merchant_category=merchant_category,
+        home_currency_code=home,
     )
     filename = f"ticketbox-web-reports-{target_month}-{selected_granularity}.csv"
     return Response(

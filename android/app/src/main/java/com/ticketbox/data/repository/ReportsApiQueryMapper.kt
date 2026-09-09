@@ -7,7 +7,7 @@ import com.ticketbox.domain.model.ReportsOverviewQuery
 
 internal fun ReportsOverviewQuery.toReportsOverviewApiQuery(timezone: String): ReportsOverviewApiQuery =
     ReportsOverviewApiQuery(
-        window = ReportsWindowQuery(month = month, timezone = timezone),
+        window = ReportsWindowQuery(month = month, timezone = this.timezone ?: timezone, homeCurrencyCode = homeCurrencyCode),
         breakdown = ReportsOverviewBreakdownQuery(
             granularity = granularity.apiValue,
             topN = topN,

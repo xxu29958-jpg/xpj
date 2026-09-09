@@ -142,6 +142,7 @@ def test_missing_original_response_cannot_be_replaced_with_latest(client, identi
     assert replay.json()["error"] == "exchange_rate_response_unverified"
 
 
+@pytest.mark.real_db
 @pytest.mark.parametrize("version", [0, 1])
 def test_concurrent_original_creates_or_corrections_only_accept_one_version(client, identity, version):
     if version:

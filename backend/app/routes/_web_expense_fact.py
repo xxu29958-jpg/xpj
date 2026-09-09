@@ -26,6 +26,8 @@ from app.routes._web_expense_return_context import (
     ExpenseReturnContext,
     clean_return_to,
     flow_href,
+    resolve_return_to,
+    return_context_params,
     return_href,
     return_label,
 )
@@ -353,7 +355,7 @@ def web_fact_context(
     """Read-first fact page context: base edit view-model + fact extras."""
 
     return_values = return_context.as_kwargs()
-    ctx = web_edit_context(db, request, options, selected_id, expense_id, **return_values)
+    ctx = web_edit_context(db, request, options, selected_id, expense_id, return_context=return_context)
     if not clean_return_to(return_context.return_to):
         ctx["edit_return_href"] = return_href(
             "",
@@ -410,7 +412,7 @@ def web_fact_context(
     )
     ctx["fact_timeline"] = timeline["entries"]
     ctx["fact_timeline_page"] = fact_timeline_page_context(
-        request,
+        return_context,
         timeline=timeline,
         expense_id=expense_id,
         selected_ledger_id=selected_id,
@@ -427,6 +429,7 @@ def web_fact_error_response(
     message: str,
     *,
     status_code: int = 409,
+    return_context: ExpenseReturnContext = ExpenseReturnContext(),
 ) -> Response:
     """confirmed 命中已失权的旧 Web 命令（save/items/splits/reject）时的诚实
     呈现：事实页 + 错误条 + 明确 409 —— 不用成功重定向掩盖（A1 检查点合同 5）。
@@ -440,13 +443,15 @@ def web_fact_error_response(
             selected_id,
             expense_id,
             error=message,
+            return_context=return_context,
         )
     except AppError as exc:
         return _web_redirect(
-            "/web/confirmed",
+            resolve_return_to(return_context.return_to, "/web/confirmed"),
             selected_id,
             msg=exc.message,
             flash_type="error",
+            **return_context_params(**return_context.as_kwargs()),
         )
     return templates.TemplateResponse(
         request=request,

@@ -111,7 +111,7 @@ internal class BudgetAdviceCallStore(
                     ),
                 ).toDomain().also { result ->
                     if (key.homeCurrencyCode != null && result.homeCurrencyCode != key.homeCurrencyCode) {
-                        throw RepositoryException("budget_advice_inputs_unverified", "budget_advice_inputs_unverified")
+                        throw RepositoryException("budget_advice_inputs_unverified", localFailure = LocalRepositoryFailure.BudgetInputsUnverified)
                     }
                 }
             }

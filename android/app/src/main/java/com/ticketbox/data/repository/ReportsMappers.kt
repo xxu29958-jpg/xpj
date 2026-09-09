@@ -46,6 +46,8 @@ fun ReportsOverviewDto.toDomain(): ReportsOverview = ReportsOverview(
     trend = trend.map { it.toDomain() },
     merchantRanking = merchantRanking.map { it.toDomain() },
     categoryComparison = categoryComparison.map { it.toDomain() },
+    homeCurrencyCode = homeCurrencyCode,
+    missingRates = missingRates.map { com.ticketbox.domain.model.CurrencyProjectionGap(it.sourceCurrencyCode, it.homeCurrencyCode, it.rateDate) },
 )
 
 private fun ReportTrendPointDto.toDomain(): ReportTrendPoint = ReportTrendPoint(

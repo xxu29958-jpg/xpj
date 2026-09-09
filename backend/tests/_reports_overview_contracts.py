@@ -46,6 +46,9 @@ def _insert_report_expense(
             Expense(
                 tenant_id="owner",
                 amount_cents=amount_cents,
+                home_currency_code="CNY",
+                original_currency_code="CNY",
+                original_amount_minor=amount_cents,
                 merchant=merchant,
                 category=category,
                 note="",

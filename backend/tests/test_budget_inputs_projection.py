@@ -54,6 +54,24 @@ def test_complete_projection_preserves_outbound_privacy_and_paid_reservation(mon
     assert "private employer" not in repr(payload)
 
 
+def test_hidden_historical_rate_change_invalidates_advice_without_changing_month_totals(monkeypatch):
+    from app.schemas._budget_advisor import BudgetInputsResponse
+
+    seed_reads(monkeypatch)
+    before = BudgetInputsResponse.model_validate(builder.read_budget_inputs(
+        object(), tenant_id="owner", month="2026-08", home_currency_code="JPY")).model_dump()
+    repeated = BudgetInputsResponse.model_validate(builder.read_budget_inputs(
+        object(), tenant_id="owner", month="2026-08", home_currency_code="JPY")).model_dump()
+    assert repeated == before
+    monkeypatch.setattr(builder, "compose_budget_explanation", lambda *args, **kwargs: SimpleNamespace(
+        p50_cents=250, p75_cents=500, missing_rates=()))
+    after = BudgetInputsResponse.model_validate(builder.read_budget_inputs(
+        object(), tenant_id="owner", month="2026-08", home_currency_code="JPY")).model_dump()
+    assert before.pop("inputs_fingerprint") != after.pop("inputs_fingerprint")
+    assert before == after
+    assert "provider_inputs" not in after
+
+
 def test_generation_rechecks_gap_before_provider_quota_or_audit(monkeypatch):
     gap = ProjectionGap("CNY", "JPY", date(2026, 7, 2))
     monkeypatch.setattr(_runner, "get_advisor_readiness", lambda: SimpleNamespace(

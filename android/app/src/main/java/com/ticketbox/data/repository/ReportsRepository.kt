@@ -35,8 +35,9 @@ interface DashboardCardsActions {
 }
 
 interface ReportsActions : DashboardCardsActions {
-    suspend fun reportsOverview(query: ReportsOverviewQuery = ReportsOverviewQuery()): Result<ReportsOverview>
-    suspend fun exportReportsOverviewCsv(query: ReportsOverviewQuery = ReportsOverviewQuery()): Result<CsvExport>
+    fun observeReportsAccess(): kotlinx.coroutines.flow.Flow<LedgerAccessContext?> = kotlinx.coroutines.flow.flowOf(dashboardAccess())
+    suspend fun reportsOverview(query: ReportsOverviewQuery = ReportsOverviewQuery(), expectedBinding: LogicalSessionBinding? = null): Result<ReportsOverview>
+    suspend fun exportReportsOverviewCsv(query: ReportsOverviewQuery = ReportsOverviewQuery(), expectedBinding: LogicalSessionBinding? = null): Result<CsvExport>
     suspend fun goals(month: String? = null, includeArchived: Boolean = false): Result<List<Goal>>
 
     /**
@@ -99,23 +100,32 @@ class ReportsRepository(
 
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
 
-    override suspend fun reportsOverview(query: ReportsOverviewQuery): Result<ReportsOverview> {
+    override fun observeReportsAccess(): kotlinx.coroutines.flow.Flow<LedgerAccessContext?> = apiProvider.observeActiveLedgerAccess()
+
+    override suspend fun reportsOverview(query: ReportsOverviewQuery, expectedBinding: LogicalSessionBinding?): Result<ReportsOverview> {
         val cleanQuery = query.validated()
             .getOrElse { return Result.failure(it) }
         return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
+            val request = expectedBinding?.let(ledgerRequestGuard::bindExact) ?: ledgerRequestGuard.bind()
+            request.call { api ->
                 api.reportsOverview(
                     query = cleanQuery.toReportsOverviewApiQuery(timezone = currentTimezoneId()).toQueryMap(),
-                ).toDomain()
+                ).toDomain().also { result ->
+                    val matchesMonth = cleanQuery.month == null || result.month == cleanQuery.month
+                    val matchesHome = cleanQuery.homeCurrencyCode == null || result.homeCurrencyCode == cleanQuery.homeCurrencyCode
+                    val knownHome = com.ticketbox.domain.model.CurrencyCode.fromStorageKeyOrNull(result.homeCurrencyCode) != null
+                    if (!matchesMonth || !matchesHome || !knownHome) throw RepositoryException("")
+                }
             }
         }
     }
 
-    override suspend fun exportReportsOverviewCsv(query: ReportsOverviewQuery): Result<CsvExport> {
+    override suspend fun exportReportsOverviewCsv(query: ReportsOverviewQuery, expectedBinding: LogicalSessionBinding?): Result<CsvExport> {
         val cleanQuery = query.validated()
             .getOrElse { return Result.failure(it) }
         return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
+            val request = expectedBinding?.let(ledgerRequestGuard::bindExact) ?: ledgerRequestGuard.bind()
+            request.call { api ->
                 val response = api.reportsOverviewCsv(
                     query = cleanQuery.toReportsOverviewApiQuery(timezone = currentTimezoneId()).toQueryMap(),
                 )

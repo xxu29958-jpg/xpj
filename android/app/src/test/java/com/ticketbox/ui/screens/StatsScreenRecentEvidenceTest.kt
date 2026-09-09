@@ -17,6 +17,13 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class StatsScreenRecentEvidenceTest {
+    @Test fun reportUnknownAmountsCannotCreateAnOverviewMonthComparison() {
+        val report = reportsOverview(totalAmountCents = 12000, previousTotalAmountCents = 8000, previousCount = 2)
+        val state = StatsUiState(statsSource = StatsSource.Backend, month = report.month)
+        assertNull(overviewMonthComparison(state.copy(reportsOverview = report.copy(totalAmountCents = null))))
+        assertNull(overviewMonthComparison(state.copy(reportsOverview = report.copy(previousTotalAmountCents = null))))
+    }
+
     @Test
     fun overviewRecent7DaysAmountUsesBackendLifestyleValue() {
         val state = StatsUiState(
@@ -199,5 +206,6 @@ class StatsScreenRecentEvidenceTest {
             trend = emptyList(),
             merchantRanking = emptyList(),
             categoryComparison = emptyList(),
-        )
+            homeCurrencyCode = "CNY",
+)
 }

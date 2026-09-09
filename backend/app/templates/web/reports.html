@@ -3,9 +3,10 @@
 {% block title %}报表 · 小票夹{% endblock %}
 
 {% block content %}
+{% macro report_money(value) %}{% if value is none %}待补汇率{% else %}{{ home_currency_symbol }}{{ value }}{% endif %}{% endmacro %}
 {% macro report_projection_gaps(gaps, month) %}
   {% for gap in gaps %}
-    {% set rate_context = {'ledger_id': selected_ledger_id, 'month': month, 'home_currency_code': gap.home_currency_code} %}
+    {% set rate_context = {'ledger_id': selected_ledger_id, 'month': month, 'home_currency_code': gap.home_currency_code, 'return_to': 'reports', 'granularity': report.granularity, 'ranking_metric': report.ranking_metric, 'merchant_category': report.merchant_category} %}
     <div class="text-meta" role="status">
       {% if gap.source_currency_code and gap.rate_date %}
         待补汇率 · {{ gap.source_currency_code }} → {{ gap.home_currency_code }} · {{ gap.rate_date }}
@@ -25,11 +26,17 @@
     <span class="product-eyebrow">洞察 · 报表</span>
     <h1 class="page-title">动态报表，六个月看清节奏。</h1>
     <p class="product-page-summary">
-      {{ _earliest_month }} → {{ r.month }} · 当前账本已确认账单的月度回顾，按记账时间统计。
+      {{ _earliest_month }} → {{ r.month }} · {{ r.home_currency_code }} · 当前账本已确认账单的月度回顾，按记账时间统计。
       切换粒度与排行口径看节奏，明细数据可导出 CSV。
     </p>
   </div>
 </header>
+
+<div class="product-feedback" role="status">
+  {% if report_missing_rates %}{{ report_projection_gaps(report_missing_rates, r.month) }}{% endif %}
+  {% set rate_task = {'ledger_id': selected_ledger_id, 'month': r.month, 'home_currency_code': r.home_currency_code, 'return_to': 'reports', 'granularity': r.granularity, 'ranking_metric': r.ranking_metric, 'merchant_category': r.merchant_category} %}
+  <a href="/web/budget-advise/rates?{{ rate_task|urlencode }}">管理本报表汇率</a>
+</div>
 
 {% if flash_message %}
 <div class="product-feedback{% if flash_type == 'error' %} product-feedback--error{% endif %}"
@@ -49,7 +56,7 @@
     <div class="product-segments">
       {% for value, label in granularity_options %}
       <a {% if r.granularity == value %}aria-current="page"{% endif %}
-         href="/web/reports?ledger_id={{ selected_ledger_id }}&month={{ r.month }}&granularity={{ value }}&ranking_metric={{ r.ranking_metric }}{{ _mc }}">{{ label }}</a>
+         href="/web/reports?ledger_id={{ selected_ledger_id }}&month={{ r.month }}&home_currency_code={{ r.home_currency_code }}&granularity={{ value }}&ranking_metric={{ r.ranking_metric }}{{ _mc }}">{{ label }}</a>
       {% endfor %}
     </div>
   </div>
@@ -58,37 +65,33 @@
     <div class="product-segments">
       {% for value, label in ranking_metric_options %}
       <a {% if r.ranking_metric == value %}aria-current="page"{% endif %}
-         href="/web/reports?ledger_id={{ selected_ledger_id }}&month={{ r.month }}&granularity={{ r.granularity }}&ranking_metric={{ value }}{{ _mc }}">{{ label }}</a>
+         href="/web/reports?ledger_id={{ selected_ledger_id }}&month={{ r.month }}&home_currency_code={{ r.home_currency_code }}&granularity={{ r.granularity }}&ranking_metric={{ value }}{{ _mc }}">{{ label }}</a>
       {% endfor %}
     </div>
   </div>
 </div>
 
 {# 关键指标 #}
-{% set _cur = six_month_trend[-1].amount_cents if six_month_trend else 0 %}
-{% set _prev = six_month_trend[-2].amount_cents if six_month_trend and (six_month_trend | length) > 1 else 0 %}
-{% set _over = namespace(count=0) %}
-{% for item in six_month_trend or [] %}
-  {% if item.budget_cents > 0 and item.amount_cents > item.budget_cents %}
-    {% set _over.count = _over.count + 1 %}
-  {% endif %}
-{% endfor %}
+{% set _cur = r.total_amount_cents %}
+{% set _prev = r.previous_total_amount_cents %}
 <div class="report-metrics">
   <div class="report-metric is-primary">
     <span class="report-metric-label">本月支出</span>
-    <span class="report-metric-value" title="{{ home_currency_symbol }}{{ r.total_amount_yuan }}"><small>{{ home_currency_symbol }}</small>{{ r.total_amount_yuan }}</span>
+    <span class="report-metric-value">{{ report_money(r.total_amount_yuan) }}</span>
     <span class="report-metric-note">
-      {% if _prev > 0 %}
+      {% if _prev is none or _cur is none %}
+      较上月待补汇率
+      {% elif _prev > 0 %}
       较上月 {{ '%+.1f' % ((_cur - _prev) / _prev * 100) }}%
       {% else %}
-      上月无数据
+      上月合计为零
       {% endif %}
-      · 同比 {{ home_currency_symbol }}{{ r.year_over_year_delta_amount_yuan }}
+      · 同比 {{ report_money(r.year_over_year_delta_amount_yuan) }}
     </span>
   </div>
   <div class="report-metric">
     <span class="report-metric-label">六月均值</span>
-    <span class="report-metric-value"><small>{{ home_currency_symbol }}</small>{{ six_month_average_amount_yuan }}</span>
+    <span class="report-metric-value">{{ report_money(six_month_average_amount_yuan) }}</span>
     <span class="report-metric-note">范围 {{ _earliest_month }} – {{ r.month }}</span>
   </div>
   <div class="report-metric">
@@ -98,9 +101,9 @@
     <span class="report-metric-note">上月 {{ r.previous_count }} 笔</span>
     {% endif %}
   </div>
-  <div class="report-metric{% if _over.count %} is-warning{% endif %}">
+  <div class="report-metric{% if overspent_months %} is-warning{% endif %}">
     <span class="report-metric-label">超支月份</span>
-    <span class="report-metric-value">{{ _over.count }} <small>个月</small></span>
+    <span class="report-metric-value">{% if overspent_months is none %}待补汇率{% else %}{{ overspent_months }} <small>个月</small>{% endif %}</span>
     <span class="report-metric-note">最近 6 个月内</span>
   </div>
 </div>
@@ -138,8 +141,8 @@
           {% for item in six_month_trend %}
             <tr>
               <td>{{ item.month }}</td>
-              <td class="amount">{{ home_currency_symbol }}{{ item.amount_yuan }}</td>
-              <td class="amount">{% if item.budget_cents > 0 %}{{ home_currency_symbol }}{{ item.budget_yuan }}{% else %}—{% endif %}</td>
+              <td class="amount">{{ report_money(item.amount_major_text) }}</td>
+              <td class="amount">{% if item.budget_cents is none %}待补汇率{% elif item.budget_cents > 0 %}{{ report_money(item.budget_major_text) }}{% else %}—{% endif %}</td>
             </tr>
           {% endfor %}
           </tbody>
@@ -254,7 +257,7 @@
           {% for point in r.trend %}
             <tr>
               <td>{{ point.label }}</td>
-              <td class="amount">{{ home_currency_symbol }}{{ point.amount_yuan }}</td>
+              <td class="amount">{{ report_money(point.amount_yuan) }}</td>
               <td class="amount">{{ point.count }}</td>
             </tr>
           {% endfor %}
@@ -290,9 +293,9 @@
           {% for row in r.category_comparison %}
             <tr>
               <td>{{ row.category }}</td>
-              <td class="amount">{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
-              <td class="amount">{{ home_currency_symbol }}{{ row.previous_amount_yuan }}</td>
-              <td class="amount">{{ home_currency_symbol }}{{ row.year_over_year_amount_yuan }}</td>
+              <td class="amount">{{ report_money(row.amount_yuan) }}</td>
+              <td class="amount">{{ report_money(row.previous_amount_yuan) }}</td>
+              <td class="amount">{{ report_money(row.year_over_year_amount_yuan) }}</td>
             </tr>
           {% endfor %}
           </tbody>
@@ -306,7 +309,7 @@
     <div class="product-panel-header">
       <div>
         <div class="product-panel-title">商家排行</div>
-        <div class="product-panel-subtitle">按本月{{ '笔数' if report.ranking_metric == 'count' else '支出金额' }}降序 · 前 8 名</div>
+        <div class="product-panel-subtitle">{% if r.ranking_metric == 'amount' and not r.merchant_ranking and r.merchant_amount_unavailable %}金额排行暂不可用 · 补齐汇率后继续，也可切换笔数排行{% else %}按本月{{ '笔数' if report.ranking_metric == 'count' else '支出金额' }}降序 · 前 8 名{% endif %}</div>
       </div>
       <a class="product-button product-button--quiet product-button--small" href="/web/reports/export.csv?{{ report_export_query }}">导出 CSV</a>
     </div>
@@ -329,9 +332,9 @@
               <td>{{ row.merchant }}</td>
               {% if report.ranking_metric == 'count' %}
               <td class="amount">{{ row.count }}</td>
-              <td class="amount">{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
+              <td class="amount">{{ report_money(row.amount_yuan) }}</td>
               {% else %}
-              <td class="amount">{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
+              <td class="amount">{{ report_money(row.amount_yuan) }}</td>
               <td class="amount">{{ row.count }}</td>
               {% endif %}
             </tr>
@@ -348,7 +351,7 @@
     <div class="product-panel-header">
       <div>
         <div class="product-panel-title">大额支出</div>
-        <div class="product-panel-subtitle">本月金额最高的前 5 笔已确认支出</div>
+        <div class="product-panel-subtitle">{% if top_expenses_missing_rates %}金额排行暂不可用 · 补齐汇率后继续{% else %}本月金额最高的前 5 笔已确认支出{% endif %}</div>
       </div>
     </div>
     {% if top_expenses %}
@@ -374,7 +377,7 @@
         </tbody>
       </table>
     </div>
-    {% else %}
+    {% elif not top_expenses_missing_rates %}
     <div class="product-state">
       <div class="product-state-title">本月还没有已确认账单可统计</div>
       <div class="product-state-body">确认账单后,这里会列出本月金额最高的几笔。</div>

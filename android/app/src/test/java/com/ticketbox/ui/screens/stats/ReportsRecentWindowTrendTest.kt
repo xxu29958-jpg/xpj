@@ -111,5 +111,6 @@ class ReportsRecentWindowTrendTest {
         trend = trend,
         merchantRanking = emptyList(),
         categoryComparison = emptyList(),
-    )
+        homeCurrencyCode = "CNY",
+)
 }

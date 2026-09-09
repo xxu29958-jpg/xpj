@@ -1,5 +1,12 @@
 package com.ticketbox.ui.navigation
 
+import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.ticketbox.domain.model.CurrencyProjectionGap
+import com.ticketbox.domain.model.ReportsOverview
+import com.ticketbox.data.repository.LogicalSessionBinding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -21,7 +28,9 @@ import com.ticketbox.viewmodel.mergeStatsUiState
 import com.ticketbox.viewmodel.recurringViewModelFactory
 
 @Composable
-internal fun StatsRoute(shellState: MainShellState, screenFactory: MainScreenFactory) {
+internal fun StatsRoute(shellState: MainShellState, screenFactory: MainScreenFactory,
+    onRepairReport: (LogicalSessionBinding, ReportsOverview, CurrencyProjectionGap?) -> Unit,
+) {
     val monthly: MonthlyStatsViewModel = viewModel(factory = screenFactory.repositoryViewModelFactory)
     val budget: StatsBudgetViewModel = viewModel(factory = screenFactory.repositoryViewModelFactory)
     val reports: StatsReportsViewModel = viewModel(factory = screenFactory.repositoryViewModelFactory)
@@ -52,12 +61,16 @@ internal fun StatsRoute(shellState: MainShellState, screenFactory: MainScreenFac
         if (monthlyState.ledgerReady) budget.refresh(monthlyState.month, force = true)
     }
 
+    StatsReportExportDestination(reports, reportsState)
+    RefreshReportsOnResume(reports)
+
     StatsScreen(
         state = mergeStatsUiState(monthlyState, budgetState, reportsState),
         overview = OverviewModulesState(layoutState, recurringState),
         actions = statsScreenActions(
             monthly, reports, shellState, monthlyState.month,
             OverviewInteractionActions(dashboardLayoutActions(layout), overviewModuleActions(shellState)),
+            onRepairReport,
         ).copy(
             onRefresh = {
                 reloadAllStats(monthly, reports)
@@ -87,3 +100,18 @@ internal fun overviewModuleActions(shell: MainShellState) = OverviewModuleAction
     onGoals = { shell.openSecondaryPage(ProductSecondaryPage.SpendingGoal) },
     onRecurring = { shell.openSecondaryPage(ProductSecondaryPage.Recurring) },
 )
+
+@Composable
+private fun RefreshReportsOnResume(reports: StatsReportsViewModel) {
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle, reports) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val state = reports.uiState.value
+                reports.refresh(state.month, state.selectedTag)
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+}

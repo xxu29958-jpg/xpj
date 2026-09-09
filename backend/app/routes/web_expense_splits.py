@@ -11,7 +11,11 @@ from app.errors import AppError
 from app.routes._web_expense_fact import web_fact_error_response
 from app.routes._web_expense_form import web_form_error_status
 from app.routes._web_expense_helpers import _edit_page_or_flash_redirect
-from app.routes._web_expense_return_context import edit_context_params
+from app.routes._web_expense_return_context import (
+    ExpenseReturnContext,
+    edit_context_params,
+    expense_return_form_context,
+)
 from app.routes._web_expense_rows import (
     WebExpenseRowsOutcome,
     attach_form_row_error,
@@ -97,12 +101,7 @@ def web_splits_save(
     split_note: list[str] = Form(default=[]),
     expected_row_version: str = Form(default=""),
     ledger_id: str = Form(default=""),
-    return_to: str = Form(default=""),
-    return_month: str = Form(default=""),
-    return_filter: str = Form(default=""),
-    return_page: str = Form(default=""),
-    return_tag: str = Form(default=""),
-    return_query: str = Form(default=""),
+    return_context: ExpenseReturnContext = Depends(expense_return_form_context),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -120,15 +119,8 @@ def web_splits_save(
             selected_id,
             expense_id,
             AppError("expense_correction_required").message,
+            return_context=return_context,
         )
-    submitted_return_context = {
-        "return_to": return_to,
-        "return_month": return_month,
-        "return_filter": return_filter,
-        "return_page": return_page,
-        "return_tag": return_tag,
-        "return_query": return_query,
-    }
     outcome = _save_web_expense_splits(
         db,
         request,
@@ -153,11 +145,11 @@ def web_splits_save(
             error_key="splits_error",
             status_code=outcome.error_status,
             split_form_rows=outcome.rows if outcome.error_status == 422 else None,
-            **submitted_return_context,
+            return_context=return_context,
         )
     return _web_redirect(
         f"/web/expenses/{expense_id}/edit",
         selected_id,
         msg="拆账已保存。",
-        **edit_context_params(**submitted_return_context),
+        **edit_context_params(**return_context.as_kwargs()),
     )

@@ -4,6 +4,7 @@ import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.*
 import kotlinx.coroutines.test.runTest
+import com.ticketbox.viewmodel.refreshInputs
 import kotlinx.coroutines.flow.first
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -13,6 +14,22 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class BudgetAdviceInputsRepositoryTest {
+    @Test fun hiddenProviderBasisFingerprintInvalidatesCacheAndVisibleReadyWithoutAnotherProviderCall() =
+        com.ticketbox.viewmodel.budgetTest {
+            val f = AdviceInputsFixture()
+            f.inputs = f.inputs.copy(breakdown = DiscretionaryResponseDto(10000, 1000, 2000, 0, 0, 7000),
+                missingRates = emptyList(), inputsFingerprint = "original-history")
+            val vm = com.ticketbox.viewmodel.BudgetAdviceViewModel(f.repository, initialMonth = "2026-09")
+            vm.uiState.first { it.inputs?.inputsFingerprint == "original-history" }
+            vm.requestAdvice()
+            vm.uiState.first { it.result != null }
+            assertNotNull(f.repository.cachedBudgetAdvice("2026-09", "JPY"))
+            f.inputs = f.inputs.copy(inputsFingerprint = "changed-history-same-visible-totals")
+            vm.refreshInputs()
+            vm.uiState.first { it.inputs?.inputsFingerprint == "changed-history-same-visible-totals" && it.result == null }
+            assertNull(f.repository.cachedBudgetAdvice("2026-09", "JPY"))
+            assertEquals(1, f.requests.size)
+        }
     @Test fun advisorAccessCarriesRoleAndFullBindingInOneProjection() = runTest {
         val f = AdviceInputsFixture()
         val original = requireNotNull(f.session.sessionStore.currentSession())
@@ -32,7 +49,7 @@ class BudgetAdviceInputsRepositoryTest {
     @Test fun projectionReadKeepsOriginalContextAndNeverCallsProvider() = runTest {
         val f = AdviceInputsFixture()
         val result = f.repository.adviceInputs(f.binding, "2026-09", "JPY").getOrThrow()
-        assertEquals(listOf("2026-09" to "JPY"), f.reads)
+        assertEquals(listOf<Pair<String, String?>>("2026-09" to "JPY"), f.reads)
         assertNull(result.breakdown.spentAmountCents)
         assertFalse(result.readyForAdvice)
         assertTrue(f.requests.isEmpty())
@@ -63,7 +80,8 @@ class BudgetAdviceInputsRepositoryTest {
         val f = AdviceInputsFixture()
         f.inputs = f.inputs.copy(month = "2026-08")
         val error = f.repository.adviceInputs(f.binding, "2026-09", "JPY").exceptionOrNull()
-        assertEquals("budget_advice_inputs_unverified", (error as? RepositoryException)?.errorCode)
+        assertEquals(LocalRepositoryFailure.BudgetInputsUnverified, (error as? RepositoryException)?.localFailure)
+        assertNull((error as? RepositoryException)?.errorCode)
         f.inputs = f.inputs.copy(month = "2026-09", homeCurrencyCode = "CNY")
         assertTrue(f.repository.adviceInputs(f.binding, "2026-09", "JPY").isFailure)
         assertTrue(f.repository.requestBudgetAdvice("2026-09", "JPY", f.binding).isFailure)

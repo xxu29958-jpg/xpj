@@ -1,5 +1,9 @@
 package com.ticketbox.ui.navigation
 
+import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.domain.model.ReportsOverview
+import com.ticketbox.domain.model.CurrencyProjectionGap
+import com.ticketbox.viewmodel.exportReport
 import com.ticketbox.ui.screens.StatsFilterActions
 import com.ticketbox.ui.screens.StatsReportActions
 import com.ticketbox.ui.screens.StatsScreenActions
@@ -13,6 +17,7 @@ internal fun statsScreenActions(
     shellState: MainShellState,
     month: String,
     overview: OverviewInteractionActions,
+    onRepair: (LogicalSessionBinding, ReportsOverview, CurrencyProjectionGap?) -> Unit,
 ) = StatsScreenActions(
     filters = StatsFilterActions(
         onMonthChange = monthly::setMonth,
@@ -32,5 +37,13 @@ internal fun statsScreenActions(
         },
         onGranularityChange = reports::setGranularity,
         onRankingMetricChange = reports::setRankingMetric,
+        onMerchantCategoryChange = reports::setMerchantCategory,
+        onExport = reports::exportReport,
+        onRepairRates = { gap ->
+            val state = reports.uiState.value
+            val binding = state.binding
+            val report = state.reportsOverview
+            if (binding != null && report != null && monthly.uiState.value.month == report.month) onRepair(binding, report, gap)
+        },
     ),
 )

@@ -1,5 +1,7 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.BudgetProgress
 import com.ticketbox.domain.model.BudgetProgressStatus
 import com.ticketbox.domain.model.CategoryInsight
@@ -36,6 +38,8 @@ data class StatsUiState(
     val budgetProgress: BudgetProgress? = null,
     val budgetProgressStatus: BudgetProgressStatus = BudgetProgressStatus.Unknown,
     val categoryInsight: CategoryInsight? = null,
+    val reportsExporting: Boolean = false,
+    val reportsExportMessage: UiText? = null,
     val reportsOverview: ReportsOverview? = null,
     val reportGoals: List<Goal> = emptyList(),
     val reportGoalsLoadState: ReportGoalsLoadState = ReportGoalsLoadState.Unknown,
@@ -96,6 +100,12 @@ data class StatsBudgetUiState(
 )
 
 data class StatsReportsUiState(
+    val binding: LogicalSessionBinding? = null,
+    val exportFile: CsvExport? = null,
+    val exportId: String? = null,
+    val exportDestinationPending: Boolean = false,
+    val exporting: Boolean = false,
+    val exportMessage: UiText? = null,
     val reportsOverview: ReportsOverview? = null,
     val reportGoals: List<Goal> = emptyList(),
     val reportGoalsLoadState: ReportGoalsLoadState = ReportGoalsLoadState.Unknown,
@@ -127,6 +137,8 @@ internal fun mergeStatsUiState(
             BudgetProgressStatus.Unknown
         },
         categoryInsight = monthly.categoryInsight,
+        reportsExporting = reports.exporting,
+        reportsExportMessage = if (reportsMatch) reports.exportMessage else null,
         reportsOverview = if (reportsMatch && monthly.selectedTag.isBlank()) reports.reportsOverview else null,
         reportGoals = if (reportsMatch && monthly.selectedTag.isBlank()) reports.reportGoals else emptyList(),
         reportGoalsLoadState = if (reportsMatch && monthly.selectedTag.isBlank()) {

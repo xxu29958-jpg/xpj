@@ -122,6 +122,12 @@ private fun LazyListScope.statsTrendItems(
                     overview = state.reportsOverview,
                     onGranularityChange = actions.onGranularityChange,
                     onRankingMetricChange = actions.onRankingMetricChange,
+                    onMerchantCategoryChange = actions.onMerchantCategoryChange,
+                    onRepairRates = actions.onRepairRates,
+                    onExport = actions.onExport,
+                    exporting = state.reportsExporting || state.reportsLoading,
+                    exportMessage = state.reportsExportMessage,
+
                 )
             }
         }

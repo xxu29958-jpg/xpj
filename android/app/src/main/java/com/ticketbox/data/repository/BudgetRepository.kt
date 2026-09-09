@@ -82,7 +82,7 @@ class BudgetRepository(
             if (result.month != cleanMonth || (homeCurrencyCode != null && result.homeCurrencyCode != homeCurrencyCode) ||
                 com.ticketbox.domain.model.CurrencyCode.fromStorageKeyOrNull(result.homeCurrencyCode) == null ||
                 result.missingRates.any { it.homeCurrencyCode != result.homeCurrencyCode }) {
-                throw RepositoryException("budget_advice_inputs_unverified", "budget_advice_inputs_unverified")
+                throw RepositoryException("budget_advice_inputs_unverified", localFailure = LocalRepositoryFailure.BudgetInputsUnverified)
             }
             adviceCallStore.noteAdviceInputSnapshot("budget_inputs:$expectedBinding:$cleanMonth:${result.homeCurrencyCode}", result.toString())
         }

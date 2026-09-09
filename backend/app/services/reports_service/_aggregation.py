@@ -1,15 +1,17 @@
-"""Range and per-bucket amount/count aggregation over confirmed expenses."""
+"""Read the confirmed stream once, project recorded money, then group in memory."""
 
-from __future__ import annotations
-
-from datetime import datetime, timedelta
+from datetime import timedelta
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import case, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy import or_, select
 
-from app.money_contract import projection_sum_to_int
-from app.services.reports_service._models import ReportGranularity, _TrendBucket
+from app.services.category_service import normalize_category
+from app.services.money_projection_service import (
+    ordered_projection_gaps,
+    project_recorded_amount,
+    sum_projected_amounts,
+)
+from app.services.reports_service._models import ReportGranularity, _ProjectedEntry, _TrendBucket
 from app.services.reports_service._time import (
     _days_in_month,
     _local_date_range_bounds_utc,
@@ -17,124 +19,44 @@ from app.services.reports_service._time import (
     _month_bounds,
     _month_labels_ending_at,
 )
-from app.services.spending_contract_service import (
-    accounting_zone,
-    confirmed_stream_query,
-)
+from app.services.spending_contract_service import accounting_zone, confirmed_stream_query
 
 
-def _stream_for_utc_range(
-    *,
-    tenant_id: str,
-    start_utc: datetime,
-    end_utc: datetime,
-    timezone_name: str,
-    category: str | None = None,
-):
+def _read_projected_entries(db, *, tenant_id, ranges, timezone_name, home, tag=None):
     zone = accounting_zone(timezone_name)
-    start_date = start_utc.astimezone(zone).date()
-    end_date = end_utc.astimezone(zone).date()
-    stream = confirmed_stream_query(
-        tenant_id=tenant_id,
-        category=category,
-        timezone_name=timezone_name,
-        amount_required=True,
-    )
-    return (
-        select(stream)
-        .where(stream.c.stream_date >= start_date)
-        .where(stream.c.stream_date < end_date)
-        .subquery("report_stream")
-    )
+    dates = [(start.astimezone(zone).date(), end.astimezone(zone).date()) for start, end in ranges]
+    if not dates:
+        return []
+    stream = confirmed_stream_query(tenant_id=tenant_id, tag=tag, timezone_name=timezone_name, amount_required=True)
+    statement = select(stream).where(or_(*(
+        (stream.c.stream_date >= start) & (stream.c.stream_date < end) for start, end in dates)))
+    entries = []
+    rate_cache = {}
+    for row in db.execute(statement):
+        gaps = set()
+        amount = project_recorded_amount(db, tenant_id=tenant_id, amount_minor=row.stream_amount_cents,
+            source_currency=row.home_currency_code, home_currency=home, rate_date=row.stream_date,
+            missing_rates=gaps, rate_cache=rate_cache)
+        entries.append(_ProjectedEntry(row.entry_id, row.root_expense_id, row.entry_kind, row.stream_date,
+            normalize_category(row.category), row.merchant, amount, next(iter(gaps), None)))
+    return entries
 
 
-def _range_amount_count(
-    db: Session,
-    *,
-    tenant_id: str,
-    start_utc: datetime,
-    end_utc: datetime,
-    timezone_name: str,
-) -> tuple[int, int]:
-    stream = _stream_for_utc_range(
-        tenant_id=tenant_id,
-        start_utc=start_utc,
-        end_utc=end_utc,
-        timezone_name=timezone_name,
-    )
-    statement = select(
-        func.coalesce(func.sum(stream.c.stream_amount_cents), 0),
-        func.count(stream.c.entry_id),
-    ).select_from(stream)
-    row = db.execute(statement).one()
-    return (
-        projection_sum_to_int(
-            row[0],
-            label="reports.range_amount",
-            empty_is_zero=True,
-        ),
-        int(row[1] or 0),
-    )
+def _entries_in_range(entries, period, zone):
+    start, end = (value.astimezone(zone).date() for value in period)
+    return [entry for entry in entries if start <= entry.stream_date < end]
 
 
-def _range_amount_counts(
-    db: Session,
-    *,
-    tenant_id: str,
-    ranges: dict[str, tuple[datetime, datetime]],
-    timezone_name: str,
-) -> dict[str, tuple[int, int]]:
-    if not ranges:
-        return {}
-    zone = accounting_zone(timezone_name)
-    stream = confirmed_stream_query(
-        tenant_id=tenant_id,
-        timezone_name=timezone_name,
-        amount_required=True,
-    )
-    columns = []
-    labels = list(ranges)
-    for index, label in enumerate(labels):
-        start_utc, end_utc = ranges[label]
-        start_date = start_utc.astimezone(zone).date()
-        end_date = end_utc.astimezone(zone).date()
-        in_range = (stream.c.stream_date >= start_date) & (
-            stream.c.stream_date < end_date
-        )
-        columns.extend(
-            [
-                func.coalesce(
-                    func.sum(
-                        case((in_range, stream.c.stream_amount_cents), else_=0)
-                    ),
-                    0,
-                ).label(f"amount_{index}"),
-                func.coalesce(
-                    func.sum(case((in_range, 1), else_=0)),
-                    0,
-                ).label(f"count_{index}"),
-            ]
-        )
-    earliest = min(start for start, _end in ranges.values()).astimezone(zone).date()
-    latest = max(end for _start, end in ranges.values()).astimezone(zone).date()
-    statement = (
-        select(*columns)
-        .select_from(stream)
-        .where(stream.c.stream_date >= earliest)
-        .where(stream.c.stream_date < latest)
-    )
-    row = db.execute(statement).one()
-    return {
-        label: (
-            projection_sum_to_int(
-                row[index * 2],
-                label=f"reports.range_amount.{label}",
-                empty_is_zero=True,
-            ),
-            int(row[index * 2 + 1] or 0),
-        )
-        for index, label in enumerate(labels)
-    }
+def _amount_count(entries):
+    return sum_projected_amounts((entry.amount_cents for entry in entries), label="reports.total"), len(entries)
+
+
+def _entry_gaps(entries):
+    return ordered_projection_gaps(entry.gap for entry in entries if entry.gap is not None)
+
+
+def _amount_delta(current, previous):
+    return sum_projected_amounts((current, None if previous is None else -previous), label="reports.delta")
 
 
 def _trend_buckets(
@@ -194,91 +116,9 @@ def _trend_buckets(
     return buckets
 
 
-def _bucket_amount_counts(
-    db: Session,
-    *,
-    tenant_id: str,
-    buckets: list[_TrendBucket],
-    timezone_name: str,
-) -> dict[str, tuple[int, int]]:
-    if not buckets:
-        return {}
-    zone = accounting_zone(timezone_name)
-    stream = confirmed_stream_query(
-        tenant_id=tenant_id,
-        timezone_name=timezone_name,
-        amount_required=True,
-    )
-    columns = []
-    for index, bucket in enumerate(buckets):
-        start_date = bucket.start_utc.astimezone(zone).date()
-        end_date = bucket.end_utc.astimezone(zone).date()
-        in_bucket = (stream.c.stream_date >= start_date) & (
-            stream.c.stream_date < end_date
-        )
-        columns.extend(
-            [
-                func.coalesce(
-                    func.sum(
-                        case((in_bucket, stream.c.stream_amount_cents), else_=0)
-                    ),
-                    0,
-                ).label(f"amount_{index}"),
-                func.coalesce(
-                    func.sum(case((in_bucket, 1), else_=0)),
-                    0,
-                ).label(f"count_{index}"),
-            ]
-        )
-    earliest = min(bucket.start_utc for bucket in buckets).astimezone(zone).date()
-    latest = max(bucket.end_utc for bucket in buckets).astimezone(zone).date()
-    statement = (
-        select(*columns)
-        .select_from(stream)
-        .where(stream.c.stream_date >= earliest)
-        .where(stream.c.stream_date < latest)
-    )
-    row = db.execute(statement).one()
-    return {
-        bucket.bucket: (
-            projection_sum_to_int(
-                row[index * 2],
-                label=f"reports.bucket_amount.{bucket.bucket}",
-                empty_is_zero=True,
-            ),
-            int(row[index * 2 + 1] or 0),
-        )
-        for index, bucket in enumerate(buckets)
-    }
-
-
-def _trend_points(
-    db: Session,
-    *,
-    tenant_id: str,
-    month: str,
-    granularity: ReportGranularity,
-    timezone_name: str,
-    zone: ZoneInfo,
-) -> list[dict]:
-    buckets = _trend_buckets(
-        month=month,
-        granularity=granularity,
-        timezone_name=timezone_name,
-        zone=zone,
-    )
-    totals = _bucket_amount_counts(
-        db,
-        tenant_id=tenant_id,
-        buckets=buckets,
-        timezone_name=timezone_name,
-    )
-    return [
-        {
-            "bucket": bucket.bucket,
-            "label": bucket.label,
-            "amount_cents": totals.get(bucket.bucket, (0, 0))[0],
-            "count": totals.get(bucket.bucket, (0, 0))[1],
-        }
-        for bucket in buckets
-    ]
+def _trend_points(entries, buckets, zone):
+    points = []
+    for bucket in buckets:
+        amount, count = _amount_count(_entries_in_range(entries, (bucket.start_utc, bucket.end_utc), zone))
+        points.append({"bucket": bucket.bucket, "label": bucket.label, "amount_cents": amount, "count": count})
+    return points

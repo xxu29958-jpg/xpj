@@ -120,7 +120,7 @@ def web_correct_get(
         options,
         selected_id,
         expense_id,
-        **return_values,
+        return_context=return_context,
     )
     return templates.TemplateResponse(request=request, name="expense_correct.html", context=ctx)
 
@@ -153,7 +153,7 @@ def _correction_error_response(
         conflict=conflict,
         receipt_item_rows=None if parsed.item_sources_stale else parsed.item_form_rows,
         split_form_rows=None if parsed.split_sources_stale else parsed.split_form_rows,
-        **form.return_context.as_kwargs(),
+        return_context=form.return_context,
     )
 
 

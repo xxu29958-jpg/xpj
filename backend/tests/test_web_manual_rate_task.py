@@ -65,6 +65,7 @@ def test_save_uses_same_owner_and_returns_original_task_without_generation(task)
     assert target.path == "/web/budget-advise"
     assert returned["month"] == ["2026-08"] and returned["home_currency_code"] == ["JPY"]
     assert returned["savings_target_yuan"] == ["12"] and returned["reserved_buffer_yuan"] == ["3"]
+    assert "提交已确认" in returned["msg"][0]
     assert "run_advise" not in returned and "idempotency_key" not in returned
 
 
@@ -112,6 +113,26 @@ def test_existing_rate_editor_keeps_the_reviewed_pair_and_date_fixed(task, monke
     assert 'name="expected_row_version" value="2"' in editor
     assert '<select' not in editor and 'id="rate-date"' not in editor
     task.saved.assert_not_called()
+
+
+def test_rate_repair_returns_to_original_report_currency_and_filters(task):
+    fields = _form(return_to="reports", granularity="week", ranking_metric="count", merchant_category="餐饮")
+    response = task.client.post("/web/budget-advise/rates", data=fields, follow_redirects=False)
+    assert response.status_code == 303, response.text
+    target = urlsplit(response.headers["location"])
+    assert target.path == "/web/reports"
+    values = parse_qs(target.query)
+    assert "提交已确认" in values["msg"][0]
+    for name in ("ledger_id", "month", "home_currency_code", "granularity", "ranking_metric", "merchant_category"):
+        assert values[name] == [fields[name]]
+    assert "idempotency_key" not in values and "expected_row_version" not in values
+    assert "run_advise" not in values
+
+
+def test_return_target_cannot_become_an_arbitrary_redirect(task):
+    response = task.client.post("/web/budget-advise/rates", data=_form(return_to="https://outside.test"), follow_redirects=False)
+    target = urlsplit(response.headers["location"])
+    assert not target.netloc and target.path == "/web/budget-advise"
 
 
 def test_binding_refusal_happens_before_lookup_review_or_command(task, monkeypatch):

@@ -6,9 +6,9 @@
   <div class="product-page-heading">
     <span class="product-eyebrow">计划 / 预算建议 / 金额换算</span>
     <h1 class="page-title">人工汇率</h1>
-    <p class="product-page-summary">补录或纠正后，回到 {{ values.month }} 的预算。原记录的金额与币种保持不变。</p>
+    <p class="product-page-summary">补录或纠正后，回到 {{ values.month }} 的{{ return_label }}。原记录的金额与币种保持不变。</p>
   </div>
-  <a class="product-button product-button--quiet" href="/web/budget-advise?{{ rate_task|urlencode }}">返回预算</a>
+  <a class="product-button product-button--quiet" href="{{ return_href }}">返回{{ return_label }}</a>
 </header>
 {% if error %}<div class="product-feedback product-feedback--danger" role="alert">{{ error }}</div>{% endif %}
 <div class="plan-flow">

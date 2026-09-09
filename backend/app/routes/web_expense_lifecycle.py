@@ -13,7 +13,12 @@ from app.routes._web_expense_confirm_command import confirm_web_expense
 from app.routes._web_expense_edit_form import WebExpenseEditForm, web_expense_edit_form
 from app.routes._web_expense_form import web_form_error_status
 from app.routes._web_expense_helpers import confirm_reject_error, drawer_fragment_ok
-from app.routes._web_expense_return_context import resolve_return_to, return_context_params
+from app.routes._web_expense_return_context import (
+    ExpenseReturnContext,
+    expense_return_form_context,
+    resolve_return_to,
+    return_context_params,
+)
 from app.routes._web_session_common import resolve_web_actor
 from app.routes.web_common import (
     LocalOnly,
@@ -60,7 +65,7 @@ def web_confirm(
             outcome.error,
             form.fragment,
             status_code=outcome.error_status,
-            **form.return_context.as_kwargs(),
+            return_context=form.return_context,
             form_values=outcome.form_values,
             field_errors=outcome.field_errors,
             conflict=outcome.conflict,
@@ -71,14 +76,7 @@ def web_confirm(
     return _web_redirect(
         resolve_return_to(return_context.return_to, "/web/pending"),
         selected_id,
-        **return_context_params(
-            return_context.return_to or "pending",
-            return_month=return_context.return_month,
-            return_filter=return_context.return_filter,
-            return_page=return_context.return_page,
-            return_tag=return_context.return_tag,
-            return_query=return_context.return_query,
-        ),
+        **return_context_params(**{**return_context.as_kwargs(), "return_to": return_context.return_to or "pending"}),
     )
 
 
@@ -91,9 +89,8 @@ def _reject_error(
     message: str,
     fragment: int,
     status_code: int,
-    return_values: tuple[str, str, str, str, str],
+    return_context: ExpenseReturnContext,
 ) -> Response:
-    return_to, return_month, return_filter, return_page, return_tag = return_values
     return confirm_reject_error(
         db,
         request,
@@ -103,11 +100,7 @@ def _reject_error(
         message,
         fragment,
         status_code=status_code,
-        return_to=return_to,
-        return_month=return_month,
-        return_filter=return_filter,
-        return_page=return_page,
-        return_tag=return_tag,
+        return_context=return_context,
     )
 
 
@@ -117,12 +110,7 @@ def web_reject(
     expense_id: int,
     ledger_id: str = Form(default=""),
     expected_row_version: str = Form(default=""),
-    return_to: str = Form(default=""),
-    return_month: str = Form(default=""),
-    return_filter: str = Form(default=""),
-    return_page: str = Form(default=""),
-    return_tag: str = Form(default=""),
-    return_query: str = Form(default=""),
+    return_context: ExpenseReturnContext = Depends(expense_return_form_context),
     fragment: int = Form(default=0),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
@@ -138,10 +126,10 @@ def web_reject(
         expense_id,
         error_code="expense_reversal_required",
         fragment=bool(fragment),
+        return_context=return_context,
     )
     if guarded is not None:
         return guarded
-    returns = (return_to, return_month, return_filter, return_page, return_tag)
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
         return _reject_error(
@@ -153,7 +141,7 @@ def web_reject(
             "页面已过期，请刷新后重新操作。",
             fragment,
             422,
-            returns,
+            return_context,
         )
     try:
         reject_expense(db, expense_id, selected_id, expected_row_version=parsed)
@@ -169,7 +157,7 @@ def web_reject(
             message,
             fragment,
             web_form_error_status(exc),
-            returns,
+            return_context,
         )
     if fragment:
         return drawer_fragment_ok("reject")
@@ -179,7 +167,7 @@ def web_reject(
         msg="已忽略这笔账单。",
         undo=str(expense_id),
         flash_type="success",
-        **return_context_params("pending", return_filter=return_filter),
+        **return_context_params("pending", return_filter=return_context.return_filter),
     )
 
 

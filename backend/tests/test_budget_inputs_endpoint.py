@@ -39,6 +39,7 @@ def test_viewer_can_read_original_month_currency_and_nullable_inputs(monkeypatch
         {"source_currency_code": None, "home_currency_code": "JPY", "rate_date": None},
     ]
     assert "provider_inputs" not in body
+    assert body["inputs_fingerprint"] is None
     assert read.call_args.kwargs == {"tenant_id": "ledger-a", "month": "2026-08", "home_currency_code": "JPY",
         "timezone_name": "UTC", "savings_target_cents": 20, "reserved_buffer_cents": 30}
     forbidden.assert_not_called()

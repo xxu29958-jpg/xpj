@@ -11,12 +11,7 @@ from app.services.spending_contract_service import (
     parse_month,
     resolve_accounting_timezone,
     shift_month,
-    stat_time_expr,
 )
-
-
-def _stat_time_expr():
-    return stat_time_expr()
 
 
 def _resolve_timezone(timezone_name: str | None) -> tuple[str, ZoneInfo]:

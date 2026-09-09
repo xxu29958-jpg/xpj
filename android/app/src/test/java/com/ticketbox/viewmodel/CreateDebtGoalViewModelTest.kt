@@ -361,10 +361,10 @@ private class FakeCreateReportsActions(
     }
 
     // ── unused ReportsActions surface ────────────────────────────────────────
-    override suspend fun reportsOverview(query: ReportsOverviewQuery): Result<ReportsOverview> =
+    override suspend fun reportsOverview(query: ReportsOverviewQuery, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<ReportsOverview> =
         Result.failure(UnsupportedOperationException())
 
-    override suspend fun exportReportsOverviewCsv(query: ReportsOverviewQuery): Result<CsvExport> =
+    override suspend fun exportReportsOverviewCsv(query: ReportsOverviewQuery, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<CsvExport> =
         Result.failure(UnsupportedOperationException())
 
     override suspend fun goals(month: String?, includeArchived: Boolean): Result<List<Goal>> =

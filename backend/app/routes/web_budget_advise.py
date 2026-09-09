@@ -51,7 +51,7 @@ def page_budget_advise(
     reserved_buffer_yuan: str = Query(default="0"),
     run_advise: bool = Query(default=False),
     home_currency_code: str | None = Query(default=None),
-    message: str | None = Query(default=None),
+    msg: str | None = Query(default=None),
     db: Session = Depends(get_db),
     _local: None = LocalOnly,
 ) -> HTMLResponse:
@@ -67,7 +67,7 @@ def page_budget_advise(
         run_advise=run_advise,
         allow_outbound=False,
         home_currency_code=home_currency_code,
-        message=message,
+        message=msg,
     )
 
 

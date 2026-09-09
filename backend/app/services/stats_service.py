@@ -269,35 +269,6 @@ def _tag_stats_for_filtered_query(db: Session, tenant_id: str, filtered) -> list
     return sorted(stats, key=lambda item: int(item["amount_cents"]), reverse=True)
 
 
-def top_expenses_for_month(
-    db: Session,
-    *,
-    tenant_id: str,
-    month: str | None = None,
-    tag: str | None = None,
-    timezone_name: str | None = None,
-    limit: int = 5,
-) -> list[Expense]:
-    """Highest-amount confirmed expenses for the period (ledger-scoped).
-
-    Used by the /web/reports 大额支出 panel (moved from the retired /web/stats
-    page in UI/UX 批 14). Skips rows with NULL amount_cents.
-    """
-    return list(
-        db.scalars(
-            _confirmed_query(
-                tenant_id=tenant_id,
-                month=month,
-                tag=tag,
-                timezone_name=timezone_name,
-            )
-            .where(Expense.amount_cents.is_not(None))
-            .order_by(Expense.amount_cents.desc())
-            .limit(limit)
-        )
-    )
-
-
 def _ranked_scored_expenses(
     expenses: list[Expense],
     *,

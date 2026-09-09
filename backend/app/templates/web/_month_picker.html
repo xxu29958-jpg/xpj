@@ -24,7 +24,7 @@
    渲染出「该月还没有账单」的假空态（分页器也随之消失，没有恢复控件）。
    msg/flash_type 属于刚结束的操作，不能作为新月份的反馈继续展示。 #}
 {% macro _link(month) -%}
-{{ request.url.path }}?{% for k, v in request.query_params.multi_items() %}{% if k not in ['month', 'page', 'msg', 'flash_type'] %}{{ k }}={{ v }}&{% endif %}{% endfor %}month={{ month }}
+{{ request.url.path }}?{% for k, v in (month_picker_query.items() if month_picker_query is defined else request.query_params.multi_items()) %}{% if k not in ['month', 'page', 'msg', 'flash_type'] %}{{ k|urlencode }}={{ v|urlencode }}&{% endif %}{% endfor %}month={{ month }}
 {%- endmacro %}
 <div class="month-picker">
   {% if _prev %}<a href="{{ _link(_prev) }}" aria-label="上一月">‹</a>{% endif %}

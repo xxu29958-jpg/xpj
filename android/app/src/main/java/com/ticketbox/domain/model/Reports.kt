@@ -27,32 +27,34 @@ data class ReportsOverviewQuery(
     val topN: Int = 8,
     val merchantCategory: String? = null,
     val rankingMetric: ReportRankingMetric = ReportRankingMetric.Count,
+    val homeCurrencyCode: String? = null,
+    val timezone: String? = null,
 )
 
 data class ReportTrendPoint(
     val bucket: String,
     val label: String,
-    val amountCents: Long,
+    val amountCents: Long?,
     val count: Int,
 )
 
 data class ReportMerchantRanking(
     val merchant: String,
-    val amountCents: Long,
+    val amountCents: Long?,
     val count: Int,
 )
 
 data class ReportCategoryComparison(
     val category: String,
-    val amountCents: Long,
+    val amountCents: Long?,
     val count: Int,
-    val previousAmountCents: Long,
+    val previousAmountCents: Long?,
     val previousCount: Int,
-    val deltaAmountCents: Long,
+    val deltaAmountCents: Long?,
     val deltaCount: Int,
-    val yearOverYearAmountCents: Long,
+    val yearOverYearAmountCents: Long?,
     val yearOverYearCount: Int,
-    val yearOverYearDeltaAmountCents: Long,
+    val yearOverYearDeltaAmountCents: Long?,
     val yearOverYearDeltaCount: Int,
 )
 
@@ -60,22 +62,26 @@ data class ReportsOverview(
     val month: String,
     val timezone: String,
     val granularity: ReportGranularity,
-    val totalAmountCents: Long,
+    val totalAmountCents: Long?,
     val count: Int,
     val previousMonth: String,
-    val previousTotalAmountCents: Long,
+    val previousTotalAmountCents: Long?,
     val previousCount: Int,
     val yearOverYearMonth: String,
-    val yearOverYearTotalAmountCents: Long,
+    val yearOverYearTotalAmountCents: Long?,
     val yearOverYearCount: Int,
-    val yearOverYearDeltaAmountCents: Long,
+    val yearOverYearDeltaAmountCents: Long?,
     val yearOverYearDeltaCount: Int,
     val merchantCategory: String?,
     val rankingMetric: ReportRankingMetric,
     val trend: List<ReportTrendPoint>,
     val merchantRanking: List<ReportMerchantRanking>,
     val categoryComparison: List<ReportCategoryComparison>,
+    val homeCurrencyCode: String,
+    val missingRates: List<CurrencyProjectionGap> = emptyList(),
 )
+
+data class CurrencyProjectionGap(val sourceCurrencyCode: String?, val homeCurrencyCode: String, val rateDate: String?)
 
 enum class GoalProgressState(val apiValue: String) {
     Idle("not_started"),

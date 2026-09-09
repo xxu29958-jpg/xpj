@@ -46,12 +46,14 @@ internal fun NavGraphBuilder.addPlanRoutes(
                 onDataChanged = shellState::markPlanDataChanged,
             )
         }
-        composable("${ProductSecondaryPage.BudgetAdvice.route}?submission={submission}",
-            arguments = listOf(navArgument("submission") { type = NavType.StringType; nullable = true; defaultValue = null })) { entry ->
+        composable("${ProductSecondaryPage.BudgetAdvice.route}?submission={submission}&report={report}",
+            arguments = listOf(navArgument("submission") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("report") { type = NavType.StringType; nullable = true; defaultValue = null })) { entry ->
             BudgetAdviceRoute(
                 screenFactory = screenFactory,
                 onBack = onBack,
                 originalSubmissionId = entry.arguments?.getString("submission")?.toLongOrNull(),
+                reportContext = readReportRateContext(entry.arguments?.getString("report")),
             )
         }
         composable(ProductSecondaryPage.Recurring.route) {

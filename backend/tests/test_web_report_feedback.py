@@ -42,13 +42,16 @@ def report_client(monkeypatch):
     monkeypatch.setattr(web_reports, "_sidebar_counts", lambda *_a: {})
     monkeypatch.setattr(web_reports, "_monthly_report_sections", lambda *_a, **_k: (None, []))
     monkeypatch.setattr(web_reports, "six_month_summary", lambda *_a, **_k: [])
-    monkeypatch.setattr(web_reports, "_top_expenses_view", lambda *_a, **_k: [])
+    monkeypatch.setattr(web_reports, "_top_expenses_view", lambda *_a, **_k: {
+        "top_expenses": [], "top_expenses_missing_rates": (),
+    })
     monkeypatch.setattr(web_reports, "_base_ctx", lambda _request, **kw: {
         "selected_ledger_id": kw["selected_ledger_id"], "home_currency_symbol": "¥",
     })
-    monkeypatch.setattr(web_reports, "reports_overview", lambda _db, **kw: kw)
+    monkeypatch.setattr(web_reports, "reports_overview", lambda _db, **kw: {**kw, "missing_rates": ()})
     monkeypatch.setattr(web_reports, "_view_model", lambda payload, **_k: {
-        **payload, "merchant_category": "", "total_amount_yuan": "0.00",
+        **payload, "merchant_category": payload.get("merchant_category") or "", "total_amount_yuan": "0.00",
+        "total_amount_cents": 0, "previous_total_amount_cents": 0, "merchant_amount_unavailable": False,
         "year_over_year_delta_amount_yuan": "0.00", "count": 0, "previous_count": 0,
         "trend": [], "category_comparison": [], "merchant_ranking": [],
     })
@@ -73,7 +76,9 @@ def report_client(monkeypatch):
 @pytest.mark.parametrize("entry", ["edit", "correct"])
 def test_unavailable_report_fact_returns_visible_error_in_original_month(report_client, entry):
     response = report_client.get(
-        f"/web/expenses/41/{entry}?ledger_id=family&return_to=reports&return_month=2026-05",
+        f"/web/expenses/41/{entry}", params={"ledger_id": "family", "return_to": "reports",
+            "return_month": "2026-05", "return_home_currency_code": "JPY", "return_granularity": "week",
+            "return_ranking_metric": "count", "return_merchant_category": "餐饮"},
     )
     assert len(response.history) == 1
     assert response.history[0].status_code == 303
@@ -81,6 +86,9 @@ def test_unavailable_report_fact_returns_visible_error_in_original_month(report_
     assert target.path == "/web/reports"
     fields = parse_qs(target.query)
     assert fields["ledger_id"] == ["family"] and fields["month"] == ["2026-05"]
+    assert {key: fields[key] for key in ("home_currency_code", "granularity", "ranking_metric", "merchant_category")} == {
+        "home_currency_code": ["JPY"], "granularity": ["week"], "ranking_metric": ["count"], "merchant_category": ["餐饮"],
+    }
     assert fields["flash_type"] == ["error"]
     assert response.status_code == 200
     assert 'role="alert"' in response.text

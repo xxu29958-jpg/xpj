@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import hashlib
+import json
+from dataclasses import asdict, dataclass
 
 from sqlalchemy.orm import Session
 
@@ -34,6 +36,14 @@ class BudgetInputProjection:
     breakdown: DiscretionaryBreakdown
     missing_rates: tuple[ProjectionGap, ...]
     provider_inputs: BudgetInputs | None
+
+    @property
+    def inputs_fingerprint(self) -> str | None:
+        """Invalidate cached advice when its private basis changes across clients."""
+        if self.provider_inputs is None:
+            return None
+        payload = json.dumps(asdict(self.provider_inputs), sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def read_budget_inputs(

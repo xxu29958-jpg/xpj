@@ -323,9 +323,6 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /api/ledgers/{ledger_id}/members/{member_id}/transfer-owner": Exempt(
         "governance_action", "identity", _OWNER_TRANSFER, "high"
     ),
-    "PUT /api/exchange-rates/{currency_code}/{rate_date}": Exempt(
-        "upsert_bucket", "exchange_rates", ("exchange_rates",)
-    ),
 
     # --- /api upsert / replace-all / lifecycle (tenant/account-keyed bucket) ---
     "PUT /api/dashboard/cards": Exempt("upsert_bucket", "budget", _DASHBOARD),

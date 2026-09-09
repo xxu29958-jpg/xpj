@@ -35,6 +35,10 @@ internal fun HeroSpendTrend(
     reportTrend: List<ReportTrendPoint>,
     currencyDisplay: CurrencyDisplay,
 ) {
+    if (reportTrend.any { it.amountCents == null }) {
+        Text(stringResource(R.string.reports_trend_unavailable))
+        return
+    }
     val points = remember(reportTrend) { heroSpendTrendPoints(reportTrend) }
     val visiblePoints = rememberSpendWindowChartPoints(points = points, maxWindows = 6)
     val summary = remember(points) { heroSpendTrendSummary(points) }
@@ -282,7 +286,7 @@ private data class HeroSpendTrendSummary(
 }
 
 private fun heroSpendTrendSummary(points: List<StatsSpendChartPoint>): HeroSpendTrendSummary {
-    val normalized = points.map { it.copy(amountCents = it.amountCents.coerceAtLeast(0L)) }
+    val normalized = points.map { it.copy(amountCents = requireNotNull(it.amountCents).coerceAtLeast(0L)) }
     val total = normalized.sumOf { it.amountCents }
     val peakIndex = normalized.indices.maxByOrNull { normalized[it].amountCents }
     val peak = peakIndex?.let { normalized[it] }
@@ -303,12 +307,13 @@ private fun heroSpendTrendSummary(points: List<StatsSpendChartPoint>): HeroSpend
 internal fun heroSpendTrendPoints(
     reportTrend: List<ReportTrendPoint>,
 ): List<StatsSpendChartPoint> {
+    if (reportTrend.any { it.amountCents == null }) return emptyList()
     return reportTrend
         .filter { it.label.isNotBlank() || it.bucket.isNotBlank() }
         .map {
             StatsSpendChartPoint(
                 label = it.label.ifBlank { it.bucket },
-                amountCents = it.amountCents.coerceAtLeast(0L),
+                amountCents = requireNotNull(it.amountCents).coerceAtLeast(0L),
             )
         }
 }

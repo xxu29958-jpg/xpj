@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import androidx.annotation.StringRes
 import com.ticketbox.R
 import com.ticketbox.data.repository.RepositoryException
+import com.ticketbox.data.repository.LocalRepositoryFailure
 import com.ticketbox.domain.model.UiText
 
 /**
@@ -23,24 +24,25 @@ fun Throwable.toUiText(): UiText = toUiText(R.string.error_generic)
 /** As [toUiText] but with a screen-specific [fallback] when the failure carries
  *  no known code and no message (preserves each screen's prior fallback copy). */
 fun Throwable.toUiText(@StringRes fallback: Int): UiText {
+    (this as? RepositoryException)?.localFailure?.let { return localFailureText(it) }
     val code = (this as? RepositoryException)?.errorCode?.trim()
     errorCodeStringRes(code)?.let { return UiText.res(it) }
     val raw = message?.trim().orEmpty()
     return if (raw.isNotEmpty()) UiText.raw(raw) else UiText.res(fallback)
 }
 
+private fun localFailureText(reason: LocalRepositoryFailure): UiText = UiText.res(when (reason) {
+    LocalRepositoryFailure.ManualRateReviewRequired -> R.string.advice_rate_submission_review
+    LocalRepositoryFailure.ManualRateUnresolved -> R.string.advice_rate_unresolved
+    LocalRepositoryFailure.ManualRateChanged -> R.string.advice_rate_changed
+    LocalRepositoryFailure.BudgetInputsUnverified -> R.string.advice_inputs_load_failed
+})
+
 @StringRes
 private fun errorCodeStringRes(code: String?): Int? = code?.let(errorCodeStringResByCode::get)
 
 private val errorCodeStringResByCode = mapOf(
-    "manual_rate_original_unverified" to R.string.advice_rate_submission_review,
-    "manual_rate_response_unverified" to R.string.advice_rate_submission_review,
-    "manual_rate_review_required" to R.string.advice_rate_submission_review,
-    "manual_rate_submission_unresolved" to R.string.advice_rate_unresolved,
-    "manual_rate_submission_changed" to R.string.advice_rate_changed,
-    "manual_rate_current_unverified" to R.string.advice_rate_changed,
-    "budget_advice_inputs_unverified" to R.string.advice_inputs_load_failed,
-    "money_projection_unavailable" to R.string.advice_missing_rates,
+    "money_projection_unavailable" to R.string.error_money_projection_unavailable,
     "invalid_token" to R.string.error_invalid_token,
     "legacy_auth_removed" to R.string.error_legacy_auth_removed,
     "invalid_pairing_code" to R.string.error_invalid_pairing_code,

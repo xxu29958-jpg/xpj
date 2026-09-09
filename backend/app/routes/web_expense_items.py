@@ -14,7 +14,11 @@ from app.routes._web_confirmed_write_guard import confirmed_write_guard_response
 from app.routes._web_expense_fact import web_fact_error_response
 from app.routes._web_expense_form import web_form_error_status
 from app.routes._web_expense_helpers import _edit_page_or_flash_redirect
-from app.routes._web_expense_return_context import edit_context_params
+from app.routes._web_expense_return_context import (
+    ExpenseReturnContext,
+    edit_context_params,
+    expense_return_form_context,
+)
 from app.routes._web_expense_rows import (
     WebExpenseRowsOutcome,
     attach_form_row_error,
@@ -105,12 +109,7 @@ def web_items_save(
     item_category: list[str] = Form(default=[]),
     expected_row_version: str = Form(default=""),
     ledger_id: str = Form(default=""),
-    return_to: str = Form(default=""),
-    return_month: str = Form(default=""),
-    return_filter: str = Form(default=""),
-    return_page: str = Form(default=""),
-    return_tag: str = Form(default=""),
-    return_query: str = Form(default=""),
+    return_context: ExpenseReturnContext = Depends(expense_return_form_context),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -124,17 +123,10 @@ def web_items_save(
         selected_id,
         expense_id,
         error_code="expense_correction_required",
+        return_context=return_context,
     )
     if guarded is not None:
         return guarded
-    submitted_return_context = {
-        "return_to": return_to,
-        "return_month": return_month,
-        "return_filter": return_filter,
-        "return_page": return_page,
-        "return_tag": return_tag,
-        "return_query": return_query,
-    }
     outcome = _save_web_expense_items(
         db,
         expense_id=expense_id,
@@ -161,13 +153,13 @@ def web_items_save(
             error_key="items_error",
             status_code=outcome.error_status,
             receipt_item_rows=outcome.rows if outcome.error_status == 422 else None,
-            **submitted_return_context,
+            return_context=return_context,
         )
     return _web_redirect(
         f"/web/expenses/{expense_id}/edit",
         selected_id,
         msg="明细已保存。",
-        **edit_context_params(**submitted_return_context),
+        **edit_context_params(**return_context.as_kwargs()),
     )
 
 
@@ -180,7 +172,7 @@ def _mismatch_error_response(
     message: str,
     *,
     status_code: int,
-    return_context: dict[str, str],
+    return_context: ExpenseReturnContext,
 ) -> Response:
     try:
         if get_expense(db, expense_id, selected_id).status == "confirmed":
@@ -192,6 +184,7 @@ def _mismatch_error_response(
                 expense_id,
                 message,
                 status_code=status_code,
+                return_context=return_context,
             )
     except AppError:
         # The shared edit helper owns the vanished-row flash fallback.
@@ -206,7 +199,7 @@ def _mismatch_error_response(
         "/web/confirmed",
         error_key="items_error",
         status_code=status_code,
-        **return_context,
+        return_context=return_context,
     )
 
 
@@ -263,26 +256,13 @@ def web_items_acknowledge_mismatch(
     ledger_id: str = Form(default=""),
     expected_row_version: str = Form(default=""),
     idempotency_key: str = Form(default=""),
-    return_to: str = Form(default=""),
-    return_month: str = Form(default=""),
-    return_filter: str = Form(default=""),
-    return_page: str = Form(default=""),
-    return_tag: str = Form(default=""),
-    return_query: str = Form(default=""),
+    return_context: ExpenseReturnContext = Depends(expense_return_form_context),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
-    return_context = {
-        "return_to": return_to,
-        "return_month": return_month,
-        "return_filter": return_filter,
-        "return_page": return_page,
-        "return_tag": return_tag,
-        "return_query": return_query,
-    }
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
         return _mismatch_error_response(
@@ -325,12 +305,5 @@ def web_items_acknowledge_mismatch(
         f"/web/expenses/{expense_id}/edit",
         selected_id,
         msg="已确认原小票如此。",
-        **edit_context_params(
-            return_to,
-            return_month=return_month,
-            return_filter=return_filter,
-            return_page=return_page,
-            return_tag=return_tag,
-            return_query=return_query,
-        ),
+        **edit_context_params(**return_context.as_kwargs()),
     )
