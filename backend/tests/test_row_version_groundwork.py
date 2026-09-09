@@ -120,7 +120,7 @@ def test_items_replace_increments_parent_expense_row_version(
 def _create_rule(client: TestClient, *, identity, keyword: str = "RowVerCafe") -> dict:
     response = client.post(
         "/api/rules/categories",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"keyword": keyword, "category": "餐饮", "priority": 1},
     )
     assert response.status_code in (200, 201), response.text

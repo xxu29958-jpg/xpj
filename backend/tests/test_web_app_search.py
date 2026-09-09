@@ -12,6 +12,7 @@ from app.database import SessionLocal
 from app.models import Expense
 from app.services.learning_service import OcrFactDraft, record_ocr_fact
 from tests._web_native_form_support import hidden_post_forms
+from tests._web_rule_form_support import submit_rule_form
 
 
 def _create_pending(client: TestClient, *, identity) -> int:
@@ -56,7 +57,7 @@ def test_web_search_finds_current_ledger_entities(web_client: TestClient, *, ide
         web_client, confirmed_id, identity=identity, follow_redirects=False
     )
     assert confirmed.status_code in {303, 307}
-    rule = web_client.post(
+    rule = submit_rule_form(web_client,
         "/web/rules/create",
         data={
             "keyword": "SearchCafe",

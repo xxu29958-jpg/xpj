@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Final, cast
 
 from sqlalchemy import select, update
@@ -15,10 +16,12 @@ from app.services.currency_binding_service import (
     authorize_currency_metadata_write,
     resolve_write_capability,
 )
+from app.services.currency_common import normalize_currency_code
 from app.services.merchant_alias_service import (
     canonical_merchant_for,
     enabled_merchant_alias_map,
 )
+from app.services.money_projection_service import project_recorded_amount
 from app.services.optimistic_concurrency import (
     claim_row_with_token,
 )
@@ -124,10 +127,9 @@ def classify_expense(db: Session, expense: Expense) -> Expense:
         .where(CategoryRule.deleted_at.is_(None))
         .order_by(CategoryRule.priority.asc(), CategoryRule.id.asc())
     )
-    for rule in rules:
-        if rule.keyword.casefold() in haystack and _rule_conditions_match(expense, rule):
-            expense.category = normalize_category(rule.category)
-            return expense
+    match = match_category_rule(db, expense, list(rules), haystack=haystack)
+    if match.category is not None:
+        expense.category = match.category
     return expense
 
 
@@ -189,12 +191,17 @@ def create_rule(
     amount_max_cents: int | None = None,
     source_contains: str | None = None,
     tag_contains: str | None = None,
+    home_currency_code: str | None = None,
+    commit: bool = True,
 ) -> CategoryRule:
     keyword = keyword.strip()
     category = normalize_category(category)
     source_contains = _clean_optional_text(source_contains)
     tag_contains = _clean_optional_text(tag_contains)
     amount_min_cents, amount_max_cents = _clean_amount_range(amount_min_cents, amount_max_cents)
+    currency = normalize_currency_code(home_currency_code) if home_currency_code is not None else None
+    if (amount_min_cents is not None or amount_max_cents is not None) and currency is None:
+        raise AppError("rule_currency_required", "请明确金额条件的币种。", status_code=422)
     if not keyword or not category:
         raise AppError("invalid_request", status_code=422)
     _authorize_rule_write(db, amount_min_cents=amount_min_cents, amount_max_cents=amount_max_cents)
@@ -209,13 +216,17 @@ def create_rule(
         priority=priority,
         amount_min_cents=amount_min_cents,
         amount_max_cents=amount_max_cents,
+        home_currency_code=currency,
         source_contains=source_contains,
         tag_contains=tag_contains,
         created_at=now,
         updated_at=now,
     )
     db.add(rule)
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     db.refresh(rule)
     return rule
 
@@ -238,6 +249,7 @@ def update_rule(
     amount_max_cents: int | None | object = _UNSET,
     source_contains: str | None | object = _UNSET,
     tag_contains: str | None | object = _UNSET,
+    home_currency_code: str | None | object = _UNSET,
     commit: bool = True,
 ) -> CategoryRule:
     """Update a rule through the DB row-version predicate."""
@@ -259,6 +271,18 @@ def update_rule(
     )
     next_min = cast(int | None, update_values.get("amount_min_cents", existing_min))
     next_max = cast(int | None, update_values.get("amount_max_cents", existing_max))
+    saved_currency = rule.home_currency_code
+    submitted_currency = (normalize_currency_code(cast(str, home_currency_code))
+        if home_currency_code is not _UNSET and home_currency_code is not None else None)
+    changing_amounts = amount_min_cents is not _UNSET or amount_max_cents is not _UNSET
+    if saved_currency is not None and home_currency_code is not _UNSET and submitted_currency != saved_currency:
+        raise AppError("rule_currency_mismatch", "请按规则已保存的币种编辑金额条件。", status_code=409)
+    if changing_amounts and (saved_currency is not None or next_min is not None or next_max is not None) and submitted_currency is None:
+        raise AppError("rule_currency_required", "请明确金额条件的币种。", status_code=422)
+    if saved_currency is None and (existing_min is not None or existing_max is not None):
+        raise AppError("rule_currency_requires_adoption", "请先核对原金额条件的币种。", status_code=409)
+    if saved_currency is None and submitted_currency is not None:
+        update_values["home_currency_code"] = submitted_currency
     _authorize_rule_write(db, amount_min_cents=next_min, amount_max_cents=next_max)
     next_enabled = cast(bool, update_values.get("enabled", existing_enabled))
     if next_enabled:
@@ -484,12 +508,18 @@ def _clean_amount_range(
     return amount_min_cents, amount_max_cents
 
 
-def _rule_conditions_match(expense: Expense, rule: CategoryRule) -> bool:
-    amount = expense.amount_cents
-    if rule.amount_min_cents is not None and (amount is None or amount < rule.amount_min_cents):
-        return False
-    if rule.amount_max_cents is not None and (amount is None or amount > rule.amount_max_cents):
-        return False
+@dataclass(frozen=True)
+class RuleMatch:
+    rule_id: int | None = None
+    matched_keyword: str = ""
+    category: str | None = None
+    unavailable: bool = False
+    # The actual projected integers, including unavailable attempts, are part of
+    # bulk preview consent. An FX correction must invalidate the old preview.
+    money_evidence: tuple[tuple[int, int | None], ...] = ()
+
+
+def _nonmonetary_conditions_match(expense: Expense, rule: CategoryRule) -> bool:
     if rule.source_contains and rule.source_contains.casefold() not in (expense.source or "").casefold():
         return False
     if rule.tag_contains:
@@ -497,3 +527,34 @@ def _rule_conditions_match(expense: Expense, rule: CategoryRule) -> bool:
         if wanted not in {tag_key(tag) for tag in parse_tags(expense.tags)}:
             return False
     return True
+
+
+def _rule_amount(db: Session, expense: Expense, rule: CategoryRule) -> int | None:
+    from app.services.spending_contract_service import accounting_zone, stat_time
+
+    if expense.amount_cents is None:
+        return None
+    instant = stat_time(expense)
+    rate_date = instant.astimezone(accounting_zone()).date() if instant else None
+    return project_recorded_amount(db, tenant_id=expense.tenant_id, amount_minor=expense.amount_cents,
+        source_currency=expense.home_currency_code, home_currency=rule.home_currency_code, rate_date=rate_date)
+
+
+def match_category_rule(db: Session, expense: Expense, rules: list[CategoryRule], *, haystack: str) -> RuleMatch:
+    evidence: list[tuple[int, int | None]] = []
+    for rule in rules:
+        if rule.keyword.casefold() not in haystack or not _nonmonetary_conditions_match(expense, rule):
+            continue
+        if rule.amount_min_cents is not None or rule.amount_max_cents is not None:
+            amount = _rule_amount(db, expense, rule)
+            evidence.append((rule.id, amount))
+            if amount is None:
+                return RuleMatch(rule_id=rule.id, matched_keyword=rule.keyword,
+                    unavailable=True, money_evidence=tuple(evidence))
+            if rule.amount_min_cents is not None and amount < rule.amount_min_cents:
+                continue
+            if rule.amount_max_cents is not None and amount > rule.amount_max_cents:
+                continue
+        return RuleMatch(rule_id=rule.id, matched_keyword=rule.keyword,
+            category=normalize_category(rule.category) or None, money_evidence=tuple(evidence))
+    return RuleMatch(money_evidence=tuple(evidence))

@@ -26,6 +26,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import CategoryRule
+from app.services.tag_service import tag_key
 
 ConflictKind = Literal["conflict", "redundant", "shadow"]
 
@@ -52,6 +53,23 @@ def _enabled_rules(db: Session, tenant_id: str) -> list[CategoryRule]:
     )
 
 
+def _conditions_cover(high: CategoryRule, low: CategoryRule) -> bool:
+    """Prove static coverage; never compare threshold integers across currencies."""
+    if high.source_contains and high.source_contains.casefold() not in (low.source_contains or "").casefold():
+        return False
+    if high.tag_contains and tag_key(high.tag_contains) != tag_key(low.tag_contains or ""):
+        return False
+    if high.amount_min_cents is None and high.amount_max_cents is None:
+        return True
+    if high.home_currency_code is None or high.home_currency_code != low.home_currency_code:
+        return False
+    if high.amount_min_cents is not None and (low.amount_min_cents is None or low.amount_min_cents < high.amount_min_cents):
+        return False
+    return high.amount_max_cents is None or (
+        low.amount_max_cents is not None and low.amount_max_cents <= high.amount_max_cents
+    )
+
+
 def find_rule_conflicts(
     db: Session, *, tenant_id: str
 ) -> list[RuleConflictFinding]:
@@ -71,6 +89,8 @@ def find_rule_conflicts(
         # Sort by (priority asc, id asc) so the "winner" is bucket[0].
         winner = bucket[0]
         for other in bucket[1:]:
+            if not _conditions_cover(winner, other):
+                continue
             if winner.category == other.category:
                 findings.append(
                     RuleConflictFinding(
@@ -113,7 +133,7 @@ def find_rule_conflicts(
             low_kw = rule_low.keyword.casefold()
             if high_kw == low_kw:
                 continue  # handled by the same-keyword bucket above
-            if high_kw and high_kw in low_kw:
+            if high_kw and high_kw in low_kw and _conditions_cover(rule_high, rule_low):
                 findings.append(
                     RuleConflictFinding(
                         kind="shadow",

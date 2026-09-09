@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_app_context, get_current_writer_context
+from app.auth import get_current_app_context, get_current_protocol_writer_context, get_current_writer_context
 from app.database import get_db
 from app.errors import AppError
 from app.schemas import (
@@ -28,7 +28,6 @@ from app.schemas import (
 from app.services.classify_service import (
     apply_rules_to_confirmed,
     apply_rules_to_pending,
-    create_rule,
     delete_rule,
     get_rule_for_tenant,
     list_rule_applications,
@@ -38,7 +37,6 @@ from app.services.classify_service import (
     preview_rule_for_pending,
     rollback_rule_application,
     undo_delete_rule,
-    update_rule,
     validate_rule_application_preview,
 )
 from app.services.idempotency import (
@@ -46,6 +44,7 @@ from app.services.idempotency import (
     mark_idempotency_succeeded,
 )
 from app.services.permission_service import require_write_expense
+from app.services.rule_command_service import create_rule_idempotently, update_rule_idempotently
 from app.tenants import AuthContext
 
 router = APIRouter(
@@ -65,21 +64,11 @@ def get_category_rules(
 @router.post("/categories", response_model=CategoryRuleResponse)
 def post_category_rule(
     payload: CategoryRuleCreateRequest,
-    auth: AuthContext = Depends(get_current_writer_context),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: AuthContext = Depends(get_current_protocol_writer_context),
     db: Session = Depends(get_db),
 ) -> CategoryRuleResponse:
-    return create_rule(
-        db,
-        tenant_id=auth.tenant_id,
-        keyword=payload.keyword,
-        category=payload.category,
-        enabled=payload.enabled,
-        priority=payload.priority,
-        amount_min_cents=payload.amount_min_cents,
-        amount_max_cents=payload.amount_max_cents,
-        source_contains=payload.source_contains,
-        tag_contains=payload.tag_contains,
-    )
+    return create_rule_idempotently(db, tenant_id=auth.tenant_id, payload=payload, idempotency_key=idempotency_key)
 
 
 @router.patch("/categories/{rule_id}", response_model=CategoryRuleResponse)
@@ -87,37 +76,11 @@ def patch_category_rule(
     rule_id: int,
     payload: CategoryRuleUpdateRequest,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    auth: AuthContext = Depends(get_current_writer_context),
+    auth: AuthContext = Depends(get_current_protocol_writer_context),
     db: Session = Depends(get_db),
 ) -> CategoryRuleResponse:
-    # ADR-0038: client sends `expected_row_version`; update_rule raises
-    # state_conflict 409 if the server's current value differs. ADR-0042: the
-    # outbox-routed PATCH claims the Idempotency-Key before that OCC claim.
-    claim = claim_idempotent_request(
-        db,
-        idempotency_key=idempotency_key,
-        tenant_id=auth.tenant_id,
-        operation="update_category_rule",
-        target_id=str(rule_id),
-        body=payload.model_dump(mode="json", exclude_unset=True, exclude={"expected_row_version"}),
-        expected_row_version=payload.expected_row_version,
-        target_type="category_rule",
-    )
-    if claim is None:  # §4.6 HIT — re-serialise the current rule
-        return get_rule_for_tenant(db, tenant_id=auth.tenant_id, rule_id=rule_id)
-
-    rule = get_rule_for_tenant(db, tenant_id=auth.tenant_id, rule_id=rule_id)
-    field_updates = payload.model_dump(exclude={"expected_row_version"}, exclude_unset=True)
-    result = update_rule(
-        db,
-        rule,
-        expected_row_version=payload.expected_row_version,
-        commit=False,
-        **field_updates,
-    )
-    mark_idempotency_succeeded(db, claim, resource_type="category_rule", resource_id=str(rule_id))
-    db.commit()
-    return result
+    return update_rule_idempotently(db, tenant_id=auth.tenant_id, rule_id=rule_id,
+        payload=payload, idempotency_key=idempotency_key)
 
 
 @router.delete("/categories/{rule_id}", response_model=StatusResponse)
@@ -206,7 +169,7 @@ def post_rule_apply_pending(
             "请先预览待确认账单影响范围，再确认应用。",
             status_code=409,
         )
-    validate_rule_application_preview(
+    current_preview = validate_rule_application_preview(
         db,
         tenant_id=auth.tenant_id,
         status="pending",
@@ -216,6 +179,7 @@ def post_rule_apply_pending(
     pending_scanned, changed_count, scan_limit_reached = apply_rules_to_pending(
         db,
         tenant_id=auth.tenant_id,
+        preview_token=payload.preview_token,
         actor_account_id=auth.account_id,
         actor_device_id=auth.device_id,
         max_scan=max_scan,
@@ -223,6 +187,8 @@ def post_rule_apply_pending(
     return RuleApplyPendingResponse(
         pending_scanned=pending_scanned,
         changed_count=changed_count,
+        unavailable_count=current_preview["unavailable_count"],
+        missing_currency_codes=current_preview["missing_currency_codes"],
         scan_limit_reached=scan_limit_reached,
         scan_limit=max_scan,
     )
@@ -283,6 +249,8 @@ def post_rule_apply_pending_preview(
         skipped_non_default_category=result["skipped_non_default_category"],
         no_match_count=result["no_match_count"],
         unchanged_count=result["unchanged_count"],
+        unavailable_count=result["unavailable_count"],
+        missing_currency_codes=result["missing_currency_codes"],
         conflict_count=result["conflict_count"],
         scan_limit_reached=result["scan_limit_reached"],
         scan_limit=result["scan_limit"],
@@ -314,6 +282,8 @@ def post_rule_apply_confirmed(
             skipped_non_default_category=result["skipped_non_default_category"],
             no_match_count=result["no_match_count"],
             unchanged_count=result["unchanged_count"],
+            unavailable_count=result["unavailable_count"],
+            missing_currency_codes=result["missing_currency_codes"],
             conflict_count=result["conflict_count"],
             scan_limit_reached=result["scan_limit_reached"],
             scan_limit=result["scan_limit"],
@@ -330,11 +300,10 @@ def post_rule_apply_confirmed(
         preview_token=payload.preview_token,
         max_scan=max_scan,
     )
-    if current_preview["preview_token"] != payload.preview_token:
-        raise AppError("preview_stale", "预览已过期，请重新预览后再确认。", status_code=409)
     confirmed_scanned, changed_count, scan_limit_reached = apply_rules_to_confirmed(
         db,
         tenant_id=auth.tenant_id,
+        preview_token=payload.preview_token,
         actor_account_id=auth.account_id,
         actor_device_id=auth.device_id,
         max_scan=max_scan,
@@ -343,6 +312,8 @@ def post_rule_apply_confirmed(
         dry_run=False,
         confirmed_scanned=confirmed_scanned,
         changed_count=changed_count,
+        unavailable_count=current_preview["unavailable_count"],
+        missing_currency_codes=current_preview["missing_currency_codes"],
         scan_limit_reached=scan_limit_reached,
         scan_limit=max_scan,
     )

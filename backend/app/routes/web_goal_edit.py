@@ -103,6 +103,8 @@ def web_goal_save(
         if version is None:
             raise AppError("state_conflict", status_code=409)
         currency = normalize_currency_code(home_currency_code)
+        if currency != goal.home_currency_code:
+            raise AppError("goal_currency_conflict", "原输入币种与目标不一致。输入已保留，请核对当前目标。", status_code=409)
         payload = GoalUpdateRequest(
             name=name, month=month, category=category.strip() or None,
             home_currency_code=currency,

@@ -496,7 +496,7 @@ internal class FakeApiService(
 
     override suspend fun categoryRules(): List<CategoryRuleDto> = emptyList()
 
-    override suspend fun createCategoryRule(request: CategoryRuleRequest): CategoryRuleDto = unsupported()
+    override suspend fun createCategoryRule(request: CategoryRuleRequest, idempotencyKey: String): CategoryRuleDto = unsupported()
 
     override suspend fun updateCategoryRule(
         id: Long,

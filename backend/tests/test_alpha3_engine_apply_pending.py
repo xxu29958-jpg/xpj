@@ -59,7 +59,7 @@ def test_rule_apply_pending_preview_does_not_modify_and_reports_scope(
 
     response = client.post(
         "/api/rules/categories",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"keyword": "Starbucks", "category": "餐饮", "enabled": True, "priority": 1},
     )
     assert response.status_code == 200
@@ -107,7 +107,7 @@ def test_rule_apply_pending_updates_category(client: TestClient, *, identity) ->
     # Seed a rule for Starbucks → 餐饮 with high priority.
     response = client.post(
         "/api/rules/categories",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"keyword": "Starbucks", "category": "餐饮", "enabled": True, "priority": 1},
     )
     assert response.status_code == 200
@@ -136,7 +136,7 @@ def test_rule_apply_pending_requires_fresh_preview_token(client: TestClient, *, 
     _set_pending_merchant(client, pending_id, "PendingPreviewCafe", identity=identity)
     created = client.post(
         "/api/rules/categories",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"keyword": "PendingPreviewCafe", "category": "椁愰ギ", "enabled": True, "priority": 1},
     )
     assert created.status_code == 200
@@ -186,7 +186,7 @@ def test_rule_apply_pending_does_not_touch_confirmed(client: TestClient, *, iden
     )
     client.post(
         "/api/rules/categories",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"keyword": "Starbucks", "category": "餐饮", "enabled": True, "priority": 1},
     )
 
@@ -206,7 +206,7 @@ def test_rule_apply_pending_does_not_auto_confirm(client: TestClient, *, identit
     _set_pending_merchant(client, pending_id, "Kimi 订阅", identity=identity)
     client.post(
         "/api/rules/categories",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"keyword": "Kimi", "category": "AI订阅", "enabled": True, "priority": 1},
     )
 
@@ -231,7 +231,7 @@ def test_rule_apply_pending_skips_non_default_category(client: TestClient, *, id
     assert response.status_code == 200
     client.post(
         "/api/rules/categories",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"keyword": "Starbucks", "category": "餐饮", "enabled": True, "priority": 1},
     )
 

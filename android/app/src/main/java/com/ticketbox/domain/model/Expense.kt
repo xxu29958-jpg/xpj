@@ -375,6 +375,7 @@ data class CategoryRule(
     val createdAt: String,
     val updatedAt: String,
     val rowVersion: Long,
+    val homeCurrencyCode: String? = null,
 ) {
     val hasConditions: Boolean =
         amountMinCents != null ||
@@ -462,6 +463,8 @@ data class RuleApplyConfirmedResult(
     val scanLimitReached: Boolean,
     val scanLimit: Int,
     val previewToken: String?,
+    val unavailableCount: Int = 0,
+    val missingCurrencyCodes: List<String> = emptyList(),
 )
 
 class ProtectedImage(

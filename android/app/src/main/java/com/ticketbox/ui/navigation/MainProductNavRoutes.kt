@@ -74,6 +74,7 @@ internal fun NavGraphBuilder.addWorkspaceRoute(
                     onOpenBudget = { month -> runtime.navController.navigate(budgetRoute(month)) },
                     onOpenGoalCreation = { id -> runtime.navController.navigate(spendingGoalCreationRoute(id)) },
                     onOpenGoalEdit = { id -> runtime.navController.navigate(spendingGoalEditRoute(id)) },
+                    onOpenRuleSubmission = { id -> runtime.navController.navigate(categoryRuleSubmissionRoute(id)) },
                     onOpenRecurring = { shellState.openSecondaryPage(ProductSecondaryPage.Recurring) }, onCloseRoot = onBack),
                 screenFactory = screenFactory,
                 preferenceControls = workspaceControls.preferences,
@@ -275,7 +276,7 @@ private fun NavGraphBuilder.addObligationSyncRoute(dependencies: MainProductRout
                     screenFactory.outboxRepository, screenFactory.repository,
                     com.ticketbox.viewmodel.OutboxRecoveryRepositories(screenFactory.debtCreationRepository,
                         screenFactory.recurringRepository.occurrences, screenFactory.incomePlanRepository,
-                        screenFactory.debtAdjustmentRepository, screenFactory.goalEditRepository, screenFactory.budgetRepository, screenFactory.recurringRepository),
+                        screenFactory.debtAdjustmentRepository, screenFactory.goalEditRepository, screenFactory.budgetRepository, screenFactory.recurringRepository, screenFactory.ruleRepository),
                 ),
             )
             SyncStatusScreen(viewModel = vm, onBack = onBack,
@@ -285,6 +286,7 @@ private fun NavGraphBuilder.addObligationSyncRoute(dependencies: MainProductRout
                     onOpenBudget = { month -> runtime.navController.navigate(budgetRoute(month)) },
                     onOpenGoalCreation = { id -> runtime.navController.navigate(spendingGoalCreationRoute(id)) },
                     onOpenGoalEdit = { id -> runtime.navController.navigate(spendingGoalEditRoute(id)) },
+                    onOpenRuleSubmission = { id -> runtime.navController.navigate(categoryRuleSubmissionRoute(id)) },
                     onOpenRecurring = { shellState.openSecondaryPage(ProductSecondaryPage.Recurring) },
                 ))
         }

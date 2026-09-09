@@ -21,6 +21,12 @@ import com.ticketbox.viewmodel.OutboxStatusUiState
 
 @Composable
 internal fun SyncStatusOriginalIntentSummary(row: OutboxRow, state: OutboxStatusUiState, actions: SyncStatusActions) {
+    state.categoryRules[row.id]?.let { original ->
+        com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleSubmissionSummary(original)
+        TextButton(onClick = { actions.onOpenRuleSubmission(row.id) }) {
+            Text(stringResource(R.string.category_rule_submission_open))
+        }
+    }
     state.goalEdits[row.id]?.let { original ->
         original.request?.let { request ->
             com.ticketbox.ui.screens.plan.SpendingGoalOriginalSummary(request.name, request.month,

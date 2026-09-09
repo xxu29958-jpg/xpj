@@ -292,6 +292,7 @@ def _assert_refund_service_consumers() -> None:
             tenant_id="owner",
             month="2026-09",
             timezone_name="Asia/Shanghai",
+            home_currency_code="CNY",
         )
         assert goal_totals.total_amount_cents == -300
         assert goal_totals.by_category == {"旅游": -300}

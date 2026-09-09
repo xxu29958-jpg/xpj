@@ -113,7 +113,7 @@ def test_duplicate_and_category_rule_contract(client: TestClient, *, identity) -
 
     response = client.post(
         "/api/rules/categories",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "keyword": "测试商家",
             "category": "生活",

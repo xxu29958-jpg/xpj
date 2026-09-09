@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -370,7 +371,7 @@ def test_viewer_cannot_mutate_rules_or_apply_pending(client: TestClient, *, iden
     _, owner_token, viewer_token = _make_role_token(client, "viewer", identity=identity)
     created = client.post(
         "/api/rules/categories",
-        headers=_bearer(owner_token),
+        headers={**_bearer(owner_token), "Idempotency-Key": str(uuid4())},
         json={"keyword": "Starbucks", "category": "餐饮", "enabled": True, "priority": 1},
     )
     assert created.status_code == 200, created.json()

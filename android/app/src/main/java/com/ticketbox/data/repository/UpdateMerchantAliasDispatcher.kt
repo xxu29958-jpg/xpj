@@ -15,7 +15,7 @@ import retrofit2.HttpException
  * call. Target encoding: ``merchant_alias:<publicId>`` (mirrors
  * [DeleteMerchantAliasDispatcher] from PR-2g.5).
  *
- * Same contract shape as [UpdateCategoryRuleDispatcher] (PR-2g.4)
+ * Same contract shape as [CategoryRuleDispatcher] (PR-2g.4)
  * and [PatchExpenseDispatcher] (PR-2g.3) — PATCH with token-bearing
  * body; HttpException mapping unchanged.
  */

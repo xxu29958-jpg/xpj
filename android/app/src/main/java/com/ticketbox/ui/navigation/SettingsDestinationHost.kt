@@ -92,6 +92,7 @@ internal data class SettingsDestinationNavigation(
     val onOpenRecurring: () -> Unit,
     val onOpenGoalCreation: (Long) -> Unit,
     val onOpenGoalEdit: (String) -> Unit,
+    val onOpenRuleSubmission: (Long) -> Unit,
     val onSecondaryActiveChange: (Boolean) -> Unit = {},
     val onCloseRoot: () -> Unit = {},
 )
@@ -133,6 +134,7 @@ internal data class SettingsRouteRepositories(
     val goalEdits: com.ticketbox.data.repository.GoalEditActions,
     val budgetSaves: com.ticketbox.data.repository.BudgetSaveActions,
     val recurringItems: com.ticketbox.data.repository.RecurringManualMutationActions,
+    val rules: com.ticketbox.data.repository.RuleRepository,
 )
 
 @Composable
@@ -387,12 +389,12 @@ internal fun SettingsDestinationHost(
                     repositories.outboxRepository,
                     repositories.expenseRepository,
                     com.ticketbox.viewmodel.OutboxRecoveryRepositories(repositories.debtCreationRepository,
-                        repositories.recurringOccurrences, repositories.incomePlans, repositories.debtAdjustments, repositories.goalEdits, repositories.budgetSaves, repositories.recurringItems),
+                        repositories.recurringOccurrences, repositories.incomePlans, repositories.debtAdjustments, repositories.goalEdits, repositories.budgetSaves, repositories.recurringItems, repositories.rules),
                 ),
             )
             SyncStatusScreen(
                 navigation = com.ticketbox.ui.screens.settings.SyncStatusNavigation(
-                    navigation.onOpenExpense, navigation.onOpenInbox, navigation.onOpenBudget, navigation.onOpenRecurring, navigation.onOpenGoalCreation, navigation.onOpenGoalEdit,
+                    navigation.onOpenExpense, navigation.onOpenInbox, navigation.onOpenBudget, navigation.onOpenRecurring, navigation.onOpenGoalCreation, navigation.onOpenGoalEdit, navigation.onOpenRuleSubmission,
                 ),
                 viewModel = vm,
                 onBack = { route = SettingsDestination.Root },

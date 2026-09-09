@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
+from app.errors import AppError
 from app.models import RuleApplicationBatch, RuleApplicationChange
 from app.services.category_service import normalize_category
 from app.services.currency_binding_service import authorize_currency_metadata_write
@@ -13,6 +14,7 @@ from app.services.rule_application_service._common import (
     _matching_rule_category,
     _ocr_text_by_expense_id,
     _rule_application_candidates,
+    _rule_application_preview_token,
     _try_apply_rule_category,
 )
 from app.services.time_service import now_utc
@@ -22,6 +24,7 @@ def apply_rules_to_pending(
     db: Session,
     *,
     tenant_id: str,
+    preview_token: str | None,
     actor_account_id: int | None = None,
     actor_device_id: int | None = None,
     max_scan: int | None = None,
@@ -38,6 +41,7 @@ def apply_rules_to_pending(
     return _apply_rules_to_status(
         db,
         tenant_id=tenant_id,
+        preview_token=preview_token,
         status="pending",
         audit_status="applied",
         actor_account_id=actor_account_id,
@@ -50,6 +54,7 @@ def apply_rules_to_confirmed(
     db: Session,
     *,
     tenant_id: str,
+    preview_token: str | None,
     actor_account_id: int | None = None,
     actor_device_id: int | None = None,
     max_scan: int | None = None,
@@ -64,6 +69,7 @@ def apply_rules_to_confirmed(
     return _apply_rules_to_status(
         db,
         tenant_id=tenant_id,
+        preview_token=preview_token,
         status="confirmed",
         audit_status="applied_confirmed",
         actor_account_id=actor_account_id,
@@ -76,12 +82,15 @@ def _apply_rules_to_status(
     db: Session,
     *,
     tenant_id: str,
+    preview_token: str | None,
     status: str,
     audit_status: str,
     actor_account_id: int | None,
     actor_device_id: int | None,
     max_scan: int | None,
 ) -> tuple[int, int, bool]:
+    if not preview_token:
+        raise AppError("preview_required", "请先预览影响范围，再确认应用规则。", status_code=409)
     expenses, scan_limit_reached = _rule_application_candidates(
         db,
         tenant_id=tenant_id,
@@ -89,24 +98,23 @@ def _apply_rules_to_status(
         max_scan=max_scan,
     )
     rules = _enabled_rules(db, tenant_id=tenant_id)
-    if not rules:
-        return len(expenses), 0, scan_limit_reached
     authorize_currency_metadata_write(db)
 
     alias_map = enabled_merchant_alias_map(db, tenant_id=tenant_id)
     ocr_text_by_id = _ocr_text_by_expense_id(db, tenant_id=tenant_id, expenses=expenses)
+    matches = [_matching_rule_category(db, expense, rules, alias_map,
+        ocr_text=ocr_text_by_id.get(int(expense.id), "")) for expense in expenses]
+    current_token = _rule_application_preview_token(status=status, max_scan=max_scan, expenses=expenses,
+        rules=rules, alias_map=alias_map, ocr_text_by_id=ocr_text_by_id, matches=matches)
+    if current_token != preview_token:
+        raise AppError("preview_stale", "预览已过期，请重新预览后再确认。", status_code=409)
+    versions = [expense.row_version for expense in expenses]
     changes: list[tuple[int, int, str, str, str]] = []
     now = now_utc()
-    for expense in expenses:
-        match = _matching_rule_category(
-            expense,
-            rules,
-            alias_map,
-            ocr_text=ocr_text_by_id.get(int(expense.id), ""),
-        )
-        if match is None:
+    for expense, match, expected_version in zip(expenses, matches, versions, strict=True):
+        if match.unavailable or match.rule_id is None or match.category is None:
             continue
-        rule, new_category = match
+        new_category = match.category
         before_category = normalize_category(expense.category)
         if new_category == before_category:
             continue
@@ -115,12 +123,14 @@ def _apply_rules_to_status(
             tenant_id=tenant_id,
             status=status,
             expense=expense,
-            rule=rule,
+            rule_id=match.rule_id,
+            matched_keyword=match.matched_keyword,
             before_category=before_category,
             after_category=new_category,
             now=now,
             actor_account_id=actor_account_id,
             actor_device_id=actor_device_id,
+            expected_row_version=expected_version,
         )
         if applied is not None:
             changes.append(applied)

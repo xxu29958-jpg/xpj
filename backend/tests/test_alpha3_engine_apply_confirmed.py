@@ -77,7 +77,7 @@ def _seed_confirmed_apply_candidates() -> tuple[int, int]:
 def _create_confirmed_apply_rule(client: TestClient, *, identity) -> int:
     created = client.post(
         "/api/rules/categories",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "keyword": "ConfirmedApplyCafe",
             "category": "餐饮",
@@ -85,6 +85,7 @@ def _create_confirmed_apply_rule(client: TestClient, *, identity) -> int:
             "priority": 1,
             "amount_min_cents": 1000,
             "amount_max_cents": 5000,
+            "home_currency_code": "CNY",
             "source_contains": "pytest",
             "tag_contains": "真香",
         },
@@ -210,7 +211,7 @@ def test_rule_apply_confirmed_reports_scan_limit(client: TestClient, *, identity
         )
     created = client.post(
         "/api/rules/categories",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"keyword": "LimitCafe", "category": "餐饮", "enabled": True, "priority": 1},
     )
     assert created.status_code == 200
@@ -251,7 +252,7 @@ def test_rule_apply_confirmed_rejects_stale_preview_token(client: TestClient, *,
     )
     created = client.post(
         "/api/rules/categories",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"keyword": "StalePreviewCafe", "category": "餐饮", "enabled": True, "priority": 1},
     )
     assert created.status_code == 200
@@ -332,7 +333,7 @@ def test_rule_apply_confirmed_viewer_denied_and_cross_ledger_isolated(
 
     owner_rule = client.post(
         "/api/rules/categories",
-        headers=identity.gray_app_headers,
+        headers={**identity.gray_app_headers, "Idempotency-Key": str(uuid4())},
         json={"keyword": "ConfirmedGuardCafe", "category": "餐饮", "enabled": True, "priority": 1},
     )
     assert owner_rule.status_code == 200

@@ -45,7 +45,11 @@ def test_goal_edit_currency_refusal_keeps_raw_amount_key_and_occ(
     assert "在新窗口打开当前目标" in refused.text
     reviewed = web_client.post(action, data={**fields, "review_latest": "true"})
     assert reviewed.status_code == 200
-    assert hidden_post_forms(reviewed.text)[action] == retained
+    reviewed_fields = hidden_post_forms(reviewed.text)[action]
+    # CSRF is a fresh transport token; original command identity must stay fixed.
+    assert {key: value for key, value in reviewed_fields.items() if key != "csrf_token"} == {
+        key: value for key, value in retained.items() if key != "csrf_token"
+    }
     unchanged = web_client.get(f'/api/goals/{goal["public_id"]}', headers=identity.app_headers).json()
     assert unchanged == goal
 

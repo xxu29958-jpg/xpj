@@ -101,6 +101,7 @@ from app.routes import (
     web_recycle_bin,
     web_repayment_drafts,
     web_reports,
+    web_rule_edit,
     web_search,
     web_tags,
 )
@@ -388,6 +389,7 @@ app.include_router(web_media.router)
 app.include_router(web_pending.router)
 app.include_router(web_inbox_capture.router)
 app.include_router(web_rules_routes.router)
+app.include_router(web_rule_edit.router)
 app.include_router(web_budgets.router)
 app.include_router(web_budget_advise.router)
 app.include_router(web_income_plans.router)

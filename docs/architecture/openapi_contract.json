@@ -2845,6 +2845,11 @@
             "title": "Expected Row Version",
             "type": "string"
           },
+          "home_currency_code": {
+            "default": "",
+            "title": "Home Currency Code",
+            "type": "string"
+          },
           "idempotency_key": {
             "default": "",
             "title": "Idempotency Key",
@@ -2900,6 +2905,16 @@
           "category": {
             "default": "",
             "title": "Category",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "default": "",
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
             "type": "string"
           },
           "ledger_id": {
@@ -3799,6 +3814,72 @@
         "title": "Body_web_review_bulk_web_review_bulk_post",
         "type": "object"
       },
+      "Body_web_rule_save_web_rules__rule_id__edit_post": {
+        "properties": {
+          "amount_max_yuan": {
+            "default": "",
+            "title": "Amount Max Yuan",
+            "type": "string"
+          },
+          "amount_min_yuan": {
+            "default": "",
+            "title": "Amount Min Yuan",
+            "type": "string"
+          },
+          "category": {
+            "default": "",
+            "title": "Category",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "default": "",
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "keyword": {
+            "default": "",
+            "title": "Keyword",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "priority": {
+            "default": "100",
+            "title": "Priority",
+            "type": "string"
+          },
+          "review_latest": {
+            "default": false,
+            "title": "Review Latest",
+            "type": "boolean"
+          },
+          "source_contains": {
+            "default": "",
+            "title": "Source Contains",
+            "type": "string"
+          },
+          "tag_contains": {
+            "default": "",
+            "title": "Tag Contains",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_rule_save_web_rules__rule_id__edit_post",
+        "type": "object"
+      },
       "Body_web_rules_application_rollback_web_rules_applications__public_id__rollback_post": {
         "properties": {
           "ledger_id": {
@@ -3869,6 +3950,16 @@
             "title": "Category",
             "type": "string"
           },
+          "home_currency_code": {
+            "default": "",
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
           "keyword": {
             "default": "",
             "title": "Keyword",
@@ -3883,6 +3974,11 @@
             "default": "100",
             "title": "Priority",
             "type": "string"
+          },
+          "review_new": {
+            "default": false,
+            "title": "Review New",
+            "type": "boolean"
           },
           "source_contains": {
             "default": "",
@@ -3916,9 +4012,18 @@
       },
       "Body_web_rules_toggle_web_rules__rule_id__toggle_post": {
         "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
           "expected_row_version": {
             "default": "",
             "title": "Expected Row Version",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
             "type": "string"
           },
           "ledger_id": {
@@ -3927,6 +4032,9 @@
             "type": "string"
           }
         },
+        "required": [
+          "enabled"
+        ],
         "title": "Body_web_rules_toggle_web_rules__rule_id__toggle_post",
         "type": "object"
       },
@@ -5484,6 +5592,19 @@
             "title": "Enabled",
             "type": "boolean"
           },
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "maxLength": 3,
+                "minLength": 3,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
+          },
           "keyword": {
             "title": "Keyword",
             "type": "string"
@@ -5586,6 +5707,17 @@
           "enabled": {
             "title": "Enabled",
             "type": "boolean"
+          },
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
           },
           "id": {
             "title": "Id",
@@ -5706,6 +5838,19 @@
           "expected_row_version": {
             "title": "Expected Row Version",
             "type": "integer"
+          },
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "maxLength": 3,
+                "minLength": 3,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
           },
           "keyword": {
             "anyOf": [
@@ -10386,6 +10531,19 @@
             "title": "Goal Type",
             "type": "string"
           },
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "maxLength": 3,
+                "minLength": 3,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
+          },
           "month": {
             "anyOf": [
               {
@@ -10507,6 +10665,17 @@
           "goal_type": {
             "title": "Goal Type",
             "type": "string"
+          },
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
           },
           "ledger_id": {
             "title": "Ledger Id",
@@ -10664,6 +10833,12 @@
             "title": "Expected Row Version",
             "type": "integer"
           },
+          "home_currency_code": {
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Home Currency Code",
+            "type": "string"
+          },
           "month": {
             "anyOf": [
               {
@@ -10706,7 +10881,8 @@
           }
         },
         "required": [
-          "expected_row_version"
+          "expected_row_version",
+          "home_currency_code"
         ],
         "title": "GoalUpdateRequest",
         "type": "object"
@@ -16119,6 +16295,13 @@
             "title": "Items",
             "type": "array"
           },
+          "missing_currency_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Currency Codes",
+            "type": "array"
+          },
           "no_match_count": {
             "default": 0,
             "title": "No Match Count",
@@ -16148,6 +16331,11 @@
           "skipped_non_default_category": {
             "default": 0,
             "title": "Skipped Non Default Category",
+            "type": "integer"
+          },
+          "unavailable_count": {
+            "default": 0,
+            "title": "Unavailable Count",
             "type": "integer"
           },
           "unchanged_count": {
@@ -16227,6 +16415,13 @@
             "title": "Items",
             "type": "array"
           },
+          "missing_currency_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Currency Codes",
+            "type": "array"
+          },
           "no_match_count": {
             "title": "No Match Count",
             "type": "integer"
@@ -16258,6 +16453,11 @@
           },
           "skipped_non_default_category": {
             "title": "Skipped Non Default Category",
+            "type": "integer"
+          },
+          "unavailable_count": {
+            "default": 0,
+            "title": "Unavailable Count",
             "type": "integer"
           },
           "unchanged_count": {
@@ -16305,6 +16505,13 @@
             "title": "Changed Count",
             "type": "integer"
           },
+          "missing_currency_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Currency Codes",
+            "type": "array"
+          },
           "pending_scanned": {
             "title": "Pending Scanned",
             "type": "integer"
@@ -16318,6 +16525,11 @@
             "default": false,
             "title": "Scan Limit Reached",
             "type": "boolean"
+          },
+          "unavailable_count": {
+            "default": 0,
+            "title": "Unavailable Count",
+            "type": "integer"
           }
         },
         "required": [
@@ -16346,6 +16558,17 @@
           "current_category": {
             "title": "Current Category",
             "type": "string"
+          },
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
           },
           "id": {
             "title": "Id",
@@ -25755,6 +25978,40 @@
           },
           {
             "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
+            "in": "header",
             "name": "authorization",
             "required": false,
             "schema": {
@@ -25784,9 +26041,6 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
-          },
-          {
-            "$ref": "#/components/parameters/TicketboxApiVersion"
           },
           {
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"
@@ -25984,6 +26238,24 @@
             }
           },
           {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -26014,9 +26286,6 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
-          },
-          {
-            "$ref": "#/components/parameters/TicketboxApiVersion"
           },
           {
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"
@@ -30920,6 +31189,24 @@
             }
           },
           {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -30950,9 +31237,6 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
-          },
-          {
-            "$ref": "#/components/parameters/TicketboxApiVersion"
           },
           {
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"
@@ -31158,6 +31442,24 @@
             }
           },
           {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -31188,9 +31490,6 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
-          },
-          {
-            "$ref": "#/components/parameters/TicketboxApiVersion"
           },
           {
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"
@@ -31388,6 +31687,24 @@
             }
           },
           {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -31418,9 +31735,6 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
-          },
-          {
-            "$ref": "#/components/parameters/TicketboxApiVersion"
           },
           {
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"
@@ -33576,6 +33890,40 @@
         "parameters": [
           {
             "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
+            "in": "header",
             "name": "authorization",
             "required": false,
             "schema": {
@@ -33605,9 +33953,6 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
-          },
-          {
-            "$ref": "#/components/parameters/TicketboxApiVersion"
           },
           {
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"
@@ -33805,6 +34150,24 @@
             }
           },
           {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -33835,9 +34198,6 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
-          },
-          {
-            "$ref": "#/components/parameters/TicketboxApiVersion"
           },
           {
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"
@@ -43861,6 +44221,107 @@
         ]
       }
     },
+    "/web/rules/{rule_id}/edit": {
+      "get": {
+        "operationId": "web_rule_edit_web_rules__rule_id__edit_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Rule Edit",
+        "tags": [
+          "web"
+        ]
+      },
+      "post": {
+        "operationId": "web_rule_save_web_rules__rule_id__edit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_rule_save_web_rules__rule_id__edit_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Rule Save",
+        "tags": [
+          "web"
+        ]
+      }
+    },
     "/web/rules/{rule_id}/toggle": {
       "post": {
         "operationId": "web_rules_toggle_web_rules__rule_id__toggle_post",
@@ -43882,7 +44343,8 @@
                 "$ref": "#/components/schemas/Body_web_rules_toggle_web_rules__rule_id__toggle_post"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {

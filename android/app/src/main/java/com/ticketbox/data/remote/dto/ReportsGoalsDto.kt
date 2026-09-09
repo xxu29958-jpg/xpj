@@ -85,6 +85,7 @@ data class ReportsOverviewDto(
  * spending goal that carries debt_public_ids). Built by GoalDraft.toRequest (spending)
  * and inline in ReportsRepository.createDebtGoal (debt).
  */
+@JsonClass(generateAdapter = true)
 data class GoalCreateRequestDto(
     val name: String,
     @param:Json(name = "goal_type")

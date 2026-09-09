@@ -80,6 +80,7 @@ def preview_rule_for_pending(
                 "id": expense.id,
                 "merchant": expense.merchant,
                 "amount_cents": expense.amount_cents,
+                "home_currency_code": expense.home_currency_code,
                 "current_category": normalize_category(expense.category or "其他"),
                 "suggested_category": suggested,
                 "reason": f"{field_label}包含 {keyword_clean}",
@@ -188,19 +189,28 @@ def _preview_apply_rules_to_status(
     )
     no_match_count = 0
     unchanged_count = 0
+    unavailable_count = 0
+    missing_currency_codes: set[str] = set()
+    matches = []
     items: list[dict] = []
     for expense in expenses:
         current_category = normalize_category(expense.category or "其他")
         match = _matching_rule_category(
+            db,
             expense,
             rules,
             alias_map,
             ocr_text=ocr_text_by_id.get(int(expense.id), ""),
         )
-        if match is None:
+        matches.append(match)
+        if match.unavailable:
+            unavailable_count += 1
+            missing_currency_codes.add(expense.home_currency_code or "UNKNOWN")
+            continue
+        if match.rule_id is None or match.category is None:
             no_match_count += 1
             continue
-        rule, suggested_category = match
+        suggested_category = match.category
         if suggested_category == current_category:
             unchanged_count += 1
             continue
@@ -213,8 +223,8 @@ def _preview_apply_rules_to_status(
                 "merchant": expense.merchant,
                 "current_category": current_category,
                 "suggested_category": suggested_category,
-                "rule_keyword": rule.keyword,
-                "reason": f"规则「{rule.keyword}」将分类改为 {suggested_category}",
+                "rule_keyword": match.matched_keyword,
+                "reason": f"规则「{match.matched_keyword}」将分类改为 {suggested_category}",
             }
         )
 
@@ -227,6 +237,8 @@ def _preview_apply_rules_to_status(
         "skipped_non_default_category": skipped_non_default_category,
         "no_match_count": no_match_count,
         "unchanged_count": unchanged_count,
+        "unavailable_count": unavailable_count,
+        "missing_currency_codes": sorted(missing_currency_codes),
         "conflict_count": 0,
         "scan_limit_reached": scan_limit_reached,
         "scan_limit": _clamp_rule_application_scan_limit(max_scan),
@@ -237,5 +249,6 @@ def _preview_apply_rules_to_status(
             rules=rules,
             alias_map=alias_map,
             ocr_text_by_id=ocr_text_by_id,
+            matches=matches,
         ),
     }

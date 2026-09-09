@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
+from uuid import uuid4
 
 import pytest
 from api_contract_helpers import upload_png
@@ -229,7 +230,7 @@ def _assert_exports_are_ledger_scoped(client: TestClient, *, identity: Any) -> N
 def _assert_rules_are_ledger_scoped(client: TestClient, *, identity: Any) -> None:
     owner_rule = client.post(
         "/api/rules/categories",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "keyword": "owner-rule-token",
             "category": "OwnerOnlyCategory",

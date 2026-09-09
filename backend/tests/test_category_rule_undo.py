@@ -38,7 +38,7 @@ def _create_rule(
 ) -> dict:
     resp = client.post(
         "/api/rules/categories",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"keyword": keyword, "category": category, "enabled": True, "priority": 1},
     )
     assert resp.status_code == 200, resp.text

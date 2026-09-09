@@ -12,6 +12,7 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.errors import AppError
 from app.models import CategoryPreference
+from tests._web_rule_form_support import submit_rule_form
 
 
 def _create_pending(client: TestClient, *, identity) -> int:
@@ -77,7 +78,7 @@ def _rule_token_for(page_html: str, rule_id: int, action: str) -> str:
 
 def test_web_rules_create_then_delete(web_client: TestClient) -> None:
     # Create
-    resp = web_client.post(
+    resp = submit_rule_form(web_client,
         "/web/rules/create",
         data={"keyword": "测试关键词A", "category": "餐饮", "priority": "100",
               "ledger_id": "owner"},
@@ -91,7 +92,7 @@ def test_web_rules_create_then_delete(web_client: TestClient) -> None:
     # the rendered page and ship it back, mirroring what the JS would
     # submit from the browser.
     toggle_token = _rule_token_for(page.text, rule_id, "toggle")
-    resp = web_client.post(
+    resp = submit_rule_form(web_client,
         f"/web/rules/{rule_id}/toggle",
         data={"ledger_id": "owner", "expected_row_version": toggle_token},
         follow_redirects=False,
@@ -123,7 +124,7 @@ def test_web_rule_create_error_keeps_the_complete_draft(web_client: TestClient) 
         "ledger_id": "owner",
     }
 
-    response = web_client.post(
+    response = submit_rule_form(web_client,
         "/web/rules/create",
         data=draft,
         follow_redirects=False,
@@ -170,7 +171,7 @@ def _disabled_rule_with_recycled_category(
     )
     assert created_expense.status_code == 200, created_expense.text
 
-    created_rule = web_client.post(
+    created_rule = submit_rule_form(web_client,
         "/web/rules/create",
         data={
             "keyword": "bakery",
@@ -184,7 +185,7 @@ def _disabled_rule_with_recycled_category(
 
     rules_page = web_client.get("/web/rules?ledger_id=owner")
     rule_id = _rule_id_for_keyword(rules_page.text, "bakery")
-    disabled = web_client.post(
+    disabled = submit_rule_form(web_client,
         f"/web/rules/{rule_id}/toggle",
         data={
             "ledger_id": "owner",
@@ -228,7 +229,7 @@ def test_web_rule_cannot_enable_a_category_that_is_in_recycle_bin(
         web_client,
         identity=identity,
     )
-    rejected = web_client.post(
+    rejected = submit_rule_form(web_client,
         f"/web/rules/{rule_id}/toggle",
         data={
             "ledger_id": "owner",
@@ -258,7 +259,7 @@ def test_web_rule_cannot_create_for_a_category_that_is_in_recycle_bin(
 ) -> None:
     _disabled_rule_with_recycled_category(web_client, identity=identity)
 
-    rejected = web_client.post(
+    rejected = submit_rule_form(web_client,
         "/web/rules/create",
         data={
             "keyword": "bakery-new",
@@ -314,7 +315,7 @@ def test_web_rule_undo_explains_restore_order_when_category_is_recycled(
 def test_web_rules_delete_then_undo(web_client: TestClient) -> None:
     # ADR-0038 undo: /web delete soft-deletes + redirects with ?undo=<id> so
     # the page renders a 撤销 banner; POSTing it restores the rule.
-    resp = web_client.post(
+    resp = submit_rule_form(web_client,
         "/web/rules/create",
         data={"keyword": "测试撤销规则", "category": "餐饮", "priority": "100",
               "ledger_id": "owner"},
@@ -373,7 +374,7 @@ def test_web_rules_apply_pending_audit_and_rollback_integration(
     web_client: TestClient, *, identity,
 ) -> None:
     expense_id = _seed_pending_with_amount(web_client, "9.00", "Starbucks 上海", identity=identity)
-    created = web_client.post(
+    created = submit_rule_form(web_client,
         "/web/rules/create",
         data={
             "keyword": "Starbucks",
@@ -452,7 +453,7 @@ def test_web_rules_apply_confirmed_requires_preview_then_applies(
     )
     assert confirmed.status_code in {303, 307}
 
-    created = web_client.post(
+    created = submit_rule_form(web_client,
         "/web/rules/create",
         data={
             "keyword": "Historical Starbucks",

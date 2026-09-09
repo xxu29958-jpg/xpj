@@ -61,7 +61,7 @@ class RecurringGlobalRecoveryTest {
             status = OutboxStatus(0, emptyList(), listOf(row)), recurringItems = mapOf(row.id to original))
         compose.setContent { TicketboxTheme(skin = AppSkin.Default) {
             CompositionLocalProvider(LocalCurrencyDisplay provides CurrencyDisplay(CurrencyCode.CNY)) {
-                SyncStatusScreenContent(state, SyncStatusActions(onOpenGoalEdit = {}, onOpenGoalCreation = {},
+                SyncStatusScreenContent(state, SyncStatusActions(onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {},
                     onOpenExpense = {}, onKeepMine = { error("Unexpected write") }, onDropMine = { error("Unexpected drop") },
                     onRetry = { error("Unexpected retry") }, onDropFailed = { error("Unexpected drop") }, onClearQuarantined = {},
                     onOpenBudget = {}, onOpenRecurring = onOpenRecurring,

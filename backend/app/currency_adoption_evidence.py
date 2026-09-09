@@ -35,8 +35,8 @@ def _has_legacy_currencyless_money_facts(connection: Connection) -> bool:
                     )
                     OR EXISTS (
                         SELECT 1 FROM category_rules
-                         WHERE amount_min_cents IS NOT NULL
-                            OR amount_max_cents IS NOT NULL
+                         WHERE (amount_min_cents IS NOT NULL OR amount_max_cents IS NOT NULL)
+                           AND to_jsonb(category_rules)->>'home_currency_code' IS NULL
                     )
                     OR EXISTS (
                         SELECT 1 FROM csv_import_rows

@@ -29,6 +29,7 @@ from app.errors import AppError
 from app.fx_constants import CURRENCY_MINOR_UNIT_DIGITS, DEFAULT_SUPPORTED_CURRENCY_CODES
 from app.models import (
     Budget,
+    CategoryRule,
     CsvImportRow,
     Device,
     ExchangeRate,
@@ -237,6 +238,8 @@ def _adopt_in_transaction(
     db.execute(update(Budget).where(Budget.home_currency_code.is_(None)).values(home_currency_code=code))
     db.execute(update(RecurringItem).where(RecurringItem.home_currency_code.is_(None)).values(home_currency_code=code))
     db.execute(update(Goal).where(Goal.goal_type == "spending_limit", Goal.home_currency_code.is_(None)).values(home_currency_code=code))
+    db.execute(update(CategoryRule).where(CategoryRule.home_currency_code.is_(None),
+        (CategoryRule.amount_min_cents.is_not(None) | CategoryRule.amount_max_cents.is_not(None))).values(home_currency_code=code))
     db.execute(update(ExchangeRate).where(ExchangeRate.home_currency_code.is_(None)).values(home_currency_code=code))
     db.execute(update(CsvImportRow).where(CsvImportRow.home_currency_code.is_(None)).values(home_currency_code=code))
     db.execute(update(MonthlyIncomePlan).where(MonthlyIncomePlan.home_currency_code.is_(None)).values(home_currency_code=code))

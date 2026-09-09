@@ -122,7 +122,7 @@ class DebtAdjustmentRoomContinuityTest {
                 retained = RetainedAdjustmentConsumers(graph)
                 global = outboxStatusViewModelFactory(fixture.outbox, graph.expenseRepository,
                     OutboxRecoveryRepositories(graph.debtCreationRepository, graph.recurringRepository.occurrences,
-                        graph.incomePlanRepository, graph.debtAdjustmentRepository, graph.goalEditRepository, graph.budgetRepository, graph.recurringRepository)).create(OutboxStatusViewModel::class.java)
+                        graph.incomePlanRepository, graph.debtAdjustmentRepository, graph.goalEditRepository, graph.budgetRepository, graph.recurringRepository, graph.ruleRepository)).create(OutboxStatusViewModel::class.java)
             }
             val consumers = requireNotNull(retained)
             val sync = requireNotNull(global)

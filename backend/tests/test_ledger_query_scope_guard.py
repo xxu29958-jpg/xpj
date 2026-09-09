@@ -58,6 +58,28 @@ EXEMPTIONS: tuple[ScopeExemption, ...] = (
     ScopeExemption(
         path="services/currency_adoption_service.py",
         function="_adopt_in_transaction",
+        model="Goal",
+        occurrences=1,
+        reason=(
+            "Installation Owner adoption locks the whole currency evidence inventory and fills only "
+            "unknown spending-target currencies across all ledgers in one audited transaction. "
+            "A request-ledger filter would strand other ledgers; targets and row versions are preserved."
+        ),
+    ),
+    ScopeExemption(
+        path="services/currency_adoption_service.py",
+        function="_adopt_in_transaction",
+        model="CategoryRule",
+        occurrences=1,
+        reason=(
+            "Installation Owner adoption locks all evidence and fills only unknown monetary-rule "
+            "currencies across the installation in the audited binding transaction. Pure keyword "
+            "rules, captured currencies, threshold integers and row versions are preserved."
+        ),
+    ),
+    ScopeExemption(
+        path="services/currency_adoption_service.py",
+        function="_adopt_in_transaction",
         model="RecurringItem",
         occurrences=1,
         reason=(

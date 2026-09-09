@@ -11,30 +11,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
-import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.ui.components.AppAction
 import com.ticketbox.ui.components.AppActionRow
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.settings.SettingsDialogTextInput
 import com.ticketbox.ui.screens.settings.SettingsOpenPanel
 import com.ticketbox.ui.screens.settings.SettingsTextInputState
-
-data class CategoryRuleDraftForm(
-    val keyword: String = "",
-    val category: String = "",
-    val priorityText: String = "10",
-    val editingRule: CategoryRule? = null,
-    val localMessage: String? = null,
-) {
-    companion object {
-        fun fromRule(rule: CategoryRule): CategoryRuleDraftForm = CategoryRuleDraftForm(
-            keyword = rule.keyword,
-            category = rule.category,
-            priorityText = rule.priority.toString(),
-            editingRule = rule,
-        )
-    }
-}
 
 @Composable
 internal fun CategoryRuleEditorCard(
@@ -48,6 +30,7 @@ internal fun CategoryRuleEditorCard(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {
         CategoryRuleEditorFields(form = form, busy = busy, onFormChange = onFormChange)
+        CategoryRuleAmountFields(form, busy, onFormChange)
         CategoryRuleEditorActions(
             form = form,
             busy = busy,

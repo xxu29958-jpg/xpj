@@ -86,10 +86,11 @@ class CategoryRulesReadOnlyGateTest {
         CategoryRulesScreenActions(
             onBack = {},
             rules = CategoryRulesRuleActions(
-                onCreate = { _, _, _ -> },
-                onUpdate = { _, _, _, _ -> },
+                onCreate = {},
+                onUpdate = { _, _ -> },
                 onToggle = {},
                 onDelete = {},
+                onRecoverSubmission = { _, _ -> },
             ),
             applications = CategoryRulesApplicationActions(
                 onPreviewApplyConfirmedRules = {},

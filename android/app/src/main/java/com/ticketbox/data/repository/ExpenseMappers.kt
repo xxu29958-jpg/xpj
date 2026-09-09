@@ -462,6 +462,7 @@ fun CategoryRuleDto.toDomain(): CategoryRule = CategoryRule(
     createdAt = createdAt,
     updatedAt = updatedAt,
     rowVersion = rowVersion,
+    homeCurrencyCode = homeCurrencyCode,
 )
 
 fun MerchantAliasDto.toDomain(): MerchantAlias = MerchantAlias(
@@ -558,6 +559,8 @@ fun RuleApplyConfirmedResponseDto.toDomain(): RuleApplyConfirmedResult = RuleApp
     scanLimitReached = scanLimitReached,
     scanLimit = scanLimit,
     previewToken = previewToken,
+    unavailableCount = unavailableCount,
+    missingCurrencyCodes = missingCurrencyCodes,
 )
 
 fun ServerSettingsDto.toDomain(): ServerSettings = ServerSettings(

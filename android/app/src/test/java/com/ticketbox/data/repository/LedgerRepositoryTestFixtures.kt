@@ -437,7 +437,7 @@ internal class StubApi(
     override suspend fun expenseThumbnail(id: Long): Response<ResponseBody> = ledgerUnsupported()
     override suspend fun duplicates(): List<ExpenseDto> = ledgerUnsupported()
     override suspend fun categoryRules(): List<CategoryRuleDto> = ledgerUnsupported()
-    override suspend fun createCategoryRule(request: CategoryRuleRequest): CategoryRuleDto = ledgerUnsupported()
+    override suspend fun createCategoryRule(request: CategoryRuleRequest, idempotencyKey: String): CategoryRuleDto = ledgerUnsupported()
     override suspend fun updateCategoryRule(
         id: Long,
         request: com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest,

@@ -82,6 +82,7 @@ internal fun SettingsRoute(
             goalEdits = screenFactory.goalEditRepository,
             budgetSaves = screenFactory.budgetRepository,
             recurringItems = screenFactory.recurringRepository,
+            rules = screenFactory.ruleRepository,
         ),
     )
 }

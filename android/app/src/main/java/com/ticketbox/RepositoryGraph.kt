@@ -153,12 +153,12 @@ internal class RepositoryGraph(
     val ruleRepository = RuleRepository(
         binding = serverSessionBinding,
         onConfirmedChanged = { expenseRepository.syncConfirmed() },
-        // PR-2g.4: outbox + adapter for updateCategoryRuleAllowingOffline.
-        // PR-2g.5: + deleteAdapter for deleteCategoryRuleAllowingOffline.
         offlineMutations = CategoryRuleOfflineMutationWiring(
             outbox = outbox,
             updateAdapter = outboxAdapters.categoryRuleUpdateAdapter,
             deleteAdapter = outboxAdapters.categoryRuleDeleteAdapter,
+            submissionAdapter = outboxAdapters.categoryRuleSubmissionAdapter,
+            receiptAdapter = outboxAdapters.categoryRuleReceiptAdapter,
         ),
     )
 

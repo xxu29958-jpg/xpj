@@ -64,7 +64,7 @@ class BudgetGlobalRecoveryTest {
             status = OutboxStatus(0, emptyList(), listOf(pending.row)), budgetSaves = mapOf(pending.row.id to pending))
         compose.setContent { TicketboxTheme(skin = AppSkin.Default) {
             CompositionLocalProvider(LocalCurrencyDisplay provides CurrencyDisplay(CurrencyCode.CNY)) {
-                SyncStatusScreenContent(state, SyncStatusActions(onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {},
+                SyncStatusScreenContent(state, SyncStatusActions(onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {},
                     onOpenExpense = {}, onKeepMine = { error("Unexpected write") },
                     onDropMine = { error("Unexpected drop") }, onRetry = { error("Unexpected retry") },
                     onDropFailed = { error("Unexpected drop") }, onClearQuarantined = {},

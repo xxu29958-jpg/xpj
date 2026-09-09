@@ -42,12 +42,14 @@ def project_category_spend(db: Session, *, tenant_id: str, home: str, rows) -> t
 
 def project_recorded_amount(
     db: Session, *, tenant_id: str, amount_minor: int, source_currency: str | None,
-    home_currency: str | None, rate_date: date,
+    home_currency: str | None, rate_date: date | None,
 ) -> int | None:
     if source_currency is None or home_currency is None:
         return None
     if source_currency == home_currency or amount_minor == 0:
         return amount_minor
+    if rate_date is None:
+        return None
     rate, _, _, _ = resolve_payload_rate(
         db, tenant_id=tenant_id, currency_code=source_currency,
         home_currency_code=home_currency, rate_date=rate_date,

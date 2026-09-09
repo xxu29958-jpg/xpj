@@ -393,7 +393,7 @@ def test_owner_and_tester_tokens_are_hard_isolated_across_acceptance_surface(
 def test_category_rule_mutations_are_tenant_scoped(client: TestClient, *, identity) -> None:
     owner_rule = client.post(
         "/api/rules/categories",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "keyword": "owner专属",
             "category": "数码",

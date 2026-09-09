@@ -19,10 +19,11 @@ from app.errors import AppError
 from app.models import CategoryRule, Expense
 from app.routes.web_bill_split import _cents_to_yuan, _yuan_to_cents
 from app.routes.web_income_plans import _parse_yuan
-from app.routes.web_rules import _parse_optional_amount_cents
+from app.routes.web_rule_forms import parse_rule_amount
 from app.services.budget_advisor_service import _providers as providers_module
 from app.services.time_service import now_utc
 from tests._infra.currency import activate_test_currency_authority
+from tests._web_rule_form_support import submit_rule_form
 
 
 @pytest.fixture
@@ -47,9 +48,9 @@ def test_income_parse_rejects_fraction_under_zero_decimal_home(jpy_env) -> None:
 
 
 def test_rules_optional_amount_follow_zero_decimal_home(jpy_env) -> None:
-    assert _parse_optional_amount_cents("1200", currency_code="JPY") == 1200
+    assert parse_rule_amount("1200", currency_code="JPY") == 1200
     with pytest.raises(AppError) as excinfo:
-        _parse_optional_amount_cents("12.5", currency_code="JPY")
+        parse_rule_amount("12.5", currency_code="JPY")
     assert excinfo.value.error == "invalid_request"
 
 
@@ -62,7 +63,7 @@ def test_web_lanes_still_work_on_cny_default() -> None:
     # CNY 既有口径回归（不随 JPY 切换）：分 = 元 ×100。
     assert _parse_yuan("12.50", currency_code="CNY", label="收入金额") == 1250
     assert _cents_to_yuan(1250, "CNY") == "12.50"
-    assert _parse_optional_amount_cents("12.50", currency_code="CNY") == 1250
+    assert parse_rule_amount("12.50", currency_code="CNY") == 1250
     assert _yuan_to_cents("12.50", "CNY") == 1250
 
 
@@ -74,7 +75,7 @@ def test_explicit_persisted_currency_parser_ignores_runtime_env_drift(
         currency_code="CNY",
         label="收入金额",
     ) == 1234
-    assert _parse_optional_amount_cents(
+    assert parse_rule_amount(
         "12.34",
         currency_code="CNY",
     ) == 1234
@@ -211,7 +212,7 @@ def test_budget_advise_suggestion_table_follows_zero_decimal_home(
 
 def test_render_lanes_still_work_on_cny_default(web_client: TestClient, *, identity) -> None:
     # CNY 回归：渲染侧分→元 ÷100 两位口径不变。
-    resp = web_client.post(
+    resp = submit_rule_form(web_client,
         "/web/rules/create",
         data={
             "keyword": "餐饮",
@@ -225,7 +226,7 @@ def test_render_lanes_still_work_on_cny_default(web_client: TestClient, *, ident
 
     page = web_client.get("/web/rules?ledger_id=owner")
     assert page.status_code == 200, page.text
-    assert "≥ ¥12.50" in page.text
+    assert "≥ CNY ¥12.50" in page.text
 
     advise = web_client.get(
         "/web/budget-advise?ledger_id=owner&month=2026-05&savings_target_yuan=12",
@@ -287,7 +288,8 @@ def test_zero_fraction_no_js_forms_and_dashboard_share_input_contract(
 
     rules = web_client.get("/web/rules?ledger_id=owner")
     assert rules.status_code == 200, rules.text
-    assert 'name="amount_min_yuan" min="0" step="1" inputmode="numeric"' in rules.text
+    assert 'type="text" name="amount_min_yuan" inputmode="numeric"' in rules.text
+    assert 'name="home_currency_code" value="JPY"' in rules.text
     assert "金额下限（JPY，可选）" in rules.text
 
 

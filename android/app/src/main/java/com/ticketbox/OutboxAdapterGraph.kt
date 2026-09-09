@@ -23,6 +23,7 @@ import com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest
 import com.ticketbox.data.remote.dto.RecurringItemCreateRequestDto
 import com.ticketbox.data.remote.dto.RecurringItemUpdateRequestDto
 import com.ticketbox.data.remote.dto.addRecurringWireAdapters
+import com.ticketbox.data.remote.dto.addCategoryRuleWireAdapters
 import com.ticketbox.data.remote.dto.addBudgetWireAdapters
 
 internal class OutboxAdapterGraph {
@@ -40,6 +41,7 @@ internal class OutboxAdapterGraph {
             .addExpenseCorrectionWireAdapters()
             .addRecurringWireAdapters()
             .addBudgetWireAdapters()
+            .addCategoryRuleWireAdapters()
             .build()
     }
 
@@ -69,9 +71,14 @@ internal class OutboxAdapterGraph {
         moshi.adapter(com.ticketbox.data.remote.dto.UploadResponseDto::class.java).serializeNulls()
     }
 
-    // PR-2g.4: shared between UpdateCategoryRuleDispatcher
-    // (deserialises on replay) and RuleRepository.updateCategoryRuleAllowingOffline
-    // (serialises before enqueue). Same roundtrip guarantee as patchExpenseAdapter.
+    // One original submission schema and its server receipt; the flat update adapter reads older records.
+    val categoryRuleSubmissionAdapter: JsonAdapter<com.ticketbox.data.repository.CategoryRuleSubmissionPayload> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.repository.CategoryRuleSubmissionPayload::class.java)
+    }
+    val categoryRuleReceiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.CategoryRuleDto> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.remote.dto.CategoryRuleDto::class.java)
+    }
+
     val categoryRuleUpdateAdapter: JsonAdapter<CategoryRuleUpdateRequest> = lazyJsonAdapter {
         moshi.adapter(CategoryRuleUpdateRequest::class.java)
     }

@@ -118,10 +118,10 @@ class ExpenseCorrectionRoomContinuityTest {
         compose.runOnIdle {
             global = outboxStatusViewModelFactory(fixture.outbox, graph.expenseRepository,
                 OutboxRecoveryRepositories(graph.debtCreationRepository, graph.recurringRepository.occurrences,
-                    graph.incomePlanRepository, graph.debtAdjustmentRepository, graph.goalEditRepository, graph.budgetRepository, graph.recurringRepository)).create(OutboxStatusViewModel::class.java)
+                    graph.incomePlanRepository, graph.debtAdjustmentRepository, graph.goalEditRepository, graph.budgetRepository, graph.recurringRepository, graph.ruleRepository)).create(OutboxStatusViewModel::class.java)
         }
         compose.setContent { TicketboxTheme(skin = AppSkin.Paper) {
-            SyncStatusScreen(requireNotNull(global), {}, navigation = com.ticketbox.ui.screens.settings.SyncStatusNavigation({ opened = it }, {}, {}, {}, {}, {}))
+            SyncStatusScreen(requireNotNull(global), {}, navigation = com.ticketbox.ui.screens.settings.SyncStatusNavigation({ opened = it }, {}, {}, {}, {}, {}, {}))
         } }
         compose.waitUntil(10_000) { global?.uiState?.value?.correctionObservation?.corrections?.size == 1 }
         compose.onNodeWithText("原因：全局恢复原提交").performScrollTo().assertIsDisplayed()
@@ -185,10 +185,10 @@ class ExpenseCorrectionRoomContinuityTest {
         compose.runOnIdle {
             global = outboxStatusViewModelFactory(fixture.outbox, graph.expenseRepository,
                 OutboxRecoveryRepositories(graph.debtCreationRepository, graph.recurringRepository.occurrences,
-                    graph.incomePlanRepository, graph.debtAdjustmentRepository, graph.goalEditRepository, graph.budgetRepository, graph.recurringRepository)).create(OutboxStatusViewModel::class.java)
+                    graph.incomePlanRepository, graph.debtAdjustmentRepository, graph.goalEditRepository, graph.budgetRepository, graph.recurringRepository, graph.ruleRepository)).create(OutboxStatusViewModel::class.java)
         }
         compose.setContent { TicketboxTheme(skin = AppSkin.Paper) {
-            SyncStatusScreen(requireNotNull(global), {}, navigation = com.ticketbox.ui.screens.settings.SyncStatusNavigation({}, {}, {}, {}, {}, {}))
+            SyncStatusScreen(requireNotNull(global), {}, navigation = com.ticketbox.ui.screens.settings.SyncStatusNavigation({}, {}, {}, {}, {}, {}, {}))
         } }
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         for (code in listOf("runtime_version_mismatch", "client_upgrade_required")) {
@@ -238,10 +238,10 @@ class ExpenseCorrectionRoomContinuityTest {
         compose.runOnIdle {
             global = outboxStatusViewModelFactory(fixture.outbox, repository,
                 OutboxRecoveryRepositories(graph.debtCreationRepository, graph.recurringRepository.occurrences,
-                    graph.incomePlanRepository, graph.debtAdjustmentRepository, graph.goalEditRepository, graph.budgetRepository, graph.recurringRepository)).create(OutboxStatusViewModel::class.java)
+                    graph.incomePlanRepository, graph.debtAdjustmentRepository, graph.goalEditRepository, graph.budgetRepository, graph.recurringRepository, graph.ruleRepository)).create(OutboxStatusViewModel::class.java)
         }
         compose.setContent { TicketboxTheme(skin = AppSkin.Paper) {
-            SyncStatusScreen(requireNotNull(global), {}, navigation = com.ticketbox.ui.screens.settings.SyncStatusNavigation({}, {}, {}, {}, {}, {}))
+            SyncStatusScreen(requireNotNull(global), {}, navigation = com.ticketbox.ui.screens.settings.SyncStatusNavigation({}, {}, {}, {}, {}, {}, {}))
         } }
         compose.waitUntil(10_000) { global?.uiState?.value?.correctionObservation?.corrections?.singleOrNull()?.row?.id == id }
         val status = requireNotNull(global).uiState.value.status
@@ -290,10 +290,10 @@ class ExpenseCorrectionRoomContinuityTest {
         compose.runOnIdle {
             global = outboxStatusViewModelFactory(fixture.outbox, graph.expenseRepository,
                 OutboxRecoveryRepositories(graph.debtCreationRepository, graph.recurringRepository.occurrences,
-                    graph.incomePlanRepository, graph.debtAdjustmentRepository, graph.goalEditRepository, graph.budgetRepository, graph.recurringRepository)).create(OutboxStatusViewModel::class.java)
+                    graph.incomePlanRepository, graph.debtAdjustmentRepository, graph.goalEditRepository, graph.budgetRepository, graph.recurringRepository, graph.ruleRepository)).create(OutboxStatusViewModel::class.java)
         }
         compose.setContent { TicketboxTheme(skin = AppSkin.Paper) {
-            SyncStatusScreen(requireNotNull(global), {}, navigation = com.ticketbox.ui.screens.settings.SyncStatusNavigation({ opened = it }, {}, {}, {}, {}, {}))
+            SyncStatusScreen(requireNotNull(global), {}, navigation = com.ticketbox.ui.screens.settings.SyncStatusNavigation({ opened = it }, {}, {}, {}, {}, {}, {}))
         } }
         compose.waitUntil(10_000) { global?.uiState?.value?.correctionObservation?.corrections?.singleOrNull()?.delivered == true }
         compose.onNodeWithText("更正已送达；部分事实尚待刷新。").performScrollTo().assertIsDisplayed()

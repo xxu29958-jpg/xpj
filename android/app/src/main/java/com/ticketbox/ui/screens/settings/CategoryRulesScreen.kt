@@ -16,6 +16,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -24,6 +25,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
+import com.ticketbox.data.remote.dto.CategoryRuleRequest
+import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.PendingCategoryRuleSubmission
+import com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleSubmissionCards
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RuleApplicationBatch
@@ -46,6 +51,10 @@ data class CategoryRulesScreenState(
     val status: CategoryRulesStatusState,
     val applications: CategoryRulesApplicationState,
     val undoableRule: CategoryRule?,
+    val submissions: List<PendingCategoryRuleSubmission> = emptyList(),
+    val selectedSubmissionId: Long? = null,
+    val submittedRevision: Int = 0,
+    val binding: LogicalSessionBinding? = null,
 )
 
 data class CategoryRulesRuleListState(
@@ -77,10 +86,11 @@ data class CategoryRulesScreenActions(
 )
 
 data class CategoryRulesRuleActions(
-    val onCreate: (String, String, Int) -> Unit,
-    val onUpdate: (CategoryRule, String, String, Int) -> Unit,
+    val onCreate: (CategoryRuleRequest) -> Unit,
+    val onUpdate: (CategoryRule, CategoryRuleRequest) -> Unit,
     val onToggle: (CategoryRule) -> Unit,
     val onDelete: (CategoryRule) -> Unit,
+    val onRecoverSubmission: (PendingCategoryRuleSubmission, Boolean) -> Unit,
 )
 
 data class CategoryRulesApplicationActions(
@@ -100,32 +110,20 @@ fun CategoryRulesScreen(
     actions: CategoryRulesScreenActions,
     chrome: ManagementPageChrome = ManagementPageChrome(),
 ) {
-    var form by remember { mutableStateOf<CategoryRuleDraftForm?>(null) }
-    var deletingRule by remember { mutableStateOf<CategoryRule?>(null) }
-    var rollbackApplication by remember { mutableStateOf<RuleApplicationBatch?>(null) }
-    val validationFieldsMessage = stringResource(R.string.category_rule_form_validation_fields)
-    val validationPriorityMessage = stringResource(R.string.category_rule_form_validation_priority)
-    val contentActions = CategoryRulesActions(
-        onCreateRule = actions.rules.onCreate,
-        onUpdateRule = actions.rules.onUpdate,
-        onToggleRule = actions.rules.onToggle,
-        onDeleteRule = actions.rules.onDelete,
-        onPreviewApplyConfirmedRules = actions.applications.onPreviewApplyConfirmedRules,
-        onConfirmApplyConfirmedRules = actions.applications.onConfirmApplyConfirmedRules,
-        onRollbackRuleApplication = actions.applications.onRollbackRuleApplication,
-        onUndoDelete = actions.undo.onUndoDelete,
-        onDismissUndo = actions.undo.onDismiss,
-    )
+    var form by remember(state.binding) { mutableStateOf<CategoryRuleDraftForm?>(null) }
+    LaunchedEffect(state.submittedRevision) { if (state.submittedRevision > 0) form = null }
+    var deletingRule by remember(state.binding) { mutableStateOf<CategoryRule?>(null) }
+    var rollbackApplication by remember(state.binding) { mutableStateOf<RuleApplicationBatch?>(null) }
 
     CategoryRuleDeleteDialogHost(
         rule = deletingRule,
         onDismiss = { deletingRule = null },
-        onConfirm = contentActions.onDeleteRule,
+        onConfirm = actions.rules.onDelete,
     )
     CategoryRuleRollbackDialogHost(
         application = rollbackApplication,
         onDismiss = { rollbackApplication = null },
-        onConfirm = contentActions.onRollbackRuleApplication,
+        onConfirm = actions.applications.onRollbackRuleApplication,
     )
 
     ManagementPageFrame(
@@ -137,41 +135,22 @@ fun CategoryRulesScreen(
         onBack = actions.onBack,
         status = { AppStatusBanner(message = state.status.message, tone = state.status.messageTone) },
     ) {
+        key(state.binding) {
+            CategoryRuleSubmissionCards(state.submissions, state.selectedSubmissionId, state.interaction.busy,
+                state.interaction.readOnly, actions.rules.onRecoverSubmission)
+        }
         CategoryRulesContent(
-            state = CategoryRulesContentState(
-                rules = state.rules.rules,
-                rulesLoading = state.rules.loading,
-                busy = state.interaction.busy,
-                readOnly = state.interaction.readOnly,
-                applications = state.applications.history,
-                applicationsLoading = state.applications.loading,
-                confirmedPreview = state.applications.confirmedPreview,
-                undoableRule = state.undoableRule,
-            ),
+            state = state.contentState(),
             editor = CategoryRulesEditorBinding(
                 form = form,
                 onFormChange = { form = it },
-                validationFieldsMessage = validationFieldsMessage,
-                validationPriorityMessage = validationPriorityMessage,
             ),
-            actions = contentActions,
+            actions = actions,
             onRequestDelete = { deletingRule = it },
             onRequestRollback = { rollbackApplication = it },
         )
     }
 }
-
-private data class CategoryRulesActions(
-    val onCreateRule: (String, String, Int) -> Unit,
-    val onUpdateRule: (CategoryRule, String, String, Int) -> Unit,
-    val onToggleRule: (CategoryRule) -> Unit,
-    val onDeleteRule: (CategoryRule) -> Unit,
-    val onPreviewApplyConfirmedRules: () -> Unit,
-    val onConfirmApplyConfirmedRules: () -> Unit,
-    val onRollbackRuleApplication: (RuleApplicationBatch) -> Unit,
-    val onUndoDelete: () -> Unit,
-    val onDismissUndo: () -> Unit,
-)
 
 private data class CategoryRulesContentState(
     val rules: List<CategoryRule>,
@@ -184,11 +163,16 @@ private data class CategoryRulesContentState(
     val undoableRule: CategoryRule?,
 )
 
+private fun CategoryRulesScreenState.contentState() = CategoryRulesContentState(
+    rules = rules.rules, rulesLoading = rules.loading, busy = interaction.busy,
+    readOnly = interaction.readOnly, applications = applications.history,
+    applicationsLoading = applications.loading, confirmedPreview = applications.confirmedPreview,
+    undoableRule = undoableRule,
+)
+
 private data class CategoryRulesEditorBinding(
     val form: CategoryRuleDraftForm?,
     val onFormChange: (CategoryRuleDraftForm?) -> Unit,
-    val validationFieldsMessage: String,
-    val validationPriorityMessage: String,
 )
 
 @Composable
@@ -231,14 +215,14 @@ private fun CategoryRuleRollbackDialogHost(
 private fun CategoryRulesContent(
     state: CategoryRulesContentState,
     editor: CategoryRulesEditorBinding,
-    actions: CategoryRulesActions,
+    actions: CategoryRulesScreenActions,
     onRequestDelete: (CategoryRule) -> Unit,
     onRequestRollback: (RuleApplicationBatch) -> Unit,
 ) {
     CategoryRuleUndoPanel(
         undoableRule = state.undoableRule,
-        onUndoDelete = actions.onUndoDelete,
-        onDismissUndo = actions.onDismissUndo,
+        onUndoDelete = actions.undo.onUndoDelete,
+        onDismissUndo = actions.undo.onDismiss,
     )
     CategoryRuleListSection(
         state = state,
@@ -251,8 +235,8 @@ private fun CategoryRulesContent(
             preview = state.confirmedPreview,
             busy = state.busy,
             readOnly = state.readOnly,
-            onPreview = actions.onPreviewApplyConfirmedRules,
-            onConfirm = actions.onConfirmApplyConfirmedRules,
+            onPreview = actions.applications.onPreviewApplyConfirmedRules,
+            onConfirm = actions.applications.onConfirmApplyConfirmedRules,
         )
     }
     RuleApplicationHistorySection(
@@ -265,7 +249,7 @@ private fun CategoryRulesContent(
 private fun CategoryRuleListSection(
     state: CategoryRulesContentState,
     editor: CategoryRulesEditorBinding,
-    actions: CategoryRulesActions,
+    actions: CategoryRulesScreenActions,
     onRequestDelete: (CategoryRule) -> Unit,
 ) {
     val form = editor.form
@@ -327,7 +311,7 @@ private fun CategoryRuleListNote(
 private fun CategoryRuleListBody(
     state: CategoryRulesContentState,
     editor: CategoryRulesEditorBinding,
-    actions: CategoryRulesActions,
+    actions: CategoryRulesScreenActions,
     onRequestDelete: (CategoryRule) -> Unit,
 ) {
     if (state.rules.isEmpty()) {
@@ -346,7 +330,7 @@ private fun CategoryRuleListBody(
         CategoryRuleList(
             rules = state.rules,
             readOnly = state.readOnly,
-            onToggleRule = actions.onToggleRule,
+            onToggleRule = actions.rules.onToggle,
             onEditRule = { rule ->
                 if (!state.readOnly) {
                     editor.onFormChange(CategoryRuleDraftForm.fromRule(rule))
@@ -366,7 +350,7 @@ private fun CategoryRuleEditorSlot(
     form: CategoryRuleDraftForm,
     busy: Boolean,
     editor: CategoryRulesEditorBinding,
-    actions: CategoryRulesActions,
+    actions: CategoryRulesScreenActions,
 ) {
     Text(
         text = stringResource(
@@ -383,18 +367,12 @@ private fun CategoryRuleEditorSlot(
         busy = busy,
         onFormChange = editor.onFormChange,
         onSubmit = {
-            form.submit(
-                fieldsRequiredMessage = editor.validationFieldsMessage,
-                priorityInvalidMessage = editor.validationPriorityMessage,
-                onInvalid = { message -> editor.onFormChange(form.copy(localMessage = message)) },
-                onValid = { rule, keyword, category, priority ->
-                    if (rule == null) {
-                        actions.onCreateRule(keyword, category, priority)
-                    } else {
-                        actions.onUpdateRule(rule, keyword, category, priority)
-                    }
-                    editor.onFormChange(null)
+            form.toRequest().fold(
+                onSuccess = { request ->
+                    val rule = form.editingRule
+                    if (rule == null) actions.rules.onCreate(request) else actions.rules.onUpdate(rule, request)
                 },
+                onFailure = { error -> editor.onFormChange(form.copy(localMessage = error.message)) },
             )
         },
         onCancel = { editor.onFormChange(null) },
@@ -460,22 +438,4 @@ private fun CategoryRuleUndoPanel(
             }
         }
     }
-}
-
-private fun CategoryRuleDraftForm.submit(
-    fieldsRequiredMessage: String,
-    priorityInvalidMessage: String,
-    onInvalid: (String) -> Unit,
-    onValid: (CategoryRule?, String, String, Int) -> Unit,
-) {
-    val priority = priorityText.toIntOrNull()
-    if (keyword.isBlank() || category.isBlank()) {
-        onInvalid(fieldsRequiredMessage)
-        return
-    }
-    if (priority == null) {
-        onInvalid(priorityInvalidMessage)
-        return
-    }
-    onValid(editingRule, keyword, category, priority)
 }

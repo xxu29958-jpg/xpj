@@ -1,6 +1,7 @@
 package com.ticketbox.data.remote
 
 import com.squareup.moshi.Moshi
+import com.ticketbox.data.remote.dto.addCategoryRuleWireAdapters
 import com.ticketbox.data.remote.dto.addBudgetWireAdapters
 import com.ticketbox.data.remote.dto.addExpenseCorrectionWireAdapters
 import com.ticketbox.data.remote.dto.addRecurringWireAdapters
@@ -235,6 +236,7 @@ private fun requestTargetsRefresh(chain: Interceptor.Chain): Boolean =
 internal fun buildApiService(normalizedBaseUrl: String, client: OkHttpClient): ApiService {
     val moshi = Moshi.Builder()
         .addBudgetWireAdapters()
+        .addCategoryRuleWireAdapters()
         .addExpenseCorrectionWireAdapters()
         .addRecurringWireAdapters()
         .add(KotlinJsonAdapterFactory())

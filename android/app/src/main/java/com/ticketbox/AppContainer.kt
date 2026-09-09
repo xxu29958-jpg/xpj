@@ -1,5 +1,7 @@
 package com.ticketbox
 
+import com.ticketbox.data.local.PendingMutationType
+
 import android.content.Context
 import com.ticketbox.data.local.AppDatabase
 import com.ticketbox.data.local.LocalSettingsStore
@@ -17,7 +19,6 @@ import com.ticketbox.data.repository.CreateExpenseDispatcher
 import com.ticketbox.data.repository.CreateExpenseOffsetDispatcher
 import com.ticketbox.data.repository.CreateRecurringItemDispatcher
 import com.ticketbox.data.repository.CreateDebtDispatcher
-import com.ticketbox.data.repository.DeleteCategoryRuleDispatcher
 import com.ticketbox.data.repository.DeleteMerchantAliasDispatcher
 import com.ticketbox.data.repository.MarkNotDuplicateDispatcher
 import com.ticketbox.data.repository.LedgerRequestGuard
@@ -36,7 +37,7 @@ import com.ticketbox.data.repository.RejectExpenseDispatcher
 import com.ticketbox.data.repository.ReplaceItemsDispatcher
 import com.ticketbox.data.repository.ReplaceSplitsDispatcher
 import com.ticketbox.data.repository.RetryOcrDispatcher
-import com.ticketbox.data.repository.UpdateCategoryRuleDispatcher
+import com.ticketbox.data.repository.CategoryRuleDispatcher
 import com.ticketbox.data.repository.UpdateGoalDispatcher
 import com.ticketbox.data.repository.UpdateIncomePlanDispatcher
 import com.ticketbox.data.repository.UpdateMerchantAliasDispatcher
@@ -162,8 +163,8 @@ class AppContainer(context: Context) {
      * Registered dispatchers. PR-2g.2 wired the first dispatcher
      * [PatchExpenseDispatcher]; PR-2g.3 routed the matching call
      * site (PATCH expense). PR-2g.4 added
-     * [UpdateCategoryRuleDispatcher] + matching call site. PR-2g.5
-     * added [DeleteCategoryRuleDispatcher] +
+     * [CategoryRuleDispatcher] + matching call site. PR-2g.5
+     * added [CategoryRuleDispatcher] +
      * [DeleteMerchantAliasDispatcher] + matching call sites
      * (2 DELETE shapes, shared [DeleteOutcome] sealed). PR-2g.6
      * added [UpdateMerchantAliasDispatcher] + matching call site
@@ -222,16 +223,12 @@ class AppContainer(context: Context) {
                 payloadAdapter = outboxAdapters.offsetVoidAdapter,
                 publishBundle = ::publishExpenseFactBundle,
             ),
-            // PR-2g.4: PATCH /api/rules/categories/{id} via outbox.
-            UpdateCategoryRuleDispatcher(
-                apiProvider = ::outboxApi,
-                payloadAdapter = outboxAdapters.categoryRuleUpdateAdapter,
-            ),
-            // PR-2g.5: DELETE /api/rules/categories/{id} via outbox.
-            DeleteCategoryRuleDispatcher(
-                apiProvider = ::outboxApi,
-                payloadAdapter = outboxAdapters.categoryRuleDeleteAdapter,
-            ),
+            CategoryRuleDispatcher(PendingMutationType.CreateCategoryRule, ::outboxApi,
+                outboxAdapters.categoryRuleSubmissionAdapter, outboxAdapters.categoryRuleReceiptAdapter),
+            CategoryRuleDispatcher(PendingMutationType.UpdateCategoryRule, ::outboxApi,
+                outboxAdapters.categoryRuleSubmissionAdapter, outboxAdapters.categoryRuleReceiptAdapter),
+            CategoryRuleDispatcher(PendingMutationType.DeleteCategoryRule, ::outboxApi,
+                outboxAdapters.categoryRuleSubmissionAdapter, outboxAdapters.categoryRuleReceiptAdapter),
             // PR-2g.5: DELETE /api/merchants/aliases/{publicId} via outbox.
             DeleteMerchantAliasDispatcher(
                 apiProvider = ::outboxApi,
