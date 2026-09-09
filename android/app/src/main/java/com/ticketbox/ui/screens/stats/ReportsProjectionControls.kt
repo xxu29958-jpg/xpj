@@ -20,22 +20,21 @@ import com.ticketbox.domain.model.CurrencyProjectionGap
 import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.asString
+import com.ticketbox.ui.screens.StatsReportActions
 
 @Composable
 internal fun ReportsProjectionControls(
     overview: ReportsOverview,
-    onCategory: (String?) -> Unit,
-    onRepair: (CurrencyProjectionGap?) -> Unit,
-    onExport: () -> Unit,
+    actions: StatsReportActions,
     exporting: Boolean,
     exportMessage: UiText?,
 ) {
     Column {
         Text(stringResource(R.string.reports_currency, overview.homeCurrencyCode))
-        ProjectionRateGaps(overview.missingRates, onRepair)
-        TextButton(onClick = { onRepair(null) }) { Text(stringResource(R.string.reports_repair_rates)) }
-        ReportsMerchantCategoryFilter(overview, onCategory)
-        TextButton(onClick = onExport, enabled = !exporting, modifier = Modifier.testTag("reports-export")) {
+        ProjectionRateGaps(overview.missingRates, actions.onRepairRates)
+        TextButton(onClick = { actions.onRepairRates(null) }) { Text(stringResource(R.string.reports_repair_rates)) }
+        ReportsMerchantCategoryFilter(overview, actions.onMerchantCategoryChange)
+        TextButton(onClick = actions.onExport, enabled = !exporting, modifier = Modifier.testTag("reports-export")) {
             Text(stringResource(if (exporting) R.string.reports_exporting else R.string.reports_export))
         }
         exportMessage?.let { Text(it.asString()) }

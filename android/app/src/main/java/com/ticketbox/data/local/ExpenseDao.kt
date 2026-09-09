@@ -36,13 +36,12 @@ interface ExpenseDao {
     @Query("""
         SELECT * FROM stats_projection_cache
         WHERE bindingKey = :bindingKey AND kind = :kind AND month = :month AND tag = :tag
-          AND timezone = :timezone AND (:homeCurrencyCode IS NULL OR homeCurrencyCode = :homeCurrencyCode)
-        ORDER BY fetchedAt DESC LIMIT 1
+          AND timezone = :timezone
+        ORDER BY fetchedAt DESC
     """)
-    suspend fun statsProjection(
-        bindingKey: String, kind: String, month: String, tag: String,
-        homeCurrencyCode: String?, timezone: String,
-    ): StatsProjectionCacheEntity?
+    suspend fun statsProjections(
+        bindingKey: String, kind: String, month: String, tag: String, timezone: String,
+    ): List<StatsProjectionCacheEntity>
 
     @Query("DELETE FROM stats_projection_cache")
     suspend fun clearStatsProjections()

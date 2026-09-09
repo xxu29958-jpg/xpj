@@ -31,13 +31,18 @@ data class MonthsDto(
     val items: List<String>,
 )
 
+interface StatsProjectionDto {
+    val month: String
+    val homeCurrencyCode: String
+}
+
 @JsonClass(generateAdapter = true)
 data class MonthlyStatsDto(
     @param:Json(name = "home_currency_code")
-    val homeCurrencyCode: String,
+    override val homeCurrencyCode: String,
     @param:Json(name = "missing_rates")
     val missingRates: List<MissingExchangeRateDto> = emptyList(),
-    val month: String,
+    override val month: String,
     @param:Json(name = "total_amount_cents")
     val totalAmountCents: Long?,
     val count: Int,
@@ -45,15 +50,15 @@ data class MonthlyStatsDto(
     val byCategory: List<CategoryStatsDto>,
     @param:Json(name = "by_tag")
     val byTag: List<TagStatsDto> = emptyList(),
-)
+) : StatsProjectionDto
 
 @JsonClass(generateAdapter = true)
 data class LifestyleStatsDto(
     @param:Json(name = "home_currency_code")
-    val homeCurrencyCode: String,
+    override val homeCurrencyCode: String,
     @param:Json(name = "missing_rates")
     val missingRates: List<MissingExchangeRateDto> = emptyList(),
-    val month: String,
+    override val month: String,
     @param:Json(name = "ai_subscription_amount_cents")
     val aiSubscriptionAmountCents: Long?,
     @param:Json(name = "digital_amount_cents")
@@ -68,7 +73,7 @@ data class LifestyleStatsDto(
     val bestValueExpenses: List<ExpenseDto> = emptyList(),
     @param:Json(name = "most_regretted_expenses")
     val mostRegrettedExpenses: List<ExpenseDto> = emptyList(),
-)
+) : StatsProjectionDto
 
 @JsonClass(generateAdapter = true)
 data class FrequentMerchantDto(

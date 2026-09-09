@@ -7,9 +7,9 @@ internal class StatsProjectionCacheFake {
             it.tag == row.tag && it.homeCurrencyCode == row.homeCurrencyCode && it.timezone == row.timezone }
         rows.add(row)
     }
-    fun find(bindingKey: String, kind: String, month: String, tag: String, homeCurrencyCode: String?, timezone: String) =
+    fun find(bindingKey: String, kind: String, month: String, tag: String, timezone: String) =
         rows.filter { it.bindingKey == bindingKey && it.kind == kind && it.month == month && it.tag == tag &&
-            (homeCurrencyCode == null || it.homeCurrencyCode == homeCurrencyCode) && it.timezone == timezone }
-            .maxByOrNull { it.fetchedAt }
+            it.timezone == timezone }
+            .sortedByDescending { it.fetchedAt }
     fun clear(ledgerId: String?) { rows.removeAll { ledgerId == null || it.ledgerId == ledgerId } }
 }

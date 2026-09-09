@@ -172,7 +172,8 @@ private suspend fun CoroutineScope.assertLatestMonthReadOwnsCache(earlierReturns
 private suspend fun assertCachedTotal(dao: FakeExpenseDao, query: StatsQuery, expected: Long) {
     val moshi = Moshi.Builder().build()
     val key = moshi.adapter(LogicalSessionBinding::class.java).toJson(query.binding)
-    val row = requireNotNull(dao.statsProjection(key, "monthly", query.month, query.tag, query.homeCurrencyCode, query.timezone))
+    val row = dao.statsProjections(key, "monthly", query.month, query.tag, query.timezone)
+        .single { it.homeCurrencyCode == query.homeCurrencyCode }
     assertEquals(expected, moshi.adapter(MonthlyStatsDto::class.java).fromJson(row.responseJson)?.totalAmountCents)
 }
 

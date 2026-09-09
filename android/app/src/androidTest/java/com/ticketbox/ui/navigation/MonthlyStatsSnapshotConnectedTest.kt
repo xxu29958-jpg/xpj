@@ -19,12 +19,15 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.test.core.app.ApplicationProvider
 import com.ticketbox.R
+import com.squareup.moshi.Moshi
+import com.ticketbox.data.local.StatsProjectionCacheEntity
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.CategoryStatsDto
 import com.ticketbox.data.remote.dto.LifestyleStatsDto
 import com.ticketbox.data.remote.dto.MissingExchangeRateDto
 import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.repository.ExpenseCorrectionConnectedFixture
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.StatsQuery
 import com.ticketbox.data.repository.toDomain
 import com.ticketbox.data.repository.toEntity
@@ -115,6 +118,37 @@ class MonthlyStatsSnapshotConnectedTest {
         assertNull(monthly.uiState.value.lifestyleStats)
         compose.onNodeWithTag("stats-cached-snapshot").assertDoesNotExist()
         assertEquals(before, fixture.stored())
+    }
+
+    @Test fun diskSnapshotsKeepBothHomesAndOnlyAnUnspecifiedHomeSelectsTheLatest() {
+        val repo = fixture.reopen().expenseRepository
+        val binding = requireNotNull(repo.statsBinding())
+        val query = StatsQuery(binding, "2026-09", "旅行", timezone = "Asia/Tokyo")
+        val moshi = Moshi.Builder().build()
+        val bindingKey = moshi.adapter(LogicalSessionBinding::class.java).toJson(binding)
+        val adapter = moshi.adapter(MonthlyStatsDto::class.java)
+        runBlocking {
+            listOf("JPY" to 7000L, "USD" to 1200L).forEachIndexed { index, (home, amount) ->
+                val wire = MonthlyStatsDto(home, month = query.month, totalAmountCents = amount,
+                    count = 2, byCategory = listOf(CategoryStatsDto("购物", amount, 2)))
+                fixture.expenseDao.saveStatsProjection(StatsProjectionCacheEntity(
+                    bindingKey, binding.ledgerId, "monthly", query.month, query.tag, home,
+                    query.timezone, adapter.toJson(wire), "2026-09-09T00:00:0${index}Z",
+                ))
+            }
+        }
+        offline = true
+        val reopened = fixture.reopen().expenseRepository
+        runBlocking {
+            val original = reopened.monthlyStats(query.copy(homeCurrencyCode = "JPY")).getOrThrow()
+            assertTrue(original.fromCache)
+            assertEquals("JPY", original.value.homeCurrencyCode)
+            assertEquals(7000L, original.value.totalAmountCents)
+            val latest = reopened.monthlyStats(query).getOrThrow()
+            assertEquals("USD", latest.value.homeCurrencyCode)
+            assertEquals(1200L, latest.value.totalAmountCents)
+            assertTrue(reopened.monthlyStats(query.copy(homeCurrencyCode = "CNY")).isFailure)
+        }
     }
 
     private fun prepare(): List<Map<String, String?>> {

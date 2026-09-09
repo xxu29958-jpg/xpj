@@ -121,14 +121,9 @@ private fun LazyListScope.statsTrendItems(
             StatsInsightSurface {
                 ReportsInsightCard(
                     overview = state.reportsOverview,
-                    onGranularityChange = actions.onGranularityChange,
-                    onRankingMetricChange = actions.onRankingMetricChange,
-                    onMerchantCategoryChange = actions.onMerchantCategoryChange,
-                    onRepairRates = actions.onRepairRates,
-                    onExport = actions.onExport,
+                    actions = actions,
                     exporting = state.reportsExporting || state.reportsLoading,
                     exportMessage = state.reportsExportMessage,
-
                 )
             }
         }

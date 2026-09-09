@@ -15,6 +15,7 @@ import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.data.local.StatsProjectionCacheEntity
 import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.LifestyleStatsDto
+import com.ticketbox.data.remote.dto.StatsProjectionDto
 import java.time.Instant
 import java.time.YearMonth
 import java.time.ZoneId
@@ -46,21 +47,19 @@ internal class ExpenseStatsRepositoryActions(
     override suspend fun tags(): Result<List<String>> = ledgerActions.tags()
 
     override suspend fun monthlyStats(query: StatsQuery): Result<StatsRead<MonthlyStats>> =
-        read(query, StatsProjectionKind.Monthly, monthlyAdapter, { dto -> dto.month to dto.homeCurrencyCode }, MonthlyStatsDto::toDomain) { api ->
+        read(query, StatsProjectionKind.Monthly, monthlyAdapter, MonthlyStatsDto::toDomain) { api ->
             api.monthlyStats(query.month, query.tag.ifBlank { null }, query.timezone, query.homeCurrencyCode)
         }
 
     override suspend fun lifestyleStats(query: StatsQuery): Result<StatsRead<LifestyleStats>> =
-        read(query.copy(tag = ""), StatsProjectionKind.Lifestyle, lifestyleAdapter,
-            { dto -> dto.month to dto.homeCurrencyCode }, LifestyleStatsDto::toDomain) { api ->
+        read(query.copy(tag = ""), StatsProjectionKind.Lifestyle, lifestyleAdapter, LifestyleStatsDto::toDomain) { api ->
             api.lifestyleStats(query.month, query.timezone, query.homeCurrencyCode)
         }
 
-    private suspend fun <W, D> read(
+    private suspend fun <W : StatsProjectionDto, D> read(
         query: StatsQuery,
         kind: StatsProjectionKind,
         adapter: JsonAdapter<W>,
-        scope: (W) -> Pair<String, String>,
         project: (W) -> D,
         fetch: suspend (com.ticketbox.data.remote.ApiService) -> W,
     ): Result<StatsRead<D>> {
@@ -71,11 +70,11 @@ internal class ExpenseStatsRepositoryActions(
             ZoneId.of(query.timezone)
             val bound = core.ledgerRequestGuard.bindExact(query.binding)
             val wire = bound.call { fetch(it) }
-            validateScope(query, scope(wire))
+            validateScope(query, wire)
             val value = project(wire)
             val row = StatsProjectionCacheEntity(
                 bindingKey = bindingAdapter.toJson(query.binding), ledgerId = query.binding.ledgerId,
-                kind = kind.storageKey, month = query.month, tag = query.tag.trim(), homeCurrencyCode = scope(wire).second,
+                kind = kind.storageKey, month = query.month, tag = query.tag.trim(), homeCurrencyCode = wire.homeCurrencyCode,
                 timezone = query.timezone, responseJson = adapter.toJson(wire), fetchedAt = Instant.now().toString(),
             )
             core.withActiveBindingCommit(bound) {
@@ -86,21 +85,21 @@ internal class ExpenseStatsRepositoryActions(
             StatsRead(value, row.fetchedAt, fromCache = false)
         }
         if (result.isSuccess || statsBinding() != query.binding) return result
-        val cached = core.expenseDao.statsProjection(
-            bindingAdapter.toJson(query.binding), kind.storageKey, query.month, query.tag.trim(), query.homeCurrencyCode, query.timezone,
-        ) ?: return result
+        val cached = core.expenseDao.statsProjections(
+            bindingAdapter.toJson(query.binding), kind.storageKey, query.month, query.tag.trim(), query.timezone,
+        ).firstOrNull { query.homeCurrencyCode == null || it.homeCurrencyCode == query.homeCurrencyCode } ?: return result
         val restored = runCatching {
             val wire = requireNotNull(adapter.fromJson(cached.responseJson))
-            validateScope(query.copy(homeCurrencyCode = cached.homeCurrencyCode), scope(wire))
+            validateScope(query.copy(homeCurrencyCode = cached.homeCurrencyCode), wire)
             check(statsBinding() == query.binding)
             StatsRead(project(wire), cached.fetchedAt, fromCache = true)
         }
         return if (restored.isSuccess) restored else result
     }
 
-    private fun validateScope(query: StatsQuery, scope: Pair<String, String>) {
-        if (scope.first != query.month || scope.second.isBlank() ||
-            (query.homeCurrencyCode != null && query.homeCurrencyCode != scope.second)) {
+    private fun validateScope(query: StatsQuery, wire: StatsProjectionDto) {
+        if (wire.month != query.month || wire.homeCurrencyCode.isBlank() ||
+            (query.homeCurrencyCode != null && query.homeCurrencyCode != wire.homeCurrencyCode)) {
             throw RepositoryException("stats_projection_unverified", localFailure = LocalRepositoryFailure.StatsProjectionUnverified)
         }
     }

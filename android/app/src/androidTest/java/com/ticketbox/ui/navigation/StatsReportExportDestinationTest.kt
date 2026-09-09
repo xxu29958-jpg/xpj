@@ -26,6 +26,7 @@ import com.ticketbox.domain.model.ReportRankingMetric
 import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.domain.model.ReportsOverviewQuery
 import com.ticketbox.ui.screens.stats.ReportsInsightCard
+import com.ticketbox.ui.screens.StatsReportActions
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.StatsReportsViewModel
 import com.ticketbox.viewmodel.exportReport
@@ -54,7 +55,10 @@ class StatsReportExportDestinationTest {
                 val state by vm.uiState.collectAsState()
                 StatsReportExportDestination(vm, state)
                 state.reportsOverview?.let { ReportsInsightCard(it,
-                    modifier = Modifier.verticalScroll(rememberScrollState()), onExport = vm::exportReport,
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    actions = StatsReportActions(onDrillToLedger = {}, onGranularityChange = vm::setGranularity,
+                        onRankingMetricChange = vm::setRankingMetric, onMerchantCategoryChange = vm::setMerchantCategory,
+                        onExport = vm::exportReport),
                     exporting = state.exporting) }
             }
         } }

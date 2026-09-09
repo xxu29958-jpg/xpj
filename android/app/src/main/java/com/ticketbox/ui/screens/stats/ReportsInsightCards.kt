@@ -24,7 +24,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.domain.model.DailySpend
 import com.ticketbox.domain.model.ReportCategoryComparison
 import com.ticketbox.domain.model.ReportGranularity
-import com.ticketbox.domain.model.ReportRankingMetric
 import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppAdaptiveAmountRowStyle
@@ -40,17 +39,14 @@ import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalChartTokens
 import com.ticketbox.ui.design.tabularNum
+import com.ticketbox.ui.screens.StatsReportActions
 import kotlin.math.abs
 
 @Composable
 internal fun ReportsInsightCard(
     overview: ReportsOverview,
+    actions: StatsReportActions,
     modifier: Modifier = Modifier,
-    onGranularityChange: (ReportGranularity) -> Unit = {},
-    onRankingMetricChange: (ReportRankingMetric) -> Unit = {},
-    onMerchantCategoryChange: (String?) -> Unit = {},
-    onRepairRates: (com.ticketbox.domain.model.CurrencyProjectionGap?) -> Unit = {},
-    onExport: () -> Unit = {},
     exporting: Boolean = false,
     exportMessage: com.ticketbox.domain.model.UiText? = null,
 ) {
@@ -62,20 +58,20 @@ internal fun ReportsInsightCard(
             modifier = modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ) {
-            ReportsProjectionControls(overview, onMerchantCategoryChange, onRepairRates, onExport, exporting, exportMessage)
+            ReportsProjectionControls(overview, actions, exporting, exportMessage)
             ReportsAnswerHeader(model = model)
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
             ReportsChartPanel(
                 model = model,
                 recentTrend = recentTrend,
-                onGranularityChange = onGranularityChange,
+                onGranularityChange = actions.onGranularityChange,
             )
             if (hasCurrentSpend || overview.merchantRanking.isNotEmpty()) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
                 MerchantRankingBlock(
                     rows = overview.merchantRanking,
                     rankingMetric = overview.rankingMetric,
-                    onRankingMetricChange = onRankingMetricChange,
+                    onRankingMetricChange = actions.onRankingMetricChange,
                 )
             }
             if (overview.categoryComparison.isNotEmpty()) {

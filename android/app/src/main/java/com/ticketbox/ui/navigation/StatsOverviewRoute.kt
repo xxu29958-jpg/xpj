@@ -68,7 +68,7 @@ internal fun StatsRoute(shellState: MainShellState, screenFactory: MainScreenFac
         state = mergeStatsUiState(monthlyState, budgetState, reportsState),
         overview = OverviewModulesState(layoutState, recurringState),
         actions = statsScreenActions(
-            monthly, reports, shellState, monthlyState.month,
+            monthly, reports, shellState,
             OverviewInteractionActions(dashboardLayoutActions(layout), overviewModuleActions(shellState)),
             onRepairReport,
         ).copy(

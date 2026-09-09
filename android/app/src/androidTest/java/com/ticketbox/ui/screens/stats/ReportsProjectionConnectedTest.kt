@@ -21,6 +21,7 @@ import com.ticketbox.domain.model.ReportTrendPoint
 import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.LocalCurrencyDisplay
+import com.ticketbox.ui.screens.StatsReportActions
 import com.ticketbox.ui.theme.TicketboxTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -44,7 +45,8 @@ class ReportsProjectionConnectedTest {
         compose.setContent { TicketboxTheme(skin = AppSkin.Default) {
             CompositionLocalProvider(LocalCurrencyDisplay provides CurrencyDisplay.Base) {
                 ReportsInsightCard(report, modifier = Modifier.verticalScroll(rememberScrollState()),
-                    onRepairRates = { selected = it }, onExport = { exports += 1 })
+                    actions = StatsReportActions(onDrillToLedger = {}, onGranularityChange = {}, onRankingMetricChange = {},
+                        onRepairRates = { selected = it }, onExport = { exports += 1 }))
             }
         } }
         compose.onNodeWithTag("report-rate-CNY-2025-09-07").performScrollTo().performClick()
