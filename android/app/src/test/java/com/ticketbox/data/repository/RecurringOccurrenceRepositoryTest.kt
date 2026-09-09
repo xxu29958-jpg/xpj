@@ -135,8 +135,8 @@ class RecurringOccurrenceRepositoryTest {
         val legacy = """{"revision":1,"seriesPublicId":"recurring-1","seriesLabel":"房租","period":"2026-09",
             "homeCurrencyCode":"CNY","originSessionGeneration":"old-session","originBindingRevision":"old-binding",
             "paymentLabel":"房租付款","paymentAmountCents":1200,
-            "request":{"action":"link","expectedRowVersion":0,"expectedSeriesRowVersion":7,
-            "expensePublicId":"payment-1","expectedExpenseRowVersion":3}}"""
+            "request":{"action":"link","expected_row_version":0,"expected_series_row_version":7,
+            "expense_public_id":"payment-1","expected_expense_row_version":3}}"""
         val original = fixture.dao.rows.getValue(id).copy(payload = legacy,
             status = PendingMutationStatus.Failed.wireValue, lastError = "client_upgrade_required")
         fixture.dao.rows[id] = original

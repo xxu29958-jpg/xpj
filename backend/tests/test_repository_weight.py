@@ -264,6 +264,36 @@ def test_function_map_finds_actual_complex_consumers(repo, tmp_path, path, langu
     assert report["tools"]["lizard"] == "1.24.0"
 
 
+@pytest.mark.parametrize("body_lines", [1, 81])
+def test_kotlin_annotation_target_is_not_a_function_but_real_long_functions_still_fail(repo, tmp_path, body_lines):
+    path = "android/app/src/test/java/CurrencyTest.kt"
+    base = commit_files(repo, {path: "\n"}, "empty")
+    body = "    println(value)\n" * body_lines
+    source = ("class CurrencyTest {\n    @get:Rule val compose = createComposeRule()\n"
+              "    fun render(value: Int) {\n        val label = context.getString(1)\n" + body +
+              "    }\n" + "\n" * 85 + "}\n")
+    head = commit_files(repo, {path: source}, "annotated Kotlin test")
+    result, report = run_weight(repo, base, head, tmp_path)
+    assert result.returncode == (1 if body_lines > 80 else 0), result.stdout + result.stderr
+    functions = report["current"]["functions"]
+    assert [row["name"] for row in functions] == ["render"]
+    assert functions[0]["line"] == 3
+    assert functions[0]["length"] == body_lines + 3
+
+
+def test_kotlin_real_getter_keeps_its_complexity_and_location(repo, tmp_path):
+    path = "android/app/src/main/java/Fixture.kt"
+    base = commit_files(repo, {path: "\n"}, "empty")
+    body = "\n".join(f"if (value == {index}) return {index}" for index in range(16))
+    source = "class Fixture(val value: Int) {\n    val size: Int\n    get() {\n" + body + "\nreturn 0\n}\n}\n"
+    head = commit_files(repo, {path: source}, "real getter")
+    result, report = run_weight(repo, base, head, tmp_path)
+    assert result.returncode == 1, result.stdout + result.stderr
+    getters = [row for row in report["current"]["functions"] if row["name"] == "get"]
+    assert len(getters) == 1
+    assert (getters[0]["line"], getters[0]["complexity"]) == (3, 17)
+
+
 def test_powershell_ast_measures_functions_without_executing_source(repo, tmp_path) -> None:
     path = "distribution/windows/runtime/branch.ps1"
     base = commit_files(repo, {path: "# empty\n"}, "empty script")

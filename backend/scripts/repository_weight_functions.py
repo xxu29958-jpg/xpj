@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import shutil
 import subprocess
 from collections import Counter
@@ -51,6 +52,11 @@ class InlineScripts(HTMLParser):
 
 
 def _lizard_functions(record: dict, text: str, language: str, offset: int = 0) -> list[dict]:
+    if language == "Kotlin":
+        # Annotation use-site targets are not property accessors. Lizard otherwise
+        # opens a phantom `get` function at @get:Rule and consumes the class.
+        # Keep every newline; actual get()/set() accessors remain measured.
+        text = re.sub(r"@(get|set|field|property|receiver|param|setparam|delegate|file):", "@", text)
     processors = [lizard.preprocessing, _comments_without_exemptions, lizard.line_counter,
                   lizard.token_counter, lizard.condition_counter]
     diagnostics = io.StringIO()
