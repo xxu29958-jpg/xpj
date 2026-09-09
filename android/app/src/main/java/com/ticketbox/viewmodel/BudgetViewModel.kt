@@ -53,6 +53,7 @@ data class BudgetUiState(
     val form: BudgetFormState = BudgetFormState(),
     val formDirty: Boolean = false,
     val saves: List<PendingBudgetSave> = emptyList(),
+    val binding: LogicalSessionBinding? = null,
 ) {
     val formCurrency: CurrencyCode? get() = CurrencyCode.fromStorageKeyOrNull(form.homeCurrencyCode)
     val hasPendingSave: Boolean get() = saves.any { it.row.status != PendingMutationStatus.Done }
@@ -83,7 +84,8 @@ class BudgetViewModel(
                     requestGeneration += 1
                     savesJob?.cancel()
                     observedSaves = emptyList()
-                    _uiState.value = BudgetUiState(month = _uiState.value.month, canModify = access?.canModify == true)
+                    _uiState.value = BudgetUiState(month = _uiState.value.month, canModify = access?.canModify == true,
+                        binding = access?.binding)
                     restoreDraft()
                     access?.let { observeSaves(it.binding); refresh() }
                 }
@@ -221,7 +223,8 @@ class BudgetViewModel(
         val month = YearMonth.parse(_uiState.value.month).plusMonths(delta).toString()
         savedStateHandle["month"] = month
         requestGeneration += 1
-        _uiState.update { BudgetUiState(month = month, canModify = it.canModify, saves = observedSaves.forMonth(month)) }
+        _uiState.update { BudgetUiState(month = month, canModify = it.canModify,
+            saves = observedSaves.forMonth(month), binding = it.binding) }
         restoreDraft()
         refresh()
     }

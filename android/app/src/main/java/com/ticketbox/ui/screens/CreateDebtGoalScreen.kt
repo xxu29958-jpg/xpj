@@ -118,9 +118,11 @@ fun CreateDebtGoalScreen(
 @Composable
 private fun CreateDebtGoalStatusStack(state: CreateDebtGoalUiState, onRemoveUnavailable: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        AppDataAuthorityStrip(
-            tone = if (state.isLoadingDebts) DataAuthorityTone.Refreshing else DataAuthorityTone.Backend,
-        )
+        if (state.isLoadingDebts || state.candidates.isNotEmpty()) {
+            AppDataAuthorityStrip(
+                tone = if (state.isLoadingDebts) DataAuthorityTone.Refreshing else DataAuthorityTone.Backend,
+            )
+        }
         state.formError?.let { err -> AppStatusBanner(message = err, tone = MessageTone.Danger) }
         state.loadError?.let { err -> AppStatusBanner(message = err, tone = MessageTone.Danger) }
         if (state.unavailableSelectedDebtIds.isNotEmpty()) {

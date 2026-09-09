@@ -95,13 +95,11 @@ private fun SpendingGoalDetailStatus(state: SpendingGoalDetailUiState, viewModel
     androidx.compose.foundation.layout.Column(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-        AppDataAuthorityStrip(
-            tone = when {
-                !state.canModify -> DataAuthorityTone.ReadOnly
-                state.isLoading || state.isSaving || state.isArchiving -> DataAuthorityTone.Refreshing
-                else -> DataAuthorityTone.Backend
-            },
-        )
+        if (state.isLoading || state.goal != null) {
+            AppDataAuthorityStrip(
+                tone = if (state.isLoading) DataAuthorityTone.Refreshing else DataAuthorityTone.Backend,
+            )
+        }
         if (!state.canModify) {
             AppStatusBanner(
                 message = UiText.res(R.string.common_readonly_ledger),
