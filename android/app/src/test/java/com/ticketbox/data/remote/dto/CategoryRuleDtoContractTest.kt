@@ -7,6 +7,7 @@ import kotlin.test.assertEquals
 
 class CategoryRuleDtoContractTest {
     private val moshi = Moshi.Builder()
+        .addCategoryRuleWireAdapters()
         .add(KotlinJsonAdapterFactory())
         .build()
 
@@ -49,6 +50,7 @@ class CategoryRuleDtoContractTest {
                   "enabled": true,
                   "priority": 1,
                   "amount_min_cents": 1000,
+                  "home_currency_code": "JPY",
                   "amount_max_cents": 5000,
                   "source_contains": "pytest",
                   "tag_contains": "真香",
@@ -61,6 +63,7 @@ class CategoryRuleDtoContractTest {
         )
 
         assertEquals(1000L, dto.amountMinCents)
+        assertEquals("JPY", dto.homeCurrencyCode)
         assertEquals("pytest", dto.sourceContains)
         assertEquals("真香", dto.tagContains)
     }
@@ -116,7 +119,9 @@ class CategoryRuleDtoContractTest {
                   "conflict_count": 0,
                   "scan_limit_reached": false,
                   "scan_limit": 500,
-                  "preview_token": "abc123"
+                  "preview_token": "abc123",
+                  "unavailable_count": 2,
+                  "missing_currency_codes": ["JPY"]
                 }
                 """.trimIndent(),
             ),
@@ -127,5 +132,7 @@ class CategoryRuleDtoContractTest {
         assertEquals("交通", dto.items.single().suggestedCategory)
         assertEquals(500, dto.scanLimit)
         assertEquals("abc123", dto.previewToken)
+        assertEquals(2, dto.unavailableCount)
+        assertEquals(listOf("JPY"), dto.missingCurrencyCodes)
     }
 }

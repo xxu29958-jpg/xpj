@@ -6,6 +6,7 @@ import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.IncomePlanDto
 import com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto
+import com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto
 import com.ticketbox.domain.model.CurrencyCode
 import java.io.IOException
 import java.time.Clock
@@ -27,7 +28,7 @@ class IncomePlanIntentContinuityTest {
         val original = fixture.dao.rows.getValue(id)
         assertEquals(listOf(1), fixture.scheduledDepths)
         assertTrue(fixture.api.calls.isEmpty())
-        val intent = assertNotNull(fixture.adapter.readSupportedIncomeEdit(original.payload))
+        val intent = assertNotNull(fixture.adapter.readSupportedIncomeSubmission(original.payload))
         assertEquals("2026-09", intent.request.intentMonth)
         assertEquals(fixture.binding.bindingRevision, intent.originBindingRevision)
         assertEquals(fixture.binding.ownerKey, original.ownerKey)
@@ -62,9 +63,9 @@ class IncomePlanIntentContinuityTest {
             assertEquals(payload, fixture.dao.rows.getValue(id).payload)
             assertEquals(original.idempotencyKey, fixture.dao.rows.getValue(id).idempotencyKey)
             val failed = fixture.outbox.observeStatus().first().failed.single()
-            val pending = assertNotNull(fixture.repository.describeEdit(failed))
+            val pending = assertNotNull(fixture.repository.describeSubmission(failed))
             assertTrue(!pending.hasSupportedIntent)
-            assertTrue(fixture.repository.recoverEdit(fixture.binding, pending, drop = false).isFailure)
+            assertTrue(fixture.repository.recoverSubmission(fixture.binding, pending, drop = false).isFailure)
             assertEquals(PendingMutationStatus.Failed.wireValue, fixture.dao.rows.getValue(id).status)
             assertEquals(payload, fixture.dao.rows.getValue(id).payload)
         }
@@ -75,6 +76,9 @@ class IncomePlanIntentContinuityTest {
         val pending = IncomeIntentFixture()
         pending.enqueue().getOrThrow()
         assertTrue(pending.enqueue().isFailure)
+        assertTrue(pending.repository.archive(pending.binding, "income-1", 3, "2026-09").isFailure)
+        assertTrue(pending.repository.restore(pending.binding, "income-1", 3, "2026-09").isFailure)
+        assertEquals(0, pending.api.lifecycleCalls)
         assertEquals(1, pending.dao.rows.size)
         val changed = IncomeIntentFixture()
         changed.session.switchLedgerForFixture("other", "另一本账")
@@ -93,9 +97,9 @@ private class IncomeIntentFixture {
     val dao = FakePendingMutationDao()
     val clock: Clock = Clock.fixed(Instant.parse("2026-09-30T15:30:00Z"), ZoneOffset.UTC)
     val scheduledDepths = mutableListOf<Int>()
-    val adapter = OutboxAdapterGraph().incomePlanUpdateAdapter
+    val adapter = OutboxAdapterGraph().incomePlanSubmissionAdapter
     val outbox = newOutbox(clock)
-    val repository = IncomePlanRepository(provider, outbox, adapter)
+    val repository = IncomePlanRepository(provider, outbox, adapter, OutboxAdapterGraph().incomePlanReceiptAdapter)
 
     suspend fun enqueue() = repository.enqueueUpdate(binding, incomeIntentDto().toDomain(),
         IncomePlanPatch(expectedRowVersion = 3, intentMonth = "2026-09", amountCents = 120_000), CurrencyCode.CNY)
@@ -105,13 +109,24 @@ private class IncomeIntentFixture {
         onEnqueued = { scheduledDepths += dao.rows.size })
 
     fun engine(outbox: OutboxRepository, clock: Clock) = OutboxDrainEngine(outbox,
-        listOf(UpdateIncomePlanDispatcher({ api }, adapter)), now = clock::millis)
+        listOf(IncomePlanDispatcher(com.ticketbox.data.local.PendingMutationType.UpdateIncomePlan, { api }, adapter, OutboxAdapterGraph().incomePlanReceiptAdapter)), now = clock::millis)
 }
 
 private class IncomeIntentApi : ApiService by FakeApiService(mutableListOf(), 0) {
+    var lifecycleCalls = 0
     val calls = mutableListOf<Pair<IncomePlanUpdateRequestDto, String>>()
     val results = mutableMapOf<String, IncomePlanDto>()
     var loseResponse = true
+
+    override suspend fun archiveIncomePlan(publicId: String, request: IncomePlanTokenRequestDto): IncomePlanDto {
+        lifecycleCalls += 1
+        return incomeIntentDto()
+    }
+
+    override suspend fun restoreIncomePlan(publicId: String, request: IncomePlanTokenRequestDto): IncomePlanDto {
+        lifecycleCalls += 1
+        return incomeIntentDto()
+    }
 
     override suspend fun updateIncomePlan(publicId: String, request: IncomePlanUpdateRequestDto,
         idempotencyKey: String?): IncomePlanDto {
@@ -125,4 +140,4 @@ private class IncomeIntentApi : ApiService by FakeApiService(mutableListOf(), 0)
 }
 
 private fun incomeIntentDto() = IncomePlanDto("income-1", "工资", "salary", "monthly", null,
-    100_000, 10, "active", "2026-08-01T00:00:00Z", "2026-08-01T00:00:00Z", 3, null)
+    100_000, 10, "active", "2026-08-01T00:00:00Z", "2026-08-01T00:00:00Z", 3, null, homeCurrencyCode = "CNY")

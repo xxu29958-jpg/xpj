@@ -41,7 +41,7 @@ import kotlin.math.roundToInt
 @Composable
 internal fun BudgetAdviceScreen(
     state: BudgetAdviceUiState,
-    onRequestAdvice: () -> Unit,
+    actions: BudgetAdviceActions,
     onBack: () -> Unit,
 ) {
     AppSecondaryScrollableColumn(
@@ -68,9 +68,11 @@ internal fun BudgetAdviceScreen(
             },
         ),
     ) {
+        BudgetAdviceInputsContent(state, actions)
+        if (state.inputsLoading || state.inputs?.readyForAdvice != true) return@AppSecondaryScrollableColumn
         BudgetAdviceBody(
             state = state,
-            onRequestAdvice = onRequestAdvice,
+            onRequestAdvice = actions.onGenerate,
         )
     }
 }

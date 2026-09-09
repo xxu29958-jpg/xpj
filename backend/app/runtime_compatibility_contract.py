@@ -13,8 +13,8 @@ from dataclasses import dataclass
 from typing import Literal
 
 RUNTIME_COMPATIBILITY_CONTRACT = "ticketbox-runtime-compatibility-v1"
-# Split creation now requires a stable command key and the reviewed source version.
-CURRENT_API_VERSION = "2026-09-07"
+# Manual rate writes require OCC and an original-receipt key; older clients must upgrade before validation.
+CURRENT_API_VERSION = "2026-09-09"
 # Optional keyed app uploads can replay their complete original committed receipt.
 UPLOAD_ORIGINAL_RECEIPT_VERSION = 1
 
@@ -53,10 +53,8 @@ class RuntimeCompatibilityRequest:
 def parse_currency_binding(value: str) -> tuple[int, int, str]:
     """Parse ``<contract-version>:<revision>:<home-currency>`` strictly.
 
-    The currency is part of the proof even at revision zero.  Otherwise two
-    different EMPTY-installation offers would share the same token and a
-    configuration change between discovery and the first write could silently
-    reinterpret the client's minor units.
+    The currency is part of the proof. Revision zero remains parseable for
+    explicit refusal of old proposals; it never authorizes a money write.
     """
 
     match = _CURRENCY_BINDING_PATTERN.fullmatch(value.strip())

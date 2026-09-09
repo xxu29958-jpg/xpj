@@ -14,8 +14,8 @@ from app.main import app
 from app.middleware.csrf import CSRF_COOKIE_NAME
 from app.models import Account, InstallationOwnerClaim, Ledger, LedgerMember
 from app.routes.web_auth import PAIRING_ATTEMPT_COOKIE_NAME, SESSION_COOKIE_NAME
-from app.services.currency_binding_service import resolve_write_capability
 from app.services.identity_service import bootstrap_installation_owner
+from tests._infra.currency import activate_test_currency_authority
 
 
 @dataclass(frozen=True)
@@ -68,7 +68,7 @@ def installed_web_setup() -> Iterator[_InstalledWeb]:
                 ),
             ]
         )
-        resolve_write_capability(db)
+        activate_test_currency_authority(db, "CNY")
         db.commit()
         installation_account_id = claim.account_id
         installation_ledger_name = installation_ledger.name

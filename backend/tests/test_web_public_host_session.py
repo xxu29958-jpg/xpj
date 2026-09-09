@@ -99,7 +99,7 @@ def test_public_bulk_form_native_post_uses_rendered_csrf_token(
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": 1800,
+            "home_currency_code": "CNY", "amount_cents": 1800,
             "merchant": "Public Native Batch",
             "category": "其他",
         },

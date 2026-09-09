@@ -9,26 +9,24 @@ from sqlalchemy.orm.exc import ObjectDeletedError
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import CategoryRule, Expense
+from app.services import rule_matching
 from app.services.category_preference_service import ensure_rule_category_available
 from app.services.category_service import normalize_category
 from app.services.currency_binding_service import (
     authorize_currency_metadata_write,
     resolve_write_capability,
 )
-from app.services.merchant_alias_service import (
-    canonical_merchant_for,
-    enabled_merchant_alias_map,
-)
+from app.services.currency_common import normalize_currency_code
+from app.services.merchant_alias_service import enabled_merchant_alias_map
 from app.services.optimistic_concurrency import (
     claim_row_with_token,
 )
 from app.services.resource_audit import record_resource_action
-from app.services.rule_money import clean_rule_amount_range, clean_rule_update_amounts
+from app.services.rule_money import clean_rule_amount_range, clean_rule_update_amounts, rule_money_update_values
 from app.services.soft_delete_policy import (
     is_within_recycle_bin_window,
     is_within_undo_window,
 )
-from app.services.tag_service import parse_tags, tag_key
 from app.services.time_service import now_utc
 
 DEFAULT_RULES = [
@@ -114,7 +112,7 @@ def classify_expense(db: Session, expense: Expense) -> Expense:
     from app.services.learning_service import read_ocr_text
 
     ocr_text = read_ocr_text(db, tenant_id=expense.tenant_id, expense=expense) or ""
-    haystack = _casefold_join([*_merchant_context(expense, alias_map), ocr_text, expense.note or ""])
+    haystack = rule_matching.casefold_join([*rule_matching.merchant_context(expense, alias_map), ocr_text, expense.note or ""])
     if not haystack:
         return expense
 
@@ -124,10 +122,9 @@ def classify_expense(db: Session, expense: Expense) -> Expense:
         .where(CategoryRule.deleted_at.is_(None))
         .order_by(CategoryRule.priority.asc(), CategoryRule.id.asc())
     )
-    for rule in rules:
-        if rule.keyword.casefold() in haystack and _rule_conditions_match(expense, rule):
-            expense.category = normalize_category(rule.category)
-            return expense
+    match = rule_matching.match_category_rule(db, expense, list(rules), haystack=haystack)
+    if match.category is not None:
+        expense.category = match.category
     return expense
 
 
@@ -189,12 +186,17 @@ def create_rule(
     amount_max_cents: int | None = None,
     source_contains: str | None = None,
     tag_contains: str | None = None,
+    home_currency_code: str | None = None,
+    commit: bool = True,
 ) -> CategoryRule:
     keyword = keyword.strip()
     category = normalize_category(category)
     source_contains = _clean_optional_text(source_contains)
     tag_contains = _clean_optional_text(tag_contains)
-    amount_min_cents, amount_max_cents = _clean_amount_range(amount_min_cents, amount_max_cents)
+    amount_min_cents, amount_max_cents = clean_rule_amount_range(amount_min_cents, amount_max_cents)
+    currency = normalize_currency_code(home_currency_code) if home_currency_code is not None else None
+    if (amount_min_cents is not None or amount_max_cents is not None) and currency is None:
+        raise AppError("rule_currency_required", "请明确金额条件的币种。", status_code=422)
     if not keyword or not category:
         raise AppError("invalid_request", status_code=422)
     _authorize_rule_write(db, amount_min_cents=amount_min_cents, amount_max_cents=amount_max_cents)
@@ -209,13 +211,17 @@ def create_rule(
         priority=priority,
         amount_min_cents=amount_min_cents,
         amount_max_cents=amount_max_cents,
+        home_currency_code=currency,
         source_contains=source_contains,
         tag_contains=tag_contains,
         created_at=now,
         updated_at=now,
     )
     db.add(rule)
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     db.refresh(rule)
     return rule
 
@@ -238,6 +244,7 @@ def update_rule(
     amount_max_cents: int | None | object = _UNSET,
     source_contains: str | None | object = _UNSET,
     tag_contains: str | None | object = _UNSET,
+    home_currency_code: str | None | object = _UNSET,
     commit: bool = True,
 ) -> CategoryRule:
     """Update a rule through the DB row-version predicate."""
@@ -246,17 +253,18 @@ def update_rule(
         _snapshot_rule_update_context(rule)
     )
     update_values = _build_rule_update_values(
-        existing_min=existing_min,
-        existing_max=existing_max,
         keyword=keyword,
         category=category,
         enabled=enabled,
         priority=priority,
-        amount_min_cents=amount_min_cents,
-        amount_max_cents=amount_max_cents,
         source_contains=source_contains,
         tag_contains=tag_contains,
     )
+    update_values.update(rule_money_update_values(
+        existing_min=existing_min, existing_max=existing_max, saved_currency=rule.home_currency_code,
+        amount_min_cents=amount_min_cents, amount_max_cents=amount_max_cents,
+        home_currency_code=home_currency_code, unset=_UNSET,
+    ))
     next_min = cast(int | None, update_values.get("amount_min_cents", existing_min))
     next_max = cast(int | None, update_values.get("amount_max_cents", existing_max))
     _authorize_rule_write(db, amount_min_cents=next_min, amount_max_cents=next_max)
@@ -293,14 +301,10 @@ def _snapshot_rule_update_context(
 
 def _build_rule_update_values(
     *,
-    existing_min: int | None,
-    existing_max: int | None,
     keyword: str | None,
     category: str | None,
     enabled: bool | None,
     priority: int | None,
-    amount_min_cents: int | None | object,
-    amount_max_cents: int | None | object,
     source_contains: str | None | object,
     tag_contains: str | None | object,
 ) -> dict[str, Any]:
@@ -319,10 +323,6 @@ def _build_rule_update_values(
         values["enabled"] = enabled
     if priority is not None:
         values["priority"] = priority
-    if amount_min_cents is not _UNSET or amount_max_cents is not _UNSET:
-        min_value = existing_min if amount_min_cents is _UNSET else cast(int | None, amount_min_cents)
-        max_value = existing_max if amount_max_cents is _UNSET else cast(int | None, amount_max_cents)
-        values["amount_min_cents"], values["amount_max_cents"] = _clean_amount_range(min_value, max_value)
     if source_contains is not _UNSET:
         values["source_contains"] = _clean_optional_text(cast(str | None, source_contains))
     if tag_contains is not _UNSET:
@@ -452,48 +452,8 @@ def undo_delete_rule(
     return rule
 
 
-# Shared matching helpers used by rule_service and rule_application_service.
-
-
-def _casefold_join(parts: list[str]) -> str:
-    return " ".join(part for part in parts if part).casefold()
-
-
-def _merchant_context(expense: Expense, alias_map: dict[str, str]) -> list[str]:
-    raw = expense.merchant or ""
-    canonical = canonical_merchant_for(raw, alias_map=alias_map)
-    if canonical and canonical != raw:
-        return [raw, canonical]
-    return [raw]
-
-
 def _clean_optional_text(value: str | None) -> str | None:
     if value is None:
         return None
     cleaned = value.strip()
     return cleaned or None
-
-
-def _clean_amount_range(
-    amount_min_cents: int | None,
-    amount_max_cents: int | None,
-) -> tuple[int | None, int | None]:
-    amount_min_cents, amount_max_cents = clean_rule_amount_range(amount_min_cents, amount_max_cents)
-    if amount_min_cents is not None and amount_max_cents is not None and amount_min_cents > amount_max_cents:
-        raise AppError("invalid_request", "金额下限不能大于上限。", status_code=422)
-    return amount_min_cents, amount_max_cents
-
-
-def _rule_conditions_match(expense: Expense, rule: CategoryRule) -> bool:
-    amount = expense.amount_cents
-    if rule.amount_min_cents is not None and (amount is None or amount < rule.amount_min_cents):
-        return False
-    if rule.amount_max_cents is not None and (amount is None or amount > rule.amount_max_cents):
-        return False
-    if rule.source_contains and rule.source_contains.casefold() not in (expense.source or "").casefold():
-        return False
-    if rule.tag_contains:
-        wanted = tag_key(rule.tag_contains)
-        if wanted not in {tag_key(tag) for tag in parse_tags(expense.tags)}:
-            return False
-    return True

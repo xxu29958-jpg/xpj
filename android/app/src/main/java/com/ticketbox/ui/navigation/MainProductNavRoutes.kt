@@ -58,6 +58,7 @@ internal fun NavGraphBuilder.addPrimaryDomainRoutes(
             StatsRoute(
                 shellState = shellState,
                 screenFactory = screenFactory,
+                onRepairReport = { context -> runtime.navController.navigate(reportRateRoute(context)) },
             )
         }
     }
@@ -70,83 +71,19 @@ internal fun NavGraphBuilder.addWorkspaceRoute(
         composable(WORKSPACE_ROUTE) {
             SettingsRoute(
                 navigation = SettingsDestinationNavigation(onOpenExpense = runtime.navController::openExpense,
-                    onOpenInbox = { shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox) }, onCloseRoot = onBack),
+                    onOpenInbox = { shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox) },
+                    onOpenBudget = { month -> runtime.navController.navigate(budgetRoute(month)) },
+                    onOpenGoalCreation = { id -> runtime.navController.navigate(spendingGoalCreationRoute(id)) },
+                    onOpenGoalEdit = { id -> runtime.navController.navigate(spendingGoalEditRoute(id)) },
+                    onOpenRuleSubmission = { id -> runtime.navController.navigate(categoryRuleSubmissionRoute(id)) },
+                    onOpenIncomeSubmission = { id -> runtime.navController.navigate(incomePlanSubmissionRoute(id)) },
+                    onOpenRateSubmission = { id -> runtime.navController.navigate(budgetAdviceSubmissionRoute(id)) },
+                    onOpenRecurring = { shellState.openSecondaryPage(ProductSecondaryPage.Recurring) }, onCloseRoot = onBack),
                 screenFactory = screenFactory,
                 preferenceControls = workspaceControls.preferences,
                 onBindingCleared = workspaceControls.onBindingCleared,
             )
         }
-    }
-}
-
-internal fun NavGraphBuilder.addPlanRoutes(
-    dependencies: MainProductRouteDependencies,
-) {
-    with(dependencies) {
-        composable(ProductSecondaryPage.SpendingGoal.route) {
-            SpendingGoalsRoute(
-                screenFactory = screenFactory,
-                onBack = onBack,
-            )
-        }
-        composable(ProductSecondaryPage.Budget.route) {
-            BudgetRoute(
-                screenFactory = screenFactory,
-                onBack = onBack,
-                // The monthly-budget row is NOT an advisor input
-                // (_inputs_builder.py) — a budget save must not invalidate.
-                onDataChanged = {
-                    markPlanWriteCompleted(shellState, invalidatesAdvice = false) {
-                        screenFactory.budgetRepository.invalidateBudgetAdvice()
-                    }
-                },
-            )
-        }
-        composable(ProductSecondaryPage.BudgetAdvice.route) {
-            BudgetAdviceRoute(
-                screenFactory = screenFactory,
-                onBack = onBack,
-            )
-        }
-        composable(ProductSecondaryPage.Recurring.route) {
-            RecurringRoute(
-                screenFactory = screenFactory,
-                onBack = onBack,
-                onOpenExpense = runtime.navController::openExpense,
-                onDataChanged = {
-                    markPlanWriteCompleted(shellState, invalidatesAdvice = true) {
-                        screenFactory.budgetRepository.invalidateBudgetAdvice()
-                    }
-                },
-            )
-        }
-        composable(ProductSecondaryPage.IncomePlans.route) {
-            IncomePlanRoute(
-                screenFactory = screenFactory,
-                onBack = onBack,
-                onDataChanged = {
-                    markPlanWriteCompleted(shellState, invalidatesAdvice = true) {
-                        screenFactory.budgetRepository.invalidateBudgetAdvice()
-                    }
-                },
-            )
-        }
-    }
-}
-
-/** Plan-write refresh composition: every plan save bumps the plan revision;
- *  only saves that feed the budget-advisor inputs (income plans, recurring —
- *  NOT the monthly-budget row, see _inputs_builder.py) also drop the
- *  process-lifetime advice cache, so a reopened advice page recomputes
- *  instead of restoring pre-write limits without wasting quota on no-ops. */
-internal fun markPlanWriteCompleted(
-    shellState: MainShellState,
-    invalidatesAdvice: Boolean,
-    invalidateBudgetAdvice: () -> Unit,
-) {
-    shellState.markPlanDataChanged()
-    if (invalidatesAdvice) {
-        invalidateBudgetAdvice()
     }
 }
 
@@ -229,18 +166,7 @@ internal fun NavGraphBuilder.addObligationRoutes(
                 ),
             )
         }
-        composable(ProductSecondaryPage.ObligationSync.route) {
-            val vm: OutboxStatusViewModel = viewModel(
-                factory = outboxStatusViewModelFactory(
-                    screenFactory.outboxRepository, screenFactory.repository,
-                    com.ticketbox.viewmodel.OutboxRecoveryRepositories(screenFactory.debtCreationRepository,
-                        screenFactory.recurringRepository.occurrences, screenFactory.incomePlanRepository,
-                        screenFactory.debtAdjustmentRepository, screenFactory.goalEditRepository),
-                ),
-            )
-            SyncStatusScreen(viewModel = vm, onBack = onBack, onOpenExpense = runtime.navController::openExpense,
-                onOpenInbox = { shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox) })
-        }
+        addObligationSyncRoute(dependencies)
         composable(
             route = REPAYMENT_DRAFT_ROUTE,
             arguments = listOf(
@@ -256,6 +182,33 @@ internal fun NavGraphBuilder.addObligationRoutes(
                 focusedDraftPublicId = entry.arguments?.getString(REPAYMENT_DRAFT_FOCUS_ARG),
                 onBack = onBack,
             )
+        }
+    }
+}
+
+private fun NavGraphBuilder.addObligationSyncRoute(dependencies: MainProductRouteDependencies) {
+    with(dependencies) {
+        composable(ProductSecondaryPage.ObligationSync.route) {
+            val vm: OutboxStatusViewModel = viewModel(
+                factory = outboxStatusViewModelFactory(
+                    screenFactory.outboxRepository, screenFactory.repository,
+                    com.ticketbox.viewmodel.OutboxRecoveryRepositories(screenFactory.debtCreationRepository,
+                        screenFactory.recurringRepository.occurrences, screenFactory.incomePlanRepository,
+                        screenFactory.debtAdjustmentRepository, screenFactory.goalEditRepository, screenFactory.budgetRepository, screenFactory.recurringRepository, screenFactory.ruleRepository),
+                ),
+            )
+            SyncStatusScreen(viewModel = vm, onBack = onBack,
+                navigation = com.ticketbox.ui.screens.settings.SyncStatusNavigation(
+                    onOpenExpense = runtime.navController::openExpense,
+                    onOpenInbox = { shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox) },
+                    onOpenBudget = { month -> runtime.navController.navigate(budgetRoute(month)) },
+                    onOpenGoalCreation = { id -> runtime.navController.navigate(spendingGoalCreationRoute(id)) },
+                    onOpenGoalEdit = { id -> runtime.navController.navigate(spendingGoalEditRoute(id)) },
+                    onOpenRuleSubmission = { id -> runtime.navController.navigate(categoryRuleSubmissionRoute(id)) },
+                    onOpenIncomeSubmission = { id -> runtime.navController.navigate(incomePlanSubmissionRoute(id)) },
+                    onOpenRateSubmission = { id -> runtime.navController.navigate(budgetAdviceSubmissionRoute(id)) },
+                    onOpenRecurring = { shellState.openSecondaryPage(ProductSecondaryPage.Recurring) },
+                ))
         }
     }
 }

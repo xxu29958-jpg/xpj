@@ -59,7 +59,10 @@ internal fun BudgetSummarySection(
             budget = configuredBudget,
             currencyDisplay = currencyDisplay,
         )
-        BudgetProgressBar(progress = configuredBudget.spentProgress)
+        configuredBudget.spentProgress?.let { BudgetProgressBar(progress = it) }
+        if (configuredBudget.missingCurrencyCodes.isNotEmpty()) {
+            Text(stringResource(R.string.budget_missing_conversion, configuredBudget.missingCurrencyCodes.joinToString("、")))
+        }
         BudgetMetricRows(
             budget = configuredBudget,
             currencyDisplay = currencyDisplay,
@@ -111,8 +114,10 @@ private fun BudgetSummaryStatus(budget: BudgetMonthly?) {
             fontWeight = AppTextHierarchy.heading.weight,
         )
         Text(
-            text = if (budget?.configured == true) {
+            text = if (budget?.spentPercent != null) {
                 stringResource(R.string.budget_summary_percent, budget.spentPercent)
+            } else if (budget?.configured == true) {
+                stringResource(R.string.stats_budget_progress_unavailable_status)
             } else {
                 stringResource(R.string.budget_summary_unconfigured)
             },

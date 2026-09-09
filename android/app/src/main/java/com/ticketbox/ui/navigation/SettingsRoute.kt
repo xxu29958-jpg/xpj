@@ -80,6 +80,9 @@ internal fun SettingsRoute(
             incomePlans = screenFactory.incomePlanRepository,
             debtAdjustments = screenFactory.debtAdjustmentRepository,
             goalEdits = screenFactory.goalEditRepository,
+            budgetSaves = screenFactory.budgetRepository,
+            recurringItems = screenFactory.recurringRepository,
+            rules = screenFactory.ruleRepository,
         ),
     )
 }

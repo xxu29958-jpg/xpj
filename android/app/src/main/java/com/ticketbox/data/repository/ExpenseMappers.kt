@@ -112,11 +112,11 @@ fun ExpenseDto.toEntity(ledgerId: String): ExpenseEntity = ExpenseEntity(
     serverId = id,
     publicId = requiredPublicId(),
     amountCents = amountCents,
-    // R7-2：原码透传，不做 fromStorageKey 枚举往返 —— 未知码（新版服务端币种）若被静默
-    // 改写成 CNY 落本地缓存，后续同步会把它回写服务端（币种篡改）。blank 才落既有 CNY 兜底。
-    homeCurrencyCode = homeCurrency?.takeIf { it.isNotBlank() } ?: FxContract.HomeCurrency.storageKey,
+    // Persist the server's recorded currency, including codes newer than this client.
+    homeCurrencyCode = homeCurrency?.takeIf { it.isNotBlank() }
+        ?: throw RepositoryException("账单缺少本位币，本地数据尚未更新。请刷新重试。"),
     originalCurrencyCode = (originalCurrency ?: originalCurrencyCode)?.takeIf { it.isNotBlank() }
-        ?: FxContract.HomeCurrency.storageKey,
+        ?: throw RepositoryException("账单缺少原币种，本地数据尚未更新。请刷新重试。"),
     originalAmountMinor = originalAmountMinor ?: amountCents,
     exchangeRateToCny = resolvedFxRate,
     exchangeRateDate = resolvedFxRateDate,
@@ -238,15 +238,13 @@ fun ExpenseEntity.toDomain(): Expense {
  *  is the device-unique idempotency ref the offline-aware create path mints and
  *  reuses on outbox replay; the online quick-add path leaves it null. */
 fun ExpenseDraft.toManualCreateRequest(clientRef: String? = null): ExpenseManualCreateRequestDto {
-    val submittedOriginalMinor = originalAmountMinor ?: amountCents
-    val submittedCurrency = originalCurrencyCode
-        ?: if (submittedOriginalMinor != null) FxContract.HomeCurrency else null
+    val homeCurrency = requireNotNull(ledgerHomeCurrency) { "Manual entry requires its captured home currency" }
+    val submittedOriginalMinor = requireNotNull(originalAmountMinor ?: amountCents) { "Manual entry requires an amount" }
+    val submittedCurrency = originalCurrencyCode ?: homeCurrency
     return ExpenseManualCreateRequestDto(
-        originalCurrency = submittedCurrency?.storageKey,
-        originalAmount = minorToMajorText(
-            submittedOriginalMinor,
-            submittedCurrency ?: FxContract.HomeCurrency,
-        ),
+        originalCurrency = submittedCurrency.storageKey,
+        originalAmount = minorToMajorText(submittedOriginalMinor, submittedCurrency),
+        homeCurrencyCode = homeCurrency.storageKey,
         spentAt = expenseTime,
         merchant = merchant,
         category = normalizeExpenseCategory(category),
@@ -275,9 +273,7 @@ fun ExpenseDraft.toManualCreateRequest(clientRef: String? = null): ExpenseManual
  */
 fun ExpenseDraft.toLocalCreateEntity(ledgerId: String, clientRef: String): ExpenseEntity {
     val submittedOriginalMinor = originalAmountMinor ?: amountCents
-    // R15b-1：乐观窗 home 币种取提交时 VM 确认的账本币种（旧码恒 CNY，JPY 安装手记
-    // 乐观行显示 ¥12.00 而同步后 ¥1,200）；缺省（非手记路径）维持 FxContract 兜底。
-    val homeCurrency = ledgerHomeCurrency ?: FxContract.HomeCurrency
+    val homeCurrency = requireNotNull(ledgerHomeCurrency) { "Manual entry requires its captured home currency" }
     val submittedCurrency = originalCurrencyCode ?: homeCurrency
     // home 腿诚实：显式 amountCents 优先；同币手记（original==home）原值即 home（同币
     // 不折算）；跨币不可折算 → null —— 显示走 forRecord 原始腿（R14-3），聚合跳过
@@ -388,6 +384,8 @@ fun NotificationDraft.toRequest(notificationKey: String? = null): NotificationDr
 )
 
 fun MonthlyStatsDto.toDomain(): MonthlyStats = MonthlyStats(
+    homeCurrencyCode = homeCurrencyCode,
+    missingRates = missingRates.map { com.ticketbox.domain.model.CurrencyProjectionGap(it.sourceCurrencyCode, it.homeCurrencyCode, it.rateDate) },
     month = month,
     totalAmountCents = totalAmountCents,
     count = count,
@@ -408,6 +406,8 @@ fun TagStatsDto.toDomain(): TagStats = TagStats(
 )
 
 fun LifestyleStatsDto.toDomain(): LifestyleStats = LifestyleStats(
+    homeCurrencyCode = homeCurrencyCode,
+    missingRates = missingRates.map { com.ticketbox.domain.model.CurrencyProjectionGap(it.sourceCurrencyCode, it.homeCurrencyCode, it.rateDate) },
     month = month,
     aiSubscriptionAmountCents = aiSubscriptionAmountCents,
     digitalAmountCents = digitalAmountCents,
@@ -425,6 +425,7 @@ fun FrequentMerchantDto.toDomain(): FrequentMerchant = FrequentMerchant(
 )
 
 fun RecurringCandidateItemDto.toDomain(): RecurringCandidate = RecurringCandidate(
+    homeCurrencyCode = homeCurrencyCode,
     merchant = merchant,
     amountCents = amountCents,
     occurrenceCount = occurrenceCount,
@@ -461,6 +462,7 @@ fun CategoryRuleDto.toDomain(): CategoryRule = CategoryRule(
     createdAt = createdAt,
     updatedAt = updatedAt,
     rowVersion = rowVersion,
+    homeCurrencyCode = homeCurrencyCode,
 )
 
 fun MerchantAliasDto.toDomain(): MerchantAlias = MerchantAlias(
@@ -557,6 +559,8 @@ fun RuleApplyConfirmedResponseDto.toDomain(): RuleApplyConfirmedResult = RuleApp
     scanLimitReached = scanLimitReached,
     scanLimit = scanLimit,
     previewToken = previewToken,
+    unavailableCount = unavailableCount,
+    missingCurrencyCodes = missingCurrencyCodes,
 )
 
 fun ServerSettingsDto.toDomain(): ServerSettings = ServerSettings(

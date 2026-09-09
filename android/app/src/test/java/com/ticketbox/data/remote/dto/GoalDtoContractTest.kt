@@ -25,6 +25,7 @@ class GoalDtoContractTest {
                       "period": "monthly",
                       "month": "2026-05",
                       "category": "餐饮",
+                      "home_currency_code": "JPY",
                       "target_amount_cents": 80000,
                       "spent_amount_cents": 64000,
                       "remaining_amount_cents": 16000,
@@ -47,26 +48,29 @@ class GoalDtoContractTest {
                 month = "2026-05",
                 category = "餐饮",
                 targetAmountCents = 80000,
+                homeCurrencyCode = "JPY",
             ),
         )
         val updateJson = moshi.adapter(GoalUpdateRequestDto::class.java).toJson(
             GoalUpdateRequestDto(
                 expectedRowVersion = 1L,
                 targetAmountCents = 90000,
+                homeCurrencyCode = "JPY",
             ),
         )
 
         val goal = dto.items.single()
+        assertEquals("JPY", goal.homeCurrencyCode)
         assertEquals("goal-1", goal.publicId)
         assertEquals("owner", goal.ledgerId)
         assertEquals("near_limit", goal.progressState)
         assertEquals(80, goal.progressPercent)
         assertEquals(
-            """{"name":"本月餐饮","goal_type":"spending_limit","period":"monthly","month":"2026-05","target_amount_cents":80000,"category":"餐饮"}""",
+            """{"name":"本月餐饮","goal_type":"spending_limit","period":"monthly","month":"2026-05","target_amount_cents":80000,"category":"餐饮","home_currency_code":"JPY"}""",
             createJson,
         )
         assertEquals(
-            """{"expected_row_version":1,"target_amount_cents":90000}""",
+            """{"expected_row_version":1,"target_amount_cents":90000,"home_currency_code":"JPY"}""",
             updateJson,
         )
     }

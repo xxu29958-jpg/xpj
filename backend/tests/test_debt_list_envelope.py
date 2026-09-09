@@ -11,6 +11,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import get_settings
+from app.database import SessionLocal
+from tests._infra.currency import activate_test_currency_authority
+from tests._runtime_protocol import negotiated_headers
 
 
 def _idem_headers(app_headers: dict[str, str]) -> dict[str, str]:
@@ -19,22 +22,25 @@ def _idem_headers(app_headers: dict[str, str]) -> dict[str, str]:
 
 @pytest.mark.currency_binding_unbound
 def test_list_debts_envelope_carries_installation_home_currency(client: TestClient, *, identity) -> None:
-    # ADR-0061 C02/C03 / PR#255 R6: the list envelope repeats the installation-level
-    # currency capability (the same binding the write path stamps per record) so an
-    # EMPTY ledger's clients can resolve the ledger currency for first-record
-    # creation — record-level-only delivery made "wait for the first record" circular.
-    # EMPTY exposes the safe first-fact CNY offer; after creation that same value
-    # is the persisted installation authority and record-level stamp.
+    # Unchosen setup cannot offer CNY. Explicit confirmation supplies the list
+    # envelope even before the first debt, and the record keeps that meaning.
     empty_list = client.get("/api/debts", headers=identity.app_headers)
     assert empty_list.status_code == 200, empty_list.json()
     assert empty_list.json()["items"] == []
-    assert empty_list.json()["home_currency_code"] == "CNY"
+    assert empty_list.json()["home_currency_code"] is None
+    with SessionLocal() as db:
+        activate_test_currency_authority(db, "CNY")
+        db.commit()
+    chosen_list = client.get("/api/debts", headers=identity.app_headers)
+    assert chosen_list.status_code == 200
+    assert chosen_list.json()["items"] == []
+    assert chosen_list.json()["home_currency_code"] == "CNY"
 
     created = client.post(
         "/api/debts",
-        headers=_idem_headers(identity.app_headers),
+        headers=negotiated_headers(client, _idem_headers(identity.app_headers)),
         json={
-            "direction": "i_owe",
+            "home_currency_code": "CNY", "direction": "i_owe",
             "counterparty_type": "external",
             "counterparty_label": "房东",
             "principal_amount_cents": 30000,
@@ -53,12 +59,12 @@ def test_list_debts_envelope_keeps_persisted_authority_on_misconfigured_env(
 ) -> None:
     # C02 retires the PR#255 env bridge: runtime configuration drift must not
     # erase or reinterpret the persisted installation authority on a read.
-    # Writers still fail closed through the capability gate.
+    # An obsolete environment value cannot replace that authority.
     created = client.post(
         "/api/debts",
-        headers=_idem_headers(identity.app_headers),
+        headers=negotiated_headers(client, _idem_headers(identity.app_headers)),
         json={
-            "direction": "i_owe",
+            "home_currency_code": "CNY", "direction": "i_owe",
             "counterparty_type": "external",
             "counterparty_label": "房东",
             "principal_amount_cents": 30000,

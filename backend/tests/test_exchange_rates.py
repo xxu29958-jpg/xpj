@@ -8,11 +8,11 @@ from api_contract_helpers import confirm_expense_api
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from app.config import get_settings
 from app.database import SessionLocal
 from app.models import LedgerMember
 from app.services.exchange_rate_service import calculate_cny_cents, default_rate_date
 from app.services.fx_rate_provider import cross_rate_to_home, parse_ecb_daily_rates, upsert_fx_rate
+from tests._runtime_protocol import negotiated_headers
 
 
 def test_default_rate_date_uses_accounting_local_day_for_stored_utc_time() -> None:
@@ -31,8 +31,10 @@ def _demote_owner_ledger_to_viewer() -> None:
 def test_exchange_rate_crud_is_ledger_scoped_and_viewer_read_only(client: TestClient, *, identity) -> None:
     created = client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=identity.app_headers,
+        headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
         json={
+            "expected_row_version": 0,
+            "home_currency_code": "CNY",
             "currency_code": "USD",
             "rate_date": "2026-05-04",
             "rate_to_cny": "7.1234",
@@ -58,8 +60,10 @@ def test_exchange_rate_crud_is_ledger_scoped_and_viewer_read_only(client: TestCl
 
     viewer_write = client.put(
         "/api/exchange-rates/USD/2026-05-05",
-        headers=identity.app_headers,
+        headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
         json={
+            "expected_row_version": 0,
+            "home_currency_code": "CNY",
             "currency_code": "USD",
             "rate_date": "2026-05-05",
             "rate_to_cny": "7.2",
@@ -72,8 +76,10 @@ def test_exchange_rate_crud_is_ledger_scoped_and_viewer_read_only(client: TestCl
 def test_exchange_rate_put_rejects_path_body_mismatch(client: TestClient, *, identity) -> None:
     currency_mismatch = client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=identity.app_headers,
+        headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
         json={
+            "expected_row_version": 0,
+            "home_currency_code": "CNY",
             "currency_code": "EUR",
             "rate_date": "2026-05-04",
             "rate_to_cny": "7.1234",
@@ -85,8 +91,10 @@ def test_exchange_rate_put_rejects_path_body_mismatch(client: TestClient, *, ide
 
     date_mismatch = client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=identity.app_headers,
+        headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
         json={
+            "expected_row_version": 0,
+            "home_currency_code": "CNY",
             "currency_code": "USD",
             "rate_date": "2026-05-05",
             "rate_to_cny": "7.1234",
@@ -100,8 +108,10 @@ def test_exchange_rate_put_rejects_path_body_mismatch(client: TestClient, *, ide
 def test_manual_foreign_expense_uses_stored_daily_rate_and_stats_stay_cny(client: TestClient, *, identity) -> None:
     rate = client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=identity.app_headers,
+        headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
         json={
+            "expected_row_version": 0,
+            "home_currency_code": "CNY",
             "currency_code": "USD",
             "rate_date": "2026-05-04",
             "rate_to_cny": "7.1234",
@@ -156,8 +166,10 @@ def test_manual_foreign_expense_uses_stored_daily_rate_and_stats_stay_cny(client
 def test_foreign_expense_uses_payload_local_calendar_day_for_rate_lookup(client: TestClient, *, identity) -> None:
     rate = client.put(
         "/api/exchange-rates/USD/2026-05-01",
-        headers=identity.app_headers,
+        headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
         json={
+            "expected_row_version": 0,
+            "home_currency_code": "CNY",
             "currency_code": "USD",
             "rate_date": "2026-05-01",
             "rate_to_cny": "7.0000",
@@ -247,14 +259,14 @@ def test_jpy_expense_uses_zero_fraction_minor_units_and_missing_rate_stays_pendi
 def test_editing_spent_at_recomputes_fx_rate_date_when_caller_did_not_pin_it(client: TestClient, *, identity) -> None:
     day_one = client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=identity.app_headers,
-        json={"currency_code": "USD", "rate_date": "2026-05-04", "rate_to_cny": "7.0000"},
+        headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": 0, "home_currency_code": "CNY", "currency_code": "USD", "rate_date": "2026-05-04", "rate_to_cny": "7.0000"},
     )
     assert day_one.status_code == 200, day_one.json()
     day_two = client.put(
         "/api/exchange-rates/USD/2026-05-05",
-        headers=identity.app_headers,
-        json={"currency_code": "USD", "rate_date": "2026-05-05", "rate_to_cny": "8.0000"},
+        headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": 0, "home_currency_code": "CNY", "currency_code": "USD", "rate_date": "2026-05-05", "rate_to_cny": "8.0000"},
     )
     assert day_two.status_code == 200, day_two.json()
 
@@ -295,7 +307,7 @@ def test_legacy_amount_payload_defaults_to_cny_rate_one(client: TestClient, *, i
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": 1280,
+            "home_currency_code": "CNY", "amount_cents": 1280,
             "merchant": "手动早餐",
             "category": "餐饮",
             "expense_time": "2026-05-04T00:30:00Z",
@@ -313,28 +325,15 @@ def test_legacy_amount_payload_defaults_to_cny_rate_one(client: TestClient, *, i
     assert payload["fx_status"] == "ready"
 
 
-def test_calculate_home_minor_units_respects_no_fraction_home_currency(monkeypatch) -> None:
-    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
-    get_settings.cache_clear()
-    try:
-        assert (
-            calculate_cny_cents(
-                original_currency_code="JPY",
-                original_amount_minor=1000,
-                exchange_rate_to_cny=None,
-            )
-            == 1000
-        )
-        assert (
-            calculate_cny_cents(
-                original_currency_code="USD",
-                original_amount_minor=12345,
-                exchange_rate_to_cny=Decimal("150"),
-            )
-            == 18518
-        )
-    finally:
-        get_settings.cache_clear()
+def test_calculate_home_minor_units_uses_the_supplied_no_fraction_basis() -> None:
+    assert calculate_cny_cents(
+        home_currency_code="JPY", original_currency_code="JPY",
+        original_amount_minor=1000, exchange_rate_to_cny=None,
+    ) == 1000
+    assert calculate_cny_cents(
+        home_currency_code="JPY", original_currency_code="USD",
+        original_amount_minor=12345, exchange_rate_to_cny=Decimal("150"),
+    ) == 18518
 
 
 def test_expense_write_rejects_client_submitted_exchange_rate(client: TestClient, *, identity) -> None:
@@ -368,7 +367,7 @@ def test_ecb_daily_xml_cross_rate_can_be_stored_as_home_rate(client: TestClient,
     daily = parse_ecb_daily_rates(xml)
     expected = (Decimal("7.9194") / Decimal("1.1628")).quantize(Decimal("0.00000001"))
     assert daily.rate_date == date(2026, 5, 15)
-    assert cross_rate_to_home(daily.rates_per_eur, currency_code="USD") == expected
+    assert cross_rate_to_home(daily.rates_per_eur, currency_code="USD", home_currency_code="CNY") == expected
 
     with SessionLocal() as db:
         upsert_fx_rate(

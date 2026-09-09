@@ -101,7 +101,7 @@ class ExpenseCorrectionStreamContinuityTest {
                 ?: ledger.uiState.value
             assertTrue("Initial stream sync must complete: ${initial.message}", initial.syncedInCurrentSession)
             assertEquals(3, initial.items.size)
-            assertEquals(1_400L, initial.summary.totalAmountCents)
+            assertEquals(mapOf("CNY" to 1_400L), initial.summary.amountsByCurrency)
             withContext(Dispatchers.Main) { ledger.clearFilters() }
             val repository = graph.expenseRepository
             val access = requireNotNull(repository.observeCorrections().first().access)
@@ -151,10 +151,10 @@ class ExpenseCorrectionStreamContinuityTest {
         assertEquals("${newDate}T04:00:00Z", root.root.expenseTime)
         assertEquals("A delivered root must not retain its preceding stream date", newDate, root.streamDate)
         assertEquals(1_400L, root.streamAmountCents)
-        assertEquals(1_800L, state.summary.totalAmountCents)
+        assertEquals(mapOf("CNY" to 1_800L), state.summary.amountsByCurrency)
         val groups = groupConfirmedStream(resources, state.items)
         assertEquals(listOf(newDate, oldDate), groups.map { it.key })
-        assertEquals(listOf(1_400L, 400L), groups.map { it.dayTotalCents })
+        assertEquals(listOf(mapOf("CNY" to 1_400L), mapOf("CNY" to 400L)), groups.map { it.amountsByCurrency })
         val oldMonth = filterConfirmedStreamItems(state.items, ExpenseFilterCriteria(month = oldDate.take(7)))
         assertTrue(oldMonth.none { it.root.id == expenseId })
         val newMonth = filterConfirmedStreamItems(state.items, ExpenseFilterCriteria(month = newDate.take(7)))

@@ -11,8 +11,7 @@ class TagScopeInsightModelTest {
     @Test
     fun tagScopeInsightModelTrimsTagAndUsesAuthoritativeMonthlyStats() {
         val model = tagScopeInsightModel(
-            stats = MonthlyStats(
-                month = "2026-07",
+            stats = MonthlyStats(homeCurrencyCode = "CNY", month = "2026-07",
                 totalAmountCents = 12_345L,
                 count = 3,
                 byCategory = emptyList(),
@@ -28,11 +27,10 @@ class TagScopeInsightModelTest {
     }
 
     @Test
-    fun tagScopeInsightModelDropsBlankTagAndClampsInvalidMonthlyStats() {
+    fun tagScopeInsightModelDropsBlankTagAndPreservesSignedNetAmount() {
         assertNull(
             tagScopeInsightModel(
-                stats = MonthlyStats(
-                    month = "2026-07",
+                stats = MonthlyStats(homeCurrencyCode = "CNY", month = "2026-07",
                     totalAmountCents = 1L,
                     count = 1,
                     byCategory = emptyList(),
@@ -42,8 +40,7 @@ class TagScopeInsightModelTest {
         )
 
         val model = tagScopeInsightModel(
-            stats = MonthlyStats(
-                month = "2026-07",
+            stats = MonthlyStats(homeCurrencyCode = "CNY", month = "2026-07",
                 totalAmountCents = -1L,
                 count = -2,
                 byCategory = emptyList(),
@@ -52,14 +49,14 @@ class TagScopeInsightModelTest {
         )
 
         requireNotNull(model)
-        assertEquals(0L, model.totalAmountCents)
+        assertEquals(-1L, model.totalAmountCents)
         assertEquals(0, model.count)
     }
 
     @Test
     fun tagScopeSourceLabelNamesOnlyBackendStatsAsServerBacked() {
         assertEquals(R.string.stats_tag_scope_source_monthly, tagScopeSourceLabelRes(StatsSource.Backend))
-        assertEquals(R.string.stats_tag_scope_source_local, tagScopeSourceLabelRes(StatsSource.LocalFallback))
+        assertEquals(R.string.stats_snapshot_badge, tagScopeSourceLabelRes(StatsSource.CachedSnapshot))
         assertEquals(R.string.stats_tag_scope_source_pending, tagScopeSourceLabelRes(StatsSource.None))
     }
 }

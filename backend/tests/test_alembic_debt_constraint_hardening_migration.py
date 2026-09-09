@@ -1,24 +1,7 @@
 """PG round-trip of 20260618_0001 (ADR-0049 #4 member-repayment + draft constraint backstops).
 
-``init_db`` on a fresh DB runs ``create_all`` (the current ORM already carries the FKs +
-CHECKs) then ``alembic stamp head``, so the migration's ADD bodies never run on the normal
-path — a divergence between the migration and the ORM would ship UNDETECTED by deployment.
-This drives the migration directly on PostgreSQL: create_all → stamp head → downgrade past
-20260618_0001 (drops the constraints) → upgrade to head (re-adds them via the migration body).
-
-It asserts the migration-built constraints are STRUCTURALLY IDENTICAL to the ORM-built ones —
-FK referent table/columns and CHECK predicate sqltext, not just the constraint NAME — so a
-same-name migration↔ORM divergence (a wrong FK referent or a tautology CHECK predicate, the
-exact failure mode the single-source design guards and which no machine diff otherwise
-enforces) fails HERE.
-
-The ``create_all`` step is ALSO the only automated proof that the nullable circular FK pair
-(repayments.proposal_id <-> member_repayment_proposals.committed_repayment_id) builds on a
-fresh DB — without ``use_alter=True`` on the committed_repayment_id side it would raise
-CircularDependencyError at table-sort time.
-
-Marked ``real_db`` below: it issues DDL via its own
-``engine.begin()`` connections outside the per-test transaction.
+Check current ORM shape independently, then round-trip the frozen migration
+on its actual PostgreSQL schema. Never stamp a current schema as a historical one.
 """
 
 from __future__ import annotations
@@ -132,11 +115,12 @@ def test_debt_constraint_backstops_round_trip_on_postgres() -> None:
         Base.metadata.create_all(bind=engine)
         expected_fks, expected_checks = _capture_orm_definitions()
 
-        _run_alembic(command.stamp, _REVISION)
+        _reset_empty_database()
+        _run_alembic(command.upgrade, _REVISION)
         _run_alembic(command.downgrade, _PRIOR_HEAD)
         _assert_absent()  # downgrade drops all six by name
 
-        _run_alembic(command.upgrade, "head")
+        _run_alembic(command.upgrade, _REVISION)
         # Re-added via the migration's guarded ADD bodies — assert each constraint is back AND
         # structurally identical to the ORM (referent/predicate), so a same-name divergence fails.
         _assert_matches(expected_fks, expected_checks)

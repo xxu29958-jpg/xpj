@@ -59,6 +59,7 @@ def _row_from_parsed(batch: CsvImportBatch, parsed) -> CsvImportRow:
         error_code=error_code,
         error_message=error_message,
         amount_cents=amount_cents,
+        home_currency_code=parsed.home_currency_code,
         original_currency_code=parsed.original_currency_code,
         original_amount_minor=original_amount_minor,
         exchange_rate_to_cny=parsed.exchange_rate_to_cny,

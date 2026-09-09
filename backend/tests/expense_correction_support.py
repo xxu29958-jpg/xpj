@@ -21,6 +21,7 @@ def manual_confirmed(
     client_ref: str | None = None,
 ) -> dict:
     payload = {
+        "home_currency_code": "CNY",
         "amount_cents": amount_cents,
         "merchant": merchant,
         "category": "餐饮",

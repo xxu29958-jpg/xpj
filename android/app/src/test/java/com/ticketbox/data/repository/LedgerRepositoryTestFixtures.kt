@@ -437,7 +437,7 @@ internal class StubApi(
     override suspend fun expenseThumbnail(id: Long): Response<ResponseBody> = ledgerUnsupported()
     override suspend fun duplicates(): List<ExpenseDto> = ledgerUnsupported()
     override suspend fun categoryRules(): List<CategoryRuleDto> = ledgerUnsupported()
-    override suspend fun createCategoryRule(request: CategoryRuleRequest): CategoryRuleDto = ledgerUnsupported()
+    override suspend fun createCategoryRule(request: CategoryRuleRequest, idempotencyKey: String): CategoryRuleDto = ledgerUnsupported()
     override suspend fun updateCategoryRule(
         id: Long,
         request: com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest,
@@ -488,8 +488,8 @@ internal class StubApi(
         maxScan: Int,
     ): RuleApplyConfirmedResponseDto = ledgerUnsupported()
     override suspend fun serverSettings(): ServerSettingsDto = ledgerUnsupported()
-    override suspend fun monthlyStats(month: String?, tag: String?, timezone: String?): MonthlyStatsDto = ledgerUnsupported()
-    override suspend fun lifestyleStats(month: String?, timezone: String?): LifestyleStatsDto = ledgerUnsupported()
+    override suspend fun monthlyStats(month: String?, tag: String?, timezone: String?, homeCurrencyCode: String?): MonthlyStatsDto = ledgerUnsupported()
+    override suspend fun lifestyleStats(month: String?, timezone: String?, homeCurrencyCode: String?): LifestyleStatsDto = ledgerUnsupported()
     override suspend fun reportsOverview(
         query: Map<String, String>,
     ): ReportsOverviewDto = ledgerUnsupported()
@@ -502,7 +502,7 @@ internal class StubApi(
         goalType: String?,
         timezone: String?,
     ): GoalListResponseDto = ledgerUnsupported()
-    override suspend fun createGoal(request: GoalCreateRequestDto, timezone: String?): GoalDto = ledgerUnsupported()
+    override suspend fun createGoal(request: GoalCreateRequestDto, timezone: String?, idempotencyKey: String?): GoalDto = ledgerUnsupported()
     override suspend fun goal(publicId: String, timezone: String?): GoalDto = ledgerUnsupported()
     override suspend fun updateGoal(
         publicId: String,
@@ -621,13 +621,17 @@ internal class StubApi(
         month: String,
         request: BudgetMonthlyUpdateRequestDto,
         timezone: String?,
+        idempotencyKey: String?,
     ): BudgetMonthlyDto = ledgerUnsupported()
     override suspend fun listIncomePlans(status: String): com.ticketbox.data.remote.dto.IncomePlanListResponseDto = ledgerUnsupported()
-    override suspend fun createIncomePlan(request: com.ticketbox.data.remote.dto.IncomePlanCreateRequestDto): com.ticketbox.data.remote.dto.IncomePlanDto = ledgerUnsupported()
+    override suspend fun createIncomePlan(request: com.ticketbox.data.remote.dto.IncomePlanCreateRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.IncomePlanDto = ledgerUnsupported()
     override suspend fun updateIncomePlan(publicId: String, request: com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto, idempotencyKey: String?): com.ticketbox.data.remote.dto.IncomePlanDto = ledgerUnsupported()
     override suspend fun archiveIncomePlan(publicId: String, request: com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto): com.ticketbox.data.remote.dto.IncomePlanDto = ledgerUnsupported()
     override suspend fun restoreIncomePlan(publicId: String, request: com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto): com.ticketbox.data.remote.dto.IncomePlanDto = ledgerUnsupported()
     override suspend fun budgetDiscretionary(savingsTargetCents: Long, reservedBufferCents: Long): com.ticketbox.data.remote.dto.DiscretionaryResponseDto = ledgerUnsupported()
+    override suspend fun exchangeRates(currencyCode: String?, homeCurrencyCode: String?, rateDate: String?, limit: Int): com.ticketbox.data.remote.dto.ExchangeRateListDto = ledgerUnsupported()
+    override suspend fun saveExchangeRate(currencyCode: String, rateDate: String, request: com.ticketbox.data.remote.dto.ExchangeRateRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.ExchangeRateDto = ledgerUnsupported()
+    override suspend fun budgetAdviceInputs(month: String, timezone: String?, homeCurrencyCode: String?): com.ticketbox.data.remote.dto.BudgetAdviceInputsDto = ledgerUnsupported()
     override suspend fun budgetAdvise(request: com.ticketbox.data.remote.dto.BudgetAdviseRequestDto): com.ticketbox.data.remote.dto.BudgetAdviseResponseDto = ledgerUnsupported()
     override suspend fun recurringCandidates(timezone: String?): com.ticketbox.data.remote.dto.RecurringCandidatesResponseDto = ledgerUnsupported()
     override suspend fun recurringItems(
@@ -725,8 +729,6 @@ internal class LedgerFakeSettingsStore : TicketboxSettingsStore {
     var capturedBoundAt: String? = null
     fun serverUrl(): String? = serverUrl
     override fun appThemeModeKey(): String? = null
-    override fun monthlyBudgetCents(): Long? = null
-    override fun saveMonthlyBudgetCents(amountCents: Long?) = Unit
     override fun lastConfirmedSyncAt(): String? = null
     fun accountName(): String? = capturedAccountName
     fun ledgerName(): String? = ledgerName
@@ -817,6 +819,13 @@ internal fun existingOwnerSessionFixture(
 ).apply { saveToken(token) }
 
 internal class LedgerFakeDao : ExpenseDao {
+    private val statsCache = com.ticketbox.data.local.StatsProjectionCacheFake()
+    override suspend fun saveStatsProjection(snapshot: com.ticketbox.data.local.StatsProjectionCacheEntity) = statsCache.save(snapshot)
+    override suspend fun statsProjections(bindingKey: String, kind: String, month: String, tag: String,
+        timezone: String) = statsCache.find(bindingKey, kind, month, tag, timezone)
+    override suspend fun clearStatsProjections() = statsCache.clear(null)
+    override suspend fun clearStatsProjectionsForLedger(ledgerId: String) = statsCache.clear(ledgerId)
+
     private val map = linkedMapOf<Long, ExpenseEntity>()
     private val flows = mutableMapOf<String, MutableStateFlow<List<ExpenseEntity>>>()
     fun insertEntity(entity: ExpenseEntity) { map[entity.id] = entity }

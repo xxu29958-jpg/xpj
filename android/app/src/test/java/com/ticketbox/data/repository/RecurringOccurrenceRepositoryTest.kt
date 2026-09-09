@@ -6,7 +6,6 @@ import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
 import com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto
-import com.ticketbox.domain.model.CurrencyCode
 import java.io.IOException
 import java.time.Clock
 import java.time.Duration
@@ -19,10 +18,34 @@ import retrofit2.HttpException
 import retrofit2.Response
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class RecurringOccurrenceRepositoryTest {
+    @Test
+    fun newIntentCapturesPaymentUnitsWithoutTheLegacyDisplayCurrency() = runTest {
+        val fixture = OccurrenceFixture()
+        val id = fixture.repository.enqueue(fixture.binding, fixture.draft.copy(paymentCurrencyCode = "JPY")).getOrThrow()
+        val original = fixture.dao.rows.getValue(id)
+        assertTrue(original.payload.contains("\"paymentCurrencyCode\":\"JPY\""))
+        assertTrue(!original.payload.contains("\"homeCurrencyCode\""))
+    }
+
+    @Test
+    fun unrelatedReceiptCannotSettleTheOriginalAssociation() = runTest {
+        val fixture = OccurrenceFixture()
+        fixture.api.loseResponse = false
+        fixture.api.returnAnotherPeriod = true
+        val id = fixture.repository.enqueue(fixture.binding, fixture.draft).getOrThrow()
+        val original = fixture.dao.rows.getValue(id)
+        assertEquals(1, fixture.engine(fixture.outbox, fixture.clock).drainOnce().failures)
+        val retained = fixture.dao.rows.getValue(id)
+        assertEquals(PendingMutationStatus.Failed.wireValue, retained.status)
+        assertEquals(original.payload, retained.payload)
+        assertEquals(original.idempotencyKey, retained.idempotencyKey)
+    }
+
     @Test
     fun acceptancePrecedesDispatchAndRestartReplaysOriginalKeyAndAllVersions() = runTest {
         val fixture = OccurrenceFixture()
@@ -78,7 +101,7 @@ class RecurringOccurrenceRepositoryTest {
     }
 
     @Test
-    fun protocolAndUnknownRefusalsCanResumeTheOriginalAssociation() = runTest {
+    fun protocolRefusalsCanResumeButUnknownRefusalsRequireReview() = runTest {
         for (code in listOf("runtime_version_mismatch", "client_upgrade_required", "future_write_refusal")) {
             val fixture = OccurrenceFixture()
             val id = fixture.repository.enqueue(fixture.binding, fixture.draft).getOrThrow()
@@ -89,12 +112,45 @@ class RecurringOccurrenceRepositoryTest {
             assertEquals(PendingMutationStatus.Failed.wireValue, retained.status)
             assertEquals(original.payload, retained.payload)
             assertEquals(original.idempotencyKey, retained.idempotencyKey)
+            val pending = requireNotNull(fixture.repository.describe(retained.toDomain()))
+            if (code == "future_write_refusal") {
+                assertFalse(pending.canRetry)
+                assertTrue(fixture.repository.recover(fixture.binding, retained.toDomain(), drop = false).isFailure)
+                assertEquals(retained, fixture.dao.rows.getValue(id))
+                continue
+            }
+            assertTrue(pending.canRetry)
             fixture.api.refusalCode = null
             fixture.api.loseResponse = false
-            assertTrue(fixture.outbox.resolveFailed(id, FailedResolution.Retry()))
+            fixture.repository.recover(fixture.binding, retained.toDomain(), drop = false).getOrThrow()
             assertEquals(1, fixture.engine(fixture.outbox, fixture.clock).drainOnce().done)
             assertEquals(fixture.api.calls.first(), fixture.api.calls.last())
         }
+    }
+
+    @Test
+    fun legacyDisplayCurrencyIsUnknownWhileTheOriginalAssociationCanStillResume() = runTest {
+        val fixture = OccurrenceFixture()
+        val id = fixture.repository.enqueue(fixture.binding, fixture.draft).getOrThrow()
+        val legacy = """{"revision":1,"seriesPublicId":"recurring-1","seriesLabel":"房租","period":"2026-09",
+            "homeCurrencyCode":"CNY","originSessionGeneration":"old-session","originBindingRevision":"old-binding",
+            "paymentLabel":"房租付款","paymentAmountCents":1200,
+            "request":{"action":"link","expected_row_version":0,"expected_series_row_version":7,
+            "expense_public_id":"payment-1","expected_expense_row_version":3}}"""
+        val original = fixture.dao.rows.getValue(id).copy(payload = legacy,
+            status = PendingMutationStatus.Failed.wireValue, lastError = "client_upgrade_required")
+        fixture.dao.rows[id] = original
+        val pending = requireNotNull(fixture.repository.describe(original.toDomain()))
+        assertEquals(1200L, pending.intent?.paymentAmountCents)
+        assertNull(pending.intent?.paymentCurrencyCode)
+        assertTrue(pending.canRetry)
+        assertNull(fixture.repository.describe(original.toDomain().copy(serverUrl = "https://another.example.test")))
+        fixture.repository.recover(fixture.binding, original.toDomain(), drop = false).getOrThrow()
+        assertEquals(legacy, fixture.dao.rows.getValue(id).payload)
+        fixture.api.loseResponse = false
+        assertEquals(1, fixture.engine(fixture.outbox, fixture.clock).drainOnce().done)
+        assertEquals(original.idempotencyKey, fixture.api.calls.single().second)
+        assertEquals(pending.intent?.request, fixture.api.calls.single().first)
     }
 }
 
@@ -115,7 +171,7 @@ private class OccurrenceFixture(role: String = "owner") {
     val adapter = OutboxAdapterGraph().recurringOccurrenceAdapter
     val repository = RecurringOccurrenceRepository(provider, outbox, adapter)
     val draft = OccurrencePaymentDraft(occurrenceFixture(), "房租",
-        RecurringOccurrencePaymentRequestDto("link", 0, 7, "payment-1", 3), "房租付款", 10_000, CurrencyCode.CNY)
+        RecurringOccurrencePaymentRequestDto("link", 0, 7, "payment-1", 3), "房租付款", 10_000, "CNY")
 
     fun newOutbox(clock: Clock) = OutboxRepository(onRowsDeleted = {}, dao = dao, clock = clock,
         bindingProvider = { provider.currentSession().toOutboxBinding() },
@@ -130,6 +186,7 @@ private class OccurrenceApiProbe : ApiService by FakeApiService(mutableListOf(),
     val results = mutableMapOf<String, RecurringOccurrenceDto>()
     var loseResponse = true
     var refusalCode: String? = null
+    var returnAnotherPeriod = false
 
     override suspend fun setRecurringOccurrencePayment(
         publicId: String, month: String, request: RecurringOccurrencePaymentRequestDto, idempotencyKey: String,
@@ -146,7 +203,7 @@ private class OccurrenceApiProbe : ApiService by FakeApiService(mutableListOf(),
                 expensePublicId = request.expensePublicId, paidAmountCents = 10_000, nextDueDate = "2026-10-05")
         }
         if (loseResponse) throw IOException("Synthetic lost response after commit")
-        return result
+        return if (returnAnotherPeriod) result.copy(period = "2026-08") else result
     }
 }
 

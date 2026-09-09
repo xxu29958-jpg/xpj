@@ -43,7 +43,7 @@
     <span>下一笔到期</span>
     {% if hero.next_due %}
     <strong>{{ hero.next_due.date }}</strong>
-    <small>{{ hero.next_due.merchant }} · {{ home_currency_symbol }}{{ hero.next_due.amount_yuan }}</small>
+    <small>{{ hero.next_due.merchant }} · {{ hero.next_due.home_currency_code or '' }} {{ hero.next_due.amount_yuan }}</small>
     {% else %}
     <strong>未设置日期</strong>
     <small>留下下次预计日期才会提醒</small>
@@ -78,21 +78,23 @@
           {% else %}<span class="product-status">{{ item.status_label }}</span>{% endif %}
           {% if item.anomaly_status == 'higher_than_average' %}
           <span class="product-status product-status--warning">{{ item.anomaly_label }} {{ item.amount_delta_percent }}%</span>
+          {% elif item.anomaly_status == 'unavailable' %}
+          <span class="product-status product-status--warning">{{ item.anomaly_label }}</span>
           {% endif %}
         </div>
         <div class="recurring-row-meta">
           {% if item.observed %}
-          已观察 {{ item.occurrence_count }} 次{% if item.last_seen_date %} · 最近 {{ item.last_seen_date }}{% endif %} · 上次 {{ home_currency_symbol }}{{ item.last_amount_yuan }}
+          已观察 {{ item.occurrence_count }} 次{% if item.last_seen_date %} · 最近 {{ item.last_seen_date }}{% endif %} · 上次 {{ item.home_currency_code or '' }} {{ item.last_amount_yuan }}
           {% else %}
           手动记录 · 还没有观察到账单
           {% endif %}
         </div>
         {% if item.anomaly_status == 'higher_than_average' %}
-        <div class="recurring-row-meta">本月 {{ home_currency_symbol }}{{ item.current_month_amount_yuan }} · 月均 {{ home_currency_symbol }}{{ item.historical_average_amount_yuan }}</div>
+        <div class="recurring-row-meta">本月 {{ item.home_currency_code or '' }} {{ item.current_month_amount_yuan }} · 月均 {{ item.home_currency_code or '' }} {{ item.historical_average_amount_yuan }}</div>
         {% endif %}
       </div>
       <div class="recurring-row-amount">
-        <strong>{{ home_currency_symbol }}{{ item.baseline_amount_yuan }}<small>/月</small></strong>
+        <strong>{{ item.home_currency_code or '' }} {{ item.baseline_amount_yuan }}<small>/月</small></strong>
         <span>{% if item.observed %}每月基准{% else %}每月预计{% endif %}</span>
       </div>
       <div class="recurring-row-next">
@@ -145,33 +147,36 @@
         {% endif %}
       </div>
       {% if can_write and (item.status != 'archived' or draft_public_id == item.public_id) %}
-      {% set edit_form = item.edit_form %}
+      {% for edit_form in [item.edit_form] + ([item.current_edit_form] if item.current_edit_form else []) %}
+      {% set edit_input = edit_form.currency_input %}
+      {% set edit_dom_id = item.public_id ~ '-' ~ loop.index0 %}
       <details class="plan-edit"{% if open_edit_id == item.public_id or draft_public_id == item.public_id %} open{% endif %}>
-        <summary class="product-button product-button--quiet product-button--small">编辑</summary>
+        <summary class="product-button product-button--quiet product-button--small">{{ '编辑当前记录' if not loop.first else '编辑' }}</summary>
         <form method="post" action="/web/recurring/{{ item.public_id }}/edit" class="budget-form">
           <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+          <input type="hidden" name="home_currency_code" value="{{ edit_form.home_currency_code or '' }}">
           <input type="hidden" name="expected_row_version" value="{{ edit_form.expected_row_version }}">
           <input type="hidden" name="idempotency_key" value="{{ edit_form.idempotency_key }}">
           {{ csrf_field|safe }}
           <div class="product-form-grid">
             <div class="product-field">
-              <label for="rc-edit-merchant-{{ item.public_id }}">商家或名称</label>
-              <input class="product-input" id="rc-edit-merchant-{{ item.public_id }}" type="text" name="merchant"
+              <label for="rc-edit-merchant-{{ edit_dom_id }}">商家或名称</label>
+              <input class="product-input" id="rc-edit-merchant-{{ edit_dom_id }}" type="text" name="merchant"
                      maxlength="255" value="{{ edit_form.merchant }}" required
-                     {% if not item.merchant_editable %}readonly aria-describedby="rc-edit-merchant-help-{{ item.public_id }}"{% endif %}>
+                     {% if not item.merchant_editable %}readonly aria-describedby="rc-edit-merchant-help-{{ edit_dom_id }}"{% endif %}>
               {% if not item.merchant_editable %}
-              <p class="hint" id="rc-edit-merchant-help-{{ item.public_id }}">名称与已识别账单绑定；可调整金额和日期。如需更换商家，请归档后新建。</p>
+              <p class="hint" id="rc-edit-merchant-help-{{ edit_dom_id }}">名称与已识别账单绑定；可调整金额和日期。如需更换商家，请归档后新建。</p>
               {% endif %}
             </div>
             <div class="product-field">
-              <label for="rc-edit-amount-{{ item.public_id }}">每月金额（{{ currency_input.currency_code }} · {{ currency_input.currency_symbol }}，{{ currency_input.amount_input_hint }}）</label>
-              <input class="product-input" id="rc-edit-amount-{{ item.public_id }}" type="number" name="baseline_amount_yuan"
-                     step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}"
-                     inputmode="{{ currency_input.inputmode }}" value="{{ edit_form.baseline_amount_yuan }}" required>
+              <label for="rc-edit-amount-{{ edit_dom_id }}">每月金额（{{ edit_input.currency_code or '币种待确认' }}，{{ edit_input.amount_input_hint }}）</label>
+              <input class="product-input" id="rc-edit-amount-{{ edit_dom_id }}" type="{{ 'number' if edit_input else 'text' }}" name="baseline_amount_yuan"
+                     step="{{ edit_input.amount_step or 'any' }}" min="{{ edit_input.positive_amount_min }}"
+                     inputmode="{{ edit_input.inputmode }}" value="{{ edit_form.baseline_amount_yuan }}" required>
             </div>
             <div class="product-field">
-              <label for="rc-edit-date-{{ item.public_id }}">下次预计日期</label>
-              <input class="product-input" id="rc-edit-date-{{ item.public_id }}" type="date" name="next_expected_date"
+              <label for="rc-edit-date-{{ edit_dom_id }}">下次预计日期</label>
+              <input class="product-input" id="rc-edit-date-{{ edit_dom_id }}" type="date" name="next_expected_date"
                      value="{{ edit_form.next_expected_date }}">
               <p class="hint">清空表示不提醒——不留日期就不会提醒。</p>
             </div>
@@ -180,7 +185,9 @@
           <p class="hint">填写仍保留。这条固定支出已归档，恢复后才能继续修改。</p>
           {% else %}
           <div class="budget-actions">
-            {% if edit_form.review_required %}
+            {% if edit_form.currency_conflict %}
+            <p class="hint">原填写和币种已保留，尚未保存。请在“编辑当前记录”中核对金额；原填写不会自动套用到另一币种。</p>
+            {% elif edit_form.review_required %}
             <button class="product-button" type="submit" name="review_latest" value="true" formnovalidate>核对已保存记录，保留填写继续</button>
             {% endif %}
             <button class="product-button product-button--primary" type="submit"{% if edit_form.review_required %} disabled{% endif %}>保存修改</button>
@@ -188,6 +195,7 @@
           {% endif %}
         </form>
       </details>
+      {% endfor %}
       {% endif %}
     </li>
     {% endfor %}
@@ -215,6 +223,7 @@
   <form method="post" action="/web/recurring/confirm-candidate" class="budget-form">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <input type="hidden" name="amount_cents" value="{{ review.amount_cents }}">
+    <input type="hidden" name="home_currency_code" value="{{ review.home_currency_code }}">
     {{ csrf_field|safe }}
     <div class="product-form-grid">
       <div class="product-field">
@@ -223,7 +232,7 @@
       </div>
       <div class="product-field">
         <label for="rc-review-amount">每月金额（观察值）</label>
-        <input class="product-input" id="rc-review-amount" type="text" value="{{ home_currency_symbol }}{{ review.amount_yuan }}" readonly>
+        <input class="product-input" id="rc-review-amount" type="text" value="{{ review.home_currency_code }} {{ review.amount_yuan }}" readonly>
       </div>
       <div class="product-field">
         <label for="rc-review-date">下次预计日期</label>
@@ -242,7 +251,9 @@
     <p class="product-panel-subtitle">手动记下每月固定开销，只做提醒。</p>
   </div>
   <form method="post" action="/web/recurring/create" class="budget-form">
+    {% set create_input = create_form.currency_input %}
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <input type="hidden" name="home_currency_code" value="{{ create_form.home_currency_code or '' }}">
     <input type="hidden" name="idempotency_key" value="{{ create_form.idempotency_key }}">
     {{ csrf_field|safe }}
     <div class="product-form-grid">
@@ -252,10 +263,10 @@
                placeholder="房租、视频会员、保险…" value="{{ create_form.merchant }}" required>
       </div>
       <div class="product-field">
-        <label for="rc-add-amount">每月金额（{{ currency_input.currency_code }} · {{ currency_input.currency_symbol }}，{{ currency_input.amount_input_hint }}）</label>
-        <input class="product-input" id="rc-add-amount" type="number" name="baseline_amount_yuan"
-               step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}"
-               inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_example }}" value="{{ create_form.baseline_amount_yuan }}" required>
+        <label for="rc-add-amount">每月金额（{{ create_input.currency_code or '币种待确认' }}，{{ create_input.amount_input_hint }}）</label>
+        <input class="product-input" id="rc-add-amount" type="{{ 'number' if create_input else 'text' }}" name="baseline_amount_yuan"
+               step="{{ create_input.amount_step or 'any' }}" min="{{ create_input.positive_amount_min }}"
+               inputmode="{{ create_input.inputmode }}" placeholder="{{ create_input.amount_example }}" value="{{ create_form.baseline_amount_yuan }}" required>
       </div>
       <div class="product-field">
         <label for="rc-add-date">下次预计日期</label>
@@ -264,7 +275,9 @@
       </div>
     </div>
     <div class="budget-actions">
-      {% if create_form.review_required %}
+      {% if create_form.currency_conflict %}
+      <p class="hint">原填写已保留，但缺少可确认的币种。请复制原填写，刷新页面后按显示的币种重新核对金额。</p>
+      {% elif create_form.review_required %}
       <button class="product-button" type="submit" name="review_latest" value="true" formnovalidate>保留填写，准备重新保存</button>
       {% endif %}
       <button class="product-button product-button--primary" type="submit"{% if create_form.review_required %} disabled{% endif %}>保存固定支出</button>
@@ -292,7 +305,7 @@
         {% if candidate.reason %}<div class="recurring-row-meta">{{ candidate.reason }}</div>{% endif %}
       </div>
       <div class="recurring-row-amount">
-        <strong>{{ home_currency_symbol }}{{ candidate.amount_yuan }}<small>/月</small></strong>
+        <strong>{{ candidate.home_currency_code }} {{ candidate.amount_yuan }}<small>/月</small></strong>
         <span>观察金额</span>
       </div>
       <div class="recurring-row-actions">

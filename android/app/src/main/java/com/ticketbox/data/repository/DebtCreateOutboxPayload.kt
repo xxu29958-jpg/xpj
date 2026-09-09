@@ -1,5 +1,6 @@
 package com.ticketbox.data.repository
 
+import com.squareup.moshi.Json
 import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.JsonDataException
@@ -18,7 +19,34 @@ data class DebtCreateOutboxPayload(
     val homeCurrencyCode: String,
     val originSessionGeneration: String,
     val originBindingRevision: String,
-    val request: DebtCreateRequestDto,
+    val request: DebtCreateOutboxRequest,
+)
+
+/** The stored v1 shape is independent of subsequent HTTP protocol fields. */
+@JsonClass(generateAdapter = true)
+data class DebtCreateOutboxRequest(
+    val direction: String,
+    @param:Json(name = "counterparty_type") val counterpartyType: String,
+    @param:Json(name = "counterparty_label") val counterpartyLabel: String?,
+    @param:Json(name = "principal_amount_cents") val principalAmountCents: Long,
+    @param:Json(name = "source_type") val sourceType: String = "manual",
+    @param:Json(name = "debt_kind") val debtKind: String = "unspecified",
+    @param:Json(name = "installment_count") val installmentCount: Long? = null,
+    @param:Json(name = "installment_period_months") val installmentPeriodMonths: Long? = null,
+    val note: String? = null,
+)
+
+internal fun DebtCreateOutboxPayload.toCreateRequest(): DebtCreateRequestDto = DebtCreateRequestDto(
+    direction = request.direction,
+    homeCurrencyCode = homeCurrencyCode,
+    counterpartyType = request.counterpartyType,
+    counterpartyLabel = request.counterpartyLabel,
+    principalAmountCents = request.principalAmountCents,
+    sourceType = request.sourceType,
+    debtKind = request.debtKind,
+    installmentCount = request.installmentCount,
+    installmentPeriodMonths = request.installmentPeriodMonths,
+    note = request.note,
 )
 
 enum class DebtCreationPendingState { Waiting, Sending, NeedsAttention, Unsupported }

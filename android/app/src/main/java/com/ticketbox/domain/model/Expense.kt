@@ -136,11 +136,7 @@ data class ExpenseDraft(
     val tags: String?,
     val valueScore: Int?,
     val regretScore: Int?,
-    /**
-     * 提交时 VM 已解析确认的账本币种（PR#255 R15b-1）：离线手记的乐观本地行按它落
-     * `homeCurrencyCode`（旧码恒 CNY 兜底撒谎）。不上 wire（`toManualCreateRequest` 不读）；
-     * 仅乐观投影/本地映射用。null = 非手记路径构造，映射维持 [FxContract.HomeCurrency] 兜底。
-     */
+    /** Captured when the manual form opens; shared by its wire request and optimistic projection. */
     val ledgerHomeCurrency: CurrencyCode? = null,
 )
 
@@ -254,28 +250,21 @@ data class NotificationDraft(
 
 data class CategoryStats(
     val category: String,
-    val amountCents: Long,
+    val amountCents: Long?,
     val count: Int,
 )
 
 data class TagStats(
     val tag: String,
-    val amountCents: Long,
+    val amountCents: Long?,
     val count: Int,
 )
 
-data class CategoryInsight(
-    val topCategory: String,
-    val topAmountCents: Long,
-    val topSharePercent: Int,
-    val averagePerExpenseCents: Long,
-    val categoryCount: Int,
-    val isConcentrated: Boolean,
-)
-
 data class MonthlyStats(
+    val homeCurrencyCode: String,
+    val missingRates: List<CurrencyProjectionGap> = emptyList(),
     val month: String,
-    val totalAmountCents: Long,
+    val totalAmountCents: Long?,
     val count: Int,
     val byCategory: List<CategoryStats>,
     val byTag: List<TagStats> = emptyList(),
@@ -284,7 +273,7 @@ data class MonthlyStats(
 data class FrequentMerchant(
     val merchant: String,
     val count: Int,
-    val amountCents: Long = 0L,
+    val amountCents: Long?,
 )
 
 /**
@@ -305,6 +294,7 @@ data class RecurringCandidate(
     val lastSeenAt: String?,
     val confidence: String,
     val reason: String,
+    val homeCurrencyCode: String? = null,
 )
 
 data class DataQualitySummary(
@@ -347,14 +337,17 @@ data class BudgetProgress(
     val progress: Float,
     val percent: Long,
     val overBudget: Boolean,
+    val homeCurrencyCode: String? = null,
 )
 
 data class LifestyleStats(
+    val homeCurrencyCode: String,
+    val missingRates: List<CurrencyProjectionGap> = emptyList(),
     val month: String,
-    val aiSubscriptionAmountCents: Long,
-    val digitalAmountCents: Long,
+    val aiSubscriptionAmountCents: Long?,
+    val digitalAmountCents: Long?,
     val maxExpense: Expense?,
-    val recent7DaysAmountCents: Long,
+    val recent7DaysAmountCents: Long?,
     val frequentMerchants: List<FrequentMerchant>,
     val bestValueExpenses: List<Expense> = emptyList(),
     val mostRegrettedExpenses: List<Expense> = emptyList(),
@@ -373,6 +366,7 @@ data class CategoryRule(
     val createdAt: String,
     val updatedAt: String,
     val rowVersion: Long,
+    val homeCurrencyCode: String? = null,
 ) {
     val hasConditions: Boolean =
         amountMinCents != null ||
@@ -460,6 +454,8 @@ data class RuleApplyConfirmedResult(
     val scanLimitReached: Boolean,
     val scanLimit: Int,
     val previewToken: String?,
+    val unavailableCount: Int = 0,
+    val missingCurrencyCodes: List<String> = emptyList(),
 )
 
 class ProtectedImage(

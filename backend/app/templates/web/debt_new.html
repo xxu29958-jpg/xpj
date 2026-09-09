@@ -23,6 +23,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
+    <input type="hidden" name="home_currency_code" value="{{ form_home_currency_code }}">
 
     <fieldset class="debt-choice-group">
       <legend>谁欠谁</legend>
@@ -46,14 +47,14 @@
         <label for="debt-new-currency">币种</label>
         <select id="debt-new-currency" class="product-input" name="currency_code">
           {% for code in currency_options %}
-          <option value="{{ code }}"{% if loop.first or values.currency_code == code %} selected{% endif %}>{{ code }}</option>
+          <option value="{{ code }}"{% if selected_currency_code == code %} selected{% endif %}>{{ code }}</option>
           {% endfor %}
         </select>
       </div>
       <div class="product-field">
-        <label for="debt-new-amount">金额（{{ currency_input.currency_code }}，{{ currency_input.amount_input_hint }}）</label>
-        <input id="debt-new-amount" class="product-input" name="amount_major" type="number" step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" value="{{ values.amount_major or '' }}" required>
-        <p class="hint">外币按所选币种记账，服务端按发生日冻结汇率。</p>
+        <label for="debt-new-amount">金额（所选币种）</label>
+        <input id="debt-new-amount" class="product-input" name="amount_major" type="text" inputmode="decimal" placeholder="输入金额" value="{{ values.amount_major or '' }}" required>
+        <p class="hint">保留原币金额，按发生日折算为 {{ form_home_currency_code }}。</p>
       </div>
       <div class="product-field">
         <label for="debt-new-event-time">发生日期</label>

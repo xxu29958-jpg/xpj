@@ -70,15 +70,17 @@ def _binding_row() -> dict[str, object]:
         )
 
 
-def _budget_insert_sql() -> str:
-    return """
+def _budget_insert_sql(*, captured_currency: bool = False) -> str:
+    currency_column = ", home_currency_code" if captured_currency else ""
+    currency_value = ", 'CNY'" if captured_currency else ""
+    return f"""
         INSERT INTO budgets (
             public_id, tenant_id, month, total_amount_cents,
             non_monthly_amount_cents, rollover_amount_cents,
-            excluded_categories, created_at, updated_at, row_version
+            excluded_categories, created_at, updated_at, row_version{currency_column}
         ) VALUES (
             :public_id, 'owner', '2026-08', 100,
-            0, 0, '[]', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1
+            0, 0, '[]', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1{currency_value}
         )
     """
 
@@ -241,7 +243,7 @@ def test_writer_fence_requires_active_revision_proof() -> None:
         ),
     ):
         connection.execute(
-            text(_budget_insert_sql()),
+            text(_budget_insert_sql(captured_currency=True)),
             {"public_id": str(uuid4())},
         )
 
@@ -255,14 +257,14 @@ def test_writer_fence_requires_active_revision_proof() -> None:
         ),
     ):
         connection.execute(
-            text(_budget_insert_sql()),
+            text(_budget_insert_sql(captured_currency=True)),
             {"public_id": str(uuid4())},
         )
 
     with engine.begin() as connection:
         connection.execute(text("SELECT set_config('xpj.currency_writer', '1:1', true)"))
         connection.execute(
-            text(_budget_insert_sql()),
+            text(_budget_insert_sql(captured_currency=True)),
             {"public_id": str(uuid4())},
         )
 

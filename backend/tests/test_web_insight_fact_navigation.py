@@ -37,20 +37,27 @@ def test_report_top_rows_link_to_exact_facts_even_when_display_fields_match(
 
     def query_rows(actual_db, **kwargs):
         assert actual_db is db
-        assert kwargs == {"tenant_id": "family", "month": "2026-05", "timezone_name": "Asia/Shanghai"}
-        return expenses
+        assert kwargs == {"tenant_id": "family", "month": "2026-05", "timezone_name": "Asia/Shanghai",
+            "home_currency_code": "JPY"}
+        return SimpleNamespace(home_currency_code="JPY", missing_rates=(), items=[
+            SimpleNamespace(expense=expense, amount_cents=2700) for expense in expenses])
 
     monkeypatch.setattr(web_modules.reports, "top_expenses_for_month", query_rows)
     rows = web_modules.reports._top_expenses_view(
         db, tenant_id="family", month="2026-05", timezone_name="Asia/Shanghai",
-        presentation_currency_code="CNY",
-    )
+        presentation_currency_code="JPY", return_context=web_modules.returns.ExpenseReturnContext(
+            return_to="reports", return_month="2026-05", return_home_currency_code="JPY",
+            return_granularity="week", return_ranking_metric="count", return_merchant_category="餐饮"),
+    )["top_expenses"]
 
     assert len(rows) == 2
-    assert [row["edit_href"] for row in rows] == [
-        f"/web/expenses/{expense.id}/edit?ledger_id=family&return_to=reports&return_month=2026-05"
-        for expense in expenses
-    ]
+    for expense, row in zip(expenses, rows, strict=True):
+        target = urlsplit(row["edit_href"])
+        assert target.path == f"/web/expenses/{expense.id}/edit"
+        assert row["amount_yuan"] == "2700"
+        assert parse_qs(target.query) == {"ledger_id": ["family"], "return_to": ["reports"],
+            "return_month": ["2026-05"], "return_home_currency_code": ["JPY"], "return_granularity": ["week"],
+            "return_ranking_metric": ["count"], "return_merchant_category": ["餐饮"]}
 
 
 def test_report_month_survives_fact_correction_and_return(web_modules: SimpleNamespace) -> None:
@@ -138,7 +145,7 @@ def test_uncategorized_pagination_and_fact_return_keep_the_all_month_scope(monke
         "tenant_id": "family", "page": 2, "page_size": 50, "month": None,
         "tag": None, "timezone_name": "UTC", "missing_category": True,
     }
-    assert page == ("", "CNY", [], 51, 2, "ledger_id=family&filter=missing_category", 2)
+    assert page == ("", "CNY", [], 51, 2, "ledger_id=family&filter=missing_category&home_currency_code=CNY", 2)
     context = web_app._confirmed_edit_query(
         "family", effective_month="", page=2, tag=None, filter="missing_category",
     )
@@ -186,11 +193,12 @@ def test_clear_tag_links_keep_only_the_current_month_or_all_month_scope(filter, 
         filter=filter, month=month, selected_month=month, selected_ledger_id="family",
         tag="Shared", can_write=False, total=0, expenses=[], flash_message=None,
         home_currency_symbol="¥", month_total_amount_yuan="0.00", month_total_count=0,
-        by_day=[], source_breakdown=[],
+        by_day=[], source_breakdown=[], calendar_max=0, home_currency_code="JPY", missing_rates=[],
+        money_task={"ledger_id": "family", "month": month, "home_currency_code": "JPY", "return_to": "confirmed"},
     )
     hrefs = re.findall(r'<a[^>]*href="([^"]+)"[^>]*>清除[^<]*</a>', body)
     assert len(hrefs) == 2  # Both the active-filter bar and the empty-state exit.
     for href in hrefs:
         target = urlsplit(unescape(href))
         assert target.path == "/web/confirmed"
-        assert parse_qs(target.query, keep_blank_values=True) == {"ledger_id": ["family"], **scope}
+        assert parse_qs(target.query, keep_blank_values=True) == {"ledger_id": ["family"], "home_currency_code": ["JPY"], **scope}

@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 from api_contract_helpers import web_confirm_expense, web_save_expense
 from fastapi.testclient import TestClient
+
+from tests._runtime_protocol import negotiated_headers
 
 
 def _create_pending(client: TestClient, *, identity) -> int:
@@ -41,8 +45,8 @@ def test_web_edit_save_updates_amount(web_client: TestClient, *, identity) -> No
 def test_web_correction_preserves_foreign_currency_fields(web_client: TestClient, *, identity) -> None:
     rate = web_client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=identity.app_headers,
-        json={"currency_code": "USD", "rate_date": "2026-05-04", "rate_to_cny": "7.0000"},
+        headers={**negotiated_headers(web_client, identity.app_headers), "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": 0, "home_currency_code": "CNY", "currency_code": "USD", "rate_date": "2026-05-04", "rate_to_cny": "7.0000"},
     )
     assert rate.status_code == 200, rate.json()
     created = web_client.post(

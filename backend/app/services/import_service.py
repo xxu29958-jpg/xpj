@@ -1,18 +1,14 @@
-"""CSV import service (v0.4-alpha3 slice 2 / PR17).
-
-Parses a small CSV (≤500 rows) into a preview model and, on confirm,
-writes them as ``status='pending'`` rows so the user can review them via
-``/web/pending`` before they hit the ledger. No image, no OCR — purely
-manual data entry shaped like the existing export schema.
+"""Parse CSV money and write pending expenses through the shared FX owner.
+The durable batch service reuses this parser for larger, paged imports.
 
 Accepted columns (case-insensitive, BOM-aware):
 
 * ``amount_yuan``, ``amount_cents`` or ``amount_home_major`` — one required.
   ``amount_yuan`` is the published legacy CSV compatibility column and always
-  means CNY with two fraction digits. It is accepted only by CNY installations.
+  means CNY with two fraction digits. It is accepted only for CNY rows.
   Currency-aware producers must carry exact ``amount_cents`` plus an explicit
-  matching ``home_currency_code``; ``amount_home_major`` is cross-checked using
-  that currency's exponent.
+  ``home_currency_code`` for each row; ``amount_home_major`` is cross-checked
+  using that currency's exponent, independently of the current default.
 * ``merchant`` — optional
 * ``category`` — optional, defaults to ``"其他"``
 * ``note`` — optional
@@ -44,11 +40,11 @@ from app.errors import AppError
 from app.models import Expense
 from app.money_contract import MoneySign, ensure_optional_money_minor
 from app.services.category_service import normalize_category
-from app.services.currency_binding_service import assert_currency_binding_consistent
+from app.services.currency_binding_service import resolve_write_capability
+from app.services.currency_common import supported_currency_codes
 from app.services.exchange_rate_service import (
     BASE_CURRENCY_CODE,
     apply_currency_payload,
-    home_currency_code,
     normalize_currency_code,
 )
 from app.services.import_money import (
@@ -74,9 +70,10 @@ DEFAULT_SOURCE = "CSV导入"
 @dataclass
 class ParsedRow:
     line_number: int
+    home_currency_code: str
+    original_currency_code: str
     amount_cents: int | None = None
     amount_display: str = ""
-    original_currency_code: str = BASE_CURRENCY_CODE
     original_amount_minor: int | None = None
     exchange_rate_to_cny: Decimal | None = None
     exchange_rate_date: date | None = None
@@ -145,7 +142,7 @@ def _parse_optional_date(raw: str) -> tuple[date | None, str | None]:
         return None, "exchange_rate_date 不是合法日期"
 
 
-def parse_csv_preview(content: str, timezone_name: str | None = None) -> CsvPreview:
+def parse_csv_preview(content: str, timezone_name: str | None = None, *, home_currency: str) -> CsvPreview:
     """Parse ``content`` into a preview structure.
 
     Caller is responsible for applying any size/encoding limits before
@@ -176,7 +173,7 @@ def parse_csv_preview(content: str, timezone_name: str | None = None) -> CsvPrev
         _assert_cell(cell)
     headers = [h.strip().lstrip("\ufeff").lower() for h in header_row]
     validate_csv_headers(headers)
-    parsed_home_currency = home_currency_code()
+    parsed_home_currency = home_currency
     preview = CsvPreview(headers=headers)
     try:
         for index, row in enumerate(reader, start=2):  # line 1 was the header
@@ -375,6 +372,9 @@ def parse_csv_row(
     home_currency: str,
 ) -> ParsedRow:
     cells = dict(zip(headers, row + [""] * max(0, len(headers) - len(row)), strict=False))
+    declared_home = cells.get("home_currency_code", "").strip().upper()
+    if declared_home in supported_currency_codes():
+        home_currency = declared_home
     (
         amount_cents,
         amount_display,
@@ -419,6 +419,7 @@ def parse_csv_row(
     )
     return ParsedRow(
         line_number=line_number,
+        home_currency_code=home_currency,
         amount_cents=fx.amount_cents,
         amount_display=fx.amount_display,
         original_currency_code=fx.original_currency_code,
@@ -460,7 +461,7 @@ def import_rows(
             label="csv_import.original_amount_minor",
         )
     # Legacy import is one transaction; the database fence remains the final guard.
-    assert_currency_binding_consistent(db, home_currency_code())
+    resolve_write_capability(db)
     inserted = 0
     now = now_utc()
     created: list[Expense] = []
@@ -483,9 +484,10 @@ def import_rows(
         apply_currency_payload(
             db,
             tenant_id=tenant_id,
+            home_currency_code=row.home_currency_code,
             expense=expense,
             payload=row,
-            amount_was_explicit=row.original_currency_code == home_currency_code() and row.amount_cents is not None,
+            amount_was_explicit=row.original_currency_code == row.home_currency_code and row.amount_cents is not None,
         )
         db.add(expense)
         created.append(expense)

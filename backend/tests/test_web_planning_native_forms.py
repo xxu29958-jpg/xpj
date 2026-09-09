@@ -1,5 +1,7 @@
 """Native Planning forms must reach existing Owners with their rendered scope/tokens."""
 
+from uuid import uuid4
+
 import pytest
 from _web_native_form_support import hidden_post_forms
 from fastapi.testclient import TestClient
@@ -65,8 +67,8 @@ def test_native_create_preserves_selected_ledger_and_money(
 
 def test_native_income_archive_and_restore_preserve_scope_and_occ(web_client, identity) -> None:
     created = web_client.post(
-        "/api/income-plans", headers=negotiated_headers(web_client, identity.gray_app_headers),
-        json={"intent_month": "2026-05", "label": "生命周期收入", "source_type": "bonus", "amount_cents": 68000, "pay_day": 1},
+        "/api/income-plans", headers={**negotiated_headers(web_client, identity.gray_app_headers), "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "intent_month": "2026-05", "label": "生命周期收入", "source_type": "bonus", "amount_cents": 68000, "pay_day": 1},
     )
     assert created.status_code == 201, created.text
     public_id = created.json()["public_id"]

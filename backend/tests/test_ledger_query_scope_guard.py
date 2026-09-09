@@ -56,6 +56,64 @@ class QuerySite:
 
 EXEMPTIONS: tuple[ScopeExemption, ...] = (
     ScopeExemption(
+        path="services/currency_adoption_service.py",
+        function="_adopt_in_transaction",
+        model="Goal",
+        occurrences=1,
+        reason=(
+            "Installation Owner adoption locks the whole currency evidence inventory and fills only "
+            "unknown spending-target currencies across all ledgers in one audited transaction. "
+            "A request-ledger filter would strand other ledgers; targets and row versions are preserved."
+        ),
+    ),
+    ScopeExemption(
+        path="services/currency_adoption_service.py",
+        function="_adopt_in_transaction",
+        model="CategoryRule",
+        occurrences=1,
+        reason=(
+            "Installation Owner adoption locks all evidence and fills only unknown monetary-rule "
+            "currencies across the installation in the audited binding transaction. Pure keyword "
+            "rules, captured currencies, threshold integers and row versions are preserved."
+        ),
+    ),
+    ScopeExemption(
+        path="services/currency_adoption_service.py",
+        function="_adopt_in_transaction",
+        model="RecurringItem",
+        occurrences=1,
+        reason=(
+            "Installation Owner adoption locks the full currency evidence inventory "
+            "and fills only unknown historical fixed-expense currencies in the same "
+            "audited transaction. Request-ledger scoping would strand other ledgers. "
+            "Amounts, occurrence relationships and row versions are preserved."
+        ),
+    ),
+    ScopeExemption(
+        path="services/currency_adoption_service.py",
+        function="_adopt_in_transaction",
+        model="Budget",
+        occurrences=1,
+        reason=(
+            "Installation Owner adoption locks all currency evidence and fills only "
+            "unknown historical budget currencies across the installation in the same "
+            "audited transaction; limiting this to the request ledger would strand "
+            "other ledgers with unadopted money. Amounts and row versions are preserved."
+        ),
+    ),
+    ScopeExemption(
+        path="services/currency_adoption_service.py",
+        function="_adopt_in_transaction",
+        model="CsvImportRow",
+        occurrences=1,
+        reason=(
+            "Installation Owner adoption locks the complete currency evidence inventory "
+            "and fills only unknown historical row currencies across every ledger in "
+            "the same audited binding transaction; request-ledger scoping would leave "
+            "other ledgers' staged money without its adopted currency."
+        ),
+    ),
+    ScopeExemption(
         path="database/_dataset_backup_snapshot.py",
         function="read_original_reference_rows",
         model="Expense",

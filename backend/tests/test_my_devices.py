@@ -24,11 +24,12 @@ from app.models import (
 )
 from app.services.identity_service import hash_pairing_code, hash_secret, new_session_token
 from app.services.time_service import now_utc
+from tests._runtime_protocol import current_protocol_headers
 from tests.pairing_test_support import pairing_payload
 
 
 def _auth_headers(token: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {token}"}
+    return current_protocol_headers({"Authorization": f"Bearer {token}"})
 
 
 def _seed_viewer_token(ledger_id: str = "owner") -> str:
@@ -242,7 +243,7 @@ def test_delete_revoked_device_preserves_expense_revision_actor_snapshot(
         "/api/expenses/manual",
         headers=_auth_headers(spare_token),
         json={
-            "amount_cents": 1880,
+            "home_currency_code": "CNY", "amount_cents": 1880,
             "merchant": "Revision Device Snapshot",
             "category": "Test",
             "expense_time": "2026-08-30T08:00:00Z",
@@ -412,7 +413,7 @@ def test_my_device_routes_require_auth(client: TestClient, *, identity) -> None:
 
 
 def test_viewer_can_manage_only_their_own_devices(client: TestClient, *, identity) -> None:
-    viewer = {"Authorization": f"Bearer {_seed_viewer_token('owner')}"}
+    viewer = current_protocol_headers({"Authorization": f"Bearer {_seed_viewer_token('owner')}"})
     listed = client.get("/api/ledgers/owner/devices", headers=viewer)
     assert listed.status_code == 200, listed.text
     devices = listed.json()["devices"]

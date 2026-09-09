@@ -24,6 +24,7 @@ from app.database import SessionLocal
 from app.models import Account, AuthToken, Device, Expense
 from app.services.expense_query import local_ref_storage_key
 from app.services.identity_service import hash_secret, new_session_token
+from tests._runtime_protocol import current_protocol_headers
 
 if TYPE_CHECKING:
     from tests._infra.identity import TestIdentity
@@ -35,6 +36,7 @@ def _create_local_expense(
     **overrides,
 ) -> dict:
     body = {
+        "home_currency_code": "CNY",
         "amount_cents": 1500,
         "merchant": "本地引用",
         "category": "餐饮",
@@ -295,7 +297,7 @@ def test_cross_device_local_ref_miss_returns_404(
     different ``device_id``) cannot reach device A's not-yet-synced local ref."""
     _create_local_expense(client, identity.app_headers, client_ref="device-a-ref")
     device_b_token = _second_owner_device_token()
-    device_b_headers = {"Authorization": f"Bearer {device_b_token}"}
+    device_b_headers = current_protocol_headers({"Authorization": f"Bearer {device_b_token}"})
 
     resp = _correct(
         client, "local:device-a-ref", version=0, key=str(uuid4()),

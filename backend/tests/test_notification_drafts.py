@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
 from app.config import get_settings
 from app.database import SessionLocal
 from app.models import Expense, LedgerMember
+from tests._infra.currency import activate_test_currency_authority
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
@@ -243,9 +245,13 @@ def test_notification_draft_viewer_is_read_only(client: TestClient, *, identity)
     assert response.json()["message"] == VIEWER_WRITE_MESSAGE
 
 
+@pytest.mark.currency_binding_unbound
 def test_notification_draft_rejected_on_non_cny_without_original_fields(
     client: TestClient, monkeypatch, *, identity,
 ) -> None:
+    with SessionLocal() as db:
+        activate_test_currency_authority(db, "JPY")
+        db.commit()
     # PR#255 R11：expense 通知草稿与 repayment 同洞 —— 解析器按 CNY 分声明 amount_cents
     # （无 FX 路径），非 CNY 安装按 home minor 盖章即 100×；无任何 original 币种/金额
     # 字段的捕获整体拒绝（跨币种捕获契约挂账 D9）。CNY 放行见既有 capture 钉。
@@ -264,11 +270,10 @@ def test_notification_draft_rejected_on_non_cny_without_original_fields(
         get_settings.cache_clear()
 
 
-def test_notification_draft_with_original_fields_still_rejects_configuration_drift(
+def test_notification_draft_preserves_foreign_original_despite_environment(
     client: TestClient, monkeypatch, *, identity,
 ) -> None:
-    # 显式 original 字段只解决捕获载荷歧义，不能覆盖已经持久化的 CNY 安装权威。
-    # C03 的版本化采用流程完成前，运行环境漂到 JPY 必须拒绝且不落草稿。
+    # 原币事实为 JPY，本位币由已确认的 CNY 绑定决定，环境变量不能重解释两者。
     monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
     get_settings.cache_clear()
     try:
@@ -281,9 +286,16 @@ def test_notification_draft_with_original_fields_still_rejects_configuration_dri
             headers=identity.app_headers,
             json=payload,
         )
-        assert response.status_code == 409, response.json()
-        assert response.json()["error"] == "currency_binding_configuration_drift"
-        assert _draft_count() == 0
+        assert response.status_code == 200, response.json()
+        assert _draft_count() == 1
+        with SessionLocal() as db:
+            expense = db.get(Expense, response.json()["id"])
+            assert expense is not None
+            assert expense.home_currency_code == "CNY"
+            assert expense.original_currency_code == "JPY"
+            assert expense.original_amount_minor == 1200
+            assert expense.fx_status == "pending"
+            assert expense.amount_cents is None
     finally:
         monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
         get_settings.cache_clear()

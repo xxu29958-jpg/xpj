@@ -6,6 +6,7 @@ import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
@@ -15,14 +16,58 @@ import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.OutboxWriteBlock
 import com.ticketbox.data.repository.PendingExpenseCorrection
 import com.ticketbox.data.repository.PendingDebtAdjustment
+import com.ticketbox.data.repository.PendingIncomePlanSubmission
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.OutboxStatusUiState
 
 @Composable
-internal fun SyncStatusOriginalIntentSummary(row: OutboxRow, state: OutboxStatusUiState) {
-    state.recurringOccurrences[row.id]?.let { com.ticketbox.ui.screens.recurring.RecurringOccurrenceIntentSummary(it) }
-    state.incomeEdits[row.id]?.let { com.ticketbox.ui.screens.IncomePlanIntentSummary(it) }
+internal fun SyncStatusOriginalIntentSummary(row: OutboxRow, state: OutboxStatusUiState, actions: SyncStatusActions) {
+    state.manualRates[row.id]?.let { original ->
+        com.ticketbox.ui.screens.plan.ManualRateSubmissionSummary(original)
+        TextButton(onClick = { actions.onOpenRateSubmission(row.id) }) { Text(stringResource(R.string.advice_rate_submission_open)) }
+    }
+    state.categoryRules[row.id]?.let { original ->
+        com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleSubmissionSummary(original)
+        TextButton(onClick = { actions.onOpenRuleSubmission(row.id) }) {
+            Text(stringResource(R.string.category_rule_submission_open))
+        }
+    }
+    state.goalEdits[row.id]?.let { original ->
+        original.request?.let { request ->
+            com.ticketbox.ui.screens.plan.SpendingGoalOriginalSummary(request.name, request.month,
+                request.targetAmountCents, request.homeCurrencyCode)
+        }
+        row.targetId.takeIf { it.startsWith("goal:") && it.length > 5 }?.removePrefix("goal:")?.let { publicId ->
+            TextButton(onClick = { actions.onOpenGoalEdit(publicId) }) { Text(stringResource(R.string.goal_submission_open)) }
+        }
+    }
+    state.goalCreations[row.id]?.let { original ->
+        com.ticketbox.ui.screens.GoalCreationIntentSummary(original)
+        TextButton(onClick = { actions.onOpenGoalCreation(row.id) }) { Text(stringResource(R.string.goal_creation_open)) }
+    }
+    state.recurringItems[row.id]?.let { original ->
+        com.ticketbox.ui.screens.recurring.RecurringManualIntentSummary(original)
+        TextButton(onClick = actions.onOpenRecurring) { Text(stringResource(R.string.recurring_original_open)) }
+    }
+    state.recurringOccurrences[row.id]?.let {
+        com.ticketbox.ui.screens.recurring.RecurringOccurrenceIntentSummary(it)
+        TextButton(onClick = actions.onOpenRecurring) { Text(stringResource(R.string.recurring_original_open)) }
+    }
+    state.incomeSubmissions[row.id]?.let { original ->
+        com.ticketbox.ui.screens.IncomePlanIntentSummary(original)
+        TextButton(onClick = { actions.onOpenIncomeSubmission(row.id) }) {
+            Text(stringResource(R.string.income_plan_submission_open))
+        }
+    }
     state.debtAdjustments[row.id]?.let { com.ticketbox.ui.screens.DebtAdjustmentIntentSummary(it) }
+    state.budgetSaves[row.id]?.let { pending ->
+        com.ticketbox.ui.screens.budget.BudgetSaveIntentSummary(pending)
+        if (pending.hasSupportedIntent) {
+            TextButton(onClick = { actions.onOpenBudget(requireNotNull(pending.intent).month) }) {
+                Text(stringResource(R.string.budget_save_open_month))
+            }
+        }
+    }
 }
 
 internal data class SyncStatusOverview(
@@ -43,21 +88,26 @@ internal fun syncStatusOverview(
     status: OutboxStatus,
     corrections: List<PendingExpenseCorrection>,
     adjustments: List<PendingDebtAdjustment>,
+    incomeSubmissions: List<PendingIncomePlanSubmission> = emptyList(),
+    manualRates: List<com.ticketbox.data.repository.PendingManualRateSubmission> = emptyList(),
 ): SyncStatusOverview =
     SyncStatusOverview(
         queuedCount = status.queueDepth.coerceAtLeast(0),
         conflictCount = status.conflicts.size,
         failedCount = status.failed.size,
         quarantinedCount = status.quarantinedCount.coerceAtLeast(0),
-        reviewRequiredCount = corrections.count { !it.delivered && it.row.status == PendingMutationStatus.Done },
+        reviewRequiredCount = corrections.count { !it.delivered && it.row.status == PendingMutationStatus.Done } +
+            incomeSubmissions.count { it.requiresReview } + manualRates.count { it.row.status == PendingMutationStatus.Done && !it.isConfirmed },
         refreshRequiredCount = corrections.count { it.refreshRequired },
         stoppedCount = adjustments.count { it.row.status == PendingMutationStatus.Abandoned },
         writeBlock = status.writeBlock,
     )
 
 @Composable
-internal fun SyncStatusOverviewSection(status: OutboxStatus, corrections: List<PendingExpenseCorrection>, adjustments: List<PendingDebtAdjustment>) {
-    val overview = syncStatusOverview(status, corrections, adjustments)
+internal fun SyncStatusOverviewSection(status: OutboxStatus, corrections: List<PendingExpenseCorrection>,
+    adjustments: List<PendingDebtAdjustment>, incomeSubmissions: List<PendingIncomePlanSubmission>,
+    manualRates: List<com.ticketbox.data.repository.PendingManualRateSubmission>) {
+    val overview = syncStatusOverview(status, corrections, adjustments, incomeSubmissions, manualRates)
     SettingsSection(
         title = stringResource(R.string.sync_status_overview_title),
         icon = Icons.Filled.Sync,
@@ -94,6 +144,31 @@ internal fun SyncStatusOverviewSection(status: OutboxStatus, corrections: List<P
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
+        }
+    }
+}
+
+@Composable
+internal fun SyncStatusIncomeReviews(state: OutboxStatusUiState, actions: SyncStatusActions) {
+    val reviews = state.incomeSubmissions.values.filter { it.requiresReview }
+    if (reviews.isEmpty()) return
+    SettingsSection(title = stringResource(R.string.sync_status_section_needs_action), icon = Icons.Filled.Sync) {
+        reviews.forEach { original ->
+            Text(stringResource(R.string.income_plan_submission_review))
+            SyncStatusOriginalIntentSummary(original.row, state, actions)
+            TextButton(enabled = state.busyRowId == null, onClick = { actions.onDropFailed(original.row) }) {
+                Text(stringResource(R.string.income_plan_submission_stop_record))
+            }
+        }
+    }
+}
+
+@Composable
+internal fun SyncStatusRateReviews(state: OutboxStatusUiState, actions: SyncStatusActions) {
+    state.manualRates.values.filter { it.row.status == PendingMutationStatus.Done && !it.isConfirmed }.forEach { original ->
+        SyncStatusOriginalIntentSummary(original.row, state, actions)
+        TextButton(onClick = { actions.onDropFailed(original.row) }, enabled = state.busyRowId == null) {
+            Text(stringResource(R.string.advice_rate_stop))
         }
     }
 }
@@ -159,6 +234,10 @@ internal fun friendlyLastError(raw: String?, fallback: String): String {
 }
 
 internal val syncStatusExactErrorMessageResources = mapOf(
+    "manual_create_original_unverified" to R.string.ledger_manual_original_unverified,
+    "budget_currency_conflict" to R.string.budget_save_currency_conflict,
+    "budget_save_unsupported" to R.string.budget_save_unsupported,
+    "budget_save_unverified" to R.string.budget_save_unverified,
     "runtime_version_mismatch" to R.string.sync_status_error_protocol_mismatch,
     "offset_create_requires_review" to R.string.expense_offset_original_requires_review,
     "client_upgrade_required" to R.string.sync_status_error_protocol_mismatch,

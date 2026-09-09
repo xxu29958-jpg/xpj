@@ -1,8 +1,9 @@
 package com.ticketbox.data.repository
 
+import com.squareup.moshi.JsonAdapter
+import com.ticketbox.data.remote.dto.BudgetMonthlyDto
 import com.ticketbox.domain.model.BudgetAdviceResult
 import com.ticketbox.domain.model.BudgetMonthly
-import com.ticketbox.domain.model.BudgetMonthlyUpdate
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,29 +14,24 @@ import kotlinx.coroutines.flow.map
 import java.time.YearMonth
 import java.util.TimeZone
 
-interface BudgetActions {
+interface BudgetActions : BudgetSaveActions, ManualRateActions {
     fun canModifyLedger(): Boolean
     fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?>
 
-    /** Role projection of the active session identity: re-emits on ledger
-     *  switches AND role-only re-projections (viewer↔member↔owner on the same
-     *  ledger). Carries the full role — member→owner matters (the live
-     *  advisor is owner-gated). */
+    /** One full binding/role projection for the advisor, including member-to-owner changes. */
     fun observeLedgerAccessState(): Flow<LedgerAccessState?> = emptyFlow()
     suspend fun monthlyBudget(month: String): Result<BudgetMonthly>
     suspend fun monthlyBudget(
         expectedBinding: LogicalSessionBinding,
         month: String,
     ): Result<BudgetMonthly>
-    suspend fun requestBudgetAdvice(month: String): Result<BudgetAdviceResult>
+    suspend fun requestBudgetAdvice(month: String, homeCurrencyCode: String? = null,
+        expectedBinding: LogicalSessionBinding? = null): Result<BudgetAdviceResult>
+    suspend fun adviceInputs(expectedBinding: LogicalSessionBinding, month: String,
+        homeCurrencyCode: String? = null): Result<com.ticketbox.data.remote.dto.BudgetAdviceInputsDto>
 
-    /** Last successful advice for [month] under the CURRENT logical session
-     *  binding in this process, or null. Process-lifetime, binding-scoped —
-     *  see [BudgetRepository.cachedBudgetAdvice]. Restored only while no
-     *  advice-input write (income plan / recurring / budget / expense) has
-     *  occurred in this process — those write paths call
-     *  [invalidateBudgetAdvice] from their existing refresh points. */
-    suspend fun cachedBudgetAdvice(month: String): BudgetAdviceResult? = null
+    /** Advice is scoped to this process and logical binding; accepted writes invalidate it. */
+    suspend fun cachedBudgetAdvice(month: String, homeCurrencyCode: String? = null): BudgetAdviceResult? = null
 
     /** Drops the process-lifetime advice cache (all bindings). */
     fun invalidateBudgetAdvice() { }
@@ -45,22 +41,24 @@ interface BudgetActions {
      *  was produced under and drops it when a newer generation arrives. */
     val adviceInvalidations: StateFlow<Int>
         get() = MutableStateFlow(0)
-
-    suspend fun saveMonthlyBudget(
-        expectedBinding: LogicalSessionBinding,
-        month: String,
-        update: BudgetMonthlyUpdate,
-    ): Result<BudgetMonthly>
 }
 
 data class LedgerAccessState(
-    val ledgerId: String?,
+    val binding: LogicalSessionBinding,
     val role: String?,
-)
+) {
+    val canModify: Boolean get() = ledgerRoleCanModify(role)
+}
 
 class BudgetRepository(
     private val apiProvider: ApiServiceProvider,
-) : BudgetActions {
+    outbox: OutboxRepository,
+    saveAdapter: JsonAdapter<BudgetSavePayload>,
+    receiptAdapter: JsonAdapter<BudgetMonthlyDto>,
+    rateAdapter: JsonAdapter<ManualRatePayload>,
+    rateReceiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.ExchangeRateDto>,
+) : BudgetActions, BudgetSaveActions by BudgetSaveRepository(apiProvider, outbox, saveAdapter, receiptAdapter),
+    ManualRateActions by ManualExchangeRateRepository(apiProvider, outbox, rateAdapter, rateReceiptAdapter) {
     private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
     private val errorHandler = NetworkErrorHandler(
         serverUrlProvider = { apiProvider.currentSession()?.serverUrl },
@@ -75,27 +73,40 @@ class BudgetRepository(
 
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
 
+    override suspend fun adviceInputs(expectedBinding: LogicalSessionBinding, month: String,
+        homeCurrencyCode: String?): Result<com.ticketbox.data.remote.dto.BudgetAdviceInputsDto> = errorHandler.safeCall {
+        val cleanMonth = validatedBudgetMonth(month).getOrThrow()
+        ledgerRequestGuard.bindExact(expectedBinding).call {
+            it.budgetAdviceInputs(cleanMonth, currentBudgetTimezoneId(), homeCurrencyCode)
+        }.also { result ->
+            if (result.month != cleanMonth || (homeCurrencyCode != null && result.homeCurrencyCode != homeCurrencyCode) ||
+                com.ticketbox.domain.model.CurrencyCode.fromStorageKeyOrNull(result.homeCurrencyCode) == null ||
+                result.missingRates.any { it.homeCurrencyCode != result.homeCurrencyCode }) {
+                throw RepositoryException("budget_advice_inputs_unverified", localFailure = LocalRepositoryFailure.BudgetInputsUnverified)
+            }
+            adviceCallStore.noteAdviceInputSnapshot("budget_inputs:$expectedBinding:$cleanMonth:${result.homeCurrencyCode}", result.toString())
+        }
+    }
+
     override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> =
         apiProvider.observeActiveLedgerAccess()
 
     override fun observeLedgerAccessState(): Flow<LedgerAccessState?> =
-        apiProvider.observeActiveLedgerIdentity()
-            .map { identity ->
-                LedgerAccessState(
-                    ledgerId = identity?.ledgerId,
-                    role = identity?.role,
-                )
+        apiProvider.observeSession()
+            .map { session ->
+                val binding = session?.toBoundSessionSnapshotOrNull()?.logicalBinding ?: return@map null
+                LedgerAccessState(binding, session.identity.role)
             }
             .distinctUntilChanged()
 
     override suspend fun monthlyBudget(month: String): Result<BudgetMonthly> =
-        monthlyBudget(month = month, timezone = currentTimezoneId())
+        monthlyBudget(month = month, timezone = currentBudgetTimezoneId())
 
     override suspend fun monthlyBudget(
         expectedBinding: LogicalSessionBinding,
         month: String,
     ): Result<BudgetMonthly> =
-        monthlyBudget(expectedBinding, month, currentTimezoneId())
+        monthlyBudget(expectedBinding, month, currentBudgetTimezoneId())
 
     suspend fun monthlyBudget(month: String, timezone: String): Result<BudgetMonthly> {
         return monthlyBudget(expectedBinding = null, month = month, timezone = timezone)
@@ -106,7 +117,7 @@ class BudgetRepository(
         month: String,
         timezone: String,
     ): Result<BudgetMonthly> {
-        val cleanMonth = validatedMonth(month)
+        val cleanMonth = validatedBudgetMonth(month)
             .getOrElse { return Result.failure(it) }
         return errorHandler.safeCall {
             val request = expectedBinding?.let(ledgerRequestGuard::bindExact)
@@ -120,7 +131,7 @@ class BudgetRepository(
         }
     }
 
-    override suspend fun requestBudgetAdvice(month: String): Result<BudgetAdviceResult> {
+    override suspend fun requestBudgetAdvice(month: String, homeCurrencyCode: String?, expectedBinding: LogicalSessionBinding?): Result<BudgetAdviceResult> {
         if (!canModifyLedger()) {
             return Result.failure(
                 RepositoryException(
@@ -129,58 +140,37 @@ class BudgetRepository(
                 ),
             )
         }
-        val cleanMonth = validatedMonth(month)
+        val cleanMonth = validatedBudgetMonth(month)
             .getOrElse { return Result.failure(it) }
         // 218-B4 review: each live call is quota-counted server-side the moment
         // it starts. ONE logical-binding snapshot is captured up front and
         // scopes both the dedupe/cache key and the execution (the store's
         // bindExact re-validates it around the call).
-        val binding = ledgerRequestGuard.captureLogicalBinding()
+        val binding = expectedBinding ?: ledgerRequestGuard.captureLogicalBinding()
             ?: return Result.failure(RepositoryException("登录状态已失效，请重新绑定。"))
-        return adviceCallStore.attachOrRequest(binding, cleanMonth)
+        return adviceCallStore.attachOrRequest(binding, cleanMonth, homeCurrencyCode)
     }
 
     /** Process-lifetime last-successful advice for [month] under the CURRENT
      *  logical session binding — see [BudgetAdviceCallStore.cached]. */
-    override suspend fun cachedBudgetAdvice(month: String): BudgetAdviceResult? {
-        val cleanMonth = validatedMonth(month)
+    override suspend fun cachedBudgetAdvice(month: String, homeCurrencyCode: String?): BudgetAdviceResult? {
+        val cleanMonth = validatedBudgetMonth(month)
             .getOrElse { return null }
         val binding = ledgerRequestGuard.captureLogicalBinding() ?: return null
-        return adviceCallStore.cached(binding, cleanMonth)
+        return adviceCallStore.cached(binding, cleanMonth, homeCurrencyCode)
     }
 
     override fun invalidateBudgetAdvice() = adviceCallStore.invalidate()
 
     override val adviceInvalidations: StateFlow<Int>
         get() = adviceCallStore.invalidations
-
-    override suspend fun saveMonthlyBudget(
-        expectedBinding: LogicalSessionBinding,
-        month: String,
-        update: BudgetMonthlyUpdate,
-    ): Result<BudgetMonthly> {
-        if (!canModifyLedger()) {
-            return Result.failure(RepositoryException("当前角色为只读，无法修改账本。"))
-        }
-        val cleanMonth = validatedMonth(month)
-            .getOrElse { return Result.failure(it) }
-        return errorHandler.safeCall {
-            ledgerRequestGuard.bindExact(expectedBinding).call { api ->
-                api.updateMonthlyBudget(
-                    month = cleanMonth,
-                    request = update.toRequest(),
-                    timezone = currentTimezoneId(),
-                ).toDomain()
-            }
-        }
-    }
 }
 
-private fun currentTimezoneId(): String = TimeZone.getDefault().id
+internal fun currentBudgetTimezoneId(): String = TimeZone.getDefault().id
 
 private val MONTH_PATTERN = Regex("^\\d{4}-\\d{2}$")
 
-private fun validatedMonth(month: String): Result<String> {
+internal fun validatedBudgetMonth(month: String): Result<String> {
     return runCatching { requireMonth(month) }
         .fold(
             onSuccess = { Result.success(it) },

@@ -17,6 +17,7 @@ from tests._local_web_identity_support import (
     _local_confirmation,
     installed_web_setup,
 )
+from tests._runtime_protocol import current_protocol_headers
 
 pytestmark = [pytest.mark.real_db, pytest.mark.currency_binding_unbound]
 
@@ -44,9 +45,9 @@ def test_real_web_mutation_is_attributed_to_installation_account_and_browser_dev
     assert session_token is not None
     seeded = installed_web.browser.post(
         "/api/expenses/manual",
-        headers={"Authorization": f"Bearer {session_token}"},
+        headers=current_protocol_headers({"Authorization": f"Bearer {session_token}"}),
         json={
-            "amount_cents": 1200,
+            "home_currency_code": "CNY", "amount_cents": 1200,
             "merchant": "本机身份归属",
             "category": "餐饮",
             "expense_time": "2026-09-05T00:00:00Z",

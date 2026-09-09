@@ -1,18 +1,4 @@
-"""ADR-0042 Slice F: request-idempotency for the goals / income-plan PATCH
-mutations (``PATCH /api/goals/{public_id}`` + ``PATCH /api/income-plans/
-{public_id}``).
-
-Same uniform contract as Slices B / D-1 / D-2 / E: every outbox-routed mutate
-route claims an ``Idempotency-Key`` (via the shared ``claim_idempotent_request``)
-BEFORE its OCC ``row_version`` claim. Both ops re-serialise the *current*
-resource on a HIT — goal via ``get_goal_response`` (a timezone-aware spend
-re-aggregation), income-plan via ``get_income_plan`` + ``_to_response`` — so a
-committed-but-unseen replay with a now-stale token returns canonical state,
-never the false-409 the OCC claim would otherwise raise.
-
-These route tests pin the wiring + the false-409 fix per op; the helper
-internals are already covered by Slice B's unit tests.
-"""
+"""Goal edits replay their accepted receipt; income-plan request idempotency retains its covered behavior."""
 
 from __future__ import annotations
 
@@ -48,12 +34,13 @@ def _create_goal(
 ) -> dict:
     resp = client.post(
         "/api/goals",
-        headers=identity.app_headers,
+        headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
         json={
             "name": name,
             "month": "2026-05",
             "category": category,
             "target_amount_cents": 5000,
+            "home_currency_code": "CNY",
         },
     )
     assert resp.status_code == 201, resp.text
@@ -65,8 +52,8 @@ def _create_plan(
 ) -> dict:
     resp = client.post(
         "/api/income-plans",
-        headers=negotiated_headers(client, identity.app_headers),
-        json={"intent_month": "2026-05",
+        headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "intent_month": "2026-05",
             "label": label,
             "source_type": "salary",
             "amount_cents": 1_000_000,
@@ -83,7 +70,7 @@ def _update_goal_request(client: TestClient, *, identity: TestIdentity):
     return (
         "PATCH",
         f"/api/goals/{goal['public_id']}",
-        {"target_amount_cents": 6000, "expected_row_version": goal["row_version"]},
+        {"home_currency_code": "CNY", "target_amount_cents": 6000, "expected_row_version": goal["row_version"]},
     )
 
 
@@ -123,17 +110,15 @@ def test_mutation_requires_idempotency_key(
 # (b) committed-but-unseen replay → canonical (both ops, distinct HIT paths)
 
 
-def test_update_goal_replay_same_key_returns_canonical_not_409(
+def test_update_goal_replays_original_receipt_after_another_edit(
     client: TestClient, identity: TestIdentity
 ) -> None:
-    """Committed-but-unseen: the SAME key + SAME now-stale token re-serialises
-    the (already-updated) goal via ``get_goal_response`` rather than the
-    false-409 the OCC claim would raise on the bumped row_version."""
+    """A later edit cannot replace the proof of the first accepted command."""
     goal = _create_goal(client, identity=identity)
     v0 = goal["row_version"]
     key = str(uuid4())
     headers = {**identity.app_headers, "Idempotency-Key": key}
-    body = {"target_amount_cents": 6000, "expected_row_version": v0}
+    body = {"home_currency_code": "CNY", "target_amount_cents": 6000, "expected_row_version": v0}
 
     first = client.patch(f"/api/goals/{goal['public_id']}", headers=headers, json=body)
     assert first.status_code == 200, first.text
@@ -141,10 +126,16 @@ def test_update_goal_replay_same_key_returns_canonical_not_409(
     v1 = first.json()["row_version"]
     assert v1 != v0
 
+    later = client.patch(f"/api/goals/{goal['public_id']}",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "target_amount_cents": 8000, "expected_row_version": v1})
+    assert later.status_code == 200, later.text
+    assert later.json()["row_version"] > v1
+
     replay = client.patch(f"/api/goals/{goal['public_id']}", headers=headers, json=body)
     assert replay.status_code == 200, replay.text  # HIT, not 409
     assert replay.json()["target_amount_cents"] == 6000
-    assert replay.json()["row_version"] == v1  # canonical, not re-applied
+    assert replay.json() == first.json()
 
 
 def test_update_income_plan_replay_same_key_returns_canonical_not_409(
@@ -174,7 +165,7 @@ def test_update_income_plan_replay_same_key_returns_canonical_not_409(
     )
     assert replay.status_code == 200, replay.text  # HIT via get_income_plan, not 409
     assert replay.json()["amount_cents"] == 1_200_000
-    assert replay.json()["row_version"] == v1  # canonical, not re-applied
+    assert replay.json() == first.json()
 
 
 # ---------------------------------------------------------------------------
@@ -188,7 +179,7 @@ def test_update_goal_stale_token_with_different_key_still_409s(
     genuine concurrent writer → OCC 409 stays intact."""
     goal = _create_goal(client, identity=identity)
     v0 = goal["row_version"]
-    body = {"target_amount_cents": 6000, "expected_row_version": v0}
+    body = {"home_currency_code": "CNY", "target_amount_cents": 6000, "expected_row_version": v0}
 
     first = client.patch(
         f"/api/goals/{goal['public_id']}",
@@ -246,7 +237,7 @@ def test_update_goal_in_progress_returns_409(
     goal = _create_goal(client, identity=identity)
     v0 = goal["row_version"]
     key = str(uuid4())
-    payload = GoalUpdateRequest(expected_row_version=v0, target_amount_cents=6000)
+    payload = GoalUpdateRequest(home_currency_code="CNY", expected_row_version=v0, target_amount_cents=6000)
     fingerprint = fingerprint_request(
         operation="update_goal",
         target_id=goal["public_id"],
@@ -274,7 +265,7 @@ def test_update_goal_in_progress_returns_409(
     resp = client.patch(
         f"/api/goals/{goal['public_id']}",
         headers={**identity.app_headers, "Idempotency-Key": key},
-        json={"target_amount_cents": 6000, "expected_row_version": v0},
+        json={"home_currency_code": "CNY", "target_amount_cents": 6000, "expected_row_version": v0},
     )
     assert resp.status_code == 409, resp.text
     assert resp.json()["error"] == "idempotency_key_in_progress"
@@ -342,14 +333,14 @@ def test_update_goal_same_key_different_body_is_reused_422(
     first = client.patch(
         f"/api/goals/{goal['public_id']}",
         headers=headers,
-        json={"target_amount_cents": 6000, "expected_row_version": v0},
+        json={"home_currency_code": "CNY", "target_amount_cents": 6000, "expected_row_version": v0},
     )
     assert first.status_code == 200, first.text
 
     reused = client.patch(
         f"/api/goals/{goal['public_id']}",
         headers=headers,
-        json={"target_amount_cents": 7000, "expected_row_version": v0},  # different intent
+        json={"home_currency_code": "CNY", "target_amount_cents": 7000, "expected_row_version": v0},  # different intent
     )
     assert reused.status_code == 422, reused.text
     assert reused.json()["error"] == "idempotency_key_reused"

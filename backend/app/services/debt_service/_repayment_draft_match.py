@@ -72,9 +72,8 @@ class RepaymentMatchCandidate:
     public_id: str
     counterparty_label: str | None
     remaining_amount_cents: int
+    home_currency_code: str
     row_version: int = 0
-    # R13-8c：候选行自带 record 冻结币种（web 渲染与 confirm 比对用，不吃 env 兜底）。
-    home_currency_code: str = ""
 
 
 def list_repayment_match_candidates(db: Session, *, tenant_id: str) -> list[RepaymentMatchCandidate]:

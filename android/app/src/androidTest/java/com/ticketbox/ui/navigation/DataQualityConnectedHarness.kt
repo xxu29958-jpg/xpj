@@ -86,7 +86,6 @@ internal class DataQualityConnectedHarness : AutoCloseable {
         }
         val settingsStore = interfaceProxy<TicketboxSettingsStore> { name ->
             when (name) {
-                "monthlyBudgetCents" -> null
                 "lastUploadAtForLedger" -> null
                 else -> Unhandled
             }
@@ -120,11 +119,15 @@ internal class DataQualityConnectedHarness : AutoCloseable {
                 apiProvider = apiProvider,
             ),
             recurringRepository = RecurringRepository(apiProvider),
-            budgetRepository = BudgetRepository(apiProvider),
+            budgetRepository = BudgetRepository(apiProvider, outbox, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter,
+                adapters.manualRateAdapter, adapters.manualRateReceiptAdapter),
             reportsRepository = interfaceProxy<ReportsActions>(),
             goalEditRepository = com.ticketbox.data.repository.GoalEditRepository(apiProvider, outbox,
-                adapters.goalUpdateAdapter, adapters.goalReceiptAdapter),
-            incomePlanRepository = IncomePlanRepository(apiProvider, outbox, adapters.incomePlanUpdateAdapter),
+                adapters.goalUpdateAdapter, adapters.goalReceiptAdapter, adapters.goalCreateAdapter),
+            ruleRepository = com.ticketbox.data.repository.RuleRepository(binding, offlineMutations = com.ticketbox.data.repository.CategoryRuleOfflineMutationWiring(
+                outbox, adapters.categoryRuleUpdateAdapter, adapters.categoryRuleDeleteAdapter,
+                adapters.categoryRuleSubmissionAdapter, adapters.categoryRuleReceiptAdapter)),
+            incomePlanRepository = IncomePlanRepository(apiProvider, outbox, adapters.incomePlanSubmissionAdapter, adapters.incomePlanReceiptAdapter),
             debtRepository = DebtRepository(apiProvider),
             debtCreationRepository = DebtCreationRepository(apiProvider, outbox, adapters.debtCreateAdapter),
             debtAdjustmentRepository = com.ticketbox.data.repository.DebtAdjustmentRepository(apiProvider, outbox, adapters.debtAdjustmentAdapter),

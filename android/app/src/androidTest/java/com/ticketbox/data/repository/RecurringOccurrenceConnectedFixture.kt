@@ -82,7 +82,8 @@ internal class RecurringOccurrenceConnectedFixture(private val context: Context)
 }
 
 internal class OccurrenceConnectedNetwork {
-    var current = RecurringOccurrenceDto("recurring-1", "2026-09", 7, 0, "unfulfilled", 10_000, 10_000, null, null, "2026-09-05")
+    var current = RecurringOccurrenceDto("recurring-1", "2026-09", 7, 0, "unfulfilled", 10_000, 10_000, null, null, "2026-09-05",
+        homeCurrencyCode = "CNY")
     val calls = mutableListOf<Pair<RecurringOccurrencePaymentRequestDto, String>>()
     val results = mutableMapOf<String, RecurringOccurrenceDto>()
     var loseResponse = true
@@ -103,7 +104,7 @@ internal class OccurrenceConnectedNetwork {
                 current.copy(rowVersion = current.rowVersion + 1, state = if (linked) "fulfilled" else "unfulfilled",
                     reservedAmountCents = if (linked) 0 else 10_000, expensePublicId = request.expensePublicId,
                     paidAmountCents = if (linked) 12_345 else null, nextDueDate = if (linked) "2026-10-05" else "2026-09-05",
-                    expenseId = if (linked) 1 else null)
+                    expenseId = if (linked) 1 else null, paidHomeCurrencyCode = if (linked) "JPY" else null)
                     .also { current = it }
             }
             if (loseResponse) throw IOException("Synthetic lost response after acceptance")
@@ -119,6 +120,7 @@ internal fun occurrenceConnectedItem() = RecurringItem(
     currentMonthAmountCents = null, historicalAverageAmountCents = null, amountDeltaPercent = null,
     createdAt = "2026-09-01T00:00:00Z", updatedAt = "2026-09-01T00:00:00Z", rowVersion = 7, pausedAt = null,
     archivedAt = null, nextDueDate = "2026-09-05",
+    homeCurrencyCode = "CNY",
 )
 
 private fun occurrenceConnectedPayment() = ConfirmedStreamItem.ExpenseRow("2026-09-05", 12_345,
@@ -126,7 +128,8 @@ private fun occurrenceConnectedPayment() = ConfirmedStreamItem.ExpenseRow("2026-
         source = "manual", imagePath = null, thumbnailPath = null, imageHash = null, rawText = null, confidence = null,
         duplicateStatus = "", duplicateOfId = null, duplicateReason = null, tags = null, valueScore = null, regretScore = null,
         status = "confirmed", expenseTime = "2026-09-05T08:00:00Z", createdAt = "2026-09-05T08:00:00Z",
-        updatedAt = "2026-09-05T08:00:00Z", rowVersion = 3, confirmedAt = "2026-09-05T08:00:00Z", rejectedAt = null),
+        updatedAt = "2026-09-05T08:00:00Z", rowVersion = 3, confirmedAt = "2026-09-05T08:00:00Z", rejectedAt = null,
+        homeCurrencyCode = "JPY"),
     ExpenseLineageStatus.Confirmed, 12_345)
 
 private fun occurrenceConnectedSession() = LocalSessionRecord(

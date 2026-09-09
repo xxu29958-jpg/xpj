@@ -58,6 +58,8 @@ internal data class ConfirmedExpenseFixture(
 internal fun confirmedExpenseDtoFixture(
     fixture: ConfirmedExpenseFixture = ConfirmedExpenseFixture(),
 ): ExpenseDto = ExpenseDto(
+    homeCurrency = "CNY",
+    originalCurrencyCode = "CNY",
     id = 9L,
     publicId = "691da31d-e8d7-49b0-bece-ec6f61c044b2",
     amountCents = fixture.amountCents,

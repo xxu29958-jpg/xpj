@@ -96,4 +96,5 @@ fun recurringItemFixture(
     rowVersion = 1L,
     pausedAt = null,
     archivedAt = null,
+    homeCurrencyCode = "CNY",
 )

@@ -3,6 +3,7 @@ package com.ticketbox.data.remote.dto
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 
+@JsonClass(generateAdapter = true)
 data class CategoryRuleDto(
     val id: Long,
     val keyword: String,
@@ -23,8 +24,11 @@ data class CategoryRuleDto(
     val updatedAt: String,
     @param:Json(name = "row_version")
     val rowVersion: Long,
+    @param:Json(name = "home_currency_code")
+    val homeCurrencyCode: String? = null,
 )
 
+@JsonClass(generateAdapter = true)
 data class CategoryRuleRequest(
     val keyword: String?,
     val category: String?,
@@ -38,6 +42,8 @@ data class CategoryRuleRequest(
     val sourceContains: String? = null,
     @param:Json(name = "tag_contains")
     val tagContains: String? = null,
+    @param:Json(name = "home_currency_code")
+    val homeCurrencyCode: String? = null,
 )
 
 /**
@@ -62,6 +68,8 @@ data class CategoryRuleUpdateRequest(
     val sourceContains: String? = null,
     @param:Json(name = "tag_contains")
     val tagContains: String? = null,
+    @param:Json(name = "home_currency_code")
+    val homeCurrencyCode: String? = null,
 )
 
 /**
@@ -143,4 +151,8 @@ data class RuleApplyConfirmedResponseDto(
     val scanLimit: Int = 0,
     @param:Json(name = "preview_token")
     val previewToken: String? = null,
+    @param:Json(name = "unavailable_count")
+    val unavailableCount: Int = 0,
+    @param:Json(name = "missing_currency_codes")
+    val missingCurrencyCodes: List<String> = emptyList(),
 )

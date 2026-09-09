@@ -69,7 +69,7 @@ class LedgerViewModelStreamTest {
         assertEquals(4, state.summary.itemCount)
         // 12000 - 3000 + 0 + 0：reversed root 的 gross 8000 与 reversal 事件都
         // 不再贡献；lineageHomeNetCents 绝不进页头聚合。
-        assertEquals(9000L, state.summary.totalAmountCents)
+        assertEquals(mapOf<String?, Long?>("CNY" to 9000L), state.summary.amountsByCurrency)
     }
 
     @Test
@@ -232,6 +232,7 @@ private fun streamExpense(id: Long, amountCents: Long, merchant: String): Expens
     rowVersion = 1L,
     confirmedAt = "2026-05-17T08:01:00Z",
     rejectedAt = null,
+    homeCurrencyCode = "CNY",
 )
 
 private fun rootRow(

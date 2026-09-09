@@ -6,10 +6,10 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
-from typing import Literal
+from typing import Literal, TypeVar
 from uuid import RFC_4122, UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import Session
 
@@ -17,6 +17,7 @@ from app.currency_adoption_evidence import currency_adoption_evidence
 from app.currency_binding_contract import (
     CURRENCY_BINDING_ACTIVE,
     CURRENCY_BINDING_ADOPTION_REQUIRED,
+    CURRENCY_BINDING_EMPTY,
     CURRENCY_EVIDENCE_TABLES,
     CURRENCY_ROUNDING_MODE,
     INITIAL_BINDING_REVISION,
@@ -27,17 +28,25 @@ from app.database._currency_writer import lock_currency_evidence_tables
 from app.errors import AppError
 from app.fx_constants import CURRENCY_MINOR_UNIT_DIGITS, DEFAULT_SUPPORTED_CURRENCY_CODES
 from app.models import (
+    Budget,
+    CategoryRule,
+    CsvImportRow,
     Device,
+    ExchangeRate,
+    Goal,
+    IncomePlanRevision,
     InstallationCurrencyAuditLog,
     InstallationCurrencyBinding,
     InstallationIdempotencyKey,
     InstallationOwnerClaim,
+    MonthlyIncomePlan,
+    RecurringItem,
 )
 from app.services import permission_service
 from app.services.currency_binding_service import (
     CurrencyBindingState,
-    _configured_home_or_none,
     _load_binding,
+    _set_writer_proof,
     _snapshot,
     _state,
 )
@@ -53,7 +62,6 @@ class CurrencyAdoptionPreview:
     currency_contract_version: int
     evidence_sha256: str
     home_currency_code: str | None
-    configured_home_currency_code: str | None
     allowed_home_currency_codes: tuple[str, ...]
     evidence_health: Literal["adoptable", "conflict"]
 
@@ -72,6 +80,9 @@ class CurrencyAdoptionReceipt:
     activated_at: str
 
 
+_Receipt = TypeVar("_Receipt")
+
+
 def adoption_preview(db: Session) -> CurrencyAdoptionPreview:
     binding = _load_binding(db)
     if binding is None:
@@ -83,7 +94,6 @@ def adoption_preview(db: Session) -> CurrencyAdoptionPreview:
         currency_contract_version=binding.currency_contract_version,
         evidence_sha256=evidence.sha256,
         home_currency_code=binding.home_currency_code,
-        configured_home_currency_code=_configured_home_or_none(),
         allowed_home_currency_codes=evidence.allowed_home_currency_codes,
         evidence_health=("conflict" if evidence.has_conflict else "adoptable"),
     )
@@ -122,13 +132,15 @@ def _claim_idempotency_key(
     *,
     key: str,
     fingerprint: str,
-) -> InstallationIdempotencyKey | CurrencyAdoptionReceipt:
+    operation: str = INSTALLATION_ADOPTION_OPERATION,
+    receipt_type: type[_Receipt] = CurrencyAdoptionReceipt,
+) -> InstallationIdempotencyKey | _Receipt:
     existing = db.get(InstallationIdempotencyKey, key)
     if existing is None:
         now = now_utc()
         candidate = InstallationIdempotencyKey(
             idempotency_key=key,
-            operation=INSTALLATION_ADOPTION_OPERATION,
+            operation=operation,
             request_fingerprint=fingerprint,
             status="in_progress",
             receipt=None,
@@ -148,14 +160,14 @@ def _claim_idempotency_key(
             return candidate
     if existing is None:
         raise AppError("currency_binding_corrupt", status_code=503)
-    if existing.operation != INSTALLATION_ADOPTION_OPERATION or existing.request_fingerprint != fingerprint:
+    if existing.operation != operation or existing.request_fingerprint != fingerprint:
         raise AppError("idempotency_key_reused", status_code=422)
     if existing.status == "in_progress":
         raise AppError("idempotency_key_in_progress", status_code=409)
     if existing.status != "succeeded" or not isinstance(existing.receipt, dict):
         raise AppError("currency_binding_corrupt", status_code=503)
     try:
-        return CurrencyAdoptionReceipt(**existing.receipt)
+        return receipt_type(**existing.receipt)
     except TypeError as exc:
         raise AppError("currency_binding_corrupt", status_code=503) from exc
 
@@ -202,7 +214,7 @@ def _adopt_in_transaction(
         raise AppError("currency_binding_already_active", status_code=409)
     if binding.state != expected_state or binding.binding_revision != expected_revision:
         raise AppError("currency_binding_state_conflict", status_code=409)
-    if binding.state != CURRENCY_BINDING_ADOPTION_REQUIRED:
+    if binding.state not in {CURRENCY_BINDING_EMPTY, CURRENCY_BINDING_ADOPTION_REQUIRED}:
         raise AppError("currency_binding_state_conflict", status_code=409)
 
     lock_currency_evidence_tables(db, CURRENCY_EVIDENCE_TABLES)
@@ -227,6 +239,16 @@ def _adopt_in_transaction(
     event.after_snapshot = _snapshot(binding)
     db.add(event)
     db.flush()
+    _set_writer_proof(db, binding)
+    db.execute(update(Budget).where(Budget.home_currency_code.is_(None)).values(home_currency_code=code))
+    db.execute(update(RecurringItem).where(RecurringItem.home_currency_code.is_(None)).values(home_currency_code=code))
+    db.execute(update(Goal).where(Goal.goal_type == "spending_limit", Goal.home_currency_code.is_(None)).values(home_currency_code=code))
+    db.execute(update(CategoryRule).where(CategoryRule.home_currency_code.is_(None),
+        (CategoryRule.amount_min_cents.is_not(None) | CategoryRule.amount_max_cents.is_not(None))).values(home_currency_code=code))
+    db.execute(update(ExchangeRate).where(ExchangeRate.home_currency_code.is_(None)).values(home_currency_code=code))
+    db.execute(update(CsvImportRow).where(CsvImportRow.home_currency_code.is_(None)).values(home_currency_code=code))
+    db.execute(update(MonthlyIncomePlan).where(MonthlyIncomePlan.home_currency_code.is_(None)).values(home_currency_code=code))
+    db.execute(update(IncomePlanRevision).where(IncomePlanRevision.home_currency_code.is_(None)).values(home_currency_code=code))
 
     receipt = _receipt(binding, event, evidence_sha256=evidence.sha256, activated_at=activated_at)
     claimed.status = "succeeded"

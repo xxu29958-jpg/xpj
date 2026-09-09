@@ -17,26 +17,42 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class StatsScreenRecentEvidenceTest {
+    @Test fun reportUnknownAmountsCannotCreateAnOverviewMonthComparison() {
+        val report = reportsOverview(totalAmountCents = 12000, previousTotalAmountCents = 8000, previousCount = 2)
+        val state = StatsUiState(statsSource = StatsSource.Backend, month = report.month)
+        assertNull(overviewMonthComparison(state.copy(reportsOverview = report.copy(totalAmountCents = null))))
+        assertNull(overviewMonthComparison(state.copy(reportsOverview = report.copy(previousTotalAmountCents = null))))
+    }
+
     @Test
     fun overviewRecent7DaysAmountUsesBackendLifestyleValue() {
         val state = StatsUiState(
             statsSource = StatsSource.Backend,
             lifestyleStats = lifestyle(recent7DaysAmountCents = 8_800L),
-            dailyTrend = listOf(DailySpend(date = "2026-07-01", label = "7/1", amountCents = 99_000L)),
+            month = "2026-07",
+            stats = com.ticketbox.domain.model.MonthlyStats(homeCurrencyCode = "CNY", month = "2026-07", totalAmountCents = 10000, count = 2, byCategory = emptyList()),
         )
 
         assertEquals(8_800L, overviewRecent7DaysAmount(state))
     }
 
     @Test
-    fun overviewRecent7DaysAmountDoesNotPromoteLocalTrendToBackendEvidence() {
+    fun overviewRecentWindowRejectsAnotherMonthCurrencyAndUnknownAmount() {
+        val current = lifestyle(8800)
+        val state = StatsUiState(statsSource = StatsSource.Backend, month = "2026-07", lifestyleStats = current,
+            stats = com.ticketbox.domain.model.MonthlyStats(homeCurrencyCode = "CNY", month = "2026-07", totalAmountCents = 10000, count = 2, byCategory = emptyList()))
+        assertNull(overviewRecent7DaysAmount(state.copy(lifestyleStats = current.copy(month = "2026-06"))))
+        assertNull(overviewRecent7DaysAmount(state.copy(lifestyleStats = current.copy(homeCurrencyCode = "JPY"))))
+        assertNull(overviewRecent7DaysAmount(state.copy(lifestyleStats = current.copy(recent7DaysAmountCents = null))))
+    }
+
+    @Test
+    fun overviewRecent7DaysAmountDoesNotPromoteSavedSnapshotToCurrentEvidence() {
         val state = StatsUiState(
-            statsSource = StatsSource.LocalFallback,
+            statsSource = StatsSource.CachedSnapshot,
             lifestyleStats = lifestyle(recent7DaysAmountCents = 8_800L),
-            dailyTrend = listOf(
-                DailySpend(date = "2026-07-01", label = "7/1", amountCents = 3_000L),
-                DailySpend(date = "2026-07-02", label = "7/2", amountCents = 4_000L),
-            ),
+            month = "2026-07",
+            stats = com.ticketbox.domain.model.MonthlyStats(homeCurrencyCode = "CNY", month = "2026-07", totalAmountCents = 10000, count = 2, byCategory = emptyList()),
         )
 
         assertNull(overviewRecent7DaysAmount(state))
@@ -44,18 +60,9 @@ class StatsScreenRecentEvidenceTest {
 
     @Test
     fun overviewMonthComparisonUsesServerReportBaseline() {
-        val localComparison = MonthComparison(
-            currentMonth = "2026-07",
-            previousMonth = "2026-06",
-            currentAmountCents = 12_000L,
-            previousAmountCents = 500L,
-            deltaAmountCents = 11_500L,
-            percentChange = 2300,
-        )
         val state = StatsUiState(
             statsSource = StatsSource.Backend,
             month = "2026-07",
-            monthComparison = localComparison,
             reportsOverview = reportsOverview(totalAmountCents = 12_000L, previousTotalAmountCents = 8_000L, previousCount = 2),
         )
 
@@ -82,25 +89,17 @@ class StatsScreenRecentEvidenceTest {
     }
 
     @Test
-    fun overviewMonthComparisonDoesNotPromoteLocalCacheComparison() {
+    fun overviewMonthComparisonRequiresServerReportComparison() {
         val state = StatsUiState(
             statsSource = StatsSource.Backend,
             month = "2026-07",
-            monthComparison = MonthComparison(
-                currentMonth = "2026-07",
-                previousMonth = "2026-06",
-                currentAmountCents = 12_000L,
-                previousAmountCents = 8_000L,
-                deltaAmountCents = 4_000L,
-                percentChange = 50,
-            ),
         )
 
         assertNull(overviewMonthComparison(state))
         assertNull(
             overviewMonthComparison(
                 state.copy(
-                    statsSource = StatsSource.LocalFallback,
+                    statsSource = StatsSource.CachedSnapshot,
                     reportsOverview = reportsOverview(totalAmountCents = 12_000L, previousTotalAmountCents = 8_000L, previousCount = 2),
                 ),
             ),
@@ -132,9 +131,8 @@ class StatsScreenRecentEvidenceTest {
     }
 
     @Test
-    fun reportsUnavailableFallbackDoesNotPromoteLocalTrend() {
+    fun reportsUnavailableFallbackKeepsEmptyEvidenceSeparateFromLoading() {
         val state = StatsUiState(
-            dailyTrend = listOf(DailySpend(date = "2026-07-01", label = "7/1", amountCents = 99_000L)),
         )
 
         assertTrue(shouldShowReportsUnavailableFallback(state))
@@ -165,8 +163,7 @@ class StatsScreenRecentEvidenceTest {
     }
 
     private fun lifestyle(recent7DaysAmountCents: Long): LifestyleStats =
-        LifestyleStats(
-            month = "2026-07",
+        LifestyleStats(homeCurrencyCode = "CNY", month = "2026-07",
             aiSubscriptionAmountCents = 0L,
             digitalAmountCents = 0L,
             maxExpense = null,
@@ -199,5 +196,6 @@ class StatsScreenRecentEvidenceTest {
             trend = emptyList(),
             merchantRanking = emptyList(),
             categoryComparison = emptyList(),
-        )
+            homeCurrencyCode = "CNY",
+)
 }

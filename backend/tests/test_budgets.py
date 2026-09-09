@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
@@ -28,7 +29,7 @@ def _manual_expense(
         "/api/expenses/manual",
         headers=headers,
         json={
-            "amount_cents": amount_cents,
+            "home_currency_code": "CNY", "amount_cents": amount_cents,
             "merchant": merchant,
             "category": category,
             "expense_time": expense_time,
@@ -55,7 +56,7 @@ def _seed_recurring(
         # currency proof that a real writer would establish.
         resolve_write_capability(db)
         db.add(
-            RecurringItem(
+            RecurringItem(home_currency_code="CNY",
                 tenant_id=tenant_id,
                 merchant_key=merchant_key,
                 merchant_name=merchant_name,
@@ -156,8 +157,8 @@ def _seed_monthly_budget_dashboard_sources(client: TestClient, identity: object)
 def _upsert_may_budget(client: TestClient, identity: object) -> dict:
     response = client.put(
         "/api/budgets/monthly/2026-05?timezone=UTC",
-        headers=identity.app_headers,
-        json={
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "expected_row_version": None,
             "total_amount_cents": 100000,
             "non_monthly_amount_cents": 15000,
             "rollover_amount_cents": 5000,
@@ -261,8 +262,8 @@ def test_monthly_budget_upsert_replaces_category_rows_without_duplicates(
 ) -> None:
     first = client.put(
         "/api/budgets/monthly/2026-05",
-        headers=identity.app_headers,
-        json={
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "expected_row_version": None,
             "total_amount_cents": 80000,
             "excluded_categories": ["医疗", "医疗"],
             "category_budgets": [
@@ -275,8 +276,8 @@ def test_monthly_budget_upsert_replaces_category_rows_without_duplicates(
 
     second = client.put(
         "/api/budgets/monthly/2026-05",
-        headers=identity.app_headers,
-        json={
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "expected_row_version": first.json()["row_version"],
             "total_amount_cents": 90000,
             "non_monthly_amount_cents": 12000,
             "rollover_amount_cents": -3000,
@@ -321,8 +322,8 @@ def test_monthly_budget_archive_hides_budget_and_blocks_overwrite_until_restore(
 ) -> None:
     created = client.put(
         "/api/budgets/monthly/2026-05",
-        headers=identity.app_headers,
-        json={
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "expected_row_version": None,
             "total_amount_cents": 80000,
             "category_budgets": [{"category": "餐饮", "amount_cents": 20000}],
         },
@@ -347,8 +348,8 @@ def test_monthly_budget_archive_hides_budget_and_blocks_overwrite_until_restore(
 
     overwrite = client.put(
         "/api/budgets/monthly/2026-05",
-        headers=identity.app_headers,
-        json={"total_amount_cents": 90000},
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "expected_row_version": created.json()["row_version"], "total_amount_cents": 90000},
     )
     assert overwrite.status_code == 409, overwrite.json()
     assert overwrite.json()["error"] == "state_conflict"
@@ -394,16 +395,16 @@ def test_monthly_budget_archive_rejects_stale_row_version(
 ) -> None:
     first = client.put(
         "/api/budgets/monthly/2026-05",
-        headers=identity.app_headers,
-        json={"total_amount_cents": 80000},
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "expected_row_version": None, "total_amount_cents": 80000},
     )
     assert first.status_code == 200, first.json()
     old_version = first.json()["row_version"]
 
     second = client.put(
         "/api/budgets/monthly/2026-05",
-        headers=identity.app_headers,
-        json={"total_amount_cents": 90000},
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "expected_row_version": first.json()["row_version"], "total_amount_cents": 90000},
     )
     assert second.status_code == 200, second.json()
     assert second.json()["row_version"] == old_version + 1
@@ -422,16 +423,16 @@ def test_member_can_upsert_budget_but_viewer_can_only_read(client: TestClient, *
     _set_owner_ledger_role("member")
     member_response = client.put(
         "/api/budgets/monthly/2026-05",
-        headers=identity.app_headers,
-        json={"total_amount_cents": 50000},
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "expected_row_version": None, "total_amount_cents": 50000},
     )
     assert member_response.status_code == 200, member_response.json()
 
     _set_owner_ledger_role("viewer")
     viewer_write = client.put(
         "/api/budgets/monthly/2026-05",
-        headers=identity.app_headers,
-        json={"total_amount_cents": 60000},
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "expected_row_version": None, "total_amount_cents": 60000},
     )
     _assert_permission_denied(viewer_write, label="viewer budget update")
     viewer_archive = client.request(
@@ -452,16 +453,16 @@ def test_budget_rejects_invalid_month_and_duplicate_normalized_categories(
 ) -> None:
     invalid_month = client.put(
         "/api/budgets/monthly/2026-13",
-        headers=identity.app_headers,
-        json={"total_amount_cents": 50000},
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "expected_row_version": None, "total_amount_cents": 50000},
     )
     assert invalid_month.status_code == 422, invalid_month.json()
     assert invalid_month.json()["error"] == "invalid_request"
 
     duplicate_category = client.put(
         "/api/budgets/monthly/2026-05",
-        headers=identity.app_headers,
-        json={
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "expected_row_version": None,
             "total_amount_cents": 50000,
             "category_budgets": [
                 {"category": "吃饭", "amount_cents": 10000},
@@ -476,8 +477,8 @@ def test_budget_rejects_invalid_month_and_duplicate_normalized_categories(
 def test_budget_rejects_unbounded_month_without_persisting(client: TestClient, *, identity) -> None:
     response = client.put(
         "/api/budgets/monthly/9999-12?timezone=UTC",
-        headers=identity.app_headers,
-        json={"total_amount_cents": 50000},
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "expected_row_version": None, "total_amount_cents": 50000},
     )
     assert response.status_code == 422, response.json()
     assert response.json()["error"] == "invalid_request"

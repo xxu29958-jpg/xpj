@@ -19,13 +19,12 @@ class RecurringOccurrenceDispatcher(
             ?: return DispatchResult.Failure("recurring_occurrence_intent_invalid")
         val payload = payloadAdapter.readSupportedOccurrence(row.payloadJson)
             ?: return DispatchResult.Failure("recurring_occurrence_payload_unsupported")
-        if (row.targetId != occurrenceTarget(payload.seriesPublicId, payload.period) ||
-            row.expectedRowVersion != payload.request.expectedRowVersion
-        ) return DispatchResult.Failure("recurring_occurrence_intent_invalid")
+        if (!payload.matchesOriginal(row)) return DispatchResult.Failure("recurring_occurrence_intent_invalid")
         return try {
-            apiProvider(row).setRecurringOccurrencePayment(payload.seriesPublicId, payload.period, payload.request, key)
+            val receipt = apiProvider(row).setRecurringOccurrencePayment(payload.seriesPublicId, payload.period, payload.request, key)
             // Preserve every original command's OCC, including later commands. Never rewrite its frozen payload.
-            DispatchResult.Success()
+            if (payload.acceptsReceipt(receipt)) DispatchResult.Success()
+            else DispatchResult.Failure("recurring_occurrence_response_unverified")
         } catch (error: CancellationException) {
             throw error
         } catch (error: HttpException) {

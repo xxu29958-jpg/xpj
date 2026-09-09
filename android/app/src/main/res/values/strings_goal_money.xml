@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="spending_goal_amount_unavailable">暂无法计算</string>
+    <string name="spending_goal_progress_unavailable">币种或换算信息尚不完整，暂时无法计算进度。</string>
+    <string name="spending_goal_original_amount_unknown">%1$d（原数值，币种待确认）</string>
+</resources>

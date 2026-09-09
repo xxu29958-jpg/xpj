@@ -7,7 +7,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.auth import get_current_writer_context
+from app.auth import get_current_app_context, get_current_writer_context
 from app.database import get_db
 from app.errors import AppError, add_exception_handlers
 from app.routes import income_plans, recycle_bin
@@ -59,7 +59,7 @@ def test_recycle_income_display_and_restore_share_one_accounting_month(monkeypat
 
     clock = Mock(side_effect=["2026-09", "2026-10", "2026-10", "2026-10"])
     monkeypatch.setattr(recycle_bin_service, "current_accounting_month", clock)
-    monkeypatch.setattr(recycle_bin_service, "_income_detail", lambda _: "计划")
+    monkeypatch.setattr(recycle_bin_service, "_income_detail", lambda _item: "计划")
     db = Mock()
     db.scalars.return_value = [
         SimpleNamespace(public_id=key, label=key, archived_at=None, row_version=2)
@@ -95,17 +95,52 @@ def test_income_protocol_rejection_precedes_month_validation(version, method, pa
     assert response.json()["error"] == ("invalid_request" if version == "current" else "client_upgrade_required")
 
 
+@pytest.mark.parametrize("version", [None, "2026-09-07", "current"])
+def test_income_create_protocol_rejection_precedes_new_key_requirement(version) -> None:
+    app = FastAPI()
+    add_exception_handlers(app)
+    app.include_router(income_plans.router)
+    app.dependency_overrides[get_current_writer_context] = lambda: SimpleNamespace(tenant_id="probe", account_id=1)
+    app.dependency_overrides[get_db] = lambda: None
+    headers = {} if version is None else {
+        "Ticketbox-Api-Version": CURRENT_API_VERSION if version == "current" else version,
+        "Ticketbox-Currency-Binding": "1:1:CNY",
+    }
+    response = TestClient(app).post("/api/income-plans", headers=headers, json={
+        "intent_month": "2026-09", "home_currency_code": "JPY", "label": "Original income",
+        "amount_cents": 1200, "pay_day": 1,
+    })
+    assert response.status_code == (422 if version == "current" else 409)
+    assert response.json()["error"] == ("idempotency_key_required" if version == "current" else "client_upgrade_required")
+
+
+@pytest.mark.parametrize("role,scope", [("viewer", "app"), ("owner", "admin"), ("owner", "upload")])
+def test_income_create_replay_still_requires_current_business_writer_authority(monkeypatch, role, scope) -> None:
+    app = FastAPI()
+    add_exception_handlers(app)
+    app.include_router(income_plans.router)
+    app.dependency_overrides[get_current_app_context] = lambda: SimpleNamespace(role=role, scope=scope)
+    app.dependency_overrides[get_db] = lambda: None
+    monkeypatch.setattr(income_plans, "create_income_plan_idempotently",
+        lambda *_a, **_k: pytest.fail("Current authority must be checked before accepting or replaying"))
+    response = TestClient(app).post("/api/income-plans", headers={
+        "Ticketbox-Api-Version": CURRENT_API_VERSION, "Idempotency-Key": "already-accepted",
+    }, json={"intent_month": "2026-09", "home_currency_code": "JPY", "label": "Original income",
+        "amount_cents": 1200, "pay_day": 1})
+    assert response.status_code == 403 and response.json()["error"] == "permission_denied"
+
+
 @pytest.mark.parametrize("case", [
     ("ADOPTION_REQUIRED", CURRENT_API_VERSION, None, "http_client", None, "currency_adoption_required"),
     ("ACTIVE", CURRENT_API_VERSION, None, "http_client", None, "client_upgrade_required"),
-    ("EMPTY", CURRENT_API_VERSION, None, "http_client", None, "client_upgrade_required"),
+    ("EMPTY", CURRENT_API_VERSION, None, "http_client", None, "currency_adoption_required"),
     ("ADOPTION_REQUIRED", MONTHLESS_API_VERSION, None, "http_client", None, "client_upgrade_required"),
-    ("ADOPTION_REQUIRED", None, None, "http_client", None, "currency_adoption_required"),
+    ("ADOPTION_REQUIRED", None, None, "http_client", None, "client_upgrade_required"),
     ("ADOPTION_REQUIRED", None, None, "server_runtime", None, "currency_adoption_required"),
     ("ADOPTION_REQUIRED", CURRENT_API_VERSION, None, "http_client", 0, "client_upgrade_required"),
     ("ADOPTION_REQUIRED", CURRENT_API_VERSION, "invalid", "http_client", None, "client_upgrade_required"),
     ("ADOPTION_REQUIRED", CURRENT_API_VERSION, "1:0:CNY", "http_client", None, "currency_adoption_required"),
-    ("ACTIVE", CURRENT_API_VERSION, "1:7:JPY", "http_client", None, "currency_binding_configuration_drift"),
+    ("ACTIVE", CURRENT_API_VERSION, "1:7:CNY", "http_client", None, "currency_binding_revision_conflict"),
 ])
 def test_currency_owner_keeps_adoption_refusal_without_inventing_proof(
     monkeypatch, case,
@@ -114,12 +149,9 @@ def test_currency_owner_keeps_adoption_refusal_without_inventing_proof(
 
     state, version, binding, origin, revision, error = case
     db = Mock(info={RUNTIME_COMPATIBILITY_SESSION_KEY: RuntimeCompatibilityRequest(version, binding, origin)})
-    monkeypatch.setattr(currency_owner, "home_currency_code", lambda: "CNY")
     stored_binding = SimpleNamespace(state=state, home_currency_code="JPY", currency_contract_version=1, binding_revision=7)
     monkeypatch.setattr(currency_owner, "_load_binding", lambda _db, **_: stored_binding)
-    claim = Mock(side_effect=AssertionError("Refused command must not claim an EMPTY binding"))
     proof = Mock(side_effect=AssertionError("Refused command must not gain writer proof"))
-    monkeypatch.setattr(currency_owner, "_claim_initial_binding", claim)
     monkeypatch.setattr(currency_owner, "_set_writer_proof", proof)
 
     with pytest.raises(AppError) as raised:
@@ -129,7 +161,6 @@ def test_currency_owner_keeps_adoption_refusal_without_inventing_proof(
 
     assert raised.value.error == error
     assert raised.value.status_code == 409
-    claim.assert_not_called()
     proof.assert_not_called()
     db.add.assert_not_called()
     db.commit.assert_not_called()

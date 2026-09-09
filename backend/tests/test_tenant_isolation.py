@@ -281,7 +281,7 @@ def test_confirmed_lifestyle_and_settings_are_tenant_scoped(client: TestClient, 
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": 9900,
+            "home_currency_code": "CNY", "amount_cents": 9900,
             "merchant": "owner高频商家",
             "category": "数码",
             "expense_time": "2026-05-05T01:00:00Z",
@@ -393,7 +393,7 @@ def test_owner_and_tester_tokens_are_hard_isolated_across_acceptance_surface(
 def test_category_rule_mutations_are_tenant_scoped(client: TestClient, *, identity) -> None:
     owner_rule = client.post(
         "/api/rules/categories",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "keyword": "owner专属",
             "category": "数码",

@@ -19,6 +19,8 @@ class ReportsDtoContractTest {
                   "month": "2026-05",
                   "timezone": "Asia/Shanghai",
                   "granularity": "day",
+                  "home_currency_code": "CNY",
+                  "missing_rates": [],
                   "total_amount_cents": 4200,
                   "count": 3,
                   "previous_month": "2026-04",

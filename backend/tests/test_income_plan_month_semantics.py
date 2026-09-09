@@ -45,7 +45,7 @@ def test_monthly_revision_preserves_previous_months(identity) -> None:
 
     with SessionLocal() as db:
         plan = create_income_plan(
-            db, tenant_id="owner", label="revision estimate", source_type="salary",
+            db, home_currency_code="CNY", tenant_id="owner", label="revision estimate", source_type="salary",
             amount_cents=100_00, pay_day=1, now=at(8),
         )
         plan = update_income_plan(

@@ -12,9 +12,9 @@ import com.ticketbox.data.remote.ApiClient
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.IncomePlanDto
+import com.ticketbox.data.remote.dto.IncomePlanCreateRequestDto
 import com.ticketbox.data.remote.dto.IncomePlanListResponseDto
 import com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto
-import com.ticketbox.domain.model.DebtListLens
 import com.ticketbox.security.LocalSessionIdentity
 import com.ticketbox.security.LocalSessionRecord
 import com.ticketbox.security.LocalSessionStore
@@ -37,9 +37,6 @@ internal class IncomePlanConnectedFixture(private val context: Context) {
     private val adapters = OutboxAdapterGraph()
     private val session = incomeConnectedSession()
     lateinit var outbox: OutboxRepository
-    val debts = object : DebtActions by incomeProxy<DebtActions>({ error("Unexpected debt method: $it") }) {
-        override suspend fun listDebts(lens: DebtListLens) = Result.success(DebtListPage(emptyList(), "CNY"))
-    }
 
     fun reopen(): RepositoryGraph {
         database?.close()
@@ -66,7 +63,10 @@ internal class IncomePlanConnectedFixture(private val context: Context) {
         } }
 
     suspend fun drain(maxAttempts: Int = 10) = OutboxDrainEngine(outbox,
-        listOf(UpdateIncomePlanDispatcher({ network.service }, adapters.incomePlanUpdateAdapter)),
+        listOf(IncomePlanDispatcher(com.ticketbox.data.local.PendingMutationType.UpdateIncomePlan, { network.service },
+            adapters.incomePlanSubmissionAdapter, adapters.incomePlanReceiptAdapter),
+            IncomePlanDispatcher(com.ticketbox.data.local.PendingMutationType.CreateIncomePlan, { network.service },
+                adapters.incomePlanSubmissionAdapter, adapters.incomePlanReceiptAdapter)),
         maxAttempts = maxAttempts, now = clock::millis).drainOnce()
 
     fun advanceToOctober() { clock = Clock.offset(clock, Duration.ofDays(1)); network.month = "2026-10" }
@@ -76,17 +76,31 @@ internal class IncomePlanConnectedFixture(private val context: Context) {
 
 internal class IncomeConnectedNetwork {
     var current = IncomePlanDto("income-1", "九月工资计划", "salary", "monthly", null, 10_000, 1,
-        "active", "2026-08-01T00:00:00Z", "2026-08-01T00:00:00Z", 3, null)
+        "active", "2026-08-01T00:00:00Z", "2026-08-01T00:00:00Z", 3, null, homeCurrencyCode = "CNY")
     var month = "2026-09"
+    var forecastCurrencyCode = "CNY"
     var failReads = false
     var loseResponse = true
     val calls = mutableListOf<Pair<IncomePlanUpdateRequestDto, String>>()
     val results = mutableMapOf<String, IncomePlanDto>()
+    val creationCalls = mutableListOf<Pair<IncomePlanCreateRequestDto, String>>()
+    val creationReceipts = mutableMapOf<String, IncomePlanDto>()
     val service = object : ApiService by incomeProxy<ApiService>({ error("Unexpected remote method: $it") }) {
         override suspend fun listIncomePlans(status: String): IncomePlanListResponseDto {
             if (failReads) throw IOException("Synthetic unavailable management read")
             return IncomePlanListResponseDto(if (status == "active") listOf(current) else emptyList(),
-                current.amountCents, month, current.amountCents, 1, current.amountCents)
+                current.amountCents, month, current.amountCents, 1, current.amountCents, homeCurrencyCode = forecastCurrencyCode)
+        }
+
+        override suspend fun createIncomePlan(request: IncomePlanCreateRequestDto, idempotencyKey: String): IncomePlanDto {
+            creationCalls += request to idempotencyKey
+            val receipt = creationReceipts.getOrPut(idempotencyKey) {
+                IncomePlanDto("created-income", request.label, request.sourceType, request.frequency, request.incomeMonth,
+                    request.amountCents, request.payDay, "active", "2026-09-30T00:00:00Z", "2026-09-30T00:00:00Z",
+                    1, null, request.homeCurrencyCode)
+            }
+            if (loseResponse) throw IOException("Synthetic lost creation acknowledgement")
+            return receipt
         }
 
         override suspend fun updateIncomePlan(publicId: String, request: IncomePlanUpdateRequestDto,

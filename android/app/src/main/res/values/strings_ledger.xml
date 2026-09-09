@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- ADR-0044 wave 1，cluster ledger（账本屏）。命名/红线见 strings.xml 头部。只放中文，不建第二语言。 -->
 <resources>
+    <string name="ledger_item_currency_unknown">币种待核对</string>
+    <string name="ledger_total_empty">暂无入账金额</string>
+    <string name="ledger_total_unknown_currency">部分记录币种待核对</string>
+    <string name="ledger_total_unavailable">%1$s 合计暂不可用</string>
     <!-- LedgerScreen：月份选择 sheet -->
     <string name="ledger_month_picker_description"></string>
 
@@ -183,4 +187,6 @@
     <string name="ledger_msg_batch_part_skipped_not_found">跳过 %1$d 条：不属于当前账本</string>
     <string name="ledger_msg_batch_part_skipped_not_confirmed">跳过 %1$d 条：不是已入账</string>
     <string name="ledger_msg_batch_refresh_pending">更正已提交；列表将在下次同步时刷新</string>
+    <string name="ledger_manual_currency_loading">正在读取当前默认币种…</string>
+    <string name="ledger_manual_original_unverified">这条原提交缺少支付币种或金额，已保留在本机。请核对原记录，不会用当前默认币种替它填写。</string>
 </resources>

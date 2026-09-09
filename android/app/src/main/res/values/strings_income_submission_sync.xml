@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="income_plan_submission_create">新建收入计划</string>
+    <string name="income_plan_submission_open">查看原收入提交</string>
+    <string name="income_plan_submission_unavailable">原收入提交暂时无法确认，请核对记录后继续。</string>
+</resources>

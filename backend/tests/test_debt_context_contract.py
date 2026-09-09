@@ -8,7 +8,7 @@ from app.schemas import DebtCreateRequest
 
 def test_create_note_is_optional_and_bounded() -> None:
     fields = {
-        "direction": "i_owe",
+        "home_currency_code": "CNY", "direction": "i_owe",
         "counterparty_type": "external",
         "counterparty_label": "同行人",
         "principal_amount_cents": 1200,

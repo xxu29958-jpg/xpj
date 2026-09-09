@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -15,6 +16,7 @@ from app.routes.web_app import _require_local as _web_require_local
 from app.services.identity_service import hash_secret
 from app.services.time_service import now_utc
 from tests._infra.assets import PNG_BYTES
+from tests._runtime_protocol import current_protocol_headers
 from tests.pairing_test_support import invitation_accept_payload
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
@@ -28,7 +30,7 @@ def web_client(client: TestClient) -> TestClient:
 
 
 def _bearer(token: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {token}"}
+    return current_protocol_headers({"Authorization": f"Bearer {token}"})
 
 
 def _create_family_ledger(client: TestClient, *, identity) -> str:
@@ -190,7 +192,8 @@ def _assert_web_viewer_rule_posts_denied(web_client: TestClient, *, ledger_id: s
             (
                 "rules toggle",
                 "/web/rules/999/toggle",
-                {"ledger_id": ledger_id, "expected_row_version": 999999},
+                {"ledger_id": ledger_id, "expected_row_version": 999999,
+                    "enabled": "true", "idempotency_key": str(uuid4())},
             ),
             (
                 "rules delete",
@@ -369,7 +372,7 @@ def test_viewer_cannot_mutate_rules_or_apply_pending(client: TestClient, *, iden
     _, owner_token, viewer_token = _make_role_token(client, "viewer", identity=identity)
     created = client.post(
         "/api/rules/categories",
-        headers=_bearer(owner_token),
+        headers={**_bearer(owner_token), "Idempotency-Key": str(uuid4())},
         json={"keyword": "Starbucks", "category": "餐饮", "enabled": True, "priority": 1},
     )
     assert created.status_code == 200, created.json()

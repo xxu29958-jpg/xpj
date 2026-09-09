@@ -18,7 +18,6 @@
 
     <!-- StatsOverviewCard：本月支出 hero 卡 -->
     <string name="stats_overview_month_spend_label">本月已入账支出</string>
-    <string name="stats_overview_local_estimate_badge">离线数据</string>
     <string name="stats_overview_count_label">账单</string>
     <string name="stats_overview_count_value">%1$d 笔</string>
     <string name="stats_overview_recent7_label">最近 7 天</string>
@@ -28,7 +27,6 @@
     <string name="stats_overview_rhythm_caption_empty">确认账单后，会展示月内节奏和最近窗口。</string>
     <string name="stats_lead_title">本月支出</string>
     <string name="stats_lead_source_server_report">数据已更新</string>
-    <string name="stats_lead_source_local">离线数据</string>
     <string name="stats_lead_source_monthly">当前账本</string>
     <string name="stats_lead_total_label">已确认支出</string>
     <string name="stats_lead_total_caption">%1$d 笔已入账</string>
@@ -117,7 +115,6 @@
     <string name="stats_tag_scope_title">标签支出</string>
     <string name="stats_tag_scope_subtitle">#%1$s · %2$s</string>
     <string name="stats_tag_scope_source_monthly">账本汇总</string>
-    <string name="stats_tag_scope_source_local">本机估算</string>
     <string name="stats_tag_scope_source_pending">等待更新</string>
     <string name="stats_tag_scope_confirmed_caption">%1$d 笔已确认记录使用此标签。</string>
     <string name="stats_tag_scope_empty_caption">本月还没有使用此标签的确认记录。</string>
@@ -773,7 +770,6 @@
 
     <!-- MonthlyStatsViewModel / StatsReportsViewModel：统计屏 Snackbar/提示文案 -->
     <string name="stats_message_lifestyle_failed">生活统计暂时打不开，请稍后再试。</string>
-    <string name="stats_message_local_fallback">当前为离线数据，联网后自动更新。</string>
     <string name="stats_message_stats_failed">统计暂时打不开，请稍后再试。</string>
     <string name="stats_message_reports_failed">动态图表暂时打不开，稍后再试。</string>
     <string name="stats_message_trend_failed">趋势图暂时打不开，稍后再试。</string>
@@ -963,4 +959,13 @@
     <string name="repayment_draft_source_bank_sms">银行短信</string>
     <string name="repayment_draft_source_bank_app">银行 App</string>
     <string name="repayment_draft_source_other">其他还款</string>
+    <string name="budget_missing_conversion">缺少 %1$s 的汇率，部分金额暂无法汇总。</string>
+    <string name="budget_message_queued">预算提交已保留，等待服务器确认。</string>
+    <string name="budget_save_attention">预算提交需要处理，原金额已保留。</string>
+    <string name="budget_save_drop">停止此设备的重试</string>
+    <string name="budget_save_drop_explanation">将移除此设备保留的原提交。服务器可能已接收过这次保存，请先核对当前预算；移除不会撤销服务器上的改动。</string>
+    <string name="budget_save_unsupported">无法确认原预算提交的格式或币种，已保留记录。请升级客户端后核对，勿直接重复保存。</string>
+    <string name="budget_save_unverified">尚未确认服务器是否保存了原提交。请先核对当前预算；重试将沿用原金额与提交标识。</string>
+    <string name="budget_save_currency_conflict">原输入币种与这月预算不同。请核对原金额和当前预算，再决定是否停止原提交的重试。</string>
+    <string name="budget_save_open_month">查看这月预算</string>
 </resources>

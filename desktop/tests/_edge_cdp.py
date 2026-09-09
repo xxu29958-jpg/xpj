@@ -32,6 +32,10 @@ _PAGE_READY_DIAGNOSTIC = """
   return {
     protocol, route, readyState: document.readyState,
     mainContent: Boolean(document.querySelector("#main-content")),
+    domContentLoaded: (performance.getEntriesByType("navigation")[0]?.domContentLoadedEventEnd ?? 0) > 0,
+    stylesReady: Array.from(document.querySelectorAll('link[rel="stylesheet"]')).every(link => link.sheet !== null),
+    imagesReady: Array.from(document.images).every(image => image.complete),
+    fontsReady: document.fonts.status === "loaded",
     renderProbeStarted: globalThis.__probeStarted === true,
     renderProbeResultReady: typeof globalThis.__probeResult === "string"
   };
@@ -285,10 +289,35 @@ def _layout_timeout_diagnostic(
     for name, allowed in _READY_DIAGNOSTIC_VALUES.items():
         value = snapshot.get(name)
         diagnostic[name] = value if isinstance(value, str) and value in allowed else "unknown"
-    for name in ("mainContent", "renderProbeStarted", "renderProbeResultReady"):
+    for name in ("mainContent", "renderProbeStarted", "renderProbeResultReady", "domContentLoaded", "stylesReady", "imagesReady", "fontsReady"):
         value = snapshot.get(name)
         diagnostic[name] = value if isinstance(value, bool) else "unknown"
     return diagnostic
+
+
+def _evaluate_script(page: _WebSocket, expression: str) -> object:
+    evaluated = page.request("Runtime.evaluate", {"expression": expression, "returnByValue": True})
+    # CDP script exceptions are not transport failures. Keep locations, never browser text/URLs.
+    if "exceptionDetails" in evaluated:
+        details = evaluated["exceptionDetails"]
+        assert isinstance(details, dict)
+        raise AssertionError("layout probe raised a JavaScript exception "
+            f"(zero-based line={details.get('lineNumber')}, column={details.get('columnNumber')})")
+    return evaluated.get("result", {})
+
+
+def _wait_for_document(page: _WebSocket, navigation: dict[str, object]) -> None:
+    # Page.navigate starts navigation; its return does not establish a loaded document.
+    # Redirects are allowed, but the original about:blank page is never readiness evidence.
+    expression = 'document.readyState === "complete" && location.href !== "about:blank"'
+    deadline = time.monotonic() + 30.0
+    while time.monotonic() < deadline:
+        result = _evaluate_script(page, expression)
+        if isinstance(result, dict) and result.get("value") is True:
+            return
+        time.sleep(0.05)
+    diagnostic = _layout_timeout_diagnostic(page, navigation, None)
+    raise AssertionError("document did not become ready; " + json.dumps(diagnostic, sort_keys=True))
 
 
 def _evaluate_page_once(
@@ -328,24 +357,11 @@ def _evaluate_page_once(
             {"width": width, "height": height, "deviceScaleFactor": 1, "mobile": False},
         )
         navigation = page.request("Page.navigate", {"url": url})
+        _wait_for_document(page, navigation)
         deadline = time.monotonic() + 10.0
         remote: object = None
         while time.monotonic() < deadline:
-            evaluated = page.request(
-                "Runtime.evaluate",
-                {"expression": expression, "returnByValue": True},
-            )
-            # CDP reports script exceptions alongside result, not as transport
-            # errors: https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-evaluate
-            # Keep locations, but not exception text/URLs that could expose a session.
-            if "exceptionDetails" in evaluated:
-                details = evaluated["exceptionDetails"]
-                assert isinstance(details, dict)
-                raise AssertionError(
-                    "layout probe raised a JavaScript exception "
-                    f"(zero-based line={details.get('lineNumber')}, column={details.get('columnNumber')})",
-                )
-            remote = evaluated.get("result", {})
+            remote = _evaluate_script(page, expression)
             if isinstance(remote, dict) and remote.get("type") != "undefined":
                 return remote.get("value")
             time.sleep(0.05)

@@ -18,6 +18,7 @@
     <string name="occurrence_unknown">当前版本无法识别期次状态</string>
     <string name="occurrence_reserved">本期仍预留 %1$s</string>
     <string name="occurrence_paid_amount">关联付款当前金额 %1$s</string>
+    <string name="occurrence_payment_amount_unknown">原金额未保留，请核对付款账单</string>
     <string name="occurrence_next_due">下次提醒：%1$s</string>
     <string name="occurrence_no_reminder">未安排</string>
     <string name="occurrence_clear">撤销本期关联</string>

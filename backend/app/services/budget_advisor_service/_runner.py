@@ -15,12 +15,11 @@ from app.services.budget_advisor_service._audit import (
     compute_input_hash,
     reserve_live_call_budget,
 )
-from app.services.budget_advisor_service._inputs_builder import build_budget_inputs
+from app.services.budget_advisor_service._inputs_builder import read_budget_inputs
 from app.services.budget_advisor_service._models import BudgetAdvice, BudgetInputs
 from app.services.budget_advisor_service._outbound_guard import to_outbound_dict
 from app.services.budget_advisor_service._providers import get_budget_advisor
 from app.services.budget_advisor_service._readiness import get_advisor_readiness
-from app.services.currency_binding_service import require_runtime_home_currency_code
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +40,7 @@ def run_budget_advisor(
     actor_role: str,
     month: str,
     timezone_name: str,
+    home_currency_code: str | None = None,
 ) -> AdvisorRunResult:
     """Run the configured provider with identical gates for API and /web."""
 
@@ -52,15 +52,19 @@ def run_budget_advisor(
         status = 503 if blocked_reason == "ai_advisor_configuration_invalid" else 403
         raise AppError(blocked_reason, status_code=status)
 
-    advisor = get_budget_advisor()
-    home = require_runtime_home_currency_code(db)
-    inputs = build_budget_inputs(
+    projection = read_budget_inputs(
         db,
         tenant_id=tenant_id,
         month=month,
-        home_currency=home,
         timezone_name=timezone_name,
+        home_currency_code=home_currency_code,
     )
+    if projection.missing_rates:
+        raise AppError("money_projection_unavailable", "预算输入缺少原币种或折算汇率，请补充后再生成建议。", status_code=409)
+    home = projection.home_currency_code
+    inputs = projection.provider_inputs
+    assert inputs is not None  # The input owner only creates the outbound envelope after all projections complete.
+    advisor = get_budget_advisor()
     audit_log_id: int | None = None
     if provider_is_live:
         # Fail-closed outbound-schema guard runs once, before reserving the

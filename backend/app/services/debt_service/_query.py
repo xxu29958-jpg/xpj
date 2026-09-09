@@ -16,7 +16,7 @@ from app.ledger_scope import ledger_scoped_select
 from app.models import Account, Debt, LedgerMember
 from app.schemas import DebtListResponse, DebtResponse
 from app.services.currency_binding_service import (
-    readable_or_initialization_home_currency_code,
+    runtime_home_currency_code,
 )
 from app.services.debt_service._fold import (
     _materialize_total,
@@ -256,7 +256,7 @@ def list_debts(db: Session, *, tenant_id: str, viewer_account_id: int | None = N
     items = [_debt_response_with_fold(db, debt, viewer_account_id, labels) for debt in debts]
     return DebtListResponse(
         items=items,
-        home_currency_code=readable_or_initialization_home_currency_code(db),
+        home_currency_code=runtime_home_currency_code(db),
     )
 
 
@@ -299,7 +299,7 @@ def _list_personal_ledger_debts(
     items = [_debt_response_with_fold(db, debt, account_id, labels) for debt in debts]
     return DebtListResponse(
         items=items,
-        home_currency_code=readable_or_initialization_home_currency_code(db),
+        home_currency_code=runtime_home_currency_code(db),
     )
 
 
@@ -358,7 +358,7 @@ def list_receivables_for_account(
         items.append(debt)
     return DebtListResponse(
         items=items,
-        home_currency_code=readable_or_initialization_home_currency_code(db),
+        home_currency_code=runtime_home_currency_code(db),
     )
 
 
@@ -423,7 +423,7 @@ def list_member_receivables_for_account(db: Session, *, account_id: int) -> Debt
     ]
     return DebtListResponse(
         items=items,
-        home_currency_code=readable_or_initialization_home_currency_code(db),
+        home_currency_code=runtime_home_currency_code(db),
     )
 
 

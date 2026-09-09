@@ -30,7 +30,7 @@ def seed_minimal_data() -> None:
         tzinfo=now.tzinfo,
     )
     with SessionLocal() as db:
-        create_income_plan(db, tenant_id="owner", label="工资", source_type="salary",
+        create_income_plan(db, home_currency_code="CNY", tenant_id="owner", label="工资", source_type="salary",
             amount_cents=1_000_000, pay_day=10, now=now)
         db.add(
             Expense(
@@ -49,7 +49,7 @@ def seed_minimal_data() -> None:
             )
         )
         db.add(
-            RecurringItem(
+            RecurringItem(home_currency_code="CNY",
                 tenant_id="owner",
                 merchant_key="netflix",
                 merchant_name="Netflix",

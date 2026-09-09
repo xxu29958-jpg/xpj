@@ -219,11 +219,15 @@ def test_reports_fact_correction_keeps_original_month_through_422_409_and_succes
     web_client: TestClient, *, identity,
 ) -> None:
     expense_id = create_confirmed(web_client, identity=identity, merchant="月报原始商家")
-    report = web_client.get("/web/reports?ledger_id=owner&month=2026-05")
+    origin = {"return_to": "reports", "return_month": "2026-05", "return_home_currency_code": "CNY",
+        "return_granularity": "week", "return_ranking_metric": "count", "return_merchant_category": "餐饮"}
+    report_task = {"month": "2026-05", "home_currency_code": "CNY", "granularity": "week",
+        "ranking_metric": "count", "merchant_category": "餐饮"}
+    report = web_client.get("/web/reports", params={"ledger_id": "owner", **report_task})
     assert report.status_code == 200, report.text
     fact_path = f"/web/expenses/{expense_id}/edit"
     fact_href = next(link["href"] for link in _anchors(report.text) if urlsplit(link["href"]).path == fact_path)
-    _assert_query(fact_href, fact_path, ledger_id="owner", return_to="reports", return_month="2026-05")
+    _assert_query(fact_href, fact_path, ledger_id="owner", **origin)
     detail = web_client.get(fact_href)
     assert detail.status_code == 200, detail.text
     form_path = f"/web/expenses/{expense_id}/correct"
@@ -237,26 +241,26 @@ def test_reports_fact_correction_keeps_original_month_through_422_409_and_succes
     assert "请说明这次更正的原因" in invalid.text
     assert "月报更正后的商家" in invalid.text
     retained = _hidden_form(invalid.text, action)
-    assert {key: retained[key] for key in ("ledger_id", "return_to", "return_month")} == {
-        "ledger_id": "owner", "return_to": "reports", "return_month": "2026-05",
-    }
+    assert {key: retained[key] for key in origin} == origin
+    assert retained["ledger_id"] == "owner"
 
+    assert retained["idempotency_key"] == data["idempotency_key"]
+    assert retained["expected_row_version"] == data["expected_row_version"]
     _intervening_correction(web_client, identity, expense_id)
     data.update(retained)
     data["reason"] = "对照原月报核准商家"
     conflict = web_client.post(action, data=data, follow_redirects=False)
     assert conflict.status_code == 409, conflict.text
     retained = _hidden_form(conflict.text, action)
-    assert {key: retained[key] for key in ("ledger_id", "return_to", "return_month")} == {
-        "ledger_id": "owner", "return_to": "reports", "return_month": "2026-05",
-    }
+    assert {key: retained[key] for key in origin} == origin
+    assert retained["ledger_id"] == "owner"
     assert "另一端更正商家" in conflict.text
     data.update(retained)
     data["merchant"] = "月报更正后的商家"
     success = web_client.post(action, data=data, follow_redirects=False)
     assert success.status_code == 303, success.text
     _assert_query(success.headers["location"], fact_path, ledger_id="owner",
-                  return_to="reports", return_month="2026-05")
+                  **origin)
     result = web_client.get(success.headers["location"])
     assert result.status_code == 200, result.text
     assert "月报更正后的商家" in result.text
@@ -266,7 +270,7 @@ def test_reports_fact_correction_keeps_original_month_through_422_409_and_succes
     return_anchor = re.search(r'<a\b[^>]*href="([^"]+)"[^>]*>\s*返回原月份月报\s*</a>', result.text)
     assert return_anchor is not None
     return_link = unescape(return_anchor.group(1))
-    _assert_query(return_link, "/web/reports", ledger_id="owner", month="2026-05")
+    _assert_query(return_link, "/web/reports", ledger_id="owner", **report_task)
     returned = web_client.get(return_link)
     assert returned.status_code == 200, returned.text
     assert "月报更正后的商家" in returned.text

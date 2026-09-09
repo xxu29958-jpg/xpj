@@ -46,7 +46,7 @@ class SpendingGoalDetailViewModelTest {
         vm.updateField(SpendingGoalEditField.Category, "")
         vm.save(); vm.save()
         advanceUntilIdle()
-        assertEquals(listOf(GoalUpdate(1, "本月外卖", "2026-07", 35000, "")), edits.saves)
+        assertEquals(listOf(GoalUpdate(1, "本月外卖", "2026-07", 35000, "", "CNY")), edits.saves)
         assertEquals(20000, vm.state.value.goal?.targetAmountCents)
         gate.complete(Unit)
         advanceUntilIdle()
@@ -56,8 +56,11 @@ class SpendingGoalDetailViewModelTest {
     }
 
     @Test fun jpyInputAndReentryKeepTheOriginalDraft() = runTest(dispatcher) {
-        val edits = RecordingGoalEdits().apply { currencyResult = Result.success(CurrencyCode.JPY) }
-        val vm = model(RecordingSpendingGoalActions(), edits)
+        val edits = RecordingGoalEdits().apply { currencyResult = Result.success(CurrencyCode.CNY) }
+        val reports = RecordingSpendingGoalActions().apply {
+            goalResult = Result.success(spendingGoal().copy(homeCurrencyCode = "JPY"))
+        }
+        val vm = model(reports, edits)
         advanceUntilIdle()
         vm.beginEdit()
         assertEquals("20000", vm.state.value.targetAmountInput)
@@ -67,17 +70,21 @@ class SpendingGoalDetailViewModelTest {
         vm.save()
         advanceUntilIdle()
         assertEquals(1200, edits.saves.single().targetAmountCents)
+        assertEquals("JPY", edits.saves.single().homeCurrencyCode)
     }
 
     @Test fun unknownCurrencyIsRecoverableAndNeverEnablesWriting() = runTest(dispatcher) {
         val edits = RecordingGoalEdits().apply { currencyResult = Result.failure(IllegalStateException("offline")) }
-        val vm = model(RecordingSpendingGoalActions(), edits)
+        val reports = RecordingSpendingGoalActions().apply {
+            goalResult = Result.success(spendingGoal().copy(homeCurrencyCode = null))
+        }
+        val vm = model(reports, edits)
         advanceUntilIdle()
         vm.beginEdit(); vm.save()
         assertFalse(vm.state.value.canSave)
         assertTrue(edits.saves.isEmpty())
-        assertNotNull(vm.state.value.loadError)
-        edits.currencyResult = Result.success(CurrencyCode.JPY)
+        assertNotNull(vm.state.value.formError)
+        reports.goalResult = Result.success(spendingGoal().copy(homeCurrencyCode = "JPY"))
         vm.load(); advanceUntilIdle(); vm.beginEdit()
         assertTrue(vm.state.value.isEditing)
     }
@@ -93,12 +100,14 @@ class SpendingGoalDetailViewModelTest {
         vm.beginEdit(); vm.showArchiveConfirmation(true)
         assertFalse(vm.state.value.isEditing)
         assertFalse(vm.state.value.showArchiveDialog)
-        val canonical = spendingGoal(rowVersion = 2).copy(targetAmountCents = 35000, remainingAmountCents = 27000)
+        val canonical = spendingGoal(rowVersion = 2).copy(targetAmountCents = 35000, remainingAmountCents = 27000,
+            homeCurrencyCode = "JPY")
         edits.rows.value = listOf(PendingGoalEdit(row.copy(status = PendingMutationStatus.Done), null, canonical))
         reports.goalResult = Result.failure(IllegalStateException("read unavailable"))
         advanceUntilIdle(); vm.load(); advanceUntilIdle()
         assertEquals(35000, vm.state.value.goal?.targetAmountCents)
         assertEquals(27000, vm.state.value.goal?.remainingAmountCents)
+        assertEquals("JPY", vm.state.value.goal?.homeCurrencyCode)
         assertFalse(vm.state.value.hasPendingEdit)
         assertNotNull(vm.state.value.loadError)
     }

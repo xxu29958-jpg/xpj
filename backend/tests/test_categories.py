@@ -93,7 +93,7 @@ def _create_manual_category(
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": 1200,
+            "home_currency_code": "CNY", "amount_cents": 1200,
             "merchant": "分类测试",
             "category": category,
             "client_ref": client_ref,

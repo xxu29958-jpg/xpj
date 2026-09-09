@@ -134,7 +134,12 @@ private class CorrectionBindingFixture(private val delayedType: PendingMutationT
     fun model() = OutboxStatusViewModel(outbox, repository, com.ticketbox.viewmodel.OutboxRecoveryRepositories(
         DebtCreationRepository(binding.apiProvider, outbox, adapters.debtCreateAdapter),
         recurringOccurrences = null,
-        incomePlans = IncomePlanRepository(binding.apiProvider, outbox, adapters.incomePlanUpdateAdapter),
+        recurringItems = RecurringRepository(binding.apiProvider, outbox, adapters.recurringCreateAdapter, adapters.recurringUpdateAdapter),
+        rules = RuleRepository(binding, offlineMutations = CategoryRuleOfflineMutationWiring(
+            outbox, adapters.categoryRuleUpdateAdapter, adapters.categoryRuleDeleteAdapter,
+            adapters.categoryRuleSubmissionAdapter, adapters.categoryRuleReceiptAdapter)),
+        incomePlans = IncomePlanRepository(binding.apiProvider, outbox, adapters.incomePlanSubmissionAdapter, adapters.incomePlanReceiptAdapter),
         debtAdjustments = DebtAdjustmentRepository(binding.apiProvider, outbox, adapters.debtAdjustmentAdapter),
-        goalEdits = GoalEditRepository(binding.apiProvider, outbox, adapters.goalUpdateAdapter, adapters.goalReceiptAdapter)))
+        goalEdits = GoalEditRepository(binding.apiProvider, outbox, adapters.goalUpdateAdapter, adapters.goalReceiptAdapter, adapters.goalCreateAdapter),
+            budgetSaves = BudgetRepository(binding.apiProvider, outbox, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter, adapters.manualRateAdapter, adapters.manualRateReceiptAdapter)))
 }

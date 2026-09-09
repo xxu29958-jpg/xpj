@@ -43,7 +43,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_app_context, get_current_writer_context
+from app.auth import get_current_app_context, get_current_protocol_writer_context, get_current_writer_context
 from app.database import get_db
 from app.schemas import (
     DebtAdjustmentCreateRequest,
@@ -159,7 +159,7 @@ def get_repayment_facts(
 def post_debt(
     payload: DebtCreateRequest,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    auth: AuthContext = Depends(get_current_writer_context),
+    auth: AuthContext = Depends(get_current_protocol_writer_context),
     db: Session = Depends(get_db),
 ) -> DebtResponse:
     return create_debt_idempotently(

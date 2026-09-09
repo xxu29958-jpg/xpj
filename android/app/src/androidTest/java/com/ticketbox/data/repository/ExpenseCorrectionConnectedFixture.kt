@@ -59,7 +59,10 @@ import retrofit2.Response
 import retrofit2.HttpException
 
 /** Real disk Room and repository graph; only remote transport and session storage are synthetic. */
-internal class ExpenseCorrectionConnectedFixture(private val context: Context) {
+internal class ExpenseCorrectionConnectedFixture(
+    private val context: Context,
+    private val wrapApi: (ApiService) -> ApiService = { it },
+) {
     private val name = "expense-correction-continuity.db"
     private var database: AppDatabase? = null
     val clock = Clock.fixed(Instant.parse("2026-09-06T00:00:00Z"), ZoneOffset.UTC)
@@ -81,7 +84,7 @@ internal class ExpenseCorrectionConnectedFixture(private val context: Context) {
             "getBackgroundSettingsFlow" -> flowOf(BackgroundSettings())
             "notificationPreferences" -> NotificationPreferences()
             "lastConfirmedSyncAt", "lastConfirmedSyncAtForLedger" -> lastSyncAt
-            "monthlyBudgetCents", "lastUploadAt", "lastUploadAtForLedger" -> null
+            "lastUploadAt", "lastUploadAtForLedger" -> null
             "availableLedgersJson" -> availableLedgers
             else -> error("Unexpected settings: $method")
         }
@@ -119,8 +122,9 @@ internal class ExpenseCorrectionConnectedFixture(private val context: Context) {
             }
         }
         val credentials = SessionCredentialAdapter(sessions)
+        val service = wrapApi(network.service)
         val factory = object : ApiServiceFactory {
-            override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = network.service
+            override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = service
         }
         val provider = ApiServiceProvider(factory, sessions, credentials)
         graph = RepositoryGraph(RepositoryGraphDependencies(db, ApiClient(), settingsStore, sessions, credentials,
@@ -207,8 +211,8 @@ internal class CorrectionConnectedNetwork {
                 com.ticketbox.data.remote.dto.RuntimeProductCapabilitiesDto(
                     com.ticketbox.data.remote.dto.RuntimeCurrencyCapabilityDto("1:1:CNY"), 1))
         }
-        override suspend fun monthlyStats(month: String?, tag: String?, timezone: String?) =
-            com.ticketbox.data.remote.dto.MonthlyStatsDto("2026-09", 1000, 1, emptyList())
+        override suspend fun monthlyStats(month: String?, tag: String?, timezone: String?, homeCurrencyCode: String?) =
+            com.ticketbox.data.remote.dto.MonthlyStatsDto(homeCurrencyCode = "CNY", month = "2026-09", totalAmountCents = 1000, count = 1, byCategory = emptyList())
         override suspend fun months(timezone: String?) = com.ticketbox.data.remote.dto.MonthsDto(listOf("2026-09"))
         override suspend fun duplicates() = emptyList<ExpenseDto>()
         override suspend fun listBackgroundTasks() = backgroundTasks
@@ -347,7 +351,8 @@ private fun correctionRecurringItem() = RecurringItemDto(publicId = "navigation-
     merchant = "家庭固定支出", merchantKey = "家庭固定支出", frequency = "monthly", baselineAmountCents = 1000,
     lastAmountCents = 1000, occurrenceCount = 1, lastSeenAt = null, nextExpectedDate = null, status = "active",
     confidence = null, source = "manual", createdAt = "2026-09-06T00:00:00Z", updatedAt = "2026-09-06T00:00:00Z",
-    rowVersion = 2, pausedAt = null, archivedAt = null)
+    rowVersion = 2, pausedAt = null, archivedAt = null,
+    homeCurrencyCode = "CNY")
 
 private fun correctionSession() = LocalSessionRecord(sessionGeneration = "correction-session", bindingRevision = "correction-binding",
     serverId = "60000000-0000-4000-8000-000000000001", dataGeneration = "60000000-0000-4000-8000-000000000002",

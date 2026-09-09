@@ -38,6 +38,7 @@ import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalCurrencyDisplay
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.ui.screens.budget.BudgetProgressBar
@@ -99,7 +100,7 @@ private fun PlanConfiguredBudget(
     budget: BudgetMonthly,
     onOpenBudget: () -> Unit,
 ) {
-    val currency = LocalCurrencyDisplay.current
+    val currency = CurrencyDisplay.forRecord(budget.homeCurrencyCode ?: "UNKNOWN")
     val danger = LocalStateTokens.current.danger.fg
     val amount = if (budget.isOverBudget) budget.overspentAmountCents else budget.remainingAmountCents
     Column(
@@ -132,17 +133,7 @@ private fun PlanConfiguredBudget(
             }
             PlanRowChevron(modifier = Modifier.align(Alignment.CenterVertically))
         }
-        BudgetProgressBar(progress = budget.spentProgress)
-        Text(
-            text = stringResource(
-                R.string.plan_budget_progress_meta,
-                formatDisplayAmount(budget.spentAmountCents, currency),
-                formatDisplayAmount(budget.availableAmountCents, currency),
-                budget.spentPercent,
-            ),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall.tabularNum(),
-        )
+        PlanBudgetProgress(budget, currency)
         state.loadError?.let {
             Text(
                 text = it.asString(),
@@ -152,6 +143,21 @@ private fun PlanConfiguredBudget(
         }
     }
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
+}
+
+@Composable
+private fun PlanBudgetProgress(budget: BudgetMonthly, currency: CurrencyDisplay) {
+    budget.spentProgress?.let { BudgetProgressBar(progress = it) }
+    Text(
+        text = budget.spentPercent?.let { percent -> stringResource(R.string.plan_budget_progress_meta,
+            formatDisplayAmount(budget.spentAmountCents, currency), formatDisplayAmount(budget.availableAmountCents, currency), percent)
+        } ?: stringResource(R.string.stats_budget_progress_unavailable_status),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.bodySmall.tabularNum(),
+    )
+    if (budget.missingCurrencyCodes.isNotEmpty()) {
+        Text(stringResource(R.string.budget_missing_conversion, budget.missingCurrencyCodes.joinToString("、")))
+    }
 }
 
 @Composable
@@ -292,8 +298,9 @@ private fun planBudgetFallbackSummary(state: BudgetUiState): String = when {
 @Composable
 private fun planRecurringSummary(state: RecurringUiState): String {
     val active = state.items.filter { it.status.equals("active", ignoreCase = true) }
-    val activeAmount = active.sumOf { it.baselineAmountCents }
-    val currency = LocalCurrencyDisplay.current
+    val amounts = com.ticketbox.ui.screens.recurring.recurringTotalLines(
+        com.ticketbox.ui.screens.recurring.recurringHeroModel(state.items, state.itemsLoadState),
+    ).joinToString(" · ")
     return when {
         state.itemsLoadState == RecurringListLoadState.Failed && active.isEmpty() ->
             state.message?.asString() ?: stringResource(R.string.plan_recurring_error)
@@ -307,19 +314,19 @@ private fun planRecurringSummary(state: RecurringUiState): String {
             stringResource(
                 R.string.plan_recurring_summary_partial,
                 active.size,
-                formatDisplayAmount(activeAmount, currency),
+                amounts,
             )
         state.candidates.isNotEmpty() ->
             stringResource(
                 R.string.plan_recurring_summary_with_candidates,
                 active.size,
-                formatDisplayAmount(activeAmount, currency),
+                amounts,
                 state.candidates.size,
             )
         else -> stringResource(
             R.string.plan_recurring_summary,
             active.size,
-            formatDisplayAmount(activeAmount, currency),
+            amounts,
         )
     }
 }
@@ -334,9 +341,8 @@ private fun planIncomeSummary(state: IncomePlanUiState): String = when {
     else -> stringResource(
         R.string.plan_income_summary,
         state.currentMonthSummary.effectivePlanCount,
-        formatDisplayAmount(
-            state.currentMonthSummary.expectedAmountCents,
-            LocalCurrencyDisplay.current,
-        ),
+        state.currentMonthSummary.expectedAmountCents?.let {
+            formatDisplayAmount(it, CurrencyDisplay.forRecord(state.forecastCurrencyCode))
+        } ?: stringResource(R.string.income_plan_conversion_pending),
     )
 }

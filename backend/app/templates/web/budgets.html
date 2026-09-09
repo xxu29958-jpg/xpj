@@ -35,6 +35,9 @@
 </header>
 
 {% if message %}<div class="product-feedback" role="status">{{ message }}</div>{% endif %}
+{% if budget.missing_currency_codes %}
+<div class="product-feedback" role="status">部分汇总待补齐汇率或币种：{{ budget.missing_currency_codes | join('、') }}。原预算和分类金额保持不变。</div>
+{% endif %}
 {% if not can_write %}
 <div class="product-feedback" role="status">只读角色可以查看本月预算与执行，但不能修改预算设置。</div>
 {% endif %}
@@ -44,10 +47,10 @@
   <div class="budget-hero-main">
     {% if budget.is_over_budget %}
     <span class="budget-hero-label">已超支</span>
-    <span class="budget-hero-value"><span class="yuan">{{ home_currency_symbol }}</span>{{ budget.overspent_yuan }}</span>
+    <span class="budget-hero-value"><span class="yuan">{{ budget_currency_symbol }}</span>{{ budget.overspent_yuan }}</span>
     {% else %}
     <span class="budget-hero-label">本月预算剩余</span>
-    <span class="budget-hero-value"><span class="yuan">{{ home_currency_symbol }}</span>{{ budget.remaining_yuan }}</span>
+    <span class="budget-hero-value"><span class="yuan">{{ budget_currency_symbol }}</span>{{ budget.remaining_yuan or '—' }}</span>
     {% endif %}
   </div>
   {% if budget.has_progress_basis %}
@@ -55,13 +58,13 @@
   <progress class="plan-progress{% if budget.is_over_budget %} is-over{% endif %}" value="{{ budget.progress_value_cents }}" max="{{ budget.progress_max_cents }}" aria-label="本月预算执行进度"></progress>
   {% endif %}
   <div class="plan-progress-meta">
-    <span>本月已花 {{ home_currency_symbol }}{{ budget.spent_yuan }}</span>
-    <span>月度总预算 {{ home_currency_symbol }}{{ budget.total_yuan }}</span>
+    <span>本月已花 {{ budget_currency_symbol }}{{ budget.spent_yuan }}</span>
+    <span>月度总预算 {{ budget_currency_symbol }}{{ budget.total_yuan }}</span>
   </div>
   <ul class="budget-context">
-    <li>结转 <strong>{{ home_currency_symbol }}{{ budget.rollover_yuan }}</strong></li>
-    <li>固定支出 <strong>{{ home_currency_symbol }}{{ budget.fixed_yuan }}</strong></li>
-    <li>非月度预留 <strong>{{ home_currency_symbol }}{{ budget.non_monthly_yuan }}</strong></li>
+    <li>结转 <strong>{{ budget_currency_symbol }}{{ budget.rollover_yuan }}</strong></li>
+    <li>固定支出 <strong>{{ budget_currency_symbol }}{{ budget.fixed_yuan }}</strong></li>
+    <li>非月度预留 <strong>{{ budget_currency_symbol }}{{ budget.non_monthly_yuan }}</strong></li>
   </ul>
 </section>
 
@@ -73,7 +76,7 @@
   </div>
   <div class="budget-chip-grid">
     {% for item in budget.excluded_breakdown %}
-    <span class="budget-chip-static">{{ item.category }} {{ home_currency_symbol }}{{ item.amount_yuan }} · {{ item.count }} 笔</span>
+    <span class="budget-chip-static">{{ item.category }} {{ budget_currency_symbol }}{{ item.amount_yuan }} · {{ item.count }} 笔</span>
     {% endfor %}
   </div>
 </section>
@@ -83,7 +86,7 @@
   <div class="product-state-title">还没有本月预算</div>
   <div class="product-state-body">设一个总预算，开始跟踪本月预算执行。</div>
   {# 未配置 ≠ 没有执行事实: 已确认支出安静列示, 但不出现剩余/假进度。 #}
-  <div class="hint">本月已确认支出 {{ home_currency_symbol }}{{ budget.spent_yuan }}</div>
+  <div class="hint">本月已确认支出 {{ budget_currency_symbol }}{{ budget.spent_yuan }}</div>
 </section>
 {% endif %}
 
@@ -98,7 +101,7 @@
   <div class="budget-first-heading">
     <h2 class="product-panel-title">从一个总额开始</h2>
     <p class="product-panel-subtitle">其他设置随时可补。</p>
-    <p class="hint">本月已确认支出 {{ home_currency_symbol }}{{ budget.spent_yuan }}</p>
+    <p class="hint">本月已确认支出 {{ budget_currency_symbol }}{{ budget.spent_yuan }}</p>
   </div>
   {% endif %}
   {% if error %}
@@ -110,6 +113,9 @@
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     {# 月份由顶栏月份切换器统一管理；保存针对当前所选月份。 #}
     <input type="hidden" name="month" value="{{ month }}">
+    <input type="hidden" name="home_currency_code" value="{{ save_intent.home_currency_code }}">
+    <input type="hidden" name="expected_row_version" value="{{ save_intent.expected_row_version }}">
+    <input type="hidden" name="idempotency_key" value="{{ save_intent.idempotency_key }}">
 
     <div class="product-field budget-total-field">
       <label for="budget-total-amount-yuan">月度总预算（{{ currency_input.currency_code }} · {{ currency_input.currency_symbol }}，{{ currency_input.amount_input_hint }}）</label>
@@ -175,8 +181,8 @@
                     <div class="budget-row-saved">已保存：{{ row.saved_category }}</div>
                   </td>
                   <td><input class="product-input" type="number" name="category_budget_amount_yuan" value="{{ row.amount_yuan }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_example }}" aria-label="分类预算金额"></td>
-                  <td class="amount">{% if row.spent_yuan %}<span class="budget-cell-sign">本月已花</span>{{ home_currency_symbol }}{{ row.spent_yuan }}{% else %}—{% endif %}</td>
-                  <td class="amount">{% if row.has_overspend %}<span class="product-status product-status--danger">超支 {{ home_currency_symbol }}{{ row.overspent_yuan }}</span>{% elif row.remaining_yuan %}<span class="budget-cell-sign">剩余</span>{{ home_currency_symbol }}{{ row.remaining_yuan }}{% else %}—{% endif %}</td>
+                  <td class="amount">{% if row.spent_yuan %}<span class="budget-cell-sign">本月已花</span>{{ budget_currency_symbol }}{{ row.spent_yuan }}{% else %}—{% endif %}</td>
+                  <td class="amount">{% if row.has_overspend %}<span class="product-status product-status--danger">超支 {{ budget_currency_symbol }}{{ row.overspent_yuan }}</span>{% elif row.remaining_yuan %}<span class="budget-cell-sign">剩余</span>{{ budget_currency_symbol }}{{ row.remaining_yuan }}{% else %}—{% endif %}</td>
                   <td class="budget-remove-cell">
                     <label class="budget-remove"><input type="checkbox" name="category_budget_remove" value="{{ row.index }}"{% if row.remove_requested %} checked{% endif %} aria-label="移除分类预算：{{ row.saved_category }}"><span>移除</span></label>
                   </td>
@@ -204,7 +210,11 @@
     </details>
 
     <div class="budget-actions">
-      <button class="product-button product-button--primary" type="submit">保存预算</button>
+      {% if budget_currency_changed %}
+      <p role="status">原输入使用 {{ save_intent.home_currency_code }}，与当前预算币种不同。原输入保留在此页，请在新页面按当前预算币种重新填写金额。</p>
+      <a class="product-button product-button--primary" href="/web/budgets?ledger_id={{ selected_ledger_id | urlencode }}&amp;month={{ month | urlencode }}" target="_blank" rel="noopener">打开当前预算重新编辑</a>
+      {% elif budget_conflict %}<button class="product-button product-button--primary" type="submit" name="review_latest" value="true" formnovalidate>保留输入，核对最新预算</button>
+      {% else %}<button class="product-button product-button--primary" type="submit">保存预算</button>{% endif %}
     </div>
   </form>
 </section>
@@ -229,9 +239,9 @@
         {% for row in configured_rows %}
         <tr class="budget-row">
           <td>{{ row.category }}</td>
-          <td class="amount">{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
-          <td class="amount">{% if row.spent_yuan %}<span class="budget-cell-sign">本月已花</span>{{ home_currency_symbol }}{{ row.spent_yuan }}{% else %}—{% endif %}</td>
-          <td class="amount">{% if row.has_overspend %}<span class="product-status product-status--danger">超支 {{ home_currency_symbol }}{{ row.overspent_yuan }}</span>{% elif row.remaining_yuan %}<span class="budget-cell-sign">剩余</span>{{ home_currency_symbol }}{{ row.remaining_yuan }}{% else %}—{% endif %}</td>
+          <td class="amount">{{ budget_currency_symbol }}{{ row.amount_yuan }}</td>
+          <td class="amount">{% if row.spent_yuan %}<span class="budget-cell-sign">本月已花</span>{{ budget_currency_symbol }}{{ row.spent_yuan }}{% else %}—{% endif %}</td>
+          <td class="amount">{% if row.has_overspend %}<span class="product-status product-status--danger">超支 {{ budget_currency_symbol }}{{ row.overspent_yuan }}</span>{% elif row.remaining_yuan %}<span class="budget-cell-sign">剩余</span>{{ budget_currency_symbol }}{{ row.remaining_yuan }}{% else %}—{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>

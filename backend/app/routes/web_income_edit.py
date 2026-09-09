@@ -13,16 +13,17 @@ from app.routes._web_session_common import resolve_web_actor_account_id
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
+    _currency_input_view,
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _web_redirect,
     parse_form_row_version_token,
+    preserve_original_ledger_form,
     templates,
 )
 from app.routes.web_income_plans import _parse_pay_day, _parse_yuan
 from app.schemas import IncomePlanUpdateRequest
-from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import minor_amount_value
 from app.services.income_plan_service import get_income_plan
 from app.services.income_plan_service._delivery import update_income_plan_idempotently
@@ -47,11 +48,11 @@ def _render_editor(
     current = {
         "label": plan.label, "source_type": plan.source_type, "frequency": plan.frequency,
         "income_month": plan.income_month or "", "pay_day": str(plan.pay_day),
-        "amount_yuan": minor_amount_value(plan.amount_cents, ctx["home_currency_code"]),
+        "amount_yuan": minor_amount_value(plan.amount_cents, plan.home_currency_code),
         "expected_row_version": str(plan.row_version),
     }
     ctx.update(
-        plan=plan, current=current, values=values if values is not None else {
+        plan=plan, current=current, currency_input=_currency_input_view(plan.home_currency_code), values=values if values is not None else {
             **current, "intent_month": intent_month, "idempotency_key": str(uuid4()),
         }, error=error, conflict=conflict, review_month=current_accounting_month(),
     )
@@ -94,19 +95,26 @@ def web_income_save(
     review_latest: bool = Form(default=False),
     _local: None = LocalOnly, db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    options, selected, plan = _edit_scope(request, db, ledger_id, public_id)
+    options = _list_ledger_options(db)
+    selected = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     values = {
         "label": label, "source_type": source_type, "frequency": frequency,
         "income_month": income_month, "amount_yuan": amount_yuan, "pay_day": pay_day,
         "intent_month": intent_month, "expected_row_version": expected_row_version,
         "idempotency_key": idempotency_key,
     }
+    retained = preserve_original_ledger_form(request, db, options=options, selected=selected,
+        fields={**values, "ledger_id": ledger_id, "review_latest": review_latest}, task="修改收入计划")
+    if retained is not None:
+        return retained
+    _require_selected_ledger_write(options, selected)
+    plan = get_income_plan(db, tenant_id=selected, public_id=public_id)
     if review_latest:
         # The labelled review action prepares, but never publishes, a new intent.
         values.update(intent_month=current_accounting_month(), expected_row_version=str(plan.row_version), idempotency_key=str(uuid4()))
         return _render_editor(request, db, options, selected, plan, intent_month=values["intent_month"], values=values)
     try:
-        payload = _edit_payload(values, currency_code=require_runtime_home_currency_code(db))
+        payload = _edit_payload(values, currency_code=plan.home_currency_code)
         update_income_plan_idempotently(
             db, tenant_id=selected, public_id=public_id, payload=payload,
             actor_account_id=resolve_web_actor_account_id(db, request, selected), idempotency_key=idempotency_key,

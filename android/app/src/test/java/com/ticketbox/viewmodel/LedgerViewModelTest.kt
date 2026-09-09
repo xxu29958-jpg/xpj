@@ -129,7 +129,7 @@ class LedgerViewModelTest {
         val state = vm.uiState.value
         assertEquals(LedgerViewMode.Table, state.viewMode)
         assertEquals(2, state.summary.itemCount)
-        assertEquals(4200L, state.summary.totalAmountCents)
+        assertEquals(mapOf<String?, Long?>("CNY" to 4200L), state.summary.amountsByCurrency)
         assertTrue(state.filter.hasFilters)
     }
 
@@ -152,7 +152,7 @@ class LedgerViewModelTest {
 
         val state = vm.uiState.value
         assertEquals(listOf(1L), state.items.map { it.root.id })
-        assertEquals(1200L, state.summary.totalAmountCents)
+        assertEquals(mapOf<String?, Long?>("CNY" to 1200L), state.summary.amountsByCurrency)
         assertTrue(state.filter.hasFilters)
         assertEquals("餐饮", state.filter.categoryFilter)
         assertEquals("早餐", state.filter.query)
@@ -896,6 +896,8 @@ private class FakeLedgerActions(
         private set
     var manualCreateCallCount = 0
         private set
+    var lastManualDraft: ExpenseDraft? = null
+        private set
     var syncGate: CompletableDeferred<Unit>? = null
     var monthResult: Result<List<String>> = Result.success(listOf("2026-05"))
     var monthGate: CompletableDeferred<Unit>? = null
@@ -940,6 +942,7 @@ private class FakeLedgerActions(
 
     override suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense> {
         manualCreateCallCount += 1
+        lastManualDraft = draft
         manualCreate.failure?.let { return Result.failure(it) }
         val created = expense(
             id = if (manualCreate.pendingSync) {
@@ -1033,6 +1036,7 @@ private fun expense(
     rowVersion = 1L,
     confirmedAt = "2026-05-17T08:01:00Z",
     rejectedAt = null,
+    homeCurrencyCode = "CNY",
 )
 
 /**
@@ -1049,6 +1053,25 @@ class LedgerViewModelCurrencyRelatchTest {
         } finally {
             Dispatchers.resetMain()
         }
+    }
+
+    @Test
+    fun nextManualTaskReadsTheNewDefaultWithoutRewritingAnExistingDraft() = relatchTest {
+        val debts = RecoverableLedgerDebtActions(online = true)
+        val fake = FakeLedgerActions(expenses = emptyList())
+        val vm = LedgerViewModel(fake, debts)
+        advanceUntilIdle()
+        assertEquals(CurrencyCode.CNY, vm.uiState.value.ledgerCurrency)
+        val original = manualDraft().copy(originalCurrencyCode = CurrencyCode.CNY, ledgerHomeCurrency = CurrencyCode.CNY)
+        debts.currency = "JPY"
+        assertEquals(CurrencyCode.JPY, vm.prepareManualEntry())
+        vm.createManualExpense(original)
+        advanceUntilIdle()
+        assertEquals(CurrencyCode.CNY, fake.lastManualDraft?.ledgerHomeCurrency)
+        assertEquals(CurrencyCode.CNY, fake.lastManualDraft?.originalCurrencyCode)
+        assertEquals(original.amountCents, fake.lastManualDraft?.amountCents)
+        debts.online = false
+        assertEquals(CurrencyCode.JPY, vm.prepareManualEntry())
     }
 
     @Test
@@ -1101,11 +1124,12 @@ class LedgerViewModelCurrencyRelatchTest {
 private class RecoverableLedgerDebtActions(
     var online: Boolean,
 ) : DebtActions by unsupportedLedgerDebtActions() {
+    var currency = "CNY"
     override fun canModifyLedger(): Boolean = true
 
     override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens): Result<DebtListPage> =
         if (online) {
-            Result.success(DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "CNY"))
+            Result.success(DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = currency))
         } else {
             Result.failure(IllegalStateException("offline"))
         }

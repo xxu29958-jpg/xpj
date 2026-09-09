@@ -44,12 +44,14 @@ def test_view_pending_with_suggestion() -> None:
             target_debts=(
                 RepaymentMatchCandidate(
                     public_id="debt-1",
+                    home_currency_code="CNY",
                     counterparty_label="花呗",
                     remaining_amount_cents=50000,
                     row_version=7,
                 ),
                 RepaymentMatchCandidate(
                     public_id="debt-2",
+                    home_currency_code="CNY",
                     counterparty_label="借呗",
                     remaining_amount_cents=30000,
                     row_version=2,
@@ -93,6 +95,7 @@ def test_view_pending_attempted_target_is_marked() -> None:
             target_debts=(
                 RepaymentMatchCandidate(
                     public_id="debt-9",
+                    home_currency_code="CNY",
                     counterparty_label=None,  # 防御：无名 → 外部欠款 fallback
                     remaining_amount_cents=30000,
                     row_version=2,

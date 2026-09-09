@@ -13,6 +13,7 @@ class BudgetMappersTest {
     @Test
     fun monthlyBudgetDtoMapsToDomainAndNormalizesCategories() {
         val budget = BudgetMonthlyDto(
+    homeCurrencyCode = "CNY",
             ledgerId = "owner",
             month = "2026-05",
             configured = true,
@@ -52,7 +53,7 @@ class BudgetMappersTest {
 
     @Test
     fun budgetUpdateMapsToSnakeCaseRequestAndNormalizesRows() {
-        val request = BudgetMonthlyUpdate(
+        val request = BudgetMonthlyUpdate(homeCurrencyCode = "CNY", expectedRowVersion = null,
             totalAmountCents = 300000,
             nonMonthlyAmountCents = 10000,
             rolloverAmountCents = -20000,

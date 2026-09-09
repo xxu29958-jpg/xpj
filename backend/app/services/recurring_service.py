@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from calendar import monthrange
 from dataclasses import dataclass
 from datetime import date, datetime
 
@@ -12,12 +13,19 @@ from app.models import Expense, RecurringItem
 from app.money_contract import (
     projection_sum_to_int,
     projection_values_average_to_int,
+    projection_values_sum_to_int,
     round_minor_ratio_half_up,
 )
 from app.schemas import RecurringItemResponse
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.merchant_service import normalize_merchant
-from app.services.spending_contract_service import current_accounting_month, month_bounds_utc, stat_time
+from app.services.money_projection_service import ProjectionGap, project_recorded_amount
+from app.services.spending_contract_service import (
+    accounting_zone,
+    current_accounting_month,
+    month_bounds_utc,
+    stat_time,
+)
 from app.services.time_service import now_utc
 
 VALID_STATUSES = {"active", "paused", "archived"}
@@ -41,6 +49,22 @@ class RecurringAmountAnomaly:
     amount_delta_percent: int | None = None
 
 
+def recurring_monthly_total(
+    db: Session, *, tenant_id: str, items, home_currency_code: str | None, month: str,
+    missing_rates: set[ProjectionGap] | None = None,
+) -> int | None:
+    """Project captured commitments; a missing rate makes the whole total unknown."""
+    period = date.fromisoformat(f"{month}-01")
+    today = now_utc().astimezone(accounting_zone()).date()
+    rate_date = min(today, period.replace(day=monthrange(period.year, period.month)[1]))
+    amounts = [project_recorded_amount(db, tenant_id=tenant_id, amount_minor=item.baseline_amount_cents,
+        source_currency=item.home_currency_code, home_currency=home_currency_code, rate_date=rate_date,
+        missing_rates=missing_rates) for item in items]
+    if any(amount is None for amount in amounts):
+        return None
+    return projection_values_sum_to_int(amounts, label="recurring.monthly_total")
+
+
 def _clean_status(value: str | None) -> str:
     status = (value or "").strip()
     if status not in VALID_STATUSES:
@@ -58,6 +82,7 @@ def recurring_item_response(
     return RecurringItemResponse(
         public_id=item.public_id,
         ledger_id=item.tenant_id,
+        home_currency_code=item.home_currency_code,
         merchant=item.merchant_name,
         merchant_key=item.merchant_key,
         frequency=item.frequency,
@@ -110,9 +135,7 @@ def recurring_amount_anomalies(
     threshold_percent: int = ANOMALY_THRESHOLD_PERCENT,
 ) -> dict[str, RecurringAmountAnomaly]:
     active_items = [item for item in items if item.status == "active"]
-    merchant_keys = {item.merchant_key for item in active_items}
-    merchant_names = {item.merchant_name for item in active_items}
-    if not merchant_keys:
+    if not active_items:
         return {}
 
     start_utc, end_utc = month_bounds_utc(
@@ -120,9 +143,50 @@ def recurring_amount_anomalies(
         timezone_name,
     )
 
-    active_by_key = {item.merchant_key: item for item in active_items}
+    history_amounts, current_entries, unavailable = _recurring_observation_groups(
+        db, tenant_id=tenant_id, items=active_items, start_utc=start_utc,
+        end_utc=end_utc, timezone_name=timezone_name,
+    )
+
+    anomalies: dict[str, RecurringAmountAnomaly] = {}
+    for item in active_items:
+        if item.merchant_key in unavailable:
+            anomalies[item.public_id] = RecurringAmountAnomaly(anomaly_status="unavailable")
+            continue
+        current = current_entries.get(item.merchant_key) or []
+        if not current:
+            continue
+        latest_amount = sorted(current, key=lambda pair: pair[0])[-1][1]
+        history = history_amounts.get(item.merchant_key) or []
+        average_amount = _historical_average_amount(item, history)
+        if average_amount <= 0:
+            continue
+        delta_percent = round_minor_ratio_half_up(
+            (latest_amount - average_amount) * 100,
+            average_amount,
+            label="recurring.delta_percent",
+        )
+        status = "higher_than_average" if delta_percent >= threshold_percent else "none"
+        anomalies[item.public_id] = RecurringAmountAnomaly(
+            anomaly_status=status,
+            current_month_amount_cents=latest_amount,
+            historical_average_amount_cents=average_amount,
+            amount_delta_percent=delta_percent,
+        )
+    return anomalies
+
+
+def _recurring_observation_groups(
+    db: Session, *, tenant_id: str, items: list[RecurringItem],
+    start_utc: datetime, end_utc: datetime, timezone_name: str | None,
+):
+    """Convert observations into each plan's unit before grouping or comparison."""
+    merchant_keys = {item.merchant_key for item in items}
+    merchant_names = {item.merchant_name for item in items}
+    active_by_key = {item.merchant_key: item for item in items}
     history_amounts: dict[str, list[int]] = {key: [] for key in merchant_keys}
     current_entries: dict[str, list[tuple[datetime, int]]] = {key: [] for key in merchant_keys}
+    unavailable: set[str] = set()
     expenses = db.scalars(
         select(Expense)
         .where(Expense.tenant_id == tenant_id)
@@ -149,37 +213,21 @@ def recurring_amount_anomalies(
         )
         if amount <= 0:
             continue
-        item = active_by_key.get(key)
-        if item is None or not _is_recurring_like_amount(item, amount):
+        item = active_by_key[key]
+        amount = project_recorded_amount(db, tenant_id=tenant_id, amount_minor=amount,
+            source_currency=expense.home_currency_code, home_currency=item.home_currency_code,
+            rate_date=when.astimezone(accounting_zone(timezone_name)).date())
+        if amount is None:
+            unavailable.add(key)
+            continue
+        if not _is_recurring_like_amount(item, amount):
             continue
         if start_utc <= when < end_utc:
             current_entries[key].append((when, amount))
         elif when < start_utc:
             history_amounts[key].append(amount)
 
-    anomalies: dict[str, RecurringAmountAnomaly] = {}
-    for item in active_items:
-        current = current_entries.get(item.merchant_key) or []
-        if not current:
-            continue
-        latest_amount = sorted(current, key=lambda pair: pair[0])[-1][1]
-        history = history_amounts.get(item.merchant_key) or []
-        average_amount = _historical_average_amount(item, history)
-        if average_amount <= 0:
-            continue
-        delta_percent = round_minor_ratio_half_up(
-            (latest_amount - average_amount) * 100,
-            average_amount,
-            label="recurring.delta_percent",
-        )
-        status = "higher_than_average" if delta_percent >= threshold_percent else "none"
-        anomalies[item.public_id] = RecurringAmountAnomaly(
-            anomaly_status=status,
-            current_month_amount_cents=latest_amount,
-            historical_average_amount_cents=average_amount,
-            amount_delta_percent=delta_percent,
-        )
-    return anomalies
+    return history_amounts, current_entries, unavailable
 
 
 def _is_recurring_like_amount(item: RecurringItem, amount_cents: int) -> bool:

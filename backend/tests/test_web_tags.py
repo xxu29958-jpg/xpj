@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import re
+from html import unescape
 from html.parser import HTMLParser
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from fastapi.testclient import TestClient
@@ -28,7 +31,7 @@ def _manual(
         "/api/expenses/manual",
         headers=headers,
         json={
-            "amount_cents": amount_cents,
+            "home_currency_code": "CNY", "amount_cents": amount_cents,
             "merchant": merchant,
             "category": "餐饮",
             "expense_time": "2026-05-02T00:00:00Z",
@@ -101,7 +104,11 @@ def test_web_confirmed_tag_filter_has_a_clear_return_to_the_same_month(
     assert page.status_code == 200
     assert "标签：Shared" in page.text
     assert "当前只显示带这个标签的账单。" in page.text
-    assert 'href="/web/confirmed?ledger_id=owner&amp;month=2026-05"' in page.text
+    clear = re.search(r'class="ledger-active-filter-clear" href="([^"]+)"', page.text)
+    assert clear is not None
+    destination = urlsplit(unescape(clear.group(1)))
+    assert destination.path == "/web/confirmed"
+    assert parse_qs(destination.query) == {"ledger_id": ["owner"], "month": ["2026-05"], "home_currency_code": ["CNY"]}
     assert ">清除筛选，查看全部</a>" in page.text
 
 

@@ -38,7 +38,7 @@ def _create_rule(
 ) -> dict:
     resp = client.post(
         "/api/rules/categories",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"keyword": keyword, "category": category, "enabled": True, "priority": 1},
     )
     assert resp.status_code == 200, resp.text
@@ -141,7 +141,7 @@ def test_undo_enabled_rule_requires_its_category_to_be_restored(
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": 2600,
+            "home_currency_code": "CNY", "amount_cents": 2600,
             "merchant": "规则恢复分类商家",
             "category": category,
             "client_ref": "rule-undo-recycled-category",

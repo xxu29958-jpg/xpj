@@ -11,6 +11,9 @@ from sqlalchemy.orm import Session
 from app.models import Expense, ExpenseOffsetFact, RecurringItem, RecurringOccurrence
 from app.money_contract import projection_sum_to_int
 from app.schemas._recurring_occurrence import RecurringOccurrenceResponse
+from app.services.currency_binding_service import require_runtime_home_currency_code
+from app.services.money_projection_service import ProjectionGap
+from app.services.recurring_service import recurring_monthly_total
 from app.services.spending_contract_service import (
     clean_month,
     current_accounting_month,
@@ -128,19 +131,29 @@ def occurrence_response(
         series_row_version=item.row_version,
         row_version=row.row_version if row else 0,
         state=state,
+        home_currency_code=item.home_currency_code,
         planned_amount_cents=baseline,
         reserved_amount_cents=baseline if item.status == "active" and not valid else 0,
-        expense_public_id=expense.public_id if expense else None,
-        expense_id=expense.id if expense else None,
-        expense_row_version=expense.row_version if expense else None,
-        paid_amount_cents=expense.amount_cents if expense and valid else None,
+        **_occurrence_payment_fields(expense, valid=valid),
         next_due_date=next_due_date(item, paid),
     )
 
 
+def _occurrence_payment_fields(expense: Expense | None, *, valid: bool) -> dict:
+    paid = expense if valid else None
+    return {
+        "expense_public_id": expense.public_id if expense else None,
+        "expense_id": expense.id if expense else None,
+        "expense_row_version": expense.row_version if expense else None,
+        "paid_amount_cents": paid.amount_cents if paid else None,
+        "paid_home_currency_code": paid.home_currency_code if paid else None,
+    }
+
+
 def total_outstanding_recurring_cents(
     db: Session, *, tenant_id: str, month: str,
-) -> int:
+    home_currency_code: str | None = None, missing_rates: set[ProjectionGap] | None = None,
+) -> int | None:
     period = occurrence_period(month)
     items = list(db.scalars(select(RecurringItem).where(
         RecurringItem.tenant_id == tenant_id,
@@ -148,7 +161,7 @@ def total_outstanding_recurring_cents(
         RecurringItem.frequency == "monthly",
     )))
     paid = fulfilled_periods(db, tenant_id=tenant_id, series_ids=[item.id for item in items])
-    return projection_sum_to_int(
-        sum(item.baseline_amount_cents for item in items if period not in paid.get(item.id, set())),
-        label="recurring.outstanding",
-    )
+    return recurring_monthly_total(db, tenant_id=tenant_id,
+        items=[item for item in items if period not in paid.get(item.id, set())],
+        home_currency_code=home_currency_code or require_runtime_home_currency_code(db),
+        month=period.strftime("%Y-%m"), missing_rates=missing_rates)

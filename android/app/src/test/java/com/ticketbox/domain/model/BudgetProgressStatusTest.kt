@@ -55,6 +55,7 @@ private fun budgetMonthly(
     rolloverAmountCents: Long = 0L,
     spentAmountCents: Long = 10_000L,
 ): BudgetMonthly = BudgetMonthly(
+    homeCurrencyCode = "CNY",
     ledgerId = "ledger-1",
     month = "2026-07",
     configured = configured,

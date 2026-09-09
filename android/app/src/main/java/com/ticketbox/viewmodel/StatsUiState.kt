@@ -1,25 +1,19 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.BudgetProgress
 import com.ticketbox.domain.model.BudgetProgressStatus
-import com.ticketbox.domain.model.CategoryInsight
-import com.ticketbox.domain.model.DailySpend
 import com.ticketbox.domain.model.DataQualitySummary
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.LifestyleStats
-import com.ticketbox.domain.model.MonthComparison
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.domain.model.UiText
 import java.time.YearMonth
 
-/**
- * Whether [StatsUiState.stats] currently comes from the backend (authoritative)
- * or from the local Room cache (offline fallback). UI should be able to render
- * a "本机估算" indicator when this is [LocalFallback] — see
- * ENGINEERING_RULES §14 "数据真源" + audit P2-01.
- */
-enum class StatsSource { None, Backend, LocalFallback }
+/** CachedSnapshot is the original server read, explicitly stale after a failed refresh. */
+enum class StatsSource { None, Backend, CachedSnapshot }
 
 enum class ReportGoalsLoadState { Unknown, Loading, Loaded, Failed }
 
@@ -31,11 +25,13 @@ data class StatsUiState(
     val stats: MonthlyStats? = null,
     val statsSource: StatsSource = StatsSource.None,
     val lifestyleStats: LifestyleStats? = null,
-    val dailyTrend: List<DailySpend> = emptyList(),
-    val monthComparison: MonthComparison? = null,
+    val statsFetchedAt: String? = null,
+    val lifestyleFetchedAt: String? = null,
+    val lifestyleFromCache: Boolean = false,
     val budgetProgress: BudgetProgress? = null,
     val budgetProgressStatus: BudgetProgressStatus = BudgetProgressStatus.Unknown,
-    val categoryInsight: CategoryInsight? = null,
+    val reportsExporting: Boolean = false,
+    val reportsExportMessage: UiText? = null,
     val reportsOverview: ReportsOverview? = null,
     val reportGoals: List<Goal> = emptyList(),
     val reportGoalsLoadState: ReportGoalsLoadState = ReportGoalsLoadState.Unknown,
@@ -55,21 +51,24 @@ data class StatsUiState(
     val message: UiText? = null,
     /**
      * Monthly-stats **load failure** with no data to show at all (no backend stats,
-     * no local-cache fallback). When set — and not [loading] — the screen renders a
+     * no previously confirmed server snapshot). When set — and not [loading] — the screen renders a
      * retryable error state instead of the empty card, so a failed request stops
-     * masquerading as "没有数据" (audit 8.4). Stays null when a local fallback exists
-     * (that path uses [message] for the informational "本机估算" notice).
+     * masquerading as "没有数据" (audit 8.4). Stays null when a cached server snapshot exists
+     * (that path uses [message] for the informational "已保存快照" notice).
      */
     val statsLoadError: UiText? = null,
 )
 
 data class MonthlyStatsUiState(
+    val binding: LogicalSessionBinding? = null,
+    val homeCurrencyCode: String? = null,
+    val timezone: String = java.util.TimeZone.getDefault().id,
     val stats: MonthlyStats? = null,
     val statsSource: StatsSource = StatsSource.None,
     val lifestyleStats: LifestyleStats? = null,
-    val dailyTrend: List<DailySpend> = emptyList(),
-    val monthComparison: MonthComparison? = null,
-    val categoryInsight: CategoryInsight? = null,
+    val statsFetchedAt: String? = null,
+    val lifestyleFetchedAt: String? = null,
+    val lifestyleFromCache: Boolean = false,
     val lastUploadAt: String? = null,
     val dataQuality: DataQualitySummary? = null,
     val dataQualityLoadState: DataQualityLoadState = DataQualityLoadState.Unknown,
@@ -84,11 +83,13 @@ data class MonthlyStatsUiState(
     val message: UiText? = null,
     val statsLoadError: UiText? = null,
     val ledgerReady: Boolean = false,
-    val activeLedgerId: String? = null,
     val primaryRefreshRevision: Long = 0L,
-)
+) {
+    val activeLedgerId: String? get() = binding?.ledgerId
+}
 
 data class StatsBudgetUiState(
+    val binding: LogicalSessionBinding? = null,
     val budgetProgress: BudgetProgress? = null,
     val budgetProgressStatus: BudgetProgressStatus = BudgetProgressStatus.Unknown,
     val month: String = "",
@@ -96,6 +97,12 @@ data class StatsBudgetUiState(
 )
 
 data class StatsReportsUiState(
+    val binding: LogicalSessionBinding? = null,
+    val exportFile: CsvExport? = null,
+    val exportId: String? = null,
+    val exportDestinationPending: Boolean = false,
+    val exporting: Boolean = false,
+    val exportMessage: UiText? = null,
     val reportsOverview: ReportsOverview? = null,
     val reportGoals: List<Goal> = emptyList(),
     val reportGoalsLoadState: ReportGoalsLoadState = ReportGoalsLoadState.Unknown,
@@ -111,25 +118,28 @@ internal fun mergeStatsUiState(
     reports: StatsReportsUiState,
 ): StatsUiState {
     val reportsMatch = reports.month == monthly.month &&
-        reports.selectedTag == monthly.selectedTag.trim()
+        reports.selectedTag == monthly.selectedTag.trim() && reports.binding == monthly.binding
+    val showReportDetails = reportsMatch && monthly.selectedTag.isBlank()
     val budgetMatch = budget.month == monthly.month &&
-        budget.ledgerId == monthly.activeLedgerId
+        budget.binding == monthly.binding
     return StatsUiState(
         stats = monthly.stats,
         statsSource = monthly.statsSource,
         lifestyleStats = monthly.lifestyleStats,
-        dailyTrend = monthly.dailyTrend,
-        monthComparison = monthly.monthComparison,
+        statsFetchedAt = monthly.statsFetchedAt,
+        lifestyleFetchedAt = monthly.lifestyleFetchedAt,
+        lifestyleFromCache = monthly.lifestyleFromCache,
         budgetProgress = if (budgetMatch) budget.budgetProgress else null,
         budgetProgressStatus = if (budgetMatch) {
             budget.budgetProgressStatus
         } else {
             BudgetProgressStatus.Unknown
         },
-        categoryInsight = monthly.categoryInsight,
-        reportsOverview = if (reportsMatch && monthly.selectedTag.isBlank()) reports.reportsOverview else null,
-        reportGoals = if (reportsMatch && monthly.selectedTag.isBlank()) reports.reportGoals else emptyList(),
-        reportGoalsLoadState = if (reportsMatch && monthly.selectedTag.isBlank()) {
+        reportsExporting = reports.exporting,
+        reportsExportMessage = if (reportsMatch) reports.exportMessage else null,
+        reportsOverview = if (showReportDetails) reports.reportsOverview else null,
+        reportGoals = if (showReportDetails) reports.reportGoals else emptyList(),
+        reportGoalsLoadState = if (showReportDetails) {
             reports.reportGoalsLoadState
         } else {
             ReportGoalsLoadState.Unknown

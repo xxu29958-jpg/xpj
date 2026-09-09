@@ -114,6 +114,11 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
         assertEquals(0L, row.expectedRowVersion)
         assertEquals(PendingMutationStatus.Pending.wireValue, row.status)
         assertTrue("\"client_ref\"" in row.payload, "payload must carry client_ref: ${row.payload}")
+        val original = requireNotNull(moshi().adapter(ExpenseManualCreateRequestDto::class.java).fromJson(row.payload))
+        assertEquals("CNY", original.homeCurrencyCode)
+        assertEquals("CNY", original.originalCurrency)
+        assertEquals("123.45", original.originalAmount)
+        assertEquals("CNY", cached.homeCurrencyCode)
         assertNull(row.idempotencyKey, "create idempotency is the body client_ref, not a header key")
     }
 

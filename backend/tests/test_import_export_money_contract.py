@@ -33,7 +33,8 @@ def test_parse_csv_preview_uses_the_c07_minor_limit_not_the_legacy_int32_limit()
     preview = parse_csv_preview(
         "amount_cents,merchant\n"
         f"2147483648,Above int32\n{MONEY_MINOR_MAX},At C07 max\n"
-        f"{MONEY_MINOR_MAX + 1},Above C07 max\n"
+        f"{MONEY_MINOR_MAX + 1},Above C07 max\n",
+        home_currency="CNY",
     )
 
     assert preview.valid_count == 2
@@ -52,7 +53,7 @@ def test_parse_csv_preview_rejects_legacy_cny_amount_in_non_cny_home(
     monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
     get_settings.cache_clear()
     try:
-        preview = parse_csv_preview("amount_yuan,merchant\n12.34,Tokyo\n")
+        preview = parse_csv_preview("amount_yuan,merchant\n12.34,Tokyo\n", home_currency="JPY")
         assert preview.valid_count == 0
         row = preview.rows[0]
         assert row.error_code == "client_upgrade_required"
@@ -108,7 +109,7 @@ def test_csv_export_preserves_legacy_column_and_adds_exact_jpy_home_value(
         assert exported["home_currency_code"] == "JPY"
         assert exported["amount_home_major"] == "1234"
 
-        preview = parse_csv_preview(response.text)
+        preview = parse_csv_preview(response.text, home_currency="JPY")
         imported = next(row for row in preview.rows if row.merchant == "Tokyo")
         assert imported.is_valid
         assert imported.amount_cents == 1234
@@ -129,7 +130,8 @@ def test_parse_csv_preview_round_trips_zero_decimal_home_money_exactly(
         preview = parse_csv_preview(
             "amount_cents,amount_yuan,home_currency_code,"
             "amount_home_major,merchant\n"
-            f"{MONEY_MINOR_MAX},,{currency},{MONEY_MINOR_MAX},Boundary\n"
+            f"{MONEY_MINOR_MAX},,{currency},{MONEY_MINOR_MAX},Boundary\n",
+            home_currency=currency,
         )
         assert preview.valid_count == 1
         assert preview.rows[0].amount_cents == MONEY_MINOR_MAX
@@ -138,7 +140,7 @@ def test_parse_csv_preview_round_trips_zero_decimal_home_money_exactly(
         get_settings.cache_clear()
 
 
-def test_parse_csv_preview_rejects_cross_home_currency_file(
+def test_parse_csv_preview_preserves_explicit_currency_independently_of_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
@@ -146,11 +148,12 @@ def test_parse_csv_preview_rejects_cross_home_currency_file(
     try:
         preview = parse_csv_preview(
             "amount_cents,home_currency_code,amount_home_major\n"
-            "1234,CNY,12.34\n"
+            "1234,CNY,12.34\n",
+            home_currency="JPY",
         )
-        assert preview.valid_count == 0
-        assert preview.rows[0].error_code == "client_upgrade_required"
-        assert preview.rows[0].amount_cents is None
+        assert preview.valid_count == 1
+        assert preview.rows[0].home_currency_code == "CNY"
+        assert preview.rows[0].amount_cents == 1234
     finally:
         get_settings.cache_clear()
 
@@ -160,6 +163,9 @@ def test_web_import_preview_uses_current_server_jpy_contract(
     web_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    with SessionLocal() as db:
+        activate_test_currency_authority(db, "JPY")
+        db.commit()
     monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
     get_settings.cache_clear()
     try:

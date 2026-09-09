@@ -20,6 +20,7 @@ from app.routes.web_common import (
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _web_redirect,
+    preserve_original_ledger_form,
     templates,
 )
 from app.schemas._recurring_occurrence import RecurringOccurrenceWriteRequest
@@ -34,12 +35,13 @@ from app.services.spending_contract_service import (
 router = APIRouter()
 
 
-def _payments(db, *, ledger_id, month, query, currency):
+def _payments(db, *, ledger_id, month, query):
     rows = find_recurring_payments(db, tenant_id=ledger_id, month=month, query=query)
     return [{
         "public_id": row.public_id, "id": row.id, "row_version": row.row_version,
         "merchant": row.merchant or "未填写商家",
-        "amount": _amount_yuan(row.amount_cents, currency),
+        "home_currency_code": row.home_currency_code,
+        "amount": _amount_yuan(row.amount_cents, row.home_currency_code) if row.home_currency_code else "币种待确认",
         "date": accounting_datetime_label(stat_time(row), pattern="%Y-%m-%d"),
         "key": uuid4().hex,
     } for row in rows[:100]], len(rows) > 100
@@ -60,13 +62,12 @@ def _page(
     selected_payment_month = occurrence.period if payment_month is None else payment_month
     payments, limited = _payments(
         db, ledger_id=selected, month=selected_payment_month, query=query,
-        currency=context["home_currency_code"],
     )
     context.update(
         item=item, occurrence=occurrence, payments=payments, limited=limited,
         payment_month=selected_payment_month, query=query,
-        planned_amount=_amount_yuan(occurrence.planned_amount_cents, context["home_currency_code"]),
-        paid_amount=_amount_yuan(occurrence.paid_amount_cents, context["home_currency_code"]),
+        planned_amount=_amount_yuan(occurrence.planned_amount_cents, occurrence.home_currency_code) if occurrence.home_currency_code else "币种待确认",
+        paid_amount=_amount_yuan(occurrence.paid_amount_cents, occurrence.paid_home_currency_code) if occurrence.paid_home_currency_code else "币种待确认",
         can_associate=context["can_write"] and item.status != "archived",
         command_key=uuid4().hex, message=message, error=error, retry=retry,
     )
@@ -101,8 +102,6 @@ def web_set_recurring_occurrence(
 ):
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
-    _require_selected_ledger_write(options, selected)
-    actor_id, _ = resolve_web_actor(db, request, selected)
     attempt = {
         "action": action, "expense_public_id": expense_public_id,
         "expected_expense_row_version": expected_expense_row_version,
@@ -110,6 +109,12 @@ def web_set_recurring_occurrence(
         "expected_series_row_version": expected_series_row_version,
         "idempotency_key": idempotency_key,
     }
+    retained = preserve_original_ledger_form(request, db, options=options, selected=selected,
+        fields={**attempt, "ledger_id": ledger_id, "month": month}, task="关联固定支出付款")
+    if retained is not None:
+        return retained
+    _require_selected_ledger_write(options, selected)
+    actor_id, _ = resolve_web_actor(db, request, selected)
     try:
         if action not in {"link", "clear"}:
             raise AppError("invalid_request", status_code=422)

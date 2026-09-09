@@ -152,8 +152,6 @@ internal class ExpenseConnectionRepository(
 
     fun currentLedgerRole(): String? = core.currentLedgerRole()
 
-    fun monthlyBudgetCents(): Long? = core.settingsStore.monthlyBudgetCents()
-
     fun lastConfirmedSyncAt(): String? =
         core.apiProvider.currentLedgerId()
             ?.let(core.settingsStore::lastConfirmedSyncAtForLedger)
@@ -161,10 +159,6 @@ internal class ExpenseConnectionRepository(
     fun lastUploadAt(): String? =
         core.apiProvider.currentLedgerId()
             ?.let(core.settingsStore::lastUploadAtForLedger)
-
-    fun saveMonthlyBudgetCents(amountCents: Long?) {
-        core.settingsStore.saveMonthlyBudgetCents(amountCents)
-    }
 
     suspend fun clearLocalCache() {
         core.clearLocalCache()

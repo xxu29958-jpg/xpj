@@ -75,7 +75,7 @@ import com.ticketbox.ui.screens.expense.ExpenseEditTimeRowActions
 import com.ticketbox.ui.screens.expense.ExpenseEditTimeRowState
 import com.ticketbox.ui.screens.expense.ExpenseDetailActionButtonRow
 import com.ticketbox.ui.screens.expense.initialExpenseAmountInputMinor
-import com.ticketbox.ui.screens.expense.canonicalManualExchangeRateOrNull
+import com.ticketbox.domain.model.canonicalManualExchangeRateOrNull
 import com.ticketbox.ui.screens.expense.manualExchangeRateEditorVisible
 import com.ticketbox.ui.screens.expense.manualExchangeRateNeedsServerReview
 import com.ticketbox.ui.screens.expense.ItemsEditorSheetActions

@@ -110,13 +110,19 @@ internal class RepositoryGraph(
 
     val budgetRepository = BudgetRepository(
         apiProvider = apiServiceProvider,
+        outbox = outbox,
+        saveAdapter = outboxAdapters.budgetSaveAdapter,
+        receiptAdapter = outboxAdapters.budgetReceiptAdapter,
+        rateAdapter = outboxAdapters.manualRateAdapter,
+        rateReceiptAdapter = outboxAdapters.manualRateReceiptAdapter,
     )
 
     val incomePlanRepository = IncomePlanRepository(
         apiProvider = apiServiceProvider,
         // The editor persists its month-bearing original intent before dispatch.
         outbox = outbox,
-        incomePlanUpdateAdapter = outboxAdapters.incomePlanUpdateAdapter,
+        incomePlanSubmissionAdapter = outboxAdapters.incomePlanSubmissionAdapter,
+        incomePlanReceiptAdapter = outboxAdapters.incomePlanReceiptAdapter,
     )
 
     val debtRepository = DebtRepository(
@@ -140,6 +146,7 @@ internal class RepositoryGraph(
 
     val goalEditRepository = com.ticketbox.data.repository.GoalEditRepository(
         apiServiceProvider, outbox, outboxAdapters.goalUpdateAdapter, outboxAdapters.goalReceiptAdapter,
+        outboxAdapters.goalCreateAdapter,
     )
 
     val reportsRepository = ReportsRepository(
@@ -149,12 +156,12 @@ internal class RepositoryGraph(
     val ruleRepository = RuleRepository(
         binding = serverSessionBinding,
         onConfirmedChanged = { expenseRepository.syncConfirmed() },
-        // PR-2g.4: outbox + adapter for updateCategoryRuleAllowingOffline.
-        // PR-2g.5: + deleteAdapter for deleteCategoryRuleAllowingOffline.
         offlineMutations = CategoryRuleOfflineMutationWiring(
             outbox = outbox,
             updateAdapter = outboxAdapters.categoryRuleUpdateAdapter,
             deleteAdapter = outboxAdapters.categoryRuleDeleteAdapter,
+            submissionAdapter = outboxAdapters.categoryRuleSubmissionAdapter,
+            receiptAdapter = outboxAdapters.categoryRuleReceiptAdapter,
         ),
     )
 

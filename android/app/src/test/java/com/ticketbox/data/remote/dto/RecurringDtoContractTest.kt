@@ -69,6 +69,7 @@ class RecurringDtoContractTest {
                     merchant = "房租",
                     baselineAmountCents = 350000,
                     nextExpectedDate = "2026-09-01",
+                    homeCurrencyCode = "CNY",
                 ),
             ),
         )
@@ -91,12 +92,14 @@ class RecurringDtoContractTest {
             RecurringItemUpdateRequestDto(
                 expectedRowVersion = 7,
                 merchant = "新名称",
+                homeCurrencyCode = "CNY",
             ),
         )
         val cleared = adapter.toJson(
             RecurringItemUpdateRequestDto(
                 expectedRowVersion = 7,
                 nextExpectedDate = RecurringOptionalDate.changed(null),
+                homeCurrencyCode = "CNY",
             ),
         )
 

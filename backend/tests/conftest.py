@@ -187,10 +187,8 @@ def _background_tasks_respect_db_isolation(
     yield
 
 
-@pytest.fixture()
-def identity(request: pytest.FixtureRequest, _db_isolation) -> TestIdentity:
-    # _db_isolation already set up the per-test transaction (or real_db reset).
-    test_identity = seed_identity()
+@pytest.fixture(autouse=True)
+def _confirmed_currency_baseline(request: pytest.FixtureRequest, _db_isolation):
     if "currency_binding_unbound" not in request.keywords:
         # The ordinary product-test baseline represents an installed CNY
         # household, not the special fresh-install/adoption state.  Establish
@@ -199,14 +197,16 @@ def identity(request: pytest.FixtureRequest, _db_isolation) -> TestIdentity:
         # Dedicated binding-state tests opt out explicitly; this is not a
         # trigger bypass or a database-role escape hatch.
         from app.database import SessionLocal
-        from app.services.currency_binding_service import resolve_write_capability
+        from tests._infra.currency import activate_test_currency_authority
 
-        configured = os.environ.get("FX_HOME_CURRENCY_CODE", "CNY").strip().upper()
-        if configured == "CNY":
-            with SessionLocal() as db:
-                resolve_write_capability(db)
-                db.commit()
-    return test_identity
+        with SessionLocal() as db:
+            activate_test_currency_authority(db, "CNY")
+            db.commit()
+
+
+@pytest.fixture()
+def identity(_db_isolation, _confirmed_currency_baseline) -> TestIdentity:
+    return seed_identity()
 
 
 @pytest.fixture()

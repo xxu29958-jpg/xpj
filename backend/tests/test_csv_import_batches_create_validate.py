@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv as csv_module
 from io import BytesIO
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -17,6 +18,7 @@ from app.services.csv_import_batch_service import (
     list_csv_import_rows,
 )
 from app.services.currency_binding_service import get_capability
+from tests._runtime_protocol import negotiated_headers
 
 
 def _csv_bytes(row_count: int) -> BytesIO:
@@ -81,14 +83,12 @@ def test_csv_import_batch_handles_more_than_legacy_preview_limit_with_paged_appl
         assert inserted_count == 10_000
         assert applied.batch.status == "applied"
 
-        with pytest.raises(AppError) as terminal_apply:
-            apply_csv_import_batch(
-                db,
-                tenant_id="owner",
-                public_id=batch.public_id,
-                batch_size=700,
-            )
-        assert terminal_apply.value.status_code == 409
+        replay = apply_csv_import_batch(
+            db, tenant_id="owner", public_id=batch.public_id, batch_size=700,
+        )
+        assert replay.inserted_count == replay.remaining_valid_rows == 0
+        assert replay.batch.status == "applied"
+        assert replay.batch.applied_rows == replay.batch.inserted_count == 10_000
 
         inserted = db.scalar(
             select(func.count())
@@ -99,8 +99,7 @@ def test_csv_import_batch_handles_more_than_legacy_preview_limit_with_paged_appl
         assert inserted == 10_000
 
 
-@pytest.mark.currency_binding_unbound
-def test_csv_import_batch_create_inserts_rows_in_chunks(
+def test_csv_import_batch_failure_preserves_confirmed_currency_and_rolls_back_rows(
     identity,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -109,6 +108,8 @@ def test_csv_import_batch_create_inserts_rows_in_chunks(
 
     monkeypatch.setattr(lifecycle_mod, "CREATE_BATCH_INSERT_CHUNK_SIZE", 2)
     with SessionLocal() as db:
+        confirmed_currency = get_capability(db)
+        assert confirmed_currency.state == "ACTIVE"
         empty_batch = create_csv_import_batch(
             db,
             tenant_id="owner",
@@ -116,7 +117,7 @@ def test_csv_import_batch_create_inserts_rows_in_chunks(
             file_obj=_csv_bytes(0),
         )
         assert empty_batch.total_rows == 0
-        assert get_capability(db).state == "EMPTY"
+        assert get_capability(db) == confirmed_currency
 
     real_row_from_parsed = lifecycle_mod._row_from_parsed
     built_rows = 0
@@ -137,12 +138,19 @@ def test_csv_import_batch_create_inserts_rows_in_chunks(
             file_obj=_csv_bytes(5),
         )
     with SessionLocal() as db:
-        assert get_capability(db).state == "EMPTY"
+        assert get_capability(db) == confirmed_currency
         assert db.scalar(select(func.count()).select_from(CsvImportRow)) == 0
         assert db.scalar(select(func.count()).select_from(CsvImportBatch)) == 1
 
-    monkeypatch.setattr(lifecycle_mod, "_row_from_parsed", real_row_from_parsed)
+
+
+def test_csv_import_batch_create_inserts_rows_in_chunks(identity, monkeypatch: pytest.MonkeyPatch) -> None:
+    del identity
+    import app.services.csv_import_batch_service._lifecycle as lifecycle_mod
+
+    monkeypatch.setattr(lifecycle_mod, "CREATE_BATCH_INSERT_CHUNK_SIZE", 2)
     with SessionLocal() as db:
+        confirmed_currency = get_capability(db)
         real_commit = db.commit
         real_flush = db.flush
         commit_count = 0
@@ -170,7 +178,7 @@ def test_csv_import_batch_create_inserts_rows_in_chunks(
         assert batch.total_rows == 5
         assert flush_count >= 4
         assert commit_count == 1
-        assert get_capability(db).state == "ACTIVE"
+        assert get_capability(db) == confirmed_currency
 
         rows = list_csv_import_rows(
             db,
@@ -244,8 +252,10 @@ def test_csv_import_rejects_conflicting_amount_yuan_and_cents(client: TestClient
 def test_csv_import_foreign_amount_cents_is_original_minor_not_home_amount(client: TestClient, *, identity) -> None:
     rate = client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=identity.app_headers,
+        headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
         json={
+            "expected_row_version": 0,
+            "home_currency_code": "CNY",
             "currency_code": "USD",
             "rate_date": "2026-05-04",
             "rate_to_cny": "7.0000",

@@ -5,20 +5,11 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import urlencode
 
-from fastapi import Request
-
-_TIMELINE_RETURN_QUERY_KEYS = (
-    "return_to",
-    "return_month",
-    "return_filter",
-    "return_page",
-    "return_tag",
-    "return_query",
-)
+from app.routes._web_expense_return_context import ExpenseReturnContext, edit_context_params
 
 
 def timeline_page_url(
-    request: Request,
+    return_context: ExpenseReturnContext,
     *,
     expense_id: int,
     selected_ledger_id: str,
@@ -33,15 +24,12 @@ def timeline_page_url(
     ]
     if snapshot is not None:
         params.append(("rev_snapshot", str(snapshot)))
-    for key in _TIMELINE_RETURN_QUERY_KEYS:
-        value = request.query_params.get(key)
-        if value:
-            params.append((key, value))
+    params.extend(edit_context_params(**return_context.as_kwargs()).items())
     return f"/web/expenses/{expense_id}/edit?{urlencode(params)}#fact-timeline"
 
 
 def fact_timeline_page_context(
-    request: Request,
+    return_context: ExpenseReturnContext,
     *,
     timeline: dict[str, Any],
     expense_id: int,
@@ -59,7 +47,7 @@ def fact_timeline_page_context(
     )
     page_context["newer_url"] = (
         timeline_page_url(
-            request,
+            return_context,
             expense_id=expense_id,
             selected_ledger_id=selected_ledger_id,
             page=timeline["page"] - 1,
@@ -70,7 +58,7 @@ def fact_timeline_page_context(
     )
     page_context["older_url"] = (
         timeline_page_url(
-            request,
+            return_context,
             expense_id=expense_id,
             selected_ledger_id=selected_ledger_id,
             page=timeline["page"] + 1,

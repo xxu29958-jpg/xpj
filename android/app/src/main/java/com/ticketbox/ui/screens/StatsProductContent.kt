@@ -50,6 +50,7 @@ internal fun LazyListScope.statsProductItems(
     actions: StatsReportActions,
     overview: StatsOverviewProductState,
 ) {
+    item { com.ticketbox.ui.screens.stats.StatsProjectionNotice(state, actions.onRepairStatsRates) }
     when (selectedTab.toPrimaryInsightTab()) {
         StatsTab.Overview -> {
             overviewModuleItems(state, overview.layout, overview.modules, overview.onTrend)
@@ -82,7 +83,7 @@ private fun LazyListScope.statsOverviewContextItems(
     }
     // 标签筛选时作用域已由 hero 卡表达（同一 state.stats），不再重复第二个金额块。
     if (state.selectedTag.isBlank()) {
-        state.lifestyleStats?.takeIf(LifestyleStats::hasReadableInsight)?.let { lifestyle ->
+        state.lifestyleStats?.takeIf { it.month == state.month }?.takeIf(LifestyleStats::hasReadableInsight)?.let { lifestyle ->
             item {
                 StatsFlatSection {
                     LifestyleCard(lifestyle)
@@ -120,8 +121,9 @@ private fun LazyListScope.statsTrendItems(
             StatsInsightSurface {
                 ReportsInsightCard(
                     overview = state.reportsOverview,
-                    onGranularityChange = actions.onGranularityChange,
-                    onRankingMetricChange = actions.onRankingMetricChange,
+                    actions = actions,
+                    exporting = state.reportsExporting || state.reportsLoading,
+                    exportMessage = state.reportsExportMessage,
                 )
             }
         }
@@ -151,8 +153,8 @@ private fun LazyListScope.statsCompositionItems(
     actions: StatsReportActions,
 ) {
     val stats = state.stats ?: return
-    val categories = stats.byCategory.filter { it.amountCents > 0L && it.count > 0 }
-    val tags = stats.byTag.filter { it.amountCents > 0L && it.count > 0 }
+    val categories = stats.byCategory.filter { it.count > 0 }
+    val tags = stats.byTag.filter { it.count > 0 }
     item {
         if (categories.isEmpty()) {
             EmptyStatsCard(
@@ -168,6 +170,7 @@ private fun LazyListScope.statsCompositionItems(
                     categories = categories,
                     tags = tags,
                     totalAmountCents = stats.totalAmountCents,
+                    homeCurrencyCode = stats.homeCurrencyCode,
                     onCategoryClick = actions.onDrillToLedger,
                 )
             }
@@ -215,8 +218,9 @@ private fun StatsTab.toPrimaryInsightTab(): StatsTab = when (this) {
 }
 
 private fun LifestyleStats.hasReadableInsight(): Boolean =
-    aiSubscriptionAmountCents > 0L ||
-        digitalAmountCents > 0L ||
+    missingRates.isNotEmpty() ||
+    aiSubscriptionAmountCents != 0L ||
+        digitalAmountCents != 0L ||
         maxExpense != null ||
         frequentMerchants.isNotEmpty() ||
         bestValueExpenses.isNotEmpty() ||

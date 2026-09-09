@@ -93,7 +93,6 @@ internal fun BudgetRoute(
     val budgetViewModel: BudgetViewModel = viewModel(
         factory = budgetViewModelFactory(
             repository = screenFactory.budgetRepository,
-            debts = screenFactory.debtRepository,
             onDataChanged = onDataChanged,
         ),
     )
@@ -112,6 +111,7 @@ internal fun BudgetRoute(
             onAddCategoryRow = budgetViewModel::addCategoryRow,
             onRemoveCategoryRow = budgetViewModel::removeCategoryRow,
             onSave = budgetViewModel::save,
+            onRecoverSave = budgetViewModel::recoverSave,
         ),
         onBack = onBack,
     )
@@ -122,12 +122,12 @@ internal fun IncomePlanRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
     onDataChanged: () -> Unit = {},
+    originalSubmissionId: Long? = null,
 ) {
     val incomePlanViewModel: IncomePlanViewModel = viewModel(
         key = IncomePlanViewModelKey,
         factory = incomePlanViewModelFactory(
             repository = screenFactory.incomePlanRepository,
-            debts = screenFactory.debtRepository,
             onDataChanged = onDataChanged,
         ),
     )
@@ -137,14 +137,15 @@ internal fun IncomePlanRoute(
         key = IncomePlanEditViewModelKey,
         factory = incomePlanEditViewModelFactory(
             repository = screenFactory.incomePlanRepository,
-            debts = screenFactory.debtRepository,
             onDataChanged = onDataChanged,
         ),
     )
+    LaunchedEffect(incomePlanViewModel, originalSubmissionId) {
+        originalSubmissionId?.let(incomePlanViewModel::openSubmission)
+    }
     IncomePlanScreen(
         viewModel = incomePlanViewModel,
         editViewModel = incomePlanEditViewModel,
-        currency = LocalCurrencyDisplay.current,
         onBack = onBack,
     )
 }

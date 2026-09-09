@@ -364,7 +364,7 @@ class OutboxRepository private constructor(
         // plumbing) lands without touching call sites; Slice B+ passes the
         // intent-time UUID so committed-but-unseen replays dedupe server-side.
         idempotencyKey: String? = null,
-    ): Long = enqueueInternal(
+    ): Long = enqueue(
         boundRequest = null,
         intent = PendingMutationIntent(
             type = type,
@@ -380,18 +380,6 @@ class OutboxRepository private constructor(
      * credential snapshot is still current at the outbox linearization point.
      */
     internal suspend fun enqueue(
-        boundRequest: BoundLedgerRequest,
-        intent: PendingMutationIntent,
-        validateTargetRows: ((List<OutboxRow>) -> Unit)? = null,
-        afterPersisted: suspend () -> Unit = {},
-    ): Long = enqueueInternal(
-        boundRequest = boundRequest,
-        intent = intent,
-        validateTargetRows = validateTargetRows,
-        afterPersisted = afterPersisted,
-    )
-
-    private suspend fun enqueueInternal(
         boundRequest: BoundLedgerRequest?,
         intent: PendingMutationIntent,
         validateTargetRows: ((List<OutboxRow>) -> Unit)? = null,
@@ -789,6 +777,15 @@ class OutboxRepository private constructor(
     internal suspend fun resolveFailed(id: Long, resolution: FailedResolution, boundRequest: BoundLedgerRequest? = null): Boolean =
         resolveStatus(id, PendingMutationStatus.Failed, resolution == FailedResolution.Drop,
             (resolution as? FailedResolution.Retry)?.freshToken, boundRequest)
+
+    /** A command owner has reviewed this unverified completed original; remove only its local record. */
+    internal suspend fun discardCompletedOriginalSubmission(boundRequest: BoundLedgerRequest, row: OutboxRow): Boolean {
+        require(row.type in setOf(PendingMutationType.CreateIncomePlan, PendingMutationType.UpdateIncomePlan,
+            PendingMutationType.SaveManualExchangeRate))
+        require(row.status == PendingMutationStatus.Done)
+        boundRequest.requireStillActiveFor(requireNotNull(row.bindingOrNull()))
+        return resolveStatus(row.id, PendingMutationStatus.Done, true, null, boundRequest)
+    }
 
     /** One status-checked recovery owner; only an actual replay or deletion wakes successors. */
     private suspend fun resolveStatus(id: Long, status: PendingMutationStatus, drop: Boolean, freshToken: Long?, boundRequest: BoundLedgerRequest? = null): Boolean {

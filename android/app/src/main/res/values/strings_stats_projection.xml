@@ -1,0 +1,10 @@
+<resources>
+    <string name="stats_snapshot_badge">已保存快照</string>
+    <string name="stats_snapshot_updated">已保存的服务器统计 · %1$s · 更新于 %2$s；当前未能确认最新结果。</string>
+    <string name="stats_lifestyle_snapshot_updated">生活洞察为已保存快照 · 更新于 %1$s。</string>
+    <string name="stats_comparison_unavailable">当前金额不适合计算占比；各分类与标签的笔数仍可查看。</string>
+    <string name="stats_score_tie_fx_unavailable">缺少汇率的同分记录按时间排列，未按金额比较。</string>
+    <string name="stats_projection_currency">统计币种：%1$s</string>
+    <string name="stats_merchants_by_count">按笔数排列</string>
+    <string name="stats_projection_unverified">统计结果与当前月份或币种不一致，请重新读取。已有快照不会被覆盖。</string>
+</resources>

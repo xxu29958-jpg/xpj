@@ -28,6 +28,8 @@ class RecurringOccurrenceWriteRequest(BaseModel):
 
 
 class RecurringOccurrenceResponse(BaseModel):
+    home_currency_code: str | None = None
+    paid_home_currency_code: str | None = None
     series_public_id: str
     period: str
     series_row_version: int

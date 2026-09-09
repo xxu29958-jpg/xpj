@@ -32,6 +32,7 @@ internal fun editPlan(
     updatedAt = "2026-05-01T00:00:00Z",
     rowVersion = rowVersion,
     archivedAt = if (status == IncomePlanStatus.ARCHIVED) "2026-05-15T00:00:00Z" else null,
+    homeCurrencyCode = "CNY",
 )
 
 internal data class IncomePlanUpdateCall(
@@ -49,7 +50,7 @@ internal data class IncomePlanArchiveCall(
 )
 
 internal class FakeIncomePlanEditRepository(
-    var active: IncomePlanListing = IncomePlanListing(emptyList(), 0L, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0),
+    var active: IncomePlanListing = IncomePlanListing(emptyList(), 0L, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0, homeCurrencyCode = "CNY"),
     canModify: Boolean = true,
 ) : IncomePlanActions {
     val activeAccessFlow = MutableStateFlow<LedgerAccessContext?>(editAccess(canModify = canModify))
@@ -60,12 +61,13 @@ internal class FakeIncomePlanEditRepository(
 
     /** 测试延迟钩：挂起 update 直至放行（模拟在途保存期间的 Back/手势/切 target）。 */
     var updateGate: (suspend () -> Unit)? = null
+    var listGate: (suspend () -> Unit)? = null
 
-    override fun describeEdit(row: com.ticketbox.data.repository.OutboxRow): com.ticketbox.data.repository.PendingIncomePlanEdit? = null
-    override fun observeEdits(expectedBinding: LogicalSessionBinding) =
-        kotlinx.coroutines.flow.flowOf(emptyList<com.ticketbox.data.repository.PendingIncomePlanEdit>())
-    override suspend fun recoverEdit(expectedBinding: LogicalSessionBinding,
-        pending: com.ticketbox.data.repository.PendingIncomePlanEdit, drop: Boolean) = Result.success(Unit)
+    override fun describeSubmission(row: com.ticketbox.data.repository.OutboxRow): com.ticketbox.data.repository.PendingIncomePlanSubmission? = null
+    override fun observeSubmissions(expectedBinding: LogicalSessionBinding) =
+        kotlinx.coroutines.flow.flowOf(emptyList<com.ticketbox.data.repository.PendingIncomePlanSubmission>())
+    override suspend fun recoverSubmission(expectedBinding: LogicalSessionBinding,
+        pending: com.ticketbox.data.repository.PendingIncomePlanSubmission, drop: Boolean) = Result.success(Unit)
 
     override fun canModifyLedger(): Boolean = activeAccessFlow.value?.canModify ?: false
 
@@ -77,12 +79,15 @@ internal class FakeIncomePlanEditRepository(
     override suspend fun listIncluding(
         expectedBinding: LogicalSessionBinding,
         status: IncomePlanStatus,
-    ): Result<List<IncomePlan>> = Result.success(emptyList())
+    ): Result<List<IncomePlan>> {
+        listGate?.invoke()
+        return Result.success(active.plans.filter { it.status == status })
+    }
 
     override suspend fun create(
         expectedBinding: LogicalSessionBinding,
         draft: IncomePlanDraft,
-    ): Result<IncomePlan> = throw UnsupportedOperationException("create not used in edit tests")
+    ): Result<Long> = throw UnsupportedOperationException("create not used in edit tests")
 
     override suspend fun enqueueUpdate(
         expectedBinding: LogicalSessionBinding,

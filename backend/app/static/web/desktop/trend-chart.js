@@ -16,14 +16,14 @@
       const labels = series.map(function (s) { return s.month.slice(5) + "月"; });
       const amounts = series.map(function (s) {
         return {
-          value: app.homeMinorToMajor(s.amount_cents),
-          majorText: s.amount_major_text || app.homeMinorToMajorText(s.amount_cents),
+          value: s.amount_cents == null ? null : app.homeMinorToMajor(s.amount_cents),
+          majorText: s.amount_cents == null ? null : (s.amount_major_text || app.homeMinorToMajorText(s.amount_cents)),
         };
       });
       const budgets = series.map(function (s) {
         return {
-          value: app.homeMinorToMajor(s.budget_cents),
-          majorText: s.budget_major_text || app.homeMinorToMajorText(s.budget_cents),
+          value: s.budget_cents == null ? null : app.homeMinorToMajor(s.budget_cents),
+          majorText: s.budget_cents == null ? null : (s.budget_major_text || app.homeMinorToMajorText(s.budget_cents)),
         };
       });
       const ink = app.readVar("--text-default");
@@ -48,7 +48,7 @@
                 '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' +
                 p.color + ';margin-right:6px;vertical-align:1px"></span>' + p.seriesName + "</span>" +
                 '<b style="font-variant-numeric:tabular-nums">' +
-                app.homeMoneyMajor(p.data.majorText) + "</b></div>";
+                (p.data.majorText == null ? "待补汇率" : app.homeMoneyMajor(p.data.majorText)) + "</b></div>";
             }).join("");
           },
         },
@@ -73,7 +73,7 @@
         series: [
           {
             name: "预算", type: "line", data: budgets,
-            smooth: false, symbol: "none",
+            smooth: false, connectNulls: false, symbol: "none",
             lineStyle: { color: ink4, width: 1, type: "dashed" }, z: 1,
           },
           {
@@ -91,7 +91,7 @@
           },
           {
             name: "趋势", type: "line", data: amounts,
-            smooth: 0.3, symbol: "circle", symbolSize: 5, showSymbol: true,
+            smooth: 0.3, connectNulls: false, symbol: "circle", symbolSize: 5, showSymbol: true,
             lineStyle: { color: accent, width: 1.4 },
             itemStyle: { color: accent, borderColor: app.readVar("--surface-card"), borderWidth: 1.5 },
             z: 3,

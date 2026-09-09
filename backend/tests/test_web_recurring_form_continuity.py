@@ -12,6 +12,8 @@ from app.main import app
 from app.models import RecurringItem
 from app.routes import web_recurring as recurring_routes
 from app.routes.web_app import _require_local as _web_require_local
+from app.services.currency_binding_service import resolve_write_capability
+from app.services.time_service import now_utc
 from tests._web_native_form_support import hidden_post_forms
 from tests._web_recurring_test_support import row_version, seed_observed_item
 
@@ -26,7 +28,7 @@ def web_recurring(client):
 def _form(page, action):
     matched = re.search(r'<form[^>]*action="' + re.escape(action) + r'".*?</form>', page.text, re.DOTALL)
     assert matched is not None, page.text
-    return matched.group(0), hidden_post_forms(page.text)[action]
+    return matched.group(0), hidden_post_forms(matched.group(0))[action]
 
 
 def test_create_validation_preserves_fields_and_original_key_until_single_success(web_recurring):
@@ -107,3 +109,45 @@ def test_archived_edit_keeps_input_readable_without_a_write_exit(web_recurring):
     assert retained["idempotency_key"] == fields["idempotency_key"]
     assert 'type="submit"' not in form
     assert row_version(public_id) == version
+
+
+def test_recurring_form_keeps_jpy_record_and_raw_input_under_cny_default(web_recurring):
+    with SessionLocal() as db:
+        resolve_write_capability(db)
+        item = RecurringItem(tenant_id="owner", merchant_key="jpy-subscription", merchant_name="日元订阅",
+            home_currency_code="JPY", baseline_amount_cents=1200, last_amount_cents=1200,
+            occurrence_count=0, source="manual", status="active", frequency="monthly",
+            created_at=now_utc(), updated_at=now_utc())
+        db.add(item)
+        db.commit()
+        public_id = item.public_id
+    action = f"/web/recurring/{public_id}/edit"
+    form, fields = _form(web_recurring.get("/web/recurring?ledger_id=owner"), action)
+    assert fields["home_currency_code"] == "JPY"
+    assert 'value="1200"' in form and 'step="1"' in form
+    fields.update(merchant="日元订阅", baseline_amount_yuan="1300", next_expected_date="")
+    assert web_recurring.post(action, data=fields, follow_redirects=False).status_code == 303
+    with SessionLocal() as db:
+        saved = db.scalar(select(RecurringItem).where(RecurringItem.public_id == public_id))
+        assert (saved.home_currency_code, saved.baseline_amount_cents, saved.row_version) == ("JPY", 1300, 2)
+    incompatible = {**fields, "home_currency_code": "CNY", "baseline_amount_yuan": "14.50",
+        "expected_row_version": "2", "idempotency_key": str(uuid4())}
+    refused = web_recurring.post(action, data=incompatible)
+    form, retained = _form(refused, action)
+    assert retained["home_currency_code"] == "CNY" and retained["idempotency_key"] == incompatible["idempotency_key"]
+    assert 'value="14.50"' in form and "编辑当前记录" in refused.text
+    assert 'name="review_latest"' not in form
+    assert row_version(public_id) == 2
+
+
+def test_create_without_captured_currency_preserves_raw_text_and_does_not_infer_cny(web_recurring):
+    action = "/web/recurring/create"
+    _, fields = _form(web_recurring.get("/web/recurring?ledger_id=owner"), action)
+    fields.pop("home_currency_code")
+    fields.update(merchant="缺币种原填写", baseline_amount_yuan="1200.50", next_expected_date="")
+    form, retained = _form(web_recurring.post(action, data=fields), action)
+    assert retained["home_currency_code"] == ""
+    assert retained["idempotency_key"] == fields["idempotency_key"]
+    assert 'value="1200.50"' in form and 'name="review_latest"' not in form
+    with SessionLocal() as db:
+        assert db.scalar(select(RecurringItem).where(RecurringItem.merchant_name == fields["merchant"])) is None

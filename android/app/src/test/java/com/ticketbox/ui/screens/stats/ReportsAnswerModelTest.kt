@@ -9,6 +9,19 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class ReportsAnswerModelTest {
+    @Test fun unavailableAmountsCannotProduceAComparisonOrAnEmptySpendingClaim() {
+        val report = overview(totalAmountCents = 1200, previousTotalAmountCents = 500).copy(
+            homeCurrencyCode = "JPY", totalAmountCents = null,
+            trend = listOf(ReportTrendPoint("2026-06-01", "6/1", null, 2)))
+        val model = reportsAnswerModel(report)
+        assertEquals("JPY", model.homeCurrencyCode)
+        assertNull(model.totalAmountCents)
+        assertNull(model.monthDeltaAmountCents)
+        assertNull(model.trendEvidence)
+        assertEquals(false, model.hasPreviousMonthComparison)
+        assertEquals(emptyList(), model.trendPoints)
+    }
+
     @Test
     fun answerModelKeepsBackendGranularityAndComputesMonthDelta() {
         val model = reportsAnswerModel(
@@ -69,7 +82,8 @@ class ReportsAnswerModelTest {
         )
 
         assertEquals(false, model.hasYearOverYearComparison)
-        assertEquals(0L, model.yearOverYearDeltaAmountCents)
+        // A zero baseline suppresses the comparison badge, not the known absolute difference.
+        assertEquals(12_000L, model.yearOverYearDeltaAmountCents)
     }
 
     @Test
@@ -185,5 +199,6 @@ class ReportsAnswerModelTest {
         trend = trend,
         merchantRanking = emptyList(),
         categoryComparison = emptyList(),
-    )
+        homeCurrencyCode = "CNY",
+)
 }

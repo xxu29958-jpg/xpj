@@ -29,6 +29,7 @@ from app.config import get_settings
 from app.database import SessionLocal
 from app.models import Debt, DebtForgiveness, MemberRepaymentProposal, Repayment
 from app.services.time_service import now_utc
+from tests._runtime_protocol import current_protocol_headers
 from tests.debt_proposal_helpers import (
     _create_external_debt,
     _create_member_debt,
@@ -245,7 +246,7 @@ def test_non_participant_cannot_forgive(client: TestClient, *, identity, debt_ro
     stranger_token = _mint_app_token(account_id=stranger_id, ledger_id="stranger_cf")
 
     resp = _forgive(
-        client, {"Authorization": f"Bearer {stranger_token}"}, debt_public_id, expected_row_version=1
+        client, current_protocol_headers({"Authorization": f"Bearer {stranger_token}"}), debt_public_id, expected_row_version=1
     )
     assert resp.status_code == 404, resp.json()
     assert resp.json()["error"] == "debt_not_found"

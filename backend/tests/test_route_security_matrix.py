@@ -39,9 +39,11 @@ from fastapi.testclient import TestClient
             "/api/exchange-rates/USD/2026-05-24",
             {
                 "json": {
+                    "home_currency_code": "CNY",
                     "currency_code": "USD",
                     "rate_date": "2026-05-24",
                     "rate_to_cny": "7.2000",
+                    "expected_row_version": 0,
                     "source": "manual",
                 }
             },
@@ -188,7 +190,7 @@ from fastapi.testclient import TestClient
         (
             "POST",
             "/api/recurring/from-candidate",
-            {"json": {"merchant": "Store", "amount_cents": 1200}},
+            {"json": {"home_currency_code": "CNY", "merchant": "Store", "amount_cents": 1200}},
         ),
         ("POST", "/api/recurring/items/item_missing/archive", {}),
         ("POST", "/api/recurring/items/item_missing/pause", {}),

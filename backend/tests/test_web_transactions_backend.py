@@ -26,6 +26,7 @@ from app.services.spending_contract_service import (
     shift_month,
 )
 from app.services.tag_service import sync_expense_tags
+from tests._runtime_protocol import negotiated_headers
 from tests._web_bulk_test_support import seed_pending_with_amount
 
 
@@ -80,8 +81,10 @@ def _seed_confirmed(
 def _foreign_expense(web_client: TestClient, *, identity, rate: str = "7.0000") -> int:
     rate_response = web_client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=identity.app_headers,
+        headers={**negotiated_headers(web_client, identity.app_headers), "Idempotency-Key": str(uuid4())},
         json={
+            "expected_row_version": 0,
+            "home_currency_code": "CNY",
             "currency_code": "USD",
             "rate_date": "2026-05-04",
             "rate_to_cny": rate,
@@ -101,6 +104,29 @@ def _foreign_expense(web_client: TestClient, *, identity, rate: str = "7.0000") 
     )
     assert created.status_code == 200, created.text
     return int(created.json()["id"])
+
+
+def _correct_current_rate(web_client: TestClient, *, identity) -> None:
+    current = web_client.get(
+        "/api/exchange-rates",
+        params={"currency_code": "USD", "home_currency_code": "CNY", "rate_date": "2026-05-04"},
+        headers=identity.app_headers,
+    )
+    assert current.status_code == 200, current.text
+    rate, = current.json()["items"]
+    changed = web_client.put(
+        "/api/exchange-rates/USD/2026-05-04",
+        headers={**negotiated_headers(web_client, identity.app_headers), "Idempotency-Key": str(uuid4())},
+        json={
+            "expected_row_version": rate["row_version"],
+            "home_currency_code": "CNY",
+            "currency_code": "USD",
+            "rate_date": "2026-05-04",
+            "rate_to_cny": "8.0000",
+        },
+    )
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["row_version"] == rate["row_version"] + 1
 
 
 def _expense_payload(web_client: TestClient, expense_id: int, *, identity) -> dict:
@@ -282,16 +308,7 @@ def test_web_edit_ignores_mutable_rate_and_preserves_frozen_fx_snapshot(
     before = _expense_payload(web_client, expense_id, identity=identity)
     assert before["exchange_rate_to_cny"] == "7.00000000"
 
-    changed_rate = web_client.put(
-        "/api/exchange-rates/USD/2026-05-04",
-        headers=identity.app_headers,
-        json={
-            "currency_code": "USD",
-            "rate_date": "2026-05-04",
-            "rate_to_cny": "8.0000",
-        },
-    )
-    assert changed_rate.status_code == 200, changed_rate.text
+    _correct_current_rate(web_client, identity=identity)
     monkeypatch.setattr(
         "app.services.expense_service._update_currency.apply_currency_payload",
         lambda *_args, **_kwargs: pytest.fail(
@@ -333,16 +350,7 @@ def test_api_amount_correction_preserves_frozen_rate_snapshot(
 ) -> None:
     expense_id = _foreign_expense(web_client, identity=identity)
     before = _expense_payload(web_client, expense_id, identity=identity)
-    changed_rate = web_client.put(
-        "/api/exchange-rates/USD/2026-05-04",
-        headers=identity.app_headers,
-        json={
-            "currency_code": "USD",
-            "rate_date": "2026-05-04",
-            "rate_to_cny": "8.0000",
-        },
-    )
-    assert changed_rate.status_code == 200, changed_rate.text
+    _correct_current_rate(web_client, identity=identity)
 
     response = web_client.post(
         f"/api/expenses/{expense_id}/corrections",

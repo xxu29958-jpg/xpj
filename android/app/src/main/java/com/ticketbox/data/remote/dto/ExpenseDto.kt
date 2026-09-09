@@ -192,6 +192,8 @@ data class ExpenseManualCreateRequestDto(
     // snapshot change; Moshi omits it when null (the online quick-add path).
     @param:Json(name = "client_ref")
     val clientRef: String? = null,
+    @param:Json(name = "home_currency_code")
+    val homeCurrencyCode: String? = null,
 )
 
 /**

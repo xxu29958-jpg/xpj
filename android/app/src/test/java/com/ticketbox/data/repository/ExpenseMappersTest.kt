@@ -72,6 +72,7 @@ class ExpenseMappersTest {
             amountCents = null,
             originalCurrencyCode = CurrencyCode.JPY,
             originalAmountMinor = 1200,
+            ledgerHomeCurrency = CurrencyCode.JPY,
             merchant = "东京交通",
             category = "交通",
             note = null,
@@ -82,6 +83,7 @@ class ExpenseMappersTest {
         ).toManualCreateRequest()
 
         assertEquals("JPY", request.originalCurrency)
+        assertEquals("JPY", request.homeCurrencyCode)
         assertEquals("1200", request.originalAmount)
         assertEquals("2026-05-04T04:00:00Z", request.spentAt)
         // 专用 create DTO（ExpenseManualCreateRequestDto）没有 expectedRowVersion
@@ -143,6 +145,7 @@ class ExpenseMappersTest {
         val entity = expenseDto(
             publicId = "691da31d-e8d7-49b0-bece-ec6f61c044b2",
             fixture = ExpenseDtoFixture(
+                currency = ExpenseDtoCurrencyFixture(originalCurrencyCode = "CNY", originalAmountMinor = 3680L),
                 media = ExpenseDtoMediaFixture(
                     thumbnailPath = "/api/expenses/1/thumbnail",
                     thumbnailDeletedAt = "2026-05-04T05:00:00Z",
@@ -157,7 +160,7 @@ class ExpenseMappersTest {
     @Test
     fun toEntityPassesThroughUnknownHomeCurrencyCodeVerbatim() {
         // PR#255 R7-2：写侧原码透传 —— 未知码（新版服务端币种）不得被 fromStorageKey 枚举
-        // 往返静默改写成 CNY 落缓存（后续同步会把它回写服务端，币种篡改）；blank 才落兜底。
+        // 往返静默改写成 CNY 落缓存；缺失币种由独立的缓存合同测试拒绝。
         val entity = expenseDto(publicId = "p1").copy(homeCurrency = "XXX", originalCurrencyCode = "XXX")
             .toEntity(ledgerId = "owner")
 
@@ -300,8 +303,8 @@ class ExpenseMappersTest {
     }
 
     @Test
-    fun categoryOnlyDraftDoesNotSubmitSyntheticCurrencyFields() {
-        val request = ExpenseDraft(
+    fun categoryOnlyDraftCannotBecomeAManualMoneyCreate() {
+        val draft = ExpenseDraft(
             amountCents = null,
             originalCurrencyCode = null,
             originalAmountMinor = null,
@@ -312,17 +315,13 @@ class ExpenseMappersTest {
             tags = null,
             valueScore = null,
             regretScore = null,
-        ).toManualCreateRequest()
-
-        assertEquals(null, request.originalCurrency)
-        assertEquals(null, request.originalAmount)
-        assertEquals("交通", request.category)
+        )
+        assertFailsWith<IllegalArgumentException> { draft.toManualCreateRequest() }
     }
 
     @Test
     fun mapsMonthlyTagStatsFromServer() {
-        val stats = MonthlyStatsDto(
-            month = "2026-05",
+        val stats = MonthlyStatsDto(homeCurrencyCode = "CNY", month = "2026-05",
             totalAmountCents = 15_800,
             count = 3,
             byCategory = listOf(CategoryStatsDto(category = "吃饭", amountCents = 15_800, count = 3)),
@@ -490,6 +489,7 @@ class ExpenseMappersTest {
         fixture: ExpenseDtoFixture = ExpenseDtoFixture(),
     ): ExpenseDto {
         return ExpenseDto(
+            homeCurrency = "CNY",
             id = 1,
             publicId = publicId,
             amountCents = 3680,

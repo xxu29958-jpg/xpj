@@ -203,6 +203,10 @@ class MainShellStateTest {
             mainProductDestination(ProductSecondaryPage.BudgetAdvice.route),
         )
         assertEquals(
+            MainProductDestination.Secondary(ProductSecondaryPage.Budget),
+            mainProductDestination(budgetRoute("2026-07")),
+        )
+        assertEquals(
             MainProductDestination.Secondary(ProductSecondaryPage.RepaymentDrafts),
             mainProductDestination(REPAYMENT_DRAFT_ROUTE),
         )

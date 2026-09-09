@@ -10,9 +10,7 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.schemas import ConfirmedExpenseStreamItem
-from app.services.budget_baseline_service._spent_reader import (
-    total_confirmed_spent_cents,
-)
+from app.services.budget_advisor_service import read_budget_inputs
 from app.services.category_service import list_category_summary
 from app.services.goal_spending_response import month_spend_totals
 from app.services.insight_radar_service import cashflow_radar
@@ -54,7 +52,7 @@ def _manual(
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": amount_cents,
+            "home_currency_code": "CNY", "amount_cents": amount_cents,
             "merchant": merchant,
             "category": category,
             "tags": tags,
@@ -276,22 +274,26 @@ def _assert_refund_service_consumers() -> None:
         assert confirmed_by_day(db, "owner", "2026-09", tag="旅行") == [
             {
                 "date": "2026-09-03",
+                "home_currency_code": "CNY",
+                "missing_rates": (),
                 "amount_cents": -300,
                 "amount_yuan": -3.0,
                 "count": 1,
             }
         ]
-        assert total_confirmed_spent_cents(
+        assert read_budget_inputs(
             db,
             tenant_id="owner",
             month="2026-09",
             timezone_name="Asia/Shanghai",
-        ) == -300
+            home_currency_code="CNY",
+        ).breakdown.spent_amount_cents == -300
         goal_totals = month_spend_totals(
             db,
             tenant_id="owner",
             month="2026-09",
             timezone_name="Asia/Shanghai",
+            home_currency_code="CNY",
         )
         assert goal_totals.total_amount_cents == -300
         assert goal_totals.by_category == {"旅游": -300}

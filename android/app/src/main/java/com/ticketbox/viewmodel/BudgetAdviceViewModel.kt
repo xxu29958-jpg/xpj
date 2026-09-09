@@ -12,7 +12,6 @@ import com.ticketbox.domain.model.ledgerRoleCanModify
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.YearMonth
@@ -44,25 +43,34 @@ data class BudgetAdviceUiState(
      *  observers can tell role-gated / data-premise terminals apart from
      *  config truth. */
     val terminalErrorCode: String? = null,
+    val binding: com.ticketbox.data.repository.LogicalSessionBinding? = null,
+    val reportingHomeCurrencyCode: String? = null,
+    val inputs: com.ticketbox.data.remote.dto.BudgetAdviceInputsDto? = null,
+    val inputsLoading: Boolean = false,
+    val inputsError: UiText? = null,
+    val rates: List<com.ticketbox.data.remote.dto.ExchangeRateDto> = emptyList(),
+    val rateEditor: ManualRateEditor? = null,
+    val rateSubmissions: List<com.ticketbox.data.repository.PendingManualRateSubmission> = emptyList(),
+    val selectedRateSubmissionId: Long? = null,
+    val rateBusy: Boolean = false,
+    val rateMessage: UiText? = null,
 )
 
 class BudgetAdviceViewModel(
-    private val repository: BudgetActions,
+    internal val repository: BudgetActions,
     initialMonth: String = YearMonth.now().toString(),
-    /** Resolves the request target month (backend `YYYY-MM`) at request time:
-     *  a back-stack-restored page can outlive a month rollover, and the screen
-     *  has no month selector, so generating must always target the CURRENT
-     *  month. Injectable for rollover tests. */
-    private val monthProvider: () -> String = { YearMonth.now().toString() },
 ) : ViewModel() {
-    private val _state = MutableStateFlow(
+    internal val _state = MutableStateFlow(
         BudgetAdviceUiState(
             month = initialMonth,
             canRequest = repository.canModifyLedger(),
         ),
     )
     val uiState: StateFlow<BudgetAdviceUiState> = _state.asStateFlow()
-    private var requestGeneration = 0
+    internal var requestGeneration = 0
+    internal var inputGeneration = 0
+    internal var rateObservation: kotlinx.coroutines.Job? = null
+    internal var observedInputBinding: Boolean = false
 
     /** Advice data generation the displayed Ready result was produced under
      *  (null while nothing advice-bearing is shown). Compared against
@@ -70,8 +78,7 @@ class BudgetAdviceViewModel(
     private var displayedResultGeneration: Int? = null
 
     init {
-        observeLedgerChanges()
-        restoreCachedAdvice()
+        observeAdviceAccess()
         observeAdviceInvalidations()
     }
 
@@ -113,63 +120,24 @@ class BudgetAdviceViewModel(
         }
     }
 
-    private fun restoreCachedAdvice() {
+    internal fun restoreCachedAdvice() {
         // The page-scoped VM is destroyed on route exit; the repository keeps a
         // process-lifetime last-success cache keyed by (ledger, month), so a
         // reopen after an already quota-counted call renders that result
         // instead of firing a second counted request. Only applies while the
         // screen is still Idle (a concurrent request/ledger switch wins).
         viewModelScope.launch {
-            val cached = repository.cachedBudgetAdvice(_state.value.month) ?: return@launch
+            val snapshot = _state.value
+            val cached = repository.cachedBudgetAdvice(snapshot.month, snapshot.reportingHomeCurrencyCode) ?: return@launch
             _state.update { current ->
-                if (current.loadState != BudgetAdviceLoadState.Idle) return@update current
+                if (current.loadState != BudgetAdviceLoadState.Idle || current.month != snapshot.month ||
+                    current.binding != snapshot.binding || current.reportingHomeCurrencyCode != snapshot.reportingHomeCurrencyCode) return@update current
                 current.adviceLoaded(cached)
             }
         }
     }
 
-    private fun observeLedgerChanges() {
-        viewModelScope.launch {
-            var observedLedgerId: String? = null
-            var observedRole: String? = null
-            var firstEmission = true
-            repository.observeLedgerAccessState()
-                .distinctUntilChanged()
-                .collect { access ->
-                    val ledgerId = access?.ledgerId
-                    val role = access?.role
-                    if (firstEmission) {
-                        // Baseline (the ledger the VM was created under), mirroring
-                        // the previous drop(1) semantics.
-                        firstEmission = false
-                        observedLedgerId = ledgerId
-                        observedRole = role
-                        return@collect
-                    }
-                    if (ledgerId != observedLedgerId) {
-                        observedLedgerId = ledgerId
-                        observedRole = role
-                        requestGeneration += 1
-                        _state.update { current ->
-                            current.copy(
-                                loadState = BudgetAdviceLoadState.Idle,
-                                canRequest = repository.canModifyLedger(),
-                                result = null,
-                                error = null,
-                                terminalErrorCode = null,
-                            )
-                        }
-                        restoreCachedAdvice()
-                    } else if (role != observedRole) {
-                        val previousRole = observedRole
-                        observedRole = role
-                        onRoleReprojection(previousRole, role)
-                    }
-                }
-        }
-    }
-
-    private fun onRoleReprojection(previousRole: String?, newRole: String?) {
+    internal fun onRoleReprojection(previousRole: String?, newRole: String?) {
         // viewer→member/owner opens modification; member→owner additionally
         // opens the live advisor (owner-gated server-side). Demotion re-gates
         // in place (round-5 semantics); a capability INCREASE re-offers
@@ -179,7 +147,7 @@ class BudgetAdviceViewModel(
             (!ledgerRoleCanModify(previousRole) && ledgerRoleCanModify(newRole)) ||
                 (newRole == LEDGER_ROLE_OWNER && previousRole != LEDGER_ROLE_OWNER)
         _state.update { current ->
-            val regated = current.copy(canRequest = repository.canModifyLedger())
+            val regated = current.copy(canRequest = ledgerRoleCanModify(newRole))
             if (capabilityIncreased &&
                 regated.loadState == BudgetAdviceLoadState.Unavailable &&
                 regated.terminalErrorCode in ROLE_GATED_ADVISOR_ERROR_CODES
@@ -209,13 +177,15 @@ class BudgetAdviceViewModel(
             }
             return
         }
-        // Resolve the target month now — not at construction: the subtitle and
-        // the request (and thereby the cache key) all track this value, so a
-        // page kept open across a month rollover generates for the NEW month.
-        val month = monthProvider()
+        // The displayed month owns this task, including rate repair across calendar rollover.
+        if (_state.value.inputsLoading || _state.value.inputs?.readyForAdvice != true) { refreshInputs(); return }
+        val month = _state.value.month
+        val home = _state.value.inputs?.homeCurrencyCode ?: return
+        val binding = _state.value.binding ?: return
         val generation = requestGeneration
         val invalidationGenerationAtStart = repository.adviceInvalidations.value
         viewModelScope.launch {
+            if (!ownsAdviceRequest(generation, month, binding) || !repository.canModifyLedger()) return@launch
             _state.update {
                 it.copy(
                     month = month,
@@ -225,10 +195,10 @@ class BudgetAdviceViewModel(
                     terminalErrorCode = null,
                 )
             }
-            repository.requestBudgetAdvice(month)
+            repository.requestBudgetAdvice(month, home, binding)
                 .onSuccess { result ->
                     _state.update {
-                        if (generation != requestGeneration || month != it.month) return@update it
+                        if (!ownsAdviceRequest(generation, month, binding)) return@update it
                         if (repository.adviceInvalidations.value != invalidationGenerationAtStart) {
                             // An advice-input write landed mid-flight (domain
                             // switch during a slow live call): the store already
@@ -246,12 +216,16 @@ class BudgetAdviceViewModel(
                 }
                 .onFailure { error ->
                     _state.update {
-                        if (generation != requestGeneration || month != it.month) return@update it
+                        if (!ownsAdviceRequest(generation, month, binding)) return@update it
                         it.adviceFailed(error)
                     }
+                    if ((error as? RepositoryException)?.errorCode == "money_projection_unavailable") refreshInputs()
                 }
         }
     }
+
+    private fun ownsAdviceRequest(generation: Int, month: String, binding: com.ticketbox.data.repository.LogicalSessionBinding): Boolean =
+        generation == requestGeneration && _state.value.binding == binding && _state.value.month == month
 
     private fun BudgetAdviceUiState.adviceLoaded(result: BudgetAdviceResult): BudgetAdviceUiState {
         // Backend contract: advice == null carries a reason_code. Terminal

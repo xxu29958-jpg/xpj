@@ -61,10 +61,12 @@ def resolve_offset_money(
     rate, source, status, effective_date = resolve_payload_rate(
         db,
         tenant_id=tenant_id,
+        home_currency_code=expense.home_currency_code,
         currency_code=expense.original_currency_code,
         rate_date=payload.accounting_date,
     )
     amount_cents = calculate_cny_cents(
+        home_currency_code=expense.home_currency_code,
         original_currency_code=expense.original_currency_code,
         original_amount_minor=original_amount_minor,
         exchange_rate_to_cny=rate,
@@ -120,6 +122,7 @@ def resolve_corrected_offset_money(
         rate, source, status, effective_date = resolve_payload_rate(
             db,
             tenant_id=tenant_id,
+            home_currency_code=expense.home_currency_code,
             currency_code=expense.original_currency_code,
             rate_date=payload.accounting_date,
         )
@@ -127,6 +130,7 @@ def resolve_corrected_offset_money(
             raise AppError("exchange_rate_required", status_code=409)
 
     amount_cents = calculate_cny_cents(
+        home_currency_code=expense.home_currency_code,
         original_currency_code=expense.original_currency_code,
         original_amount_minor=original_amount_minor,
         exchange_rate_to_cny=rate,

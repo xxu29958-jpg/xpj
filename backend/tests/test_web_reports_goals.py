@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import re
+from html import unescape
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from fastapi.testclient import TestClient
@@ -13,6 +15,7 @@ from app.database import SessionLocal
 from app.main import app
 from app.models import LedgerMember
 from app.routes.web_app import _require_local as _web_require_local
+from tests._web_native_form_support import hidden_post_forms
 
 
 @pytest.fixture()
@@ -35,7 +38,7 @@ def _create_expense(
         "/api/expenses/manual",
         headers=identity.gray_app_headers if gray else identity.app_headers,
         json={
-            "amount_cents": amount_cents,
+            "home_currency_code": "CNY", "amount_cents": amount_cents,
             "merchant": merchant,
             "category": category,
             "expense_time": expense_time,
@@ -165,11 +168,27 @@ def test_web_reports_absorbs_stats_top_expenses_and_seg_controls(
     assert "星巴克" in response.text
     assert "2026-05-04" in response.text
     assert "灰度账本商家" not in response.text  # top-expenses 仍账本隔离
-    # seg 控件 GET 链接：& 写字面量(模板里非变量输出,不经 autoescape)。
-    assert (
-        "/web/reports?ledger_id=owner&month=2026-05&granularity=week&ranking_metric=count"
-        in response.text
-    )
+    # Follow the rendered controls with the report's captured month and currency.
+    report_links = [
+        parse_qs(urlsplit(unescape(href)).query)
+        for href in re.findall(r'href="([^"]+)"', response.text)
+        if urlsplit(unescape(href)).path == "/web/reports"
+    ]
+    assert {
+        "ledger_id": ["owner"], "month": ["2026-05"],
+        "home_currency_code": ["CNY"], "granularity": ["week"],
+        "ranking_metric": ["count"],
+    } in report_links
+    assert {
+        "ledger_id": ["owner"], "month": ["2026-05"],
+        "home_currency_code": ["CNY"], "granularity": ["day"],
+        "ranking_metric": ["count"],
+    } in report_links
+    assert {
+        "ledger_id": ["owner"], "month": ["2026-05"],
+        "home_currency_code": ["CNY"], "granularity": ["week"],
+        "ranking_metric": ["amount"],
+    } in report_links
     assert "趋势粒度" in response.text
     assert "排行口径" in response.text
     assert "cdn.jsdelivr" not in response.text
@@ -285,9 +304,13 @@ def test_web_goals_create_archive_and_viewer_guard(web_client: TestClient, *, id
         expense_time="2026-05-08T12:00:00Z",
      identity=identity)
 
+    form_page = web_client.get("/web/goals?ledger_id=owner&month=2026-05")
+    assert form_page.status_code == 200
+    fields = hidden_post_forms(form_page.text)["/web/goals/create"]
     created = web_client.post(
         "/web/goals/create",
         data={
+            **fields,
             "ledger_id": "owner",
             "month": "2026-05",
             "name": "本月餐饮",
@@ -301,7 +324,7 @@ def test_web_goals_create_archive_and_viewer_guard(web_client: TestClient, *, id
     page = web_client.get("/web/goals?ledger_id=owner&month=2026-05")
     assert page.status_code == 200
     assert "本月餐饮" in page.text
-    assert "¥640.00 / ¥800.00" in page.text
+    assert "CNY 640.00 / 800.00" in page.text
     assert "80%" in page.text
     assert "保存目标" in page.text
     # C2 计划片: goals 正文迁 product 计划域 — 挂 plans 域模块; 旧 pages/goals.css
@@ -330,6 +353,7 @@ def test_web_goals_create_archive_and_viewer_guard(web_client: TestClient, *, id
     denied = web_client.post(
         "/web/goals/create",
         data={
+            **fields,
             "ledger_id": "owner",
             "month": "2026-05",
             "name": "只读目标",

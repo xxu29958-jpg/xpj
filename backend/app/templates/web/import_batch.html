@@ -109,7 +109,7 @@
         <tr>
           <td>{{ row.line_number }}</td>
           <td><span class="product-status {{ _row_tone.get(row.status, 'product-status--danger') }}">{{ _row_label.get(row.status, '错误') }}</span></td>
-          <td class="amount">{% if row.amount_cents is not none %}{{ home_currency_symbol }}{{ home_amount_value(row.amount_cents) }}{% else %}—{% endif %}</td>
+          <td class="amount">{% if row.amount_cents is none %}—{% elif not row.home_currency_code %}待确认币种{% else %}{{ row.home_currency_code }} {{ row_amount_label(row.amount_cents, row.home_currency_code) }}{% endif %}</td>
           <td>{{ row.merchant or '—' }}</td>
           <td>{{ row.category }}</td>
           <td>{{ row.expense_time or '—' }}</td>

@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 OWNER_EXPENSES: list[dict[str, Any]] = [
     {
+        "home_currency_code": "CNY",
         "amount_cents": 29800,
         "merchant": "真香年费",
         "category": "AI订阅",
@@ -14,6 +15,7 @@ OWNER_EXPENSES: list[dict[str, Any]] = [
         "regret_score": 1,
     },
     {
+        "home_currency_code": "CNY",
         "amount_cents": 1200,
         "merchant": "真香小吃",
         "category": "餐饮",
@@ -22,6 +24,7 @@ OWNER_EXPENSES: list[dict[str, Any]] = [
         "regret_score": 2,
     },
     {
+        "home_currency_code": "CNY",
         "amount_cents": 8800,
         "merchant": "后悔桌搭",
         "category": "数码",
@@ -30,6 +33,7 @@ OWNER_EXPENSES: list[dict[str, Any]] = [
         "regret_score": 5,
     },
     {
+        "home_currency_code": "CNY",
         "amount_cents": 3900,
         "merchant": "后悔游戏",
         "category": "娱乐",
@@ -38,12 +42,14 @@ OWNER_EXPENSES: list[dict[str, Any]] = [
         "regret_score": 5,
     },
     {
+        "home_currency_code": "CNY",
         "amount_cents": 999,
         "merchant": "未评分账单",
         "category": "生活",
         "expense_time": "2026-05-07T10:00:00Z",
     },
     {
+        "home_currency_code": "CNY",
         "amount_cents": 19900,
         "merchant": "上月真香",
         "category": "生活",
@@ -54,6 +60,7 @@ OWNER_EXPENSES: list[dict[str, Any]] = [
 ]
 
 GRAY_EXPENSE: dict[str, Any] = {
+    "home_currency_code": "CNY",
     "amount_cents": 99999,
     "merchant": "灰度账本真香",
     "category": "数码",

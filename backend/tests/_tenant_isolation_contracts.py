@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from uuid import uuid4
+
 from api_contract_helpers import confirm_expense_api, patch_expense, reject_expense_api, upload_png
 from fastapi.testclient import TestClient
 
@@ -84,7 +86,7 @@ def _assert_owner_expense_is_hidden_from_tester_reports(client: TestClient, *, i
 def _assert_category_rule_stays_in_tester_ledger(client: TestClient, *, identity) -> None:
     rule = client.post(
         "/api/rules/categories",
-        headers=identity.gray_app_headers,
+        headers={**identity.gray_app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "keyword": "只属于tester",
             "category": "购物",
@@ -317,7 +319,7 @@ def _assert_categories_are_ledger_scoped(client: TestClient, *, identity) -> Non
 def _assert_category_rules_are_ledger_scoped(client: TestClient, *, identity) -> None:
     owner_rule = client.post(
         "/api/rules/categories",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "keyword": "owner规则",
             "category": "Owner自定义类",
@@ -327,7 +329,7 @@ def _assert_category_rules_are_ledger_scoped(client: TestClient, *, identity) ->
     )
     tester_rule = client.post(
         "/api/rules/categories",
-        headers=identity.gray_app_headers,
+        headers={**identity.gray_app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "keyword": "tester规则",
             "category": "Tester自定义类",

@@ -23,6 +23,7 @@ from app.models import (
     Repayment,
     RepaymentVoid,
 )
+from tests._runtime_protocol import negotiated_headers
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
@@ -51,7 +52,7 @@ def _create_external_debt(
     installment_period_months: int | None = None,
 ) -> dict:
     body: dict = {
-        "direction": "i_owe",
+        "home_currency_code": "CNY", "direction": "i_owe",
         "counterparty_type": "external",
         "counterparty_label": "招商信用卡",
         "principal_amount_cents": principal_amount_cents,
@@ -62,7 +63,7 @@ def _create_external_debt(
         body["installment_count"] = installment_count
     if installment_period_months is not None:
         body["installment_period_months"] = installment_period_months
-    response = client.post("/api/debts", headers=_idem(headers), json=body)
+    response = client.post("/api/debts", headers=negotiated_headers(client, _idem(headers)), json=body)
     assert response.status_code == 201, response.json()
     return response.json()
 

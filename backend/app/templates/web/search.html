@@ -57,7 +57,7 @@
             <span>{{ result.subtitle }}</span>
           </span>
           {% if result.amount_cents is not none %}
-          <span class="ledger-search-amount">{{ search_amount_label(result.amount_cents, result.currency_code or home_currency_code) }}{% if result.currency_code %} <small>{{ result.currency_code }}</small>{% endif %}</span>
+          <span class="ledger-search-amount">{% if result.group == 'goals' and not result.currency_code %}{{ result.amount_cents }}（最小单位，币种待确认）{% else %}{{ search_amount_label(result.amount_cents, result.currency_code or home_currency_code) }}{% if result.currency_code %} <small>{{ result.currency_code }}</small>{% endif %}{% endif %}</span>
           {% endif %}
         </a>
         {% endfor %}

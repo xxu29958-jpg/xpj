@@ -13,8 +13,6 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.lifecycle.viewModelScope
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.domain.model.AppSkin
-import com.ticketbox.domain.model.CurrencyCode
-import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.screens.recurring.OccurrenceSheetActions
 import com.ticketbox.ui.screens.recurring.RecurringOccurrenceSheet
 import com.ticketbox.ui.theme.TicketboxTheme
@@ -45,9 +43,9 @@ class RecurringOccurrenceRoomContinuityTest {
             val current = model.value ?: return@setContent
             val state by current.uiState.collectAsState()
             TicketboxTheme(skin = AppSkin.Paper) {
-                RecurringOccurrenceSheet(state, CurrencyDisplay.Base, OccurrenceSheetActions(
+                RecurringOccurrenceSheet(state, OccurrenceSheetActions(
                     current::dismiss, current::refresh, current::changePeriod,
-                    { current.choose(it, CurrencyCode.CNY) }, current::submit, current::recover,
+                    current::choose, current::submit, current::recover,
                     onOpenExpense = { openedExpenses += it },
                 ))
             }
@@ -55,6 +53,9 @@ class RecurringOccurrenceRoomContinuityTest {
         compose.waitUntil(10_000) { model.value?.uiState?.value?.canWrite == true }
         compose.onNodeWithTag("occurrence-state").assertTextEquals("本期尚未履约")
         compose.onNodeWithTag("occurrence-payment-1").performScrollTo().performClick()
+        val review = InstrumentationRegistry.getInstrumentation().targetContext.getString(
+            com.ticketbox.R.string.occurrence_link_review, "房租付款", "JPY ¥12,345")
+        compose.onNodeWithText(review).performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("occurrence-submit").performScrollTo().performClick()
         compose.waitUntil(10_000) { fixture.stored().size == 1 }
         val original = fixture.stored().single()
@@ -76,6 +77,7 @@ class RecurringOccurrenceRoomContinuityTest {
         assertEquals(fixture.network.calls.first(), fixture.network.calls.last())
         assertEquals(original["idempotencyKey"], fixture.network.calls.last().second)
         assertEquals(0L, model.value?.uiState?.value?.occurrence?.reservedAmountCents)
+        compose.onNodeWithText("关联付款当前金额 JPY ¥12,345").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("查看关联账单").performScrollTo().performClick()
         assertEquals(listOf(1L), openedExpenses)
         completeUndo()
@@ -96,7 +98,7 @@ class RecurringOccurrenceRoomContinuityTest {
     private fun installModel() {
         val graph = fixture.reopen()
         compose.runOnIdle {
-            model.value = RecurringOccurrenceViewModel(graph.recurringRepository.occurrences, fixture.ledger, fixture.outbox)
+            model.value = RecurringOccurrenceViewModel(graph.recurringRepository.occurrences, fixture.ledger)
                 .also { it.open(occurrenceConnectedItem()) }
         }
     }
@@ -111,7 +113,7 @@ class RecurringOccurrenceRoomContinuityTest {
         runBlocking {
             actions.enqueue(binding, OccurrencePaymentDraft(prior, "八月房租",
                 com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto("link", 0, 7, "payment-august", 2),
-                "八月完整付款", 9_800, CurrencyCode.CNY)).getOrThrow()
+                "八月完整付款", 9_800, "CNY")).getOrThrow()
         }
         assertEquals(1, runBlocking { fixture.drain(maxAttempts = 1) }.failures)
         val originalKey = fixture.stored().single()["idempotencyKey"]
@@ -121,9 +123,9 @@ class RecurringOccurrenceRoomContinuityTest {
             val current = model.value ?: return@setContent
             val state by current.uiState.collectAsState()
             TicketboxTheme(skin = AppSkin.Paper) {
-                RecurringOccurrenceSheet(state, CurrencyDisplay.Base, OccurrenceSheetActions(
+                RecurringOccurrenceSheet(state, OccurrenceSheetActions(
                     current::dismiss, current::refresh, current::changePeriod,
-                    { current.choose(it, CurrencyCode.CNY) }, current::submit, current::recover,
+                    current::choose, current::submit, current::recover,
                 ))
             }
         }

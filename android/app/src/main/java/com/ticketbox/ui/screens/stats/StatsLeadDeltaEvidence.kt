@@ -10,14 +10,12 @@ internal data class MonthDeltaEvidence(
 internal fun monthDeltaEvidence(
     overview: ReportsOverview?,
 ): MonthDeltaEvidence? {
-    if (!hasPreviousBaseline(overview)) return null
     val previousAmount = overview?.previousTotalAmountCents ?: return null
-    val delta = overview.totalAmountCents - overview.previousTotalAmountCents
+    val currentAmount = overview.totalAmountCents ?: return null
+    if (overview.previousCount <= 0 || previousAmount <= 0L) return null
+    val delta = currentAmount - previousAmount
     return MonthDeltaEvidence(
         previousAmountCents = previousAmount,
         deltaAmountCents = delta,
     )
 }
-
-private fun hasPreviousBaseline(overview: ReportsOverview?): Boolean =
-    overview?.let { it.previousCount > 0 && it.previousTotalAmountCents > 0L } == true

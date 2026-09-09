@@ -12,6 +12,14 @@ from app.config import reset_settings_cache
 from app.database import SessionLocal
 from app.models import BudgetAdvisorAuditLog, LedgerMember
 from app.services.budget_advisor_service import _providers as providers_module
+from tests._infra.currency import activate_test_currency_authority
+from tests._web_native_form_support import hidden_post_forms
+
+
+def _submit_budget(client, path, *, data):
+    page = client.get(path, params={"ledger_id": data["ledger_id"], "month": data["month"]})
+    assert page.status_code == 200, page.text
+    return client.post(path, data={**hidden_post_forms(page.text)[path], **data})
 
 
 @pytest.fixture()
@@ -28,11 +36,10 @@ def live_provider_env(monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.fixture()
-def jpy_home_env(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
-    reset_settings_cache()
-    yield
-    reset_settings_cache()
+def confirmed_jpy_currency(identity):
+    with SessionLocal() as db:
+        activate_test_currency_authority(db, "JPY")
+        db.commit()
 
 
 def _patch_openai_call(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -107,7 +114,7 @@ def test_web_budget_advise_form_keeps_csrf_token_out_of_get_url(
 def test_web_budget_advise_post_defaults_money_to_canonical_zero_text(
     web_client: TestClient, *, identity
 ) -> None:
-    response = web_client.post(
+    response = _submit_budget(web_client,
         "/web/budget-advise",
         data={"ledger_id": "owner", "month": "2026-05"},
     )
@@ -115,11 +122,11 @@ def test_web_budget_advise_post_defaults_money_to_canonical_zero_text(
     assert response.status_code == 200, response.text
     assert 'name="savings_target_yuan"' in response.text
     assert (
-        'name="savings_target_yuan" min="0" step="0.01" inputmode="decimal" '
+        'name="savings_target_yuan" inputmode="decimal" '
         'placeholder="0.00" value="0"'
     ) in response.text
     assert (
-        'name="reserved_buffer_yuan" min="0" step="0.01" inputmode="decimal" '
+        'name="reserved_buffer_yuan" inputmode="decimal" '
         'placeholder="0.00" value="0"'
     ) in response.text
 
@@ -127,7 +134,7 @@ def test_web_budget_advise_post_defaults_money_to_canonical_zero_text(
 def test_web_budget_advise_post_accepts_canonical_cny_decimal_text(
     web_client: TestClient, *, identity
 ) -> None:
-    response = web_client.post(
+    response = _submit_budget(web_client,
         "/web/budget-advise",
         data={
             "ledger_id": "owner",
@@ -149,19 +156,20 @@ def test_web_budget_advise_post_accepts_canonical_cny_decimal_text(
         response.text,
     )
     assert (
-        'name="savings_target_yuan" min="0" step="0.01" inputmode="decimal" '
+        'name="savings_target_yuan" inputmode="decimal" '
         'placeholder="0.00" value="12.34"'
     ) in response.text
     assert (
-        'name="reserved_buffer_yuan" min="0" step="0.01" inputmode="decimal" '
+        'name="reserved_buffer_yuan" inputmode="decimal" '
         'placeholder="0.00" value="0.1"'
     ) in response.text
 
 
+@pytest.mark.currency_binding_unbound
 def test_web_budget_advise_post_accepts_canonical_jpy_integer_text(
-    jpy_home_env, web_client: TestClient, *, identity
+    confirmed_jpy_currency, web_client: TestClient, *, identity
 ) -> None:
-    response = web_client.post(
+    response = _submit_budget(web_client,
         "/web/budget-advise",
         data={
             "ledger_id": "owner",
@@ -176,24 +184,25 @@ def test_web_budget_advise_post_accepts_canonical_jpy_integer_text(
         response.text,
     )
     assert (
-        'name="savings_target_yuan" min="0" step="1" inputmode="numeric" '
+        'name="savings_target_yuan" inputmode="numeric" '
         'placeholder="0" value="1234"'
     ) in response.text
 
 
+@pytest.mark.currency_binding_unbound
 @pytest.mark.parametrize(
     "amount_text",
     ("12.5", "1e2", "abc", "9000000000001"),
     ids=("fraction", "exponent", "invalid", "c07-overflow"),
 )
 def test_web_budget_advise_post_rejects_noncanonical_or_out_of_range_jpy_text(
-    jpy_home_env,
+    confirmed_jpy_currency,
     web_client: TestClient,
     *,
     identity,
     amount_text: str,
 ) -> None:
-    response = web_client.post(
+    response = _submit_budget(web_client,
         "/web/budget-advise",
         data={
             "ledger_id": "owner",
@@ -203,7 +212,9 @@ def test_web_budget_advise_post_rejects_noncanonical_or_out_of_range_jpy_text(
     )
 
     assert response.status_code == 422, response.text
-    assert response.json()["error"] == "amount_invalid"
+    assert f'value="{amount_text}"' in response.text
+    assert "待核对输入" in response.text
+    assert 'name="run_advise"' not in response.text
 
 
 def test_web_live_provider_without_owner_confirm_does_not_audit(
@@ -213,7 +224,7 @@ def test_web_live_provider_without_owner_confirm_does_not_audit(
     reset_settings_cache()
     before_count = _audit_count()
 
-    response = web_client.post(
+    response = _submit_budget(web_client,
         "/web/budget-advise",
         data={"ledger_id": "owner", "month": "2026-05", "run_advise": "true"},
     )
@@ -231,7 +242,7 @@ def test_web_live_provider_requires_owner_role(
     _patch_openai_call(monkeypatch)
     before_count = _audit_count()
 
-    response = web_client.post(
+    response = _submit_budget(web_client,
         "/web/budget-advise",
         data={"ledger_id": "owner", "month": "2026-05", "run_advise": "true"},
     )
@@ -248,7 +259,7 @@ def test_web_live_provider_records_audit_with_owner_confirm(
     _patch_openai_call(monkeypatch)
     before_count = _audit_count()
 
-    response = web_client.post(
+    response = _submit_budget(web_client,
         "/web/budget-advise",
         data={"ledger_id": "owner", "month": "2026-05", "run_advise": "true"},
     )
@@ -289,7 +300,7 @@ def test_invalid_configuration_and_correction_share_api_web_readiness(
     )
     assert refused.status_code == 503
     assert refused.json()["error"] == "ai_advisor_configuration_invalid"
-    forged = web_client.post(
+    forged = _submit_budget(web_client,
         "/web/budget-advise", data={"ledger_id": "owner", "month": "2026-05", "run_advise": "true"},
     )
     assert forged.status_code == 200
@@ -301,7 +312,7 @@ def test_invalid_configuration_and_correction_share_api_web_readiness(
     ready = client.get("/api/budget/advisor/status", headers=identity.app_headers).json()
     assert ready["configuration_valid"] is True
     assert ready["can_request"] is True
-    result = web_client.post(
+    result = _submit_budget(web_client,
         "/web/budget-advise", data={"ledger_id": "owner", "month": "2026-05", "run_advise": "true"},
     )
     assert result.status_code == 200

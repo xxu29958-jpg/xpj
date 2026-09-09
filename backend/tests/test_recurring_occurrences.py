@@ -19,7 +19,7 @@ def _create_series(client: TestClient, identity) -> dict:
     response = client.post(
         "/api/recurring/items",
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
-        json={
+        json={"home_currency_code": "CNY",
             "merchant": "房租",
             "baseline_amount_cents": 10_000,
             "next_expected_date": "2026-09-05",
@@ -33,7 +33,7 @@ def _payment(client: TestClient, identity) -> dict:
     response = client.post(
         "/api/expenses/manual", headers=identity.app_headers,
         json={
-            "amount_cents": 10_000, "merchant": "房租", "category": "餐饮",
+            "home_currency_code": "CNY", "amount_cents": 10_000, "merchant": "房租", "category": "餐饮",
             "expense_time": "2026-09-05T12:00:00Z", "note": "本期完整付款",
         },
     )
@@ -46,7 +46,7 @@ def test_recurring_payment_reconciles_reservation_and_replays_once(
 ) -> None:
     with SessionLocal() as db:
         resolve_write_capability(db)
-        create_income_plan(db, tenant_id="owner", label="计划工资", source_type="salary",
+        create_income_plan(db, home_currency_code="CNY", tenant_id="owner", label="计划工资", source_type="salary",
             amount_cents=100_000, pay_day=1, frequency="one_time", income_month="2026-09")
     series = _create_series(client, identity)
     payment = _payment(client, identity)
@@ -204,7 +204,7 @@ def test_occurrence_enforces_ledger_writer_and_explicit_payload(client: TestClie
     assert client.get(path, headers=other_headers).status_code == 404
     foreign = client.post(
         "/api/expenses/manual", headers=other_headers,
-        json={"amount_cents": 10_000, "merchant": "另一笔付款", "category": "餐饮"},
+        json={"home_currency_code": "CNY", "amount_cents": 10_000, "merchant": "另一笔付款", "category": "餐饮"},
     )
     assert foreign.status_code == 200, foreign.json()
     blocked = client.put(

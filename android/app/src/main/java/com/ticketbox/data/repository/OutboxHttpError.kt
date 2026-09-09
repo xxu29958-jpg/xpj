@@ -5,6 +5,7 @@ import retrofit2.HttpException
 private val outboxHttpErrors = NetworkErrorHandler(serverUrlProvider = { null }, context = "Outbox")
 private val outboxRecoveryErrorCodes = setOf(
     "runtime_version_mismatch", "client_upgrade_required", "rule_category_deleted", DEBT_ADJUSTMENT_NEGATIVE_REMAINING,
+    BUDGET_CURRENCY_CONFLICT,
 )
 
 /** Persist known recovery reasons so the sync UI can explain the required next step. */
@@ -18,6 +19,7 @@ internal fun mapOutboxHttpException(error: HttpException): DispatchResult {
     return when (error.code()) {
         409 -> when (parsed.errorCode) {
             "state_conflict" -> DispatchResult.Conflict(message)
+            BUDGET_CURRENCY_CONFLICT -> DispatchResult.Conflict(BUDGET_CURRENCY_CONFLICT)
             "idempotency_key_in_progress" -> DispatchResult.RetryableFailure(message)
             // Unknown and domain refusals do not prove this command was fulfilled.
             else -> DispatchResult.Failure(parsed.outboxFailureMessage())

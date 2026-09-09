@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="{{ ui_theme or 'paper' }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>默认币种 — 小票夹</title>
+  <link rel="icon" type="image/png" href="/static/web/product/brand/favicon-48.png">
+  <script src="/static/web/appearance-bootstrap.js?v={{ asset_version }}"></script>
+  <link rel="stylesheet" href="/static/shared/tokens.css?v={{ asset_version }}">
+  <link rel="stylesheet" href="/static/web/pages/currency-adoption.css?v={{ asset_version }}">
+  <script defer src="/static/shared/csrf.js?v={{ asset_version }}"></script>
+</head>
+<body>
+<main class="adoption-layout">
+  <header class="adoption-brand">{% include "_brand_mark.html" %}<span>小票夹</span></header>
+  <section class="adoption-card" aria-labelledby="default-title">
+    {% if receipt %}
+    <div class="adoption-status adoption-status--success">本次修改已确认</div>
+    <h1 id="default-title">默认币种修改已保存</h1>
+    <div class="adoption-summary"><span>本次确认的结果</span><strong>{{ receipt.source_home_currency_code }} → {{ receipt.home_currency_code }}</strong></div>
+    <p class="adoption-lede">确认时间：{{ receipt.changed_at }}。这是原提交的确认结果；如之后再次修改，请查看当前设置。</p>
+    <a class="adoption-primary" href="/web/currency-adoption">查看当前默认币种</a>
+    {% elif form %}
+    <div class="adoption-status">安装拥有者设置</div>
+    <h1 id="default-title">修改默认币种</h1>
+    <p class="adoption-lede">这次修改从 <strong>{{ form.source_home_currency_code or '待核对' }}</strong> 开始。选择以后新录入和默认汇总使用的币种。</p>
+    {% if error %}<div class="adoption-alert" role="alert">{{ error }}<span>原选择和说明已保留，尚未确认这次修改成功。</span></div>{% endif %}
+    <form method="post" action="/web/currency-adoption/change" class="currency-change-form">
+      {{ csrf_field|safe }}
+      {% for name in ['source_home_currency_code', 'currency_contract_version', 'expected_binding_revision', 'idempotency_key'] %}
+      <input type="hidden" name="{{ name }}" value="{{ form[name] }}">
+      {% endfor %}
+      <fieldset class="adoption-currencies">
+        <legend>新的默认币种</legend>
+        {% for currency in currency_options %}
+        <label class="adoption-currency">
+          <input type="radio" name="home_currency_code" value="{{ currency.code }}" {% if form.home_currency_code == currency.code %}checked{% endif %} required>
+          <span class="adoption-currency-symbol" aria-hidden="true">{{ currency.symbol }}</span>
+          <span class="adoption-currency-name"><strong>{{ currency.name }}</strong><small>{{ currency.code }}</small></span>
+        </label>
+        {% endfor %}
+      </fieldset>
+      {% if form.home_currency_code and form.home_currency_code not in currency_names %}
+      <label class="adoption-currency">
+        <input type="radio" name="home_currency_code" value="{{ form.home_currency_code }}" checked required>
+        <span>原选择：{{ form.home_currency_code }}。可以选择上面的币种进行核对。</span>
+      </label>
+      {% endif %}
+      <label class="currency-change-reason">修改说明
+        <textarea name="reason" required maxlength="500" rows="2" placeholder="例如：以后主要使用日元记账">{{ form.reason }}</textarea>
+      </label>
+      <div class="adoption-consequences">
+        <h2>修改后的范围</h2>
+        <ul>
+          <li>用于以后的新录入和默认汇总；已有草稿保留原币种</li>
+          <li>不会改写历史记录的币种和金额；跨币种汇总仍需要相应汇率</li>
+          <li>历史记录选错币种需要另行更正，本次设置不会自动修好</li>
+        </ul>
+        <p class="currency-change-non-cny">还款通知自动捕获目前只支持人民币。使用其他默认币种时，请手动核对还款。</p>
+      </div>
+      <button class="adoption-primary" type="submit">确认修改默认币种</button>
+      {% if error %}
+      <button class="adoption-secondary currency-change-review" type="submit" name="review_latest" value="true" formnovalidate>查看当前设置并准备新修改</button>
+      {% endif %}
+    </form>
+    {% else %}
+    <div class="adoption-status adoption-status--success">默认币种已设置</div>
+    <h1 id="default-title">这台小票夹的默认币种</h1>
+    <div class="adoption-summary"><span>当前默认币种</span><strong>{{ currency_names.get(current.home_currency_code, '') }} · {{ current.home_currency_code }}</strong></div>
+    <p class="adoption-lede">新录入和默认汇总使用这一币种。每笔历史记录保留自己的币种与金额。</p>
+    <a class="adoption-primary" href="/web/currency-adoption?change=true">修改默认币种</a>
+    {% endif %}
+    <p><a class="adoption-secondary" href="/web">回到小票夹</a></p>
+  </section>
+  <p class="adoption-foot">由安装拥有者在已配对的 Desktop 上管理。</p>
+</main>
+</body>
+</html>

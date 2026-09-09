@@ -437,7 +437,7 @@ def test_outbox_dispatcher_coverage_holds_on_live_tree() -> None:
     mod = importlib.reload(importlib.import_module("_audit_android_outbox_dispatcher_coverage"))
     files = mod._kt_files(mod.ANDROID_SRC)
     enum_types = mod.parse_enum_types(mod._read(mod.TYPE_FILE))
-    dispatcher_map = mod.parse_dispatchers(files)
+    dispatcher_map = mod.parse_dispatchers(files, mod._read(mod.APP_CONTAINER))
     registered = mod.parse_registered_classes(mod._read(mod.APP_CONTAINER))
     enqueue_types = mod.parse_enqueues(files, enum_types)
 

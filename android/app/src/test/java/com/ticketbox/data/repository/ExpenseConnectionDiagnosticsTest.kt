@@ -128,8 +128,8 @@ private class DiagnosticsFixture(
         override suspend fun confirmedExpenses(query: Map<String, String>) = base.confirmedExpenses(query)
             .also { reads += "confirmed" }
 
-        override suspend fun monthlyStats(month: String?, tag: String?, timezone: String?) =
-            MonthlyStatsDto("2026-09", 0, 0, emptyList()).also { reads += "stats" }
+        override suspend fun monthlyStats(month: String?, tag: String?, timezone: String?, homeCurrencyCode: String?) =
+            MonthlyStatsDto(homeCurrencyCode = "CNY", month = "2026-09", totalAmountCents = 0, count = 0, byCategory = emptyList()).also { reads += "stats" }
 
         override suspend fun categories() = CategoriesDto(emptyList()).also { reads += "categories" }
         override suspend fun months(timezone: String?) = MonthsDto(emptyList()).also { reads += "months" }

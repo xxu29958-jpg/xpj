@@ -23,11 +23,10 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.money_contract import projection_sum_to_int
 from app.routes._web_expense_return_context import edit_context_params
+from app.routes._web_money_views import projected_amount, projected_money_context
 from app.routes.web_common import (
     LocalOnly,
-    _amount_yuan,
     _base_ctx,
     _confirmed_by_day,
     _confirmed_source_breakdown,
@@ -42,12 +41,14 @@ from app.routes.web_common import (
     templates,
 )
 from app.services.currency_binding_service import require_runtime_home_currency_code
-from app.services.currency_common import average_minor_amount
+from app.services.currency_common import average_minor_amount, normalize_currency_code
 from app.services.expense_service import list_confirmed
+from app.services.money_projection_service import ordered_projection_gaps, sum_projected_amounts
 from app.services.spending_contract_service import (
     accounting_timezone_key,
     current_accounting_month,
 )
+from app.services.spending_projection_service import project_confirmed_items
 from app.services.stats_service import monthly_stats
 
 __all__ = ["router", "_require_local", "templates"]
@@ -88,6 +89,7 @@ def _confirmed_redirect(
     page: int = 1,
     msg: str = "",
     filter: str = "",
+    home_currency_code: str = "",
 ) -> RedirectResponse:
     page_value = str(page) if page > 1 else ""
     return _web_redirect(
@@ -98,6 +100,7 @@ def _confirmed_redirect(
         page=page_value,
         msg=msg,
         filter="missing_category" if filter == "missing_category" else "",
+        home_currency_code=home_currency_code,
     )
 
 
@@ -117,11 +120,10 @@ def _confirmed_month_context(
         selected_id,
         timezone_name=accounting_timezone_key(),
         tag=tag,
+        home_currency_code=currency_code,
     )
-    month_total_cents = projection_sum_to_int(
-        month_stats.get("total_amount_cents", 0),
-        label="web.confirmed_month_total",
-    )
+    currency_code = month_stats["home_currency_code"]
+    month_total_cents = month_stats["total_amount_cents"]
     month_total_count = int(month_stats.get("count", 0))
     by_day = _confirmed_by_day(
         db,
@@ -130,24 +132,18 @@ def _confirmed_month_context(
         currency_code=currency_code,
         tag=tag,
     )
-    peak_day_cents = max(
-        (
-            projection_sum_to_int(
-                item["amount_cents"],
-                label="web.confirmed_peak_day",
-            )
-            for item in by_day
-        ),
-        default=0,
-    )
+    peak_day_cents = None if any(item["amount_cents"] is None for item in by_day) else max(
+        (item["amount_cents"] for item in by_day), default=0)
     return {
-        "month_total_amount_yuan": _amount_yuan(month_total_cents, currency_code),
+        "month_total_amount_yuan": projected_amount(month_total_cents, currency_code),
         "month_total_count": month_total_count,
-        "month_average_amount_yuan": _amount_yuan(
+        "month_average_amount_yuan": None if month_total_cents is None else projected_amount(
             average_minor_amount(month_total_cents, month_total_count),
             currency_code,
         ),
-        "month_peak_amount_yuan": _amount_yuan(peak_day_cents, currency_code),
+        "month_peak_amount_yuan": projected_amount(peak_day_cents, currency_code),
+        "calendar_max": peak_day_cents,
+        "missing_rates": month_stats["missing_rates"],
         "by_day": by_day,
         "source_breakdown": _confirmed_source_breakdown(
             db,
@@ -158,22 +154,24 @@ def _confirmed_month_context(
     }
 
 
-def _confirmed_items(entries, home_currency_code: str) -> list[dict]:
+def _confirmed_items(entries, home_currency_code: str, *, db, ledger_id: str) -> list[dict]:
     """typed stream → 行视图模型。offset 与 expense 是两种行形态, 不互套
     Expense 视图; 每行只携带 server 给的 stream_date/stream_amount_cents,
     符号与归属不重算。"""
     items: list[dict] = []
-    for entry in entries:
+    projected = project_confirmed_items(db, tenant_id=ledger_id, home=home_currency_code, items=entries)
+    for entry, projection in zip(entries, projected, strict=True):
         if entry.entry_kind == "offset":
-            items.append(_offset_stream_view(entry, home_currency_code=home_currency_code))
-            continue
-        view = _expense_view(entry.root, presentation_currency_code=home_currency_code)
-        view.update(
-            entry_kind="expense",
-            stream_date=entry.stream_date.isoformat(),
-            stream_amount_cents=entry.stream_amount_cents,
-            **_lineage_chip(entry.lineage_status),
-        )
+            view = _offset_stream_view(entry, home_currency_code=home_currency_code)
+        else:
+            view = _expense_view(entry.root, presentation_currency_code=entry.root.home_currency)
+            view.update(
+                entry_kind="expense",
+                stream_date=entry.stream_date.isoformat(),
+                stream_amount_cents=entry.stream_amount_cents,
+                **_lineage_chip(entry.lineage_status),
+            )
+        view.update(projected_amount_cents=projection.amount_cents, projection_gap=projection.gap)
         items.append(view)
     return items
 
@@ -185,6 +183,7 @@ def _confirmed_edit_query(
     page: int,
     tag: str | None,
     filter: str = "",
+    home_currency_code: str = "",
 ) -> str:
     return urlencode(
         {
@@ -195,6 +194,7 @@ def _confirmed_edit_query(
                 return_page=str(page),
                 return_tag=tag or "",
                 return_filter=filter,
+                return_home_currency_code=home_currency_code,
             ),
         }
     )
@@ -208,6 +208,7 @@ def _confirmed_page_rows(
     month: str | None,
     tag: str | None,
     filter: str = "",
+    home_currency_code: str | None = None,
 ) -> tuple[str, str, list[dict], int, int, str, int]:
     timezone_name = accounting_timezone_key()
     missing_category = filter == "missing_category"
@@ -222,7 +223,7 @@ def _confirmed_page_rows(
         "missing_category": missing_category,
     }
     entries, total = list_confirmed(db, page=page, **query)
-    home = require_runtime_home_currency_code(db)
+    home = normalize_currency_code(home_currency_code or require_runtime_home_currency_code(db))
     total_pages = max(1, (total + _CONFIRMED_PAGE_SIZE - 1) // _CONFIRMED_PAGE_SIZE)
     if page > total_pages:
         page = total_pages
@@ -232,15 +233,32 @@ def _confirmed_page_rows(
         pager_params = {"ledger_id": selected_id, "filter": "missing_category"}
     if tag:
         pager_params["tag"] = tag
+    pager_params["home_currency_code"] = home
     return (
         effective_month,
         home,
-        _confirmed_items(entries, home),
+        _confirmed_items(entries, home, db=db, ledger_id=selected_id),
         total,
         total_pages,
         urlencode(pager_params),
         page,
     )
+
+
+def _confirmed_money_context(db, *, selected_id, month, home, tag, items) -> dict:
+    """One page publishes its month and page-subtotal projections together."""
+    context = _confirmed_month_context(db, selected_id=selected_id, effective_month=month,
+        currency_code=home, tag=tag) if month else {}
+    day_values = {}
+    for row in items:
+        day_values.setdefault(row["stream_date"], []).append(row["projected_amount_cents"])
+    totals = {day: sum_projected_amounts(values, label="web.confirmed_page_day") for day, values in day_values.items()}
+    context.update(page_day_totals=totals,
+        missing_rates=ordered_projection_gaps((*context.get("missing_rates", ()),
+            *(row["projection_gap"] for row in items if row["projection_gap"] is not None))),
+        money_incomplete=any(value is None for value in totals.values()) or (
+            bool(month) and context["month_total_amount_yuan"] is None))
+    return context
 
 
 def _render_confirmed_page(
@@ -261,9 +279,11 @@ def _render_confirmed_page(
     batch_tags_input: str = "",
     batch_reason_input: str = "",
     batch_idempotency_key: str = "",
+    home_currency_code: str | None = None,
 ) -> HTMLResponse:
     effective_month, home, items, total, total_pages, pager_query, page = _confirmed_page_rows(
-        db, selected_id=selected_id, page=page, month=month, tag=tag, filter=filter
+        db, selected_id=selected_id, page=page, month=month, tag=tag, filter=filter,
+        home_currency_code=home_currency_code,
     )
     ctx = _base_ctx(
         request,
@@ -276,6 +296,7 @@ def _render_confirmed_page(
         sidebar_counts=_sidebar_counts(db, selected_id),
     )
     ctx.update(
+        projected_money_context(home),
         expenses=items,
         page=page,
         total_pages=total_pages,
@@ -290,18 +311,14 @@ def _render_confirmed_page(
             page=page,
             tag=tag,
             filter=filter,
+            home_currency_code=home,
         ),
     )
-    if filter != "missing_category":
-        ctx.update(
-            _confirmed_month_context(
-                db,
-                selected_id=selected_id,
-                effective_month=effective_month,
-                currency_code=home,
-                tag=tag,
-            )
-        )
+    ctx.update(_confirmed_money_context(db, selected_id=selected_id, month=effective_month,
+        home=home, tag=tag, items=items))
+    ctx["money_task"] = {"ledger_id": selected_id, "month": effective_month, "home_currency_code": home,
+        "tag": tag or "", "page": str(page), "filter": filter, "return_to": "confirmed"}
+    ctx["month_picker_query"] = {key: value for key, value in ctx["money_task"].items() if key != "return_to"}
     ctx.update(
         flash_message=msg or "",
         flash_type=flash_type,
@@ -328,6 +345,7 @@ def web_confirmed(
     ledger_id: str | None = None,
     msg: str | None = None,
     filter: str = "",
+    home_currency_code: str | None = None,
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -343,6 +361,7 @@ def web_confirmed(
         tag=tag,
         msg=msg,
         filter=filter,
+        home_currency_code=home_currency_code,
     )
 
 

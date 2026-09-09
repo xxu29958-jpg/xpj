@@ -13,7 +13,6 @@ import com.ticketbox.domain.model.DashboardSurface
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtBillSuggestion
 import com.ticketbox.domain.model.Goal
-import com.ticketbox.domain.model.GoalDraft
 import com.ticketbox.domain.model.GoalProgressState
 import com.ticketbox.domain.model.GoalUpdate
 import com.ticketbox.domain.model.ReportsOverview
@@ -362,17 +361,14 @@ private class FakeCreateReportsActions(
     }
 
     // ── unused ReportsActions surface ────────────────────────────────────────
-    override suspend fun reportsOverview(query: ReportsOverviewQuery): Result<ReportsOverview> =
+    override suspend fun reportsOverview(query: ReportsOverviewQuery, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<ReportsOverview> =
         Result.failure(UnsupportedOperationException())
 
-    override suspend fun exportReportsOverviewCsv(query: ReportsOverviewQuery): Result<CsvExport> =
+    override suspend fun exportReportsOverviewCsv(query: ReportsOverviewQuery, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<CsvExport> =
         Result.failure(UnsupportedOperationException())
 
     override suspend fun goals(month: String?, includeArchived: Boolean): Result<List<Goal>> =
         Result.success(emptyList())
-
-    override suspend fun createGoal(draft: GoalDraft, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding): Result<Goal> =
-        Result.failure(UnsupportedOperationException())
 
     override suspend fun goal(publicId: String): Result<Goal> =
         Result.failure(UnsupportedOperationException())

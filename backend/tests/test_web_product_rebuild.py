@@ -396,7 +396,7 @@ def test_primary_mutations_keep_real_csrf_and_occ_contracts(
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": 1234,
+            "home_currency_code": "CNY", "amount_cents": 1234,
             "merchant": "产品壳测试",
             "category": "其他",
             "expense_time": "2026-07-18T08:00:00Z",

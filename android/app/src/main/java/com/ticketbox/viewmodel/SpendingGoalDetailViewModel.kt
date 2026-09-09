@@ -48,15 +48,15 @@ data class SpendingGoalDetailUiState(
     val archiveCompleted: Boolean = false,
     val mutationRevision: Int = 0,
     val pendingEdits: List<PendingGoalEdit> = emptyList(),
-    val ledgerCurrency: CurrencyCode? = null,
 ) {
+    val goalCurrency: CurrencyCode? get() = CurrencyCode.fromStorageKeyOrNull(goal?.homeCurrencyCode)
     val hasPendingEdit: Boolean get() = pendingEdits.any { !it.isDone }
     val canSave: Boolean
         get() = canModify &&
             !isSaving && !hasPendingEdit &&
-            ledgerCurrency != null &&
+            goalCurrency != null &&
             name.trim().isNotEmpty() &&
-            (ledgerCurrency.let { parseAmountCents(targetAmountInput, it)?.let { a -> a > 0L } == true })
+            (goalCurrency?.let { parseAmountCents(targetAmountInput, it)?.let { a -> a > 0L } } == true)
 }
 
 class SpendingGoalDetailViewModel(
@@ -108,11 +108,6 @@ class SpendingGoalDetailViewModel(
         _state.update { it.copy(isLoading = true, loadError = null) }
         observeSubmission(binding, id)
         loadJob = viewModelScope.launch {
-            val currency = edits.currency(binding)
-            if (!matches(binding, id, generation)) return@launch
-            _state.update { it.copy(ledgerCurrency = currency.getOrNull(),
-                goal = it.goal?.copy(homeCurrencyCode = currency.getOrNull()?.storageKey),
-                loadError = currency.exceptionOrNull()?.toUiText(R.string.currency_unconfirmed_write_blocked)) }
             val result = reports.goal(id)
             if (!matches(binding, id, generation)) return@launch
             result.fold(onSuccess = { goal ->
@@ -120,7 +115,7 @@ class SpendingGoalDetailViewModel(
                     if (!goal.isSpendingLimit || goal.ledgerId != binding.ledgerId) state.copy(isLoading = false,
                         loadError = UiText.res(R.string.spending_goal_detail_wrong_type))
                     else state.copy(isLoading = false,
-                        goal = if (state.goal == null || goal.rowVersion >= state.goal.rowVersion) goal.copy(homeCurrencyCode = state.ledgerCurrency?.storageKey) else state.goal)
+                        goal = if (state.goal == null || goal.rowVersion >= state.goal.rowVersion) goal else state.goal)
                 }
             }, onFailure = { error ->
                 _state.update { it.copy(isLoading = false, loadError = error.toUiText(R.string.spending_goal_detail_load_failed)) }
@@ -135,7 +130,7 @@ class SpendingGoalDetailViewModel(
                 val confirmed = rows.filter { it.isDone }.mapNotNull { it.confirmed }.maxByOrNull { it.rowVersion }
                 _state.update { state ->
                     val newer = confirmed != null && (state.goal == null || confirmed.rowVersion > state.goal.rowVersion)
-                    state.copy(pendingEdits = rows, goal = if (newer) confirmed?.copy(homeCurrencyCode = state.ledgerCurrency?.storageKey) else state.goal,
+                    state.copy(pendingEdits = rows, goal = if (newer) confirmed else state.goal,
                         mutationRevision = state.mutationRevision + if (newer) 1 else 0)
                 }
             }
@@ -148,7 +143,7 @@ class SpendingGoalDetailViewModel(
     fun beginEdit() {
         val goal = _state.value.goal ?: return
         if (!_state.value.canModify || goal.isArchived || _state.value.hasPendingEdit) return
-        val currency = _state.value.ledgerCurrency
+        val currency = _state.value.goalCurrency
         if (currency == null) {
             _state.update { it.copy(formError = UiText.res(R.string.currency_unconfirmed_write_blocked)) }
             return
@@ -178,8 +173,9 @@ class SpendingGoalDetailViewModel(
                 SpendingGoalEditField.Name -> it.copy(name = value, formError = null)
                 SpendingGoalEditField.Amount -> {
                     // R14-2：币种已解析时即时报解析失败（同 CreateSpendingGoalViewModel）。
-                    val parseFailed = it.ledgerCurrency != null && value.isNotBlank() &&
-                        parseAmountCents(value, it.ledgerCurrency) == null
+                    val parseFailed = value.isNotBlank() && it.goalCurrency?.let { currency ->
+                        parseAmountCents(value, currency) == null
+                    } == true
                     it.copy(
                         targetAmountInput = value,
                         formError = if (parseFailed) UiText.res(R.string.expense_edit_amount_invalid) else null,
@@ -196,16 +192,16 @@ class SpendingGoalDetailViewModel(
         val binding = taskBinding ?: return
         if (!matches(binding, goal.publicId) || edits.currentAccess()?.canModify != true ||
             current.isSaving || current.hasPendingEdit || goal.isArchived) return
-        val currency = current.ledgerCurrency
+        val currency = current.goalCurrency
         val amount = currency?.let { parseAmountCents(current.targetAmountInput, it) }
-        if (current.name.trim().isEmpty() || amount == null || amount <= 0) {
+        if (currency == null || current.name.trim().isEmpty() || amount == null || amount <= 0) {
             _state.update { it.copy(formError = UiText.res(R.string.spending_goal_edit_validation)) }
             return
         }
         _state.update { it.copy(isSaving = true, formError = null, message = null) }
         commandJob = viewModelScope.launch {
             val result = edits.save(binding, goal, GoalUpdate(goal.rowVersion, current.name, current.month,
-                amount, current.category.trim()))
+                amount, current.category.trim(), currency.storageKey))
             if (!matches(binding, goal.publicId)) return@launch
             result.fold(onSuccess = {
                 _state.update { it.copy(isSaving = false, isEditing = false,

@@ -394,11 +394,15 @@ class ExpenseRepository(
     override fun saveRecentSearches(queries: List<String>) =
         searchRepository.saveRecentSearches(queries)
 
-    override suspend fun monthlyStats(month: String?, tag: String?): Result<MonthlyStats> =
-        statsRepository.monthlyStats(month, tag)
+    override fun observeStatsBinding(): Flow<LogicalSessionBinding?> = statsRepository.observeStatsBinding()
 
-    override suspend fun lifestyleStats(month: String?): Result<LifestyleStats> =
-        statsRepository.lifestyleStats(month)
+    override fun statsBinding(): LogicalSessionBinding? = statsRepository.statsBinding()
+
+    override suspend fun monthlyStats(query: StatsQuery): Result<StatsRead<MonthlyStats>> =
+        statsRepository.monthlyStats(query)
+
+    override suspend fun lifestyleStats(query: StatsQuery): Result<StatsRead<LifestyleStats>> =
+        statsRepository.lifestyleStats(query)
 
     override suspend fun dataQualitySummary(): Result<DataQualitySummary> =
         statsRepository.dataQualitySummary()
@@ -406,18 +410,11 @@ class ExpenseRepository(
     suspend fun serverSettings(): Result<ServerSettings> =
         connectionRepository.serverSettings()
 
-    override fun monthlyBudgetCents(): Long? =
-        connectionRepository.monthlyBudgetCents()
-
     override fun lastConfirmedSyncAt(): String? =
         connectionRepository.lastConfirmedSyncAt()
 
     override fun lastUploadAt(): String? =
         connectionRepository.lastUploadAt()
-
-    fun saveMonthlyBudgetCents(amountCents: Long?) {
-        connectionRepository.saveMonthlyBudgetCents(amountCents)
-    }
 
     suspend fun clearLocalCache() {
         connectionRepository.clearLocalCache()

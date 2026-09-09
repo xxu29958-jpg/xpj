@@ -11,10 +11,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
+import com.ticketbox.domain.model.CurrencyDisplay
+import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.components.AppTextInput
+import com.ticketbox.ui.components.AppAmountInputState
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.design.AppSpacing
@@ -49,11 +53,18 @@ internal fun BudgetEditorSection(
             )
             return@BudgetOpenSection
         }
-        BudgetCoreFields(state, actions)
-        BudgetCategoryFields(state, actions)
+        val currency = state.formCurrency
+        if (currency == null) {
+            Text(stringResource(R.string.currency_unconfirmed_write_blocked))
+            return@BudgetOpenSection
+        }
+        CompositionLocalProvider(LocalCurrencyDisplay provides CurrencyDisplay(currency)) {
+            BudgetCoreFields(state, actions)
+            BudgetCategoryFields(state, actions)
+        }
         Button(
             modifier = Modifier.fillMaxWidth(),
-            enabled = !state.saving,
+            enabled = !state.saving && !state.hasPendingSave,
             onClick = actions.onSave,
         ) {
             Text(
@@ -72,25 +83,24 @@ private fun BudgetCoreFields(
     state: BudgetUiState,
     actions: BudgetEditorActions,
 ) {
+    val enabled = !state.saving && !state.hasPendingSave
+    val currency = LocalCurrencyDisplay.current.homeCurrency
     MoneyField(
-        value = state.form.totalAmount,
+        state = AppAmountInputState(stringResource(R.string.budget_editor_total_label), currency,
+            state.form.totalAmount, stringResource(R.string.budget_editor_total_placeholder), enabled = enabled),
         onValueChange = actions.onTotalAmountChange,
-        label = stringResource(R.string.budget_editor_total_label),
-        placeholder = stringResource(R.string.budget_editor_total_placeholder),
     )
     Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
         MoneyField(
-            value = state.form.rolloverAmount,
+            state = AppAmountInputState(stringResource(R.string.budget_editor_rollover_label), currency,
+                state.form.rolloverAmount, stringResource(R.string.budget_editor_rollover_placeholder), enabled = enabled),
             onValueChange = actions.onRolloverAmountChange,
-            label = stringResource(R.string.budget_editor_rollover_label),
-            placeholder = stringResource(R.string.budget_editor_rollover_placeholder),
             modifier = Modifier.weight(1f),
         )
         MoneyField(
-            value = state.form.nonMonthlyAmount,
+            state = AppAmountInputState(stringResource(R.string.budget_editor_non_monthly_label), currency,
+                state.form.nonMonthlyAmount, stringResource(R.string.budget_editor_non_monthly_placeholder), enabled = enabled),
             onValueChange = actions.onNonMonthlyAmountChange,
-            label = stringResource(R.string.budget_editor_non_monthly_label),
-            placeholder = stringResource(R.string.budget_editor_non_monthly_placeholder),
             modifier = Modifier.weight(1f),
         )
     }
@@ -102,6 +112,7 @@ private fun BudgetCoreFields(
             singleLine = false,
             minLines = 1,
             maxLines = 3,
+            enabled = enabled,
         ),
         actions = AppTextInputActions(onValueChange = actions.onExcludedCategoriesChange),
         modifier = Modifier.fillMaxWidth(),
@@ -124,9 +135,10 @@ private fun BudgetCategoryFields(
             canRemove = state.form.categoryRows.size > 1,
             onChange = { category, amount -> actions.onCategoryRowChange(index, category, amount) },
             onRemove = { actions.onRemoveCategoryRow(index) },
+            enabled = !state.saving && !state.hasPendingSave,
         )
     }
-    TextButton(onClick = actions.onAddCategoryRow) {
+    TextButton(onClick = actions.onAddCategoryRow, enabled = !state.saving && !state.hasPendingSave) {
         Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.budget_editor_add_category_description))
         Text(stringResource(R.string.budget_editor_add_category))
     }

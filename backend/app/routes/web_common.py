@@ -12,6 +12,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 from fastapi import Request
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
@@ -40,7 +41,7 @@ from app.routes._web_money_views import (
     _minor_amount_value,
     _month_display_label,
     _offset_stream_view,
-    _trend14_amounts,
+    projected_amount,
 )
 from app.routes._web_session_common import (
     LedgerOption,
@@ -59,13 +60,16 @@ from app.services import dataset_backup_inventory, web_stats_service
 from app.services.budget_service import get_monthly_budget
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import minor_amount_major_number, minor_amount_value, minor_unit_digits
+from app.services.currency_default_service import is_installation_currency_owner
 from app.services.dashboard_service import list_dashboard_cards
 from app.services.goal_service import list_goals
 from app.services.insights_service import unclaimed_recurring_candidate_count
+from app.services.money_projection_service import ordered_projection_gaps
 from app.services.spending_contract_service import default_accounting_timezone_name
 from app.services.stats_service import monthly_stats
 from app.services.time_service import current_month, now_utc
 from app.services.time_service import to_iso as _datetime_to_iso
+from app.tenants import AuthContext
 from app.version import BACKEND_VERSION, STATIC_ASSET_VERSION
 
 __all__ = [
@@ -90,11 +94,11 @@ __all__ = [
     "_offset_stream_view",
     "_require_local",
     "_require_selected_ledger_write",
+    "preserve_original_ledger_form",
     "_resolve_selected_ledger_id",
     "_safe_same_site_redirect_path",
     "_selected_option",
     "_sidebar_counts",
-    "_trend14_amounts",
     "_web_redirect",
     "_with_ledger",
     "parse_form_row_version_token",
@@ -107,6 +111,17 @@ templates = Jinja2Templates(
     context_processors=[csrf_context],
 )
 templates.env.filters["to_iso"] = _datetime_to_iso
+
+
+def preserve_original_ledger_form(request, db, *, options, selected, fields, task) -> HTMLResponse | None:
+    """Keep an original form in its ledger instead of retargeting it to the live session."""
+    original = str(fields.get("ledger_id") or "")
+    if original == selected:
+        return None
+    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected, page_title="原提交已保留")
+    ctx.update(original_fields=fields, original_ledger_id=original, original_task=task)
+    return templates.TemplateResponse(request=request, name="original_ledger_form.html", context=ctx,
+        status_code=409, headers={"Cache-Control": "no-store"})
 
 _VALID_UI_THEMES = {"paper", "midnight"}
 
@@ -136,6 +151,12 @@ def _base_ctx(
     selected = _selected_option(options, selected_ledger_id)
     pending_count, suspected_count = sidebar_counts or (0, 0)
     home = require_runtime_home_currency_code(db)
+    auth = getattr(request.state, "web_session_auth", None)
+    can_manage_currency = (
+        getattr(request.state, "web_session_platform", "") == "desktop"
+        and isinstance(auth, AuthContext) and auth.scope == "app"
+        and is_installation_currency_owner(db, auth.account_id)
+    )
     return {
         "backend_version": BACKEND_VERSION,
         "asset_version": STATIC_ASSET_VERSION,
@@ -148,6 +169,7 @@ def _base_ctx(
         "selected_ledger_is_default": selected.is_default,
         "is_viewer": selected.role == "viewer",
         "can_write": selected.role in ("owner", "member"),
+        "can_manage_installation_currency": can_manage_currency,
         "page_title": page_title,
         "ui_theme": _read_ui_theme(request),
         "show_month_picker": show_month_picker,
@@ -178,105 +200,55 @@ def _ledger_switch_next_url(request: Request) -> str:
 
 
 def _budget_top_rows(budget, *, currency_code: str) -> list[dict]:
-    rows = sorted(
-        budget.category_budgets,
-        key=lambda category: category.spent_amount_cents,
-        reverse=True,
-    )[:3]
-    out: list[dict] = []
-    for category in rows:
-        limit_cents = projection_sum_to_int(
-            category.amount_cents,
-            label="web.budget_limit",
-        )
-        spent_cents = projection_sum_to_int(
-            category.spent_amount_cents,
-            label="web.budget_spent",
-        )
-        overspent_cents = projection_sum_to_int(
-            category.overspent_amount_cents,
-            label="web.budget_overspent",
-        )
-        percent = (spent_cents * 100 + limit_cents // 2) // limit_cents if limit_cents > 0 else 0
-        out.append(
-            {
-                "name": category.category,
-                "limit_yuan": _amount_yuan(limit_cents, currency_code),
-                "spent_yuan": _amount_yuan(spent_cents, currency_code),
-                "overspent_yuan": _amount_yuan(overspent_cents, currency_code),
-                "overspent_cents": overspent_cents,
-                "percent": min(percent, 100),
-                "is_over": category.overspent_amount_cents > 0,
-            }
-        )
+    rows = sorted(budget.category_budgets,
+        key=lambda row: (row.spent_amount_cents is not None, row.spent_amount_cents or 0), reverse=True)[:3]
+    out = []
+    for row in rows:
+        spent, limit = row.spent_amount_cents, row.amount_cents
+        percent = None if spent is None else (spent * 100 + limit // 2) // limit if limit > 0 else 0
+        out.append({
+            "name": row.category,
+            "limit_yuan": _amount_yuan(limit, currency_code),
+            "spent_yuan": _amount_yuan(spent, currency_code),
+            "overspent_yuan": _amount_yuan(row.overspent_amount_cents, currency_code),
+            "overspent_cents": row.overspent_amount_cents,
+            "percent": None if percent is None else min(percent, 100),
+            "is_over": (row.overspent_amount_cents or 0) > 0,
+        })
     return out
 
 
-def _goals_top_rows(goals, *, currency_code: str) -> list[dict]:
-    rows = sorted(goals, key=lambda goal: goal.progress_percent, reverse=True)[:3]
+def _goals_top_rows(goals) -> list[dict]:
+    rows = sorted(goals, key=lambda goal: (goal.progress_percent is None, goal.progress_percent), reverse=True)[:3]
     return [
         {
             "name": goal.name,
-            "target_yuan": _amount_yuan(
-                projection_sum_to_int(
-                    goal.target_amount_cents,
-                    label="web.goal_target",
-                ),
-                currency_code,
-            ),
-            "spent_yuan": _amount_yuan(
-                projection_sum_to_int(
-                    goal.spent_amount_cents,
-                    label="web.goal_spent",
-                ),
-                currency_code,
-            ),
-            "percent": min(int(goal.progress_percent), 100),
+            "home_currency_code": goal.home_currency_code,
+            "target_yuan": _amount_yuan(goal.target_amount_cents, goal.home_currency_code) if goal.home_currency_code else None,
+            "spent_yuan": _amount_yuan(goal.spent_amount_cents, goal.home_currency_code)
+                if goal.home_currency_code and goal.spent_amount_cents is not None else None,
+            "percent": goal.progress_percent,
             "state": goal.progress_state,
         }
         for goal in rows
     ]
 
 
-def _dashboard_budget_goals_block(
-    budget,
-    goals,
-    *,
-    currency_code: str,
-) -> dict:
-    goal_risk_count = sum(1 for goal in goals if goal.progress_state in {"near_limit", "over_limit"})
+def _dashboard_budget_goals_block(budget, goals) -> dict:
+    home = budget.home_currency_code
     return {
         "budget_configured": budget.configured,
-        "budget_total_yuan": _amount_yuan(
-            projection_sum_to_int(
-                budget.total_amount_cents,
-                label="web.budget_total",
-            ),
-            currency_code,
-        ),
-        "budget_remaining_yuan": _amount_yuan(
-            projection_sum_to_int(
-                budget.remaining_amount_cents,
-                label="web.budget_remaining",
-            ),
-            currency_code,
-        ),
-        "budget_remaining_cents": projection_sum_to_int(
-            budget.remaining_amount_cents,
-            label="web.budget_remaining",
-        ),
-        "budget_overspent_yuan": _amount_yuan(
-            projection_sum_to_int(
-                budget.overspent_amount_cents,
-                label="web.budget_overspent",
-            ),
-            currency_code,
-        ),
-        "budget_is_over": budget.remaining_amount_cents < 0,
-        "budget_top": _budget_top_rows(budget, currency_code=currency_code),
+        "budget_home_currency_code": home,
+        "budget_missing_currency_codes": budget.missing_currency_codes,
+        "budget_total_yuan": _amount_yuan(budget.total_amount_cents, home),
+        "budget_remaining_yuan": _amount_yuan(budget.remaining_amount_cents, home),
+        "budget_remaining_cents": budget.remaining_amount_cents,
+        "budget_overspent_yuan": _amount_yuan(budget.overspent_amount_cents, home),
+        "budget_is_over": budget.remaining_amount_cents is not None and budget.remaining_amount_cents < 0,
+        "budget_top": _budget_top_rows(budget, currency_code=home),
         "goals_count": len(goals),
-        "goals_risk_count": goal_risk_count,
-        "goals_top": _goals_top_rows(goals, currency_code=currency_code),
+        "goals_risk_count": sum(1 for goal in goals if goal.progress_state in {"near_limit", "over_limit"}),
+        "goals_top": _goals_top_rows(goals),
     }
 
 
@@ -317,14 +289,17 @@ def _dashboard_cards(
     ledger_id: str,
     *,
     currency_code: str | None = None,
+    month: str | None = None,
 ) -> dict:
     home = currency_code or require_runtime_home_currency_code(db)
     quality = web_stats_service.pending_quality_counts(db, ledger_id)
     timezone_name = default_accounting_timezone_name()
-    month = current_month(timezone_name)
-    stats = monthly_stats(db, month, ledger_id)
+    month = month or current_month(timezone_name)
+    stats = monthly_stats(db, month, ledger_id, timezone_name=timezone_name, home_currency_code=home)
+    home = stats["home_currency_code"]
     prev_month = previous_month_string(month)
-    prev_stats = monthly_stats(db, prev_month, ledger_id) if prev_month else None
+    prev_stats = monthly_stats(db, prev_month, ledger_id, timezone_name=timezone_name,
+        home_currency_code=home) if prev_month else None
     active_recurring, paused_recurring = recurring_status_counts(db, ledger_id)
     budget = get_monthly_budget(
         db,
@@ -355,25 +330,23 @@ def _dashboard_cards(
         ],
         **quality,
         "month": month,
-        "total_amount_yuan": _amount_yuan(current_total, home),
+        "home_currency_code": home,
+        "missing_rates": ordered_projection_gaps((*stats["missing_rates"], *(prev_stats["missing_rates"] if prev_stats else ()))),
+        "total_amount_yuan": projected_amount(current_total, home),
         "total_amount_cents": current_total,
-        "total_amount_segments": _amount_segments(current_total, home),
+        "total_amount_segments": None if current_total is None else _amount_segments(current_total, home),
         "confirmed_count": int(stats["count"]),
         "previous_month": prev_month,
-        "previous_total_amount_yuan": _amount_yuan(prev_total, home),
+        "previous_total_amount_yuan": projected_amount(prev_total, home),
         "previous_total_amount_cents": prev_total,
-        "delta_amount_yuan": _amount_yuan(abs(delta_amount), home),
-        "delta_amount_cents": abs(delta_amount),
+        "delta_amount_yuan": projected_amount(abs(delta_amount), home) if delta_amount is not None else None,
+        "delta_amount_cents": abs(delta_amount) if delta_amount is not None else None,
         "delta_direction": delta_direction,
         "delta_percent": delta_percent,
         "recurring_active_count": active_recurring,
         "recurring_paused_count": paused_recurring,
         "recurring_candidate_count": candidate_count,
-        **_dashboard_budget_goals_block(
-            budget,
-            goals,
-            currency_code=home,
-        ),
+        **_dashboard_budget_goals_block(budget, goals),
         **_dashboard_status_counts_block(db, ledger_id, now),
     }
 
@@ -383,18 +356,21 @@ def _dashboard_category_share(
     selected_id: str,
     *,
     currency_code: str | None = None,
+    month: str | None = None,
 ) -> list[dict]:
     timezone_name = default_accounting_timezone_name()
-    month = current_month(timezone_name)
+    month = month or current_month(timezone_name)
+    home = currency_code or require_runtime_home_currency_code(db)
     stats = monthly_stats(
         db,
         month,
         selected_id,
         timezone_name=timezone_name,
+        home_currency_code=home,
     )
-    home = currency_code or require_runtime_home_currency_code(db)
+    home = stats["home_currency_code"]
     by_category = list(stats.get("by_category", []))
-    if len(by_category) > 6:
+    if len(by_category) > 6 and all(item["amount_cents"] is not None for item in by_category):
         head, tail = by_category[:5], by_category[5:]
         tail_cents = projection_values_sum_to_int(
             (item["amount_cents"] for item in tail),
@@ -429,18 +405,18 @@ def _dashboard_category_share(
         )
     rows = []
     for item in by_category:
-        amount_minor = projection_sum_to_int(
+        amount_minor = None if item["amount_cents"] is None else projection_sum_to_int(
             item["amount_cents"],
             label="web.category_share",
         )
         rows.append(
             {
                 "name": item["category"],
-                "amount_yuan": minor_amount_major_number(amount_minor, home),
+                "amount_yuan": None if amount_minor is None else minor_amount_major_number(amount_minor, home),
                 "amount_cents": amount_minor,
-                "amount_label": _minor_amount_label(amount_minor, home),
-                "amount_major": minor_amount_major_number(amount_minor, home),
-                "amount_major_text": minor_amount_value(amount_minor, home),
+                "amount_label": _minor_amount_label(amount_minor, home) if amount_minor is not None else "待补齐换算信息",
+                "amount_major": None if amount_minor is None else minor_amount_major_number(amount_minor, home),
+                "amount_major_text": projected_amount(amount_minor, home),
                 "count": int(item["count"]),
             }
         )
@@ -451,19 +427,20 @@ def _dashboard_data_payload(
     db: Session,
     selected_id: str,
     *,
-    include_trend: bool = True,
+    month: str | None = None,
+    home_currency_code: str | None = None,
 ) -> dict:
-    home = require_runtime_home_currency_code(db)
-    cards = _dashboard_cards(db, selected_id, currency_code=home)
+    home = home_currency_code or require_runtime_home_currency_code(db)
+    cards = _dashboard_cards(db, selected_id, currency_code=home, month=month)
     return {
         "selected_ledger_id": selected_id,
         "month": cards["month"],
         "cards": cards,
         "visible_layout": [item for item in cards["layout"] if item["visible"]],
-        "trend14": (_trend14_amounts(db, selected_id, currency_code=home) if include_trend else []),
         "category_share": _dashboard_category_share(
             db,
             selected_id,
             currency_code=home,
+            month=cards["month"],
         ),
     }

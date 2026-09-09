@@ -36,7 +36,7 @@
   const nativeValues = values();
 
   function showValues(saved) {
-    controls.forEach(control => { control.value = saved[control.name]; });
+    controls.forEach(control => { control.value = saved[control.name] ?? ""; });
     if (saved.merchant || saved.note || saved.category !== nativeValues.category ||
         saved.spent_at !== nativeValues.spent_at) options.open = true;
   }

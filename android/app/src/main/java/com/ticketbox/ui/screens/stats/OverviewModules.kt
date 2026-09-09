@@ -88,6 +88,7 @@ private fun OverviewMonthModule(state: StatsUiState) {
             header = StatsOverviewHeaderModel(
                 stats, state.statsSource, overviewRecent7DaysAmount(state), overviewMonthComparison(state),
                 tagScopeInsightModel(stats, state.selectedTag),
+                comparisonHomeCurrencyCode = state.reportsOverview?.homeCurrencyCode,
             ),
         )
     }
@@ -101,7 +102,7 @@ private fun OverviewReportsModule(state: StatsUiState, onTrend: () -> Unit) {
             if (state.selectedTag.isNotBlank() && state.stats != null) {
                 TagScopeInsight(state.stats, state.selectedTag, state.statsSource)
             } else if (state.reportsOverview != null) {
-                HeroSpendTrend(state.reportsOverview.trend, LocalCurrencyDisplay.current)
+                HeroSpendTrend(state.reportsOverview.trend, com.ticketbox.domain.model.CurrencyDisplay.forRecord(state.reportsOverview.homeCurrencyCode))
             } else {
                 Text(stringResource(
                     if (state.reportsLoading) R.string.dashboard_summary_loading else R.string.stats_reports_unavailable_body,

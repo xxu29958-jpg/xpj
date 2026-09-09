@@ -23,7 +23,7 @@ from app.models import Expense, RecurringItem
 from app.services.budget_advisor_service import (
     BudgetInputs,
     MockBudgetAdvisor,
-    build_budget_inputs,
+    read_budget_inputs,
 )
 from app.services.budget_advisor_service._models import ALLOWED_INCOME_SOURCE_TYPES
 from app.services.budget_advisor_service._outbound_guard import to_outbound_dict
@@ -130,12 +130,12 @@ def test_advise_handles_provider_returning_none_gracefully(
 def test_builder_anonymises_merchant_canonical(identity) -> None:  # noqa: ARG001
     _seed_minimal_data()
     with SessionLocal() as db:
-        inputs = build_budget_inputs(
+        inputs = read_budget_inputs(
             db,
             tenant_id="owner",
             month=_current_month(),
-            home_currency="CNY",
-        )
+            home_currency_code="CNY",
+        ).provider_inputs
     assert not hasattr(inputs, "merchant_summary")
     assert not hasattr(inputs, "fixed_expenses")
     assert "麦当劳" not in repr(inputs)
@@ -144,12 +144,12 @@ def test_builder_anonymises_merchant_canonical(identity) -> None:  # noqa: ARG00
 
 def test_builder_anonymises_member_account_id(identity) -> None:  # noqa: ARG001
     with SessionLocal() as db:
-        inputs = build_budget_inputs(
+        inputs = read_budget_inputs(
             db,
             tenant_id="owner",
             month=_current_month(),
-            home_currency="CNY",
-        )
+            home_currency_code="CNY",
+        ).provider_inputs
     assert not hasattr(inputs, "members")
 
 
@@ -161,7 +161,7 @@ def test_builder_sends_generalized_income_plan(identity) -> None:  # noqa: ARG00
     with SessionLocal() as db:
         create_income_plan(
             db,
-            tenant_id="owner",
+            home_currency_code="CNY", tenant_id="owner",
             label="Acme Corp 工资",
             source_type="工资",
             amount_cents=1_500_000,
@@ -169,12 +169,12 @@ def test_builder_sends_generalized_income_plan(identity) -> None:  # noqa: ARG00
         )
         db.commit()
     with SessionLocal() as db:
-        inputs = build_budget_inputs(
+        inputs = read_budget_inputs(
             db,
             tenant_id="owner",
             month=_current_month(),
-            home_currency="CNY",
-        )
+            home_currency_code="CNY",
+        ).provider_inputs
     plans = {p.amount_cents: p for p in inputs.income_plan}
     assert 1_500_000 in plans, "the created income line must be present"
     mine = plans[1_500_000]
@@ -196,7 +196,7 @@ def test_builder_sends_only_income_applicable_to_advice_month(identity, monkeypa
     with SessionLocal() as db:
         create_income_plan(
             db,
-            tenant_id="owner",
+            home_currency_code="CNY", tenant_id="owner",
             label="monthly",
             source_type="salary",
             amount_cents=1_000_000,
@@ -204,7 +204,7 @@ def test_builder_sends_only_income_applicable_to_advice_month(identity, monkeypa
         )
         create_income_plan(
             db,
-            tenant_id="owner",
+            home_currency_code="CNY", tenant_id="owner",
             label="june bonus",
             source_type="bonus",
             amount_cents=200_000,
@@ -214,7 +214,7 @@ def test_builder_sends_only_income_applicable_to_advice_month(identity, monkeypa
         )
         create_income_plan(
             db,
-            tenant_id="owner",
+            home_currency_code="CNY", tenant_id="owner",
             label="july bonus",
             source_type="bonus",
             amount_cents=300_000,
@@ -223,12 +223,12 @@ def test_builder_sends_only_income_applicable_to_advice_month(identity, monkeypa
             income_month="2026-07",
         )
     with SessionLocal() as db:
-        inputs = build_budget_inputs(
+        inputs = read_budget_inputs(
             db,
             tenant_id="owner",
             month="2026-06",
-            home_currency="CNY",
-        )
+            home_currency_code="CNY",
+        ).provider_inputs
     amounts = {p.amount_cents for p in inputs.income_plan}
     assert 1_000_000 in amounts
     assert 200_000 in amounts
@@ -239,12 +239,12 @@ def test_builder_sends_only_income_applicable_to_advice_month(identity, monkeypa
 def test_builder_does_not_send_recurring_merchants(identity) -> None:  # noqa: ARG001
     _seed_minimal_data()
     with SessionLocal() as db:
-        inputs = build_budget_inputs(
+        inputs = read_budget_inputs(
             db,
             tenant_id="owner",
             month=_current_month(),
-            home_currency="CNY",
-        )
+            home_currency_code="CNY",
+        ).provider_inputs
     assert not hasattr(inputs, "fixed_expenses")
 
 
@@ -256,7 +256,7 @@ def test_builder_sends_coarse_recurring_summary(identity) -> None:  # noqa: ARG0
     now = now_utc()
     with SessionLocal() as db:
         db.add(
-            RecurringItem(
+            RecurringItem(home_currency_code="CNY",
                 tenant_id="owner",
                 merchant_key="spotify",
                 merchant_name="Spotify",
@@ -273,7 +273,7 @@ def test_builder_sends_coarse_recurring_summary(identity) -> None:  # noqa: ARG0
             )
         )
         db.add(
-            RecurringItem(
+            RecurringItem(home_currency_code="CNY",
                 tenant_id="owner",
                 merchant_key="gym",
                 merchant_name="健身房会员",
@@ -288,12 +288,12 @@ def test_builder_sends_coarse_recurring_summary(identity) -> None:  # noqa: ARG0
         )
         db.commit()
     with SessionLocal() as db:
-        inputs = build_budget_inputs(
+        inputs = read_budget_inputs(
             db,
             tenant_id="owner",
             month=_current_month(),
-            home_currency="CNY",
-        )
+            home_currency_code="CNY",
+        ).provider_inputs
     # 2_000 (Netflix) + 1_500 Spotify baseline (not its 1_900 observed amount);
     # paused 健身房会员 excluded.
     assert inputs.recurring_total_monthly_cents == 3_500
@@ -308,12 +308,12 @@ def test_builder_sends_coarse_recurring_summary(identity) -> None:  # noqa: ARG0
 def test_builder_pulls_current_month_category_breakdown(identity) -> None:  # noqa: ARG001
     _seed_minimal_data()
     with SessionLocal() as db:
-        inputs = build_budget_inputs(
+        inputs = read_budget_inputs(
             db,
             tenant_id="owner",
             month=_current_month(),
-            home_currency="CNY",
-        )
+            home_currency_code="CNY",
+        ).provider_inputs
     by_cat = {row.category: row for row in inputs.category_breakdown}
     assert "餐饮" in by_cat
     assert by_cat["餐饮"].amount_cents == 120_000
@@ -341,12 +341,12 @@ def test_builder_never_sends_polluted_existing_category(identity) -> None:  # no
             )
         )
         db.commit()
-        inputs = build_budget_inputs(
+        inputs = read_budget_inputs(
             db,
             tenant_id="owner",
             month=_current_month(),
-            home_currency="CNY",
-        )
+            home_currency_code="CNY",
+        ).provider_inputs
 
     outbound = to_outbound_dict(inputs)
     assert poisoned_category not in repr(outbound)
@@ -376,12 +376,12 @@ def test_builder_excludes_previous_month_expenses(identity) -> None:  # noqa: AR
             )
         )
         db.commit()
-        inputs = build_budget_inputs(
+        inputs = read_budget_inputs(
             db,
             tenant_id="owner",
             month=_current_month(),
-            home_currency="CNY",
-        )
+            home_currency_code="CNY",
+        ).provider_inputs
     by_cat = {row.category: row for row in inputs.category_breakdown}
     assert by_cat.get("购物") is None or by_cat["购物"].amount_cents != 999_999
 
@@ -406,24 +406,24 @@ def test_builder_excludes_pending_and_rejected(identity) -> None:  # noqa: ARG00
             )
         )
         db.commit()
-        inputs = build_budget_inputs(
+        inputs = read_budget_inputs(
             db,
             tenant_id="owner",
             month=_current_month(),
-            home_currency="CNY",
-        )
+            home_currency_code="CNY",
+        ).provider_inputs
     by_cat = {row.category: row for row in inputs.category_breakdown}
     assert by_cat.get("购物") is None or by_cat["购物"].amount_cents != 888_888
 
 
 def test_builder_returns_valid_budget_inputs_when_empty(identity) -> None:  # noqa: ARG001
     with SessionLocal() as db:
-        inputs = build_budget_inputs(
+        inputs = read_budget_inputs(
             db,
             tenant_id="owner",
             month=_current_month(),
-            home_currency="CNY",
-        )
+            home_currency_code="CNY",
+        ).provider_inputs
     assert isinstance(inputs, BudgetInputs)
     assert inputs.month == _current_month()
     assert inputs.home_currency == "CNY"

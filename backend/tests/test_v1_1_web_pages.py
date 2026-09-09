@@ -21,6 +21,15 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.routes.web_app import _require_local as _web_require_local
+from tests._web_native_form_support import hidden_post_forms
+
+
+def _create_income(client, *, data, follow_redirects=False):
+    action = "/web/income-plans/create"
+    page = client.get("/web/income-plans", params={"ledger_id": data.get("ledger_id", "owner")})
+    assert page.status_code == 200, page.text
+    fields = hidden_post_forms(page.text)[action]
+    return client.post(action, data={**fields, **data}, follow_redirects=follow_redirects)
 
 
 @pytest.fixture()
@@ -39,9 +48,8 @@ def test_income_plans_page_renders_empty(web_client: TestClient, *, identity) ->
 
 
 def test_income_plans_create_and_list(web_client: TestClient, *, identity) -> None:  # noqa: ARG001
-    create_resp = web_client.post(
-        "/web/income-plans/create",
-        data={"intent_month": "2026-05",
+    create_resp = _create_income(web_client,
+        data={"home_currency_code": "CNY", "intent_month": "2026-05",
             "label": "我的工资",
             "source_type": "salary",
             "amount_yuan": "10000",
@@ -63,9 +71,8 @@ def test_income_plans_create_and_list(web_client: TestClient, *, identity) -> No
 def test_income_plans_one_time_month_is_user_facing(
     web_client: TestClient, *, identity
 ) -> None:  # noqa: ARG001
-    create_resp = web_client.post(
-        "/web/income-plans/create",
-        data={"intent_month": "2026-05",
+    create_resp = _create_income(web_client,
+        data={"home_currency_code": "CNY", "intent_month": "2026-05",
             "label": "项目尾款",
             "source_type": "freelance",
             "frequency": "one_time",
@@ -86,9 +93,8 @@ def test_income_plans_one_time_month_is_user_facing(
 
 
 def test_income_plans_archive_and_restore(web_client: TestClient, *, identity) -> None:  # noqa: ARG001
-    create_resp = web_client.post(
-        "/web/income-plans/create",
-        data={"intent_month": "2026-05",
+    create_resp = _create_income(web_client,
+        data={"home_currency_code": "CNY", "intent_month": "2026-05",
             "label": "副业",
             "source_type": "freelance",
             "amount_yuan": "3000",
@@ -114,7 +120,8 @@ def test_income_plans_archive_and_restore(web_client: TestClient, *, identity) -
 
     archive_resp = web_client.post(
         f"/web/income-plans/{pid}/archive",
-        data={"intent_month": "2026-05", "expected_row_version": archive_token},
+        data={**hidden_post_forms(list_body)[f"/web/income-plans/{pid}/archive"],
+            "intent_month": "2026-05", "expected_row_version": archive_token},
         follow_redirects=False,
     )
     assert archive_resp.status_code == 303
@@ -135,7 +142,8 @@ def test_income_plans_archive_and_restore(web_client: TestClient, *, identity) -
 
     restore_resp = web_client.post(
         f"/web/income-plans/{pid}/restore",
-        data={"intent_month": "2026-05", "expected_row_version": restore_token},
+        data={**hidden_post_forms(after_archive)[f"/web/income-plans/{pid}/restore"],
+            "intent_month": "2026-05", "expected_row_version": restore_token},
         follow_redirects=False,
     )
     assert restore_resp.status_code == 303
@@ -152,9 +160,8 @@ def test_income_plans_archive_and_restore(web_client: TestClient, *, identity) -
 
 
 def test_income_plans_rejects_bad_pay_day(web_client: TestClient, *, identity) -> None:  # noqa: ARG001
-    resp = web_client.post(
-        "/web/income-plans/create",
-        data={"intent_month": "2026-05",
+    resp = _create_income(web_client,
+        data={"home_currency_code": "CNY", "intent_month": "2026-05",
             "label": "x",
             "source_type": "salary",
             "amount_yuan": "100",

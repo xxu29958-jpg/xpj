@@ -29,15 +29,17 @@ interface RecurringQueryActions {
 
 interface RecurringManualMutationActions {
     fun observePendingIntents(): Flow<List<RecurringPendingIntent>> = flowOf(emptyList())
+    fun describeManualIntent(row: OutboxRow): RecurringPendingIntent?
+    suspend fun recoverManualIntent(binding: LogicalSessionBinding, row: OutboxRow, drop: Boolean): Result<Unit>
     suspend fun createAllowingOffline(
         expectedBinding: LogicalSessionBinding,
         draft: RecurringItemDraft,
-    ): Result<RecurringSaveOutcome>
+    ): Result<RecurringPendingIntent>
     suspend fun updateAllowingOffline(
         expectedBinding: LogicalSessionBinding,
         baseline: RecurringItem,
         patch: RecurringItemPatch,
-    ): Result<RecurringSaveOutcome>
+    ): Result<RecurringPendingIntent>
 }
 
 interface RecurringLifecycleActions {

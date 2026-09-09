@@ -26,8 +26,8 @@ Durable receipt intake and recovery are governed by the
 
 1. An installation Owner opening a money page reaches the Desktop product
    bridge's adoption preview, including evidence and the binding revision.
-2. The preview explains the one-time original home-currency choice and its
-   consequences. The paired Desktop Owner confirms with the evidence token,
+2. The preview requires an explicit original home-currency choice, without a
+   preselected environment default. The paired Desktop Owner confirms with the evidence token,
    OCC and idempotency identity.
 3. The adoption service locks and revalidates the installation claim Account,
    evidence and binding, then records activation, durable receipt and audit
@@ -42,6 +42,11 @@ The installation claim Account is the authority. A naked browser, another
 Account or the retired maintenance API cannot adopt. Conflicting evidence leaves
 every amount unchanged and leads to the existing Desktop diagnostics shortcut.
 The browser form is a Desktop consumer, not a second adoption owner.
+
+Fresh setup and an already implicit default binding also require complete user
+paths. Persisted historical money meaning does not justify silently choosing and
+locking currency. The [currency choice and correction contract](TICKETBOX_CURRENCY_CHOICE_CORRECTION_CONTRACT.md)
+owns this remaining delivery; the completed legacy adoption slice does not prove it.
 
 ## Missing FX rate recovery
 

@@ -185,7 +185,7 @@ sealed interface SaveOutcome {
  * [PendingReviewActions.rejectExpenseAllowingOffline]; PR-2g.8 adds
  * mark-not-duplicate). Parallel to [SaveOutcome] — same two-branch
  * shape, separate type so the confirm/reject surface can't silently
- * widen into the PATCH-save one (see the [CategoryRuleSaveOutcome]
+ * widen into the PATCH-save one (see the [PendingCategoryRuleSubmission]
  * KDoc for the convention).
  */
 sealed interface ExpenseStateOutcome {

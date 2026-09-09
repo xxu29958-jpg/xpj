@@ -1,14 +1,17 @@
 """Checked money formatting for the browser reports surface."""
 
 from app.money_contract import projection_sum_to_int, projection_values_average_to_int
+from app.routes._web_money_views import projected_amount
 from app.routes.web_common import _amount_yuan
 
 
-def money(value: object, label: str) -> int:
-    return projection_sum_to_int(value, label=f"web_reports.{label}")
+def money(value: object, label: str) -> int | None:
+    return None if value is None else projection_sum_to_int(value, label=f"web_reports.{label}")
 
 
-def percent(value: int, maximum: int) -> int:
+def percent(value: int | None, maximum: int) -> int | None:
+    if value is None:
+        return None
     if maximum <= 0:
         return 0
     rounded = (value * 100 + maximum // 2) // maximum
@@ -18,11 +21,9 @@ def percent(value: int, maximum: int) -> int:
 def _category_comparison_max(rows: list[dict]) -> int:
     return max(
         [
-            max(
-                money(row["amount_cents"], "category_current"),
+            max(value for value in (0, money(row["amount_cents"], "category_current"),
                 money(row["previous_amount_cents"], "category_previous"),
-                money(row["year_over_year_amount_cents"], "category_yoy"),
-            )
+                money(row["year_over_year_amount_cents"], "category_yoy")) if value is not None)
             for row in rows
         ]
         or [0]
@@ -38,17 +39,17 @@ def category_comparison_view(
     return [
         {
             "category": row["category"],
-            "amount_yuan": _amount_yuan(money(row["amount_cents"], "category_current"), currency_code),
-            "previous_amount_yuan": _amount_yuan(
+            "amount_yuan": projected_amount(money(row["amount_cents"], "category_current"), currency_code),
+            "previous_amount_yuan": projected_amount(
                 money(row["previous_amount_cents"], "category_previous"),
                 currency_code,
             ),
-            "delta_amount_yuan": _amount_yuan(money(row["delta_amount_cents"], "category_delta"), currency_code),
-            "year_over_year_amount_yuan": _amount_yuan(
+            "delta_amount_yuan": projected_amount(money(row["delta_amount_cents"], "category_delta"), currency_code),
+            "year_over_year_amount_yuan": projected_amount(
                 money(row["year_over_year_amount_cents"], "category_yoy"),
                 currency_code,
             ),
-            "year_over_year_delta_amount_yuan": _amount_yuan(
+            "year_over_year_delta_amount_yuan": projected_amount(
                 money(row["year_over_year_delta_amount_cents"], "category_yoy_delta"),
                 currency_code,
             ),
@@ -74,12 +75,19 @@ def six_month_average_amount_yuan(
     rows: list[dict],
     *,
     currency_code: str,
-) -> str:
+) -> str | None:
+    if any(row["amount_cents"] is None for row in rows):
+        return None
     average = projection_values_average_to_int(
         (row["amount_cents"] for row in rows),
         label="web_reports.six_month_average",
     )
     return _amount_yuan(average, currency_code)
+
+
+def projection_gaps_view(gaps) -> list[dict]:
+    return [{"source_currency_code": gap.source_currency_code, "home_currency_code": gap.home_currency_code,
+        "rate_date": gap.rate_date.isoformat() if gap.rate_date is not None else None} for gap in gaps]
 
 
 __all__ = [

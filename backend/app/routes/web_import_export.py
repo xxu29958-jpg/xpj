@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
+from app.routes._web_money_views import _minor_amount_label
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -169,6 +170,7 @@ def web_import_batch_detail(
             "created_label": accounting_datetime_label(batch.created_at),
             "updated_label": accounting_datetime_label(batch.updated_at),
             "rows": rows_page.items,
+            "row_amount_label": _minor_amount_label,
             "page": rows_page.page,
             "page_size": rows_page.page_size,
             "total": rows_page.total,

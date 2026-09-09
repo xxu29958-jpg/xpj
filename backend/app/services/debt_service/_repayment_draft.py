@@ -53,8 +53,7 @@ from app.schemas import (
     RepaymentDraftListResponse,
     RepaymentDraftResponse,
 )
-from app.services.currency_binding_service import assert_currency_binding_consistent
-from app.services.currency_common import home_currency_code
+from app.services.currency_binding_service import assert_currency_binding_consistent, require_runtime_home_currency_code
 from app.services.debt_service._repayment_draft_match import (
     RepaymentMatchCandidate,
     list_repayment_match_candidates,
@@ -198,14 +197,9 @@ def create_repayment_draft(
     )
     now = now_utc()
     source = _clean_repayment_source(payload.source)
-    # §杠杆③ capture is home-currency ONLY (CNY notifications carry no FX, and confirm
-    # records draft.amount_cents as home minor units). The home currency is a SERVER
-    # concept, not a client input — set it from the configured home currency so the stored
-    # value is always truthful and confirm can never reinterpret a foreign amount as home.
-    # (A future foreign-currency capture would add original_currency/original_amount.)
-    home_currency = home_currency_code()
-    # PR#255 R10③/R12-A 双门交集：解析器按 CNY 分声明 amount_cents（无 FX 路径）——
-    # env 非 CNY（声明单位门）或 env 与已持久事实漂移（drift 门）都拒捕（挂账 D9）。
+    # This legacy notification payload declares CNY minor units without FX.
+    # Stamp it only when that matches the confirmed installation currency.
+    home_currency = require_runtime_home_currency_code(db)
     if home_currency != DEFAULT_HOME_CURRENCY_CODE:
         raise AppError("repayment_draft_currency_unsupported", status_code=422)
     assert_currency_binding_consistent(db, home_currency)

@@ -6,7 +6,6 @@ import com.ticketbox.domain.model.DashboardCardUpdate
 import com.ticketbox.domain.model.DashboardCards
 import com.ticketbox.domain.model.DashboardSurface
 import com.ticketbox.domain.model.Goal
-import com.ticketbox.domain.model.GoalDraft
 import com.ticketbox.domain.model.GoalProgressState
 import com.ticketbox.domain.model.GoalUpdate
 import com.ticketbox.domain.model.ReportGranularity
@@ -35,6 +34,71 @@ import kotlinx.coroutines.test.setMain
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class StatsReportsViewModelGranularityTest {
+
+    @Test
+    fun reportRefreshAndExportKeepCapturedCurrencyAndAllFilters() = reportsTest { repo ->
+        repo.overviewResult = Result.success(overview("2026-06").copy(homeCurrencyCode = "JPY"))
+        val vm = StatsReportsViewModel(repo)
+        vm.refresh("2026-06", "")
+        advanceUntilIdle()
+        vm.setGranularity(ReportGranularity.Month)
+        advanceUntilIdle()
+        vm.setMerchantCategory("餐饮")
+        advanceUntilIdle()
+        vm.exportReport()
+        advanceUntilIdle()
+        val exported = repo.exportQueries.single()
+        assertEquals("2026-06", exported.month)
+        assertEquals("JPY", exported.homeCurrencyCode)
+        assertEquals("餐饮", exported.merchantCategory)
+        assertEquals(ReportGranularity.Month, exported.granularity)
+        assertEquals(repo.access.value?.binding, repo.exportBindings.single())
+    }
+
+    @Test
+    fun replacementBindingClearsPreparedExportAndDoesNotShowLateOldReport() = reportsTest { repo ->
+        repo.overviewResult = Result.success(overview("2026-06"))
+        val vm = StatsReportsViewModel(repo)
+        vm.refresh("2026-06", "")
+        advanceUntilIdle()
+        vm.exportReport()
+        advanceUntilIdle()
+        val oldBinding = requireNotNull(repo.access.value).binding
+        val gate = CompletableDeferred<Result<ReportsOverview>>()
+        repo.overviewResponder = { gate.await() }
+        vm.refresh("2026-06", "")
+        runCurrent()
+        repo.access.value = null
+        runCurrent()
+        gate.complete(Result.success(overview("2026-06")))
+        advanceUntilIdle()
+        assertNull(vm.uiState.value.reportsOverview)
+        assertNull(vm.takeExport(oldBinding))
+    }
+
+    @Test fun lateExportFromOldMonthCannotOverwriteTheNewMonthExport() = reportsTest { repo ->
+        repo.overviewResult = Result.success(overview("2026-06"))
+        val first = CompletableDeferred<Result<CsvExport>>()
+        val second = CompletableDeferred<Result<CsvExport>>()
+        repo.exportResponder = { query -> if (query.month == "2026-06") first.await() else second.await() }
+        val vm = StatsReportsViewModel(repo)
+        vm.refresh("2026-06", "")
+        advanceUntilIdle()
+        vm.exportReport()
+        runCurrent()
+        repo.overviewResult = Result.success(overview("2026-05"))
+        vm.refresh("2026-05", "")
+        runCurrent()
+        vm.exportReport()
+        runCurrent()
+        second.complete(Result.success(CsvExport("may.csv", byteArrayOf(5))))
+        runCurrent()
+        val originalId = vm.uiState.value.exportId
+        first.complete(Result.success(CsvExport("june.csv", byteArrayOf(6))))
+        advanceUntilIdle()
+        assertEquals("may.csv", vm.uiState.value.exportFile?.fileName)
+        assertEquals(originalId, vm.uiState.value.exportId)
+    }
 
     private fun reportsTest(block: suspend TestScope.(RecordingReportsActions) -> Unit) = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
@@ -143,7 +207,7 @@ class StatsReportsViewModelGranularityTest {
     }
 
     @Test
-    fun refreshKeepsLastTrustedGoalsWhileLoadingAndOnFailure() = reportsTest { repo ->
+    fun changedMonthClearsGoalsFromPreviousReportWhileLoadingAndOnFailure() = reportsTest { repo ->
         val trustedGoal = goal("goal-trusted")
         repo.overviewResult = Result.success(overview(month = "2026-06"))
         repo.goalsResponder = { Result.success(listOf(trustedGoal)) }
@@ -156,12 +220,12 @@ class StatsReportsViewModelGranularityTest {
         vm.refresh(month = "2026-05", selectedTag = "")
         runCurrent()
 
-        assertEquals(listOf(trustedGoal), vm.uiState.value.reportGoals)
+        assertEquals(emptyList(), vm.uiState.value.reportGoals)
         assertEquals(ReportGoalsLoadState.Loading, vm.uiState.value.reportGoalsLoadState)
 
         goalsGate.complete(Result.failure(RuntimeException("goals unavailable")))
         advanceUntilIdle()
-        assertEquals(listOf(trustedGoal), vm.uiState.value.reportGoals)
+        assertEquals(emptyList(), vm.uiState.value.reportGoals)
         assertEquals(ReportGoalsLoadState.Failed, vm.uiState.value.reportGoalsLoadState)
     }
 
@@ -209,6 +273,13 @@ class StatsReportsViewModelGranularityTest {
 // Top-level (not nested) so the detekt TooManyFunctions baseline entry matches —
 // it must implement the full ReportsActions surface (13 functions) for the VM under test.
 private class RecordingReportsActions : ReportsActions {
+    val access = kotlinx.coroutines.flow.MutableStateFlow<com.ticketbox.data.repository.LedgerAccessContext?>(
+        com.ticketbox.data.repository.LedgerAccessContext(com.ticketbox.data.repository.LogicalSessionBinding(
+            "https://reports.test", "ledger-1", "owner-1", "session-1", "revision-1"), true))
+    var exportResponder: (suspend (ReportsOverviewQuery) -> Result<CsvExport>)? = null
+    val exportQueries = mutableListOf<ReportsOverviewQuery>()
+    val exportBindings = mutableListOf<com.ticketbox.data.repository.LogicalSessionBinding?>()
+    override fun observeReportsAccess() = access
     val overviewQueries = mutableListOf<ReportsOverviewQuery>()
     var overviewResult: Result<ReportsOverview> = Result.failure(RuntimeException("overview unavailable in this fake"))
     var overviewResponder: (suspend () -> Result<ReportsOverview>)? = null
@@ -217,20 +288,21 @@ private class RecordingReportsActions : ReportsActions {
 
     override fun canModifyLedger(): Boolean = true
 
-    override suspend fun reportsOverview(query: ReportsOverviewQuery): Result<ReportsOverview> {
+    override suspend fun reportsOverview(query: ReportsOverviewQuery, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<ReportsOverview> {
         overviewQueries += query
         overviewResponder?.let { return it() }
-        return overviewResult
+        return overviewResult.map { it.copy(month = query.month ?: it.month, granularity = query.granularity,
+            rankingMetric = query.rankingMetric, merchantCategory = query.merchantCategory) }
     }
 
-    override suspend fun exportReportsOverviewCsv(query: ReportsOverviewQuery): Result<CsvExport> =
-        Result.failure(UnsupportedOperationException())
+    override suspend fun exportReportsOverviewCsv(query: ReportsOverviewQuery, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<CsvExport> {
+        exportQueries += query
+        exportBindings += expectedBinding
+        return exportResponder?.invoke(query) ?: Result.success(CsvExport("report.csv", "report".toByteArray()))
+    }
 
     override suspend fun goals(month: String?, includeArchived: Boolean): Result<List<Goal>> =
         goalsResponder?.invoke() ?: Result.success(emptyList())
-
-    override suspend fun createGoal(draft: GoalDraft, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding): Result<Goal> =
-        Result.failure(UnsupportedOperationException())
 
     override suspend fun createDebtGoal(name: String, debtPublicIds: List<String>, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding): Result<Goal> =
         Result.failure(UnsupportedOperationException())
@@ -261,7 +333,7 @@ private class RecordingReportsActions : ReportsActions {
         targetDate: String?,
     ): Result<Goal> = Result.failure(UnsupportedOperationException())
 
-    override fun dashboardAccess(): com.ticketbox.data.repository.LedgerAccessContext? = null
+    override fun dashboardAccess() = access.value
 
     override suspend fun dashboardCards(
         binding: com.ticketbox.data.repository.LogicalSessionBinding,
@@ -295,6 +367,7 @@ private fun overview(month: String) = ReportsOverview(
     trend = listOf(ReportTrendPoint(bucket = "$month-01", label = "1日", amountCents = 1200L, count = 1)),
     merchantRanking = emptyList(),
     categoryComparison = emptyList(),
+    homeCurrencyCode = "CNY",
 )
 
 private fun goal(publicId: String) = Goal(

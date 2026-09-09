@@ -36,7 +36,7 @@ def _seed_archived_income(
     with SessionLocal() as db:
         plan = create_income_plan(
             db,
-            tenant_id=tenant_id,
+            home_currency_code="CNY", tenant_id=tenant_id,
             label=label,
             source_type="salary",
             amount_cents=123400,

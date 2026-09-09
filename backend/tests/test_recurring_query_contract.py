@@ -17,7 +17,7 @@ def test_recurring_status_filter_and_invalid_candidate_errors(
     with SessionLocal() as db:
         resolve_write_capability(db)
         db.add(
-            RecurringItem(
+            RecurringItem(home_currency_code="CNY",
                 tenant_id="owner",
                 merchant_key="netflix",
                 merchant_name="Netflix",
@@ -46,7 +46,7 @@ def test_recurring_status_filter_and_invalid_candidate_errors(
     not_found = client.post(
         "/api/recurring/from-candidate?timezone=UTC",
         headers=identity.app_headers,
-        json={
+        json={"home_currency_code": "CNY",
             "merchant": "Not Monthly",
             "amount_cents": 1234,
             "occurrence_count": 1,

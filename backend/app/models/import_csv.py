@@ -5,6 +5,7 @@ from decimal import Decimal
 from uuid import uuid4
 
 from sqlalchemy import (
+    DDL,
     BigInteger,
     CheckConstraint,
     Date,
@@ -17,11 +18,11 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    event,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database_model_registry import Base
-from app.fx_constants import DEFAULT_HOME_CURRENCY_CODE
 from app.money_contract import money_check_constraints_for_table
 from app.services.time_service import now_utc
 from app.tenant_contract import DEFAULT_TENANT_ID
@@ -76,6 +77,7 @@ class CsvImportRow(Base):
     __tablename__ = "csv_import_rows"
     __table_args__ = (
         *money_check_constraints_for_table("csv_import_rows"),
+        CheckConstraint("home_currency_code IN ('CNY', 'USD', 'EUR', 'GBP', 'JPY', 'HKD', 'KRW')", name="ck_csv_import_rows_home_currency"),
         CheckConstraint("line_number >= 2", name="ck_csv_import_rows_line_number_valid"),
         CheckConstraint(
             "status IN ('valid', 'error', 'applying', 'applied', 'insert_failed')",
@@ -103,9 +105,10 @@ class CsvImportRow(Base):
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     error_message: Mapped[str | None] = mapped_column(String(255), nullable=True)
     amount_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # Legacy unknown context remains NULL until the existing Owner adoption.
+    home_currency_code: Mapped[str | None] = mapped_column(String(3), nullable=True)
     original_currency_code: Mapped[str] = mapped_column(
         String(3),
-        default=DEFAULT_HOME_CURRENCY_CODE,
         nullable=False,
     )
     original_amount_minor: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
@@ -131,4 +134,23 @@ Index(
     CsvImportRow.expense_id,
     unique=True,
     postgresql_where=CsvImportRow.expense_id.is_not(None),
+)
+
+event.listen(
+    CsvImportRow.__table__, "after_create",
+    DDL("""
+        CREATE OR REPLACE FUNCTION ticketbox_csv_row_currency_guard()
+        RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+            IF NEW.home_currency_code IS NULL THEN
+                RAISE EXCEPTION 'CSV row requires its captured currency' USING ERRCODE = '23514';
+            END IF;
+            IF TG_OP = 'UPDATE' AND OLD.home_currency_code IS NOT NULL
+               AND NEW.home_currency_code IS DISTINCT FROM OLD.home_currency_code THEN
+                RAISE EXCEPTION 'CSV row currency is immutable' USING ERRCODE = '55000';
+            END IF;
+            RETURN NEW;
+        END $$;
+        CREATE TRIGGER trg_csv_row_currency BEFORE INSERT OR UPDATE ON csv_import_rows
+        FOR EACH ROW EXECUTE FUNCTION ticketbox_csv_row_currency_guard();
+    """).execute_if(dialect="postgresql"),
 )

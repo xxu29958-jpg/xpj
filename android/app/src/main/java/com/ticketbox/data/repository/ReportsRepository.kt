@@ -10,7 +10,6 @@ import com.ticketbox.domain.model.DashboardCards
 import com.ticketbox.domain.model.DashboardSurface
 import com.ticketbox.domain.model.GOAL_TYPE_DEBT_REPAYMENT
 import com.ticketbox.domain.model.Goal
-import com.ticketbox.domain.model.GoalDraft
 import com.ticketbox.domain.model.GoalUpdate
 import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.domain.model.ReportsOverviewQuery
@@ -36,10 +35,10 @@ interface DashboardCardsActions {
 }
 
 interface ReportsActions : DashboardCardsActions {
-    suspend fun reportsOverview(query: ReportsOverviewQuery = ReportsOverviewQuery()): Result<ReportsOverview>
-    suspend fun exportReportsOverviewCsv(query: ReportsOverviewQuery = ReportsOverviewQuery()): Result<CsvExport>
+    fun observeReportsAccess(): kotlinx.coroutines.flow.Flow<LedgerAccessContext?> = kotlinx.coroutines.flow.flowOf(dashboardAccess())
+    suspend fun reportsOverview(query: ReportsOverviewQuery = ReportsOverviewQuery(), expectedBinding: LogicalSessionBinding? = null): Result<ReportsOverview>
+    suspend fun exportReportsOverviewCsv(query: ReportsOverviewQuery = ReportsOverviewQuery(), expectedBinding: LogicalSessionBinding? = null): Result<CsvExport>
     suspend fun goals(month: String? = null, includeArchived: Boolean = false): Result<List<Goal>>
-    suspend fun createGoal(draft: GoalDraft, expectedBinding: LogicalSessionBinding): Result<Goal>
 
     /**
      * ADR-0049 §6 (slice 8b): create a debt_repayment goal linking [debtPublicIds].
@@ -101,23 +100,32 @@ class ReportsRepository(
 
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
 
-    override suspend fun reportsOverview(query: ReportsOverviewQuery): Result<ReportsOverview> {
+    override fun observeReportsAccess(): kotlinx.coroutines.flow.Flow<LedgerAccessContext?> = apiProvider.observeActiveLedgerAccess()
+
+    override suspend fun reportsOverview(query: ReportsOverviewQuery, expectedBinding: LogicalSessionBinding?): Result<ReportsOverview> {
         val cleanQuery = query.validated()
             .getOrElse { return Result.failure(it) }
         return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
+            val request = expectedBinding?.let(ledgerRequestGuard::bindExact) ?: ledgerRequestGuard.bind()
+            request.call { api ->
                 api.reportsOverview(
                     query = cleanQuery.toReportsOverviewApiQuery(timezone = currentTimezoneId()).toQueryMap(),
-                ).toDomain()
+                ).toDomain().also { result ->
+                    val matchesMonth = cleanQuery.month == null || result.month == cleanQuery.month
+                    val matchesHome = cleanQuery.homeCurrencyCode == null || result.homeCurrencyCode == cleanQuery.homeCurrencyCode
+                    val knownHome = com.ticketbox.domain.model.CurrencyCode.fromStorageKeyOrNull(result.homeCurrencyCode) != null
+                    if (!matchesMonth || !matchesHome || !knownHome) throw RepositoryException("")
+                }
             }
         }
     }
 
-    override suspend fun exportReportsOverviewCsv(query: ReportsOverviewQuery): Result<CsvExport> {
+    override suspend fun exportReportsOverviewCsv(query: ReportsOverviewQuery, expectedBinding: LogicalSessionBinding?): Result<CsvExport> {
         val cleanQuery = query.validated()
             .getOrElse { return Result.failure(it) }
         return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
+            val request = expectedBinding?.let(ledgerRequestGuard::bindExact) ?: ledgerRequestGuard.bind()
+            request.call { api ->
                 val response = api.reportsOverviewCsv(
                     query = cleanQuery.toReportsOverviewApiQuery(timezone = currentTimezoneId()).toQueryMap(),
                 )
@@ -135,28 +143,11 @@ class ReportsRepository(
             .getOrElse { return Result.failure(it) }
         return errorHandler.safeCall {
             ledgerRequestGuard.guardedCall { api ->
-                val currency = api.runtimeCompatibility().capabilities.currency.homeCurrencyCode
                 api.goals(
                     month = cleanMonth,
                     includeArchived = includeArchived,
                     timezone = currentTimezoneId(),
-                ).items.map { it.toDomain().copy(homeCurrencyCode = currency) }
-            }
-        }
-    }
-
-    override suspend fun createGoal(draft: GoalDraft, expectedBinding: LogicalSessionBinding): Result<Goal> {
-        if (!canModifyLedger()) {
-            return Result.failure(RepositoryException("当前角色为只读，无法修改账本。"))
-        }
-        val cleanDraft = draft.validated()
-            .getOrElse { return Result.failure(it) }
-        return errorHandler.safeCall {
-            ledgerRequestGuard.bindExact(expectedBinding).call { api ->
-                api.createGoal(
-                    request = cleanDraft.toRequest(),
-                    timezone = currentTimezoneId(),
-                ).toDomain()
+                ).items.map { it.toDomain() }
             }
         }
     }
@@ -171,8 +162,7 @@ class ReportsRepository(
             .getOrElse { return Result.failure(it) }
         return errorHandler.safeCall {
             ledgerRequestGuard.bindExact(expectedBinding).call { api ->
-                // No Idempotency-Key: POST /api/goals declares none (in-line create, not an
-                // outbox replay surface). Debt-goal shape = name + goal_type + debt_public_ids;
+                // Debt-clearance creation retains its nonmonetary, keyless request shape.
                 // month/target/category omitted (Moshi drops nulls — the backend 422s a debt
                 // goal carrying them). Built inline like replaceDebtLinks' request DTO.
                 api.createGoal(
@@ -384,19 +374,6 @@ private fun ReportsOverviewQuery.validated(): Result<ReportsOverviewQuery> {
     }.mapError()
 }
 
-
-private fun GoalDraft.validated(): Result<GoalDraft> {
-    return runCatching {
-        val cleanName = name.trim()
-        require(cleanName.isNotBlank()) { "请输入目标名称。" }
-        require(targetAmountCents > 0L) { "目标金额必须大于 0。" }
-        copy(
-            name = cleanName,
-            month = requireMonth(month, "目标月份不正确。"),
-            category = category?.trim()?.takeIf { it.isNotBlank() }?.let(::normalizeExpenseCategory),
-        )
-    }.mapError()
-}
 
 internal fun GoalUpdate.validatedGoalUpdate(): Result<GoalUpdate> {
     return runCatching {

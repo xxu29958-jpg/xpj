@@ -23,6 +23,8 @@ import com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest
 import com.ticketbox.data.remote.dto.RecurringItemCreateRequestDto
 import com.ticketbox.data.remote.dto.RecurringItemUpdateRequestDto
 import com.ticketbox.data.remote.dto.addRecurringWireAdapters
+import com.ticketbox.data.remote.dto.addCategoryRuleWireAdapters
+import com.ticketbox.data.remote.dto.addBudgetWireAdapters
 
 internal class OutboxAdapterGraph {
     // ADR-0038 PR-2g.2 + 2g.3: outbox plumbing.
@@ -38,6 +40,8 @@ internal class OutboxAdapterGraph {
         Moshi.Builder()
             .addExpenseCorrectionWireAdapters()
             .addRecurringWireAdapters()
+            .addBudgetWireAdapters()
+            .addCategoryRuleWireAdapters()
             .build()
     }
 
@@ -67,9 +71,14 @@ internal class OutboxAdapterGraph {
         moshi.adapter(com.ticketbox.data.remote.dto.UploadResponseDto::class.java).serializeNulls()
     }
 
-    // PR-2g.4: shared between UpdateCategoryRuleDispatcher
-    // (deserialises on replay) and RuleRepository.updateCategoryRuleAllowingOffline
-    // (serialises before enqueue). Same roundtrip guarantee as patchExpenseAdapter.
+    // One original submission schema and its server receipt; the flat update adapter reads older records.
+    val categoryRuleSubmissionAdapter: JsonAdapter<com.ticketbox.data.repository.CategoryRuleSubmissionPayload> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.repository.CategoryRuleSubmissionPayload::class.java)
+    }
+    val categoryRuleReceiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.CategoryRuleDto> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.remote.dto.CategoryRuleDto::class.java)
+    }
+
     val categoryRuleUpdateAdapter: JsonAdapter<CategoryRuleUpdateRequest> = lazyJsonAdapter {
         moshi.adapter(CategoryRuleUpdateRequest::class.java)
     }
@@ -144,10 +153,31 @@ internal class OutboxAdapterGraph {
         moshi.adapter(com.ticketbox.data.remote.dto.GoalDto::class.java)
     }
 
+    val goalCreateAdapter: JsonAdapter<com.ticketbox.data.remote.dto.GoalCreateRequestDto> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.remote.dto.GoalCreateRequestDto::class.java)
+    }
+
     // ADR-0042 Slice F: PATCH /api/income-plans/{publicId} adapter. Shared
-    // between UpdateIncomePlanDispatcher and IncomePlanRepository.enqueueUpdate.
-    val incomePlanUpdateAdapter: JsonAdapter<com.ticketbox.data.repository.IncomePlanEditPayload> = lazyJsonAdapter {
-        moshi.adapter(com.ticketbox.data.repository.IncomePlanEditPayload::class.java)
+    // between IncomePlanDispatcher and IncomePlanRepository.enqueueUpdate.
+    val incomePlanReceiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.IncomePlanDto> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.remote.dto.IncomePlanDto::class.java)
+    }
+
+    val incomePlanSubmissionAdapter: JsonAdapter<com.ticketbox.data.repository.IncomePlanSubmissionPayload> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.repository.IncomePlanSubmissionPayload::class.java)
+    }
+
+    val budgetSaveAdapter: JsonAdapter<com.ticketbox.data.repository.BudgetSavePayload> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.repository.BudgetSavePayload::class.java)
+    }
+    val manualRateAdapter: JsonAdapter<com.ticketbox.data.repository.ManualRatePayload> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.repository.ManualRatePayload::class.java)
+    }
+    val manualRateReceiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.ExchangeRateDto> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.remote.dto.ExchangeRateDto::class.java)
+    }
+    val budgetReceiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.BudgetMonthlyDto> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.remote.dto.BudgetMonthlyDto::class.java)
     }
 
     val recurringCreateAdapter: JsonAdapter<RecurringItemCreateRequestDto> = lazyJsonAdapter {

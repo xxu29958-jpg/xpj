@@ -24,7 +24,7 @@ def _manual(
         "/api/expenses/manual",
         headers=headers,
         json={
-            "amount_cents": amount_cents,
+            "home_currency_code": "CNY", "amount_cents": amount_cents,
             "merchant": merchant,
             "category": "餐饮",
             "expense_time": expense_time,
@@ -178,7 +178,8 @@ def test_tag_filters_are_ledger_scoped(client: TestClient, *, identity) -> None:
 
 def test_import_rows_syncs_tag_relation_rows(client: TestClient) -> None:
     preview = parse_csv_preview(
-        'amount_yuan,merchant,tags\n3.00,Imported,"外卖，AI，外卖"\n'
+        'amount_yuan,merchant,tags\n3.00,Imported,"外卖，AI，外卖"\n',
+        home_currency="CNY",
     )
 
     with SessionLocal() as db:

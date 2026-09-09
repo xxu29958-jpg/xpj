@@ -141,6 +141,8 @@ data class DebtBillParseResponseDto(
 @JsonClass(generateAdapter = true)
 data class DebtCreateRequestDto(
     val direction: String,
+    @param:Json(name = "home_currency_code")
+    val homeCurrencyCode: String,
     @param:Json(name = "counterparty_type")
     val counterpartyType: String,
     @param:Json(name = "counterparty_label")
@@ -158,7 +160,7 @@ data class DebtCreateRequestDto(
     // §B 完整 installment 期数 + 周期（均仅 kind=='installment' 时有效）。DEFAULTED/可空 — count 留空即不排期；
     // period 留空（null）后端默认按月（每月一期）= 国内分期的压倒性默认。两者都是 DebtCreateRequest 的已声明属性
     // （additionalProperties=false → 正向检查只对已声明字段通过）；后端 CHECK 把 count/period 配对，故 period
-    // 只在 count 也给时随车（见 DebtMappers.toCreateRequest 的 chokepoint）。
+    // 只在 count 也给时随车；持久化意图由 DebtCreateOutboxPayload 投影到此协议。
     @param:Json(name = "installment_count")
     val installmentCount: Long? = null,
     @param:Json(name = "installment_period_months")

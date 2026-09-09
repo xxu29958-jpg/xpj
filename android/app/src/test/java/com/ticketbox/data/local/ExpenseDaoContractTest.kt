@@ -448,6 +448,13 @@ class ExpenseDaoContractTest {
  * rejects mixed-ledger batches.
  */
 private class FakeExpenseDao : ExpenseDao {
+    private val statsCache = com.ticketbox.data.local.StatsProjectionCacheFake()
+    override suspend fun saveStatsProjection(snapshot: com.ticketbox.data.local.StatsProjectionCacheEntity) = statsCache.save(snapshot)
+    override suspend fun statsProjections(bindingKey: String, kind: String, month: String, tag: String,
+        timezone: String) = statsCache.find(bindingKey, kind, month, tag, timezone)
+    override suspend fun clearStatsProjections() = statsCache.clear(null)
+    override suspend fun clearStatsProjectionsForLedger(ledgerId: String) = statsCache.clear(ledgerId)
+
     private val expenses = linkedMapOf<Long, ExpenseEntity>()
     private val offsets = linkedMapOf<Pair<String, String>, ExpenseOffsetStreamEntity>()
     private val perLedgerFlows = mutableMapOf<String, MutableStateFlow<List<ExpenseEntity>>>()

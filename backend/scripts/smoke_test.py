@@ -77,8 +77,16 @@ def free_port() -> int:
         return int(sock.getsockname()[1])
 
 
-def app_headers() -> dict[str, str]:
-    return {"Authorization": f"Bearer {SESSION_TOKEN}"}
+def app_headers(base_url: str) -> dict[str, str]:
+    headers = {"Authorization": f"Bearer {SESSION_TOKEN}"}
+    response = request("GET", f"{base_url}/api/system/runtime-compatibility", headers=headers)
+    assert_equal(response.status, 200, "runtime compatibility status")
+    snapshot = response.json()
+    currency = snapshot["capabilities"]["currency"]
+    headers[snapshot["api_version_header"]] = snapshot["api_version"]
+    if currency["request_binding"]:
+        headers[currency["request_binding_header"]] = currency["request_binding"]
+    return headers
 
 
 def admin_headers() -> dict[str, str]:
@@ -273,7 +281,7 @@ def wait_for_expense_thumbnail(base_url: str, expense_id: int, label: str) -> di
         result = request(
             "GET",
             f"{base_url}/api/expenses/{expense_id}",
-            headers=app_headers(),
+            headers=app_headers(base_url),
         )
         assert_equal(result.status, 200, f"{label} snapshot status")
         payload = result.json()
@@ -348,7 +356,7 @@ def _pair_android(base_url: str, bootstrap: dict) -> None:
 
 
 def _check_auth_and_legacy_tokens(base_url: str) -> None:
-    result = request("GET", f"{base_url}/api/auth/check", headers=app_headers())
+    result = request("GET", f"{base_url}/api/auth/check", headers=app_headers(base_url))
     assert_equal(result.status, 200, "auth check status")
     assert_equal(result.json()["status"], "ok", "auth check body")
     assert_equal(result.json()["device_name"], "smoke-android", "auth check device")
@@ -374,7 +382,7 @@ def _check_auth_and_legacy_tokens(base_url: str) -> None:
 
 
 def _check_maintenance_and_upload_guards(base_url: str) -> None:
-    result = request("POST", f"{base_url}/api/maintenance/cleanup-images", headers=app_headers())
+    result = request("POST", f"{base_url}/api/maintenance/cleanup-images", headers=app_headers(base_url))
     assert_error(result, 403, "permission_denied")
     result = request("POST", f"{base_url}/api/maintenance/cleanup-images", headers=admin_headers())
     assert_equal(result.status, 200, "maintenance cleanup status")
@@ -419,7 +427,7 @@ def _upload_ticket_and_assert_pending(base_url: str) -> int:
     assert_equal(upload_payload["status"], "pending", "upload status body")
     print("OK upload screenshot")
 
-    result = request("GET", f"{base_url}/api/expenses/pending", headers=app_headers())
+    result = request("GET", f"{base_url}/api/expenses/pending", headers=app_headers(base_url))
     assert_equal(result.status, 200, "pending status")
     pending_items = result.json()
     uploaded = next(item for item in pending_items if item["id"] == expense_id)
@@ -439,6 +447,7 @@ def _create_manual_expense_and_check_settings(base_url: str) -> None:
     manual_body = json.dumps(
         {
             "amount_cents": 1280,
+            "home_currency_code": "CNY",
             "merchant": "手动早餐",
             "category": "吃饭",
             "note": "上班路上",
@@ -453,7 +462,7 @@ def _create_manual_expense_and_check_settings(base_url: str) -> None:
         "POST",
         f"{base_url}/api/expenses/manual",
         headers={
-            **app_headers(),
+            **app_headers(base_url),
             "Content-Type": "application/json",
             "Idempotency-Key": str(uuid.uuid4()),
         },
@@ -469,16 +478,16 @@ def _create_manual_expense_and_check_settings(base_url: str) -> None:
         "POST",
         f"{base_url}/api/expenses/manual",
         headers={
-            **app_headers(),
+            **app_headers(base_url),
             "Content-Type": "application/json",
             "Idempotency-Key": str(uuid.uuid4()),
         },
-        body=b'{"merchant":"missing amount"}',
+        body=b'{"merchant":"missing amount","home_currency_code":"CNY"}',
     )
     assert_error(result, 400, "amount_required")
     print("OK manual expense create")
 
-    result = request("GET", f"{base_url}/api/settings/server", headers=app_headers())
+    result = request("GET", f"{base_url}/api/settings/server", headers=app_headers(base_url))
     assert_equal(result.status, 200, "server settings status")
     server_settings = result.json()
     assert_equal(server_settings["account_name"], "我", "server settings account name")
@@ -506,12 +515,12 @@ def _check_protected_media(base_url: str, expense_id: int) -> None:
     assert_error(result, 401, "invalid_token")
     print("OK protected image requires token")
 
-    result = request("GET", f"{base_url}/api/expenses/{expense_id}/image", headers=app_headers())
+    result = request("GET", f"{base_url}/api/expenses/{expense_id}/image", headers=app_headers(base_url))
     assert_equal(result.status, 200, "image status")
     assert_equal(result.body, PNG_BYTES, "image body")
     print("OK protected image")
 
-    result = request("GET", f"{base_url}/api/expenses/{expense_id}/thumbnail", headers=app_headers())
+    result = request("GET", f"{base_url}/api/expenses/{expense_id}/thumbnail", headers=app_headers(base_url))
     assert_equal(result.status, 200, "thumbnail status")
     assert_true(result.body.startswith(b"\xff\xd8"), "thumbnail should be jpeg")
     print("OK protected thumbnail")
@@ -521,7 +530,7 @@ def _patch_expense_and_check_ocr_retry(base_url: str, expense_id: int) -> None:
     pre_confirm_snapshot = request(
         "GET",
         f"{base_url}/api/expenses/{expense_id}",
-        headers=app_headers(),
+        headers=app_headers(base_url),
     )
     assert_equal(pre_confirm_snapshot.status, 200, "pre-confirm snapshot status")
     confirm_no_amount_body = json.dumps(
@@ -532,7 +541,7 @@ def _patch_expense_and_check_ocr_retry(base_url: str, expense_id: int) -> None:
         "POST",
         f"{base_url}/api/expenses/{expense_id}/confirm",
         headers={
-            **app_headers(),
+            **app_headers(base_url),
             "Content-Type": "application/json",
             "Idempotency-Key": str(uuid.uuid4()),
         },
@@ -544,7 +553,7 @@ def _patch_expense_and_check_ocr_retry(base_url: str, expense_id: int) -> None:
     snapshot = request(
         "GET",
         f"{base_url}/api/expenses/{expense_id}",
-        headers=app_headers(),
+        headers=app_headers(base_url),
     )
     assert_equal(snapshot.status, 200, "patch snapshot status")
     update_body = json.dumps(
@@ -563,7 +572,7 @@ def _patch_expense_and_check_ocr_retry(base_url: str, expense_id: int) -> None:
         f"{base_url}/api/expenses/{expense_id}",
         # ADR-0042: PATCH now requires an Idempotency-Key (outbox-routed mutate面).
         headers={
-            **app_headers(),
+            **app_headers(base_url),
             "Content-Type": "application/json",
             "Idempotency-Key": str(uuid.uuid4()),
         },
@@ -587,7 +596,7 @@ def _patch_expense_and_check_ocr_retry(base_url: str, expense_id: int) -> None:
         "POST",
         f"{base_url}/api/expenses/{expense_id}/ocr/retry",
         headers={
-            **app_headers(),
+            **app_headers(base_url),
             "Content-Type": "application/json",
             "Idempotency-Key": str(uuid.uuid4()),
         },
@@ -626,7 +635,7 @@ def _recognize_text_from_upload(base_url: str) -> None:
         "POST",
         f"{base_url}/api/expenses/{recognize_id}/recognize-text",
         headers={
-            **app_headers(),
+            **app_headers(base_url),
             "Content-Type": "application/json",
             "Idempotency-Key": str(uuid.uuid4()),
         },
@@ -644,7 +653,7 @@ def _confirm_expense(base_url: str, expense_id: int) -> None:
     confirm_snapshot = request(
         "GET",
         f"{base_url}/api/expenses/{expense_id}",
-        headers=app_headers(),
+        headers=app_headers(base_url),
     )
     assert_equal(confirm_snapshot.status, 200, "confirm snapshot status")
     confirm_body = json.dumps(
@@ -655,7 +664,7 @@ def _confirm_expense(base_url: str, expense_id: int) -> None:
         "POST",
         f"{base_url}/api/expenses/{expense_id}/confirm",
         headers={
-            **app_headers(),
+            **app_headers(base_url),
             "Content-Type": "application/json",
             "Idempotency-Key": str(uuid.uuid4()),
         },
@@ -672,7 +681,7 @@ def _check_confirmed_exports_and_stats(base_url: str, expense_id: int) -> None:
     result = request(
         "GET",
         f"{base_url}/api/expenses/confirmed?page=1&page_size=50&month=2026-05&category=%E5%90%83%E9%A5%AD",
-        headers=app_headers(),
+        headers=app_headers(base_url),
     )
     assert_equal(result.status, 200, "confirmed list status")
     confirmed_page = result.json()
@@ -688,13 +697,13 @@ def _check_confirmed_exports_and_stats(base_url: str, expense_id: int) -> None:
     )
     print("OK confirmed pagination")
 
-    result = request("GET", f"{base_url}/api/expenses/categories", headers=app_headers())
+    result = request("GET", f"{base_url}/api/expenses/categories", headers=app_headers(base_url))
     assert_equal(result.status, 200, "categories status")
     assert_true("餐饮" in result.json()["items"], "categories include default")
     assert_true("吃饭" not in result.json()["items"], "categories hide legacy alias")
     print("OK categories")
 
-    result = request("GET", f"{base_url}/api/expenses/months", headers=app_headers())
+    result = request("GET", f"{base_url}/api/expenses/months", headers=app_headers(base_url))
     assert_equal(result.status, 200, "months status")
     assert_true("2026-05" in result.json()["items"], "months include confirmed month")
     print("OK months")
@@ -702,14 +711,14 @@ def _check_confirmed_exports_and_stats(base_url: str, expense_id: int) -> None:
     result = request(
         "GET",
         f"{base_url}/api/expenses/export.csv?month=2026-05&category=%E5%90%83%E9%A5%AD",
-        headers=app_headers(),
+        headers=app_headers(base_url),
     )
     assert_equal(result.status, 200, "csv export status")
     csv_text = result.body.decode("utf-8-sig")
     assert_true("美团外卖" in csv_text and "3680" in csv_text, "csv export content")
     print("OK csv export")
 
-    result = request("GET", f"{base_url}/api/stats/monthly?month=2026-05", headers=app_headers())
+    result = request("GET", f"{base_url}/api/stats/monthly?month=2026-05", headers=app_headers(base_url))
     assert_equal(result.status, 200, "stats status")
     stats = result.json()
     assert_equal(stats["total_amount_cents"], 4960, "stats total")
@@ -719,7 +728,7 @@ def _check_confirmed_exports_and_stats(base_url: str, expense_id: int) -> None:
 
 
 def _check_category_rules(base_url: str) -> None:
-    result = request("GET", f"{base_url}/api/rules/categories", headers=app_headers())
+    result = request("GET", f"{base_url}/api/rules/categories", headers=app_headers(base_url))
     assert_equal(result.status, 200, "rules list status")
     assert_true(any(rule["keyword"] == "OpenAI" for rule in result.json()), "default rules seeded")
     print("OK category rules list")
@@ -732,7 +741,7 @@ def _check_category_rules(base_url: str) -> None:
         "POST",
         f"{base_url}/api/rules/categories",
         headers={
-            **app_headers(),
+            **app_headers(base_url),
             "Content-Type": "application/json",
             "Idempotency-Key": str(uuid.uuid4()),
         },
@@ -749,7 +758,7 @@ def _check_category_rules(base_url: str) -> None:
         "PATCH",
         f"{base_url}/api/rules/categories/{rule_id}",
         headers={
-            **app_headers(),
+            **app_headers(base_url),
             "Content-Type": "application/json",
             "Idempotency-Key": str(uuid.uuid4()),
         },
@@ -766,7 +775,7 @@ def _check_category_rules(base_url: str) -> None:
         "DELETE",
         f"{base_url}/api/rules/categories/{rule_id}",
         headers={
-            **app_headers(),
+            **app_headers(base_url),
             "Content-Type": "application/json",
             "Idempotency-Key": str(uuid.uuid4()),
         },
@@ -781,7 +790,7 @@ def _upload_second_duplicate_candidate(base_url: str) -> int:
     second_upload = upload(base_url, "ticket2.png", "image/png", PNG_BYTES)
     assert_equal(second_upload.status, 200, "second upload status")
     second_id = int(second_upload.json()["id"])
-    result = request("GET", f"{base_url}/api/duplicates", headers=app_headers())
+    result = request("GET", f"{base_url}/api/duplicates", headers=app_headers(base_url))
     assert_equal(result.status, 200, "duplicates status")
     duplicates = result.json()
     assert_true(any(item["id"] == second_id for item in duplicates), "duplicate should be suspected")
@@ -809,7 +818,7 @@ def _patch_second_duplicate_for_auto_classification(base_url: str, second_id: in
         "PATCH",
         f"{base_url}/api/expenses/{second_id}",
         headers={
-            **app_headers(),
+            **app_headers(base_url),
             "Content-Type": "application/json",
             "Idempotency-Key": str(uuid.uuid4()),
         },
@@ -834,7 +843,7 @@ def _mark_expense_not_duplicate(
         "POST",
         f"{base_url}/api/expenses/{expense_id}/mark-not-duplicate",
         headers={
-            **app_headers(),
+            **app_headers(base_url),
             "Content-Type": "application/json",
             "Idempotency-Key": str(uuid.uuid4()),
         },
@@ -850,7 +859,7 @@ def _mark_second_not_duplicate(base_url: str, second_id: int) -> None:
     second_mnd_snapshot = request(
         "GET",
         f"{base_url}/api/expenses/{second_id}",
-        headers=app_headers(),
+        headers=app_headers(base_url),
     )
     assert_equal(second_mnd_snapshot.status, 200, "mark-not-duplicate snapshot status")
     _mark_expense_not_duplicate(
@@ -884,7 +893,7 @@ def _patch_similar_duplicate(base_url: str, similar_id: int) -> None:
     similar_snapshot = request(
         "GET",
         f"{base_url}/api/expenses/{similar_id}",
-        headers=app_headers(),
+        headers=app_headers(base_url),
     )
     assert_equal(similar_snapshot.status, 200, "similar patch snapshot status")
     similar_update_body = json.dumps(
@@ -900,7 +909,7 @@ def _patch_similar_duplicate(base_url: str, similar_id: int) -> None:
         "PATCH",
         f"{base_url}/api/expenses/{similar_id}",
         headers={
-            **app_headers(),
+            **app_headers(base_url),
             "Content-Type": "application/json",
             "Idempotency-Key": str(uuid.uuid4()),
         },
@@ -915,7 +924,7 @@ def _reject_similar_duplicate(base_url: str, similar_id: int) -> None:
     reject_snapshot = request(
         "GET",
         f"{base_url}/api/expenses/{similar_id}",
-        headers=app_headers(),
+        headers=app_headers(base_url),
     )
     assert_equal(reject_snapshot.status, 200, "reject snapshot status")
     reject_body = json.dumps(
@@ -926,7 +935,7 @@ def _reject_similar_duplicate(base_url: str, similar_id: int) -> None:
         "POST",
         f"{base_url}/api/expenses/{similar_id}/reject",
         headers={
-            **app_headers(),
+            **app_headers(base_url),
             "Content-Type": "application/json",
             "Idempotency-Key": str(uuid.uuid4()),
         },
@@ -941,7 +950,7 @@ def _confirm_second_expense(base_url: str, second_id: int) -> None:
     second_confirm_snapshot = request(
         "GET",
         f"{base_url}/api/expenses/{second_id}",
-        headers=app_headers(),
+        headers=app_headers(base_url),
     )
     assert_equal(second_confirm_snapshot.status, 200, "second confirm snapshot status")
     second_confirm_body = json.dumps(
@@ -952,7 +961,7 @@ def _confirm_second_expense(base_url: str, second_id: int) -> None:
         "POST",
         f"{base_url}/api/expenses/{second_id}/confirm",
         headers={
-            **app_headers(),
+            **app_headers(base_url),
             "Content-Type": "application/json",
             "Idempotency-Key": str(uuid.uuid4()),
         },

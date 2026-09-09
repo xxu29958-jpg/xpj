@@ -24,6 +24,11 @@
 | 嵌套深度 | 4 | `NestedBlockDepth` |
 | 文件函数数 | 11 | `TooManyFunctions` |
 
+单测源集通过 `android/detekt-tests.yml` 后置覆盖：`@Test` 场景不计入函数数量，
+线性测试正文不受函数行数限制，fixture 参数只计必填项。辅助函数仍检查数量与长度；
+所有测试仍检查圈复杂度、嵌套和类大小。不得为容纳独立场景而拆散合同断言。
+生产源集继续使用上表全部门槛，测试断言和既有 baseline 不变。
+
 **机器守护（2026-06 接线）**：detekt **2.0.0-alpha.3**（plugin id `dev.detekt`，
 Apache-2.0，版本进 `android/gradle/libs.versions.toml`）。**预发布版本是 owner
 显式拍板的例外**（2026-06-12「内嵌的去更新掉」）：理由 = 2.0 内嵌 Kotlin 与本项目

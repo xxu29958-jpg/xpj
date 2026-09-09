@@ -20,7 +20,7 @@ from app.config import get_settings
 from app.models import Account
 from app.money_contract import projection_sum_to_int, round_minor_ratio_half_up
 from app.services.budget_service import get_monthly_budget
-from app.services.currency_binding_service import require_runtime_home_currency_code
+from app.services.currency_common import currency_symbol
 from app.services.data_quality_service import DataQualitySummary, data_quality_summary
 from app.services.ledger_service import LedgerSummary
 from app.services.owner_console_service._common import (
@@ -51,12 +51,14 @@ class BudgetStatusVM:
     month: str
     configured: bool
     total_amount_cents: int
-    spent_amount_cents: int
-    remaining_amount_cents: int
-    overspent_amount_cents: int
-    spent_percent: int
+    spent_amount_cents: int | None
+    remaining_amount_cents: int | None
+    overspent_amount_cents: int | None
+    spent_percent: int | None
     is_over_budget: bool
     category_over_count: int
+    currency_symbol: str
+    missing_currency_codes: list[str]
     total_amount_yuan: str
     spent_amount_yuan: str
     remaining_amount_yuan: str
@@ -166,28 +168,14 @@ def _budget_status_for_primary_ledger(
         ),
         label="owner_console.budget_available",
     )
-    spent_amount_cents = projection_sum_to_int(
-        budget.spent_amount_cents,
-        label="owner_console.budget_spent",
+    spent_amount_cents = budget.spent_amount_cents
+    spent_percent = None if spent_amount_cents is None else (
+        round_minor_ratio_half_up(spent_amount_cents * 100, available_amount_cents,
+            label="owner_console.budget_percent") if available_amount_cents > 0 else 0
     )
-    spent_percent = (
-        round_minor_ratio_half_up(
-            spent_amount_cents * 100,
-            available_amount_cents,
-            label="owner_console.budget_percent",
-        )
-        if available_amount_cents > 0
-        else 0
-    )
-    remaining_amount_cents = projection_sum_to_int(
-        budget.remaining_amount_cents,
-        label="owner_console.budget_remaining",
-    )
-    overspent_amount_cents = projection_sum_to_int(
-        budget.overspent_amount_cents,
-        label="owner_console.budget_overspent",
-    )
-    presentation_currency = require_runtime_home_currency_code(db)
+    remaining_amount_cents = budget.remaining_amount_cents
+    overspent_amount_cents = budget.overspent_amount_cents
+    presentation_currency = budget.home_currency_code
     return BudgetStatusVM(
         ledger_id=primary_ledger.ledger_id,
         ledger_name=primary_ledger.name,
@@ -198,8 +186,10 @@ def _budget_status_for_primary_ledger(
         remaining_amount_cents=remaining_amount_cents,
         overspent_amount_cents=overspent_amount_cents,
         spent_percent=spent_percent,
-        is_over_budget=overspent_amount_cents > 0 or remaining_amount_cents < 0,
-        category_over_count=sum(1 for item in budget.category_budgets if item.overspent_amount_cents > 0),
+        currency_symbol=currency_symbol(presentation_currency),
+        missing_currency_codes=budget.missing_currency_codes,
+        is_over_budget=(overspent_amount_cents or 0) > 0 or (remaining_amount_cents or 0) < 0,
+        category_over_count=sum(1 for item in budget.category_budgets if (item.overspent_amount_cents or 0) > 0),
         total_amount_yuan=_amount_yuan(
             available_amount_cents,
             presentation_currency,

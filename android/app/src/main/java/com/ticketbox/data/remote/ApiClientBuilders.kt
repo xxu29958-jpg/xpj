@@ -1,6 +1,8 @@
 package com.ticketbox.data.remote
 
 import com.squareup.moshi.Moshi
+import com.ticketbox.data.remote.dto.addCategoryRuleWireAdapters
+import com.ticketbox.data.remote.dto.addBudgetWireAdapters
 import com.ticketbox.data.remote.dto.addExpenseCorrectionWireAdapters
 import com.ticketbox.data.remote.dto.addRecurringWireAdapters
 import com.ticketbox.data.remote.dto.RuntimeCompatibilityDto
@@ -32,7 +34,7 @@ private const val GET_IO_RETRY_DELAY_MS = 350L
 internal const val LEDGER_ID_HEADER = "X-Ticketbox-Ledger-ID"
 internal const val TICKETBOX_API_VERSION_HEADER = "Ticketbox-Api-Version"
 internal const val TICKETBOX_CURRENCY_BINDING_HEADER = "Ticketbox-Currency-Binding"
-internal const val CURRENT_TICKETBOX_API_VERSION = "2026-09-07"
+internal const val CURRENT_TICKETBOX_API_VERSION = "2026-09-09"
 internal const val UPLOAD_ORIGINAL_RECEIPT_VERSION = 1
 private val MUTATING_HTTP_METHODS = setOf("POST", "PUT", "PATCH", "DELETE")
 private val runtimeMoshi = Moshi.Builder()
@@ -159,22 +161,14 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
         // A readable forecast does not require writer permission or an activated currency binding.
         if (incomeForecastRead || compatibility == null) return chain.proceed(request)
         // Negotiated evidence identifies this request; the backend still authorizes the write.
-        // A blocked capability may have a real binding (configuration drift) or none (adoption).
+        // An unchosen installation has no binding; the server returns the Owner action.
         val negotiatedRequest = request.newBuilder()
             .header(TICKETBOX_API_VERSION_HEADER, checkNotNull(compatibility.apiVersion))
             .removeHeader(TICKETBOX_CURRENCY_BINDING_HEADER)
         compatibility.requestBinding?.let { negotiatedRequest.header(TICKETBOX_CURRENCY_BINDING_HEADER, it) }
-        val response = chain.proceed(negotiatedRequest.build())
-        if (response.code == 409 && runCatching {
-                runtimeErrorAdapter.fromJson(response.peekBody(64 * 1024).string())?.error
-            }.getOrNull() == "currency_binding_revision_conflict"
-        ) {
-            response.close()
-            // Another first money write may activate the binding after our read.
-            // The server rejected this command without applying it; keep its intent retryable.
-            throw IOException("Currency binding changed; retry with the current binding.")
-        }
-        return response
+        // Preserve semantic refusals for the existing command recovery owner.
+        // Renegotiating on an IO retry cannot establish the old amount's currency.
+        return chain.proceed(negotiatedRequest.build())
     }
 
     /** The same runtime query supplies evidence for ordinary writes, income reads and keyed uploads. */
@@ -241,6 +235,8 @@ private fun requestTargetsRefresh(chain: Interceptor.Chain): Boolean =
 
 internal fun buildApiService(normalizedBaseUrl: String, client: OkHttpClient): ApiService {
     val moshi = Moshi.Builder()
+        .addBudgetWireAdapters()
+        .addCategoryRuleWireAdapters()
         .addExpenseCorrectionWireAdapters()
         .addRecurringWireAdapters()
         .add(KotlinJsonAdapterFactory())

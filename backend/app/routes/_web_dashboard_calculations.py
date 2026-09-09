@@ -36,19 +36,21 @@ def recurring_status_counts(db: Session, ledger_id: str) -> tuple[int, int]:
 def dashboard_month_delta(
     stats: dict,
     previous_stats: dict | None,
-) -> tuple[int, int, int, str, int | None]:
-    current = projection_sum_to_int(
+) -> tuple[int | None, int | None, int | None, str, int | None]:
+    current = None if stats["total_amount_cents"] is None else projection_sum_to_int(
         stats["total_amount_cents"],
         label="web.dashboard_total",
     )
     previous = (
-        projection_sum_to_int(
+        None if previous_stats["total_amount_cents"] is None else projection_sum_to_int(
             previous_stats["total_amount_cents"],
             label="web.dashboard_previous_total",
         )
         if previous_stats
         else 0
     )
+    if current is None or previous is None:
+        return current, previous, None, "unavailable", None
     delta = projection_sum_to_int(
         current - previous,
         label="web.dashboard_delta",

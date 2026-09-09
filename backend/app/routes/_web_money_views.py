@@ -35,6 +35,20 @@ def _amount_yuan(amount_cents: int | None, currency_code: str) -> str:
     return minor_amount_value(amount_cents, currency_code)
 
 
+def projected_amount(amount: int | None, currency_code: str) -> str | None:
+    return None if amount is None else _amount_yuan(amount, currency_code)
+
+
+def projected_money_context(home: str) -> dict:
+    """Bind all aggregate labels to the query's explicit display currency."""
+    from app.services.currency_common import minor_unit_digits
+
+    return {"home_currency_code": home, "home_currency_symbol": _currency_symbol(home),
+        "home_currency_minor_digits": minor_unit_digits(home), "currency_input": _currency_input_view(home),
+        "home_amount_value": lambda amount: projected_amount(amount, home),
+        "home_amount_label": lambda amount: _minor_amount_label(amount, home) if amount is not None else "待补齐换算信息"}
+
+
 def _month_display_label(value: str | None, *, fallback: str = "所选月份") -> str:
     parsed = parse_month_label(value)
     if parsed is None:
@@ -145,19 +159,6 @@ def _expense_amount_labels(
     if date_text:
         meta += f" · {date_text}"
     return primary, meta
-
-
-def _trend14_amounts(
-    db: Session,
-    ledger_id: str,
-    *,
-    currency_code: str,
-) -> list[dict]:
-    return web_stats_service.trend14_amounts(
-        db,
-        ledger_id,
-        currency_code=currency_code,
-    )
 
 
 def _confirmed_by_day(

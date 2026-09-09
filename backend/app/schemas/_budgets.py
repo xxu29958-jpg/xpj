@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, PositiveInt, field_serializer
 
 from app.schemas._money import (
     NonNegativeMoneyAggregate,
@@ -36,6 +36,8 @@ class BudgetCategoryRequest(BaseModel):
 class BudgetMonthlyUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    home_currency_code: str = Field(min_length=3, max_length=3)
+    expected_row_version: PositiveInt | None
     total_amount_cents: NonNegativeMoneyMinor
     non_monthly_amount_cents: NonNegativeMoneyMinor = 0
     rollover_amount_cents: SignedMoneyMinor = 0
@@ -56,31 +58,33 @@ class BudgetMonthlyArchiveResponse(BaseModel):
 class BudgetCategoryResponse(BaseModel):
     category: str
     amount_cents: NonNegativeMoneyMinor
-    spent_amount_cents: SignedMoneyAggregate
-    remaining_amount_cents: SignedMoneyAggregate
-    overspent_amount_cents: NonNegativeMoneyAggregate
+    spent_amount_cents: SignedMoneyAggregate | None
+    remaining_amount_cents: SignedMoneyAggregate | None
+    overspent_amount_cents: NonNegativeMoneyAggregate | None
 
 
 class BudgetExcludedCategoryResponse(BaseModel):
     category: str
-    amount_cents: SignedMoneyAggregate
+    amount_cents: SignedMoneyAggregate | None
     count: int
 
 
 class BudgetMonthlyResponse(BaseModel):
     ledger_id: str
+    home_currency_code: str | None
     month: str
     configured: bool
     row_version: int | None = None
     total_amount_cents: NonNegativeMoneyMinor
     rollover_amount_cents: SignedMoneyMinor
-    fixed_amount_cents: NonNegativeMoneyAggregate
+    fixed_amount_cents: NonNegativeMoneyAggregate | None
     non_monthly_amount_cents: NonNegativeMoneyMinor
-    flex_budget_cents: NonNegativeMoneyAggregate
-    spent_amount_cents: SignedMoneyAggregate
-    excluded_amount_cents: SignedMoneyAggregate
-    remaining_amount_cents: SignedMoneyAggregate
-    overspent_amount_cents: NonNegativeMoneyAggregate
+    flex_budget_cents: NonNegativeMoneyAggregate | None
+    spent_amount_cents: SignedMoneyAggregate | None
+    excluded_amount_cents: SignedMoneyAggregate | None
+    remaining_amount_cents: SignedMoneyAggregate | None
+    overspent_amount_cents: NonNegativeMoneyAggregate | None
+    missing_currency_codes: list[str] = Field(default_factory=list)
     excluded_categories: list[str]
     excluded_breakdown: list[BudgetExcludedCategoryResponse]
     category_budgets: list[BudgetCategoryResponse]

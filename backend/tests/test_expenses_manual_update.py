@@ -14,7 +14,7 @@ def test_manual_expense_create_contract(client: TestClient, *, identity) -> None
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": 1280,
+            "home_currency_code": "CNY", "amount_cents": 1280,
             "merchant": "手动早餐",
             "category": "餐饮",
             "note": "上班路上",
@@ -44,7 +44,7 @@ def test_manual_expense_create_contract(client: TestClient, *, identity) -> None
     missing_amount = client.post(
         "/api/expenses/manual",
         headers=identity.app_headers,
-        json={"merchant": "无金额"},
+        json={"home_currency_code": "CNY", "merchant": "无金额"},
     )
     assert missing_amount.status_code == 400
     assert missing_amount.json()["error"] == "amount_required"
@@ -56,7 +56,7 @@ def test_confirmed_batch_update_scopes_and_updates_tags(client: TestClient, *, i
             "/api/expenses/manual",
             headers=headers,
             json={
-                "amount_cents": 1200,
+                "home_currency_code": "CNY", "amount_cents": 1200,
                 "merchant": merchant,
                 "category": category,
                 "expense_time": "2026-05-05T12:00:00Z",
@@ -128,7 +128,7 @@ def test_confirmed_batch_update_stale_token_returns_409_without_partial_update(c
             "/api/expenses/manual",
             headers=identity.app_headers,
             json={
-                "amount_cents": 1200,
+                "home_currency_code": "CNY", "amount_cents": 1200,
                 "merchant": merchant,
                 "category": category,
                 "expense_time": "2026-05-05T12:00:00Z",

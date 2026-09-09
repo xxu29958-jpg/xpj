@@ -1,0 +1,40 @@
+<resources>
+    <string name="advice_inputs_title">本月建议依据</string>
+    <string name="advice_inputs_load_failed">暂时无法读取建议依据，请重试。</string>
+    <string name="advice_rates_load_failed">暂时无法读取人工汇率，请重试。</string>
+    <string name="advice_inputs_refresh">重读本月依据</string>
+    <string name="advice_inputs_income">预计收入</string>
+    <string name="advice_inputs_fixed">固定支出</string>
+    <string name="advice_inputs_spent">已确认支出</string>
+    <string name="advice_inputs_available">可支配金额</string>
+    <string name="advice_inputs_unknown">暂不可计算</string>
+    <string name="advice_missing_rates">补齐换算依据后，再生成建议</string>
+    <string name="advice_missing_fact">原记录的币种或日期尚未确认，请先核对原记录。</string>
+    <string name="advice_rate_pair_date">%1$s → %2$s · %3$s</string>
+    <string name="advice_rate_add">补充汇率</string>
+    <string name="advice_rate_edit">纠正汇率</string>
+    <string name="advice_rates_title">人工汇率</string>
+    <string name="advice_rates_empty">尚无人工汇率。缺少换算依据时，可从上方补充。</string>
+    <string name="advice_rate_value">1 %1$s 可兑换多少 %2$s</string>
+    <string name="advice_rate_current">当前汇率：%1$s · 版本 %2$d</string>
+    <string name="advice_rate_new">尚未记录这一天的汇率。</string>
+    <string name="advice_rate_review">下方保留原输入。请核对当前汇率，停止原提交后，明确提交新的更正。</string>
+    <string name="advice_rate_submit">保存汇率</string>
+    <string name="advice_rate_saved_locally">原汇率提交已保存在本机，等待服务器确认。</string>
+    <string name="advice_rate_save_failed">暂时无法保存汇率，原输入已保留。</string>
+    <string name="advice_rate_submissions">汇率原提交</string>
+    <string name="advice_rate_submission_open">查看原月份与汇率提交</string>
+    <string name="advice_rate_submission_pending">等待确认，原币对、日期与数值已保留。</string>
+    <string name="advice_rate_submission_done">服务器已接受这次原提交。下方人工汇率显示当前值。</string>
+    <string name="advice_rate_submission_review">这次原提交尚需核对，不能据此确认当前汇率。</string>
+    <string name="advice_rate_submission_missing">找不到这条原提交，请核对当前账本及同步记录。</string>
+    <string name="advice_rate_original_value">原提交：1 %1$s = %2$s %3$s</string>
+    <string name="advice_rate_original_details">幂等键：%1$s · 原版本：%2$d</string>
+    <string name="advice_rate_original_month">原月份：%1$s</string>
+    <string name="advice_rate_review_current">核对当前汇率</string>
+    <string name="advice_rate_retry">重试原提交</string>
+    <string name="advice_rate_stop">停止本机重试</string>
+    <string name="advice_rate_stop_body">只停止这条原提交在本机的重试；服务器可能已经接受它。当前汇率不会因此撤销。</string>
+    <string name="advice_rate_unresolved">这个币对和日期还有原提交待处理，请先核对并停止旧提交。</string>
+    <string name="advice_rate_changed">原提交或当前汇率已变化，请重新读取后核对。</string>
+</resources>

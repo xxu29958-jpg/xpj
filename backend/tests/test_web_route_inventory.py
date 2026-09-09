@@ -90,6 +90,7 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("GET", "/web/library"): "local-only-rendering",
     ("GET", "/web/currency-adoption"): "desktop-installation-owner",
     ("POST", "/web/currency-adoption"): "desktop-installation-owner",
+    ("POST", "/web/currency-adoption/change"): "desktop-installation-owner",
     # Account flows
     ("GET", "/web/confirmed"): "local-only-rendering",
     ("POST", "/web/confirmed/batch-update"): "writer-only",
@@ -101,6 +102,8 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     # v1.1 AI budget advisor + income plan (PR-9)
     ("GET", "/web/budget-advise"): "local-only-rendering",
     ("POST", "/web/budget-advise"): "owner-live-provider",
+    ("GET", "/web/budget-advise/rates"): "local-only-rendering",
+    ("POST", "/web/budget-advise/rates"): "writer-only",
     ("GET", "/web/income-plans"): "local-only-rendering",
     ("GET", "/web/income-plans/{public_id}/edit"): "writer-only",
     ("POST", "/web/income-plans/{public_id}/edit"): "writer-only",
@@ -244,6 +247,8 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     # Rules
     ("GET", "/web/rules"): "local-only-rendering",
     ("POST", "/web/rules/create"): "writer-only",
+    ("GET", "/web/rules/{rule_id}/edit"): "writer-only",
+    ("POST", "/web/rules/{rule_id}/edit"): "writer-only",
     ("POST", "/web/rules/applications/{public_id}/rollback"): "writer-only",
     ("POST", "/web/rules/{rule_id}/toggle"): "writer-only",
     ("POST", "/web/rules/{rule_id}/delete"): "writer-only",

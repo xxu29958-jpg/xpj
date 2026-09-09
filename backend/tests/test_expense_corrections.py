@@ -9,6 +9,7 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import LedgerMember
+from tests._runtime_protocol import current_protocol_headers
 from tests.api_contract_helpers import confirm_expense_api, patch_expense, upload_png
 from tests.expense_correction_support import idem as _idem
 from tests.expense_correction_support import manual_confirmed as _manual_confirmed
@@ -115,7 +116,7 @@ def test_correction_can_explicitly_clear_time_and_scores(client: TestClient, *, 
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": 1280,
+            "home_currency_code": "CNY", "amount_cents": 1280,
             "merchant": "带评分的账单",
             "category": "餐饮",
             "expense_time": "2026-05-04T00:30:00Z",
@@ -206,10 +207,10 @@ def test_correction_idempotent_replay_writes_exactly_one_revision(client: TestCl
     assert accepted.status_code == 200, accepted.text
     cross_actor_replay = client.post(
         f"/api/expenses/{expense['id']}/corrections",
-        headers={
+        headers=current_protocol_headers({
             "Authorization": f"Bearer {accepted.json()['session_token']}",
             "Idempotency-Key": key,
-        },
+        }),
         json=payload,
     )
     assert cross_actor_replay.status_code == 422, cross_actor_replay.text

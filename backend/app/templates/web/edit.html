@@ -123,7 +123,7 @@
     {# ADR-0035: items_sum_status banner — mismatch_known 时提示用户确认或修正 #}
     {% if receipt_items.status == 'mismatch_known' %}
     <div class="product-feedback product-feedback--warning" role="status">
-      明细合计与账单金额差 {{ home_currency_symbol }}{{ receipt_items.mismatch_yuan }}。检查明细，或如果原小票本身如此，点下面“原小票如此”确认。
+      明细合计与账单金额差 {{ currency_input.currency_symbol }}{{ receipt_items.mismatch_yuan }}。检查明细，或如果原小票本身如此，点下面“原小票如此”确认。
     </div>
     <form method="post" action="/web/expenses/{{ e.id }}/items/acknowledge-mismatch" class="product-inline-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -134,7 +134,7 @@
     </form>
     {% elif receipt_items.status == 'mismatch_acknowledged' %}
     <div class="product-feedback" role="status">
-      已确认原小票合计与明细存在 {{ home_currency_symbol }}{{ receipt_items.mismatch_yuan }} 差异；后续编辑不再弹警告。
+      已确认原小票合计与明细存在 {{ currency_input.currency_symbol }}{{ receipt_items.mismatch_yuan }} 差异；后续编辑不再弹警告。
     </div>
     {% endif %}
 
@@ -205,9 +205,9 @@
     {% endif %}
     {% if split_rows.total_yuan %}
     <div class="expense-reconcile">
-      账单 {{ home_currency_symbol }}{{ split_rows.parent_amount_yuan }} · 已拆 {{ home_currency_symbol }}{{ split_rows.total_yuan }}
-      {% if split_rows.reconcile_state == 'partial' %}· 还差 {{ home_currency_symbol }}{{ split_rows.reconcile_delta_yuan }} 未分配{% endif %}
-      {% if split_rows.reconcile_state == 'overallocated' %}<span class="error-text">· 已拆超出 {{ home_currency_symbol }}{{ split_rows.reconcile_delta_yuan }}</span>{% endif %}
+      账单 {{ currency_input.currency_symbol }}{{ split_rows.parent_amount_yuan }} · 已拆 {{ currency_input.currency_symbol }}{{ split_rows.total_yuan }}
+      {% if split_rows.reconcile_state == 'partial' %}· 还差 {{ currency_input.currency_symbol }}{{ split_rows.reconcile_delta_yuan }} 未分配{% endif %}
+      {% if split_rows.reconcile_state == 'overallocated' %}<span class="error-text">· 已拆超出 {{ currency_input.currency_symbol }}{{ split_rows.reconcile_delta_yuan }}</span>{% endif %}
     </div>
     {% endif %}
     <form method="post" action="/web/expenses/{{ e.id }}/splits/save">

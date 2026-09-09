@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 
-from app.fx_constants import DEFAULT_HOME_CURRENCY_CODE, DEFAULT_SUPPORTED_CURRENCY_CODES
+from app.fx_constants import DEFAULT_SUPPORTED_CURRENCY_CODES
 from app.recognition_config import resolve_recognition_config
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -155,7 +155,6 @@ class Settings:
     learning_cleanup_auto_enabled: bool
     learning_cleanup_daily_at: str
     learning_cleanup_timezone: str
-    fx_home_currency_code: str
     fx_supported_currency_codes: str
     fx_rate_auto_sync_enabled: bool
     fx_rate_sync_times: str
@@ -433,8 +432,6 @@ def get_settings() -> Settings:
         learning_cleanup_auto_enabled=_bool_env("LEARNING_CLEANUP_AUTO_ENABLED", False),
         learning_cleanup_daily_at=os.getenv("LEARNING_CLEANUP_DAILY_AT", "03:30").strip() or "03:30",
         learning_cleanup_timezone=os.getenv("LEARNING_CLEANUP_TIMEZONE", "Asia/Shanghai").strip() or "Asia/Shanghai",
-        fx_home_currency_code=os.getenv("FX_HOME_CURRENCY_CODE", DEFAULT_HOME_CURRENCY_CODE).strip().upper()
-        or DEFAULT_HOME_CURRENCY_CODE,
         fx_supported_currency_codes=os.getenv(
             "FX_SUPPORTED_CURRENCY_CODES",
             ",".join(sorted(DEFAULT_SUPPORTED_CURRENCY_CODES)),

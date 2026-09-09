@@ -3,9 +3,12 @@ from __future__ import annotations
 import csv
 from decimal import Decimal
 from io import StringIO
+from uuid import uuid4
 
 from api_contract_helpers import confirm_expense_api
 from fastapi.testclient import TestClient
+
+from tests._runtime_protocol import negotiated_headers
 
 
 def _set_manual_rate(
@@ -14,11 +17,14 @@ def _set_manual_rate(
     currency_code: str,
     rate_date: str,
     rate_to_cny: str,
-) -> None:
+    expected_row_version: int = 0,
+) -> dict:
     response = client.put(
         f"/api/exchange-rates/{currency_code}/{rate_date}",
-        headers=identity.app_headers,
+        headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
         json={
+            "expected_row_version": expected_row_version,
+            "home_currency_code": "CNY",
             "currency_code": currency_code,
             "rate_date": rate_date,
             "rate_to_cny": rate_to_cny,
@@ -26,6 +32,7 @@ def _set_manual_rate(
         },
     )
     assert response.status_code == 200, response.json()
+    return response.json()
 
 
 def _create_foreign_manual_expense(
@@ -108,8 +115,8 @@ def _assert_home_amount_report(client: TestClient, *, identity) -> None:
 def _assert_home_amount_budget(client: TestClient, *, identity) -> None:
     budget = client.put(
         "/api/budgets/monthly/2026-05?timezone=UTC",
-        headers=identity.app_headers,
-        json={
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "expected_row_version": None,
             "total_amount_cents": 100000,
             "category_budgets": [{"category": "餐饮", "amount_cents": 90000}],
         },
@@ -201,7 +208,7 @@ def test_missing_foreign_rate_stays_pending_without_fake_home_amount(
 def test_resolved_foreign_snapshot_does_not_drift_after_rate_update(
     client: TestClient, *, identity,
 ) -> None:
-    _set_manual_rate(client, currency_code="USD", rate_date="2026-05-04", rate_to_cny="7", identity=identity)
+    original_rate = _set_manual_rate(client, currency_code="USD", rate_date="2026-05-04", rate_to_cny="7", identity=identity)
     first = _create_foreign_manual_expense(
         client,
         original_amount_minor=10000,
@@ -211,7 +218,8 @@ def test_resolved_foreign_snapshot_does_not_drift_after_rate_update(
     assert first["amount_cents"] == 70000
     assert Decimal(first["exchange_rate_to_cny"]) == Decimal("7.00000000")
 
-    _set_manual_rate(client, currency_code="USD", rate_date="2026-05-04", rate_to_cny="8", identity=identity)
+    _set_manual_rate(client, currency_code="USD", rate_date="2026-05-04", rate_to_cny="8", identity=identity,
+        expected_row_version=original_rate["row_version"])
 
     frozen = client.get(f"/api/expenses/{first['id']}", headers=identity.app_headers)
     assert frozen.status_code == 200, frozen.json()

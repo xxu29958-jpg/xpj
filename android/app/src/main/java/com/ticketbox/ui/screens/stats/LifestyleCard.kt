@@ -38,7 +38,7 @@ import com.ticketbox.ui.design.tabularNum
 @Composable
 internal fun LifestyleCard(lifestyle: LifestyleStats) {
     val visuals = LocalThemeVisuals.current
-    val currencyDisplay = LocalCurrencyDisplay.current
+    val currencyDisplay = CurrencyDisplay.forRecord(lifestyle.homeCurrencyCode)
     val hasSignals = hasLifestyleSignals(lifestyle)
     val hasMerchants = lifestyle.frequentMerchants.isNotEmpty()
     val hasValueRegret = lifestyle.bestValueExpenses.isNotEmpty() || lifestyle.mostRegrettedExpenses.isNotEmpty()
@@ -53,10 +53,15 @@ internal fun LifestyleCard(lifestyle: LifestyleStats) {
                 HorizontalDivider(color = visuals.chipUnselected.copy(alpha = AppAlpha.heavy))
             }
             if (hasMerchants) {
-                FrequentMerchantsSection(lifestyle.frequentMerchants)
+                androidx.compose.runtime.CompositionLocalProvider(LocalCurrencyDisplay provides currencyDisplay) {
+                    FrequentMerchantsSection(lifestyle.frequentMerchants, lifestyle.missingRates.isEmpty())
+                }
             }
             if (hasMerchants && hasValueRegret) {
                 HorizontalDivider(color = visuals.chipUnselected.copy(alpha = AppAlpha.heavy))
+            }
+            if (hasValueRegret && lifestyle.missingRates.isNotEmpty()) {
+                Text(stringResource(R.string.stats_score_tie_fx_unavailable), style = MaterialTheme.typography.bodySmall)
             }
             if (hasValueRegret) {
                 ValueRegretSections(
@@ -75,12 +80,12 @@ private fun LifestyleHeader(
 ) {
     val merchantFallback = stringResource(R.string.stats_lifestyle_merchant_fallback)
     val maxExpense = lifestyle.maxExpense
-    val frequentMerchant = frequentMerchantDisplayRows(lifestyle.frequentMerchants).firstOrNull()
+    val frequentMerchant = frequentMerchantDisplayRows(lifestyle.frequentMerchants, compareAmounts = lifestyle.missingRates.isEmpty()).firstOrNull()
     val merchantCount = lifestyle.frequentMerchants.size
     val caption = when {
         maxExpense != null -> stringResource(
             R.string.stats_lifestyle_header_largest,
-            formatDisplayAmount(maxExpense.amountCents, currencyDisplay),
+            formatDisplayAmount(maxExpense.amountCents, lifestyleRecordCurrency(maxExpense)),
             maxExpense.merchant?.takeIf { it.isNotBlank() } ?: merchantFallback,
         )
         frequentMerchant != null && frequentMerchant.count <= 1 && merchantCount > 1 -> stringResource(
@@ -118,22 +123,22 @@ private fun LifestyleSignalSection(
 ) {
     val merchantFallback = stringResource(R.string.stats_lifestyle_merchant_fallback)
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        if (lifestyle.aiSubscriptionAmountCents > 0L) {
+        if (lifestyle.aiSubscriptionAmountCents != 0L) {
             LifestyleMetricRow(
                 label = stringResource(R.string.stats_lifestyle_ai_subscription),
-                value = formatDisplayAmount(lifestyle.aiSubscriptionAmountCents, currencyDisplay),
+                value = projectionAmountText(lifestyle.aiSubscriptionAmountCents, currencyDisplay),
             )
         }
-        if (lifestyle.digitalAmountCents > 0L) {
+        if (lifestyle.digitalAmountCents != 0L) {
             LifestyleMetricRow(
                 label = stringResource(R.string.stats_lifestyle_digital),
-                value = formatDisplayAmount(lifestyle.digitalAmountCents, currencyDisplay),
+                value = projectionAmountText(lifestyle.digitalAmountCents, currencyDisplay),
             )
         }
         lifestyle.maxExpense?.let { maxExpense ->
             LifestyleMetricRow(
                 label = stringResource(R.string.stats_lifestyle_max_expense),
-                value = formatDisplayAmount(maxExpense.amountCents, currencyDisplay),
+                value = formatDisplayAmount(maxExpense.amountCents, lifestyleRecordCurrency(maxExpense)),
                 caption = maxExpense.merchant?.takeIf { it.isNotBlank() } ?: merchantFallback,
             )
         }
@@ -189,13 +194,13 @@ private fun LifestyleMetricRow(
 }
 
 @Composable
-private fun FrequentMerchantsSection(merchants: List<FrequentMerchant>) {
+private fun FrequentMerchantsSection(merchants: List<FrequentMerchant>, compareAmounts: Boolean) {
     val visuals = LocalThemeVisuals.current
-    val visibleMerchants = frequentMerchantDisplayRows(merchants)
-    val useAmount = visibleMerchants.any { it.amountCents > 0L }
+    val visibleMerchants = frequentMerchantDisplayRows(merchants, compareAmounts = compareAmounts)
+    val useAmount = compareAmounts && visibleMerchants.isNotEmpty() && visibleMerchants.all { it.amountCents != null } && visibleMerchants.any { requireNotNull(it.amountCents) > 0L }
     val values = visibleMerchants.map {
         if (useAmount) {
-            it.amountCents.coerceAtLeast(0L)
+            requireNotNull(it.amountCents).coerceAtLeast(0L)
         } else {
             it.count.coerceAtLeast(0).toLong()
         }
@@ -209,6 +214,7 @@ private fun FrequentMerchantsSection(merchants: List<FrequentMerchant>) {
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        if (!useAmount) Text(stringResource(R.string.stats_merchants_by_count), style = MaterialTheme.typography.bodySmall)
         visibleMerchants.forEachIndexed { index, merchant ->
             if (index > 0) {
                 HorizontalDivider(color = visuals.chipUnselected.copy(alpha = AppAlpha.soft))
@@ -233,7 +239,7 @@ private fun FrequentMerchantRow(
     useAmount: Boolean,
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
-    val value = if (useAmount) merchant.amountCents.coerceAtLeast(0L) else merchant.count.coerceAtLeast(0).toLong()
+    val value = if (useAmount) requireNotNull(merchant.amountCents).coerceAtLeast(0L) else merchant.count.coerceAtLeast(0).toLong()
     val progress = (value.toFloat() / maxValue.toFloat()).coerceIn(0f, 1f)
     val merchantFallback = stringResource(R.string.stats_lifestyle_merchant_fallback)
     val countText = stringResource(R.string.stats_frequent_merchants_count, merchant.count)
@@ -356,7 +362,7 @@ private fun ValueRegretRow(
     expense: Expense,
     scoreText: String?,
 ) {
-    val currencyDisplay = LocalCurrencyDisplay.current
+    val currencyDisplay = lifestyleRecordCurrency(expense)
     val merchantFallback = stringResource(R.string.stats_lifestyle_merchant_fallback)
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -403,20 +409,21 @@ private fun ValueRegretRow(
 }
 
 private fun hasLifestyleSignals(lifestyle: LifestyleStats): Boolean =
-    lifestyle.aiSubscriptionAmountCents > 0L ||
-        lifestyle.digitalAmountCents > 0L ||
+    lifestyle.aiSubscriptionAmountCents != 0L ||
+        lifestyle.digitalAmountCents != 0L ||
         lifestyle.maxExpense != null
 
 internal fun frequentMerchantDisplayRows(
     merchants: List<FrequentMerchant>,
     limit: Int = FrequentMerchantVisibleLimit,
+    compareAmounts: Boolean = true,
 ): List<FrequentMerchant> {
-    val useAmount = merchants.any { it.amountCents > 0L }
+    val useAmount = compareAmounts && merchants.isNotEmpty() && merchants.all { it.amountCents != null } && merchants.any { requireNotNull(it.amountCents) > 0L }
     return merchants
         .sortedWith(
             if (useAmount) {
                 compareByDescending<FrequentMerchant> {
-                    it.amountCents.coerceAtLeast(0L)
+                    requireNotNull(it.amountCents).coerceAtLeast(0L)
                 }.thenByDescending {
                     it.count.coerceAtLeast(0)
                 }.thenBy {

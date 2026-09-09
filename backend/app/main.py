@@ -101,6 +101,7 @@ from app.routes import (
     web_recycle_bin,
     web_repayment_drafts,
     web_reports,
+    web_rule_edit,
     web_search,
     web_tags,
 )
@@ -321,8 +322,7 @@ app.openapi = _custom_openapi
 add_exception_handlers(app)
 app.add_middleware(SanitizedLoggingMiddleware)
 # Starlette executes the most recently registered HTTP middleware first.
-# Keep response hardening outermost, then Access, then our web session gate,
-# then CSRF for the route body itself.
+# Order: response hardening outermost, Access, web session, then CSRF at the body.
 app.middleware("http")(csrf_loopback_form_guard)
 app.middleware("http")(web_session_gate)
 app.middleware("http")(static_owner_guard)
@@ -367,8 +367,7 @@ app.include_router(merchants.router)
 app.include_router(admin_routes.router)
 app.include_router(owner_console.router)
 app.include_router(owner_ledgers.router)
-# web_auth must come before web_app so its /web/auth/* routes win over any
-# generic /web matcher (FastAPI registers first-mounted-first-matched).
+# Mount web_auth before generic /web matchers: FastAPI uses first-mounted-first-matched.
 app.include_router(web_auth.router)
 app.include_router(web_invitation_join.router)
 app.include_router(web_currency_adoption.router)
@@ -388,6 +387,7 @@ app.include_router(web_media.router)
 app.include_router(web_pending.router)
 app.include_router(web_inbox_capture.router)
 app.include_router(web_rules_routes.router)
+app.include_router(web_rule_edit.router)
 app.include_router(web_budgets.router)
 app.include_router(web_budget_advise.router)
 app.include_router(web_income_plans.router)

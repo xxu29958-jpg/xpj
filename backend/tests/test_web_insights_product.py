@@ -68,17 +68,20 @@ def test_reports_segments_preserve_merchant_category(web_client: TestClient) -> 
     """w3-reports-journey 反例: 带 merchant_category 进入后切换粒度/口径不得丢筛选。"""
     resp = web_client.get("/web/reports?ledger_id=owner&month=2026-05&merchant_category=餐饮")
     assert resp.status_code == 200
-    seg_links = re.findall(
-        r'href="(/web/reports\?[^"]*granularity=[^"]*)"', resp.text
-    )
-    assert seg_links, "分段控件链接缺失"
+    controls = re.findall(r'<div class="product-segments">(.*?)</div>', resp.text, re.DOTALL)
+    seg_links = [link for control in controls for link in re.findall(r'href="([^"]+)"', control)]
+    assert len(seg_links) == 5, "三个粒度与两个排行口径控件必须可达"
+    choices = set()
     for link in seg_links:
         query = parse_qs(urlsplit(unescape(link)).query)
         assert query["merchant_category"] == ["餐饮"]
         assert query["ledger_id"] == ["owner"]
         assert query["month"] == ["2026-05"]
+        assert query["home_currency_code"] == ["CNY"]
+        choices.add((query["granularity"][0], query["ranking_metric"][0]))
+    assert choices == {("day", "amount"), ("week", "amount"), ("month", "amount"), ("day", "count")}
 
-    followed = web_client.get(unescape(seg_links[0]))
+    followed = web_client.get(unescape(seg_links[-1]))
     assert followed.status_code == 200
     report_data = re.search(
         r'<script type="application/json" id="reports-overview-data">(.*?)</script>',
@@ -89,6 +92,7 @@ def test_reports_segments_preserve_merchant_category(web_client: TestClient) -> 
     report = json.loads(report_data.group(1))
     assert report["merchant_category"] == "餐饮"
     assert report["month"] == "2026-05"
+    assert report["granularity"] == "day" and report["ranking_metric"] == "count"
 
 
 def _form_block(body: str, action: str) -> str:

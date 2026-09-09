@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from uuid import uuid4
 
 from api_contract_helpers import web_save_expense
 from fastapi.testclient import TestClient
@@ -115,8 +116,8 @@ def _seed_budget_with_categories(
     month = current_month("Asia/Shanghai")
     resp = client.put(
         f"/api/budgets/monthly/{month}?timezone=Asia/Shanghai",
-        headers=identity.app_headers,
-        json={
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "expected_row_version": None,
             "total_amount_cents": 100000,
             "category_budgets": [
                 {"category": "餐饮", "amount_cents": dining_limit_cents},
@@ -136,12 +137,12 @@ def _seed_goal(
     category: str | None = None,
 ) -> None:
     month = current_month("Asia/Shanghai")
-    body = {"name": name, "month": month, "target_amount_cents": target_amount_cents}
+    body = {"home_currency_code": "CNY", "name": name, "month": month, "target_amount_cents": target_amount_cents}
     if category is not None:
         body["category"] = category
     resp = client.post(
         "/api/goals?timezone=Asia/Shanghai",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json=body,
     )
     assert resp.status_code == 201, resp.text
@@ -154,7 +155,7 @@ def _seed_confirmed_expense(
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": amount_cents,
+            "home_currency_code": "CNY", "amount_cents": amount_cents,
             "merchant": merchant,
             "category": category,
             "expense_time": _current_month_expense_time(),
@@ -181,7 +182,7 @@ def test_overview_payload_includes_budget_and_goals_top(
     )
 
     with SessionLocal() as db:
-        payload = web_common._dashboard_data_payload(db, "owner", include_trend=False)
+        payload = web_common._dashboard_data_payload(db, "owner")
     cards = payload["cards"]
 
     budget_top = cards["budget_top"]
@@ -239,7 +240,7 @@ def test_overview_budget_overspent_row_marks_over_state(
     )
 
     with SessionLocal() as db:
-        payload = web_common._dashboard_data_payload(db, "owner", include_trend=False)
+        payload = web_common._dashboard_data_payload(db, "owner")
     by_name = {row["name"]: row for row in payload["cards"]["budget_top"]}
     over = by_name["餐饮"]
     assert over["is_over"] is True

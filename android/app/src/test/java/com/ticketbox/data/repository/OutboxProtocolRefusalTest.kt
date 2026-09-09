@@ -35,8 +35,8 @@ class OutboxProtocolRefusalTest(private val refusal: String) {
         val clock = Clock.fixed(Instant.parse("2026-09-30T23:55:00Z"), ZoneOffset.UTC)
         val dao = FakePendingMutationDao()
         val outbox = testOutboxRepository(dao, clock)
-        val adapter = Moshi.Builder().add(KotlinJsonAdapterFactory()).build().adapter(IncomePlanEditPayload::class.java)
-        val payload = IncomePlanEditPayload(1, "plan-1", "工资", 10000, "CNY", "session", "binding",
+        val adapter = Moshi.Builder().add(KotlinJsonAdapterFactory()).build().adapter(IncomePlanSubmissionPayload::class.java)
+        val payload = IncomePlanSubmissionPayload(1, "plan-1", "工资", 10000, "CNY", "session", "binding",
             IncomePlanUpdateRequestDto("2026-09", 0, amountCents = 12000))
         val id = outbox.enqueue(PendingMutationType.UpdateIncomePlan, "income_plan:plan-1", adapter.toJson(payload), 7, "original-key")
         val original = dao.rows.getValue(id)
@@ -44,7 +44,7 @@ class OutboxProtocolRefusalTest(private val refusal: String) {
         val client = buildApiHttpClient(null, { "synthetic-session" }, { "owner" }, null, null)
             .newBuilder().addInterceptor(transport::respond).build()
         val api = buildApiService("https://example.test/", client)
-        val engine = OutboxDrainEngine(outbox, listOf(UpdateIncomePlanDispatcher({ api }, adapter)), now = clock::millis)
+        val engine = OutboxDrainEngine(outbox, listOf(IncomePlanDispatcher(PendingMutationType.UpdateIncomePlan, { api }, adapter, com.ticketbox.OutboxAdapterGraph().incomePlanReceiptAdapter)), now = clock::millis)
         var committedNotifications = 0
         engine.onAdviceInputReplaySucceeded = { committedNotifications++ }
 
@@ -61,6 +61,7 @@ class OutboxProtocolRefusalTest(private val refusal: String) {
         when (refusal) {
             "currency_adoption_required" -> assertEquals(ADOPTION_GUIDANCE, retained.lastError)
             "currency_binding_configuration_drift" -> assertEquals(DRIFT_GUIDANCE, retained.lastError)
+            "currency_binding_revision_conflict" -> assertTrue(retained.lastError.orEmpty().isNotBlank())
             "future_write_refusal" -> Unit
             else -> assertEquals(refusal, retained.lastError)
         }
@@ -96,7 +97,7 @@ class OutboxProtocolRefusalTest(private val refusal: String) {
         @JvmStatic
         @Parameterized.Parameters(name = "{0}")
         fun refusals() = listOf("runtime_version_mismatch", "client_upgrade_required", "future_write_refusal",
-            "currency_adoption_required", "currency_binding_configuration_drift")
+            "currency_adoption_required", "currency_binding_configuration_drift", "currency_binding_revision_conflict")
     }
 }
 
@@ -116,7 +117,7 @@ private class RefusalTransport(private val refusal: String) {
         }
         val body = when {
             read -> compatibilityBody()
-            accept -> """{"public_id":"plan-1","label":"工资","source_type":"salary","frequency":"monthly","amount_cents":12000,"pay_day":15,"status":"active","created_at":"2026-09-01T00:00:00Z","updated_at":"2026-09-30T23:55:00Z","row_version":8}"""
+            accept -> """{"public_id":"plan-1","home_currency_code":"CNY","label":"工资","source_type":"salary","frequency":"monthly","amount_cents":12000,"pay_day":15,"status":"active","created_at":"2026-09-01T00:00:00Z","updated_at":"2026-09-30T23:55:00Z","row_version":8}"""
             else -> refusalBody(request)
         }
         return Response.Builder().request(request).protocol(Protocol.HTTP_1_1)

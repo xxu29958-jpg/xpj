@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from datetime import timedelta
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -21,7 +22,8 @@ from app.models import (
     RecurringItem,
 )
 from app.schemas import BudgetCategoryRequest, BudgetMonthlyUpdateRequest
-from app.services.budget_service import archive_monthly_budget, upsert_monthly_budget
+from app.services.budget_command_service import save_monthly_budget
+from app.services.budget_service import archive_monthly_budget
 from app.services.category_preference_service import (
     delete_category_preference,
     ensure_category_preference_for_name,
@@ -46,7 +48,7 @@ def _seed_archived_income(
     with SessionLocal() as db:
         plan = create_income_plan(
             db,
-            tenant_id=tenant_id,
+            home_currency_code="CNY", tenant_id=tenant_id,
             label=label,
             source_type="salary",
             amount_cents=amount_cents,
@@ -65,15 +67,13 @@ def _seed_archived_income(
 
 def _seed_archived_budget() -> tuple[str, int]:
     with SessionLocal() as db:
-        budget = upsert_monthly_budget(
-            db,
-            tenant_id="owner",
-            month="2026-07",
+        budget = save_monthly_budget(
+            db, tenant_id="owner", month="2026-07",
+            actor_account_id=None, idempotency_key=str(uuid4()),
             payload=BudgetMonthlyUpdateRequest(
+                home_currency_code="CNY", expected_row_version=None,
                 total_amount_cents=66000,
-                category_budgets=[
-                    BudgetCategoryRequest(category="交通", amount_cents=12000)
-                ],
+                category_budgets=[BudgetCategoryRequest(category="交通", amount_cents=12000)],
             ),
         )
         archived = archive_monthly_budget(
@@ -92,12 +92,12 @@ def _seed_archived_jpy_money_facts() -> str:
         activate_test_currency_authority(db, "JPY")
         timestamp = now_utc()
         income = MonthlyIncomePlan(
-            tenant_id="owner", label="JPY收入",
+            home_currency_code="JPY", tenant_id="owner", label="JPY收入",
             frequency="one_time", income_month="2026-06",
             amount_cents=5000,
             pay_day=28, status="archived", archived_at=timestamp,
         )
-        budget = Budget(
+        budget = Budget(home_currency_code="JPY",
             tenant_id="owner", month="2026-07", total_amount_cents=66000, archived_at=timestamp
         )
         db.add_all([income, budget])
@@ -377,7 +377,7 @@ def _seed_archived_goal_for_label() -> None:
             period="monthly",
             month="2026-06",
             category="餐饮",
-            target_amount_cents=10000,
+            target_amount_cents=10000, home_currency_code="CNY",
             status="active",
             created_at=now,
             updated_at=now,
@@ -397,6 +397,7 @@ def _seed_archived_recurring_for_label() -> None:
     with SessionLocal() as db:
         now = now_utc()
         item = RecurringItem(
+            home_currency_code="CNY",
             tenant_id="owner",
             merchant_key="recycle-currency-recurring",
             merchant_name="回收站固定支出",
@@ -423,8 +424,7 @@ def test_recycle_bin_amount_labels_follow_jpy_home_zero_fraction(
     *,
     identity,
 ) -> None:
-    """C5b-3: JPY home → 回收站金额按零小数渲染（¥5,000 而非 ¥50.00），
-    收入/预算混合行同一规则（行无币种列，金额即 home 币种 minor units）。"""
+    """Captured JPY money uses zero-fraction labels across the recycle bin."""
     monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
     get_settings.cache_clear()
     try:

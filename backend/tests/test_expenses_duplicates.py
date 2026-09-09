@@ -113,7 +113,7 @@ def test_duplicate_and_category_rule_contract(client: TestClient, *, identity) -
 
     response = client.post(
         "/api/rules/categories",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "keyword": "测试商家",
             "category": "生活",
@@ -185,7 +185,7 @@ def test_editing_duplicate_original_revalidates_stale_references(client: TestCli
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": 5200,
+            "home_currency_code": "CNY", "amount_cents": 5200,
             "merchant": "Same Store",
             "category": "生活",
             "expense_time": "2026-05-03T04:20:00Z",
@@ -197,7 +197,7 @@ def test_editing_duplicate_original_revalidates_stale_references(client: TestCli
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": 5200,
+            "home_currency_code": "CNY", "amount_cents": 5200,
             "merchant": "Same Store",
             "category": "生活",
             "expense_time": "2026-05-03T05:20:00Z",

@@ -195,6 +195,7 @@ def confirmed_amount_query(
         stream.c.stream_date,
         stream.c.category,
         stream.c.stream_amount_cents.label("amount_cents"),
+        stream.c.home_currency_code,
     )
 
 
@@ -242,6 +243,7 @@ def _confirmed_root_stream_query(
         Expense.category.label("category"),
         Expense.merchant.label("merchant"),
         Expense.source.label("source"),
+        Expense.home_currency_code.label("home_currency_code"),
         case((active_reversal, 0), else_=Expense.amount_cents).label(
             "stream_amount_cents"
         ),
@@ -276,6 +278,7 @@ def _confirmed_offset_stream_query(
             ExpenseOffsetFact.category.label("category"),
             Expense.merchant.label("merchant"),
             cast(literal(None), String(64)).label("source"),
+            ExpenseOffsetFact.home_currency_code.label("home_currency_code"),
             case(
                 (ExpenseOffsetFact.kind == "reversal", 0),
                 else_=-ExpenseOffsetFact.amount_cents,
@@ -334,15 +337,15 @@ def confirmed_stream_query(
     return union_all(roots, offsets).subquery("confirmed_stream")
 
 
-def monthly_recurring_fixed_amount_query(
+def monthly_recurring_items_query(
     *,
     tenant_id: str,
     month: str,
     timezone_name: str | None = None,
-) -> Select[tuple[int]]:
+) -> Select[tuple[RecurringItem]]:
     start_utc, end_utc = month_bounds_utc(month, timezone_name)
     return (
-        select(func.coalesce(func.sum(RecurringItem.baseline_amount_cents), 0))
+        select(RecurringItem)
         .where(RecurringItem.tenant_id == tenant_id)
         .where(RecurringItem.frequency == "monthly")
         .where(RecurringItem.created_at < end_utc)

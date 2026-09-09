@@ -13,10 +13,11 @@ from sqlalchemy.engine import Connection
 from app.app_meta_observation import read_app_meta_value
 from app.canonical_money_facts import canonical_money_facts_sha256
 from app.canonical_money_facts_contract import INSTALLATION_HOME_CURRENCY_KEY
+from app.database._currency_writer import captured_currency_evidence_rows
 from app.errors import AppError
 from app.fx_constants import DEFAULT_HOME_CURRENCY_CODE, DEFAULT_SUPPORTED_CURRENCY_CODES
 
-_EVIDENCE_SCHEMA = "ticketbox-c02-currency-adoption-evidence-v1"
+_EVIDENCE_SCHEMA = "ticketbox-c02-currency-adoption-evidence-v2"
 
 
 def _has_legacy_currencyless_money_facts(connection: Connection) -> bool:
@@ -26,23 +27,29 @@ def _has_legacy_currencyless_money_facts(connection: Connection) -> bool:
         connection.scalar(
             text(
                 """
-                SELECT EXISTS (SELECT 1 FROM budgets)
-                    OR EXISTS (SELECT 1 FROM budget_categories)
+                SELECT EXISTS (SELECT 1 FROM budgets WHERE to_jsonb(budgets)->>'home_currency_code' IS NULL)
+                    OR EXISTS (
+                        SELECT 1 FROM budget_categories AS category
+                        LEFT JOIN budgets AS budget ON budget.tenant_id = category.tenant_id AND budget.month = category.month
+                        WHERE to_jsonb(budget)->>'home_currency_code' IS NULL
+                    )
                     OR EXISTS (
                         SELECT 1 FROM category_rules
-                         WHERE amount_min_cents IS NOT NULL
-                            OR amount_max_cents IS NOT NULL
+                         WHERE (amount_min_cents IS NOT NULL OR amount_max_cents IS NOT NULL)
+                           AND to_jsonb(category_rules)->>'home_currency_code' IS NULL
                     )
                     OR EXISTS (
                         SELECT 1 FROM csv_import_rows
                          WHERE amount_cents IS NOT NULL
+                           AND to_jsonb(csv_import_rows)->>'home_currency_code' IS NULL
                     )
                     OR EXISTS (
                         SELECT 1 FROM goals
                          WHERE target_amount_cents IS NOT NULL
+                           AND to_jsonb(goals)->>'home_currency_code' IS NULL
                     )
-                    OR EXISTS (SELECT 1 FROM monthly_income_plans)
-                    OR EXISTS (SELECT 1 FROM recurring_items)
+                    OR EXISTS (SELECT 1 FROM monthly_income_plans WHERE to_jsonb(monthly_income_plans)->>'home_currency_code' IS NULL)
+                    OR EXISTS (SELECT 1 FROM recurring_items WHERE to_jsonb(recurring_items)->>'home_currency_code' IS NULL)
                 """
             )
         )
@@ -86,6 +93,11 @@ def _resolve_allowed_home_currency_codes(
     return allowed, not allowed
 
 
+def _hash_captured_currencies(connection: Connection, digest) -> None:
+    for row in captured_currency_evidence_rows(connection):
+        digest.update(_json_line(row))
+
+
 def currency_adoption_evidence(connection: Connection) -> CurrencyAdoptionEvidence:
     """Bind legacy facts and derive choices that cannot reinterpret them."""
 
@@ -96,11 +108,13 @@ def currency_adoption_evidence(connection: Connection) -> CurrencyAdoptionEviden
             {"c07_money_facts_sha256": canonical_money_facts_sha256(connection)}
         )
     )
+    _hash_captured_currencies(connection, digest)
     exchange_rows = list(
         connection.execute(
             text(
                 """
-                SELECT public_id, tenant_id, currency_code, rate_date, rate_to_cny, source
+                SELECT public_id, tenant_id, currency_code, rate_date, rate_to_cny, source,
+                       to_jsonb(exchange_rates)->>'home_currency_code' AS home_currency_code
                   FROM exchange_rates
                  ORDER BY public_id
                 """
@@ -115,6 +129,7 @@ def currency_adoption_evidence(connection: Connection) -> CurrencyAdoptionEviden
             _json_line(
                 {
                     "currency_code": row.currency_code,
+                    "home_currency_code": row.home_currency_code,
                     "public_id": row.public_id,
                     "rate_date": row.rate_date.isoformat(),
                     "rate_to_cny": format(rate, "f"),
@@ -123,7 +138,9 @@ def currency_adoption_evidence(connection: Connection) -> CurrencyAdoptionEviden
                 }
             )
         )
-    rate_source_codes = {str(row.currency_code) for row in exchange_rows}
+    # A known pair already carries its meaning. Only unadopted legacy rates
+    # constrain the currency the Owner is about to supply for missing carriers.
+    rate_source_codes = {str(row.currency_code) for row in exchange_rows if row.home_currency_code is None}
 
     explicit_codes = set(
         connection.scalars(

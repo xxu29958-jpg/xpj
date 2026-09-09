@@ -15,9 +15,9 @@ from app.services.category_preference_service import ensure_category_preference_
 from app.services.classify_service import classify_expense
 from app.services.currency_binding_service import (
     assert_currency_binding_consistent,
+    require_runtime_home_currency_code,
     resolve_write_capability,
 )
-from app.services.currency_common import home_currency_code
 from app.services.duplicate_service import mark_duplicate_status
 from app.services.exchange_rate_service import (
     apply_currency_payload,
@@ -64,9 +64,8 @@ def stage_pending_expense(
     """Stage one Pending expense without committing the caller's transaction."""
 
     now = now_utc()
-    frozen_home_currency = home_currency_code()
-    # ADR-0061 C02 桥接门（PR#255 R9）：pending 行即按 env 盖章成持久事实，漂移时
-    # 不得放行（与 freeze_home_amount / apply_currency_payload 同一防线）。
+    frozen_home_currency = require_runtime_home_currency_code(db)
+    # Pending facts freeze the Owner-confirmed basis before taking a writer proof.
     assert_currency_binding_consistent(db, frozen_home_currency)
     expense = Expense(
         tenant_id=tenant_id,
@@ -137,6 +136,16 @@ def _insert_manual_expense(
     actor_device_id: int,
 ) -> Expense:
     resolve_write_capability(db)
+    home = payload.home_currency_code
+    if home is None:
+        has_original_money = (payload.original_currency is not None or payload.original_currency_code is not None) and (
+            payload.original_amount is not None or payload.original_amount_minor is not None
+        )
+        if not has_original_money:
+            raise AppError("manual_currency_context_required", "这笔旧草稿缺少币种依据，尚未保存。请先核对输入与已有流水。", status_code=422)
+        # The legacy wire promised original payment money only. Its first accepted
+        # home projection remains unchanged; new producers capture both currencies.
+        home = require_runtime_home_currency_code(db)
     now = now_utc()
     expense = Expense(
         tenant_id=tenant_id,
@@ -164,6 +173,7 @@ def _insert_manual_expense(
     apply_currency_payload(
         db,
         tenant_id=tenant_id,
+        home_currency_code=home,
         expense=expense,
         payload=payload,
         amount_was_explicit=payload.amount_cents is not None,
@@ -246,7 +256,7 @@ def create_manual_expense(db: Session, payload: ExpenseManualCreateRequest, auth
         raise
 
 
-def _guard_notification_capture_currency(payload: NotificationDraftCreateRequest) -> None:
+def _guard_notification_capture_currency(payload: NotificationDraftCreateRequest, *, home_currency: str) -> None:
     """PR#255 R11 条件门：非 CNY 安装拒绝无 original 字段的通知捕获。
 
     Android 通知解析器按 CNY 分声明 amount_cents（PaymentNotificationParser 无 FX 路径，
@@ -254,7 +264,6 @@ def _guard_notification_capture_currency(payload: NotificationDraftCreateRequest
     与金额字段**成对完整**（R12-E：仅其一的残缺 FX 载荷按无 original 处理，该路径不为
     部分 FX 设计）才视为显式 FX 放行；否则非 CNY 安装整体拒绝。跨币种契约挂账 D9。
     """
-    home_currency = home_currency_code()
     # R12-E 硬化：只有币种+金额**成对完整**才算显式 FX —— 仅其一的残缺 FX 载荷按无
     # original 处理（该路径不为部分 FX 设计：金额缺失会回落到 None 行值，汇率/金额
     # 语义不可判定）。CNY 下门不触发，行为与之前一致。
@@ -276,7 +285,7 @@ def create_notification_draft(
     )
     now = now_utc()
     source = _clean_notification_source(payload.source)
-    _guard_notification_capture_currency(payload)
+    _guard_notification_capture_currency(payload, home_currency=require_runtime_home_currency_code(db))
     idempotency_key = _notification_draft_key(
         source=source,
         merchant=payload.merchant,
@@ -319,6 +328,7 @@ def create_notification_draft(
     apply_currency_payload(
         db,
         tenant_id=tenant_id,
+        home_currency_code=require_runtime_home_currency_code(db),
         expense=expense,
         payload=payload,
         amount_was_explicit=payload.amount_cents is not None,

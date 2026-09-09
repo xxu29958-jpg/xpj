@@ -17,13 +17,10 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.GoalProgressState
 import com.ticketbox.ui.components.AppContentCard
-import com.ticketbox.ui.components.AppProgressBar
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.displayMonthLabel
-import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalGoalTokens
 import com.ticketbox.ui.design.StateTone
 import com.ticketbox.ui.design.tabularNum
@@ -73,16 +70,7 @@ private fun SpendingGoalRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            AppProgressBar(
-                fraction = goal.progress,
-                tone = goal.stateTone(),
-                height = AppSpacing.smallGap,
-                contentDescription = stringResource(
-                    R.string.spending_goal_progress_a11y,
-                    goal.name,
-                    goal.progressPercent,
-                ),
-            )
+            SpendingGoalProgress(goal)
             SpendingGoalAmountSummary(goal)
         }
     }
@@ -113,14 +101,13 @@ private fun SpendingGoalRowHeader(goal: Goal) {
 
 @Composable
 private fun SpendingGoalAmountSummary(goal: Goal) {
-    val currency = com.ticketbox.domain.model.CurrencyDisplay.forRecord(goal.homeCurrencyCode ?: stringResource(R.string.spending_goal_currency_unknown))
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
     ) {
         SpendingGoalAmountCell(
             label = stringResource(R.string.spending_goal_spent_label),
-            value = formatDisplayAmount(goal.spentAmountCents, currency),
+            value = spendingGoalAmountText(goal.spentAmountCents, goal.homeCurrencyCode),
             modifier = Modifier.weight(1f),
         )
         SpendingGoalAmountCell(
@@ -129,12 +116,12 @@ private fun SpendingGoalAmountSummary(goal: Goal) {
             } else {
                 stringResource(R.string.spending_goal_remaining_label)
             },
-            value = formatDisplayAmount(kotlin.math.abs(goal.remainingAmountCents), currency),
+            value = spendingGoalAmountText(goal.remainingAmountCents?.let { kotlin.math.abs(it) }, goal.homeCurrencyCode),
             modifier = Modifier.weight(1f),
         )
         SpendingGoalAmountCell(
             label = stringResource(R.string.spending_goal_limit_label),
-            value = formatDisplayAmount(goal.targetAmountCents, currency),
+            value = spendingGoalAmountText(goal.targetAmountCents, goal.homeCurrencyCode),
             modifier = Modifier.weight(1f),
         )
     }
@@ -172,6 +159,7 @@ private fun SpendingGoalAmountCell(
 internal fun Goal.stateTone(): StateTone {
     val tokens = LocalGoalTokens.current
     val source = when (progressState) {
+        GoalProgressState.Unavailable -> tokens.nearLimit
         GoalProgressState.Idle -> tokens.idle
         GoalProgressState.OnTrack -> tokens.onTrack
         GoalProgressState.NearLimit -> tokens.nearLimit
@@ -184,6 +172,7 @@ internal fun Goal.stateTone(): StateTone {
 @Composable
 internal fun Goal.statusText(): String = stringResource(
     when (progressState) {
+        GoalProgressState.Unavailable -> R.string.spending_goal_amount_unavailable
         GoalProgressState.Idle -> R.string.spending_goal_status_idle
         GoalProgressState.OnTrack -> R.string.spending_goal_status_on_track
         GoalProgressState.NearLimit -> R.string.spending_goal_status_near

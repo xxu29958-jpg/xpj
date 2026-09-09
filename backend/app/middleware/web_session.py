@@ -56,7 +56,7 @@ from app.services.identity_service import (
 
 DESKTOP_BRIDGE_HEADER = "X-Ticketbox-Desktop-Bridge"
 DESKTOP_BRIDGE_VERSION = "v1"
-_DESKTOP_ONLY_WEB_PATHS = frozenset({"/web/currency-adoption"})
+_DESKTOP_ONLY_WEB_PATHS = frozenset({"/web/currency-adoption", "/web/currency-adoption/change"})
 
 
 def _request_id(request: Request) -> str | None:

@@ -237,7 +237,9 @@ def test_form_money_maps_to_the_existing_manual_expense_payload() -> None:
     )
 
     assert home.amount_cents == 2345
+    assert home.home_currency_code == "CNY"
     assert home.original_currency is None
+    assert foreign.home_currency_code == "CNY"
     assert foreign.amount_cents is None
     assert foreign.original_currency == "USD"
     assert foreign.original_amount == Decimal("23.45")

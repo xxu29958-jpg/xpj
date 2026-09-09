@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -21,9 +23,10 @@ def web_client(client: TestClient):
     app.dependency_overrides.pop(_web_require_local, None)
 
 
-def _goal(client: TestClient, identity) -> dict:
-    response = client.post("/api/goals", headers=negotiated_headers(client, identity.app_headers), json={
-        "name": "原消费目标", "month": "2026-05", "category": "餐饮", "target_amount_cents": 20000,
+def _goal(client: TestClient, identity, *, home_currency_code: str = "CNY", amount_minor: int = 20000) -> dict:
+    response = client.post("/api/goals", headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())}, json={
+        "home_currency_code": home_currency_code,
+        "name": "原消费目标", "month": "2026-05", "category": "餐饮", "target_amount_cents": amount_minor,
     })
     assert response.status_code == 201, response.text
     return response.json()
@@ -83,7 +86,7 @@ def test_validation_and_occ_refusals_keep_input_original_key_and_original_versio
     assert hidden_post_forms(invalid.text)[action]["idempotency_key"] == fields["idempotency_key"]
     updated = web_client.patch(f'/api/goals/{goal["public_id"]}', headers={
         **negotiated_headers(web_client, identity.app_headers), "Idempotency-Key": "parallel-goal-edit",
-    }, json={"name": "另一端已保存", "expected_row_version": goal["row_version"]})
+    }, json={"home_currency_code": "CNY", "name": "另一端已保存", "expected_row_version": goal["row_version"]})
     assert updated.status_code == 200, updated.text
     fields["target_amount_yuan"] = "350.25"
     refused = web_client.post(action, data=fields)

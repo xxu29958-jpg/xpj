@@ -327,7 +327,7 @@ def _archived_recurring_rows(db: Session, tenant_id: str) -> list[RecycleBinItem
             title=item.merchant_name,
             detail=recurring_item_monthly_detail(
                 item,
-                _money(item.baseline_amount_cents),
+                _money(item.baseline_amount_cents, item.home_currency_code) if item.home_currency_code else "币种待确认",
             ),
             removed_at=item.archived_at,
             retention_label="长期保留",
@@ -448,14 +448,16 @@ def _tag_undo_rows(db: Session, tenant_id: str) -> list[RecycleBinItem]:
 
 def _income_detail(item: MonthlyIncomePlan) -> str:
     frequency = "每月固定" if item.frequency == "monthly" else f"{item.income_month} 预计"
-    return f"{frequency} · {_money(item.amount_cents)} · {item.pay_day} 号"
+    return f"{frequency} · {_money(item.amount_cents, item.home_currency_code)} · {item.pay_day} 号"
 
 
 def _goal_detail(item: Goal) -> str:
     if item.goal_type == "debt_repayment":
         return "还债目标"
     scope = item.category or "总支出"
-    return f"{item.month} · {scope} · 目标 {_money(item.target_amount_cents)}"
+    amount = (f"{item.home_currency_code} {_money(item.target_amount_cents, item.home_currency_code)}"
+        if item.home_currency_code else f"{item.target_amount_cents}（最小单位，币种待确认）")
+    return f"{item.month} · {scope} · 目标 {amount}"
 
 
 def _budget_detail(db: Session, item: Budget) -> str:
@@ -465,22 +467,18 @@ def _budget_detail(db: Session, item: Budget) -> str:
         .where(BudgetCategory.month == item.month)
     )
     return (
-        f"总预算 {_money(item.total_amount_cents)} · "
+        f"总预算 {_money(item.total_amount_cents, item.home_currency_code)} · "
         f"分类预算 {int(category_count or 0)} 项"
     )
 
 
-def _money(amount_cents: int) -> str:
-    # Income/goal/budget/recurring rows carry no per-row currency column: their
-    # amounts are stored in home-currency minor units, so None lets
-    # currency_common resolve the deployment home code (JPY/KRW → zero
-    # fraction, divmod-based, no float).
+def _money(amount_cents: int, currency: str | None) -> str:
     return minor_amount_label(
         projection_sum_to_int(
             amount_cents,
             label="recycle_bin.money",
         ),
-        None,
+        currency,
     )
 
 

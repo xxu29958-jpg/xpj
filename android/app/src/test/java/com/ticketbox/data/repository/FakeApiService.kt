@@ -259,6 +259,7 @@ internal class FakeApiService(
     override suspend fun createNotificationDraft(request: NotificationDraftRequestDto): ExpenseDto {
         lastNotificationDraftRequest = request
         return ExpenseDto(
+            homeCurrency = "CNY",
             id = 12,
             publicId = "8f939f48-e646-4afb-b54f-7bb6b536d9ef",
             amountCents = null,
@@ -496,7 +497,7 @@ internal class FakeApiService(
 
     override suspend fun categoryRules(): List<CategoryRuleDto> = emptyList()
 
-    override suspend fun createCategoryRule(request: CategoryRuleRequest): CategoryRuleDto = unsupported()
+    override suspend fun createCategoryRule(request: CategoryRuleRequest, idempotencyKey: String): CategoryRuleDto = unsupported()
 
     override suspend fun updateCategoryRule(
         id: Long,
@@ -627,9 +628,9 @@ internal class FakeApiService(
         latestUploadAt = null,
     )
 
-    override suspend fun monthlyStats(month: String?, tag: String?, timezone: String?): MonthlyStatsDto = unsupported()
+    override suspend fun monthlyStats(month: String?, tag: String?, timezone: String?, homeCurrencyCode: String?): MonthlyStatsDto = unsupported()
 
-    override suspend fun lifestyleStats(month: String?, timezone: String?): LifestyleStatsDto = unsupported()
+    override suspend fun lifestyleStats(month: String?, timezone: String?, homeCurrencyCode: String?): LifestyleStatsDto = unsupported()
     override suspend fun reportsOverview(
         query: Map<String, String>,
     ): ReportsOverviewDto = unsupported()
@@ -642,7 +643,7 @@ internal class FakeApiService(
         goalType: String?,
         timezone: String?,
     ): GoalListResponseDto = unsupported()
-    override suspend fun createGoal(request: GoalCreateRequestDto, timezone: String?): GoalDto = unsupported()
+    override suspend fun createGoal(request: GoalCreateRequestDto, timezone: String?, idempotencyKey: String?): GoalDto = unsupported()
     override suspend fun goal(publicId: String, timezone: String?): GoalDto = unsupported()
     override suspend fun updateGoal(
         publicId: String,
@@ -761,13 +762,17 @@ internal class FakeApiService(
         month: String,
         request: BudgetMonthlyUpdateRequestDto,
         timezone: String?,
+        idempotencyKey: String?,
     ): BudgetMonthlyDto = unsupported()
     override suspend fun listIncomePlans(status: String): com.ticketbox.data.remote.dto.IncomePlanListResponseDto = unsupported()
-    override suspend fun createIncomePlan(request: com.ticketbox.data.remote.dto.IncomePlanCreateRequestDto): com.ticketbox.data.remote.dto.IncomePlanDto = unsupported()
+    override suspend fun createIncomePlan(request: com.ticketbox.data.remote.dto.IncomePlanCreateRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.IncomePlanDto = unsupported()
     override suspend fun updateIncomePlan(publicId: String, request: com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto, idempotencyKey: String?): com.ticketbox.data.remote.dto.IncomePlanDto = unsupported()
     override suspend fun archiveIncomePlan(publicId: String, request: com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto): com.ticketbox.data.remote.dto.IncomePlanDto = unsupported()
     override suspend fun restoreIncomePlan(publicId: String, request: com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto): com.ticketbox.data.remote.dto.IncomePlanDto = unsupported()
     override suspend fun budgetDiscretionary(savingsTargetCents: Long, reservedBufferCents: Long): com.ticketbox.data.remote.dto.DiscretionaryResponseDto = unsupported()
+    override suspend fun exchangeRates(currencyCode: String?, homeCurrencyCode: String?, rateDate: String?, limit: Int): com.ticketbox.data.remote.dto.ExchangeRateListDto = unsupported()
+    override suspend fun saveExchangeRate(currencyCode: String, rateDate: String, request: com.ticketbox.data.remote.dto.ExchangeRateRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.ExchangeRateDto = unsupported()
+    override suspend fun budgetAdviceInputs(month: String, timezone: String?, homeCurrencyCode: String?): com.ticketbox.data.remote.dto.BudgetAdviceInputsDto = unsupported()
     override suspend fun budgetAdvise(request: com.ticketbox.data.remote.dto.BudgetAdviseRequestDto): com.ticketbox.data.remote.dto.BudgetAdviseResponseDto = unsupported()
     override suspend fun recurringCandidates(timezone: String?): com.ticketbox.data.remote.dto.RecurringCandidatesResponseDto = unsupported()
     override suspend fun recurringItems(

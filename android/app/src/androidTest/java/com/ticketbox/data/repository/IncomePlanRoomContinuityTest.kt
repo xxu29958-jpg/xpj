@@ -10,7 +10,6 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.lifecycle.viewModelScope
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.domain.model.AppSkin
-import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.screens.IncomePlanScreen
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.IncomePlanEditViewModel
@@ -38,7 +37,7 @@ class IncomePlanRoomContinuityTest {
         compose.setContent {
             val current = model.value ?: return@setContent
             val edit = editor.value ?: return@setContent
-            TicketboxTheme(skin = AppSkin.Paper) { IncomePlanScreen(current, edit, CurrencyDisplay.Base, {}) }
+            TicketboxTheme(skin = AppSkin.Paper) { IncomePlanScreen(current, edit, {}) }
         }
         compose.waitUntil(10_000) { model.value?.state?.value?.activePlans?.size == 1 }
         compose.onNodeWithText("九月工资计划").performScrollTo().performClick()
@@ -75,7 +74,7 @@ class IncomePlanRoomContinuityTest {
         fixture.network.failReads = true
         installModels()
         compose.waitUntil(10_000) { model.value?.state?.value?.loadState == IncomePlanLoadState.Failed &&
-            model.value?.state?.value?.pendingEdits?.size == 1 }
+            model.value?.state?.value?.pendingSubmissions?.size == 1 }
         val reopened = fixture.stored().single()
         for (key in listOf("payload", "expectedRowVersion", "idempotencyKey", "ownerKey", "ledgerId")) {
             assertEquals(original[key], reopened[key])
@@ -85,8 +84,8 @@ class IncomePlanRoomContinuityTest {
     private fun installModels() {
         val graph = fixture.reopen()
         compose.runOnIdle {
-            model.value = IncomePlanViewModel(graph.incomePlanRepository, fixture.debts)
-            editor.value = IncomePlanEditViewModel(graph.incomePlanRepository, fixture.debts,
+            model.value = IncomePlanViewModel(graph.incomePlanRepository)
+            editor.value = IncomePlanEditViewModel(graph.incomePlanRepository,
                 onDataChanged = { model.value?.refresh() })
         }
     }

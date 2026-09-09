@@ -11,11 +11,13 @@ interface ReportsApi {
         @Query("month") month: String? = null,
         @Query("tag") tag: String? = null,
         @Query("timezone") timezone: String? = null,
+        @Query("home_currency_code") homeCurrencyCode: String? = null,
     ): MonthlyStatsDto
 
     @GET("api/stats/lifestyle")
     suspend fun lifestyleStats(
         @Query("month") month: String? = null,
         @Query("timezone") timezone: String? = null,
+        @Query("home_currency_code") homeCurrencyCode: String? = null,
     ): LifestyleStatsDto
 }

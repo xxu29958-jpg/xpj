@@ -13,7 +13,7 @@ Invariants:
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from app.database import SessionLocal
 from app.models import Expense
@@ -25,9 +25,9 @@ from app.services.budget_baseline_service import (
     PersonalBaseline,
     blend_baselines,
     compute_monthly_discretionary,
-    compute_personal_baseline,
     personal_trust_weight,
 )
+from app.services.learning_service import compute_budget_quantile_suggestion
 from app.services.time_service import now_utc
 
 # ---------------------------------------------------------------------------
@@ -163,15 +163,15 @@ def test_blend_p75_never_below_median() -> None:
 
 
 # ---------------------------------------------------------------------------
-# compute_personal_baseline (touches DB; uses identity fixture)
+# The production quantile reader replaces the unused parallel personal reader.
 # ---------------------------------------------------------------------------
 
 
 def test_personal_baseline_empty_when_no_confirmed_expenses(identity) -> None:  # noqa: ARG001
     with SessionLocal() as db:
-        baseline = compute_personal_baseline(db, tenant_id="owner")
-    assert baseline.months_observed == 0
-    assert baseline.categories == ()
+        baseline = compute_budget_quantile_suggestion(db, tenant_id="owner", category="餐饮",
+            home_currency_code="CNY", include_zero_months=False)
+    assert baseline is None
 
 
 def test_personal_baseline_aggregates_per_month_per_category(identity) -> None:  # noqa: ARG001
@@ -203,14 +203,15 @@ def test_personal_baseline_aggregates_per_month_per_category(identity) -> None: 
                 )
             )
         db.commit()
-        baseline = compute_personal_baseline(
-            db, tenant_id="owner", months_window=6, now=base + timedelta(days=10)
+        baseline = compute_budget_quantile_suggestion(
+            db, tenant_id="owner", category="餐饮", home_currency_code="CNY", include_zero_months=False,
+            now=datetime(2026, 4, 1, tzinfo=base.tzinfo),
         )
 
-    assert baseline.months_observed >= 3
-    by_cat = {row.category: row for row in baseline.categories}
+    assert baseline.sample_months == 3
     # 餐饮 monthly totals: Jan=150, Feb=200, Mar=300 → median 200, P75 250.
-    assert by_cat["餐饮"].median_cents == 200_00
+    assert baseline.p50_cents == 200_00
+    assert baseline.p75_cents == 250_00
 
 
 def test_personal_baseline_excludes_pending_and_rejected(identity) -> None:  # noqa: ARG001
@@ -238,12 +239,12 @@ def test_personal_baseline_excludes_pending_and_rejected(identity) -> None:  # n
                 )
             )
         db.commit()
-        baseline = compute_personal_baseline(
-            db, tenant_id="owner", months_window=6, now=base + timedelta(days=1)
+        baseline = compute_budget_quantile_suggestion(
+            db, tenant_id="owner", category="餐饮", home_currency_code="CNY", include_zero_months=False, min_months=1,
+            now=datetime(2026, 4, 1, tzinfo=base.tzinfo),
         )
-    by_cat = {row.category: row for row in baseline.categories}
     # Only 100_00 from the confirmed row should appear.
-    assert by_cat["餐饮"].median_cents == 100_00
+    assert baseline.p50_cents == 100_00
 
 
 # ---------------------------------------------------------------------------

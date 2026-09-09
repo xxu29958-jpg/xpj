@@ -69,7 +69,7 @@ jobs:
     needs: scope
     if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.android != 'false') }}
     runs-on: ubuntu-latest
-    # The connected action has the 20-minute qualification ceiling. The wider
+    # The connected action has the 22-minute qualification ceiling. The wider
     # job cap covers setup plus post-action verification and diagnostic upload;
     # it is an infrastructure envelope, not a relaxed qualification target.
     timeout-minutes: 30
@@ -122,7 +122,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: Run connected test
-        timeout-minutes: 20
+        timeout-minutes: 22
         uses: reactivecircus/android-emulator-runner@4c44018e59b437e86cdfc41da381398f93ed8808 # v2
         with:
           api-level: 36
@@ -142,7 +142,9 @@ jobs:
           # as one direct command whose exit status is the Gradle exit status.
           # The Gradle task owns test execution, result-count qualification and
           # process-exit verification before the emulator action tears down.
-          script: timeout --signal=INT --kill-after=30s 14m ./gradlew --no-daemon --max-workers=2 -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true :app:connectedGrayDebugAndroidTest
+          # Includes compilation and the full suite; leave the remaining action
+          # budget for emulator boot and bounded process shutdown.
+          script: timeout --signal=INT --kill-after=30s 18m ./gradlew --no-daemon --max-workers=2 -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true :app:connectedGrayDebugAndroidTest
 
       - name: Upload real consumer art previews
         if: ${{ always() && !cancelled() }}

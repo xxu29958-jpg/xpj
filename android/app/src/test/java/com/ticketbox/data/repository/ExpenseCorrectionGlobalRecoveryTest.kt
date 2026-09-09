@@ -331,9 +331,14 @@ private class CorrectionRecoveryHarness : ExpensePendingRepositoryOutboxTestBase
         val consumers = OutboxRecoveryRepositories(
             debtCreation = DebtCreationRepository(binding.apiProvider, outbox, adapters.debtCreateAdapter),
             recurringOccurrences = null,
-            incomePlans = IncomePlanRepository(binding.apiProvider, outbox, adapters.incomePlanUpdateAdapter),
+            recurringItems = RecurringRepository(binding.apiProvider, outbox, adapters.recurringCreateAdapter, adapters.recurringUpdateAdapter),
+            rules = RuleRepository(binding, offlineMutations = CategoryRuleOfflineMutationWiring(
+                outbox, adapters.categoryRuleUpdateAdapter, adapters.categoryRuleDeleteAdapter,
+                adapters.categoryRuleSubmissionAdapter, adapters.categoryRuleReceiptAdapter)),
+            incomePlans = IncomePlanRepository(binding.apiProvider, outbox, adapters.incomePlanSubmissionAdapter, adapters.incomePlanReceiptAdapter),
             debtAdjustments = DebtAdjustmentRepository(binding.apiProvider, outbox, adapters.debtAdjustmentAdapter),
-            goalEdits = GoalEditRepository(binding.apiProvider, outbox, adapters.goalUpdateAdapter, adapters.goalReceiptAdapter),
+            goalEdits = GoalEditRepository(binding.apiProvider, outbox, adapters.goalUpdateAdapter, adapters.goalReceiptAdapter, adapters.goalCreateAdapter),
+            budgetSaves = BudgetRepository(binding.apiProvider, outbox, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter, adapters.manualRateAdapter, adapters.manualRateReceiptAdapter),
         )
         val vm = outboxStatusViewModelFactory(outbox, repository, consumers).create(OutboxStatusViewModel::class.java)
         recoveryModels += vm

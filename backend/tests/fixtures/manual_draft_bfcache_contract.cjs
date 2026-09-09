@@ -5,8 +5,8 @@ const assert = require('node:assert/strict');
 const scope = {datasetId:'dataset', clientGeneration:'generation', accountId:'account', ledgerId:'ledger', deviceId:'device'};
 const original = 'a'.repeat(32), fresh = 'b'.repeat(32);
 const entries = new Map(), handlers = {}, requests = [];
-const names = ['amount_major','currency_code','merchant','category','spent_at','note'];
-const defaults = ['', 'CNY', '', '其他', '2026-09-06T12:30', ''];
+const names = ['amount_major','currency_code','merchant','category','spent_at','note','home_currency_code'];
+const defaults = ['', 'JPY', '', '其他', '2026-09-06T12:30', '', 'JPY'];
 const elements = Object.fromEntries(names.map((name, i) => [name, {
   name, value:defaults[i], tagName:name === 'currency_code' ? 'SELECT' : 'INPUT',
 }]));
@@ -40,7 +40,7 @@ const window = {
 };
 vm.runInNewContext(fs.readFileSync(process.argv[2], 'utf8'), {window});
 const drafts = window.TicketboxManualDrafts;
-drafts.save(scope, original, 'submitted', {...Object.fromEntries(names.map((name, i) => [name, defaults[i]])), amount_major:'28.50'});
+drafts.save(scope, original, 'submitted', {...Object.fromEntries(names.map((name, i) => [name, defaults[i]])), amount_major:'28.50', currency_code:'CNY', home_currency_code:'CNY'});
 vm.runInNewContext(fs.readFileSync(process.argv[3], 'utf8'), {window, document});
 (async function () {
   await Promise.resolve(); await Promise.resolve();
@@ -52,6 +52,8 @@ vm.runInNewContext(fs.readFileSync(process.argv[3], 'utf8'), {window, document})
   assert.equal(form.dataset.manualDraftState, 'submitted');
   assert.equal(elements.client_ref.value, original);
   assert.equal(elements.amount_major.value, '28.50');
+  assert.equal(elements.currency_code.value, 'CNY');
+  assert.equal(elements.home_currency_code.value, 'CNY');
   assert.equal(elements.amount_major.readOnly, true);
   assert.equal(window.location.hash, '#manual-' + original);
   assert.equal(drafts.read(original).phase, 'submitted');

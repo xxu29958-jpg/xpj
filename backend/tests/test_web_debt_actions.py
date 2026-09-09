@@ -15,6 +15,7 @@ import app.services.debt_command_service as debt_command_service
 from app.database import SessionLocal
 from app.models import Account, Debt, LedgerMember, Repayment
 from app.services.spending_contract_service import accounting_zone
+from tests._runtime_protocol import negotiated_headers
 
 
 def test_web_debt_fact_adapters_delegate_to_shared_commands_and_views() -> None:
@@ -35,9 +36,9 @@ def _create_debt(
 ) -> dict:
     response = web_client.post(
         "/api/debts",
-        headers=_headers(identity),
+        headers=negotiated_headers(web_client, _headers(identity)),
         json={
-            "direction": "i_owe",
+            "home_currency_code": "CNY", "direction": "i_owe",
             "counterparty_type": "external",
             "counterparty_label": "测试信用卡",
             "principal_amount_cents": principal_amount_cents,
@@ -291,14 +292,14 @@ def test_web_external_debt_create_is_complete_and_idempotent(
     assert 'name="currency_code"' in page.text
     assert 'name="event_time"' in page.text
     assert 'name="debt_kind"' in page.text
-    assert "服务端按发生日冻结汇率" in page.text
+    assert "保留原币金额，按发生日折算为 CNY" in page.text
 
     key = str(uuid4())
     expected_note = "出差垫款 <行程说明>\n".ljust(500, "事")
     form = {
         "csrf_token": "test-client-bypasses-middleware-check",
         "ledger_id": "owner",
-        "direction": "i_owe",
+        "home_currency_code": "CNY", "direction": "i_owe",
         "counterparty_label": "Web 完整建账",
         "amount_major": "321.45",
         "currency_code": "CNY",
@@ -344,7 +345,7 @@ def test_web_external_debt_create_validation_preserves_fields(
         data={
             "csrf_token": "test-client-bypasses-middleware-check",
             "ledger_id": "owner",
-            "direction": "i_owe",
+            "home_currency_code": "CNY", "direction": "i_owe",
             "counterparty_label": "日元借款",
             "amount_major": "12.50",
             "currency_code": "JPY",

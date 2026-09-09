@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from _web_overview_test_support import (
@@ -39,8 +40,8 @@ def _seed_budget(client: TestClient, *, identity) -> None:
     month = current_month("Asia/Shanghai")
     resp = client.put(
         f"/api/budgets/monthly/{month}?timezone=Asia/Shanghai",
-        headers=identity.app_headers,
-        json={
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "expected_row_version": None,
             "total_amount_cents": 100000,
             "category_budgets": [{"category": "餐饮", "amount_cents": 50000}],
         },
@@ -52,8 +53,8 @@ def _seed_goal(client: TestClient, *, identity) -> None:
     month = current_month("Asia/Shanghai")
     resp = client.post(
         "/api/goals?timezone=Asia/Shanghai",
-        headers=identity.app_headers,
-        json={"name": "餐饮月度上限", "month": month, "target_amount_cents": 80000},
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "name": "餐饮月度上限", "month": month, "target_amount_cents": 80000},
     )
     assert resp.status_code == 201, resp.text
 
@@ -333,27 +334,6 @@ def test_category_donut_escapes_tooltip_name_and_prefers_amount_major() -> None:
     assert "Math.round(p.value" not in source
     # exponent 感知的图表数值投影。
     assert "amount_major" in source
-
-
-def test_overview_skips_trend14_assembly(web_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    """PR #253 R2: overview 不白加载 trend14 (物化 14 天 confirmed 流水)。"""
-    calls: list[str] = []
-    real_trend14 = web_common._trend14_amounts
-
-    def _spy_trend14(db, ledger_id: str, *, currency_code: str):
-        calls.append(ledger_id)
-        return real_trend14(db, ledger_id, currency_code=currency_code)
-
-    monkeypatch.setattr(web_common, "_trend14_amounts", _spy_trend14)
-
-    resp = web_client.get("/web/overview?ledger_id=owner")
-    assert resp.status_code == 200
-    assert calls == []
-
-    # 完整聚合仍可显式请求趋势，但不再暴露一套孤立的 dashboard JSON Owner。
-    with SessionLocal() as db:
-        web_common._dashboard_data_payload(db, "owner")
-    assert calls == ["owner"]
 
 
 def test_overview_recent_count_is_confirmed_only(web_client: TestClient, *, identity) -> None:

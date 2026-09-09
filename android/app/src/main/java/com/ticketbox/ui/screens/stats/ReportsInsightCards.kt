@@ -12,6 +12,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import com.ticketbox.domain.model.CurrencyDisplay
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -22,7 +24,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.domain.model.DailySpend
 import com.ticketbox.domain.model.ReportCategoryComparison
 import com.ticketbox.domain.model.ReportGranularity
-import com.ticketbox.domain.model.ReportRankingMetric
 import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppAdaptiveAmountRowStyle
@@ -38,41 +39,45 @@ import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalChartTokens
 import com.ticketbox.ui.design.tabularNum
+import com.ticketbox.ui.screens.StatsReportActions
 import kotlin.math.abs
 
 @Composable
 internal fun ReportsInsightCard(
     overview: ReportsOverview,
+    actions: StatsReportActions,
     modifier: Modifier = Modifier,
-    onGranularityChange: (ReportGranularity) -> Unit = {},
-    onRankingMetricChange: (ReportRankingMetric) -> Unit = {},
+    exporting: Boolean = false,
+    exportMessage: com.ticketbox.domain.model.UiText? = null,
 ) {
     val model = remember(overview) { reportsAnswerModel(overview) }
     val recentTrend = remember(overview) { reportsRecentWindowTrend(overview) }
-    val hasCurrentSpend = model.count > 0 && model.totalAmountCents > 0L
-
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-    ) {
-        ReportsAnswerHeader(model = model)
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
-        ReportsChartPanel(
-            model = model,
-            recentTrend = recentTrend,
-            onGranularityChange = onGranularityChange,
-        )
-        if (hasCurrentSpend && overview.merchantRanking.isNotEmpty()) {
+    val hasCurrentSpend = model.count > 0
+    CompositionLocalProvider(LocalCurrencyDisplay provides CurrencyDisplay.forRecord(overview.homeCurrencyCode)) {
+        Column(
+            modifier = modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+        ) {
+            ReportsProjectionControls(overview, actions, exporting, exportMessage)
+            ReportsAnswerHeader(model = model)
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
-            MerchantRankingBlock(
-                rows = overview.merchantRanking,
-                rankingMetric = overview.rankingMetric,
-                onRankingMetricChange = onRankingMetricChange,
+            ReportsChartPanel(
+                model = model,
+                recentTrend = recentTrend,
+                onGranularityChange = actions.onGranularityChange,
             )
-        }
-        if (hasCurrentSpend && overview.categoryComparison.isNotEmpty()) {
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
-            CategoryComparisonBlock(rows = overview.categoryComparison)
+            if (hasCurrentSpend || overview.merchantRanking.isNotEmpty()) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
+                MerchantRankingBlock(
+                    rows = overview.merchantRanking,
+                    rankingMetric = overview.rankingMetric,
+                    onRankingMetricChange = actions.onRankingMetricChange,
+                )
+            }
+            if (overview.categoryComparison.isNotEmpty()) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
+                CategoryComparisonBlock(rows = overview.categoryComparison)
+            }
         }
     }
 }
@@ -104,15 +109,17 @@ private fun ReportsChartPanel(
             options = listOf(
                 AppSegmentedItem(ReportGranularity.Day, stringResource(R.string.stats_reports_granularity_day)),
                 AppSegmentedItem(ReportGranularity.Week, stringResource(R.string.stats_reports_granularity_week)),
+                AppSegmentedItem(ReportGranularity.Month, stringResource(R.string.reports_month_granularity)),
             ),
-            selectedValue = if (model.granularity == ReportGranularity.Week) {
-                ReportGranularity.Week
-            } else {
-                ReportGranularity.Day
-            },
+            selectedValue = model.granularity,
             onValueChange = onGranularityChange,
         )
-        when (model.trendEvidence.mode) {
+        val evidence = model.trendEvidence
+        if (evidence == null) {
+            Text(stringResource(R.string.reports_trend_unavailable))
+            return@Column
+        }
+        when (evidence.mode) {
             ReportsTrendMode.Empty -> Text(
                 text = stringResource(R.string.stats_reports_chart_empty),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -120,7 +127,7 @@ private fun ReportsChartPanel(
             )
             ReportsTrendMode.Sparse -> ReportsSparseTrend(
                 points = model.trendPoints,
-                nonZeroDays = model.trendEvidence.positiveBucketCount,
+                nonZeroDays = evidence.positiveBucketCount,
             )
             ReportsTrendMode.DominantPeak,
             ReportsTrendMode.Chart,
@@ -128,7 +135,7 @@ private fun ReportsChartPanel(
         }
         ReportsRecentWindowSummary(
             recentTrend = recentTrend,
-            avoidRepeatedSparseRows = model.trendEvidence.mode == ReportsTrendMode.Sparse,
+            avoidRepeatedSparseRows = evidence.mode == ReportsTrendMode.Sparse,
         )
     }
 }
@@ -161,6 +168,15 @@ private fun ReportsSparseTrend(
 
 @Composable
 private fun CategoryComparisonBlock(rows: List<ReportCategoryComparison>) {
+    if (rows.any { it.amountCents == null || it.previousAmountCents == null || it.yearOverYearAmountCents == null }) {
+        Text(stringResource(R.string.reports_categories_unavailable))
+        rows.forEach { row ->
+            Text(stringResource(R.string.reports_category_confirmed, row.category,
+                row.amountCents?.let { formatDisplayAmount(it, LocalCurrencyDisplay.current) }
+                    ?: stringResource(R.string.reports_amount_unavailable), row.count))
+        }
+        return
+    }
     val chartRows = remember(rows) { categoryComparisonChartRows(rows) }
     val maxAmount = chartRows.maxOfOrNull { it.currentAmountCents } ?: 0L
     val titleRes = when (categoryComparisonMode(chartRows)) {

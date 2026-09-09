@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
+from uuid import uuid4
 
 import pytest
 from api_contract_helpers import upload_png
@@ -35,7 +36,7 @@ def _manual_expense(
         "/api/expenses/manual",
         headers=headers,
         json={
-            "amount_cents": amount_cents,
+            "home_currency_code": "CNY", "amount_cents": amount_cents,
             "merchant": merchant,
             "category": category,
             "expense_time": expense_time,
@@ -47,6 +48,7 @@ def _manual_expense(
 
 def _candidate_payload(item: dict[str, Any]) -> dict[str, Any]:
     return {
+        "home_currency_code": item["home_currency_code"],
         "merchant": item["merchant"],
         "amount_cents": item["amount_cents"],
         "occurrence_count": item["occurrence_count"],
@@ -228,7 +230,7 @@ def _assert_exports_are_ledger_scoped(client: TestClient, *, identity: Any) -> N
 def _assert_rules_are_ledger_scoped(client: TestClient, *, identity: Any) -> None:
     owner_rule = client.post(
         "/api/rules/categories",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "keyword": "owner-rule-token",
             "category": "OwnerOnlyCategory",

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas._money import (
@@ -15,6 +17,8 @@ __all__ = [
     "BudgetAdviseRequest",
     "BudgetAdviseResponse",
     "BudgetAdvisorStatusResponse",
+    "BudgetInputsResponse",
+    "ProjectionGapDto",
     "BudgetSuggestionDto",
     "DiscretionaryResponse",
 ]
@@ -27,12 +31,32 @@ class DiscretionaryResponse(BaseModel):
     subtraction step by step.
     """
 
-    monthly_income_cents: NonNegativeMoneyAggregate
-    fixed_expenses_cents: NonNegativeMoneyAggregate
-    spent_amount_cents: SignedMoneyAggregate
+    model_config = ConfigDict(from_attributes=True)
+
+    monthly_income_cents: NonNegativeMoneyAggregate | None
+    fixed_expenses_cents: NonNegativeMoneyAggregate | None
+    spent_amount_cents: SignedMoneyAggregate | None
     savings_target_cents: NonNegativeMoneyMinor
     reserved_buffer_cents: NonNegativeMoneyMinor
-    discretionary_cents: NonNegativeMoneyAggregate
+    discretionary_cents: NonNegativeMoneyAggregate | None
+
+
+class ProjectionGapDto(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    source_currency_code: str | None
+    home_currency_code: str
+    rate_date: date | None
+
+
+class BudgetInputsResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    month: str
+    home_currency_code: str
+    breakdown: DiscretionaryResponse
+    missing_rates: list[ProjectionGapDto]
+    inputs_fingerprint: str | None
 
 
 class BudgetAdviseRequest(BaseModel):
@@ -44,6 +68,7 @@ class BudgetAdviseRequest(BaseModel):
 
     month: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
     timezone: str | None = None
+    home_currency_code: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
 
 
 class BudgetSuggestionDto(BaseModel):

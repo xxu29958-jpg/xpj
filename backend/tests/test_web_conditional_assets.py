@@ -53,7 +53,7 @@ def _seed_overview_expense(client: TestClient, *, identity) -> None:
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": 8800,
+            "home_currency_code": "CNY", "amount_cents": 8800,
             "merchant": "海底捞",
             "category": "餐饮",
             "expense_time": f"{current_month('Asia/Shanghai')}-15T04:00:00Z",

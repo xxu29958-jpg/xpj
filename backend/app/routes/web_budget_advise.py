@@ -10,30 +10,29 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
+from app.routes.web_budget_fx import router as rates_router
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
     _list_ledger_options,
     _resolve_selected_ledger_id,
     _selected_option,
+    preserve_original_ledger_form,
     templates,
 )
-from app.services.budget_advisor_service import get_advisor_readiness, run_budget_advisor
-from app.services.budget_baseline_service import (
-    compute_monthly_discretionary,
-    total_confirmed_spent_cents,
-)
+from app.services.budget_advisor_service import get_advisor_readiness, read_budget_inputs, run_budget_advisor
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import (
     currency_input_metadata,
     major_amount_to_minor,
     minor_amount_value,
+    normalize_currency_code,
+    supported_currency_codes,
 )
-from app.services.income_plan_service import total_monthly_income_cents
-from app.services.recurring_occurrence_query import total_outstanding_recurring_cents
 from app.services.spending_contract_service import current_accounting_month
 
 router = APIRouter(prefix="/web/budget-advise", tags=["web"])
+router.include_router(rates_router)
 
 
 class _AdvisorReadinessContext(TypedDict):
@@ -51,6 +50,8 @@ def page_budget_advise(
     savings_target_yuan: str = Query(default="0"),
     reserved_buffer_yuan: str = Query(default="0"),
     run_advise: bool = Query(default=False),
+    home_currency_code: str | None = Query(default=None),
+    msg: str | None = Query(default=None),
     db: Session = Depends(get_db),
     _local: None = LocalOnly,
 ) -> HTMLResponse:
@@ -65,6 +66,8 @@ def page_budget_advise(
         reserved_buffer_yuan=reserved_buffer_yuan,
         run_advise=run_advise,
         allow_outbound=False,
+        home_currency_code=home_currency_code,
+        message=msg,
     )
 
 
@@ -76,6 +79,7 @@ def page_budget_advise_run(
     savings_target_yuan: str = Form(default="0"),
     reserved_buffer_yuan: str = Form(default="0"),
     run_advise: bool = Form(default=False),
+    home_currency_code: str | None = Form(default=None),
     db: Session = Depends(get_db),
     _local: None = LocalOnly,
 ) -> HTMLResponse:
@@ -88,6 +92,7 @@ def page_budget_advise_run(
         reserved_buffer_yuan=reserved_buffer_yuan,
         run_advise=run_advise,
         allow_outbound=run_advise,
+        home_currency_code=home_currency_code,
     )
 
 
@@ -101,74 +106,80 @@ def _render_budget_advise(
     reserved_buffer_yuan: str,
     run_advise: bool,
     allow_outbound: bool,
+    home_currency_code: str | None = None,
+    message: str | None = None,
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, ledger_id, options=options, request=request)
+    if request.method == "POST":
+        retained = preserve_original_ledger_form(request, db, options=options, selected=selected,
+            fields={"ledger_id": ledger_id, "month": month, "home_currency_code": home_currency_code,
+                "savings_target_yuan": savings_target_yuan, "reserved_buffer_yuan": reserved_buffer_yuan,
+                "run_advise": run_advise}, task="重新计算预算建议")
+        if retained is not None:
+            return retained
     readiness_ctx = _advisor_readiness_context(request, selected=selected, options=options)
-
     month_label = month or current_accounting_month()
-    income = total_monthly_income_cents(
-        db,
-        tenant_id=selected,
-        month=month_label,
-    )
-    fixed = total_outstanding_recurring_cents(db, tenant_id=selected, month=month)
-    spent = total_confirmed_spent_cents(
-        db,
-        tenant_id=selected,
-        month=month_label,
-        timezone_name="Asia/Shanghai",
-    )
-    # Local inputs and aggregate output share one explicit configured currency.
-    home = require_runtime_home_currency_code(db)
-    savings_cents = major_amount_to_minor(savings_target_yuan, home)
-    reserved_cents = major_amount_to_minor(reserved_buffer_yuan, home)
-    breakdown = compute_monthly_discretionary(
-        monthly_income_cents=income,
-        fixed_expenses_cents=fixed,
-        spent_amount_cents=spent,
-        savings_target_cents=savings_cents,
-        reserved_buffer_cents=reserved_cents,
-    )
-
-    advice, advise_error, provider_name = _budget_advice_response(
-        request,
-        db=db,
-        selected=selected,
-        options=options,
-        month_label=month_label,
-        provider_name=readiness_ctx["provider_name"],
-        run_advise=run_advise,
-        allow_outbound=allow_outbound,
-    )
-
-    ctx = _base_ctx(
-        request,
-        db=db,
-        options=options,
-        selected_ledger_id=selected,
-        page_title="AI 预算建议",
-    )
+    home = normalize_currency_code(home_currency_code or require_runtime_home_currency_code(db))
+    currency_choice_required = request.method == "POST" and not home_currency_code
+    savings_cents, reserved_cents, form_error = _reserve_values(
+        savings_target_yuan, reserved_buffer_yuan, home, currency_choice_required=currency_choice_required)
+    projection = read_budget_inputs(db, tenant_id=selected, month=month_label, home_currency_code=home,
+        timezone_name="Asia/Shanghai", savings_target_cents=savings_cents, reserved_buffer_cents=reserved_cents)
+    advice, advise_error, provider_name = None, None, readiness_ctx["provider_name"]
+    if not projection.missing_rates and form_error is None:
+        advice, advise_error, provider_name = _budget_advice_response(request, db=db, selected=selected,
+            options=options, month_label=month_label, provider_name=provider_name,
+            run_advise=run_advise, allow_outbound=allow_outbound, home_currency_code=projection.home_currency_code)
+    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected, page_title="预算建议")
     ctx.update(readiness_ctx)
+    ctx.update(_projection_context(projection, form_error=form_error))
     ctx.update(
         month=month_label,
         provider_name=provider_name,
-        # Parsing and presentation use one explicit currency authority.
-        income_yuan=minor_amount_value(breakdown.monthly_income_cents, home),
-        fixed_yuan=minor_amount_value(breakdown.fixed_expenses_cents, home),
-        spent_yuan=minor_amount_value(breakdown.spent_amount_cents, home),
-        savings_yuan=minor_amount_value(breakdown.savings_target_cents, home),
-        reserved_yuan=minor_amount_value(breakdown.reserved_buffer_cents, home),
-        discretionary_yuan=minor_amount_value(breakdown.discretionary_cents, home),
-        currency_input=currency_input_metadata(home),
         minor_amount_label=lambda cents: minor_amount_value(cents, home),
         savings_target_yuan=savings_target_yuan,
         reserved_buffer_yuan=reserved_buffer_yuan,
         advice=advice,
         advise_error=advise_error,
         run_advise=run_advise,
+        form_error=form_error,
+        currency_choice_required=currency_choice_required,
+        currency_codes=sorted(supported_currency_codes()),
+        message=message,
     )
-    return templates.TemplateResponse(request=request, name="budget_advise.html", context=ctx)
+    status = 409 if currency_choice_required else 422 if form_error else 200
+    return templates.TemplateResponse(request=request, name="budget_advise.html", context=ctx, status_code=status)
+
+
+def _reserve_values(savings, reserved, home, *, currency_choice_required):
+    if currency_choice_required:
+        return 0, 0, "原表单未记录币种。金额已保留，请选择填写时使用的币种后重新计算。"
+    try:
+        return _reserve_minor(savings, home), _reserve_minor(reserved, home), None
+    except AppError as exc:
+        return 0, 0, exc.message
+
+
+def _reserve_minor(raw: str, currency: str) -> int:
+    value = major_amount_to_minor(raw or "0", currency) or 0
+    if value < 0:
+        raise AppError("invalid_request", "储蓄目标和备用金不能为负数。输入已保留。", status_code=422)
+    return value
+
+
+def _projection_context(projection, *, form_error=None) -> dict:
+    fields = {"income_yuan": "monthly_income_cents", "fixed_yuan": "fixed_expenses_cents",
+        "spent_yuan": "spent_amount_cents", "savings_yuan": "savings_target_cents",
+        "reserved_yuan": "reserved_buffer_cents", "discretionary_yuan": "discretionary_cents"}
+    home = projection.home_currency_code
+    values = {name: None if (value := getattr(projection.breakdown, field)) is None
+        else minor_amount_value(value, home) for name, field in fields.items()}
+    if form_error:
+        values.update(savings_yuan=None, reserved_yuan=None, discretionary_yuan=None)
+    metadata = currency_input_metadata(home)
+    return {**values, "home_currency_code": home, "home_currency_symbol": metadata["currency_symbol"], "currency_input": metadata,
+        "missing_rates": projection.missing_rates}
 
 
 def _advisor_readiness_context(request: Request, *, selected: str, options: list) -> _AdvisorReadinessContext:
@@ -195,6 +206,7 @@ def _budget_advice_response(
     provider_name: str,
     run_advise: bool,
     allow_outbound: bool,
+    home_currency_code: str | None = None,
 ) -> tuple[Any, str | None, str]:
     if not run_advise or provider_name == "empty":
         return None, None, provider_name
@@ -210,6 +222,7 @@ def _budget_advice_response(
             actor_role=actor_role,
             month=month_label,
             timezone_name="Asia/Shanghai",
+            home_currency_code=home_currency_code,
         )
     except AppError as exc:
         return None, exc.message or exc.error, provider_name

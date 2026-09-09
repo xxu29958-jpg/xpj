@@ -126,6 +126,33 @@ internal class CreateExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestB
     }
 
     @Test
+    fun missingOriginalCurrencyOrAmountCannotBeReinterpretedUsingTheCurrentDefault() = runTest {
+        val adapter = manualAdapter()
+        val original = createRow("original-ref")
+        val body = requireNotNull(adapter.fromJson(original.payloadJson))
+        listOf(body.copy(originalCurrency = null), body.copy(originalCurrency = ""), body.copy(originalAmount = null)).forEach { malformed ->
+            val stub = ManualCreateApiStub(dto = successExpenseDto())
+            val writeback = CapturedWriteback()
+            val row = original.copy(payloadJson = adapter.toJson(malformed))
+            assertTrue(dispatcherFor(stub, writeback).dispatch(row) is DispatchResult.Failure)
+            assertNull(stub.lastRequest)
+            assertEquals(0, writeback.calls)
+        }
+    }
+
+    @Test
+    fun anExplicitLegacyPaymentRetainsItsBodyWithoutSynthesizingHomeCurrency() = runTest {
+        val stub = ManualCreateApiStub(dto = successExpenseDto().copy(homeCurrency = "JPY"))
+        val row = createRow("old-cny-intent")
+        val result = dispatcherFor(stub, CapturedWriteback()).dispatch(row)
+        assertTrue(result is DispatchResult.Success)
+        assertEquals("CNY", stub.lastRequest?.originalCurrency)
+        assertEquals("12.34", stub.lastRequest?.originalAmount)
+        assertNull(stub.lastRequest?.homeCurrencyCode)
+        assertEquals("old-cny-intent", stub.lastRequest?.clientRef)
+    }
+
+    @Test
     fun `IOException retries (offline) rather than failing`() = runTest {
         val stub = ManualCreateApiStub(failure = IOException("offline"))
         val writeback = CapturedWriteback()

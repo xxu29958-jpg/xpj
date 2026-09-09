@@ -53,8 +53,6 @@ internal class RecordingSpendingGoalActions(
 ) : ReportsActions by unsupportedSpendingGoalActions() {
     val goalsCalls = mutableListOf<SpendingGoalListCall>()
     val goalCalls = mutableListOf<String>()
-    val createCalls = mutableListOf<com.ticketbox.domain.model.GoalDraft>()
-    var createGate: (suspend () -> Unit)? = null
     var goalGate: (suspend () -> Unit)? = null
     val archiveCalls = mutableListOf<String>()
 
@@ -70,13 +68,6 @@ internal class RecordingSpendingGoalActions(
         val result = goalResult
         goalGate?.invoke()
         return result
-    }
-
-    override suspend fun createGoal(draft: com.ticketbox.domain.model.GoalDraft,
-        expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding): Result<Goal> {
-        createCalls += draft
-        createGate?.invoke()
-        return goalResult
     }
 
     override suspend fun archiveGoal(publicId: String, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding): Result<Goal> {
@@ -108,6 +99,7 @@ internal fun spendingGoal(
     updatedAt = "2026-07-02T00:00:00Z",
     rowVersion = rowVersion,
     archivedAt = if (status == "archived") "2026-07-03T00:00:00Z" else null,
+    homeCurrencyCode = "CNY",
 )
 
 @Suppress("UNCHECKED_CAST")
@@ -131,6 +123,29 @@ internal class RecordingGoalEdits : com.ticketbox.data.repository.GoalEditAction
     var saveGate: (suspend () -> Unit)? = null
     var saveResult = Result.success(1L)
     val saves = mutableListOf<GoalUpdate>()
+    val createCalls = mutableListOf<com.ticketbox.domain.model.GoalDraft>()
+    var createGate: (suspend () -> Unit)? = null
+    val creations = kotlinx.coroutines.flow.MutableStateFlow<List<com.ticketbox.data.repository.PendingGoalCreation>>(emptyList())
+    override fun describeCreation(row: com.ticketbox.data.repository.OutboxRow) = creations.value.firstOrNull { it.row.id == row.id }
+    override fun observeCreations(binding: com.ticketbox.data.repository.LogicalSessionBinding) = creations
+    override suspend fun create(binding: com.ticketbox.data.repository.LogicalSessionBinding,
+        draft: com.ticketbox.domain.model.GoalDraft): Result<Long> {
+        createCalls += draft
+        createGate?.invoke()
+        if (access.value?.binding != binding) return Result.failure(IllegalStateException("Binding changed"))
+        val request = com.ticketbox.data.remote.dto.GoalCreateRequestDto(name = draft.name, month = draft.month,
+            category = draft.category, targetAmountCents = draft.targetAmountCents, homeCurrencyCode = draft.homeCurrencyCode)
+        val row = com.ticketbox.data.repository.OutboxRow(1, binding.serverUrl, binding.ledgerId, binding.ownerKey,
+            com.ticketbox.data.local.PendingMutationType.CreateGoal, "goal_create:original-key", "{}", 0,
+            com.ticketbox.data.local.PendingMutationStatus.Pending, 0, null, "2026-09-01", null, null, "original-key")
+        creations.value = listOf(com.ticketbox.data.repository.PendingGoalCreation(row, request, null))
+        return Result.success(row.id)
+    }
+    override suspend fun recoverCreation(binding: com.ticketbox.data.repository.LogicalSessionBinding,
+        pending: com.ticketbox.data.repository.PendingGoalCreation, drop: Boolean): Result<Unit> {
+        if (drop) creations.value = creations.value.filterNot { it.row.id == pending.row.id }
+        return Result.success(Unit)
+    }
     override fun currentAccess() = access.value
     override fun observeAccess() = access
     override fun describeEdit(row: com.ticketbox.data.repository.OutboxRow) = rows.value.firstOrNull { it.row.id == row.id }

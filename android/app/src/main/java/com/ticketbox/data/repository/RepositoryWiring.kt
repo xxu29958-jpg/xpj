@@ -56,6 +56,8 @@ data class CategoryRuleOfflineMutationWiring(
     val outbox: OutboxRepository? = null,
     val updateAdapter: JsonAdapter<CategoryRuleUpdateRequest>? = null,
     val deleteAdapter: JsonAdapter<CategoryRuleDeleteRequest>? = null,
+    val submissionAdapter: JsonAdapter<CategoryRuleSubmissionPayload>? = null,
+    val receiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.CategoryRuleDto>? = null,
 )
 
 /**

@@ -23,8 +23,10 @@ class CreateDebtDispatcher(
         val payload = payloadAdapter.readSupportedDebtCreate(row.payloadJson)
             ?: return DispatchResult.Failure("debt_create_payload_unsupported")
         return try {
-            apiProvider(row).createDebt(payload.request, key)
-            DispatchResult.Success()
+            val created = apiProvider(row).createDebt(payload.toCreateRequest(), key)
+            if (created.homeCurrencyCode != payload.homeCurrencyCode || created.ledgerId != row.ledgerId || created.publicId.isBlank()) {
+                DispatchResult.Failure("debt_create_response_unverified")
+            } else DispatchResult.Success()
         } catch (error: CancellationException) {
             throw error
         } catch (error: HttpException) {

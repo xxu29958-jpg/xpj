@@ -166,6 +166,7 @@ private fun MutableSet<RecurringEditField>.addOverlappingDate(
 internal enum class RecurringFormInvalid {
     Merchant,
     Amount,
+    Currency,
 }
 
 /** 表单提交的解析结果：要么给出要调用的写路径，要么本地拦截（校验失败 / 无改动）。 */
@@ -181,12 +182,16 @@ internal fun resolveRecurringFormSubmit(
     input: RecurringFormInput,
     currency: CurrencyCode,
 ): RecurringFormSubmit {
+    if (editing != null && editing.homeCurrencyCode != currency.storageKey) {
+        return RecurringFormSubmit.Invalid(RecurringFormInvalid.Currency)
+    }
     val cents = parseAmountCents(input.amountText, currency)
     return when {
         input.merchant.isBlank() -> RecurringFormSubmit.Invalid(RecurringFormInvalid.Merchant)
         cents == null || cents <= 0L -> RecurringFormSubmit.Invalid(RecurringFormInvalid.Amount)
         editing == null -> RecurringFormSubmit.Create(
             RecurringItemDraft(
+                homeCurrencyCode = currency.storageKey,
                 merchant = input.merchant.trim(),
                 baselineAmountCents = cents,
                 nextExpectedDate = input.dateIso,

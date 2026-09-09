@@ -34,7 +34,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ticketbox.R
-import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.ui.components.AppAdaptiveAmountRowDefaults
 import com.ticketbox.ui.components.AppAdaptiveAmountRowStyle
@@ -44,7 +43,6 @@ import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.AppListStateContent
 import com.ticketbox.ui.components.AppListStateSpec
 import com.ticketbox.ui.components.AppSectionGroup
-import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppRadius
@@ -59,7 +57,6 @@ import com.ticketbox.ui.screens.RecurringListSectionModel
 @Composable
 internal fun RecurringHeroSection(
     model: RecurringHeroModel,
-    currencyDisplay: CurrencyDisplay,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -71,13 +68,15 @@ internal fun RecurringHeroSection(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (model.factual) {
-            AppAmountText(
-                modifier = Modifier.fillMaxWidth(),
-                text = formatDisplayAmount(model.totalCents, currencyDisplay),
-                color = MaterialTheme.colorScheme.onSurface,
-                role = AppAmountRole.Hero,
-                minFontSize = 22.sp,
-            )
+            recurringTotalLines(model).forEach { amount ->
+                AppAmountText(
+                    modifier = Modifier.fillMaxWidth(),
+                    text = amount,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    role = if (model.amountsByCurrency.size > 1) AppAmountRole.Compact else AppAmountRole.Hero,
+                    minFontSize = if (model.amountsByCurrency.size > 1) 14.sp else 22.sp,
+                )
+            }
             Text(
                 text = model.nearestNextDate?.let {
                     stringResource(
@@ -103,7 +102,6 @@ internal fun RecurringHeroSection(
 internal data class RecurringItemsCardState(
     val title: String,
     val section: RecurringListSectionModel<RecurringItem>,
-    val currencyDisplay: CurrencyDisplay,
     val canModify: Boolean,
     val editEnabled: Boolean,
 )
@@ -149,7 +147,6 @@ internal fun RecurringItemsCard(
                         if (index > 0) HorizontalDivider(color = visuals.chipUnselected.copy(alpha = 0.72f))
                         RecurringItemRow(
                             item = item,
-                            currencyDisplay = state.currencyDisplay,
                             canModify = state.canModify,
                             interaction = interaction,
                             actions = actions,
@@ -195,7 +192,6 @@ private fun RecurringItemsCardHeader(state: RecurringItemsCardState, itemCount: 
 @Composable
 private fun RecurringItemRow(
     item: RecurringItem,
-    currencyDisplay: CurrencyDisplay,
     canModify: Boolean,
     interaction: RecurringItemInteraction,
     actions: RecurringItemActions,
@@ -218,7 +214,7 @@ private fun RecurringItemRow(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
         AppAdaptiveEditAmountRow(
-            amount = formatDisplayAmount(item.baselineAmountCents, currencyDisplay),
+            amount = recurringRecordedAmountText(item.baselineAmountCents, item.homeCurrencyCode),
             style = AppAdaptiveAmountRowStyle(
                 role = AppAmountRole.Compact,
                 trailingWeight = AppAdaptiveAmountRowDefaults.listTrailingWeight,

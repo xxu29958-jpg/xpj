@@ -19,7 +19,7 @@
   <div class="product-page-heading">
     <a href="/web/recurring?ledger_id={{ selected_ledger_id }}">固定支出</a>
     <h1 class="page-title">{{ item.merchant_name }}</h1>
-    <p class="product-page-summary">{{ occurrence.period }} · 每月计划 {{ home_currency_symbol }}{{ planned_amount }}</p>
+    <p class="product-page-summary">{{ occurrence.period }} · 每月计划 {{ occurrence.home_currency_code or '' }} {{ planned_amount }}</p>
   </div>
 </header>
 <div class="plan-flow">
@@ -46,7 +46,7 @@
 <section class="product-panel product-panel--padded" aria-label="本期履约">
   {% if occurrence.state == 'fulfilled' %}
   <h2>本期已关联付款</h2>
-  <p>账单金额 {{ home_currency_symbol }}{{ paid_amount }}。本期固定支出已不再额外预留。</p>
+  <p>账单金额 {{ occurrence.paid_home_currency_code or '' }} {{ paid_amount }}。本期固定支出已不再额外预留。</p>
   {% elif occurrence.state == 'needs_review' %}
   <h2>付款需要重新核对</h2>
   <p>原账单已撤回或冲销，本期重新列为待履约。关联记录仍保留。</p>
@@ -81,7 +81,7 @@
   <p>关联表示这张账单已付清本期；不支持拆分一笔付款给多期。付款的原金额、日期与币种保持不变。</p>
   {% for payment in payments %}
   <div class="product-panel product-panel--padded">
-    <p><strong>{{ payment.merchant }}</strong> · {{ payment.date }} · {{ home_currency_symbol }}{{ payment.amount }}</p>
+    <p><strong>{{ payment.merchant }}</strong> · {{ payment.date }} · {{ payment.home_currency_code or '' }} {{ payment.amount }}</p>
     <a href="/web/expenses/{{ payment.id }}/edit?ledger_id={{ selected_ledger_id }}">核对账单</a>
     <form method="post" action="/web/recurring/{{ item.public_id }}/occurrence">
       {{ command_fields('link', payment.key, payment.public_id, payment.row_version) }}

@@ -13,12 +13,10 @@ from app.config import get_settings
 from app.errors import AppError
 from app.ledger_scope import ledger_filter, ledger_scoped_select
 from app.models import IncomePlanRevision, MonthlyIncomePlan
-from app.money_contract import projection_sum_to_int
 from app.services.currency_binding_service import (
-    assert_currency_binding_consistent,
     resolve_write_capability,
 )
-from app.services.currency_common import home_currency_code
+from app.services.currency_common import normalize_currency_code
 from app.services.income_plan_service._forecast import IncomeForecast, query_income_forecast
 from app.services.income_plan_service._history import (
     append_income_revision,
@@ -32,6 +30,7 @@ from app.services.income_plan_service._money import (
     updated_income_amount_cents as _updated_income_amount_cents,
 )
 from app.services.income_plan_service._money import validate_income_plan_amount
+from app.services.money_projection_service import ProjectionGap
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.time_service import ensure_utc, now_utc, safe_zone
 
@@ -80,10 +79,12 @@ def list_applicable_income_plans(
 def income_forecast(
     db: Session, *, tenant_id: str, month: str, as_of: datetime | None = None,
     timezone_name: str | None = None,
+    home_currency_code: str | None = None, missing_rates: set[ProjectionGap] | None = None,
 ) -> IncomeForecast:
     return query_income_forecast(
         db, tenant_id=tenant_id, period=income_month_start(month),
         today=_income_as_of_date(as_of=as_of, timezone_name=timezone_name),
+        home_currency_code=home_currency_code, missing_rates=missing_rates,
     )
 
 
@@ -93,6 +94,7 @@ def create_income_plan(
     tenant_id: str,
     label: str,
     source_type: str,
+    home_currency_code: str,
     amount_cents: int,
     pay_day: int,
     frequency: str = "monthly",
@@ -100,6 +102,7 @@ def create_income_plan(
     intent_month: str | None = None,
     actor_account_id: int | None = None,
     now: datetime | None = None,
+    commit: bool = True,
 ) -> MonthlyIncomePlan:
     """Insert a new active income row."""
 
@@ -112,8 +115,8 @@ def create_income_plan(
         income_month=income_month,
     )
     _validate_pay_day(pay_day)
-    # R13-2：无币种列的收入计划写按 env 口径入账 —— 先过绑定门（漂移/未决拒写）。
-    assert_currency_binding_consistent(db, home_currency_code())
+    resolve_write_capability(db)
+    home = normalize_currency_code(home_currency_code)
 
     when = now or now_utc()
     intent_period = income_intent_month(intent_month, when)
@@ -128,6 +131,7 @@ def create_income_plan(
         source_type=clean_source,
         frequency=clean_frequency,
         income_month=clean_income_month,
+        home_currency_code=home,
         amount_cents=clean_amount_cents,
         pay_day=pay_day,
         status="active",
@@ -139,7 +143,8 @@ def create_income_plan(
     append_income_revision(
         db, row, period=period, intent_period=intent_period, change_kind="create", actor_account_id=actor_account_id, when=when,
     )
-    db.commit()
+    if commit:
+        db.commit()
     db.refresh(row)
     return row
 
@@ -169,7 +174,7 @@ def update_income_plan(
     plan = _require_plan(db, tenant_id=tenant_id, public_id=public_id)
     _require_active_income_plan(plan)
     # R13-2：同 create —— 编辑写先过绑定门（漂移/未决拒写）。
-    assert_currency_binding_consistent(db, home_currency_code())
+    resolve_write_capability(db)
 
     when = now or now_utc()
     period = income_intent_month(intent_month, when)
@@ -323,11 +328,9 @@ def total_monthly_income_cents(
     forecast = query_income_forecast(
         db, tenant_id=tenant_id, period=income_month_start(month) if month else today.replace(day=1), today=today,
     )
-    if month is not None:
-        return forecast.expected_amount_cents
-    return projection_sum_to_int(sum(
-        row.amount_cents for row in forecast.entries if row.frequency == "monthly"
-    ), label="income_plan.total")
+    if forecast.expected_amount_cents is None:
+        raise AppError("exchange_rate_missing", "部分收入计划缺少折算汇率，请补齐汇率后查看完整估算。", status_code=422)
+    return forecast.expected_amount_cents
 
 
 def _require_active_income_plan(plan: MonthlyIncomePlan) -> None:

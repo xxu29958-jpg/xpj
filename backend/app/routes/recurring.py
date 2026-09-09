@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_app_context, get_current_writer_context
+from app.auth import get_current_app_context, get_current_protocol_writer_context, get_current_writer_context
 from app.database import get_db
 from app.schemas import (
     RecurringCandidateConfirmRequest,
@@ -103,18 +103,17 @@ def get_recurring_items(
 def post_recurring_item(
     payload: RecurringItemCreateRequest,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    auth: AuthContext = Depends(get_current_writer_context),
+    auth: AuthContext = Depends(get_current_protocol_writer_context),
     db: Session = Depends(get_db),
 ) -> RecurringItemResponse:
-    return _response(db,
-        create_manual_recurring_item(
-            db,
-            tenant_id=auth.tenant_id,
-            idempotency_key=idempotency_key,
-            merchant=payload.merchant,
-            baseline_amount_cents=payload.baseline_amount_cents,
-            next_expected_date=payload.next_expected_date,
-        )
+    return create_manual_recurring_item(
+        db,
+        tenant_id=auth.tenant_id,
+        idempotency_key=idempotency_key,
+        merchant=payload.merchant,
+        home_currency_code=payload.home_currency_code,
+        baseline_amount_cents=payload.baseline_amount_cents,
+        next_expected_date=payload.next_expected_date,
     )
 
 
@@ -122,7 +121,7 @@ def post_recurring_item(
 def post_recurring_from_candidate(
     payload: RecurringCandidateConfirmRequest,
     timezone: str | None = Query(default=None),
-    auth: AuthContext = Depends(get_current_writer_context),
+    auth: AuthContext = Depends(get_current_protocol_writer_context),
     db: Session = Depends(get_db),
 ) -> RecurringItemResponse:
     item = confirm_recurring_candidate(
@@ -158,23 +157,22 @@ def patch_recurring_item(
     public_id: str,
     payload: RecurringItemUpdateRequest,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    auth: AuthContext = Depends(get_current_writer_context),
+    auth: AuthContext = Depends(get_current_protocol_writer_context),
     db: Session = Depends(get_db),
 ) -> RecurringItemResponse:
-    return _response(db,
-        update_recurring_item(
-            db,
-            tenant_id=auth.tenant_id,
-            public_id=public_id,
-            idempotency_key=idempotency_key,
-            expected_row_version=payload.expected_row_version,
-            merchant=payload.merchant,
-            merchant_provided="merchant" in payload.model_fields_set,
-            baseline_amount_cents=payload.baseline_amount_cents,
-            baseline_provided="baseline_amount_cents" in payload.model_fields_set,
-            next_expected_date=payload.next_expected_date,
-            next_expected_date_provided="next_expected_date" in payload.model_fields_set,
-        )
+    return update_recurring_item(
+        db,
+        tenant_id=auth.tenant_id,
+        public_id=public_id,
+        idempotency_key=idempotency_key,
+        expected_row_version=payload.expected_row_version,
+        home_currency_code=payload.home_currency_code,
+        merchant=payload.merchant,
+        merchant_provided="merchant" in payload.model_fields_set,
+        baseline_amount_cents=payload.baseline_amount_cents,
+        baseline_provided="baseline_amount_cents" in payload.model_fields_set,
+        next_expected_date=payload.next_expected_date,
+        next_expected_date_provided="next_expected_date" in payload.model_fields_set,
     )
 
 

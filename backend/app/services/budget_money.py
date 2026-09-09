@@ -8,9 +8,9 @@ from app.schemas import BudgetMonthlyUpdateRequest
 def budget_amount_breakdown(
     budget: Budget | None,
     *,
-    fixed_amount_cents: int,
-    spent_amount_cents: int,
-) -> tuple[int, int, int, int, int, int]:
+    fixed_amount_cents: int | None,
+    spent_amount_cents: int | None,
+) -> tuple[int, int, int, int | None, int | None, int | None]:
     total = projection_sum_to_int(
         budget.total_amount_cents if budget else 0,
         label="budget.total",
@@ -24,12 +24,12 @@ def budget_amount_breakdown(
         label="budget.non_monthly",
     )
     available = projection_sum_to_int(total + rollover, label="budget.available")
-    flex_delta = projection_sum_to_int(
+    flex_delta = None if fixed_amount_cents is None else projection_sum_to_int(
         available - fixed_amount_cents - non_monthly,
         label="budget.flex",
     )
-    flex = max(flex_delta, 0)
-    remaining = (
+    flex = None if flex_delta is None else max(flex_delta, 0)
+    remaining = None if spent_amount_cents is None else (
         projection_sum_to_int(
             available - spent_amount_cents,
             label="budget.remaining",
@@ -37,7 +37,7 @@ def budget_amount_breakdown(
         if budget is not None
         else 0
     )
-    overspent = max(-remaining, 0) if budget is not None else 0
+    overspent = None if remaining is None else max(-remaining, 0)
     return total, rollover, non_monthly, flex, remaining, overspent
 
 

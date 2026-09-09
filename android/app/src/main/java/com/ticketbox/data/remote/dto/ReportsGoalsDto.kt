@@ -3,65 +3,69 @@ package com.ticketbox.data.remote.dto
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 
+@JsonClass(generateAdapter = true)
 data class ReportTrendPointDto(
     val bucket: String,
     val label: String,
     @param:Json(name = "amount_cents")
-    val amountCents: Long,
+    val amountCents: Long?,
     val count: Int,
 )
 
+@JsonClass(generateAdapter = true)
 data class ReportMerchantRankingDto(
     val merchant: String,
     @param:Json(name = "amount_cents")
-    val amountCents: Long,
+    val amountCents: Long?,
     val count: Int,
 )
 
+@JsonClass(generateAdapter = true)
 data class ReportCategoryComparisonDto(
     val category: String,
     @param:Json(name = "amount_cents")
-    val amountCents: Long,
+    val amountCents: Long?,
     val count: Int,
     @param:Json(name = "previous_amount_cents")
-    val previousAmountCents: Long,
+    val previousAmountCents: Long?,
     @param:Json(name = "previous_count")
     val previousCount: Int,
     @param:Json(name = "delta_amount_cents")
-    val deltaAmountCents: Long,
+    val deltaAmountCents: Long?,
     @param:Json(name = "delta_count")
     val deltaCount: Int,
     @param:Json(name = "year_over_year_amount_cents")
-    val yearOverYearAmountCents: Long,
+    val yearOverYearAmountCents: Long?,
     @param:Json(name = "year_over_year_count")
     val yearOverYearCount: Int,
     @param:Json(name = "year_over_year_delta_amount_cents")
-    val yearOverYearDeltaAmountCents: Long,
+    val yearOverYearDeltaAmountCents: Long?,
     @param:Json(name = "year_over_year_delta_count")
     val yearOverYearDeltaCount: Int,
 )
 
+@JsonClass(generateAdapter = true)
 data class ReportsOverviewDto(
     val month: String,
     val timezone: String,
     val granularity: String,
     @param:Json(name = "total_amount_cents")
-    val totalAmountCents: Long,
+    val totalAmountCents: Long?,
     val count: Int,
     @param:Json(name = "previous_month")
     val previousMonth: String,
     @param:Json(name = "previous_total_amount_cents")
-    val previousTotalAmountCents: Long,
+    val previousTotalAmountCents: Long?,
     @param:Json(name = "previous_count")
     val previousCount: Int,
     @param:Json(name = "year_over_year_month")
     val yearOverYearMonth: String,
     @param:Json(name = "year_over_year_total_amount_cents")
-    val yearOverYearTotalAmountCents: Long,
+    val yearOverYearTotalAmountCents: Long?,
     @param:Json(name = "year_over_year_count")
     val yearOverYearCount: Int,
     @param:Json(name = "year_over_year_delta_amount_cents")
-    val yearOverYearDeltaAmountCents: Long,
+    val yearOverYearDeltaAmountCents: Long?,
     @param:Json(name = "year_over_year_delta_count")
     val yearOverYearDeltaCount: Int,
     @param:Json(name = "merchant_category")
@@ -73,6 +77,8 @@ data class ReportsOverviewDto(
     val merchantRanking: List<ReportMerchantRankingDto>,
     @param:Json(name = "category_comparison")
     val categoryComparison: List<ReportCategoryComparisonDto>,
+    @param:Json(name = "home_currency_code") val homeCurrencyCode: String,
+    @param:Json(name = "missing_rates") val missingRates: List<MissingExchangeRateDto>,
 )
 
 /**
@@ -85,6 +91,7 @@ data class ReportsOverviewDto(
  * spending goal that carries debt_public_ids). Built by GoalDraft.toRequest (spending)
  * and inline in ReportsRepository.createDebtGoal (debt).
  */
+@JsonClass(generateAdapter = true)
 data class GoalCreateRequestDto(
     val name: String,
     @param:Json(name = "goal_type")
@@ -96,6 +103,8 @@ data class GoalCreateRequestDto(
     val category: String? = null,
     @param:Json(name = "debt_public_ids")
     val debtPublicIds: List<String>? = null,
+    @param:Json(name = "home_currency_code")
+    val homeCurrencyCode: String? = null,
 )
 
 /**
@@ -112,6 +121,9 @@ data class GoalUpdateRequestDto(
     val category: String? = null,
     @param:Json(name = "target_amount_cents")
     val targetAmountCents: Long? = null,
+    // Nullable only for reading an older durable submission; the writer validates it.
+    @param:Json(name = "home_currency_code")
+    val homeCurrencyCode: String? = null,
 )
 
 @JsonClass(generateAdapter = true)
@@ -124,11 +136,7 @@ data class GoalDto(
     @param:Json(name = "goal_type")
     val goalType: String,
     val period: String,
-    // ADR-0049 §6 (slice 7): the spending-shape numeric fields are null for a
-    // debt_repayment goal (it has no monthly spend target). The month-scoped
-    // GET /api/goals never returns debt goals, so a spending-only response keeps
-    // these populated; only the debt-goal surface (GET ?goal_type=debt_repayment /
-    // GET /api/goals/{id} for a debt goal) sends nulls + the [debtRepayment] block.
+    // Debt goals have no spending target; spending progress can be unknown without FX.
     val month: String?,
     val category: String?,
     @param:Json(name = "target_amount_cents")
@@ -153,6 +161,8 @@ data class GoalDto(
     // Populated only for debt_repayment goals (ADR-0049 §6).
     @param:Json(name = "debt_repayment")
     val debtRepayment: DebtRepaymentEvaluationDto? = null,
+    @param:Json(name = "home_currency_code")
+    val homeCurrencyCode: String? = null,
 )
 
 data class GoalListResponseDto(

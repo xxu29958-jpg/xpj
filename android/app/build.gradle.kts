@@ -436,6 +436,8 @@ dependencies {
     testImplementation(libs.sqlite.jdbc)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    // Tests close the real soft keyboard; Compose exposes Espresso only at runtime.
+    androidTestImplementation(libs.androidx.espresso.core)
     // SdkSuppress is used by our test source; Compose brings this runner only at runtime.
     androidTestImplementation(libs.androidx.test.runner)
     // ADR-0041 follow-up: real Room v10→v11 MigrationTestHelper coverage,
@@ -463,6 +465,12 @@ detekt {
 }
 
 tasks.withType<dev.detekt.gradle.Detekt>().configureEach {
+    if (name.endsWith("UnitTest")) {
+        config.setFrom(
+            rootProject.file("detekt.yml"),
+            rootProject.file("detekt-tests.yml"),
+        )
+    }
     exclude { element ->
         element.file.absolutePath
             .replace('\\', '/')

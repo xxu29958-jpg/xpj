@@ -70,7 +70,7 @@ def _add_income_plan(
 ) -> None:
     from app.services.income_plan_service import create_income_plan
     with SessionLocal() as db:
-        create_income_plan(db, tenant_id=tenant_id, label="pytest", source_type="salary",
+        create_income_plan(db, home_currency_code="CNY", tenant_id=tenant_id, label="pytest", source_type="salary",
             frequency=frequency, income_month=income_month, amount_cents=amount_cents,
             pay_day=10, now=datetime(2026, 5, 1, tzinfo=UTC))
 

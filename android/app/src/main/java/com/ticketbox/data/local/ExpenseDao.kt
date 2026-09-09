@@ -30,6 +30,25 @@ data class ConfirmedStreamSnapshot(
  */
 @Dao
 interface ExpenseDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveStatsProjection(snapshot: StatsProjectionCacheEntity)
+
+    @Query("""
+        SELECT * FROM stats_projection_cache
+        WHERE bindingKey = :bindingKey AND kind = :kind AND month = :month AND tag = :tag
+          AND timezone = :timezone
+        ORDER BY fetchedAt DESC
+    """)
+    suspend fun statsProjections(
+        bindingKey: String, kind: String, month: String, tag: String, timezone: String,
+    ): List<StatsProjectionCacheEntity>
+
+    @Query("DELETE FROM stats_projection_cache")
+    suspend fun clearStatsProjections()
+
+    @Query("DELETE FROM stats_projection_cache WHERE ledgerId = :ledgerId")
+    suspend fun clearStatsProjectionsForLedger(ledgerId: String)
+
     @Query(
         """
         SELECT * FROM expenses
@@ -301,12 +320,14 @@ interface ExpenseDao {
     suspend fun clearAllExpenseCaches() {
         clear()
         clearConfirmedStreamOffsets()
+        clearStatsProjections()
     }
 
     @Transaction
     suspend fun clearAllExpenseCachesForLedger(ledgerId: String) {
         clearForLedger(ledgerId)
         clearConfirmedStreamOffsetsForLedger(ledgerId)
+        clearStatsProjectionsForLedger(ledgerId)
     }
 
     @Transaction

@@ -13,6 +13,7 @@ from app.models import Account, Ledger
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.time_service import now_utc
 from tests._infra.alembic_runtime import reset_public_schema, run_alembic_for_test
+from tests._infra.currency import activate_test_currency_authority
 
 pytestmark = pytest.mark.real_db
 
@@ -29,7 +30,7 @@ def _run(action, revision: str) -> None:
 
 def _seed_old_debt() -> int:
     with SessionLocal.begin() as db:
-        resolve_write_capability(db)
+        activate_test_currency_authority(db, "CNY")
         account = Account(display_name="往来迁移用户")
         db.add(account)
         db.flush()

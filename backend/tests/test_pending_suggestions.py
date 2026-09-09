@@ -21,7 +21,7 @@ def _confirmed(
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": 1200 + day,
+            "home_currency_code": "CNY", "amount_cents": 1200 + day,
             "merchant": merchant,
             "category": category,
             "spent_at": f"2026-05-{day:02d}T03:00:00Z",

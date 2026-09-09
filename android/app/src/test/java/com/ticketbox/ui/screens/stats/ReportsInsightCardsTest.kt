@@ -9,9 +9,27 @@ import com.ticketbox.domain.model.ReportTrendPoint
 import com.ticketbox.ui.components.formatDisplayAmount
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class ReportsInsightCardsTest {
+    @Test fun incompleteProjectionCannotPublishAnAmountRankingOrChart() {
+        val rows = listOf(ReportMerchantRanking("A", null, 3), ReportMerchantRanking("B", 900, 1))
+        assertEquals(emptyList(), merchantRankingVisibleRows(rows, ReportRankingMetric.Amount))
+        assertEquals(3L, merchantRankingBarValue(rows.first(), ReportRankingMetric.Count))
+        assertNull(merchantRankingBarValue(rows.first(), ReportRankingMetric.Amount))
+        val unknownTrend = listOf(ReportTrendPoint("2026-09-01", "9/1", null, 3))
+        assertEquals(emptyList(), reportTrendChartPoints(unknownTrend))
+        assertEquals(emptyList(), heroSpendTrendPoints(unknownTrend))
+        assertEquals(emptyList(), categoryComparisonChartRows(listOf(comparisonRow("A", 900, 0).copy(amountCents = null))))
+    }
     private val currencyDisplay = CurrencyDisplay.Base
+
+    @Test
+    fun incompleteMerchantProjectionKeepsCountRankingEvenWhenVisibleAmountsAreKnown() {
+        val merchants = listOf(FrequentMerchant("often", 8, 100), FrequentMerchant("large", 1, 9000))
+        assertEquals(listOf("often", "large"), frequentMerchantDisplayRows(merchants, compareAmounts = false).map { it.merchant })
+        assertEquals(listOf("often", "large"), frequentMerchantDisplayRows(merchants.map { it.copy(amountCents = null) }).map { it.merchant })
+    }
 
     @Test
     fun trendChartPointsKeepServerOrderAndClampInvalidValues() {
@@ -42,12 +60,10 @@ class ReportsInsightCardsTest {
     }
 
     @Test
-    fun compactAmountLabelsUseCentsWithoutFloatingPointMath() {
-        assertEquals("¥0", compactAmountCentsLabel(0L))
-        assertEquals("¥9.9", compactAmountCentsLabel(990L))
-        assertEquals("¥1.2k", compactAmountCentsLabel(123_400L))
-        assertEquals("¥1.2万", compactAmountCentsLabel(1_234_000L))
-        assertEquals("-¥1.2万", compactAmountCentsLabel(-1_234_000L))
+    fun chartAccessibilityUsesTheReportCurrencyMinorUnit() {
+        val points = reportTrendChartPoints(listOf(ReportTrendPoint("2026-09-01", "9/1", 1200, 1)))
+        val display = CurrencyDisplay.forRecord("JPY")
+        assertEquals("9/1 ${formatDisplayAmount(1200, display)}", trendChartA11y(points, display).listed)
     }
 
     @Test

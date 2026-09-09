@@ -95,7 +95,7 @@ def disable_alias_and_seed_recurring(*, merchant_key: str) -> None:
         assert alias is not None
         alias.enabled = False
         db.add(
-            RecurringItem(
+            RecurringItem(home_currency_code="CNY",
                 tenant_id="owner",
                 merchant_key=merchant_key,
                 merchant_name="Anchor Store",

@@ -5,6 +5,8 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Form, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
+from pydantic import BaseModel
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -17,12 +19,17 @@ from app.services.currency_adoption_service import (
     adoption_preview,
     revalidate_currency_adoption_owner,
 )
+from app.services.currency_default_service import (
+    CurrencyDefaultPreview,
+    change_currency_binding_for_installation_owner,
+    currency_change_preview,
+)
 from app.tenants import AuthContext
 from app.version import BACKEND_VERSION, STATIC_ASSET_VERSION
 
 router = APIRouter(prefix="/web", tags=["web"])
 
-_CONFIRM_REASON = "安装拥有者通过小票夹 Desktop 明确确认历史金额的本位币。"
+_CONFIRM_REASON = "安装拥有者通过小票夹 Desktop 明确选择并确认本位币。"
 _CURRENCY_NAMES = {
     "CNY": "人民币",
     "USD": "美元",
@@ -37,6 +44,7 @@ _RETRYABLE_ERRORS = {
     "currency_binding_state_conflict": "本位币状态刚刚发生了变化。已重新检查当前结果。",
     "currency_adoption_currency_conflict": "记录之间存在币种矛盾，没有改写任何金额。请先处理系统体检中的冲突。",
     "idempotency_key_in_progress": "上次确认仍在处理，请稍后重新检查结果。",
+    "currency_not_supported": "请选择一种支持的本位币。",
 }
 
 
@@ -65,7 +73,7 @@ def _decode_evidence_token(token: str) -> str:
     return evidence.hex()
 
 
-def _currency_options(preview: CurrencyAdoptionPreview) -> list[dict[str, str]]:
+def _currency_options(preview: CurrencyAdoptionPreview | CurrencyDefaultPreview) -> list[dict[str, str]]:
     return [
         {
             "code": code,
@@ -86,9 +94,7 @@ def _render(
     status_code: int = 200,
 ) -> HTMLResponse:
     if selected_code not in preview.allowed_home_currency_codes:
-        selected_code = preview.configured_home_currency_code or ""
-    if selected_code not in preview.allowed_home_currency_codes:
-        selected_code = preview.allowed_home_currency_codes[0] if len(preview.allowed_home_currency_codes) == 1 else ""
+        selected_code = ""
     return templates.TemplateResponse(
         request=request,
         name="currency_adoption.html",
@@ -100,7 +106,6 @@ def _render(
             "preview": preview,
             "currency_options": _currency_options(preview),
             "selected_code": selected_code,
-            "configured_name": _CURRENCY_NAMES.get(preview.configured_home_currency_code or "", ""),
             "active_name": _CURRENCY_NAMES.get(preview.home_currency_code or "", ""),
             "error_message": error_message,
             "evidence_token": _evidence_token(preview.evidence_sha256),
@@ -115,7 +120,10 @@ def currency_adoption_page(
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    revalidate_currency_adoption_owner(db, _desktop_auth(request))
+    current = currency_change_preview(db, auth=_desktop_auth(request))
+    if current.state == "ACTIVE":
+        form = _fresh_default_form(current) if request.query_params.get("change") == "true" else None
+        return _render_default(request, current=current, form=form)
     return _render(request, adoption_preview(db))
 
 
@@ -157,3 +165,72 @@ def currency_adoption_submit(
             status_code=409,
         )
     return RedirectResponse(url="/web/currency-adoption", status_code=303)
+
+
+class CurrencyDefaultForm(BaseModel):
+    """Keep native fields unchanged until the existing command owner validates them."""
+
+    source_home_currency_code: str = ""
+    home_currency_code: str = ""
+    currency_contract_version: str = ""
+    expected_binding_revision: str = ""
+    idempotency_key: str = ""
+    reason: str = ""
+    review_latest: str = ""
+
+
+def _fresh_default_form(current: CurrencyDefaultPreview, original: CurrencyDefaultForm | None = None) -> CurrencyDefaultForm:
+    return CurrencyDefaultForm(
+        source_home_currency_code=current.home_currency_code or "",
+        home_currency_code=original.home_currency_code if original else "",
+        reason=original.reason if original else "",
+        currency_contract_version=str(current.currency_contract_version),
+        expected_binding_revision=str(current.binding_revision),
+        idempotency_key=str(uuid4()),
+    )
+
+
+def _render_default(request, *, current=None, form=None, receipt=None, error=None, status_code=200):
+    return templates.TemplateResponse(request=request, name="currency_default.html", status_code=status_code,
+        headers={"Cache-Control": "no-store"}, context={
+            "asset_version": STATIC_ASSET_VERSION, "ui_theme": _read_ui_theme(request),
+            "current": current, "form": form, "receipt": receipt, "error": error,
+            "currency_names": _CURRENCY_NAMES,
+            "currency_options": _currency_options(current) if current else [
+                {"code": code, "name": name, "symbol": CURRENCY_SYMBOLS[code]} for code, name in _CURRENCY_NAMES.items()],
+        })
+
+
+def _default_command(form: CurrencyDefaultForm) -> dict:
+    versions = (form.currency_contract_version, form.expected_binding_revision)
+    if not form.source_home_currency_code.strip() or any(
+        not value.isascii() or not value.isdecimal() or int(value) < 1 for value in versions
+    ):
+        raise ValueError("Missing original currency or version")
+    return {"idempotency_key": UUID(form.idempotency_key), "expected_contract_version": int(versions[0]),
+        "home_code": form.home_currency_code, "expected_revision": int(versions[1]), "reason": form.reason}
+
+
+@router.post("/currency-adoption/change", response_class=HTMLResponse, include_in_schema=False)
+def currency_default_submit(request: Request, form: CurrencyDefaultForm = Form(),
+    _local: None = LocalOnly, db: Session = Depends(get_db)) -> HTMLResponse:
+    try:
+        auth = revalidate_currency_adoption_owner(db, _desktop_auth(request))
+        if form.review_latest == "true":
+            current = currency_change_preview(db, auth=auth)
+            if current.state != "ACTIVE":
+                raise AppError("currency_binding_state_conflict", status_code=409)
+            return _render_default(request, current=current, form=_fresh_default_form(current, form))
+        receipt = change_currency_binding_for_installation_owner(db, auth=auth, **_default_command(form))
+    except SQLAlchemyError:
+        db.rollback()
+        return _render_default(request, form=form, status_code=503,
+            error="暂时未收到确定结果。请保留原提交重试，不要重复发起另一笔修改。")
+    except (AppError, ValueError) as exc:
+        db.rollback()
+        if isinstance(exc, AppError) and exc.status_code in (401, 403):
+            raise
+        error = exc.message if isinstance(exc, AppError) else "原提交信息不完整。输入已保留，请核对当前设置后再继续。"
+        return _render_default(request, form=form, error=error,
+            status_code=exc.status_code if isinstance(exc, AppError) else 422)
+    return _render_default(request, form=form, receipt=receipt)

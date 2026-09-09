@@ -23,6 +23,7 @@
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <input type="hidden" name="expected_row_version" value="{{ values.expected_row_version }}">
       <input type="hidden" name="idempotency_key" value="{{ values.idempotency_key }}">
+      <input type="hidden" name="home_currency_code" value="{{ values.home_currency_code }}">
       {{ csrf_field|safe }}
       <div class="product-form-grid">
         <div class="product-field">
@@ -34,8 +35,8 @@
           <input id="goal-edit-month" class="product-input" type="month" name="month" value="{{ values.month }}" required>
         </div>
         <div class="product-field">
-          <label for="goal-edit-amount">目标金额（{{ currency_input.currency_code }} · {{ currency_input.currency_symbol }}，{{ currency_input.amount_input_hint }}）</label>
-          <input id="goal-edit-amount" class="product-input" type="text" name="target_amount_yuan" value="{{ values.target_amount_yuan }}" inputmode="{{ currency_input.inputmode }}" required>
+          <label for="goal-edit-amount">目标金额（{{ form_currency.currency_code or '原币种待确认' }}，{{ form_currency.amount_input_hint }}）</label>
+          <input id="goal-edit-amount" class="product-input" type="text" name="target_amount_yuan" value="{{ values.target_amount_yuan }}" inputmode="{{ form_currency.inputmode or 'text' }}" required>
         </div>
         <div class="product-field">
           <label for="goal-edit-category">分类（留空为总支出）</label>
@@ -43,7 +44,10 @@
         </div>
       </div>
       <div class="budget-actions">
-        {% if goal.status != 'archived' %}
+        {% if not currency_matches %}
+          <p role="status">原输入币种与当前目标不一致或无法确认，原金额、版本和提交标识已保留。请先核对当前目标。</p>
+          <a class="product-button product-button--quiet" target="_blank" rel="noopener" href="/web/goals/{{ goal.public_id }}/edit?ledger_id={{ selected_ledger_id }}">在新窗口打开当前目标</a>
+        {% elif goal.status != 'archived' %}
           {% if conflict %}<button class="product-button product-button--primary" type="submit" name="review_latest" value="true" formnovalidate>保留输入，按当前目标核对</button>
           {% else %}<button class="product-button product-button--primary" type="submit">保存修改</button>{% endif %}
         {% endif %}
@@ -53,7 +57,7 @@
   <section class="product-panel product-panel--padded" aria-label="当前已保存的目标">
     <div class="product-panel-header"><h2 class="product-panel-title">当前已保存</h2><p class="product-panel-subtitle">上方输入保存成功后，才会更新目标。</p></div>
     <p><strong>{{ current.name }}</strong> · {{ current.month }} · {{ current.category or '总支出' }}</p>
-    <p>目标金额 {{ home_currency_symbol }}{{ current.target_amount_yuan }}</p>
+    <p>目标金额 {{ current.home_currency_code or '币种待确认' }} {{ current.target_amount_yuan }}</p>
   </section>
 </div>
 {% endblock %}

@@ -48,7 +48,6 @@ class IncomePlanViewModelLoadStateTest {
             LoadStateIncomePlanRepository(
                 activeResult = Result.failure(RuntimeException("offline")),
             ),
-            CapabilityDebtActions(),
         )
         advanceUntilIdle()
 
@@ -61,7 +60,7 @@ class IncomePlanViewModelLoadStateTest {
 
     @Test
     fun loadedEmptyAndArchivedFailureStayExplicit() = runTest(dispatcher) {
-        val loadedEmpty = IncomePlanViewModel(LoadStateIncomePlanRepository(), CapabilityDebtActions())
+        val loadedEmpty = IncomePlanViewModel(LoadStateIncomePlanRepository())
         advanceUntilIdle()
         assertEquals(IncomePlanLoadState.Loaded, loadedEmpty.state.value.loadState)
         assertNull(loadedEmpty.state.value.error)
@@ -70,7 +69,6 @@ class IncomePlanViewModelLoadStateTest {
             LoadStateIncomePlanRepository(
                 archivedResult = Result.failure(RuntimeException("archived offline")),
             ),
-            CapabilityDebtActions(),
         )
         advanceUntilIdle()
 
@@ -80,14 +78,14 @@ class IncomePlanViewModelLoadStateTest {
 }
 
 private class LoadStateIncomePlanRepository(
-    private val activeResult: Result<IncomePlanListing> = Result.success(IncomePlanListing(emptyList(), 0L, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0)),
+    private val activeResult: Result<IncomePlanListing> = Result.success(IncomePlanListing(emptyList(), 0L, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0, homeCurrencyCode = "CNY")),
     private val archivedResult: Result<List<IncomePlan>> = Result.success(emptyList()),
 ) : IncomePlanActions {
-    override fun describeEdit(row: com.ticketbox.data.repository.OutboxRow): com.ticketbox.data.repository.PendingIncomePlanEdit? = null
-    override fun observeEdits(expectedBinding: LogicalSessionBinding) =
-        kotlinx.coroutines.flow.flowOf(emptyList<com.ticketbox.data.repository.PendingIncomePlanEdit>())
-    override suspend fun recoverEdit(expectedBinding: LogicalSessionBinding,
-        pending: com.ticketbox.data.repository.PendingIncomePlanEdit, drop: Boolean) = Result.success(Unit)
+    override fun describeSubmission(row: com.ticketbox.data.repository.OutboxRow): com.ticketbox.data.repository.PendingIncomePlanSubmission? = null
+    override fun observeSubmissions(expectedBinding: LogicalSessionBinding) =
+        kotlinx.coroutines.flow.flowOf(emptyList<com.ticketbox.data.repository.PendingIncomePlanSubmission>())
+    override suspend fun recoverSubmission(expectedBinding: LogicalSessionBinding,
+        pending: com.ticketbox.data.repository.PendingIncomePlanSubmission, drop: Boolean) = Result.success(Unit)
 
     override fun canModifyLedger(): Boolean = true
 
@@ -106,7 +104,7 @@ private class LoadStateIncomePlanRepository(
     override suspend fun create(
         expectedBinding: LogicalSessionBinding,
         draft: IncomePlanDraft,
-    ): Result<IncomePlan> = Result.success(plan("created"))
+    ): Result<Long> = Result.success(1L)
 
     override suspend fun enqueueUpdate(expectedBinding: LogicalSessionBinding, baseline: IncomePlan,
         patch: com.ticketbox.data.repository.IncomePlanPatch,

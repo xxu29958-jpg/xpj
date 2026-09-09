@@ -47,7 +47,7 @@ def _external(account_id: int, label: str, direction: str) -> str:
             created_by_account_id=account_id,
             owner_account_id=account_id,
             payload=DebtCreateRequest(
-                direction=direction,
+                home_currency_code="CNY", direction=direction,
                 counterparty_type="external",
                 counterparty_label=label,
                 principal_amount_cents=500,

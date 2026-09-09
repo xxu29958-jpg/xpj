@@ -30,6 +30,7 @@ from app.models import Account, Debt, LedgerMember, Repayment, RepaymentDraft
 from app.services import debt_service
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.time_service import ensure_utc, now_utc
+from tests._runtime_protocol import negotiated_headers
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
@@ -51,9 +52,9 @@ def _set_owner_ledger_role(role: str) -> None:
 def _create_debt(client: TestClient, identity, *, principal_amount_cents: int = 50000) -> dict:
     response = client.post(
         "/api/debts",
-        headers=_idem(identity.app_headers),
+        headers=negotiated_headers(client, _idem(identity.app_headers)),
         json={
-            "direction": "i_owe",
+            "home_currency_code": "CNY", "direction": "i_owe",
             "counterparty_type": "external",
             "counterparty_label": "花呗",
             "principal_amount_cents": principal_amount_cents,
@@ -320,7 +321,7 @@ def _seed_committed_external_debt(*, principal_amount_cents: int) -> tuple[str, 
             created_by_account_id=actor,
             owner_account_id=actor,
             payload=DebtCreateRequest(
-                direction="i_owe",
+                home_currency_code="CNY", direction="i_owe",
                 counterparty_type="external",
                 counterparty_label="花呗",
                 principal_amount_cents=principal_amount_cents,

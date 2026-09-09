@@ -29,11 +29,13 @@
       {% endif %}
     </p>
     <div class="cluster">
-      <a class="product-button" href="/web/reports{{ q }}">分析</a>
+      <a class="product-button" href="/web/reports?{{ money_task|urlencode }}">分析</a>
       <a class="product-button" href="/web/dashboard/cards{{ q }}">模块设置</a>
     </div>
   </div>
 </header>
+{% if flash_message %}<div class="product-feedback" role="status">{{ flash_message }}</div>{% endif %}
+{% include 'partials/budget_fx_gaps.html' %}
 
 {% if not has_any_expense %}
 <section class="product-state insight-onboarding" aria-label="开始记录">
@@ -84,13 +86,14 @@
         <div class="product-panel-subtitle">{{ cards.month }} · 已入账</div>
       </div>
       <a class="product-panel-subtitle"
-         href="/web/confirmed?ledger_id={{ selected_ledger_id }}&amp;month={{ cards.month }}">查看流水</a>
+         href="/web/confirmed?{{ money_task|urlencode }}">查看流水</a>
     </div>
     <div class="insight-hero-value">
-      <small>{{ hero_amount.cur }}</small>{{ hero_amount.int }}{% if hero_amount.dec %}<small>{{ hero_amount.dec }}</small>{% endif %}
+      {% if hero_amount is not none %}<small>{{ hero_amount.cur }}</small>{{ hero_amount.int }}{% if hero_amount.dec %}<small>{{ hero_amount.dec }}</small>{% endif %}{% else %}待补齐换算信息{% endif %}
     </div>
     <div class="insight-module-foot">
-      {% if cards.delta_direction and cards.delta_direction != 'none' %}
+      {% if cards.delta_direction == 'unavailable' %}<span class="text-meta">补齐换算信息后比较上月</span>
+      {% elif cards.delta_direction and cards.delta_direction != 'none' %}
       <span class="product-status {% if cards.delta_direction == 'up' %}product-status--warning{% else %}product-status--success{% endif %}">
         {% if cards.delta_direction == 'up' %}
           比上月多 {{ delta_amount_label }}
@@ -135,9 +138,11 @@
     <div class="insight-stat-value num{% if cards.budget_is_over %} text-danger{% endif %}">
       {{ budget_remaining_label }}
     </div>
+    {% if cards.budget_remaining_cents is not none %}
     <span class="product-status {{ 'product-status--danger' if cards.budget_is_over else 'product-status--success' }}">
       {{ '已超支' if cards.budget_is_over else '仍可使用' }}
     </span>
+    {% endif %}
     {% if cards.budget_top %}
     <div class="insight-progress-list">
       {% for budget in cards.budget_top %}
@@ -145,13 +150,13 @@
         <div class="insight-progress-meta">
           <span>{{ budget.name }}</span>
           <strong class="num{% if budget.is_over %} text-danger{% endif %}">
-            {% if budget.is_over %}超 {{ budget.overspent_label }}{% else %}{{ budget.percent }}%{% endif %}
+            {% if budget.is_over %}超 {{ budget.overspent_label }}{% elif budget.percent is not none %}{{ budget.percent }}%{% else %}待补齐汇率{% endif %}
           </strong>
         </div>
-        <progress class="product-progress"
+        {% if budget.percent is not none %}<progress class="product-progress"
                   max="100"
                   value="{{ budget.percent }}"
-                  aria-label="{{ budget.name }}预算已使用 {{ budget.percent }}%"></progress>
+                  aria-label="{{ budget.name }}预算已使用 {{ budget.percent }}%"></progress>{% endif %}
       </div>
       {% endfor %}
     </div>
@@ -173,15 +178,15 @@
         <div class="product-panel-subtitle">本月已入账支出的主要去向</div>
       </div>
       <a class="product-panel-subtitle"
-         href="/web/reports?ledger_id={{ selected_ledger_id }}&amp;month={{ cards.month }}">完整分析</a>
+         href="/web/reports?{{ money_task|urlencode }}">完整分析</a>
     </div>
     {% if category_share %}
     <div class="insight-category-layout">
-      <div id="chart-category"
+      {% if category_chart_available %}<div id="chart-category"
            class="insight-category-chart"
            data-categories='{{ category_share | tojson }}'
            role="img"
-           aria-label="本月分类支出占比"></div>
+           aria-label="本月分类支出占比"></div>{% else %}<p role="status">当前净额无法形成完整占比，请核对各分类金额。</p>{% endif %}
       <div class="insight-list">
         {% for category in category_share %}
         <div class="insight-list-row">
@@ -215,12 +220,13 @@
       <div class="insight-progress-row">
         <div class="insight-progress-meta">
           <span>{{ goal.name }}</span>
-          <strong class="num{% if goal.state == 'over_limit' %} text-danger{% endif %}">{{ goal.percent }}%</strong>
+          {% if goal.percent is not none %}<strong class="num{% if goal.state == 'over_limit' %} text-danger{% endif %}">{{ goal.percent }}%</strong>
+          {% else %}<span class="text-muted">暂不可计算 · 币种或汇率待补充</span>{% endif %}
         </div>
-        <progress class="product-progress"
+        {% if goal.percent is not none %}<progress class="product-progress"
                   max="100"
                   value="{{ goal.percent }}"
-                  aria-label="{{ goal.name }}已使用 {{ goal.percent }}%"></progress>
+                  aria-label="{{ goal.name }}已使用 {{ goal.percent }}%"></progress>{% endif %}
       </div>
       {% endfor %}
     </div>
