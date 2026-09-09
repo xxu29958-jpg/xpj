@@ -8372,6 +8372,18 @@
             "title": "Error",
             "type": "string"
           },
+          "expense_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Expense Id"
+          },
           "message": {
             "title": "Message",
             "type": "string"

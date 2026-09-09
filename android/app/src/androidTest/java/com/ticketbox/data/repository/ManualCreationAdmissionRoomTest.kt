@@ -170,7 +170,7 @@ class ManualCreationAdmissionRoomTest {
         val failed = fixture.outbox.observeStatus().first().failed.single()
         val original = fixture.stored().single()
         val rollback = runCatching {
-            fixture.pendingDao.deleteAndPublish(failed.id, failed.ownerKey, failed.ledgerId, failed.status.wireValue) {
+            fixture.pendingDao.deleteAndPublish(failed.id, requireNotNull(failed.ownerKey), failed.ledgerId, failed.status.wireValue) {
                 fixture.expenseDao.deleteByLocalId(-created.id)
                 throw IOException("Stop publication failed")
             }

@@ -69,3 +69,11 @@ Status: implemented candidate; bounded review and exact
 cloud/real-consumer qualification remain open. The direct producers above include
 real Room rollback/reopen/receipt promotion, native Web receipt review, API replay
 and protocol refusal; short pure tests do not substitute for those runtime gates.
+
+Qualification corrections retain the same product commands: the legacy receipt
+review ID is now explicit in ErrorResponse/OpenAPI; the Room rollback producer
+requires its real owner binding. Physical-size advisory keys are selected once,
+without weakening hard debt checks. Hosted ordinary jobs allow 15 minutes for the
+observed full test run plus setup/cleanup. Desktop browser qualification waits
+for the intended main document's load before starting the unchanged probe budget;
+a real delayed multi-document navigation reproduces the previous false failure.

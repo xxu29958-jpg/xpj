@@ -842,6 +842,7 @@ def test_served_web_layout_through_manager_bff(
                 width=width,
                 height=height,
                 expression=_SERVED_WEB_PROBE,
+                document_url_prefix=manager.expected_origin + "/web",
             )
         except AssertionError as exc:
             try:

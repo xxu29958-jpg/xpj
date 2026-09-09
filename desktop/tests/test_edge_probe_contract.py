@@ -126,7 +126,12 @@ def test_cdp_javascript_exception_is_not_returned_as_a_null_probe_result(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class Page:
-        def request(self, method: str, _params: dict[str, object]) -> dict[str, object]:
+        def wait_for_document(self, *_args, **_kwargs):
+            return True
+
+        def request(self, method: str, _params: dict[str, object] | None = None) -> dict[str, object]:
+            if method == "Page.navigate":
+                return {"frameId": "main"}
             if method != "Runtime.evaluate":
                 return {}
             return {

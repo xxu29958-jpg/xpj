@@ -83,15 +83,16 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
 def evaluate_debt(counts: DebtCounts) -> int:
     missing = sorted(set(CODEBASE_DEBT_LIMITS) - set(counts))
     extras = sorted(set(counts) - set(CODEBASE_DEBT_LIMITS))
+    measured_keys = sorted((counts.keys() & CODEBASE_DEBT_LIMITS.keys()) - CODEBASE_SIZE_SIGNALS)
     regressions = [
         (key, counts[key], CODEBASE_DEBT_LIMITS[key])
-        for key in sorted(CODEBASE_DEBT_LIMITS)
-        if key not in CODEBASE_SIZE_SIGNALS and key in counts and counts[key] > CODEBASE_DEBT_LIMITS[key]
+        for key in measured_keys
+        if counts[key] > CODEBASE_DEBT_LIMITS[key]
     ]
     improvements = [
         (key, counts[key], CODEBASE_DEBT_LIMITS[key])
-        for key in sorted(CODEBASE_DEBT_LIMITS)
-        if key not in CODEBASE_SIZE_SIGNALS and key in counts and counts[key] < CODEBASE_DEBT_LIMITS[key]
+        for key in measured_keys
+        if counts[key] < CODEBASE_DEBT_LIMITS[key]
     ]
 
     print("== Gate. Known-debt baseline ==")

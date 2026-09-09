@@ -629,7 +629,8 @@ jobs:
     needs: scope
     if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.postgres != 'false') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    # The larger shard needs ~11m20s plus ~45s setup/cleanup on hosted runners.
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
