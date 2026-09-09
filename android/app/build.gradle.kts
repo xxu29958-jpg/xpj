@@ -793,7 +793,9 @@ tasks.matching { it.name.matches(Regex("connected.*AndroidTest")) }.configureEac
     dependsOn(guardConnectedAndroidTestEmulatorOnly)
     if (name == "connectedGrayDebugAndroidTest") {
         dependsOn(prepareGrayConnectedTestEvidence)
-        timeout.set(Duration.ofMinutes(10))
+        // The real 255-case suite reached 248 cases without failures at 10m.
+        // Keep a task bound for every caller; CI also bounds the whole invocation.
+        timeout.set(Duration.ofMinutes(15))
         doLast {
             val adb = ticketboxAdbExecutable()
                 ?: throw GradleException(

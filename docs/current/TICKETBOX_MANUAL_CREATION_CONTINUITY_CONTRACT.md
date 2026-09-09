@@ -77,3 +77,8 @@ without weakening hard debt checks. Hosted ordinary jobs allow 15 minutes for th
 observed full test run plus setup/cleanup. Desktop browser qualification waits
 for the intended main document's load before starting the unchanged probe budget;
 a real delayed multi-document navigation reproduces the previous false failure.
+Connected execution keeps a 15-minute task bound across direct/GitHub/Gitea
+callers; GitHub still bounds compilation plus all qualification at 18 minutes.
+The previous 10-minute cutoff interrupted a progressing 255-case suite after
+248 cases with no assertion failure. Per-test waits and receipt/crash/count
+qualification are unchanged; partial execution cannot qualify the candidate.
