@@ -39,7 +39,7 @@ import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.MonthlyStatsViewModel
 import com.ticketbox.viewmodel.StatsSource
-import java.io.IOException
+import java.net.ConnectException
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -63,14 +63,14 @@ class MonthlyStatsSnapshotConnectedTest {
     private val fixture = ExpenseCorrectionConnectedFixture(context) { delegate ->
         object : ApiService by delegate {
             override suspend fun monthlyStats(month: String?, tag: String?, timezone: String?, homeCurrencyCode: String?): MonthlyStatsDto {
-                if (offline) throw IOException("offline stats")
+                if (offline) throw ConnectException("offline stats")
                 return MonthlyStatsDto(homeCurrencyCode = "JPY", month = requireNotNull(month),
                     totalAmountCents = if (missingRate) null else 7000, count = 2,
                     byCategory = listOf(CategoryStatsDto("购物", if (missingRate) null else 7000, 2)),
                     missingRates = if (missingRate) listOf(MissingExchangeRateDto("CNY", "JPY", "2026-08-05")) else emptyList())
             }
             override suspend fun lifestyleStats(month: String?, timezone: String?, homeCurrencyCode: String?): LifestyleStatsDto {
-                throw IOException("lifestyle offline")
+                throw ConnectException("lifestyle offline")
             }
         }
     }

@@ -34,6 +34,8 @@ data class StatsUiState(
     val reportsExportMessage: UiText? = null,
     val reportsOverview: ReportsOverview? = null,
     val reportGoals: List<Goal> = emptyList(),
+    val reportGoalsFetchedAt: String? = null,
+    val reportGoalsFromCache: Boolean = false,
     val reportGoalsLoadState: ReportGoalsLoadState = ReportGoalsLoadState.Unknown,
     val lastUploadAt: String? = null,
     val reportsLoading: Boolean = false,
@@ -105,6 +107,8 @@ data class StatsReportsUiState(
     val exportMessage: UiText? = null,
     val reportsOverview: ReportsOverview? = null,
     val reportGoals: List<Goal> = emptyList(),
+    val reportGoalsFetchedAt: String? = null,
+    val reportGoalsFromCache: Boolean = false,
     val reportGoalsLoadState: ReportGoalsLoadState = ReportGoalsLoadState.Unknown,
     val reportsLoading: Boolean = false,
     val reportsMessage: UiText? = null,
@@ -122,6 +126,7 @@ internal fun mergeStatsUiState(
     val showReportDetails = reportsMatch && monthly.selectedTag.isBlank()
     val budgetMatch = budget.month == monthly.month &&
         budget.binding == monthly.binding
+    val goalReport = reports.takeIf { showReportDetails }
     return StatsUiState(
         stats = monthly.stats,
         statsSource = monthly.statsSource,
@@ -138,7 +143,9 @@ internal fun mergeStatsUiState(
         reportsExporting = reports.exporting,
         reportsExportMessage = if (reportsMatch) reports.exportMessage else null,
         reportsOverview = if (showReportDetails) reports.reportsOverview else null,
-        reportGoals = if (showReportDetails) reports.reportGoals else emptyList(),
+        reportGoals = goalReport?.reportGoals.orEmpty(),
+        reportGoalsFetchedAt = goalReport?.reportGoalsFetchedAt,
+        reportGoalsFromCache = goalReport?.reportGoalsFromCache == true,
         reportGoalsLoadState = if (showReportDetails) {
             reports.reportGoalsLoadState
         } else {

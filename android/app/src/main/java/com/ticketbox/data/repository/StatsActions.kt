@@ -12,8 +12,8 @@ interface StatsActions {
     fun lastUploadAt(): String?
     suspend fun months(): Result<List<String>>
     suspend fun tags(): Result<List<String>>
-    suspend fun monthlyStats(query: StatsQuery): Result<StatsRead<MonthlyStats>>
-    suspend fun lifestyleStats(query: StatsQuery): Result<StatsRead<LifestyleStats>>
+    suspend fun monthlyStats(query: StatsQuery): Result<ReadSnapshot<MonthlyStats>>
+    suspend fun lifestyleStats(query: StatsQuery): Result<ReadSnapshot<LifestyleStats>>
     suspend fun syncConfirmed(
         month: String?,
         category: String?,
@@ -29,5 +29,3 @@ data class StatsQuery(
     val homeCurrencyCode: String? = null,
     val timezone: String = java.util.TimeZone.getDefault().id,
 )
-
-data class StatsRead<T>(val value: T, val fetchedAt: String, val fromCache: Boolean)

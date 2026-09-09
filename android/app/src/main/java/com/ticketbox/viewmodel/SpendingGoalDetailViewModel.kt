@@ -48,6 +48,8 @@ data class SpendingGoalDetailUiState(
     val archiveCompleted: Boolean = false,
     val mutationRevision: Int = 0,
     val pendingEdits: List<PendingGoalEdit> = emptyList(),
+    val fetchedAt: String? = null,
+    val fromCache: Boolean = false,
 ) {
     val goalCurrency: CurrencyCode? get() = CurrencyCode.fromStorageKeyOrNull(goal?.homeCurrencyCode)
     val hasPendingEdit: Boolean get() = pendingEdits.any { !it.isDone }
@@ -71,10 +73,18 @@ class SpendingGoalDetailViewModel(
     val state: StateFlow<SpendingGoalDetailUiState> = _state.asStateFlow()
     private var loadJob: Job? = null
     private var loadGeneration = 0L
+    private val timezone = java.util.TimeZone.getDefault().id
 
     private var taskBinding: LogicalSessionBinding? = edits.currentAccess()?.binding
     private var observation: Job? = null
     private var commandJob: Job? = null
+
+    val acceptedArchive: Pair<LogicalSessionBinding, Goal>?
+        get() {
+            val binding = taskBinding ?: return null
+            val goal = _state.value.goal ?: return null
+            return (binding to goal).takeIf { _state.value.archiveCompleted && goal.isArchived && matches(binding, goal.publicId) }
+        }
 
     init {
         viewModelScope.launch {
@@ -108,17 +118,18 @@ class SpendingGoalDetailViewModel(
         _state.update { it.copy(isLoading = true, loadError = null) }
         observeSubmission(binding, id)
         loadJob = viewModelScope.launch {
-            val result = reports.goal(id)
+            val result = reports.goal(id, expectedBinding = binding, timezone = timezone)
             if (!matches(binding, id, generation)) return@launch
-            result.fold(onSuccess = { goal ->
+            result.fold(onSuccess = { read ->
+                val goal = read.value
                 _state.update { state ->
                     if (!goal.isSpendingLimit || goal.ledgerId != binding.ledgerId) state.copy(isLoading = false,
                         loadError = UiText.res(R.string.spending_goal_detail_wrong_type))
-                    else state.copy(isLoading = false,
-                        goal = if (state.goal == null || goal.rowVersion >= state.goal.rowVersion) goal else state.goal)
+                    else if (state.goal != null && goal.rowVersion < state.goal.rowVersion) state.copy(isLoading = false)
+                    else state.copy(isLoading = false, goal = goal, fetchedAt = read.fetchedAt, fromCache = read.fromCache)
                 }
             }, onFailure = { error ->
-                _state.update { it.copy(isLoading = false, loadError = error.toUiText(R.string.spending_goal_detail_load_failed)) }
+                _state.update { it.withReadFailure(error) }
             })
         }
     }
@@ -127,12 +138,18 @@ class SpendingGoalDetailViewModel(
         observation = viewModelScope.launch {
             edits.observeEdits(binding, id).collect { rows ->
                 if (!matches(binding, id)) return@collect
-                val confirmed = rows.filter { it.isDone }.mapNotNull { it.confirmed }.maxByOrNull { it.rowVersion }
+                val previous = _state.value.pendingEdits.filter { it.isDone }.map { it.row.id }.toSet()
+                val completed = rows.any { it.isDone && it.confirmed != null && it.row.id !in previous }
+                val accepted = rows.filter { it.isDone && it.row.id !in previous }
+                    .mapNotNull { it.confirmed }.maxByOrNull { it.rowVersion }
                 _state.update { state ->
-                    val newer = confirmed != null && (state.goal == null || confirmed.rowVersion > state.goal.rowVersion)
-                    state.copy(pendingEdits = rows, goal = if (newer) confirmed else state.goal,
-                        mutationRevision = state.mutationRevision + if (newer) 1 else 0)
+                    val adopt = accepted != null && (state.goal == null || accepted.rowVersion > state.goal.rowVersion)
+                    state.copy(pendingEdits = rows, goal = if (adopt) accepted else state.goal,
+                        fetchedAt = if (adopt) null else state.fetchedAt,
+                        fromCache = !adopt && state.fromCache,
+                        mutationRevision = state.mutationRevision + if (completed) 1 else 0)
                 }
+                if (completed && !_state.value.isLoading) load(id)
             }
         }
     }
@@ -251,6 +268,7 @@ class SpendingGoalDetailViewModel(
                     _state.update {
                         it.copy(
                             goal = archived,
+                            fetchedAt = null, fromCache = false,
                             isArchiving = false,
                             showArchiveDialog = false,
                             archiveCompleted = true,

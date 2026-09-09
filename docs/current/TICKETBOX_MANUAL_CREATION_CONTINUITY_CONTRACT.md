@@ -65,10 +65,12 @@ qualification. Keep run logs and SHA history in qualification evidence, not this
   Direct HTTP producers retain one reference per task and reuse it on retry;
   the OpenAPI snapshot follows the actual request contract.
 
-Status: implemented candidate; bounded review and exact
-cloud/real-consumer qualification remain open. The direct producers above include
-real Room rollback/reopen/receipt promotion, native Web receipt review, API replay
-and protocol refusal; short pure tests do not substitute for those runtime gates.
+Status: #398 CLOSED, integrated and independently main-qualified. Exact candidate
+and merge-main CI, CodeQL, Connected and isolated native Web/API VM journeys passed;
+[PR evidence](https://github.com/xxu29958-jpg/xpj/pull/398) separates both revisions
+and preserves failed-attempt evidence. Direct runtime producers cover Room
+rollback/reopen/receipt promotion, native receipt review, replay and protocol
+refusal. Full cross-client interruption and final RC qualification remain separate.
 
 Qualification corrections retain the same product commands: the legacy receipt
 review ID is now explicit in ErrorResponse/OpenAPI; the Room rollback producer

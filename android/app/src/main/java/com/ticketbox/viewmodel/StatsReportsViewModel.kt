@@ -25,7 +25,8 @@ class StatsReportsViewModel(internal val reportsRepository: ReportsActions? = nu
     val uiState: StateFlow<StatsReportsUiState> = _uiState.asStateFlow()
     private var requestGeneration = 0L
     private var inFlightRefreshKey: StatsReportsRefreshKey? = null
-    private var selection = ReportsOverviewQuery()
+    private val timezone = java.util.TimeZone.getDefault().id
+    private var selection = ReportsOverviewQuery(timezone = timezone)
 
     init {
         viewModelScope.launch {
@@ -33,7 +34,7 @@ class StatsReportsViewModel(internal val reportsRepository: ReportsActions? = nu
                 if (_uiState.value.binding == access?.binding) return@collect
                 requestGeneration += 1
                 inFlightRefreshKey = null
-                selection = selection.copy(homeCurrencyCode = null, timezone = null, merchantCategory = null)
+                selection = selection.copy(homeCurrencyCode = null, timezone = timezone, merchantCategory = null)
                 _uiState.update { StatsReportsUiState(month = it.month, selectedTag = it.selectedTag, binding = access?.binding) }
                 if (access != null) refresh(_uiState.value.month, _uiState.value.selectedTag)
             }
@@ -74,7 +75,7 @@ class StatsReportsViewModel(internal val reportsRepository: ReportsActions? = nu
         viewModelScope.launch {
             try {
                 _uiState.update { it.copy(reportGoalsLoadState = ReportGoalsLoadState.Loading, reportsLoading = true, reportsMessage = null) }
-                val goals = async { repo.goals(month = key.query.month) }
+                val goals = async { repo.goals(month = key.query.month, expectedBinding = key.binding, timezone = key.query.timezone ?: timezone) }
                 val result = repo.reportsOverview(key.query, key.binding)
                 if (!isCurrent(generation, key.binding)) {
                     goals.cancel()
@@ -85,10 +86,9 @@ class StatsReportsViewModel(internal val reportsRepository: ReportsActions? = nu
                     reportsMessage = result.exceptionOrNull()?.toUiText(R.string.stats_message_trend_failed)) }
                 val goalResult = goals.await()
                 if (!isCurrent(generation, key.binding)) return@launch
-                _uiState.update { it.copy(reportGoals = goalResult.getOrNull() ?: it.reportGoals,
-                    reportGoalsLoadState = if (goalResult.isSuccess) ReportGoalsLoadState.Loaded else ReportGoalsLoadState.Failed,
+                _uiState.update { state -> state.withGoalRead(goalResult).copy(
                     reportsMessage = if (result.isFailure && goalResult.isFailure) UiText.res(R.string.stats_message_reports_failed)
-                        else it.reportsMessage) }
+                        else state.reportsMessage) }
             } finally {
                 if (inFlightRefreshKey == key) inFlightRefreshKey = null
             }

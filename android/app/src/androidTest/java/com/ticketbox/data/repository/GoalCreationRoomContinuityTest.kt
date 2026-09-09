@@ -98,7 +98,7 @@ class GoalCreationRoomContinuityTest {
     private fun engine(): OutboxDrainEngine {
         val adapters = OutboxAdapterGraph()
         return OutboxDrainEngine(fixture.outbox, listOf(CreateGoalDispatcher({ service }, adapters.goalCreateAdapter,
-            adapters.goalReceiptAdapter)), maxAttempts = 1,
+            adapters.goalReceiptAdapter, fixture.graph.reportsRepository::invalidateGoalReadsAfterDelivery)), maxAttempts = 1,
             now = { java.time.Instant.parse("2026-09-30T15:30:00Z").toEpochMilli() })
     }
 }

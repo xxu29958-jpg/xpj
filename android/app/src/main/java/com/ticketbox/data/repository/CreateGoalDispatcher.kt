@@ -14,6 +14,7 @@ class CreateGoalDispatcher(
     private val apiProvider: (OutboxRow) -> ApiService,
     private val payloadAdapter: JsonAdapter<GoalCreateRequestDto>,
     private val receiptAdapter: JsonAdapter<GoalDto>,
+    private val onAccepted: suspend (OutboxRow) -> Unit,
 ) : OutboxMutationDispatcher {
     override val type = PendingMutationType.CreateGoal
 
@@ -23,6 +24,7 @@ class CreateGoalDispatcher(
         return try {
             val receipt = apiProvider(row).createGoal(request, timezone = null, idempotencyKey = row.idempotencyKey)
             if (request.acceptsGoalCreationReceipt(row, receipt)) {
+                onAccepted(row)
                 DispatchResult.Success(receiptJson = receiptAdapter.toJson(receipt))
             } else DispatchResult.Failure("返回的目标与原创建不匹配，已保留记录。")
         } catch (error: HttpException) {

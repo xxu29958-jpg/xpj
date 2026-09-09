@@ -46,6 +46,7 @@ class GoalCreationRepositoryTest {
         val done = fixture.pending()
         assertEquals(listOf(original.idempotencyKey, original.idempotencyKey), fixture.keys)
         assertEquals(1, fixture.accepted.size)
+        assertEquals(listOf(original.id), fixture.acceptedRows)
         assertEquals(original.payloadJson, done.row.payloadJson)
         assertEquals(1L, done.confirmed?.rowVersion)
         assertEquals("JPY", done.confirmed?.homeCurrencyCode)
@@ -60,6 +61,7 @@ class GoalCreationRepositoryTest {
         assertEquals(PendingMutationStatus.Failed, failed.row.status)
         assertFalse(failed.canRetry)
         assertEquals(null, failed.confirmed)
+        assertTrue(fixture.acceptedRows.isEmpty())
     }
 
     @Test fun missingCurrencyKeepsOriginalBytesWithoutSendingOrOfferingRetry() = runTest {
@@ -67,7 +69,8 @@ class GoalCreationRepositoryTest {
         fixture.create().getOrThrow()
         val original = fixture.pending().row
         val unknown = original.copy(payloadJson = original.payloadJson.replace("\"home_currency_code\":\"JPY\"", "\"home_currency_code\":null"))
-        val dispatcher = CreateGoalDispatcher({ fixture.api }, fixture.adapters.goalCreateAdapter, fixture.adapters.goalReceiptAdapter)
+        val dispatcher = CreateGoalDispatcher({ fixture.api }, fixture.adapters.goalCreateAdapter,
+            fixture.adapters.goalReceiptAdapter) { error("An unknown original cannot invalidate a query") }
         assertTrue(dispatcher.dispatch(unknown) is DispatchResult.Failure)
         assertTrue(fixture.keys.isEmpty())
         val described = fixture.repository.describeCreation(unknown.copy(status = PendingMutationStatus.Failed,
@@ -121,6 +124,7 @@ private class GoalCreationFixture {
     private val outbox = testOutboxRepository(dao, onEnqueued = { scheduledDepth += dao.rows.size })
     val keys = mutableListOf<String?>()
     val accepted = mutableMapOf<String, GoalDto>()
+    val acceptedRows = mutableListOf<Long>()
     var loseAck = false
     var wrongReceipt = false
     var httpError: HttpException? = null
@@ -146,5 +150,5 @@ private class GoalCreationFixture {
     suspend fun create() = repository.create(binding, draft)
     suspend fun pending() = repository.observeCreations(binding).first().single()
     fun engine() = OutboxDrainEngine(outbox, listOf(CreateGoalDispatcher({ api },
-        adapters.goalCreateAdapter, adapters.goalReceiptAdapter)), maxAttempts = 1)
+        adapters.goalCreateAdapter, adapters.goalReceiptAdapter) { acceptedRows += it.id }), maxAttempts = 1)
 }

@@ -31,6 +31,30 @@ data class ConfirmedStreamSnapshot(
 @Dao
 interface ExpenseDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveGoalSnapshots(snapshots: List<GoalQueryCacheEntity>)
+
+    @Query("SELECT * FROM goal_query_cache WHERE bindingKey = :bindingKey AND timezone = :timezone AND queryKey = :queryKey")
+    suspend fun goalSnapshot(bindingKey: String, timezone: String, queryKey: String): GoalQueryCacheEntity?
+
+    @Query("DELETE FROM goal_query_cache")
+    suspend fun clearGoalSnapshots()
+
+    @Query("DELETE FROM goal_query_cache WHERE ledgerId = :ledgerId")
+    suspend fun clearGoalSnapshotsForLedger(ledgerId: String)
+
+    @Query("DELETE FROM goal_query_cache WHERE bindingKey = :bindingKey")
+    suspend fun clearGoalSnapshotsForBinding(bindingKey: String)
+
+    @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey")
+    suspend fun clearStatsProjectionsForBinding(bindingKey: String)
+
+    @Transaction
+    suspend fun clearReadSnapshotsForBinding(bindingKey: String) {
+        clearGoalSnapshotsForBinding(bindingKey)
+        clearStatsProjectionsForBinding(bindingKey)
+    }
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun saveStatsProjection(snapshot: StatsProjectionCacheEntity)
 
     @Query("""
@@ -324,6 +348,7 @@ interface ExpenseDao {
         clear()
         clearConfirmedStreamOffsets()
         clearStatsProjections()
+        clearGoalSnapshots()
     }
 
     @Transaction
@@ -331,6 +356,7 @@ interface ExpenseDao {
         clearForLedger(ledgerId)
         clearConfirmedStreamOffsetsForLedger(ledgerId)
         clearStatsProjectionsForLedger(ledgerId)
+        clearGoalSnapshotsForLedger(ledgerId)
     }
 
     @Transaction

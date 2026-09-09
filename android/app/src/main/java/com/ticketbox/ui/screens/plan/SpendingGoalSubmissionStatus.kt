@@ -30,7 +30,10 @@ internal fun SpendingGoalSubmissionStatus(state: SpendingGoalDetailUiState, view
         AppContentCard {
             val text = pending.submissionText()
             AppStatusBanner(text, if (pending.isDone && pending.confirmed != null) MessageTone.Success else MessageTone.Info)
-            pending.request?.let { request ->
+            val accepted = pending.confirmed
+            if (accepted != null) SpendingGoalOriginalSummary(accepted.name, accepted.month,
+                accepted.targetAmountCents, accepted.homeCurrencyCode)
+            else pending.request?.let { request ->
                 SpendingGoalOriginalSummary(request.name, request.month, request.targetAmountCents, request.homeCurrencyCode)
             }
             Row {

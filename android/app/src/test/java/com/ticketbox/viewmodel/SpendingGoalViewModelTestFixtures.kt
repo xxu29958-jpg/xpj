@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtListPage
+import com.ticketbox.data.repository.ReadSnapshot
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.GoalProgressState
@@ -51,6 +52,8 @@ internal class RecordingSpendingGoalActions(
     var goalResult: Result<Goal> = Result.success(spendingGoal()),
     var archiveResult: Result<Goal> = Result.success(spendingGoal(status = "archived")),
 ) : ReportsActions by unsupportedSpendingGoalActions() {
+    var fetchedAt = "2026-09-09T00:00:00Z"
+    var fromCache = false
     val goalsCalls = mutableListOf<SpendingGoalListCall>()
     val goalCalls = mutableListOf<String>()
     var goalGate: (suspend () -> Unit)? = null
@@ -58,16 +61,16 @@ internal class RecordingSpendingGoalActions(
 
     override fun canModifyLedger(): Boolean = canModify
 
-    override suspend fun goals(month: String?, includeArchived: Boolean): Result<List<Goal>> {
+    override suspend fun goals(month: String?, includeArchived: Boolean, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String): Result<ReadSnapshot<List<Goal>>> {
         goalsCalls += SpendingGoalListCall(month, includeArchived)
-        return goalsResult
+        return goalsResult.map { ReadSnapshot(it, fetchedAt, fromCache) }
     }
 
-    override suspend fun goal(publicId: String): Result<Goal> {
+    override suspend fun goal(publicId: String, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String): Result<ReadSnapshot<Goal>> {
         goalCalls += publicId
         val result = goalResult
         goalGate?.invoke()
-        return result
+        return result.map { ReadSnapshot(it, fetchedAt, fromCache) }
     }
 
     override suspend fun archiveGoal(publicId: String, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding): Result<Goal> {

@@ -16,6 +16,7 @@ class UpdateGoalDispatcher(
     private val apiProvider: (OutboxRow) -> ApiService,
     private val payloadAdapter: JsonAdapter<GoalUpdateRequestDto>,
     private val receiptAdapter: JsonAdapter<GoalDto>,
+    private val onAccepted: suspend (OutboxRow) -> Unit,
 ) : OutboxMutationDispatcher {
     override val type: PendingMutationType = PendingMutationType.UpdateGoal
 
@@ -39,7 +40,10 @@ class UpdateGoalDispatcher(
             val updated = apiProvider(row).updateGoal(publicId, request, idempotencyKey, timezone = null)
             if (!request.acceptsGoalReceipt(row, updated)) {
                 DispatchResult.Failure("返回的目标与原提交不匹配，已保留记录。")
-            } else DispatchResult.Success(newRowVersion = updated.rowVersion, receiptJson = receiptAdapter.toJson(updated))
+            } else {
+                onAccepted(row)
+                DispatchResult.Success(newRowVersion = updated.rowVersion, receiptJson = receiptAdapter.toJson(updated))
+            }
         } catch (e: HttpException) {
             mapOutboxHttpException(e)
         } catch (e: IOException) {

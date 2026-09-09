@@ -87,6 +87,7 @@ private fun SpendingGoalRouteContent(
         }
     }
     SpendingGoalDetailResultEffect(detailState, models.list::refresh) {
+        models.detail.acceptedArchive?.let { (binding, archived) -> models.list.acceptArchived(binding, archived) }
         detailPublicId = null
         page = SpendingGoalPage.List
     }
@@ -132,8 +133,8 @@ private fun SpendingGoalRouteContent(
 private fun SpendingGoalDetailResultEffect(state: SpendingGoalDetailUiState, refreshList: () -> Unit, onArchived: () -> Unit) {
     LaunchedEffect(state.mutationRevision, state.archiveCompleted) {
         if (state.mutationRevision > 0) {
-            refreshList()
             if (state.archiveCompleted) onArchived()
+            refreshList()
         }
     }
 }

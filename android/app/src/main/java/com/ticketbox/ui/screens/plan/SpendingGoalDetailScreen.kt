@@ -19,7 +19,6 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.asString
-import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.ui.components.AppLoadingState
@@ -31,7 +30,6 @@ import com.ticketbox.ui.components.AppSecondaryPageSlots
 import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.AppStatusBanner
-import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.SpendingGoalDetailUiState
@@ -95,10 +93,9 @@ private fun SpendingGoalDetailStatus(state: SpendingGoalDetailUiState, viewModel
     androidx.compose.foundation.layout.Column(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-        if (state.isLoading || state.goal != null) {
-            AppDataAuthorityStrip(
-                tone = if (state.isLoading) DataAuthorityTone.Refreshing else DataAuthorityTone.Backend,
-            )
+        GoalReadSource(state.fetchedAt, state.fromCache, state.isLoading)
+        if (state.goal != null && state.fetchedAt == null && state.pendingEdits.any { it.confirmed == state.goal }) {
+            androidx.compose.material3.Text(stringResource(R.string.goal_accepted_result_source))
         }
         if (!state.canModify) {
             AppStatusBanner(

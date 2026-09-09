@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ticketbox.ui.screens.plan.GoalReadSource
 import com.ticketbox.R
 import com.ticketbox.domain.model.DebtGoalComposition
 import com.ticketbox.domain.model.Goal
@@ -32,7 +33,6 @@ import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppAdaptiveMetricGrid
 import com.ticketbox.ui.components.AppAdaptiveMetricGridCompactMinWidth
 import com.ticketbox.ui.components.AppAdaptiveTrailingActionRow
-import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.AppListStateContent
 import com.ticketbox.ui.components.AppListStateSpec
@@ -42,7 +42,6 @@ import com.ticketbox.ui.components.AppSecondaryPageSlots
 import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.AppStatusBanner
-import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.PrimaryCtaButton
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
@@ -172,11 +171,9 @@ private fun DebtGoalScreenBody(
 @Composable
 private fun DebtGoalStatusStack(state: DebtGoalUiState) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        if (state.isLoading || state.goals.isNotEmpty() || state.selectedGoal != null) {
-            AppDataAuthorityStrip(
-                tone = if (state.isLoading) DataAuthorityTone.Refreshing else DataAuthorityTone.Backend,
-            )
-        }
+        GoalReadSource(
+            if (state.selectedGoal != null) state.selectedFetchedAt else state.fetchedAt,
+            if (state.selectedGoal != null) state.selectedFromCache else state.fromCache, state.isLoading)
         state.flashMessage?.let { msg ->
             AppStatusBanner(message = msg, tone = MessageTone.Success)
         }

@@ -98,7 +98,8 @@ class SpendingGoalSubmissionConnectedTest {
         val originalRow = fixture.stored().single()
         val adapters = OutboxAdapterGraph()
         fun engine() = OutboxDrainEngine(fixture.outbox, listOf(UpdateGoalDispatcher({ service },
-            adapters.goalUpdateAdapter, adapters.goalReceiptAdapter)), maxAttempts = 1,
+            adapters.goalUpdateAdapter, adapters.goalReceiptAdapter,
+            fixture.graph.reportsRepository::invalidateGoalReadsAfterDelivery)), maxAttempts = 1,
             now = { java.time.Instant.parse("2026-09-30T15:30:00Z").toEpochMilli() })
         runBlocking { assertEquals(1, engine().drainOnce().failures) }
         compose.waitUntil(10_000) { model.state.value.pendingEdits.any { it.canRetry } }

@@ -43,6 +43,7 @@ class GoalEditRepositoryTest {
         f.loseAck = false
         assertEquals(1, f.engine().drainOnce().done)
         assertEquals(listOf(original.idempotencyKey, original.idempotencyKey), f.keys)
+        assertEquals(listOf(id), f.acceptedRows)
         assertEquals(original.payload, f.dao.rows.getValue(id).payload)
         assertEquals(2, f.pending().confirmed?.rowVersion)
         assertEquals(35000, f.pending().confirmed?.targetAmountCents)
@@ -111,6 +112,7 @@ private class GoalEditFixture {
     val scheduledDepth = mutableListOf<Int>()
     val outbox = testOutboxRepository(dao, onEnqueued = { scheduledDepth += dao.rows.size })
     val keys = mutableListOf<String?>()
+    val acceptedRows = mutableListOf<Long>()
     var loseAck = false
     var current = GoalDto("goal-1", "owner", "餐饮", "spending_limit", "monthly", "2026-09", "餐饮",
         20000, 8000, 12000, 40, "on_track", "active", "2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z", 1, null,
@@ -143,5 +145,5 @@ private class GoalEditFixture {
         repository.save(binding, goal, GoalUpdate(goal.rowVersion, targetAmountCents = 35000, category = "", homeCurrencyCode = "JPY"))
     suspend fun pending() = repository.observeEdits(binding, "goal-1").first().last()
     fun engine() = OutboxDrainEngine(outbox, listOf(UpdateGoalDispatcher({ api },
-        adapters.goalUpdateAdapter, adapters.goalReceiptAdapter)), maxAttempts = 1)
+        adapters.goalUpdateAdapter, adapters.goalReceiptAdapter) { acceptedRows += it.id }), maxAttempts = 1)
 }

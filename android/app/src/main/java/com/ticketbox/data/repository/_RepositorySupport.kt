@@ -16,7 +16,9 @@ class RepositoryException(
     val errorCode: String? = null,
     val conflict: RepositoryConflictDetails = RepositoryConflictDetails(),
     val localFailure: LocalRepositoryFailure? = null,
-) : RuntimeException(message) {
+    val httpStatusCode: Int? = null,
+    cause: Throwable? = null,
+) : RuntimeException(message, cause) {
     val conflictTagPublicId: String? get() = conflict.tag.publicId
     val conflictTagRowVersion: Long? get() = conflict.tag.rowVersion
     val conflictMerchantPublicId: String? get() = conflict.merchant.publicId

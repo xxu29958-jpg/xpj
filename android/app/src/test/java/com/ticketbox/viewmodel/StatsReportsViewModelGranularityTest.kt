@@ -1,5 +1,6 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.ReadSnapshot
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.DashboardCardUpdate
@@ -268,6 +269,28 @@ class StatsReportsViewModelGranularityTest {
         assertFalse(vm.uiState.value.reportsLoading)
         assertNull(vm.uiState.value.reportsMessage)
     }
+    @Test
+    fun goalSnapshotSourceReachesTheRealOverviewAndClearsOnQueryRefusal() = reportsTest { repo ->
+        repo.goalsFromCache = true
+        repo.goalsResponder = { Result.success(listOf(goal("cached"))) }
+        val vm = StatsReportsViewModel(repo)
+        vm.refresh("2026-06", "")
+        advanceUntilIdle()
+        val monthly = MonthlyStatsUiState(month = "2026-06", binding = repo.access.value?.binding)
+        val shown = mergeStatsUiState(monthly, StatsBudgetUiState(), vm.uiState.value)
+        assertEquals(listOf("cached"), shown.reportGoals.map { it.publicId })
+        assertEquals("2026-09-09T00:00:00Z", shown.reportGoalsFetchedAt)
+        assertEquals(true, shown.reportGoalsFromCache)
+        repo.goalsResponder = { Result.failure(com.ticketbox.data.repository.RepositoryException(
+            "Forbidden", httpStatusCode = 403)) }
+        vm.refresh("2026-06", "")
+        advanceUntilIdle()
+        val refused = mergeStatsUiState(monthly, StatsBudgetUiState(), vm.uiState.value)
+        assertEquals(emptyList(), refused.reportGoals)
+        assertNull(refused.reportGoalsFetchedAt)
+        assertEquals(ReportGoalsLoadState.Failed, refused.reportGoalsLoadState)
+    }
+
 }
 
 // Top-level (not nested) so the detekt TooManyFunctions baseline entry matches —
@@ -283,6 +306,7 @@ private class RecordingReportsActions : ReportsActions {
     val overviewQueries = mutableListOf<ReportsOverviewQuery>()
     var overviewResult: Result<ReportsOverview> = Result.failure(RuntimeException("overview unavailable in this fake"))
     var overviewResponder: (suspend () -> Result<ReportsOverview>)? = null
+    var goalsFromCache = false
     var goalsResponder: (suspend () -> Result<List<Goal>>)? = null
     var dashboardCardCalls = 0
 
@@ -301,20 +325,20 @@ private class RecordingReportsActions : ReportsActions {
         return exportResponder?.invoke(query) ?: Result.success(CsvExport("report.csv", "report".toByteArray()))
     }
 
-    override suspend fun goals(month: String?, includeArchived: Boolean): Result<List<Goal>> =
-        goalsResponder?.invoke() ?: Result.success(emptyList())
+    override suspend fun goals(month: String?, includeArchived: Boolean, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String): Result<ReadSnapshot<List<Goal>>> =
+        (goalsResponder?.invoke() ?: Result.success(emptyList())).map { ReadSnapshot(it, "2026-09-09T00:00:00Z", goalsFromCache) }
 
     override suspend fun createDebtGoal(name: String, debtPublicIds: List<String>, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding): Result<Goal> =
         Result.failure(UnsupportedOperationException())
 
-    override suspend fun goal(publicId: String): Result<Goal> =
+    override suspend fun goal(publicId: String, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String): Result<ReadSnapshot<Goal>> =
         Result.failure(UnsupportedOperationException())
 
     override suspend fun archiveGoal(publicId: String, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding): Result<Goal> =
         Result.failure(UnsupportedOperationException())
 
-    override suspend fun debtGoals(includeArchived: Boolean): Result<List<Goal>> =
-        Result.success(emptyList())
+    override suspend fun debtGoals(includeArchived: Boolean, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String): Result<ReadSnapshot<List<Goal>>> =
+        Result.success(ReadSnapshot(emptyList(), "2026-09-09T00:00:00Z", false))
 
     override suspend fun replaceDebtLinks(
         publicId: String,

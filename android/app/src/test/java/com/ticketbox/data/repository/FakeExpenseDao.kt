@@ -12,6 +12,13 @@ internal class FakeExpenseDao(
     private val events: MutableList<String> = mutableListOf(),
 ) : ExpenseDao {
     private val statsCache = com.ticketbox.data.local.StatsProjectionCacheFake()
+    private val goalCache = com.ticketbox.data.local.GoalQueryCacheFake()
+    override suspend fun saveGoalSnapshots(snapshots: List<com.ticketbox.data.local.GoalQueryCacheEntity>) = goalCache.save(snapshots)
+    override suspend fun goalSnapshot(bindingKey: String, timezone: String, queryKey: String) = goalCache.find(bindingKey, timezone, queryKey)
+    override suspend fun clearGoalSnapshots() = goalCache.clear(null)
+    override suspend fun clearGoalSnapshotsForLedger(ledgerId: String) = goalCache.clear(ledgerId)
+    override suspend fun clearGoalSnapshotsForBinding(bindingKey: String) = goalCache.clearBinding(bindingKey)
+    override suspend fun clearStatsProjectionsForBinding(bindingKey: String) = statsCache.clearBinding(bindingKey)
     override suspend fun saveStatsProjection(snapshot: com.ticketbox.data.local.StatsProjectionCacheEntity) = statsCache.save(snapshot)
     override suspend fun statsProjections(bindingKey: String, kind: String, month: String, tag: String,
         timezone: String) = statsCache.find(bindingKey, kind, month, tag, timezone)

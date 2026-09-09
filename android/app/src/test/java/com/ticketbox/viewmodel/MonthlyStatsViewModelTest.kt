@@ -2,7 +2,7 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.StatsActions
 import com.ticketbox.data.repository.StatsQuery
-import com.ticketbox.data.repository.StatsRead
+import com.ticketbox.data.repository.ReadSnapshot
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.domain.model.DataQualitySummary
 import com.ticketbox.domain.model.Expense
@@ -397,6 +397,37 @@ class MonthlyStatsViewModelTest {
         assertEquals(StatsFilterOptionsLoadState.Failed, viewModel.uiState.value.tagsLoadState)
         assertEquals(listOf("餐饮", "通勤"), viewModel.uiState.value.tags)
     }
+    @Test
+    fun explicitStatsRefusalClearsBothPreviouslyReadProjections() = runTest(dispatcher) {
+        val stats = FakeStatsActions()
+        val viewModel = MonthlyStatsViewModel(stats, "2026-05")
+        advanceUntilIdle()
+        assertNotNull(viewModel.uiState.value.stats)
+        assertNotNull(viewModel.uiState.value.lifestyleStats)
+        stats.monthlyStatsResponder = { _, _ -> Result.failure(
+            com.ticketbox.data.repository.RepositoryException("Forbidden", httpStatusCode = 403)) }
+        viewModel.refresh()
+        advanceUntilIdle()
+        assertEquals(null, viewModel.uiState.value.stats)
+        assertEquals(null, viewModel.uiState.value.statsFetchedAt)
+        assertEquals(null, viewModel.uiState.value.lifestyleStats)
+        assertEquals(StatsSource.None, viewModel.uiState.value.statsSource)
+    }
+
+    @Test
+    fun lifestyleRefusalAlsoClearsTheMonthlyReadFromTheSameRejectedIdentity() = runTest(dispatcher) {
+        val stats = FakeStatsActions()
+        val viewModel = MonthlyStatsViewModel(stats, "2026-05")
+        advanceUntilIdle()
+        stats.lifestyleStatsResponder = { Result.failure(
+            com.ticketbox.data.repository.RepositoryException("Unauthorized", httpStatusCode = 401)) }
+        viewModel.refresh()
+        advanceUntilIdle()
+        assertEquals(null, viewModel.uiState.value.stats)
+        assertEquals(null, viewModel.uiState.value.lifestyleFetchedAt)
+        assertEquals(null, viewModel.uiState.value.lifestyleStats)
+    }
+
 }
 
 private class FakeStatsActions : StatsActions {
@@ -423,17 +454,17 @@ private class FakeStatsActions : StatsActions {
 
     override suspend fun tags(): Result<List<String>> = tagListResult ?: Result.success(tagList)
 
-    override suspend fun monthlyStats(query: StatsQuery): Result<StatsRead<MonthlyStats>> {
+    override suspend fun monthlyStats(query: StatsQuery): Result<ReadSnapshot<MonthlyStats>> {
         monthlyStatsCalls++
         queries.add(query)
         val result = monthlyStatsResponder?.invoke(query.month, query.tag.ifBlank { null })
             ?: Result.success(statsForMonth(query.month))
-        return result.map { StatsRead(it, "2026-05-13T00:00:00Z", cached) }
+        return result.map { ReadSnapshot(it, "2026-05-13T00:00:00Z", cached) }
     }
 
-    override suspend fun lifestyleStats(query: StatsQuery): Result<StatsRead<LifestyleStats>> =
+    override suspend fun lifestyleStats(query: StatsQuery): Result<ReadSnapshot<LifestyleStats>> =
         (lifestyleStatsResponder?.invoke(query.month)
-            ?: Result.success(lifestyleForMonth(query.month))).map { StatsRead(it, "2026-05-13T00:00:00Z", cached) }
+            ?: Result.success(lifestyleForMonth(query.month))).map { ReadSnapshot(it, "2026-05-13T00:00:00Z", cached) }
 
     override suspend fun syncConfirmed(
         month: String?,

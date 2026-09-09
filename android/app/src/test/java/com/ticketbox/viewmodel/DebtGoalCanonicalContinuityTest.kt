@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.data.repository.ReadSnapshot
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.DebtGoalLink
 import com.ticketbox.domain.model.DebtRepaymentEvaluation
@@ -33,8 +34,9 @@ class DebtGoalCanonicalContinuityTest {
     @AfterTest fun tearDown() { Dispatchers.resetMain() }
 
     @Test
-    fun canonicalListReplacesTheWholeSelectedGoalWhenItsAdditionalDetailReadFails() = runTest(dispatcher) {
+    fun canonicalListReplacesTheWholeSelectedGoalWithoutAnotherDetailRequest() = runTest(dispatcher) {
         val original = canonicalDebtGoal()
+        val detail = original.copy(name = "详情核准名称", rowVersion = 4)
         var listed = original
         var detailFails = false
         var detailCalls = 0
@@ -42,12 +44,12 @@ class DebtGoalCanonicalContinuityTest {
             arrayOf(ReportsActions::class.java)) { _, method, _ -> error("Unexpected goal call: ${method.name}") } as ReportsActions
         val repository = object : ReportsActions by unexpected {
             override fun canModifyLedger() = true
-            override suspend fun debtGoals(includeArchived: Boolean) = Result.success(listOf(listed))
-            override suspend fun goal(publicId: String): Result<Goal> {
+            override suspend fun debtGoals(includeArchived: Boolean, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String) = Result.success(ReadSnapshot(listOf(listed), "2026-09-09T00:00:00Z", false))
+            override suspend fun goal(publicId: String, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String): Result<ReadSnapshot<Goal>> {
                 assertEquals(original.publicId, publicId)
                 detailCalls++
                 return if (detailFails) Result.failure(IllegalStateException("Synthetic failed detail read"))
-                else Result.success(original)
+                else Result.success(ReadSnapshot(detail, "2026-09-09T01:00:00Z", false))
             }
         }
         val viewModel = DebtGoalViewModel(repository, FakeDebtAdjustmentActions())
@@ -55,9 +57,16 @@ class DebtGoalCanonicalContinuityTest {
             advanceUntilIdle()
             viewModel.openDetail(original)
             advanceUntilIdle()
-            assertEquals(original, viewModel.state.value.selectedGoal)
+            assertEquals(detail, viewModel.state.value.selectedGoal)
+            viewModel.closeDetail()
+            assertEquals(listOf(detail), viewModel.state.value.goals,
+                "Returning to the list retains the verified detail and its original OCC")
+            assertEquals("2026-09-09T00:00:00Z", viewModel.state.value.fetchedAt,
+                "Reading one detail does not move the entire list's query time")
+            viewModel.openDetail(detail)
+            advanceUntilIdle()
             val evaluation = requireNotNull(original.debtRepayment)
-            listed = original.copy(name = "权威目标名称", rowVersion = 4, updatedAt = "2026-09-07T01:00:00Z",
+            listed = original.copy(name = "权威目标名称", rowVersion = 5, updatedAt = "2026-09-07T01:00:00Z",
                 debtRepayment = evaluation.copy(linkedDebts = evaluation.linkedDebts.map {
                     it.copy(remainingAmountCents = 53_000)
                 }))
@@ -66,10 +75,10 @@ class DebtGoalCanonicalContinuityTest {
             viewModel.refresh()
             advanceUntilIdle()
 
-            assertEquals(2, detailCalls, "The existing additional detail producer really failed")
+            assertEquals(2, detailCalls, "The full list result needs no additional detail request")
             assertEquals(listOf(listed), viewModel.state.value.goals)
             assertEquals(listed, viewModel.state.value.selectedGoal, "Preserve full canonical fields and OCC, not only amount")
-            assertNotNull(viewModel.state.value.error)
+            assertNull(viewModel.state.value.error)
         } finally {
             viewModel.viewModelScope.cancel()
         }
@@ -86,12 +95,12 @@ class DebtGoalCanonicalContinuityTest {
             arrayOf(ReportsActions::class.java)) { _, method, _ -> error("Unexpected goal call: ${method.name}") } as ReportsActions
         val repo = object : ReportsActions by unexpected {
             override fun canModifyLedger() = true
-            override suspend fun debtGoals(includeArchived: Boolean): Result<List<Goal>> {
+            override suspend fun debtGoals(includeArchived: Boolean, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String): Result<ReadSnapshot<List<Goal>>> {
                 val captured = result
                 gate?.await()
-                return captured
+                return captured.map { ReadSnapshot(it, "2026-09-09T00:00:00Z", false) }
             }
-            override suspend fun goal(publicId: String) = Result.success(current)
+            override suspend fun goal(publicId: String, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String) = Result.success(ReadSnapshot(current, "2026-09-09T00:00:00Z", false))
         }
         val adjustments = FakeDebtAdjustmentActions()
         val vm = DebtGoalViewModel(repo, adjustments)
@@ -122,6 +131,58 @@ class DebtGoalCanonicalContinuityTest {
             assertNull(vm.state.value.error)
         } finally {
             vm.viewModelScope.coroutineContext.job.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun olderCachedListAndDetailCannotEraseAnAcceptedTargetDateOrRelabelItsSource() = runTest(dispatcher) {
+        val original = canonicalDebtGoal()
+        val accepted = original.copy(rowVersion = original.rowVersion + 1,
+            debtRepayment = requireNotNull(original.debtRepayment).copy(targetDate = "2026-10-01"))
+        var queried = original
+        var fromCache = false
+        val unexpected = Proxy.newProxyInstance(ReportsActions::class.java.classLoader,
+            arrayOf(ReportsActions::class.java)) { _, method, _ -> error("Unexpected goal call: ${method.name}") } as ReportsActions
+        val repo = object : ReportsActions by unexpected {
+            override fun canModifyLedger() = true
+            override suspend fun debtGoals(includeArchived: Boolean, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String) =
+                Result.success(ReadSnapshot(listOf(queried), "2026-09-09T00:00:00Z", fromCache))
+            override suspend fun goal(publicId: String, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String) =
+                Result.success(ReadSnapshot(queried, "2026-09-09T00:00:00Z", fromCache))
+            override suspend fun setDebtGoalTargetDate(publicId: String, expectedRowVersion: Long, targetDate: String?): Result<Goal> {
+                assertEquals(original.rowVersion, expectedRowVersion)
+                assertEquals("2026-10-01", targetDate)
+                return Result.success(accepted)
+            }
+        }
+        val vm = DebtGoalViewModel(repo, FakeDebtAdjustmentActions())
+        try {
+            advanceUntilIdle()
+            vm.openDetail(original)
+            advanceUntilIdle()
+            vm.setTargetDate(java.time.LocalDate.parse("2026-10-01").atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli())
+            advanceUntilIdle()
+            assertEquals(accepted, vm.state.value.selectedGoal)
+            fromCache = true
+            vm.refresh()
+            advanceUntilIdle()
+            assertEquals(listOf(accepted), vm.state.value.goals)
+            assertEquals(accepted, vm.state.value.selectedGoal)
+            assertNull(vm.state.value.fetchedAt)
+            assertNull(vm.state.value.selectedFetchedAt)
+            vm.closeDetail()
+            vm.openDetail(vm.state.value.goals.single())
+            advanceUntilIdle()
+            assertEquals(accepted, vm.state.value.selectedGoal)
+            assertNull(vm.state.value.selectedFetchedAt)
+            queried = accepted
+            fromCache = false
+            vm.refresh()
+            advanceUntilIdle()
+            assertEquals(accepted, vm.state.value.selectedGoal)
+            assertEquals("2026-09-09T00:00:00Z", vm.state.value.selectedFetchedAt)
+        } finally {
+            vm.viewModelScope.cancel()
         }
     }
 }

@@ -9,8 +9,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.ticketbox.domain.model.FxContract
 
 @Database(
-    entities = [ExpenseEntity::class, PendingMutationEntity::class, ExpenseOffsetStreamEntity::class, StatsProjectionCacheEntity::class],
-    version = 19,
+    entities = [ExpenseEntity::class, PendingMutationEntity::class, ExpenseOffsetStreamEntity::class, StatsProjectionCacheEntity::class, GoalQueryCacheEntity::class],
+    version = 20,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -527,6 +527,23 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        internal val MIGRATION_19_20_STATEMENTS: List<String> = listOf(
+            """
+            CREATE TABLE IF NOT EXISTS goal_query_cache (
+                bindingKey TEXT NOT NULL, ledgerId TEXT NOT NULL, timezone TEXT NOT NULL,
+                queryKey TEXT NOT NULL, responseJson TEXT NOT NULL, fetchedAt TEXT NOT NULL,
+                PRIMARY KEY(bindingKey, timezone, queryKey)
+            )
+            """.trimIndent(),
+            "CREATE INDEX IF NOT EXISTS index_goal_query_cache_ledgerId ON goal_query_cache (ledgerId)",
+        )
+
+        internal val Migration19To20 = object : Migration(19, 20) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_19_20_STATEMENTS.forEach(db::execSQL)
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -553,6 +570,7 @@ abstract class AppDatabase : RoomDatabase() {
                         Migration16To17,
                         Migration17To18,
                         Migration18To19,
+                        Migration19To20,
                     )
                     .build()
                     .also { instance = it }
