@@ -69,7 +69,6 @@ from app.routes import (
     web_auth,
     web_bill_split,
     web_budget_advise,
-    web_budget_fx,
     web_budgets,
     web_categories,
     web_confirmed_batch,
@@ -391,7 +390,6 @@ app.include_router(web_rules_routes.router)
 app.include_router(web_rule_edit.router)
 app.include_router(web_budgets.router)
 app.include_router(web_budget_advise.router)
-app.include_router(web_budget_fx.router)
 app.include_router(web_income_plans.router)
 app.include_router(web_income_edit.router)
 app.include_router(web_library.router)

@@ -4,6 +4,7 @@ from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from fastapi import FastAPI
@@ -33,15 +34,13 @@ def task(monkeypatch):
     monkeypatch.setattr(web_budget_fx, "templates", Jinja2Templates(env=env))
     monkeypatch.setattr(web_budget_fx, "list_exchange_rates", Mock(return_value=[]))
     saved = Mock(return_value=SimpleNamespace(currency_code="CNY", home_currency_code="JPY", rate_date=date(2026, 8, 5)))
-    returned = Mock(return_value=HTMLResponse("original budget"))
     monkeypatch.setattr(web_budget_fx, "set_exchange_rate_idempotently", saved)
-    monkeypatch.setattr(web_budget_fx, "_render_budget_advise", returned)
     # Render the real editor while retaining the isolated actor/database fixture.
     app = FastAPI()
-    app.include_router(web_budget_fx.router)
+    app.include_router(web_budget_fx.router, prefix="/web/budget-advise")
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[web_budget_fx.LocalOnly.dependency] = lambda: None
-    return SimpleNamespace(client=TestClient(app), saved=saved, returned=returned, db=db)
+    return SimpleNamespace(client=TestClient(app), saved=saved, db=db)
 
 
 def _form(**changes):
@@ -53,18 +52,20 @@ def _form(**changes):
 
 
 def test_save_uses_same_owner_and_returns_original_task_without_generation(task):
-    response = task.client.post("/web/budget-advise/rates", data=_form())
-    assert response.status_code == 200, response.text
+    response = task.client.post("/web/budget-advise/rates", data=_form(), follow_redirects=False)
+    assert response.status_code == 303, response.text
     args = task.saved.call_args.kwargs
     assert (args["tenant_id"], args["actor_account_id"], args["idempotency_key"]) == ("original", 7, "original-rate-command")
     payload = args["payload"]
     assert (payload.currency_code, payload.home_currency_code, payload.rate_date, payload.expected_row_version) == (
         "CNY", "JPY", date(2026, 8, 5), 2)
     assert str(payload.rate_to_cny) == "20.125"
-    returned = task.returned.call_args.kwargs
-    assert returned["month"] == "2026-08" and returned["home_currency_code"] == "JPY"
-    assert returned["savings_target_yuan"] == "12" and returned["reserved_buffer_yuan"] == "3"
-    assert returned["run_advise"] is returned["allow_outbound"] is False
+    target = urlsplit(response.headers["location"])
+    returned = parse_qs(target.query)
+    assert target.path == "/web/budget-advise"
+    assert returned["month"] == ["2026-08"] and returned["home_currency_code"] == ["JPY"]
+    assert returned["savings_target_yuan"] == ["12"] and returned["reserved_buffer_yuan"] == ["3"]
+    assert "run_advise" not in returned and "idempotency_key" not in returned
 
 
 @pytest.mark.parametrize("error", ["state_conflict", "idempotency_key_reused"])
@@ -75,7 +76,7 @@ def test_conflict_retains_raw_rate_key_version_and_original_month(task, error):
     for name, value in _form().items():
         assert f'name="{name}"' in response.text and f'value="{value}"' in response.text
     assert "核对当前汇率" in response.text
-    task.returned.assert_not_called()
+    assert "location" not in response.headers
     task.db.rollback.assert_called_once()
 
 
@@ -135,6 +136,7 @@ def test_native_rate_command_requires_csrf_before_entering_save(task, monkeypatc
         task.saved.assert_not_called()
         client.cookies.set(csrf.CSRF_COOKIE_NAME, "synthetic-rate-browser-seed")
         fields = _form(csrf_token=csrf._csrf_token_for_seed("synthetic-rate-browser-seed"))
-        accepted = client.post("/web/budget-advise/rates", data=fields, headers={"Origin": "http://127.0.0.1"})
-        assert accepted.status_code == 200, accepted.text
+        accepted = client.post("/web/budget-advise/rates", data=fields,
+            headers={"Origin": "http://127.0.0.1"}, follow_redirects=False)
+        assert accepted.status_code == 303, accepted.text
         task.saved.assert_called_once()

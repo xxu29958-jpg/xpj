@@ -3,7 +3,7 @@
 from datetime import date
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import HTMLResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
@@ -11,13 +11,13 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.errors import AppError
 from app.routes._web_session_common import resolve_web_actor_account_id
-from app.routes.web_budget_advise import _render_budget_advise
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
+    _web_redirect,
     preserve_original_ledger_form,
     templates,
 )
@@ -27,7 +27,7 @@ from app.services.currency_common import normalize_currency_code, supported_curr
 from app.services.exchange_rate_service import list_exchange_rates, set_exchange_rate_idempotently
 from app.services.spending_contract_service import current_accounting_month
 
-router = APIRouter(prefix="/web/budget-advise/rates", tags=["web"])
+router = APIRouter(prefix="/rates", tags=["web"])
 _TASK_FIELDS = ("ledger_id", "month", "home_currency_code", "savings_target_yuan", "reserved_buffer_yuan")
 _RATE_FIELDS = ("currency_code", "rate_date", "rate_to_cny", "expected_row_version", "idempotency_key")
 
@@ -88,7 +88,7 @@ def _rate_payload(values):
 
 
 @router.post("", response_class=HTMLResponse)
-async def save_budget_rate(request: Request, db: Session = Depends(get_db), _local: None = LocalOnly) -> HTMLResponse:
+async def save_budget_rate(request: Request, db: Session = Depends(get_db), _local: None = LocalOnly) -> Response:
     raw = await request.form()
     values = {key: str(raw.get(key, "")) for key in (*_TASK_FIELDS, *_RATE_FIELDS)}
     options = _list_ledger_options(db)
@@ -112,7 +112,7 @@ async def save_budget_rate(request: Request, db: Session = Depends(get_db), _loc
         error = exc.message if isinstance(exc, AppError) else "请检查币种、日期和汇率。原输入已保留。"
         return _render_rates(request, db, options, selected, values, error=error, conflict=conflict,
             status_code=exc.status_code if isinstance(exc, AppError) else 422)
-    return _render_budget_advise(request, db=db, ledger_id=selected, month=values["month"],
+    return _web_redirect("/web/budget-advise", ledger_id=selected, month=values["month"],
         home_currency_code=values["home_currency_code"], savings_target_yuan=values["savings_target_yuan"],
-        reserved_buffer_yuan=values["reserved_buffer_yuan"], run_advise=False, allow_outbound=False,
+        reserved_buffer_yuan=values["reserved_buffer_yuan"],
         message=f"{receipt.currency_code} → {receipt.home_currency_code} · {receipt.rate_date} 的提交已确认。以下按当前汇率重新计算。")

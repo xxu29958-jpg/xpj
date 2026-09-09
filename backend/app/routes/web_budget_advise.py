@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
+from app.routes.web_budget_fx import router as rates_router
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -31,6 +32,7 @@ from app.services.currency_common import (
 from app.services.spending_contract_service import current_accounting_month
 
 router = APIRouter(prefix="/web/budget-advise", tags=["web"])
+router.include_router(rates_router)
 
 
 class _AdvisorReadinessContext(TypedDict):
@@ -49,6 +51,7 @@ def page_budget_advise(
     reserved_buffer_yuan: str = Query(default="0"),
     run_advise: bool = Query(default=False),
     home_currency_code: str | None = Query(default=None),
+    message: str | None = Query(default=None),
     db: Session = Depends(get_db),
     _local: None = LocalOnly,
 ) -> HTMLResponse:
@@ -64,6 +67,7 @@ def page_budget_advise(
         run_advise=run_advise,
         allow_outbound=False,
         home_currency_code=home_currency_code,
+        message=message,
     )
 
 

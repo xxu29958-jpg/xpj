@@ -37677,6 +37677,22 @@
               ],
               "title": "Home Currency Code"
             }
+          },
+          {
+            "in": "query",
+            "name": "message",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Message"
+            }
           }
         ],
         "responses": {
@@ -37762,6 +37778,7 @@
         },
         "summary": "Page Budget Rates",
         "tags": [
+          "web",
           "web"
         ]
       },
@@ -37781,6 +37798,7 @@
         },
         "summary": "Save Budget Rate",
         "tags": [
+          "web",
           "web"
         ]
       }
