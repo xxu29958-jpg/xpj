@@ -11,6 +11,4 @@
     <string name="recurring_original_unsupported">原提交信息不完整，暂不能重试。已保留原填写内容，请先核对固定支出。</string>
     <string name="recurring_original_drop">停止并移除原提交</string>
     <string name="recurring_original_drop_explanation">停止本机重试并移除这份原提交。它可能已到达服务器，这不会撤销已保存的固定支出；请先查看当前记录。</string>
-    <string name="recurring_error_ledger">这条固定支出不属于当前账本，请重新打开记录。</string>
-    <string name="recurring_error_command_owner">固定支出提交暂不可用，请重新打开应用；填写内容已保留。</string>
 </resources>

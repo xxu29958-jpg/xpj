@@ -236,6 +236,28 @@ internal fun NavGraphBuilder.addObligationRoutes(
                 ),
             )
         }
+        addObligationSyncRoute(dependencies)
+        composable(
+            route = REPAYMENT_DRAFT_ROUTE,
+            arguments = listOf(
+                navArgument(REPAYMENT_DRAFT_FOCUS_ARG) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
+        ) { entry ->
+            RepaymentDraftRoute(
+                screenFactory = screenFactory,
+                focusedDraftPublicId = entry.arguments?.getString(REPAYMENT_DRAFT_FOCUS_ARG),
+                onBack = onBack,
+            )
+        }
+    }
+}
+
+private fun NavGraphBuilder.addObligationSyncRoute(dependencies: MainProductRouteDependencies) {
+    with(dependencies) {
         composable(ProductSecondaryPage.ObligationSync.route) {
             val vm: OutboxStatusViewModel = viewModel(
                 factory = outboxStatusViewModelFactory(
@@ -252,22 +274,6 @@ internal fun NavGraphBuilder.addObligationRoutes(
                     onOpenBudget = { month -> runtime.navController.navigate(budgetRoute(month)) },
                     onOpenRecurring = { shellState.openSecondaryPage(ProductSecondaryPage.Recurring) },
                 ))
-        }
-        composable(
-            route = REPAYMENT_DRAFT_ROUTE,
-            arguments = listOf(
-                navArgument(REPAYMENT_DRAFT_FOCUS_ARG) {
-                    type = NavType.StringType
-                    nullable = true
-                    defaultValue = null
-                },
-            ),
-        ) { entry ->
-            RepaymentDraftRoute(
-                screenFactory = screenFactory,
-                focusedDraftPublicId = entry.arguments?.getString(REPAYMENT_DRAFT_FOCUS_ARG),
-                onBack = onBack,
-            )
         }
     }
 }

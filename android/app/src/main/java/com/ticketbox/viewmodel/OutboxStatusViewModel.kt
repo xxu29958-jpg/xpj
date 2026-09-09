@@ -27,7 +27,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-private val recurringSubmissionTypes = setOf(PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem)
+private val recurringSubmissionTypes = setOf(
+    PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem, PendingMutationType.SetRecurringOccurrencePayment,
+)
 private val originalSubmissionTypes = setOf(
     PendingMutationType.CorrectExpense, PendingMutationType.UpdateGoal, PendingMutationType.SaveMonthlyBudget,
 ) + recurringSubmissionTypes
@@ -37,6 +39,7 @@ private val submissionFailureResources = mapOf(
     PendingMutationType.SaveMonthlyBudget to R.string.budget_save_attention,
     PendingMutationType.CreateRecurringItem to R.string.recurring_original_attention,
     PendingMutationType.UpdateRecurringItem to R.string.recurring_original_attention,
+    PendingMutationType.SetRecurringOccurrencePayment to R.string.occurrence_attention,
 )
 
 /**
@@ -226,6 +229,8 @@ class OutboxStatusViewModel(
                 } ?: Result.failure(IllegalStateException())
                 PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem ->
                     recoveries.recurringItems.recoverManualIntent(binding, row, drop)
+                PendingMutationType.SetRecurringOccurrencePayment ->
+                    recoveries.recurringOccurrences?.recover(binding, row, drop) ?: Result.failure(IllegalStateException())
                 else -> expenseRepository.recoverCorrection(binding, row.id, drop)
             }
             result.onFailure { error ->
@@ -325,6 +330,8 @@ data class OutboxStatusUiState(
     fun offersRetry(row: OutboxRow): Boolean = when (row.type) {
         PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem ->
             recurringItems[row.id]?.canRetry == true && correctionObservation.access?.canModify == true
+        PendingMutationType.SetRecurringOccurrencePayment ->
+            recurringOccurrences[row.id]?.canRetry == true && correctionObservation.access?.canModify == true
         PendingMutationType.SaveMonthlyBudget -> budgetSaves[row.id]?.canRetry == true && correctionObservation.access?.canModify == true
         PendingMutationType.UpdateIncomePlan -> incomeEdits[row.id]?.hasSupportedIntent == true
         PendingMutationType.UpdateGoal -> goalEdits[row.id]?.canRetry == true

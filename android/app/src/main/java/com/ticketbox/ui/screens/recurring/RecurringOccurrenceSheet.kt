@@ -25,15 +25,12 @@ import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.PendingOccurrencePayment
 import com.ticketbox.domain.model.ConfirmedStreamItem
-import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.ExpenseFilterCriteria
 import com.ticketbox.domain.model.ExpenseLineageStatus
 import com.ticketbox.domain.model.filterConfirmedStreamItems
-import com.ticketbox.domain.model.recordCurrencyDisplay
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppSheetScaffold
-import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.RecurringOccurrenceUiState
 
@@ -51,7 +48,6 @@ data class OccurrenceSheetActions(
 @Composable
 fun RecurringOccurrenceSheet(
     state: RecurringOccurrenceUiState,
-    currency: CurrencyDisplay,
     actions: OccurrenceSheetActions,
 ) {
     val item = state.item ?: return
@@ -59,11 +55,13 @@ fun RecurringOccurrenceSheet(
         AppSheetScaffold(title = item.merchant, subtitle = stringResource(R.string.occurrence_subtitle)) {
             OccurrencePeriodControls(state, actions)
             state.message?.let { Text(it.asString(), modifier = Modifier.testTag("occurrence-message")) }
-            state.seriesPending.forEach { OccurrencePending(it, actions.onRecover) }
+            state.seriesPending.forEach { OccurrencePending(it, state.access?.canModify == true, actions.onRecover) }
             state.occurrence?.let { occurrence ->
                 Text(stringResource(occurrenceStateLabel(occurrence.state)), modifier = Modifier.testTag("occurrence-state"))
-                Text(stringResource(R.string.occurrence_reserved, formatDisplayAmount(occurrence.reservedAmountCents, currency)))
-                occurrence.paidAmountCents?.let { Text(stringResource(R.string.occurrence_paid_amount, formatDisplayAmount(it, currency))) }
+                Text(stringResource(R.string.occurrence_reserved, recurringRecordedAmountText(occurrence.reservedAmountCents, occurrence.homeCurrencyCode)))
+                occurrence.paidAmountCents?.let {
+                    Text(stringResource(R.string.occurrence_paid_amount, recurringRecordedAmountText(it, occurrence.paidHomeCurrencyCode)))
+                }
                 occurrence.expenseId?.let { id ->
                     TextButton(onClick = { actions.onOpenExpense(id) }) { Text(stringResource(R.string.occurrence_open_payment)) }
                 }
@@ -72,7 +70,7 @@ fun RecurringOccurrenceSheet(
                     TextButton(onClick = { actions.onChoose(null) }, enabled = state.canWrite) { Text(stringResource(R.string.occurrence_clear)) }
                 }
                 if (state.access?.canModify == false) Text(stringResource(R.string.occurrence_readonly))
-                OccurrenceChoice(state, currency, actions.onSubmit)
+                OccurrenceChoice(state, actions.onSubmit)
                 if (state.canWrite) OccurrencePaymentPicker(state, actions.onChoose)
             }
         }
@@ -92,31 +90,36 @@ private fun OccurrencePeriodControls(state: RecurringOccurrenceUiState, actions:
 }
 
 @Composable
-private fun OccurrenceChoice(state: RecurringOccurrenceUiState, currency: CurrencyDisplay, submit: () -> Unit) {
+private fun OccurrenceChoice(state: RecurringOccurrenceUiState, submit: () -> Unit) {
     val choice = state.choice ?: return
     val label = if (choice.request.action == "clear") stringResource(R.string.occurrence_clear_review)
-        else stringResource(R.string.occurrence_link_review, choice.paymentLabel.orEmpty(), formatDisplayAmount(choice.paymentAmountCents ?: 0, currency))
+        else stringResource(R.string.occurrence_link_review, choice.paymentLabel.orEmpty(),
+            occurrencePaymentAmountText(choice.paymentAmountCents, choice.paymentCurrencyCode))
     Text(label)
     AppPrimaryButton(text = stringResource(R.string.occurrence_submit), icon = Icons.Filled.Check, onClick = submit,
         enabled = state.canWrite, modifier = Modifier.fillMaxWidth().testTag("occurrence-submit"))
 }
 
 @Composable
-private fun OccurrencePending(pending: PendingOccurrencePayment, recover: (PendingOccurrencePayment, Boolean) -> Unit) {
+private fun OccurrencePending(pending: PendingOccurrencePayment, canModify: Boolean, recover: (PendingOccurrencePayment, Boolean) -> Unit) {
     var confirmDrop by rememberSaveable(pending.row.id) { mutableStateOf(false) }
-    val intent = pending.intent
     HorizontalDivider()
     Text(stringResource(if (pending.row.status in setOf(PendingMutationStatus.Pending, PendingMutationStatus.InFlight))
         R.string.occurrence_pending else R.string.occurrence_attention))
     RecurringOccurrenceIntentSummary(pending)
-    if (pending.row.status == PendingMutationStatus.Failed) {
-        TextButton(onClick = { recover(pending, false) }, enabled = intent != null) { Text(stringResource(R.string.occurrence_retry_original)) }
+    if (pending.canRetry && canModify) {
+        TextButton(onClick = { recover(pending, false) }) { Text(stringResource(R.string.occurrence_retry_original)) }
     }
     if (pending.row.status in setOf(PendingMutationStatus.Conflict, PendingMutationStatus.Failed)) {
         TextButton(onClick = { confirmDrop = true }) { Text(stringResource(R.string.occurrence_drop)) }
     }
     if (confirmDrop) AlertDialog(onDismissRequest = { confirmDrop = false },
-        title = { Text(stringResource(R.string.occurrence_drop)) }, text = { Text(stringResource(R.string.occurrence_drop_explanation)) },
+        title = { Text(stringResource(R.string.occurrence_drop)) }, text = {
+            androidx.compose.foundation.layout.Column {
+                RecurringOccurrenceIntentSummary(pending)
+                Text(stringResource(R.string.occurrence_drop_explanation))
+            }
+        },
         confirmButton = { TextButton(onClick = { confirmDrop = false; recover(pending, true) }) { Text(stringResource(R.string.occurrence_drop)) } },
         dismissButton = { TextButton(onClick = { confirmDrop = false }) { Text(stringResource(R.string.occurrence_keep)) } })
 }
@@ -137,7 +140,7 @@ private fun OccurrencePaymentPicker(state: RecurringOccurrenceUiState, choose: (
     payments.take(20).forEach { payment ->
         TextButton(onClick = { choose(payment) }, modifier = Modifier.fillMaxWidth().testTag("occurrence-payment-" + payment.root.id)) {
             Text(payment.streamDate + " · " + payment.root.merchant.orEmpty() + " · " +
-                formatDisplayAmount(payment.root.amountCents ?: 0, payment.root.recordCurrencyDisplay()) +
+                occurrencePaymentAmountText(payment.root.amountCents, payment.root.homeCurrencyCode) +
                 if (payment.lineageStatus != ExpenseLineageStatus.Confirmed) stringResource(R.string.occurrence_has_refund) else "")
         }
     }

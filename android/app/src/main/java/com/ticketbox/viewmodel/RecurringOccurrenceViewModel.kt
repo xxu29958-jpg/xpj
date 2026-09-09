@@ -6,17 +6,13 @@ import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
 import com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto
-import com.ticketbox.data.repository.ConflictResolution
-import com.ticketbox.data.repository.FailedResolution
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LedgerActions
 import com.ticketbox.data.repository.OccurrencePaymentDraft
-import com.ticketbox.data.repository.OutboxRepository
 import com.ticketbox.data.repository.PendingOccurrencePayment
 import com.ticketbox.data.repository.RecurringOccurrenceActions
 import com.ticketbox.data.repository.occurrenceTarget
 import com.ticketbox.domain.model.ConfirmedStreamItem
-import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.domain.model.UiText
 import java.time.YearMonth
@@ -55,7 +51,6 @@ data class RecurringOccurrenceUiState(
 class RecurringOccurrenceViewModel(
     private val repository: RecurringOccurrenceActions,
     private val ledger: LedgerActions,
-    private val outbox: OutboxRepository,
     private val onChanged: () -> Unit = {},
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(RecurringOccurrenceUiState(access = repository.currentAccess()))
@@ -100,7 +95,7 @@ class RecurringOccurrenceViewModel(
         load(mutableState.value.occurrence?.period ?: mutableState.value.requestedPeriod)
     }
 
-    fun choose(payment: ConfirmedStreamItem.ExpenseRow?, currency: CurrencyCode) {
+    fun choose(payment: ConfirmedStreamItem.ExpenseRow?) {
         val state = mutableState.value
         val occurrence = state.occurrence ?: return
         if (!state.canWrite) return
@@ -117,7 +112,7 @@ class RecurringOccurrenceViewModel(
             ),
             paymentLabel = root?.merchant,
             paymentAmountCents = root?.amountCents,
-            homeCurrency = currency,
+            paymentCurrencyCode = root?.homeCurrencyCode,
         )) }
     }
 
@@ -142,16 +137,16 @@ class RecurringOccurrenceViewModel(
 
     fun recover(pending: PendingOccurrencePayment, drop: Boolean) {
         if (pending !in mutableState.value.seriesPending) return
+        val binding = mutableState.value.access?.binding ?: return
         viewModelScope.launch {
-            when (pending.row.status) {
-                PendingMutationStatus.Conflict -> if (drop) outbox.resolveConflict(pending.row.id, ConflictResolution.DropMine)
-                PendingMutationStatus.Failed -> outbox.resolveFailed(
-                    pending.row.id, if (drop) FailedResolution.Drop else FailedResolution.Retry(),
-                )
-                else -> Unit
+            val result = repository.recover(binding, pending.row, drop)
+            if (mutableState.value.access?.binding != binding) return@launch
+            if (result.isSuccess) {
+                mutableState.update { it.copy(acceptedId = null, choice = null) }
+                refresh()
+            } else {
+                mutableState.update { it.copy(message = result.exceptionOrNull()?.toUiText(R.string.occurrence_save_failed)) }
             }
-            mutableState.update { it.copy(acceptedId = null, choice = null) }
-            refresh()
         }
     }
 

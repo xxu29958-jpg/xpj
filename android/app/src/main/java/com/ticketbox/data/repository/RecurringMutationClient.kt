@@ -239,8 +239,15 @@ private fun validatePatch(baseline: RecurringItem, patch: RecurringItemPatch): S
     else -> null
 }
 
-private fun recurringValidationFailure(errorCode: String): Result<RecurringPendingIntent> =
-    Result.failure(RepositoryException(message = errorCode, errorCode = errorCode))
+private fun recurringValidationFailure(errorCode: String): Result<RecurringPendingIntent> {
+    val message = when (errorCode) {
+        "recurring_ledger_conflict" -> "这条固定支出不属于当前账本，请重新打开记录。"
+        "recurring_currency_conflict" -> "原记录的币种尚未确认或已不匹配。已保留填写内容，请先核对原记录。"
+        "recurring_command_owner_unavailable" -> "固定支出提交暂不可用，请重新打开应用；填写内容已保留。"
+        else -> backendErrorUserMessage(errorCode, "未能保存固定支出，请核对填写内容。")
+    }
+    return Result.failure(RepositoryException(message = message, errorCode = errorCode))
+}
 
 private fun OutboxRow.toRecurringPendingState(): RecurringPendingState = when (status) {
     PendingMutationStatus.Done -> RecurringPendingState.DONE

@@ -152,6 +152,7 @@ class RecurringRepositoryOutboxFallbackTest {
             draft = RecurringItemDraft("房租", 350000, null, homeCurrencyCode = "CNY"),
         )
         assertTrue(outcome.isFailure)
+        assertEquals("固定支出提交暂不可用，请重新打开应用；填写内容已保留。", outcome.exceptionOrNull()?.message)
         assertEquals(null, api.createKey)
     }
 

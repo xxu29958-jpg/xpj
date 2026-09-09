@@ -25,7 +25,10 @@ internal fun SyncStatusOriginalIntentSummary(row: OutboxRow, state: OutboxStatus
         com.ticketbox.ui.screens.recurring.RecurringManualIntentSummary(original)
         TextButton(onClick = actions.onOpenRecurring) { Text(stringResource(R.string.recurring_original_open)) }
     }
-    state.recurringOccurrences[row.id]?.let { com.ticketbox.ui.screens.recurring.RecurringOccurrenceIntentSummary(it) }
+    state.recurringOccurrences[row.id]?.let {
+        com.ticketbox.ui.screens.recurring.RecurringOccurrenceIntentSummary(it)
+        TextButton(onClick = actions.onOpenRecurring) { Text(stringResource(R.string.recurring_original_open)) }
+    }
     state.incomeEdits[row.id]?.let { com.ticketbox.ui.screens.IncomePlanIntentSummary(it) }
     state.debtAdjustments[row.id]?.let { com.ticketbox.ui.screens.DebtAdjustmentIntentSummary(it) }
     state.budgetSaves[row.id]?.let { pending ->
