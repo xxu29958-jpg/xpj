@@ -191,7 +191,7 @@ class StatsAdaptiveExperienceTest {
         )
         val readableStats = StatsUiState(
             month = "2026-09",
-            stats = MonthlyStats(month = "2026-09", totalAmountCents = 12390, count = 2, byCategory = emptyList()),
+            stats = MonthlyStats(homeCurrencyCode = "CNY", month = "2026-09", totalAmountCents = 12390, count = 2, byCategory = emptyList()),
             statsSource = StatsSource.Backend,
             monthsLoadState = StatsFilterOptionsLoadState.Failed,
             selectedTag = "日常",

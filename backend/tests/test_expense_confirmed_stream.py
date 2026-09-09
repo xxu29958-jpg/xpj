@@ -274,6 +274,8 @@ def _assert_refund_service_consumers() -> None:
         assert confirmed_by_day(db, "owner", "2026-09", tag="旅行") == [
             {
                 "date": "2026-09-03",
+                "home_currency_code": "CNY",
+                "missing_rates": (),
                 "amount_cents": -300,
                 "amount_yuan": -3.0,
                 "count": 1,

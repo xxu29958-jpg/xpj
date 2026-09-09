@@ -2,18 +2,21 @@ from __future__ import annotations
 
 import csv
 from collections import defaultdict
-from datetime import datetime, timedelta
+from collections.abc import Mapping, Sequence
+from datetime import timedelta
 from io import StringIO
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.errors import AppError
+from app.ledger_scope import ledger_scoped_select
 from app.models import Expense, ExpenseTag, Tag
-from app.money_contract import projection_sum_to_int
-from app.services.category_service import list_ledger_category_options, normalize_category
+from app.services.category_service import list_ledger_category_options
 from app.services.csv_security import safe_csv_cell
+from app.services.currency_binding_service import require_runtime_home_currency_code
+from app.services.currency_common import normalize_currency_code
 from app.services.expense_service import filtered_confirmed_stream
+from app.services.money_projection_service import sum_projected_amounts
 from app.services.spending_contract_service import (
     accounting_zone,
     canonical_merchant_display,
@@ -27,11 +30,9 @@ from app.services.spending_contract_service import (
     clean_month as _contract_clean_month,
 )
 from app.services.spending_contract_service import (
-    confirmed_query as _contract_confirmed_query,
-)
-from app.services.spending_contract_service import (
     stat_time as _contract_stat_time,
 )
+from app.services.spending_projection_service import entry_gaps, read_projected_entries
 from app.services.stats_money import (
     export_money_values as _export_money_values,
 )
@@ -57,23 +58,6 @@ def _stat_month_bounds(
 
 def _clean_month_filter(month: str) -> str:
     return _contract_clean_month(month)
-
-
-def _confirmed_query(
-    *,
-    tenant_id: str,
-    month: str | None = None,
-    category: str | None = None,
-    tag: str | None = None,
-    timezone_name: str | None = None,
-) -> Select[tuple[Expense]]:
-    return _contract_confirmed_query(
-        tenant_id=tenant_id,
-        month=month,
-        category=category,
-        tag=tag,
-        timezone_name=timezone_name,
-    )
 
 
 def list_categories(db: Session, tenant_id: str) -> list[str]:
@@ -237,235 +221,122 @@ def _confirmed_stream_csv_row(entry) -> list:
     ]
 
 
-def _tag_stats_for_filtered_query(db: Session, tenant_id: str, filtered) -> list[dict]:
-    rows = db.execute(
-        select(
-            Tag.name,
-            func.coalesce(func.sum(filtered.c.stream_amount_cents), 0),
-            func.count(filtered.c.entry_id),
-        )
-        .select_from(filtered)
-        .join(
-            ExpenseTag,
-            (ExpenseTag.expense_id == filtered.c.root_expense_id)
-            & (ExpenseTag.tenant_id == tenant_id),
-        )
+def _amount_rows(grouped, key):
+    rows = [{key: name, "amount_cents": sum_projected_amounts(
+        (entry.amount_cents for entry in entries), label=f"stats.{key}_total"), "count": len(entries)}
+        for name, entries in grouped.items()]
+    if any(row["amount_cents"] is None for row in rows):
+        return sorted(rows, key=lambda row: row[key])
+    return sorted(rows, key=lambda row: (-row["amount_cents"], -row["count"], row[key]))
+
+
+def _category_rows(entries):
+    grouped = defaultdict(list)
+    for entry in entries:
+        grouped[entry.category].append(entry)
+    return _amount_rows(grouped, "category")
+
+
+def _tag_rows(db, *, tenant_id, entries):
+    roots = {entry.root_expense_id for entry in entries}
+    if not roots:
+        return []
+    tags_by_root = defaultdict(set)
+    for root_id, tag in db.execute(select(ExpenseTag.expense_id, Tag.name)
         .join(Tag, (Tag.id == ExpenseTag.tag_id) & (Tag.tenant_id == tenant_id))
-        .where(Tag.deleted_at.is_(None))  # ADR-0043: exclude soft-deleted tags
-        .group_by(Tag.name)
-    )
-    stats = [
-        {
-            "tag": str(tag),
-            "amount_cents": projection_sum_to_int(
-                amount,
-                label="stats.tag_amount",
-                empty_is_zero=True,
-            ),
-            "count": int(count or 0),
-        }
-        for tag, amount, count in rows
-    ]
-    return sorted(stats, key=lambda item: int(item["amount_cents"]), reverse=True)
+        .where(ExpenseTag.tenant_id == tenant_id, ExpenseTag.expense_id.in_(roots), Tag.deleted_at.is_(None))):
+        tags_by_root[root_id].add(tag)
+    grouped = defaultdict(list)
+    for entry in entries:
+        for tag in tags_by_root[entry.root_expense_id]:
+            grouped[tag].append(entry)
+    return _amount_rows(grouped, "tag")
 
 
-def _ranked_scored_expenses(
-    expenses: list[Expense],
-    *,
-    score_attr: str,
-    limit: int = 5,
-) -> list[Expense]:
-    def sort_key(expense: Expense) -> tuple[int, int, float, int]:
-        stat_time = _stat_time(expense)
-        timestamp = stat_time.timestamp() if stat_time is not None else 0.0
-        return (
-            -(getattr(expense, score_attr) or 0),
-            -projection_sum_to_int(
-                expense.amount_cents,
-                label="stats.ranked_expense",
-                empty_is_zero=True,
-            ),
-            -timestamp,
-            -(expense.id or 0),
-        )
-
-    scored = [item for item in expenses if getattr(item, score_attr) is not None]
-    return sorted(scored, key=sort_key)[:limit]
+def _read_stats_entries(db, *, tenant_id, month, timezone_name, home_currency_code, tag=None):
+    home = normalize_currency_code(home_currency_code or require_runtime_home_currency_code(db))
+    entries = read_projected_entries(db, tenant_id=tenant_id, ranges=[_stat_month_bounds(month, timezone_name)],
+        timezone_name=timezone_name, home=home, tag=tag)
+    return home, entries
 
 
-def monthly_stats(
-    db: Session,
-    month: str,
-    tenant_id: str,
-    timezone_name: str | None = None,
-    tag: str | None = None,
+def monthly_stats(db: Session, month: str, tenant_id: str, timezone_name: str | None = None,
+    tag: str | None = None, home_currency_code: str | None = None,
 ) -> dict:
-    by_category: dict[str, dict[str, int | str]] = defaultdict(
-        lambda: {"category": "", "amount_cents": 0, "count": 0}
-    )
-
     month = _clean_month_filter(month)
-    total_amount_cents = 0
-    total_count = 0
-    bounds = _stat_month_bounds(month, timezone_name)
-    if bounds is None:
-        raise AppError("invalid_request", status_code=422)
-    filtered = confirmed_stream_query(
-        tenant_id=tenant_id,
-        month=month,
-        tag=tag,
-        timezone_name=timezone_name,
-        amount_required=True,
-    )
-    rows = db.execute(
-        select(
-            filtered.c.category,
-            func.coalesce(func.sum(filtered.c.stream_amount_cents), 0),
-            func.count(filtered.c.entry_id),
-        )
-        .select_from(filtered)
-        .group_by(filtered.c.category)
-    )
-    for category_value, amount_value, count_value in rows:
-        amount = projection_sum_to_int(
-            amount_value,
-            label="stats.category_row",
-            empty_is_zero=True,
-        )
-        count = int(count_value or 0)
-        total_amount_cents = projection_sum_to_int(
-            total_amount_cents + amount,
-            label="stats.month_total",
-        )
-        total_count += count
-        category = normalize_category(category_value)
-        bucket = by_category[category]
-        bucket["category"] = category
-        bucket["amount_cents"] = projection_sum_to_int(
-            projection_sum_to_int(
-                bucket["amount_cents"],
-                label="stats.category_bucket",
-            )
-            + amount,
-            label="stats.normalized_category_total",
-        )
-        bucket["count"] = int(bucket["count"]) + count
-
-    return {
-        "month": month,
-        "total_amount_cents": total_amount_cents,
-        "count": total_count,
-        "by_category": sorted(
-            by_category.values(),
-            key=lambda item: int(item["amount_cents"]),
-            reverse=True,
-        ),
-        "by_tag": _tag_stats_for_filtered_query(db, tenant_id, filtered),
-    }
+    home, entries = _read_stats_entries(db, tenant_id=tenant_id, month=month, timezone_name=timezone_name,
+        home_currency_code=home_currency_code, tag=tag)
+    return {"month": month, "home_currency_code": home, "missing_rates": entry_gaps(entries),
+        "total_amount_cents": sum_projected_amounts((entry.amount_cents for entry in entries), label="stats.month_total"),
+        "count": len(entries), "by_category": _category_rows(entries),
+        "by_tag": _tag_rows(db, tenant_id=tenant_id, entries=entries)}
 
 
-def _lifestyle_stream_totals(
-    db: Session,
-    *,
-    tenant_id: str,
-    month: str,
-    timezone_name: str | None,
-    recent_start: datetime,
-    recent_end: datetime,
-) -> tuple[dict[str, int], list[dict], int]:
-    stream = confirmed_stream_query(
-        tenant_id=tenant_id,
-        month=month,
-        timezone_name=timezone_name,
-        amount_required=True,
-    )
+def _rank_score_group(expenses, amount_by_id):
+    amounts_known = all(amount_by_id[item.id] is not None for item in expenses)
+
+    def key(item):
+        time = _stat_time(item)
+        return (-(amount_by_id[item.id] if amounts_known else 0),
+            -time.timestamp() if time is not None else 0, -item.id)
+
+    return sorted(expenses, key=key)
+
+
+def _ranked_scored_expenses(expenses, *, amount_by_id, score_attr, limit=5):
+    groups = defaultdict(list)
+    for item in expenses:
+        score = getattr(item, score_attr)
+        if score is not None:
+            groups[score].append(item)
+    ranked = [item for score in sorted(groups, reverse=True)
+        for item in _rank_score_group(groups[score], amount_by_id)]
+    return ranked[:limit]
+
+
+def _highest_expense(expenses: Sequence[Expense], amount_by_id: Mapping[int, int | None]) -> Expense | None:
+    if any(amount_by_id[item.id] is None for item in expenses):
+        return None
+    positive = [item for item in expenses if amount_by_id[item.id] > 0]
+    return max(positive, key=lambda item: (amount_by_id[item.id], item.id), default=None)
+
+
+def _frequent_merchants(db, *, tenant_id, entries):
     alias_map = enabled_merchant_display_map(db, tenant_id=tenant_id)
-    category_amounts: dict[str, int] = defaultdict(int)
-    merchant_counts: dict[str, int] = defaultdict(int)
-    merchant_amounts: dict[str, int] = defaultdict(int)
-    recent_7_days_amount_cents = 0
+    grouped = defaultdict(list)
+    for entry in entries:
+        if entry.merchant and entry.merchant.strip():
+            grouped[canonical_merchant_display(entry.merchant, alias_map)].append(entry)
+    rows = _amount_rows(grouped, "merchant")
+    if any(entry.amount_cents is None for entry in entries):
+        rows.sort(key=lambda row: (-row["count"], row["merchant"]))
+    return rows[:5]
+
+
+def _recent_seven_days(entries, *, month, timezone_name):
     zone = accounting_zone(timezone_name)
-    recent_start_date = recent_start.astimezone(zone).date()
-    recent_end_date = recent_end.astimezone(zone).date()
-    for category_raw, merchant_raw, stream_date, stream_amount in db.execute(
-        select(
-            stream.c.category,
-            stream.c.merchant,
-            stream.c.stream_date,
-            stream.c.stream_amount_cents,
-        )
-    ):
-        amount = projection_sum_to_int(stream_amount, label="stats.lifestyle_entry")
-        category = normalize_category(category_raw)
-        category_amounts[category] = projection_sum_to_int(
-            category_amounts[category] + amount,
-            label="stats.lifestyle_category",
-        )
-        if merchant_raw and merchant_raw.strip():
-            merchant = canonical_merchant_display(merchant_raw, alias_map)
-            merchant_counts[merchant] += 1
-            merchant_amounts[merchant] = projection_sum_to_int(
-                merchant_amounts[merchant] + amount,
-                label="stats.lifestyle_merchant",
-            )
-        if recent_start < recent_end and recent_start_date <= stream_date <= recent_end_date:
-            recent_7_days_amount_cents = projection_sum_to_int(
-                recent_7_days_amount_cents + amount,
-                label="stats.recent_seven_days",
-            )
-    frequent_merchants = [
-        {
-            "merchant": merchant,
-            "count": count,
-            "amount_cents": merchant_amounts[merchant],
-        }
-        for merchant, count in sorted(
-            merchant_counts.items(),
-            key=lambda pair: (-merchant_amounts[pair[0]], -pair[1], pair[0]),
-        )[:5]
-    ]
-    return category_amounts, frequent_merchants, recent_7_days_amount_cents
+    start, end = (bound.astimezone(zone).date() for bound in _stat_month_bounds(month, timezone_name))
+    last_day = min(now_utc().astimezone(zone).date(), end - timedelta(days=1))
+    first_day = max(start, last_day - timedelta(days=6))
+    return sum_projected_amounts((entry.amount_cents for entry in entries
+        if first_day <= entry.stream_date <= last_day), label="stats.recent_seven_days")
 
 
-def lifestyle_stats(
-    db: Session, month: str, tenant_id: str, timezone_name: str | None = None
+def lifestyle_stats(db: Session, month: str, tenant_id: str, timezone_name: str | None = None,
+    home_currency_code: str | None = None,
 ) -> dict:
     month = _clean_month_filter(month)
-    month_expenses = list(
-        db.scalars(
-            _confirmed_query(
-                tenant_id=tenant_id, month=month, timezone_name=timezone_name
-            ).where(Expense.amount_cents.is_not(None))
-        )
-    )
-    bounds = _stat_month_bounds(month, timezone_name)
-    if bounds is None:
-        raise AppError("invalid_request", status_code=422)
-    month_start, month_end = bounds
-    recent_end = min(now_utc(), month_end)
-    recent_start = max(month_start, recent_end - timedelta(days=7))
-    category_amounts, frequent_merchants, recent_amount = _lifestyle_stream_totals(
-        db,
-        tenant_id=tenant_id,
-        month=month,
-        timezone_name=timezone_name,
-        recent_start=recent_start,
-        recent_end=recent_end,
-    )
-    max_expense = max(
-        month_expenses, key=lambda item: item.amount_cents or 0, default=None
-    )
-    return {
-        "month": month,
-        "ai_subscription_amount_cents": category_amounts.get("AI订阅", 0),
-        "digital_amount_cents": category_amounts.get("数码", 0),
-        "max_expense": max_expense,
-        "recent_7_days_amount_cents": recent_amount,
-        "frequent_merchants": frequent_merchants,
-        "best_value_expenses": _ranked_scored_expenses(
-            month_expenses, score_attr="value_score"
-        ),
-        "most_regretted_expenses": _ranked_scored_expenses(
-            month_expenses, score_attr="regret_score"
-        ),
-    }
+    home, entries = _read_stats_entries(db, tenant_id=tenant_id, month=month, timezone_name=timezone_name,
+        home_currency_code=home_currency_code)
+    amount_by_id = {entry.root_expense_id: entry.amount_cents for entry in entries if entry.entry_kind == "expense"}
+    expenses = list(db.scalars(ledger_scoped_select(Expense, tenant_id).where(
+        Expense.id.in_(amount_by_id)))) if amount_by_id else []
+    categories = {row["category"]: row["amount_cents"] for row in _category_rows(entries)}
+    return {"month": month, "home_currency_code": home, "missing_rates": entry_gaps(entries),
+        "ai_subscription_amount_cents": categories.get("AI订阅", 0),
+        "digital_amount_cents": categories.get("数码", 0),
+        "max_expense": _highest_expense(expenses, amount_by_id),
+        "recent_7_days_amount_cents": _recent_seven_days(entries, month=month, timezone_name=timezone_name),
+        "frequent_merchants": _frequent_merchants(db, tenant_id=tenant_id, entries=entries),
+        "best_value_expenses": _ranked_scored_expenses(expenses, amount_by_id=amount_by_id, score_attr="value_score"),
+        "most_regretted_expenses": _ranked_scored_expenses(expenses, amount_by_id=amount_by_id, score_attr="regret_score")}

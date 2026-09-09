@@ -17,6 +17,7 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RecentMerchant
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.asExpenseRoot
+import com.ticketbox.domain.model.confirmedStreamAmountsByCurrency
 import com.ticketbox.domain.model.expenseLedgerMonth
 import com.ticketbox.domain.model.filterConfirmedStreamItems
 import com.ticketbox.domain.model.isUncategorizedExpenseCategory
@@ -53,7 +54,7 @@ enum class LedgerExportOutcome {
 }
 
 data class LedgerSummaryUi(
-    val totalAmountCents: Long = 0L,
+    val amountsByCurrency: Map<String?, Long?> = emptyMap(),
     val itemCount: Int = 0,
     val monthFilter: String = "",
     val syncing: Boolean = false,
@@ -157,10 +158,10 @@ data class LedgerUiState(
 
     val summary: LedgerSummaryUi
         get() = LedgerSummaryUi(
-            // Page header total = sum of server-owned signed contributions only
+            // Page header totals = signed contributions grouped by recorded currency
             // (refund/chargeback negative, reversal & reversed root zero). Never
             // gross amountCents, never lineage net.
-            totalAmountCents = items.sumOf { it.streamAmountCents },
+            amountsByCurrency = confirmedStreamAmountsByCurrency(items),
             itemCount = items.size,
             monthFilter = monthFilter,
             syncing = syncing,

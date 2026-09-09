@@ -38,6 +38,7 @@ enum class LocalRepositoryFailure {
     ManualRateUnresolved,
     ManualRateChanged,
     BudgetInputsUnverified,
+    StatsProjectionUnverified,
 }
 
 data class RepositoryConflictDetails(

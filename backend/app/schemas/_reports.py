@@ -76,15 +76,17 @@ class ReportsOverviewResponse(BaseModel):
 class LifestyleFrequentMerchantResponse(BaseModel):
     merchant: str
     count: int
-    amount_cents: SignedMoneyAggregate
+    amount_cents: SignedMoneyAggregate | None
 
 
 class LifestyleStatsResponse(BaseModel):
     month: str
-    ai_subscription_amount_cents: SignedMoneyAggregate
-    digital_amount_cents: SignedMoneyAggregate
+    home_currency_code: str
+    missing_rates: list[ProjectionGapDto]
+    ai_subscription_amount_cents: SignedMoneyAggregate | None
+    digital_amount_cents: SignedMoneyAggregate | None
     max_expense: ExpenseResponse | None
-    recent_7_days_amount_cents: SignedMoneyAggregate
+    recent_7_days_amount_cents: SignedMoneyAggregate | None
     frequent_merchants: list[LifestyleFrequentMerchantResponse]
     best_value_expenses: list[ExpenseResponse] = Field(default_factory=list)
     most_regretted_expenses: list[ExpenseResponse] = Field(default_factory=list)

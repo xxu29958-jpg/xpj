@@ -59,6 +59,8 @@ def test_confirmed_tag_filter_shares_list_total_calendar_and_source_cohort(
         assert confirmed_by_day(db, "owner", "2026-05", tag="家庭") == [
             {
                 "date": "2026-05-04",
+                "home_currency_code": "CNY",
+                "missing_rates": (),
                 "amount_cents": 1200,
                 "amount_yuan": 12.0,
                 "count": 1,

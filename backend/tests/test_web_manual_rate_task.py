@@ -135,6 +135,41 @@ def test_return_target_cannot_become_an_arbitrary_redirect(task):
     assert not target.netloc and target.path == "/web/budget-advise"
 
 
+@pytest.mark.parametrize("origin,scope", [
+    ("overview", {"month": ["2026-08"]}),
+    ("confirmed", {"month": ["2026-08"], "page": ["3"], "tag": ["旅行"]}),
+])
+def test_rate_save_returns_original_overview_or_confirmed_task(task, origin, scope):
+    fields = _form(return_to=origin, page="3", tag="旅行", filter="")
+    response = task.client.post("/web/budget-advise/rates", data=fields, follow_redirects=False)
+    assert response.status_code == 303
+    target = urlsplit(response.headers["location"])
+    values = parse_qs(target.query)
+    assert target.path == f"/web/{origin}"
+    for key, expected in {"ledger_id": ["original"], "home_currency_code": ["JPY"], **scope}.items():
+        assert values[key] == expected
+    assert "run_advise" not in values and "idempotency_key" not in values
+
+
+def test_rate_conflict_retains_original_confirmed_filters_and_key(task):
+    task.saved.side_effect = AppError("state_conflict", status_code=409)
+    fields = _form(return_to="confirmed", page="3", tag="旅行", filter="missing_category")
+    response = task.client.post("/web/budget-advise/rates", data=fields)
+    assert response.status_code == 409
+    for name in ("return_to", "page", "tag", "filter", "month", "home_currency_code", "idempotency_key", "expected_row_version"):
+        assert f'name="{name}" value="{fields[name]}"' in response.text
+    assert "/web/confirmed?" in response.text
+
+
+def test_rate_lookup_preserves_all_month_confirmed_scope(task):
+    response = task.client.get("/web/budget-advise/rates", params={"ledger_id": "original",
+        "home_currency_code": "JPY", "return_to": "confirmed", "filter": "missing_category", "tag": "旅行", "page": "3"})
+    assert response.status_code == 200
+    assert 'name="month" value=""' in response.text
+    assert "全部月份的待补分类流水" in response.text
+    assert 'name="filter" value="missing_category"' in response.text
+
+
 def test_binding_refusal_happens_before_lookup_review_or_command(task, monkeypatch):
     retained = HTMLResponse("original retained", status_code=409)
     monkeypatch.setattr(web_budget_fx, "preserve_original_ledger_form", lambda *a, **k: retained)

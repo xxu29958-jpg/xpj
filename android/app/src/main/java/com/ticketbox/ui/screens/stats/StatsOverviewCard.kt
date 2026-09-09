@@ -13,6 +13,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -49,7 +50,7 @@ internal data class StatsOverviewHeaderModel(
 
 @Composable
 internal fun StatsOverviewCard(header: StatsOverviewHeaderModel) {
-    val currencyDisplay = LocalCurrencyDisplay.current
+    val currencyDisplay = CurrencyDisplay.forRecord(header.stats.homeCurrencyCode)
     val compactWindow = LocalAppAdaptiveLayoutPolicy.current.widthClass == AppWindowWidthClass.Compact
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -80,19 +81,19 @@ private fun OverviewAmountHeader(
     header: StatsOverviewHeaderModel,
     currencyDisplay: CurrencyDisplay,
 ) {
-    val hasCurrentConfirmedSpend = header.stats.count > 0 && header.stats.totalAmountCents > 0L
+    val hasCurrentConfirmedSpend = header.stats.count > 0
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
         header.tagScope?.let { scope ->
             TagScopeContextRow(model = scope, statsSource = header.statsSource)
         }
         OverviewTitleRow(
             title = stringResource(R.string.stats_overview_month_spend_label),
-            showLocalBadge = header.statsSource == StatsSource.LocalFallback,
+            showLocalBadge = header.statsSource == StatsSource.CachedSnapshot,
         )
         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
             AppAmountText(
-                modifier = Modifier.fillMaxWidth(),
-                text = formatDisplayAmount(header.stats.totalAmountCents, currencyDisplay),
+                modifier = Modifier.fillMaxWidth().testTag("stats-monthly-total"),
+                text = projectionAmountText(header.stats.totalAmountCents, currencyDisplay),
                 color = MaterialTheme.colorScheme.onSurface,
                 role = AppAmountRole.Hero,
                 minFontSize = 22.sp,
@@ -175,7 +176,7 @@ private fun OverviewTitleRow(
         )
         if (showLocalBadge) {
             Text(
-                text = stringResource(R.string.stats_overview_local_estimate_badge),
+                text = stringResource(R.string.stats_snapshot_badge),
                 modifier = Modifier
                     .clip(RoundedCornerShape(AppRadius.pill))
                     .background(MaterialTheme.colorScheme.secondaryContainer)

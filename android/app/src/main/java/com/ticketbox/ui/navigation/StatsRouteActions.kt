@@ -17,7 +17,7 @@ internal fun statsScreenActions(
     shellState: MainShellState,
     month: String,
     overview: OverviewInteractionActions,
-    onRepair: (LogicalSessionBinding, ReportsOverview, CurrencyProjectionGap?) -> Unit,
+    onRepair: (ReportRateContext) -> Unit,
 ) = StatsScreenActions(
     filters = StatsFilterActions(
         onMonthChange = monthly::setMonth,
@@ -39,11 +39,20 @@ internal fun statsScreenActions(
         onRankingMetricChange = reports::setRankingMetric,
         onMerchantCategoryChange = reports::setMerchantCategory,
         onExport = reports::exportReport,
+        onRepairStatsRates = { gap ->
+            val state = monthly.uiState.value
+            val binding = state.binding
+            if (binding != null && state.homeCurrencyCode == gap.homeCurrencyCode) {
+                onRepair(ReportRateContext(binding, state.month, gap.homeCurrencyCode, gap.sourceCurrencyCode, gap.rateDate))
+            }
+        },
         onRepairRates = { gap ->
             val state = reports.uiState.value
             val binding = state.binding
             val report = state.reportsOverview
-            if (binding != null && report != null && monthly.uiState.value.month == report.month) onRepair(binding, report, gap)
+            if (binding != null && report != null && monthly.uiState.value.month == report.month) {
+                onRepair(ReportRateContext(binding, report.month, report.homeCurrencyCode, gap?.sourceCurrencyCode, gap?.rateDate))
+            }
         },
     ),
 )

@@ -1,18 +1,21 @@
 package com.ticketbox.data.remote.dto
 
 import com.squareup.moshi.Json
+import com.squareup.moshi.JsonClass
 
+@JsonClass(generateAdapter = true)
 data class CategoryStatsDto(
     val category: String,
     @param:Json(name = "amount_cents")
-    val amountCents: Long,
+    val amountCents: Long?,
     val count: Int,
 )
 
+@JsonClass(generateAdapter = true)
 data class TagStatsDto(
     val tag: String,
     @param:Json(name = "amount_cents")
-    val amountCents: Long,
+    val amountCents: Long?,
     val count: Int,
 )
 
@@ -28,10 +31,15 @@ data class MonthsDto(
     val items: List<String>,
 )
 
+@JsonClass(generateAdapter = true)
 data class MonthlyStatsDto(
+    @param:Json(name = "home_currency_code")
+    val homeCurrencyCode: String,
+    @param:Json(name = "missing_rates")
+    val missingRates: List<MissingExchangeRateDto> = emptyList(),
     val month: String,
     @param:Json(name = "total_amount_cents")
-    val totalAmountCents: Long,
+    val totalAmountCents: Long?,
     val count: Int,
     @param:Json(name = "by_category")
     val byCategory: List<CategoryStatsDto>,
@@ -39,16 +47,21 @@ data class MonthlyStatsDto(
     val byTag: List<TagStatsDto> = emptyList(),
 )
 
+@JsonClass(generateAdapter = true)
 data class LifestyleStatsDto(
+    @param:Json(name = "home_currency_code")
+    val homeCurrencyCode: String,
+    @param:Json(name = "missing_rates")
+    val missingRates: List<MissingExchangeRateDto> = emptyList(),
     val month: String,
     @param:Json(name = "ai_subscription_amount_cents")
-    val aiSubscriptionAmountCents: Long,
+    val aiSubscriptionAmountCents: Long?,
     @param:Json(name = "digital_amount_cents")
-    val digitalAmountCents: Long,
+    val digitalAmountCents: Long?,
     @param:Json(name = "max_expense")
     val maxExpense: ExpenseDto?,
     @param:Json(name = "recent_7_days_amount_cents")
-    val recent7DaysAmountCents: Long,
+    val recent7DaysAmountCents: Long?,
     @param:Json(name = "frequent_merchants")
     val frequentMerchants: List<FrequentMerchantDto>,
     @param:Json(name = "best_value_expenses")
@@ -57,9 +70,10 @@ data class LifestyleStatsDto(
     val mostRegrettedExpenses: List<ExpenseDto> = emptyList(),
 )
 
+@JsonClass(generateAdapter = true)
 data class FrequentMerchantDto(
     val merchant: String,
     val count: Int,
     @param:Json(name = "amount_cents")
-    val amountCents: Long = 0L,
+    val amountCents: Long?,
 )

@@ -36,6 +36,7 @@ private fun localFailureText(reason: LocalRepositoryFailure): UiText = UiText.re
     LocalRepositoryFailure.ManualRateUnresolved -> R.string.advice_rate_unresolved
     LocalRepositoryFailure.ManualRateChanged -> R.string.advice_rate_changed
     LocalRepositoryFailure.BudgetInputsUnverified -> R.string.advice_inputs_load_failed
+    LocalRepositoryFailure.StatsProjectionUnverified -> R.string.stats_projection_unverified
 })
 
 @StringRes

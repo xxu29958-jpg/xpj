@@ -14,14 +14,13 @@ from app.services.reports_service._aggregation import (
     _amount_count,
     _amount_delta,
     _entries_in_range,
-    _entry_gaps,
-    _read_projected_entries,
     _trend_buckets,
     _trend_points,
 )
 from app.services.reports_service._models import ReportGranularity, ReportRankingMetric
 from app.services.reports_service._ranking import _category_comparison, _merchant_ranking
 from app.services.reports_service._time import _month_bounds, _parse_month, _resolve_timezone, _shift_month
+from app.services.spending_projection_service import entry_gaps, read_projected_entries
 
 
 def reports_overview(db: Session, *, month: str, tenant_id: str,
@@ -35,7 +34,7 @@ def reports_overview(db: Session, *, month: str, tenant_id: str,
     previous_month, yoy_month = _shift_month(month, -1), _shift_month(month, -12)
     periods = [_month_bounds(label, timezone_key) for label in (month, previous_month, yoy_month)]
     buckets = _trend_buckets(month=month, granularity=granularity, timezone_name=timezone_key, zone=zone)
-    entries = _read_projected_entries(db, tenant_id=tenant_id, home=home, timezone_name=timezone_key,
+    entries = read_projected_entries(db, tenant_id=tenant_id, home=home, timezone_name=timezone_key,
         ranges=periods + [(bucket.start_utc, bucket.end_utc) for bucket in buckets])
     current, previous, yoy = [_entries_in_range(entries, period, zone) for period in periods]
     total_amount, count = _amount_count(current)
@@ -43,7 +42,7 @@ def reports_overview(db: Session, *, month: str, tenant_id: str,
     yoy_total, yoy_count = _amount_count(yoy)
     return {
         "month": month, "timezone": timezone_key, "home_currency_code": home,
-        "missing_rates": _entry_gaps(entries), "granularity": granularity,
+        "missing_rates": entry_gaps(entries), "granularity": granularity,
         "total_amount_cents": total_amount, "count": count,
         "previous_month": previous_month, "previous_total_amount_cents": previous_total, "previous_count": previous_count,
         "year_over_year_month": yoy_month, "year_over_year_total_amount_cents": yoy_total, "year_over_year_count": yoy_count,

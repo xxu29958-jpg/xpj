@@ -41,7 +41,7 @@ from app.routes._web_money_views import (
     _minor_amount_value,
     _month_display_label,
     _offset_stream_view,
-    _trend14_amounts,
+    projected_amount,
 )
 from app.routes._web_session_common import (
     LedgerOption,
@@ -63,6 +63,7 @@ from app.services.currency_common import minor_amount_major_number, minor_amount
 from app.services.dashboard_service import list_dashboard_cards
 from app.services.goal_service import list_goals
 from app.services.insights_service import unclaimed_recurring_candidate_count
+from app.services.money_projection_service import ordered_projection_gaps
 from app.services.spending_contract_service import default_accounting_timezone_name
 from app.services.stats_service import monthly_stats
 from app.services.time_service import current_month, now_utc
@@ -96,7 +97,6 @@ __all__ = [
     "_safe_same_site_redirect_path",
     "_selected_option",
     "_sidebar_counts",
-    "_trend14_amounts",
     "_web_redirect",
     "_with_ledger",
     "parse_form_row_version_token",
@@ -280,14 +280,17 @@ def _dashboard_cards(
     ledger_id: str,
     *,
     currency_code: str | None = None,
+    month: str | None = None,
 ) -> dict:
     home = currency_code or require_runtime_home_currency_code(db)
     quality = web_stats_service.pending_quality_counts(db, ledger_id)
     timezone_name = default_accounting_timezone_name()
-    month = current_month(timezone_name)
-    stats = monthly_stats(db, month, ledger_id)
+    month = month or current_month(timezone_name)
+    stats = monthly_stats(db, month, ledger_id, timezone_name=timezone_name, home_currency_code=home)
+    home = stats["home_currency_code"]
     prev_month = previous_month_string(month)
-    prev_stats = monthly_stats(db, prev_month, ledger_id) if prev_month else None
+    prev_stats = monthly_stats(db, prev_month, ledger_id, timezone_name=timezone_name,
+        home_currency_code=home) if prev_month else None
     active_recurring, paused_recurring = recurring_status_counts(db, ledger_id)
     budget = get_monthly_budget(
         db,
@@ -318,15 +321,17 @@ def _dashboard_cards(
         ],
         **quality,
         "month": month,
-        "total_amount_yuan": _amount_yuan(current_total, home),
+        "home_currency_code": home,
+        "missing_rates": ordered_projection_gaps((*stats["missing_rates"], *(prev_stats["missing_rates"] if prev_stats else ()))),
+        "total_amount_yuan": projected_amount(current_total, home),
         "total_amount_cents": current_total,
-        "total_amount_segments": _amount_segments(current_total, home),
+        "total_amount_segments": None if current_total is None else _amount_segments(current_total, home),
         "confirmed_count": int(stats["count"]),
         "previous_month": prev_month,
-        "previous_total_amount_yuan": _amount_yuan(prev_total, home),
+        "previous_total_amount_yuan": projected_amount(prev_total, home),
         "previous_total_amount_cents": prev_total,
-        "delta_amount_yuan": _amount_yuan(abs(delta_amount), home),
-        "delta_amount_cents": abs(delta_amount),
+        "delta_amount_yuan": projected_amount(abs(delta_amount), home) if delta_amount is not None else None,
+        "delta_amount_cents": abs(delta_amount) if delta_amount is not None else None,
         "delta_direction": delta_direction,
         "delta_percent": delta_percent,
         "recurring_active_count": active_recurring,
@@ -342,18 +347,21 @@ def _dashboard_category_share(
     selected_id: str,
     *,
     currency_code: str | None = None,
+    month: str | None = None,
 ) -> list[dict]:
     timezone_name = default_accounting_timezone_name()
-    month = current_month(timezone_name)
+    month = month or current_month(timezone_name)
+    home = currency_code or require_runtime_home_currency_code(db)
     stats = monthly_stats(
         db,
         month,
         selected_id,
         timezone_name=timezone_name,
+        home_currency_code=home,
     )
-    home = currency_code or require_runtime_home_currency_code(db)
+    home = stats["home_currency_code"]
     by_category = list(stats.get("by_category", []))
-    if len(by_category) > 6:
+    if len(by_category) > 6 and all(item["amount_cents"] is not None for item in by_category):
         head, tail = by_category[:5], by_category[5:]
         tail_cents = projection_values_sum_to_int(
             (item["amount_cents"] for item in tail),
@@ -388,18 +396,18 @@ def _dashboard_category_share(
         )
     rows = []
     for item in by_category:
-        amount_minor = projection_sum_to_int(
+        amount_minor = None if item["amount_cents"] is None else projection_sum_to_int(
             item["amount_cents"],
             label="web.category_share",
         )
         rows.append(
             {
                 "name": item["category"],
-                "amount_yuan": minor_amount_major_number(amount_minor, home),
+                "amount_yuan": None if amount_minor is None else minor_amount_major_number(amount_minor, home),
                 "amount_cents": amount_minor,
-                "amount_label": _minor_amount_label(amount_minor, home),
-                "amount_major": minor_amount_major_number(amount_minor, home),
-                "amount_major_text": minor_amount_value(amount_minor, home),
+                "amount_label": _minor_amount_label(amount_minor, home) if amount_minor is not None else "待补齐换算信息",
+                "amount_major": None if amount_minor is None else minor_amount_major_number(amount_minor, home),
+                "amount_major_text": projected_amount(amount_minor, home),
                 "count": int(item["count"]),
             }
         )
@@ -410,19 +418,20 @@ def _dashboard_data_payload(
     db: Session,
     selected_id: str,
     *,
-    include_trend: bool = True,
+    month: str | None = None,
+    home_currency_code: str | None = None,
 ) -> dict:
-    home = require_runtime_home_currency_code(db)
-    cards = _dashboard_cards(db, selected_id, currency_code=home)
+    home = home_currency_code or require_runtime_home_currency_code(db)
+    cards = _dashboard_cards(db, selected_id, currency_code=home, month=month)
     return {
         "selected_ledger_id": selected_id,
         "month": cards["month"],
         "cards": cards,
         "visible_layout": [item for item in cards["layout"] if item["visible"]],
-        "trend14": (_trend14_amounts(db, selected_id, currency_code=home) if include_trend else []),
         "category_share": _dashboard_category_share(
             db,
             selected_id,
             currency_code=home,
+            month=cards["month"],
         ),
     }

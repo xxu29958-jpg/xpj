@@ -15,17 +15,16 @@ from app.services.money_projection_service import (
 from app.services.reports_service._aggregation import (
     _amount_count,
     _entries_in_range,
-    _entry_gaps,
-    _read_projected_entries,
 )
 from app.services.reports_service._models import ExpenseRanking, RankedExpense
 from app.services.reports_service._time import _month_bounds, _month_labels_ending_at, _resolve_timezone
+from app.services.spending_projection_service import entry_gaps, read_projected_entries
 from app.services.time_service import now_utc
 
 
 def _history_row(db, *, tenant_id, month, period, entries, home, zone, today, rate_cache):
     rows = _entries_in_range(entries, period, zone)
-    gaps = set(_entry_gaps(rows))
+    gaps = set(entry_gaps(rows))
     amount, count = _amount_count(rows)
     budget = _get_budget(db, tenant_id=tenant_id, month=month)
     limit = 0
@@ -48,7 +47,7 @@ def six_month_summary(db, *, anchor_month, tenant_id, timezone_name=None, curren
     home = normalize_currency_code(currency_code or require_runtime_home_currency_code(db))
     months = _month_labels_ending_at(anchor_month, 6)
     periods = [_month_bounds(month, timezone_key) for month in months]
-    entries = _read_projected_entries(db, tenant_id=tenant_id, ranges=periods, timezone_name=timezone_key, home=home)
+    entries = read_projected_entries(db, tenant_id=tenant_id, ranges=periods, timezone_name=timezone_key, home=home)
     rate_cache = {}
     today = now_utc().astimezone(zone).date()
     return [_history_row(db, tenant_id=tenant_id, month=month, period=period, entries=entries,
@@ -60,10 +59,10 @@ def top_expenses_for_month(db, *, tenant_id, month=None, tag=None, timezone_name
     timezone_key, zone = _resolve_timezone(timezone_name)
     home = normalize_currency_code(home_currency_code or require_runtime_home_currency_code(db))
     target_month = month or now_utc().astimezone(zone).strftime("%Y-%m")
-    entries = _read_projected_entries(db, tenant_id=tenant_id, ranges=[_month_bounds(target_month, timezone_key)],
+    entries = read_projected_entries(db, tenant_id=tenant_id, ranges=[_month_bounds(target_month, timezone_key)],
         timezone_name=timezone_key, home=home, tag=tag)
     roots = [entry for entry in entries if entry.entry_kind == "expense"]
-    gaps = _entry_gaps(roots)
+    gaps = entry_gaps(roots)
     if gaps:
         return ExpenseRanking(home, (), gaps)
     ranked = sorted(roots, key=lambda entry: (-entry.amount_cents, -entry.entry_id))[:limit]

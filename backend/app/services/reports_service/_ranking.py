@@ -2,11 +2,15 @@
 
 from collections import defaultdict
 
+from sqlalchemy.orm import Session
+
 from app.services.category_service import normalize_category
 from app.services.merchant_alias_service import canonical_merchant_for
 from app.services.merchant_service import display_merchant, normalize_merchant
 from app.services.reports_service._aggregation import _amount_count, _amount_delta
+from app.services.reports_service._models import ReportRankingMetric
 from app.services.spending_contract_service import enabled_merchant_display_map
+from app.services.spending_projection_service import ProjectedSpendingEntry
 
 
 def _canonical_display(merchant, alias_map):
@@ -16,7 +20,9 @@ def _canonical_display(merchant, alias_map):
     return display_merchant(canonical_merchant_for(display, alias_map=alias_map)) or display
 
 
-def _merchant_ranking(db, entries, *, tenant_id, top_n, category, ranking_metric):
+def _merchant_ranking(db: Session, entries: list[ProjectedSpendingEntry], *, tenant_id: str,
+    top_n: int, category: str | None, ranking_metric: ReportRankingMetric,
+) -> list[dict[str, str | int | None]]:
     alias_map = enabled_merchant_display_map(db, tenant_id=tenant_id)
     grouped = defaultdict(list)
     names = {}

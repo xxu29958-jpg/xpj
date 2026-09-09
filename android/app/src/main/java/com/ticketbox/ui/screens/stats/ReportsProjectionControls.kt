@@ -32,14 +32,7 @@ internal fun ReportsProjectionControls(
 ) {
     Column {
         Text(stringResource(R.string.reports_currency, overview.homeCurrencyCode))
-        if (overview.missingRates.isNotEmpty()) Text(stringResource(R.string.reports_projection_incomplete))
-        overview.missingRates.forEach { gap ->
-            if (MissingExchangeRateDto(gap.sourceCurrencyCode, gap.homeCurrencyCode, gap.rateDate).canEnterManualRate()) {
-                TextButton(onClick = { onRepair(gap) }, modifier = Modifier.testTag("report-rate-${gap.sourceCurrencyCode}-${gap.rateDate}")) {
-                    Text(stringResource(R.string.reports_rate_gap, requireNotNull(gap.sourceCurrencyCode), gap.homeCurrencyCode, requireNotNull(gap.rateDate)))
-                }
-            } else Text(stringResource(R.string.reports_unknown_fact))
-        }
+        ProjectionRateGaps(overview.missingRates, onRepair)
         TextButton(onClick = { onRepair(null) }) { Text(stringResource(R.string.reports_repair_rates)) }
         ReportsMerchantCategoryFilter(overview, onCategory)
         TextButton(onClick = onExport, enabled = !exporting, modifier = Modifier.testTag("reports-export")) {
@@ -65,4 +58,20 @@ private fun ReportsMerchantCategoryFilter(overview: ReportsOverview, onCategory:
             }
         }
     }
+}
+
+@Composable
+internal fun ProjectionRateGaps(
+    gaps: List<CurrencyProjectionGap>,
+    onRepair: (CurrencyProjectionGap) -> Unit,
+    tagPrefix: String = "report-rate",
+) {
+        if (gaps.isNotEmpty()) Text(stringResource(R.string.reports_projection_incomplete))
+        gaps.forEach { gap ->
+            if (MissingExchangeRateDto(gap.sourceCurrencyCode, gap.homeCurrencyCode, gap.rateDate).canEnterManualRate()) {
+                TextButton(onClick = { onRepair(gap) }, modifier = Modifier.testTag("$tagPrefix-${gap.sourceCurrencyCode}-${gap.rateDate}")) {
+                    Text(stringResource(R.string.reports_rate_gap, requireNotNull(gap.sourceCurrencyCode), gap.homeCurrencyCode, requireNotNull(gap.rateDate)))
+                }
+            } else Text(stringResource(R.string.reports_unknown_fact))
+        }
 }

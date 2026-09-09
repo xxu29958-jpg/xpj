@@ -112,11 +112,11 @@ fun ExpenseDto.toEntity(ledgerId: String): ExpenseEntity = ExpenseEntity(
     serverId = id,
     publicId = requiredPublicId(),
     amountCents = amountCents,
-    // R7-2：原码透传，不做 fromStorageKey 枚举往返 —— 未知码（新版服务端币种）若被静默
-    // 改写成 CNY 落本地缓存，后续同步会把它回写服务端（币种篡改）。blank 才落既有 CNY 兜底。
-    homeCurrencyCode = homeCurrency?.takeIf { it.isNotBlank() } ?: FxContract.HomeCurrency.storageKey,
+    // Persist the server's recorded currency, including codes newer than this client.
+    homeCurrencyCode = homeCurrency?.takeIf { it.isNotBlank() }
+        ?: throw RepositoryException("账单缺少本位币，本地数据尚未更新。请刷新重试。"),
     originalCurrencyCode = (originalCurrency ?: originalCurrencyCode)?.takeIf { it.isNotBlank() }
-        ?: FxContract.HomeCurrency.storageKey,
+        ?: throw RepositoryException("账单缺少原币种，本地数据尚未更新。请刷新重试。"),
     originalAmountMinor = originalAmountMinor ?: amountCents,
     exchangeRateToCny = resolvedFxRate,
     exchangeRateDate = resolvedFxRateDate,
@@ -388,6 +388,8 @@ fun NotificationDraft.toRequest(notificationKey: String? = null): NotificationDr
 )
 
 fun MonthlyStatsDto.toDomain(): MonthlyStats = MonthlyStats(
+    homeCurrencyCode = homeCurrencyCode,
+    missingRates = missingRates.map { com.ticketbox.domain.model.CurrencyProjectionGap(it.sourceCurrencyCode, it.homeCurrencyCode, it.rateDate) },
     month = month,
     totalAmountCents = totalAmountCents,
     count = count,
@@ -408,6 +410,8 @@ fun TagStatsDto.toDomain(): TagStats = TagStats(
 )
 
 fun LifestyleStatsDto.toDomain(): LifestyleStats = LifestyleStats(
+    homeCurrencyCode = homeCurrencyCode,
+    missingRates = missingRates.map { com.ticketbox.domain.model.CurrencyProjectionGap(it.sourceCurrencyCode, it.homeCurrencyCode, it.rateDate) },
     month = month,
     aiSubscriptionAmountCents = aiSubscriptionAmountCents,
     digitalAmountCents = digitalAmountCents,

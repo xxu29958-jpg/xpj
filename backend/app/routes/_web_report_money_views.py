@@ -1,6 +1,7 @@
 """Checked money formatting for the browser reports surface."""
 
 from app.money_contract import projection_sum_to_int, projection_values_average_to_int
+from app.routes._web_money_views import projected_amount
 from app.routes.web_common import _amount_yuan
 
 
@@ -82,10 +83,6 @@ def six_month_average_amount_yuan(
         label="web_reports.six_month_average",
     )
     return _amount_yuan(average, currency_code)
-
-
-def projected_amount(amount: int | None, currency_code: str) -> str | None:
-    return None if amount is None else _amount_yuan(amount, currency_code)
 
 
 def projection_gaps_view(gaps) -> list[dict]:

@@ -1,6 +1,10 @@
 package com.ticketbox.ui.navigation
 
 import android.content.Context
+import androidx.compose.ui.test.ComposeTimeoutException
+import androidx.compose.ui.test.junit4.ComposeContentTestRule
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.printToLog
 import androidx.room.Room
 import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.AppDatabase
@@ -34,6 +38,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 
 /** Reuses the real route dependency graph; only transport/session storage is synthetic. */
 internal class BudgetAdviceManualRateFixture(private val context: Context) : AutoCloseable {
@@ -117,6 +122,15 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
     }
 
     suspend fun rows() = requireNotNull(database).pendingMutationDao().allRows()
+    fun awaitSavedRow(compose: ComposeContentTestRule): com.ticketbox.data.local.PendingMutationEntity {
+        try {
+            compose.waitUntil(5_000) { runBlocking { rows().size == 1 } }
+        } catch (error: ComposeTimeoutException) {
+            compose.onRoot(useUnmergedTree = true).printToLog("ManualRateRouteSave")
+            throw error
+        }
+        return runBlocking { rows().single() }
+    }
     suspend fun pending(id: Long) = repository.observeRates(binding).first().single { it.row.id == id }
     suspend fun drain() = OutboxDrainEngine(outbox, listOf(ManualExchangeRateDispatcher(
         { api }, adapters.manualRateAdapter, adapters.manualRateReceiptAdapter)), maxAttempts = 1).drainOnce()

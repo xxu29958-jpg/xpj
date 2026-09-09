@@ -59,7 +59,10 @@ import retrofit2.Response
 import retrofit2.HttpException
 
 /** Real disk Room and repository graph; only remote transport and session storage are synthetic. */
-internal class ExpenseCorrectionConnectedFixture(private val context: Context) {
+internal class ExpenseCorrectionConnectedFixture(
+    private val context: Context,
+    private val wrapApi: (ApiService) -> ApiService = { it },
+) {
     private val name = "expense-correction-continuity.db"
     private var database: AppDatabase? = null
     val clock = Clock.fixed(Instant.parse("2026-09-06T00:00:00Z"), ZoneOffset.UTC)
@@ -119,8 +122,9 @@ internal class ExpenseCorrectionConnectedFixture(private val context: Context) {
             }
         }
         val credentials = SessionCredentialAdapter(sessions)
+        val service = wrapApi(network.service)
         val factory = object : ApiServiceFactory {
-            override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = network.service
+            override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = service
         }
         val provider = ApiServiceProvider(factory, sessions, credentials)
         graph = RepositoryGraph(RepositoryGraphDependencies(db, ApiClient(), settingsStore, sessions, credentials,
@@ -207,8 +211,8 @@ internal class CorrectionConnectedNetwork {
                 com.ticketbox.data.remote.dto.RuntimeProductCapabilitiesDto(
                     com.ticketbox.data.remote.dto.RuntimeCurrencyCapabilityDto("1:1:CNY"), 1))
         }
-        override suspend fun monthlyStats(month: String?, tag: String?, timezone: String?) =
-            com.ticketbox.data.remote.dto.MonthlyStatsDto("2026-09", 1000, 1, emptyList())
+        override suspend fun monthlyStats(month: String?, tag: String?, timezone: String?, homeCurrencyCode: String?) =
+            com.ticketbox.data.remote.dto.MonthlyStatsDto(homeCurrencyCode = "CNY", month = "2026-09", totalAmountCents = 1000, count = 1, byCategory = emptyList())
         override suspend fun months(timezone: String?) = com.ticketbox.data.remote.dto.MonthsDto(listOf("2026-09"))
         override suspend fun duplicates() = emptyList<ExpenseDto>()
         override suspend fun listBackgroundTasks() = backgroundTasks

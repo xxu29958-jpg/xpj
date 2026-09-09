@@ -113,7 +113,7 @@ private fun totalLeadLine(
     overview: ReportsOverview?,
     stats: MonthlyStats,
 ): StatsLeadLine {
-    val currencyDisplay = overview?.let { CurrencyDisplay.forRecord(it.homeCurrencyCode) } ?: LocalCurrencyDisplay.current
+    val currencyDisplay = CurrencyDisplay.forRecord(overview?.homeCurrencyCode ?: stats.homeCurrencyCode)
     val amount = if (overview != null) overview.totalAmountCents else stats.totalAmountCents
     val count = overview?.count ?: stats.count
     return StatsLeadLine(
@@ -221,7 +221,7 @@ private fun StatsLeadInline(line: StatsLeadLine) {
 @Composable
 private fun sourceLabel(statsSource: StatsSource, hasServerReport: Boolean): String = when {
     hasServerReport -> stringResource(R.string.stats_lead_source_server_report)
-    statsSource == StatsSource.LocalFallback -> stringResource(R.string.stats_lead_source_local)
+    statsSource == StatsSource.CachedSnapshot -> stringResource(R.string.stats_snapshot_badge)
     else -> stringResource(R.string.stats_lead_source_monthly)
 }
 

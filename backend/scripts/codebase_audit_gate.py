@@ -50,7 +50,7 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     # Keep active ceilings here. Older ratchet provenance belongs in git history,
     # not in executable override chains.
     "files_over_500": 11,
-    "long_functions": 4,
+    "long_functions": 3,
     "deep_nesting_functions": 0,
     "route_layer_imports": 0,
     "service_public_no_private": 2,
@@ -132,8 +132,8 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # main. See ``_audit_pr_delta_metrics.py`` docstring for what each
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
-    "mutate_token_carriers": 112,
-    "mutate_token_exempted": 125,
+    "mutate_token_carriers": 114,
+    "mutate_token_exempted": 124,
     "mutate_token_reason_admin_single_writer": 10,
     "mutate_token_reason_append_only_fact": 4,
     "mutate_token_reason_batch_db_write": 17,
@@ -144,7 +144,7 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_read_only_compute": 4,
     "mutate_token_reason_session_rotation": 8,
     "mutate_token_reason_terminal_flag_flip": 30,
-    "mutate_token_reason_upsert_bucket": 5,
+    "mutate_token_reason_upsert_bucket": 4,
 }
 STRICT_EQUALITY_BASELINE.update(load_current_test_count_baselines())
 

@@ -333,7 +333,7 @@ def test_dashboard_reports_card_list_matches_donut_caliber_on_zero_fraction_curr
         )
         # 数据层: amount_label / amount_major 同按 minor digits 投影 (donut 优先消费后者)。
         with SessionLocal() as db:
-            payload = web_common._dashboard_data_payload(db, "owner", include_trend=False)
+            payload = web_common._dashboard_data_payload(db, "owner")
         row = payload["category_share"][0]
         assert row["amount_major"] == 1234
         assert row["amount_major_text"] == "1234"

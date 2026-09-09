@@ -75,6 +75,8 @@ def test_web_stats_day_grouping_uses_configured_local_timezone(
     assert may_days == [
         {
             "date": "2026-05-01",
+            "home_currency_code": "CNY",
+            "missing_rates": (),
             "amount_cents": 1851,
             "amount_yuan": 18.51,
             "count": 1,

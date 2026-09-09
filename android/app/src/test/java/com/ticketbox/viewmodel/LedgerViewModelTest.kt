@@ -129,7 +129,7 @@ class LedgerViewModelTest {
         val state = vm.uiState.value
         assertEquals(LedgerViewMode.Table, state.viewMode)
         assertEquals(2, state.summary.itemCount)
-        assertEquals(4200L, state.summary.totalAmountCents)
+        assertEquals(mapOf("CNY" to 4200L), state.summary.amountsByCurrency)
         assertTrue(state.filter.hasFilters)
     }
 
@@ -152,7 +152,7 @@ class LedgerViewModelTest {
 
         val state = vm.uiState.value
         assertEquals(listOf(1L), state.items.map { it.root.id })
-        assertEquals(1200L, state.summary.totalAmountCents)
+        assertEquals(mapOf("CNY" to 1200L), state.summary.amountsByCurrency)
         assertTrue(state.filter.hasFilters)
         assertEquals("餐饮", state.filter.categoryFilter)
         assertEquals("早餐", state.filter.query)
@@ -1033,6 +1033,7 @@ private fun expense(
     rowVersion = 1L,
     confirmedAt = "2026-05-17T08:01:00Z",
     rejectedAt = null,
+    homeCurrencyCode = "CNY",
 )
 
 /**

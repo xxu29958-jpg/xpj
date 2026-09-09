@@ -64,6 +64,7 @@ class StatsBudgetViewModel(private val budgetRepository: BudgetActions) : ViewMo
     private fun publish(month: String) {
         val cached = budgetCache[month]
         _uiState.value = StatsBudgetUiState(
+            binding = activeBinding,
             budgetProgress = cached?.progress,
             budgetProgressStatus = cached?.status ?: BudgetProgressStatus.Unknown,
             month = month,

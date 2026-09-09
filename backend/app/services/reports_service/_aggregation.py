@@ -3,15 +3,8 @@
 from datetime import timedelta
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import or_, select
-
-from app.services.category_service import normalize_category
-from app.services.money_projection_service import (
-    ordered_projection_gaps,
-    project_recorded_amount,
-    sum_projected_amounts,
-)
-from app.services.reports_service._models import ReportGranularity, _ProjectedEntry, _TrendBucket
+from app.services.money_projection_service import sum_projected_amounts
+from app.services.reports_service._models import ReportGranularity, _TrendBucket
 from app.services.reports_service._time import (
     _days_in_month,
     _local_date_range_bounds_utc,
@@ -19,27 +12,6 @@ from app.services.reports_service._time import (
     _month_bounds,
     _month_labels_ending_at,
 )
-from app.services.spending_contract_service import accounting_zone, confirmed_stream_query
-
-
-def _read_projected_entries(db, *, tenant_id, ranges, timezone_name, home, tag=None):
-    zone = accounting_zone(timezone_name)
-    dates = [(start.astimezone(zone).date(), end.astimezone(zone).date()) for start, end in ranges]
-    if not dates:
-        return []
-    stream = confirmed_stream_query(tenant_id=tenant_id, tag=tag, timezone_name=timezone_name, amount_required=True)
-    statement = select(stream).where(or_(*(
-        (stream.c.stream_date >= start) & (stream.c.stream_date < end) for start, end in dates)))
-    entries = []
-    rate_cache = {}
-    for row in db.execute(statement):
-        gaps = set()
-        amount = project_recorded_amount(db, tenant_id=tenant_id, amount_minor=row.stream_amount_cents,
-            source_currency=row.home_currency_code, home_currency=home, rate_date=row.stream_date,
-            missing_rates=gaps, rate_cache=rate_cache)
-        entries.append(_ProjectedEntry(row.entry_id, row.root_expense_id, row.entry_kind, row.stream_date,
-            normalize_category(row.category), row.merchant, amount, next(iter(gaps), None)))
-    return entries
 
 
 def _entries_in_range(entries, period, zone):
@@ -49,10 +21,6 @@ def _entries_in_range(entries, period, zone):
 
 def _amount_count(entries):
     return sum_projected_amounts((entry.amount_cents for entry in entries), label="reports.total"), len(entries)
-
-
-def _entry_gaps(entries):
-    return ordered_projection_gaps(entry.gap for entry in entries if entry.gap is not None)
 
 
 def _amount_delta(current, previous):

@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
@@ -11,6 +13,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.lifecycle.ViewModelStore
@@ -56,9 +59,9 @@ class BudgetAdviceManualRateRecoveryTest {
             .fetchSemanticsNodes().isNotEmpty() }
         compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("advice_rate_value")), useUnmergedTree = true)
             .performScrollTo().performTextReplacement("20")
-        compose.onNodeWithTag("advice_rate_save").performScrollTo().performClick()
-        compose.waitUntil(5_000) { runBlocking { fixture.rows().size == 1 } }
-        val row = runBlocking { fixture.rows().single() }
+            .assertTextEquals("20").performImeAction()
+        compose.onNodeWithTag("advice_rate_save").performScrollTo().assertIsDisplayed().assertIsEnabled().performClick()
+        val row = fixture.awaitSavedRow(compose)
         val intent = requireNotNull(fixture.adapters.manualRateAdapter.fromJson(row.payload))
         assertEquals(fixture.originalMonth, intent.month)
         assertEquals(fixture.request, intent.request)

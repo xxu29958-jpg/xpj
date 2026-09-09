@@ -3,428 +3,184 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.StatsActions
-import com.ticketbox.domain.model.Expense
-import com.ticketbox.domain.model.ExpenseFilterCriteria
+import com.ticketbox.data.repository.StatsQuery
+import com.ticketbox.data.repository.StatsRead
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.domain.model.filterConfirmedExpenses
-import com.ticketbox.domain.model.monthlyCategoryInsight
-import com.ticketbox.domain.model.monthlyStatsFromConfirmedExpenses
-import com.ticketbox.domain.model.monthlySpendingComparison
-import com.ticketbox.domain.model.recentDailySpending
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.time.LocalDate
 import java.time.YearMonth
-import java.time.ZoneId
 
-private data class MonthlyStatsRefreshSnapshot(
-    val generation: Long,
-    val ledgerId: String?,
-    val month: String,
-    val selectedTag: String,
-) {
-    fun matches(ledgerId: String?, month: String, selectedTag: String): Boolean =
-        this.ledgerId == ledgerId && this.month == month && this.selectedTag == selectedTag
-}
+private data class MonthlyStatsRefreshSnapshot(val generation: Long, val query: StatsQuery)
 
 class MonthlyStatsViewModel(
     private val repository: StatsActions,
+    initialMonth: String = YearMonth.now().toString(),
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(MonthlyStatsUiState())
+    private val _uiState = MutableStateFlow(MonthlyStatsUiState(month = initialMonth))
     val uiState: StateFlow<MonthlyStatsUiState> = _uiState.asStateFlow()
-    private var confirmedCache: List<Expense> = emptyList()
-    private var activeLedgerId: String? = null
     private var refreshGeneration = 0L
-    private var observedLedgerOnce = false
     private var inFlightRefresh: MonthlyStatsRefreshSnapshot? = null
 
     init {
-        observeLedgerChanges()
-        observeDailyTrend()
-    }
-
-    private fun observeLedgerChanges() {
         viewModelScope.launch {
-            repository.observeActiveLedgerId()
-                .distinctUntilChanged()
-                .collect { ledgerId ->
-                    val normalizedLedgerId = ledgerId?.takeIf { it.isNotBlank() }
-                    if (observedLedgerOnce && activeLedgerId == normalizedLedgerId) {
-                        return@collect
-                    }
-                    observedLedgerOnce = true
-                    activeLedgerId = normalizedLedgerId
-                    refreshGeneration += 1
-                    confirmedCache = emptyList()
-                    _uiState.update {
-                        it.copy(
-                            stats = null,
-                            statsSource = StatsSource.None,
-                            lifestyleStats = null,
-                            dailyTrend = emptyList(),
-                            monthComparison = null,
-                            categoryInsight = null,
-                            dataQuality = null,
-                            dataQualityLoadState = DataQualityLoadState.Unknown,
-                            dataQualityError = null,
-                            months = emptyList(),
-                            monthsLoadState = StatsFilterOptionsLoadState.Unknown,
-                            tags = emptyList(),
-                            tagsLoadState = StatsFilterOptionsLoadState.Unknown,
-                            loading = false,
-                            message = null,
-                            statsLoadError = null,
-                            ledgerReady = true,
-                            activeLedgerId = normalizedLedgerId,
-                        )
-                    }
+            repository.observeStatsBinding().distinctUntilChanged().collect { binding ->
+                refreshGeneration += 1
+                inFlightRefresh = null
+                _uiState.update {
+                    MonthlyStatsUiState(month = it.month, selectedTag = it.selectedTag,
+                        binding = binding, ledgerReady = binding != null)
+                }
+                if (binding != null) {
                     loadMonths()
                     loadTags()
                     refresh()
-                }
-        }
-    }
-
-    private fun loadMonths() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(monthsLoadState = StatsFilterOptionsLoadState.Loading) }
-            repository.months()
-                .onSuccess { months ->
-                    _uiState.update { state ->
-                        state.copy(
-                            months = statsMonthOptions(months, state.month),
-                            monthsLoadState = StatsFilterOptionsLoadState.Loaded,
-                        )
-                    }
-                }
-                .onFailure {
-                    _uiState.update { state ->
-                        state.copy(monthsLoadState = StatsFilterOptionsLoadState.Failed)
-                    }
-                }
-        }
-    }
-
-    private fun loadTags() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(tagsLoadState = StatsFilterOptionsLoadState.Loading) }
-            repository.tags()
-                .onSuccess { tags ->
-                    _uiState.update {
-                        it.copy(
-                            tags = tags,
-                            tagsLoadState = StatsFilterOptionsLoadState.Loaded,
-                        )
-                    }
-                }
-                .onFailure {
-                    _uiState.update { state ->
-                        state.copy(tagsLoadState = StatsFilterOptionsLoadState.Failed)
-                    }
-                }
-        }
-    }
-
-    /**
-     * Re-pull the authoritative tag list. Tags are otherwise loaded only on init /
-     * ledger switch (P4 stale-refresh): after a tag is deleted/renamed/merged in
-     * settings, the stats filter chips kept showing the dead tag because this VM
-     * persists across the settings round-trip and never re-pulled. StatsRoute calls
-     * this on the cross-screen refresh signal and on pull-to-refresh; the resync of
-     * de-tagged expenses (the byTag chip source) already rides refresh()'s
-     * syncConfirmed.
-     */
-    fun reloadTags() = loadTags()
-
-    private fun observeDailyTrend() {
-        viewModelScope.launch {
-            repository.observeConfirmed().collect { expenses ->
-                confirmedCache = expenses
-                _uiState.update {
-                    val tagFilteredExpenses = filterConfirmedExpenses(
-                        expenses = expenses,
-                        criteria = ExpenseFilterCriteria(tag = it.selectedTag),
-                    )
-                    val localStats = monthlyStatsFromConfirmedExpenses(expenses, it.month, it.selectedTag)
-                    val visibleStats = it.stats ?: localStats
-                    val nextSource = when {
-                        it.stats != null -> it.statsSource
-                        visibleStats != null -> StatsSource.LocalFallback
-                        else -> StatsSource.None
-                    }
-                    it.copy(
-                        stats = visibleStats,
-                        statsSource = nextSource,
-                        dailyTrend = localDailyTrend(expenses, it.month, it.selectedTag),
-                        monthComparison = monthlySpendingComparison(tagFilteredExpenses, it.month),
-                        categoryInsight = monthlyCategoryInsight(visibleStats),
-                    )
                 }
             }
         }
     }
 
-    fun setMonth(value: String) {
-        _uiState.update {
-            val tagFilteredExpenses = filterConfirmedExpenses(
-                expenses = confirmedCache,
-                criteria = ExpenseFilterCriteria(tag = it.selectedTag),
-            )
-            val localStats = monthlyStatsFromConfirmedExpenses(confirmedCache, value, it.selectedTag)
-            it.copy(
-                month = value,
-                months = statsMonthOptions(it.months, value),
-                stats = localStats,
-                statsSource = if (localStats != null) StatsSource.LocalFallback else StatsSource.None,
-                dailyTrend = localDailyTrend(confirmedCache, value, it.selectedTag),
-                monthComparison = monthlySpendingComparison(tagFilteredExpenses, value),
-                categoryInsight = monthlyCategoryInsight(localStats),
-            )
+    private fun loadMonths() {
+        val binding = _uiState.value.binding ?: return
+        viewModelScope.launch {
+            _uiState.update { it.copy(monthsLoadState = StatsFilterOptionsLoadState.Loading) }
+            val result = repository.months()
+            if (!isBindingCurrent(binding)) return@launch
+            result.onSuccess { months ->
+                _uiState.update { it.copy(months = statsMonthOptions(months, it.month),
+                    monthsLoadState = StatsFilterOptionsLoadState.Loaded) }
+            }.onFailure {
+                _uiState.update { it.copy(monthsLoadState = StatsFilterOptionsLoadState.Failed) }
+            }
         }
-        refresh()
+    }
+
+    private fun loadTags() {
+        val binding = _uiState.value.binding ?: return
+        viewModelScope.launch {
+            _uiState.update { it.copy(tagsLoadState = StatsFilterOptionsLoadState.Loading) }
+            val result = repository.tags()
+            if (!isBindingCurrent(binding)) return@launch
+            result.onSuccess { tags ->
+                _uiState.update { it.copy(tags = tags, tagsLoadState = StatsFilterOptionsLoadState.Loaded) }
+            }.onFailure {
+                _uiState.update { it.copy(tagsLoadState = StatsFilterOptionsLoadState.Failed) }
+            }
+        }
+    }
+
+    fun reloadTags() = loadTags()
+
+    fun setMonth(value: String) {
+        if (runCatching { YearMonth.parse(value) }.isFailure || value == _uiState.value.month) return
+        changeQuery(value, _uiState.value.selectedTag)
     }
 
     fun setTag(value: String) {
-        val cleanTag = value.trim()
+        val tag = value.trim()
+        if (tag == _uiState.value.selectedTag) return
+        changeQuery(_uiState.value.month, tag)
+    }
+
+    private fun changeQuery(month: String, tag: String) {
+        refreshGeneration += 1
+        inFlightRefresh = null
         _uiState.update {
-            val tagFilteredExpenses = filterConfirmedExpenses(
-                expenses = confirmedCache,
-                criteria = ExpenseFilterCriteria(tag = cleanTag),
-            )
-            val localStats = monthlyStatsFromConfirmedExpenses(confirmedCache, it.month, cleanTag)
-            it.copy(
-                selectedTag = cleanTag,
-                stats = localStats,
-                statsSource = if (localStats != null) StatsSource.LocalFallback else StatsSource.None,
-                dailyTrend = localDailyTrend(confirmedCache, it.month, cleanTag),
-                monthComparison = monthlySpendingComparison(tagFilteredExpenses, it.month),
-                categoryInsight = monthlyCategoryInsight(localStats),
-            )
+            it.copy(month = month, selectedTag = tag, months = statsMonthOptions(it.months, month),
+                stats = null, statsSource = StatsSource.None, statsFetchedAt = null,
+                lifestyleStats = null, lifestyleFetchedAt = null, lifestyleFromCache = false,
+                statsLoadError = null, message = null, loading = false)
         }
         refresh()
     }
 
     fun refresh() {
-        val snapshot = beginRefreshSnapshot() ?: return
+        val state = _uiState.value
+        val binding = state.binding ?: return
+        val query = StatsQuery(binding, state.month, state.selectedTag, state.homeCurrencyCode, state.timezone)
+        if (inFlightRefresh?.query == query) return
+        val snapshot = MonthlyStatsRefreshSnapshot(++refreshGeneration, query)
+        inFlightRefresh = snapshot
         viewModelScope.launch {
             try {
-                _uiState.update {
-                    it.copy(
-                        loading = true,
-                        message = null,
-                        statsLoadError = null,
-                        lastUploadAt = repository.lastUploadAt(),
-                    )
-                }
-                val month = snapshot.month.trim().ifBlank { null }
-                val tag = snapshot.selectedTag.trim().ifBlank { null }
-                val statsResult = runCatching {
-                    repository.monthlyStats(month = month, tag = tag)
-                }.getOrElse { Result.failure(it) }
+                _uiState.update { it.copy(loading = true, message = null, statsLoadError = null,
+                    lastUploadAt = repository.lastUploadAt()) }
+                val result = repository.monthlyStats(query)
                 if (!snapshot.isCurrent()) return@launch
-                statsResult
-                    .onSuccess { stats -> handleStatsSuccess(stats, month, tag, snapshot) }
-                    .onFailure { error -> handleStatsFailure(error, month, tag, snapshot) }
+                result.onSuccess { read -> handleStatsSuccess(read, snapshot) }
+                    .onFailure { error -> handleStatsFailure(error, snapshot) }
             } finally {
-                finishRefresh(snapshot)
+                if (inFlightRefresh == snapshot) inFlightRefresh = null
+            }
+        }
+    }
+
+    private fun handleStatsSuccess(read: StatsRead<MonthlyStats>, snapshot: MonthlyStatsRefreshSnapshot) {
+        _uiState.update {
+            it.copy(stats = read.value, statsFetchedAt = read.fetchedAt,
+                statsSource = if (read.fromCache) StatsSource.CachedSnapshot else StatsSource.Backend,
+                homeCurrencyCode = read.value.homeCurrencyCode, loading = false, statsLoadError = null,
+                primaryRefreshRevision = it.primaryRefreshRevision + 1)
+        }
+        loadDataQuality(snapshot)
+        if (snapshot.query.tag.isBlank()) loadLifestyle(snapshot, read.value.homeCurrencyCode)
+        if (!read.fromCache) viewModelScope.launch {
+            if (snapshot.isCurrent()) repository.syncConfirmed(snapshot.query.month, null, snapshot.query.tag.ifBlank { null })
+        }
+    }
+
+    private fun handleStatsFailure(error: Throwable, snapshot: MonthlyStatsRefreshSnapshot) {
+        _uiState.update {
+            it.copy(loading = false, statsSource = if (it.stats == null) StatsSource.None else StatsSource.CachedSnapshot,
+                lifestyleFromCache = it.lifestyleStats != null,
+                statsLoadError = if (it.stats == null) error.toUiText(R.string.stats_message_stats_failed) else null,
+                message = if (it.stats == null) null else error.toUiText(R.string.stats_message_stats_failed))
+        }
+        loadDataQuality(snapshot)
+    }
+
+    private fun loadLifestyle(snapshot: MonthlyStatsRefreshSnapshot, homeCurrencyCode: String) {
+        viewModelScope.launch {
+            val result = repository.lifestyleStats(snapshot.query.copy(homeCurrencyCode = homeCurrencyCode))
+            if (!snapshot.isCurrent()) return@launch
+            result.onSuccess { read ->
+                _uiState.update { it.copy(lifestyleStats = read.value, lifestyleFetchedAt = read.fetchedAt,
+                    lifestyleFromCache = read.fromCache) }
+            }.onFailure { error ->
+                _uiState.update { it.copy(lifestyleFromCache = it.lifestyleStats != null,
+                    message = error.toUiText(R.string.stats_message_lifestyle_failed)) }
             }
         }
     }
 
     private fun loadDataQuality(snapshot: MonthlyStatsRefreshSnapshot) {
         viewModelScope.launch {
-            _uiState.update {
-                it.copy(
-                    dataQualityLoadState = DataQualityLoadState.Loading,
-                    dataQualityError = null,
-                )
-            }
+            _uiState.update { it.copy(dataQualityLoadState = DataQualityLoadState.Loading, dataQualityError = null) }
             val result = repository.dataQualitySummary()
             if (!snapshot.isCurrent()) return@launch
-            result
-                .onSuccess { summary ->
-                    _uiState.update {
-                        it.copy(
-                            dataQuality = summary,
-                            dataQualityLoadState = DataQualityLoadState.Loaded,
-                            dataQualityError = null,
-                        )
-                    }
-                }
-                .onFailure { error ->
-                    _uiState.update {
-                        it.copy(
-                            dataQualityLoadState = DataQualityLoadState.Failed,
-                            dataQualityError = error.toUiText(R.string.stats_data_quality_load_failed),
-                        )
-                    }
-                }
-        }
-    }
-
-    private fun handleStatsSuccess(
-        stats: MonthlyStats,
-        month: String?,
-        tag: String?,
-        snapshot: MonthlyStatsRefreshSnapshot,
-    ) {
-        if (!snapshot.isCurrent()) return
-        _uiState.update {
-            it.copy(
-                stats = stats,
-                statsSource = StatsSource.Backend,
-                categoryInsight = monthlyCategoryInsight(stats),
-                loading = false,
-                statsLoadError = null,
-                primaryRefreshRevision = it.primaryRefreshRevision + 1,
-            )
-        }
-        loadSupplementalAfterPrimaryStats(snapshot)
-        loadLifestyleAfterPrimaryStats(month, snapshot)
-        syncConfirmedAfterPrimaryStats(month, tag, snapshot)
-    }
-
-    private fun loadSupplementalAfterPrimaryStats(snapshot: MonthlyStatsRefreshSnapshot) {
-        loadDataQuality(snapshot)
-    }
-
-    private fun loadLifestyleAfterPrimaryStats(
-        month: String?,
-        snapshot: MonthlyStatsRefreshSnapshot,
-    ) {
-        viewModelScope.launch {
-            val lifestyleResult = repository.lifestyleStats(month)
-            if (!snapshot.isCurrent()) return@launch
-            lifestyleResult
-                .onSuccess { lifestyle ->
-                    _uiState.update { it.copy(lifestyleStats = lifestyle) }
-                }
-                .onFailure { error ->
-                    _uiState.update {
-                        it.copy(message = error.toUiText(R.string.stats_message_lifestyle_failed))
-                    }
-                }
-        }
-    }
-
-    private fun syncConfirmedAfterPrimaryStats(
-        month: String?,
-        tag: String?,
-        snapshot: MonthlyStatsRefreshSnapshot,
-    ) {
-        viewModelScope.launch {
-            if (!snapshot.isCurrent()) return@launch
-            repository.syncConfirmed(month = month, category = null, tag = tag)
-        }
-    }
-
-    private fun handleStatsFailure(
-        error: Throwable,
-        month: String?,
-        tag: String?,
-        snapshot: MonthlyStatsRefreshSnapshot,
-    ) {
-        if (!snapshot.isCurrent()) return
-        _uiState.update {
-            val fallbackStats = month?.let { value ->
-                monthlyStatsFromConfirmedExpenses(confirmedCache, value, tag.orEmpty())
+            result.onSuccess { summary ->
+                _uiState.update { it.copy(dataQuality = summary, dataQualityLoadState = DataQualityLoadState.Loaded,
+                    dataQualityError = null) }
+            }.onFailure { error ->
+                _uiState.update { it.copy(dataQualityLoadState = DataQualityLoadState.Failed,
+                    dataQualityError = error.toUiText(R.string.stats_data_quality_load_failed)) }
             }
-            val visibleStats = fallbackStats ?: it.stats
-            val nextSource = when {
-                fallbackStats != null -> StatsSource.LocalFallback
-                visibleStats != null -> it.statsSource
-                else -> StatsSource.None
-            }
-            it.copy(
-                stats = visibleStats,
-                statsSource = nextSource,
-                categoryInsight = monthlyCategoryInsight(visibleStats),
-                loading = false,
-                // On total failure the retryable error card below is the single
-                // failure surface — also setting message would render the same
-                // copy twice on the screen this change exists to clean up.
-                message = if (fallbackStats != null) {
-                    UiText.res(R.string.stats_message_local_fallback)
-                } else {
-                    null
-                },
-                // Only a total failure with nothing to render becomes a retryable error
-                // state (audit 8.4); when a local fallback exists the screen shows data +
-                // the "本机估算" message, so no error card.
-                statsLoadError = if (visibleStats == null) {
-                    error.toUiText(R.string.stats_message_stats_failed)
-                } else {
-                    null
-                },
-                primaryRefreshRevision = if (visibleStats != null) {
-                    it.primaryRefreshRevision + 1
-                } else {
-                    it.primaryRefreshRevision
-                },
-            )
-        }
-        loadSupplementalAfterPrimaryStats(snapshot)
-    }
-
-    private fun beginRefreshSnapshot(): MonthlyStatsRefreshSnapshot? {
-        val state = _uiState.value
-        val month = state.month.ifBlank { YearMonth.now().toString() }
-        val selectedTag = state.selectedTag.trim()
-        if (inFlightRefresh?.matches(activeLedgerId, month, selectedTag) == true) return null
-        refreshGeneration += 1
-        return MonthlyStatsRefreshSnapshot(
-            generation = refreshGeneration,
-            ledgerId = activeLedgerId,
-            month = month,
-            selectedTag = selectedTag,
-        ).also { inFlightRefresh = it }
-    }
-
-    private fun finishRefresh(snapshot: MonthlyStatsRefreshSnapshot) {
-        if (inFlightRefresh == snapshot) {
-            inFlightRefresh = null
         }
     }
+
+    private fun isBindingCurrent(binding: LogicalSessionBinding): Boolean =
+        _uiState.value.binding == binding && repository.statsBinding() == binding
 
     private fun MonthlyStatsRefreshSnapshot.isCurrent(): Boolean {
         val state = _uiState.value
-        return generation == refreshGeneration &&
-            ledgerId == activeLedgerId &&
-            month == state.month &&
-            selectedTag == state.selectedTag.trim()
-    }
-
-    private fun localDailyTrend(
-        expenses: List<Expense>,
-        month: String,
-        selectedTag: String,
-    ) = recentDailySpending(
-        expenses = filterConfirmedExpenses(
-            expenses = expenses,
-            criteria = ExpenseFilterCriteria(
-                month = month,
-                tag = selectedTag,
-            ),
-        ),
-        referenceDate = localTrendReferenceDate(month),
-    )
-
-    private fun localTrendReferenceDate(month: String): LocalDate {
-        val zoneId = ZoneId.systemDefault()
-        val today = LocalDate.now(zoneId)
-        val selectedMonth = runCatching { YearMonth.parse(month.trim()) }.getOrNull()
-            ?: return today
-        return if (selectedMonth == YearMonth.from(today)) {
-            today
-        } else {
-            selectedMonth.atEndOfMonth()
-        }
+        return generation == refreshGeneration && isBindingCurrent(query.binding) &&
+            state.month == query.month && state.selectedTag == query.tag && state.timezone == query.timezone
     }
 }
 

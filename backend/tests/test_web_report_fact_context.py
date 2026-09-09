@@ -75,7 +75,7 @@ def test_report_fields_have_one_allowlisted_consumer(origin, return_to):
     params = return_context_params(**context.as_kwargs())
     expected = {"reports": {"month": "2026-05", "home_currency_code": "JPY", "granularity": "week",
         "ranking_metric": "count", "merchant_category": "咖啡 & 茶"},
-        "confirmed": {"filter": "missing_category"}, "search": {"q": "咖啡"}}
+        "confirmed": {"filter": "missing_category", "home_currency_code": "JPY"}, "search": {"q": "咖啡"}}
     assert params == expected.get(return_to, {})
 
 

@@ -25,6 +25,13 @@ class ReportsInsightCardsTest {
     private val currencyDisplay = CurrencyDisplay.Base
 
     @Test
+    fun incompleteMerchantProjectionKeepsCountRankingEvenWhenVisibleAmountsAreKnown() {
+        val merchants = listOf(FrequentMerchant("often", 8, 100), FrequentMerchant("large", 1, 9000))
+        assertEquals(listOf("often", "large"), frequentMerchantDisplayRows(merchants, compareAmounts = false).map { it.merchant })
+        assertEquals(listOf("often", "large"), frequentMerchantDisplayRows(merchants.map { it.copy(amountCents = null) }).map { it.merchant })
+    }
+
+    @Test
     fun trendChartPointsKeepServerOrderAndClampInvalidValues() {
         val points = reportTrendChartPoints(
             listOf(

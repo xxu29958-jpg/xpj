@@ -29,7 +29,7 @@ import com.ticketbox.viewmodel.recurringViewModelFactory
 
 @Composable
 internal fun StatsRoute(shellState: MainShellState, screenFactory: MainScreenFactory,
-    onRepairReport: (LogicalSessionBinding, ReportsOverview, CurrencyProjectionGap?) -> Unit,
+    onRepairReport: (ReportRateContext) -> Unit,
 ) {
     val monthly: MonthlyStatsViewModel = viewModel(factory = screenFactory.repositoryViewModelFactory)
     val budget: StatsBudgetViewModel = viewModel(factory = screenFactory.repositoryViewModelFactory)
@@ -47,22 +47,22 @@ internal fun StatsRoute(shellState: MainShellState, screenFactory: MainScreenFac
     LaunchedEffect(shellState.insightsDataRevision, monthlyState.ledgerReady) {
         if (shellState.insightsDataRevision > 0 && monthlyState.ledgerReady) reloadAllStats(monthly, reports)
     }
-    LaunchedEffect(monthlyState.ledgerReady, monthlyState.activeLedgerId) {
+    LaunchedEffect(monthlyState.ledgerReady, monthlyState.binding) {
         layout.refresh()
         if (monthlyState.ledgerReady) recurring.refresh()
     }
-    LaunchedEffect(monthlyState.ledgerReady, monthlyState.activeLedgerId, monthlyState.month, monthlyState.selectedTag) {
+    LaunchedEffect(monthlyState.ledgerReady, monthlyState.binding, monthlyState.month, monthlyState.selectedTag) {
         if (monthlyState.ledgerReady) reports.refresh(monthlyState.month, monthlyState.selectedTag)
     }
     LaunchedEffect(
-        monthlyState.ledgerReady, monthlyState.activeLedgerId, monthlyState.month,
+        monthlyState.ledgerReady, monthlyState.binding, monthlyState.month,
         monthlyState.primaryRefreshRevision,
     ) {
         if (monthlyState.ledgerReady) budget.refresh(monthlyState.month, force = true)
     }
 
     StatsReportExportDestination(reports, reportsState)
-    RefreshReportsOnResume(reports)
+    RefreshStatsOnResume(monthly, reports)
 
     StatsScreen(
         state = mergeStatsUiState(monthlyState, budgetState, reportsState),
@@ -102,13 +102,12 @@ internal fun overviewModuleActions(shell: MainShellState) = OverviewModuleAction
 )
 
 @Composable
-private fun RefreshReportsOnResume(reports: StatsReportsViewModel) {
+private fun RefreshStatsOnResume(monthly: MonthlyStatsViewModel, reports: StatsReportsViewModel) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    DisposableEffect(lifecycle, reports) {
+    DisposableEffect(lifecycle, monthly, reports) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                val state = reports.uiState.value
-                reports.refresh(state.month, state.selectedTag)
+                reloadAllStats(monthly, reports)
             }
         }
         lifecycle.addObserver(observer)

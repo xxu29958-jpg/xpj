@@ -93,6 +93,8 @@ internal class ExpenseRepositoryPendingSyncTest {
     }
 
     private fun pendingDto(merchant: String, rowVersion: Long): ExpenseDto = ExpenseDto(
+        homeCurrency = "CNY",
+        originalCurrencyCode = "CNY",
         id = 42L,
         publicId = "pending-public-id",
         amountCents = 1234L,

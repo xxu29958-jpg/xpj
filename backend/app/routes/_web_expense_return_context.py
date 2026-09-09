@@ -143,6 +143,9 @@ def return_context_params(return_to: str, **origin: str) -> dict[str, str]:
             ("return_month", "return_filter", "return_page", "return_tag")})
         if token == "reports":
             params.update(_report_return_params(origin))
+        home = (origin.get("return_home_currency_code") or "").strip()
+        if home in supported_currency_codes():
+            params["home_currency_code"] = home
         return params
     if token == "search":
         query = (origin.get("return_query") or "").strip()

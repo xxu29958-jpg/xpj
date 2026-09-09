@@ -254,28 +254,21 @@ data class NotificationDraft(
 
 data class CategoryStats(
     val category: String,
-    val amountCents: Long,
+    val amountCents: Long?,
     val count: Int,
 )
 
 data class TagStats(
     val tag: String,
-    val amountCents: Long,
+    val amountCents: Long?,
     val count: Int,
 )
 
-data class CategoryInsight(
-    val topCategory: String,
-    val topAmountCents: Long,
-    val topSharePercent: Int,
-    val averagePerExpenseCents: Long,
-    val categoryCount: Int,
-    val isConcentrated: Boolean,
-)
-
 data class MonthlyStats(
+    val homeCurrencyCode: String,
+    val missingRates: List<CurrencyProjectionGap> = emptyList(),
     val month: String,
-    val totalAmountCents: Long,
+    val totalAmountCents: Long?,
     val count: Int,
     val byCategory: List<CategoryStats>,
     val byTag: List<TagStats> = emptyList(),
@@ -284,7 +277,7 @@ data class MonthlyStats(
 data class FrequentMerchant(
     val merchant: String,
     val count: Int,
-    val amountCents: Long = 0L,
+    val amountCents: Long?,
 )
 
 /**
@@ -352,11 +345,13 @@ data class BudgetProgress(
 )
 
 data class LifestyleStats(
+    val homeCurrencyCode: String,
+    val missingRates: List<CurrencyProjectionGap> = emptyList(),
     val month: String,
-    val aiSubscriptionAmountCents: Long,
-    val digitalAmountCents: Long,
+    val aiSubscriptionAmountCents: Long?,
+    val digitalAmountCents: Long?,
     val maxExpense: Expense?,
-    val recent7DaysAmountCents: Long,
+    val recent7DaysAmountCents: Long?,
     val frequentMerchants: List<FrequentMerchant>,
     val bestValueExpenses: List<Expense> = emptyList(),
     val mostRegrettedExpenses: List<Expense> = emptyList(),

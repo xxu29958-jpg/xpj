@@ -1,4 +1,4 @@
-{% set rate_context = {'ledger_id': selected_ledger_id, 'month': month, 'home_currency_code': currency_input.currency_code, 'savings_target_yuan': savings_target_yuan, 'reserved_buffer_yuan': reserved_buffer_yuan} %}
+{% set rate_context = money_task if money_task is defined else {'ledger_id': selected_ledger_id, 'month': month, 'home_currency_code': currency_input.currency_code, 'savings_target_yuan': savings_target_yuan, 'reserved_buffer_yuan': reserved_buffer_yuan} %}
 <section class="product-panel product-panel--padded" aria-label="金额换算">
   <div class="product-panel-header">
     <h2 class="product-panel-title">金额换算</h2>
@@ -16,7 +16,9 @@
     <p role="status">部分历史记录的原币种或日期无法确认，请由安装管理者核对原记录；不会猜测币种或汇率。</p>
     {% endif %}
   {% endfor %}
+  {% elif money_incomplete is defined and money_incomplete %}
+  <p role="status">部分记录的金额尚不明确，请核对原记录后查看完整合计。</p>
   {% else %}
-  <p class="meta">按记录的币种和日期折算为 {{ currency_input.currency_code }}。已填写的人工汇率可在这里查看和纠正。</p>
+  <p class="meta">按记录的币种和日期折算为 {{ rate_context.home_currency_code }}。已填写的人工汇率可在这里查看和纠正。</p>
   {% endif %}
 </section>

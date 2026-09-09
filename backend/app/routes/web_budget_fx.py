@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
+from app.routes._web_expense_return_context import return_context_params
 from app.routes._web_session_common import resolve_web_actor_account_id
 from app.routes.web_common import (
     LocalOnly,
@@ -30,7 +31,7 @@ from app.services.spending_contract_service import current_accounting_month
 
 router = APIRouter(prefix="/rates", tags=["web"])
 _TASK_FIELDS = ("ledger_id", "month", "home_currency_code", "savings_target_yuan", "reserved_buffer_yuan",
-    "return_to", "granularity", "ranking_metric", "merchant_category")
+    "return_to", "granularity", "ranking_metric", "merchant_category", "tag", "page", "filter")
 _RATE_FIELDS = ("currency_code", "rate_date", "rate_to_cny", "expected_row_version", "idempotency_key")
 
 
@@ -46,6 +47,9 @@ class BudgetRateForm(BaseModel):
     granularity: str = ""
     ranking_metric: str = ""
     merchant_category: str = ""
+    tag: str = ""
+    page: str = ""
+    filter: str = ""
     currency_code: str = ""
     rate_date: str = ""
     rate_to_cny: str = ""
@@ -56,6 +60,12 @@ class BudgetRateForm(BaseModel):
 
 def _task_return(values):
     params = {"month": values["month"], "home_currency_code": values["home_currency_code"]}
+    if values["return_to"] == "overview":
+        return "/web/overview", params, "总览"
+    if values["return_to"] == "confirmed":
+        params = return_context_params("confirmed", **{f"return_{key}": values[key]
+            for key in ("month", "home_currency_code", "tag", "page", "filter")})
+        return "/web/confirmed", params, "已确认流水"
     if values["return_to"] == "reports":
         params.update(granularity=values["granularity"] or "day", ranking_metric=values["ranking_metric"] or "amount",
             merchant_category=values["merchant_category"])
@@ -100,7 +110,9 @@ def page_budget_rates(request: Request, db: Session = Depends(get_db), _local: N
     values = {key: request.query_params.get(key, "") for key in (*_TASK_FIELDS, *_RATE_FIELDS)}
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, values["ledger_id"] or None, options, request=request)
-    values.update(ledger_id=selected, month=values["month"] or current_accounting_month(),
+    month = "" if values["return_to"] == "confirmed" and values["filter"] == "missing_category" else (
+        values["month"] or current_accounting_month())
+    values.update(ledger_id=selected, month=month,
         home_currency_code=normalize_currency_code(values["home_currency_code"] or require_runtime_home_currency_code(db)),
         savings_target_yuan=values["savings_target_yuan"] or "0", reserved_buffer_yuan=values["reserved_buffer_yuan"] or "0",
         idempotency_key=str(uuid4()), expected_row_version="0")

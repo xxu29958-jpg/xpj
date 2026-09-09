@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import datetime
 from typing import Literal
 
 from app.models import Expense
@@ -19,18 +19,6 @@ class _TrendBucket:
     label: str
     start_utc: datetime
     end_utc: datetime
-
-
-@dataclass(frozen=True)
-class _ProjectedEntry:
-    entry_id: int
-    root_expense_id: int
-    entry_kind: str
-    stream_date: date
-    category: str
-    merchant: str | None
-    amount_cents: int | None
-    gap: ProjectionGap | None
 
 
 @dataclass(frozen=True)

@@ -4,9 +4,9 @@
 {% block content %}
 <header class="product-page-header">
   <div class="product-page-heading">
-    <span class="product-eyebrow">计划 / 预算建议 / 金额换算</span>
+    <span class="product-eyebrow">{{ return_label }} / 金额换算</span>
     <h1 class="page-title">人工汇率</h1>
-    <p class="product-page-summary">补录或纠正后，回到 {{ values.month }} 的{{ return_label }}。原记录的金额与币种保持不变。</p>
+    <p class="product-page-summary">补录或纠正后，回到{{ '全部月份的待补分类流水' if values.return_to == 'confirmed' and values.filter == 'missing_category' else values.month ~ ' 的' ~ return_label }}。原记录的金额与币种保持不变。</p>
   </div>
   <a class="product-button product-button--quiet" href="{{ return_href }}">返回{{ return_label }}</a>
 </header>

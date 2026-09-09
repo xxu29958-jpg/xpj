@@ -28,10 +28,11 @@ import com.ticketbox.viewmodel.StatsSource
 internal data class TagScopeInsightModel(
     val tag: String,
     val month: String,
-    val totalAmountCents: Long,
+    val totalAmountCents: Long?,
+    val homeCurrencyCode: String,
     val count: Int,
 ) {
-    val hasSpend: Boolean = totalAmountCents > 0L && count > 0
+    val hasSpend: Boolean = count > 0
 }
 
 internal fun tagScopeInsightModel(
@@ -43,7 +44,8 @@ internal fun tagScopeInsightModel(
     return TagScopeInsightModel(
         tag = cleanTag,
         month = stats.month,
-        totalAmountCents = stats.totalAmountCents.coerceAtLeast(0L),
+        totalAmountCents = stats.totalAmountCents,
+        homeCurrencyCode = stats.homeCurrencyCode,
         count = stats.count.coerceAtLeast(0),
     )
 }
@@ -72,7 +74,7 @@ private fun TagScopeHeader(
     model: TagScopeInsightModel,
     statsSource: StatsSource,
 ) {
-    val currencyDisplay = LocalCurrencyDisplay.current
+    val currencyDisplay = com.ticketbox.domain.model.CurrencyDisplay.forRecord(model.homeCurrencyCode)
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -105,7 +107,7 @@ private fun TagScopeHeader(
             )
         }
         AppAmountText(
-            text = formatDisplayAmount(model.totalAmountCents, currencyDisplay),
+            text = projectionAmountText(model.totalAmountCents, currencyDisplay),
             color = MaterialTheme.colorScheme.onSurface,
             role = AppAmountRole.Medium,
         )
@@ -165,6 +167,6 @@ private fun TagScopeMetric(
 
 internal fun tagScopeSourceLabelRes(statsSource: StatsSource): Int = when (statsSource) {
     StatsSource.Backend -> R.string.stats_tag_scope_source_monthly
-    StatsSource.LocalFallback -> R.string.stats_tag_scope_source_local
+    StatsSource.CachedSnapshot -> R.string.stats_snapshot_badge
     StatsSource.None -> R.string.stats_tag_scope_source_pending
 }

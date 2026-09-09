@@ -114,7 +114,7 @@ def test_web_dashboard_uses_saved_card_layout_and_reset(web_client: TestClient) 
         payload = web_common._dashboard_data_payload(db, "owner")
     assert payload["selected_ledger_id"] == "owner"
     assert {"layout", "pending_count", "month"}.issubset(payload["cards"])
-    assert "trend14" in payload and "category_share" in payload
+    assert "category_share" in payload
     visible_keys = [item["key"] for item in payload["visible_layout"]]
     assert visible_keys[:2] == ["goals", "monthly_spend"]
     assert "reports" not in visible_keys

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
+from app.routes._web_money_views import projected_money_context
 from app.routes.web_common import (
     LocalOnly,
     _amount_segments,
@@ -22,6 +23,7 @@ from app.routes.web_common import (
     templates,
 )
 from app.schemas import DashboardCardsUpdateRequest, DashboardCardUpdateRequest
+from app.services.currency_common import normalize_currency_code
 from app.services.dashboard_service import list_dashboard_cards, update_dashboard_cards
 from app.services.expense_service import ledger_has_any_expense
 
@@ -50,30 +52,27 @@ def _overview_lanes(visible_cards: list[dict]) -> list[dict]:
     return lanes
 
 
-def _overview_amount_views(cards: dict, *, currency_code: str) -> dict:
-    """exponent 感知的金额展示投影 (PR #253 P1-1)。
-
-    payload 的 ``*_yuan`` 键固定 /100, 零小数币种 (JPY/KRW) 会错两位;
-    这里统一走 C5b-3 的 minor-units 格式化族, 模板不再自己拼币种符号。
-    """
+def _overview_amount_views(cards: dict) -> dict:
+    """Display the accepted query projection, including unavailable amounts."""
+    currency_code = cards["home_currency_code"]
     for row in cards["budget_top"]:
         row["overspent_label"] = _minor_amount_label(
             row["overspent_cents"],
             cards["budget_home_currency_code"],
         )
     return {
-        "hero_amount": _amount_segments(
+        "hero_amount": None if cards["total_amount_cents"] is None else _amount_segments(
             cards["total_amount_cents"],
             currency_code,
         ),
         "delta_amount_label": _minor_amount_label(
             cards["delta_amount_cents"],
             currency_code,
-        ),
+        ) if cards["delta_amount_cents"] is not None else "待补齐换算信息",
         "previous_total_label": _minor_amount_label(
             cards["previous_total_amount_cents"],
             currency_code,
-        ),
+        ) if cards["previous_total_amount_cents"] is not None else "待补齐换算信息",
         "budget_remaining_label": _minor_amount_label(
             cards["budget_remaining_cents"],
             cards["budget_home_currency_code"],
@@ -85,6 +84,9 @@ def _overview_amount_views(cards: dict, *, currency_code: str) -> dict:
 def web_overview(
     request: Request,
     ledger_id: str | None = None,
+    month: str | None = None,
+    home_currency_code: str | None = None,
+    msg: str | None = None,
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -105,7 +107,8 @@ def web_overview(
         page_title="总览",
         sidebar_counts=_sidebar_counts(db, selected_id),
     )
-    payload = _dashboard_data_payload(db, selected_id, include_trend=False)
+    home = normalize_currency_code(home_currency_code or ctx["home_currency_code"])
+    payload = _dashboard_data_payload(db, selected_id, month=month, home_currency_code=home)
     cards = payload["cards"]
     category_share = payload["category_share"]
     visible_cards = [item for item in cards["layout"] if item["visible"]]
@@ -113,14 +116,16 @@ def web_overview(
     ctx["category_share"] = category_share
     ctx["has_any_expense"] = ledger_has_any_expense(db, selected_id)
     ctx["overview_lanes"] = _overview_lanes(visible_cards)
-    ctx.update(
-        _overview_amount_views(
-            cards,
-            currency_code=ctx["home_currency_code"],
-        )
-    )
+    ctx.update(projected_money_context(cards["home_currency_code"]), **_overview_amount_views(cards))
+    ctx.update(missing_rates=cards["missing_rates"], flash_message=msg or "",
+        money_incomplete=cards["total_amount_cents"] is None or cards["previous_total_amount_cents"] is None,
+        money_task={"ledger_id": selected_id, "month": cards["month"],
+            "home_currency_code": cards["home_currency_code"], "return_to": "overview"})
+    ctx["category_chart_available"] = bool(category_share) and all(
+        row["amount_cents"] is not None and row["amount_cents"] >= 0 for row in category_share
+    ) and any(row["amount_cents"] > 0 for row in category_share)
     # P2-3: ~1.1MB ECharts 只在环图真的渲染时才下载 (reports 卡可见且有分类数据)。
-    ctx["overview_load_charts"] = bool(category_share) and any(
+    ctx["overview_load_charts"] = ctx["category_chart_available"] and any(
         item["key"] == "reports" for item in visible_cards
     )
     return templates.TemplateResponse(request=request, name="overview.html", context=ctx)

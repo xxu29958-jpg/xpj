@@ -140,6 +140,8 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
 
     protected fun successExpenseDto(serverUpdatedAt: String = "2026-05-20T13:00:00.000Z"): ExpenseDto =
         ExpenseDto(
+            homeCurrency = "CNY",
+            originalCurrencyCode = "CNY",
             id = 42L,
             publicId = "test-public-id",
             amountCents = 12345L,

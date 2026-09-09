@@ -182,7 +182,7 @@ def test_overview_payload_includes_budget_and_goals_top(
     )
 
     with SessionLocal() as db:
-        payload = web_common._dashboard_data_payload(db, "owner", include_trend=False)
+        payload = web_common._dashboard_data_payload(db, "owner")
     cards = payload["cards"]
 
     budget_top = cards["budget_top"]
@@ -240,7 +240,7 @@ def test_overview_budget_overspent_row_marks_over_state(
     )
 
     with SessionLocal() as db:
-        payload = web_common._dashboard_data_payload(db, "owner", include_trend=False)
+        payload = web_common._dashboard_data_payload(db, "owner")
     by_name = {row["name"]: row for row in payload["cards"]["budget_top"]}
     over = by_name["餐饮"]
     assert over["is_over"] is True

@@ -488,8 +488,8 @@ internal class StubApi(
         maxScan: Int,
     ): RuleApplyConfirmedResponseDto = ledgerUnsupported()
     override suspend fun serverSettings(): ServerSettingsDto = ledgerUnsupported()
-    override suspend fun monthlyStats(month: String?, tag: String?, timezone: String?): MonthlyStatsDto = ledgerUnsupported()
-    override suspend fun lifestyleStats(month: String?, timezone: String?): LifestyleStatsDto = ledgerUnsupported()
+    override suspend fun monthlyStats(month: String?, tag: String?, timezone: String?, homeCurrencyCode: String?): MonthlyStatsDto = ledgerUnsupported()
+    override suspend fun lifestyleStats(month: String?, timezone: String?, homeCurrencyCode: String?): LifestyleStatsDto = ledgerUnsupported()
     override suspend fun reportsOverview(
         query: Map<String, String>,
     ): ReportsOverviewDto = ledgerUnsupported()
@@ -819,6 +819,13 @@ internal fun existingOwnerSessionFixture(
 ).apply { saveToken(token) }
 
 internal class LedgerFakeDao : ExpenseDao {
+    private val statsCache = com.ticketbox.data.local.StatsProjectionCacheFake()
+    override suspend fun saveStatsProjection(snapshot: com.ticketbox.data.local.StatsProjectionCacheEntity) = statsCache.save(snapshot)
+    override suspend fun statsProjection(bindingKey: String, kind: String, month: String, tag: String,
+        homeCurrencyCode: String?, timezone: String) = statsCache.find(bindingKey, kind, month, tag, homeCurrencyCode, timezone)
+    override suspend fun clearStatsProjections() = statsCache.clear(null)
+    override suspend fun clearStatsProjectionsForLedger(ledgerId: String) = statsCache.clear(ledgerId)
+
     private val map = linkedMapOf<Long, ExpenseEntity>()
     private val flows = mutableMapOf<String, MutableStateFlow<List<ExpenseEntity>>>()
     fun insertEntity(entity: ExpenseEntity) { map[entity.id] = entity }

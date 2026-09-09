@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import re
+from html import unescape
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from fastapi.testclient import TestClient
@@ -166,11 +168,27 @@ def test_web_reports_absorbs_stats_top_expenses_and_seg_controls(
     assert "星巴克" in response.text
     assert "2026-05-04" in response.text
     assert "灰度账本商家" not in response.text  # top-expenses 仍账本隔离
-    # seg 控件 GET 链接：& 写字面量(模板里非变量输出,不经 autoescape)。
-    assert (
-        "/web/reports?ledger_id=owner&month=2026-05&granularity=week&ranking_metric=count"
-        in response.text
-    )
+    # Follow the rendered controls with the report's captured month and currency.
+    report_links = [
+        parse_qs(urlsplit(unescape(href)).query)
+        for href in re.findall(r'href="([^"]+)"', response.text)
+        if urlsplit(unescape(href)).path == "/web/reports"
+    ]
+    assert {
+        "ledger_id": ["owner"], "month": ["2026-05"],
+        "home_currency_code": ["CNY"], "granularity": ["week"],
+        "ranking_metric": ["count"],
+    } in report_links
+    assert {
+        "ledger_id": ["owner"], "month": ["2026-05"],
+        "home_currency_code": ["CNY"], "granularity": ["day"],
+        "ranking_metric": ["count"],
+    } in report_links
+    assert {
+        "ledger_id": ["owner"], "month": ["2026-05"],
+        "home_currency_code": ["CNY"], "granularity": ["week"],
+        "ranking_metric": ["amount"],
+    } in report_links
     assert "趋势粒度" in response.text
     assert "排行口径" in response.text
     assert "cdn.jsdelivr" not in response.text

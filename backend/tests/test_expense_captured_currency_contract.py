@@ -5,9 +5,12 @@ from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import pytest
 from sqlalchemy.orm import Session
 
+from app.errors import AppError
 from app.models import Expense, InstallationCurrencyBinding
+from app.runtime_compatibility_contract import RUNTIME_COMPATIBILITY_SESSION_KEY, RuntimeCompatibilityRequest
 from app.schemas import ExpenseUpdateRequest
 from app.services import exchange_rate_service
 from app.services.expense_service._update_currency import _apply_update_currency
@@ -72,6 +75,35 @@ def test_new_native_amount_uses_the_explicit_intent_currency():
     assert expense.home_currency_code == "JPY"
     assert expense.original_currency_code == "JPY"
     assert expense.amount_cents == expense.original_amount_minor == 1200
+
+
+def test_frozen_amount_correction_keeps_recorded_home_and_rate_after_default_change(monkeypatch):
+    lookup = _rates(monkeypatch)
+    expense = _jpy_expense()
+    expense.status, expense.fx_status = "confirmed", "ready"
+    expense.amount_cents, expense.exchange_rate_to_cny = 150, Decimal("150")
+    payload = ExpenseUpdateRequest(expected_row_version=1, original_amount_minor=200)
+
+    _apply_update_currency(_current_cny_session(), tenant_id="owner", expense=expense,
+        payload=payload, updates={"original_amount_minor": 200})
+
+    assert (expense.home_currency_code, expense.original_currency_code, expense.original_amount_minor,
+        expense.amount_cents, expense.exchange_rate_to_cny) == ("JPY", "USD", 200, 300, Decimal("150"))
+    lookup.assert_not_called()
+
+
+def test_frozen_amount_correction_still_refuses_unversioned_money_writes():
+    db = _current_cny_session()
+    db.info[RUNTIME_COMPATIBILITY_SESSION_KEY] = RuntimeCompatibilityRequest(None, None)
+    expense = _jpy_expense()
+    expense.status, expense.fx_status = "confirmed", "ready"
+    expense.amount_cents, expense.exchange_rate_to_cny = 150, Decimal("150")
+    payload = ExpenseUpdateRequest(expected_row_version=1, original_amount_minor=200)
+    with pytest.raises(AppError) as failure:
+        _apply_update_currency(db, tenant_id="owner", expense=expense,
+            payload=payload, updates={"original_amount_minor": 200})
+    assert failure.value.error == "client_upgrade_required"
+    assert (expense.original_amount_minor, expense.amount_cents) == (100, 150)
 
 
 def test_a_parsed_import_retains_the_currency_used_to_read_its_minor_units():

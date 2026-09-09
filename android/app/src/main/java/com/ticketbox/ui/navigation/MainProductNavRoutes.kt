@@ -58,7 +58,7 @@ internal fun NavGraphBuilder.addPrimaryDomainRoutes(
             StatsRoute(
                 shellState = shellState,
                 screenFactory = screenFactory,
-                onRepairReport = { binding, overview, gap -> runtime.navController.navigate(reportRateRoute(binding, overview, gap)) },
+                onRepairReport = { context -> runtime.navController.navigate(reportRateRoute(context)) },
             )
         }
     }

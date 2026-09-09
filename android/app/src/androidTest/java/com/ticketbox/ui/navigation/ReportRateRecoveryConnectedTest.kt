@@ -3,6 +3,9 @@ package com.ticketbox.ui.navigation
 import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
@@ -10,6 +13,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.lifecycle.ViewModelStore
@@ -57,9 +61,8 @@ class ReportRateRecoveryConnectedTest {
         // must enter directly; searching only the current input gaps cannot find it.
         assertTrue(fixture.rateDate != report.rateDate)
         enterRate("20")
-        compose.onNodeWithTag("advice_rate_save").performScrollTo().performClick()
-        compose.waitUntil(5_000) { runBlocking { fixture.rows().size == 1 } }
-        val original = runBlocking { fixture.rows().single() }
+        compose.onNodeWithTag("advice_rate_save").performScrollTo().assertIsDisplayed().assertIsEnabled().performClick()
+        val original = fixture.awaitSavedRow(compose)
         val intent = requireNotNull(fixture.adapters.manualRateAdapter.fromJson(original.payload))
         assertEquals(report.month, intent.month)
         assertEquals(request, intent.request)
@@ -128,5 +131,6 @@ class ReportRateRecoveryConnectedTest {
     private fun enterRate(value: String) {
         compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("advice_rate_value")), useUnmergedTree = true)
             .performScrollTo().performTextReplacement(value)
+            .assertTextEquals(value).performImeAction()
     }
 }

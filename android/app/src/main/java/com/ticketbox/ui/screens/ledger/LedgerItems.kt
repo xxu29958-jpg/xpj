@@ -59,7 +59,6 @@ import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.AppEndAlignedAmountStatusText
 import com.ticketbox.ui.components.autosizeMinFontSize
 import com.ticketbox.ui.components.displayTime
-import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppAmountRole
@@ -67,7 +66,6 @@ import com.ticketbox.ui.design.AppDensity
 import com.ticketbox.ui.design.AppListDensity
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.LocalCurrencyCode
 import com.ticketbox.ui.design.AppTypography
 import com.ticketbox.ui.design.LocalThemeVisuals
 import java.time.Instant
@@ -87,7 +85,7 @@ private object LedgerItemLayout {
 
 internal data class LedgerDayHeaderUi(
     val label: String,
-    val dayTotalCents: Long,
+    val amountsByCurrency: Map<String?, Long?>,
     val itemCount: Int,
     val previewText: String? = null,
     val expandable: Boolean = false,
@@ -215,11 +213,11 @@ private fun LedgerDayHeaderAmount(
         modifier = modifier,
         contentAlignment = Alignment.CenterEnd,
     ) {
-        AppEndAlignedAmountText(
+        LedgerAmounts(
             modifier = Modifier.fillMaxWidth(),
-            text = formatAmount(state.dayTotalCents, LocalCurrencyCode.current),
+            amounts = state.amountsByCurrency,
             role = AppAmountRole.Compact,
-            color = MaterialTheme.colorScheme.onSurface,
+            endAligned = true,
         )
     }
 }
@@ -324,7 +322,7 @@ internal fun LedgerExpenseCard(
                 ) {
                     LedgerAmountOrPending(
                         amountCents = expense.amountCents,
-                        display = CurrencyDisplay.forRecord(expense.homeCurrencyCode ?: expense.homeCurrency.storageKey),
+                        currencyCode = expense.homeCurrencyCode,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Text(
@@ -396,7 +394,7 @@ internal fun LedgerExpenseListRow(
             action = { amountModifier, stacked ->
                 LedgerAmountOrPending(
                     amountCents = expense.amountCents,
-                    display = CurrencyDisplay.forRecord(expense.homeCurrencyCode ?: expense.homeCurrency.storageKey),
+                    currencyCode = expense.homeCurrencyCode,
                     modifier = if (stacked) {
                         amountModifier
                     } else {
@@ -492,7 +490,7 @@ internal fun LedgerExpenseTableRow(
             action = { amountModifier, _ ->
                 LedgerAmountOrPending(
                     amountCents = expense.amountCents,
-                    display = CurrencyDisplay.forRecord(expense.homeCurrencyCode ?: expense.homeCurrency.storageKey),
+                    currencyCode = expense.homeCurrencyCode,
                     modifier = amountModifier,
                 )
             },
@@ -509,21 +507,26 @@ internal fun LedgerExpenseTableRow(
 @Composable
 private fun LedgerAmountOrPending(
     amountCents: Long?,
-    display: CurrencyDisplay,
+    currencyCode: String?,
     modifier: Modifier = Modifier,
 ) {
+    val unavailable = when {
+        currencyCode.isNullOrBlank() -> stringResource(R.string.ledger_item_currency_unknown)
+        amountCents == null -> stringResource(R.string.ledger_item_amount_pending)
+        else -> null
+    }
     Box(modifier = modifier, contentAlignment = Alignment.CenterEnd) {
-        amountCents?.let {
+        if (unavailable == null) {
             AppEndAlignedAmountText(
                 modifier = Modifier.fillMaxWidth(),
-                text = formatDisplayAmount(it, display),
+                text = formatDisplayAmount(amountCents, CurrencyDisplay.forRecord(currencyCode)),
                 role = AppAmountRole.Medium,
                 minFontSize = AppAmountRole.Compact.autosizeMinFontSize,
                 color = MaterialTheme.colorScheme.onSurface,
             )
-        } ?: AppEndAlignedAmountStatusText(
+        } else AppEndAlignedAmountStatusText(
             modifier = Modifier.fillMaxWidth(),
-            text = stringResource(R.string.ledger_item_amount_pending),
+            text = unavailable,
             role = AppAmountRole.Medium,
         )
     }

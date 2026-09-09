@@ -29,7 +29,7 @@
     <a href="/web/data-quality?ledger_id={{ selected_ledger_id }}">返回数据体检</a>
     {% else %}
     <h1 class="page-title">已确认流水</h1>
-    <p class="confirmed-hero-amount"><span class="sr-only">{{ selected_month }} 合计 </span>{{ home_currency_symbol }}{{ month_total_amount_yuan }}</p>
+    <p class="confirmed-hero-amount"><span class="sr-only">{{ selected_month }} 合计 </span>{% if month_total_amount_yuan is not none %}{{ home_currency_symbol }}{{ month_total_amount_yuan }}{% else %}待补齐换算信息{% endif %}</p>
     <p class="product-page-summary">
       {{ selected_month }} · 共 {{ month_total_count }} 笔 · 打开任意一行可查看详情与变更记录。
     </p>
@@ -41,6 +41,7 @@
   </div>
   {% endif %}
 </header>
+{% include 'partials/budget_fx_gaps.html' %}
 
 {% if tag %}
 {# 标签筛选是服务端真实筛选: 明确告知范围并给一键清除。清除只保留路由已验证的
@@ -48,7 +49,7 @@
    不重建通用 query — Jinja 是 HTML escape 不是 URL encode, 且 msg/flash_type
    等过时反馈本就不该跨导航存活。 #}
 {% set _clear_scope = '&filter=missing_category' if filter == 'missing_category' else '&month=' ~ month %}
-{% set _clear_href = '/web/confirmed?ledger_id=' ~ selected_ledger_id ~ _clear_scope %}
+{% set _clear_href = '/web/confirmed?ledger_id=' ~ selected_ledger_id ~ _clear_scope ~ '&home_currency_code=' ~ home_currency_code %}
 <div class="ledger-active-filter" role="status">
   <span class="product-status product-status--info">标签：{{ tag }}</span>
   <span class="ledger-active-filter-copy">当前只显示带这个标签的账单。</span>
@@ -88,13 +89,11 @@
     {% endif %}
     {% for d in _order %}
       {% set _items = _groups[d] %}
-      {# 日合计只加 server-owned stream_amount_cents: refund/chargeback 是负向
-         贡献, reversed root 与 reversal 事件都计 0; 不重算 gross。 #}
-      {% set _day_sum = _items | sum(attribute='stream_amount_cents') %}
+      {# 服务端按同一目标币种投影本页贡献；原事实的符号与币种不在模板重算。 #}
   <div class="lday">
     <span class="lday-d">{{ d[5:7] }} 月 {{ d.split('-')[2] if '-' in d else d }} 日</span>
     <span class="lday-n">{{ _items | length }} 笔</span>
-    <span class="lday-s">{{ home_amount_label(_day_sum) }}</span>
+    <span class="lday-s">本页 {{ home_amount_label(page_day_totals[d]) }}</span>
   </div>
       {% for e in _items %}
   {# #218 行结构合同: 选择槽 (.lrow-sel, 仅 expense root 行) 与整行链接
@@ -179,6 +178,7 @@
       <h2 class="product-panel-title">每日分布</h2>
       <span class="product-panel-subtitle">{{ selected_month }} · 每日净额与强度 · 含退款、拒付与冲销</span>
     </div>
+    {% if calendar_max is none %}<p role="status">部分日期的金额尚不完整，暂不比较每日强度。</p>{% endif %}
     {% set _byday_map = {} %}
     {% for dd in by_day %}{% set _ = _byday_map.update({dd.date: dd}) %}{% endfor %}
     {% if selected_month and '-' in selected_month %}
@@ -190,20 +190,19 @@
       {% elif _m == 2 %}
         {% set _days_in_month = 29 if (_y % 4 == 0 and (_y % 100 != 0 or _y % 400 == 0)) else 28 %}
       {% endif %}
-      {% set _max_amt = (by_day | map(attribute='amount_cents') | list | max) if by_day else 0 %}
     <div class="heatmap">
       {# 纯日序热度格: 不标注星期 (1 号不做 weekday 对齐, 标了就是假事实);
          每格 title 携带 exact 日期与当日合计。 #}
       {% for i in range(1, _days_in_month + 1) %}
         {% set _dstr = '%04d-%02d-%02d' % (_y, _m, i) %}
         {% set _hit = _byday_map.get(_dstr) %}
-        {% set _ratio = (_hit.amount_cents / _max_amt) if (_hit and _max_amt) else 0 %}
+        {% set _ratio = (_hit.amount_cents / calendar_max) if (_hit and _hit.amount_cents is not none and calendar_max is not none and calendar_max > 0) else 0 %}
         {% if _ratio >= 0.75 %}{% set _level = 4 %}
         {% elif _ratio >= 0.5 %}{% set _level = 3 %}
         {% elif _ratio >= 0.25 %}{% set _level = 2 %}
         {% else %}{% set _level = 1 %}{% endif %}
       <div class="day{% if _hit %} has{% endif %}{% if _level > 1 %} level-{{ _level }}{% endif %}"
-           title="{{ _dstr }}{% if _hit %} · {{ home_amount_label(_hit.amount_cents) }}{% endif %}">{{ i }}</div>
+           title="{{ _dstr }}{% if _hit %} · {{ home_amount_label(_hit.amount_cents) }}{% endif %}">{{ i }}{% if _hit and _hit.amount_cents is none %}<span aria-label="换算信息待补齐">?</span>{% endif %}</div>
       {% endfor %}
     </div>
     {% endif %}
@@ -239,6 +238,7 @@
 <form id="bulk-form" method="post" action="/web/confirmed/batch-update" class="bulk-bar confirmed-bulk-bar" data-bulk{% if flash_type == 'error' %} aria-describedby="confirmed-batch-feedback"{% endif %}>
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+  <input type="hidden" name="home_currency_code" value="{{ home_currency_code }}">
   <input type="hidden" name="month" value="{{ month }}">
   <input type="hidden" name="filter" value="{{ filter }}">
   <input type="hidden" name="tag" value="{{ tag }}">

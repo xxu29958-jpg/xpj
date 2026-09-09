@@ -156,6 +156,7 @@ def web_confirmed_batch_update(
     tag: str = Form(default=""),
     page: int = Form(default=1),
     filter: str = Form(default=""),
+    home_currency_code: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> Response:
@@ -192,6 +193,7 @@ def web_confirmed_batch_update(
             tag=tag or None,
             msg=outcome.error_message,
             filter=filter,
+            home_currency_code=home_currency_code,
             status_code=outcome.error_status,
             flash_type="error",
             batch_category_input=category,
@@ -209,4 +211,5 @@ def web_confirmed_batch_update(
         page=page,
         msg=_confirmed_batch_result_message(outcome.result),
         filter=filter,
+        home_currency_code=home_currency_code,
     )

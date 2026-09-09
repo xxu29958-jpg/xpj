@@ -259,6 +259,7 @@ internal class FakeApiService(
     override suspend fun createNotificationDraft(request: NotificationDraftRequestDto): ExpenseDto {
         lastNotificationDraftRequest = request
         return ExpenseDto(
+            homeCurrency = "CNY",
             id = 12,
             publicId = "8f939f48-e646-4afb-b54f-7bb6b536d9ef",
             amountCents = null,
@@ -627,9 +628,9 @@ internal class FakeApiService(
         latestUploadAt = null,
     )
 
-    override suspend fun monthlyStats(month: String?, tag: String?, timezone: String?): MonthlyStatsDto = unsupported()
+    override suspend fun monthlyStats(month: String?, tag: String?, timezone: String?, homeCurrencyCode: String?): MonthlyStatsDto = unsupported()
 
-    override suspend fun lifestyleStats(month: String?, timezone: String?): LifestyleStatsDto = unsupported()
+    override suspend fun lifestyleStats(month: String?, timezone: String?, homeCurrencyCode: String?): LifestyleStatsDto = unsupported()
     override suspend fun reportsOverview(
         query: Map<String, String>,
     ): ReportsOverviewDto = unsupported()

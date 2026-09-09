@@ -205,7 +205,7 @@ internal class UploadIntentConnectedNetwork {
     }
 }
 
-private fun uploadedExpense(id: Long, name: String) = ExpenseDto(id = id, publicId = "uploaded-$id",
+private fun uploadedExpense(id: Long, name: String) = ExpenseDto(originalCurrencyCode = "CNY", id = id, publicId = "uploaded-$id",
     amountCents = null, homeCurrency = "CNY", merchant = name, category = "未分类", note = null,
     source = "Android截图", imagePath = null, thumbnailPath = null, imageHash = null, rawText = null,
     confidence = null, duplicateStatus = "none", duplicateOfId = null, duplicateReason = null, tags = null,

@@ -4,11 +4,30 @@ import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class StatsDtoContractTest {
     private val moshi = Moshi.Builder()
         .add(KotlinJsonAdapterFactory())
         .build()
+
+    @Test
+    fun unavailableProjectionRetainsItsCurrencyCountsAndRecoveryDate() {
+        val adapter = moshi.adapter(MonthlyStatsDto::class.java)
+        val dto = requireNotNull(adapter.fromJson("""
+            {"month":"2026-09","home_currency_code":"JPY","total_amount_cents":null,"count":2,
+             "by_category":[{"category":"购物","amount_cents":null,"count":2}],
+             "by_tag":[{"tag":"旅行","amount_cents":null,"count":1}],
+             "missing_rates":[{"source_currency_code":"CNY","home_currency_code":"JPY","rate_date":"2026-09-03"}]}
+        """.trimIndent()))
+        val restored = requireNotNull(adapter.fromJson(adapter.toJson(dto)))
+        assertEquals("JPY", restored.homeCurrencyCode)
+        assertNull(restored.totalAmountCents)
+        assertNull(restored.byCategory.single().amountCents)
+        assertNull(restored.byTag.single().amountCents)
+        assertEquals(2, restored.count)
+        assertEquals("2026-09-03", restored.missingRates.single().rateDate)
+    }
 
     @Test
     fun monthlyStatsDtoParsesTagStats() {
@@ -17,6 +36,7 @@ class StatsDtoContractTest {
                 """
                 {
                   "month": "2026-05",
+                  "home_currency_code": "CNY",
                   "total_amount_cents": 15800,
                   "count": 3,
                   "by_category": [
@@ -52,6 +72,7 @@ class StatsDtoContractTest {
 private val lifestyleStatsWithRankingsJson = """
 {
   "month": "2026-05",
+  "home_currency_code": "CNY",
   "ai_subscription_amount_cents": 29800,
   "digital_amount_cents": 8800,
   "max_expense": null,
