@@ -139,15 +139,15 @@ class SpendingGoalDetailViewModel(
             edits.observeEdits(binding, id).collect { rows ->
                 if (!matches(binding, id)) return@collect
                 val previous = _state.value.pendingEdits.filter { it.isDone }.map { it.row.id }.toSet()
-                val completed = rows.any { it.isDone && it.confirmed != null && it.row.id !in previous }
                 val accepted = rows.filter { it.isDone && it.row.id !in previous }
                     .mapNotNull { it.confirmed }.maxByOrNull { it.rowVersion }
+                val completed = accepted != null
                 _state.update { state ->
-                    val adopt = accepted != null && (state.goal == null || accepted.rowVersion > state.goal.rowVersion)
-                    state.copy(pendingEdits = rows, goal = if (adopt) accepted else state.goal,
-                        fetchedAt = if (adopt) null else state.fetchedAt,
-                        fromCache = !adopt && state.fromCache,
+                    val updated = state.copy(pendingEdits = rows,
                         mutationRevision = state.mutationRevision + if (completed) 1 else 0)
+                    if (accepted != null && (state.goal == null || accepted.rowVersion > state.goal.rowVersion)) {
+                        updated.copy(goal = accepted, fetchedAt = null, fromCache = false)
+                    } else updated
                 }
                 if (completed && !_state.value.isLoading) load(id)
             }

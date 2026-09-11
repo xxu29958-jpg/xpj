@@ -81,6 +81,13 @@ not reopen any Windows lifecycle HOLD.
   refreshing. Other goals and a later read failure remain visible; no fake empty
   query, duplicate archive or wrong-binding list update is introduced.
 
-Status: implemented candidate; bounded review closed. Android compilation,
-generated Room schema and exact cloud/Connected qualification remain open;
-no local Gradle or long suite has run.
+- Direct Room producers open the database before using its current graph and
+  bind verified command callbacks to that graph after reopen. The generated
+  Room 20 schema adds only Goal snapshots; existing entity schemas are unchanged.
+  Session-write auditing recognizes implicit receiver calls without dropping
+  sanctioned writes or treating declarations as calls. Receipt adoption uses
+  the same accepted result once, preserving version and source semantics.
+
+Status: implemented candidate; bounded review closed. Direct producer and
+audit corrections plus the genuine generated schema await exact cloud/Connected
+qualification; no local Gradle or long suite has run.

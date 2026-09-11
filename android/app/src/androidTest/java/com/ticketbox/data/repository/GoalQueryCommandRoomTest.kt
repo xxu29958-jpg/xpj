@@ -45,7 +45,7 @@ class GoalQueryCommandRoomTest {
     @After fun close() = fixture.close()
 
     @Test fun archivedGoalCannotReappearAfterOfflineRoomReopenAndOriginalCommandsSurvive() = runBlocking {
-        val graph = fixture.graph
+        val graph = fixture.reopen()
         val binding = requireNotNull(graph.reportsRepository.dashboardAccess()).binding
         graph.reportsRepository.goals("2026-09").getOrThrow()
         graph.expenseRepository.submitCorrection(binding, fixture.network.current.toDomain(),
@@ -68,7 +68,7 @@ class GoalQueryCommandRoomTest {
     }
 
     private suspend fun assertDeliveryRetiresReads(create: Boolean) {
-        val graph = fixture.graph
+        val graph = fixture.reopen()
         val binding = requireNotNull(graph.reportsRepository.dashboardAccess()).binding
         graph.reportsRepository.goals("2026-09").getOrThrow()
         val id = if (create) graph.goalEditRepository.create(binding, GoalDraft("新目标", "2026-09", 2400, null, "JPY")).getOrThrow()

@@ -16,7 +16,7 @@ import org.junit.Test
 /** Real disk Room and the production repository graph; only HTTP transport is synthetic. */
 class GoalQuerySnapshotRoomTest {
     private var offline = false
-    private val fixture = ExpenseCorrectionConnectedFixture(ApplicationProvider.getApplicationContext()) { delegate ->
+    private val fixture: ExpenseCorrectionConnectedFixture = ExpenseCorrectionConnectedFixture(ApplicationProvider.getApplicationContext()) { delegate ->
         object : ApiService by delegate {
             override suspend fun goals(month: String?, includeArchived: Boolean, goalType: String?, timezone: String?): GoalListResponseDto {
                 if (offline) throw ConnectException("offline")
@@ -64,7 +64,7 @@ class GoalQuerySnapshotRoomTest {
         assertEquals(before, fixture.stored())
     }
 
-    private fun goal() = GoalDto(
+    private fun goal(): GoalDto = GoalDto(
         publicId = "goal-jpy", ledgerId = requireNotNull(fixture.graph.reportsRepository.dashboardAccess()).binding.ledgerId,
         name = "旅行限额", goalType = "spending_limit", period = "monthly",
         month = "2026-09", category = null, targetAmountCents = 1200, spentAmountCents = null,

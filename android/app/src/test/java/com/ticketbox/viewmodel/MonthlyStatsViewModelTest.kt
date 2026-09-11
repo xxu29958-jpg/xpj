@@ -398,7 +398,7 @@ class MonthlyStatsViewModelTest {
         assertEquals(listOf("餐饮", "通勤"), viewModel.uiState.value.tags)
     }
     @Test
-    fun explicitStatsRefusalClearsBothPreviouslyReadProjections() = runTest(dispatcher) {
+    fun explicitStatsRefusalClearsBothPreviouslyReadProjections() = statsTest {
         val stats = FakeStatsActions()
         val viewModel = MonthlyStatsViewModel(stats, "2026-05")
         advanceUntilIdle()
@@ -415,7 +415,7 @@ class MonthlyStatsViewModelTest {
     }
 
     @Test
-    fun lifestyleRefusalAlsoClearsTheMonthlyReadFromTheSameRejectedIdentity() = runTest(dispatcher) {
+    fun lifestyleRefusalAlsoClearsTheMonthlyReadFromTheSameRejectedIdentity() = statsTest {
         val stats = FakeStatsActions()
         val viewModel = MonthlyStatsViewModel(stats, "2026-05")
         advanceUntilIdle()
