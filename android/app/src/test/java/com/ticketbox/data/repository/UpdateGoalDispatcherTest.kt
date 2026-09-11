@@ -28,6 +28,7 @@ import kotlin.test.assertTrue
  * ``row_version``, surfaced as ``Success.newRowVersion``.
  */
 class UpdateGoalDispatcherTest {
+    private val acceptedRows = mutableListOf<OutboxRow>()
 
     private fun moshi(): Moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
 
@@ -95,6 +96,7 @@ class UpdateGoalDispatcherTest {
         apiProvider = { stub },
         payloadAdapter = moshi().adapter(GoalUpdateRequestDto::class.java),
         receiptAdapter = moshi().adapter(GoalDto::class.java),
+        onAccepted = { acceptedRows += it },
     )
 
     @Test
@@ -110,6 +112,7 @@ class UpdateGoalDispatcherTest {
         val receipt = result.receiptJson
         assertTrue(receipt != null, "the acknowledgement must survive Room reopen")
         assertEquals(canonical, moshi().adapter(GoalDto::class.java).fromJson(receipt))
+        assertEquals(listOf(goalRow("key-abc")), acceptedRows)
     }
 
     @Test
@@ -133,6 +136,7 @@ class UpdateGoalDispatcherTest {
             assertTrue(dispatcherFor(Stub(Result.success(wrong))).dispatch(row) is DispatchResult.Failure)
         }
         assertEquals("original-key", row.idempotencyKey)
+        assertTrue(acceptedRows.isEmpty())
     }
 
     @Test

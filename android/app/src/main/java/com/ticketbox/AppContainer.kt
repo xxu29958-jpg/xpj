@@ -286,12 +286,14 @@ class AppContainer(context: Context) {
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.goalCreateAdapter,
                 receiptAdapter = outboxAdapters.goalReceiptAdapter,
+                onAccepted = reportsRepository::invalidateGoalReadsAfterDelivery,
             ),
             // ADR-0042 Slice F: PATCH /api/goals/{publicId} via outbox.
             UpdateGoalDispatcher(
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.goalUpdateAdapter,
                 receiptAdapter = outboxAdapters.goalReceiptAdapter,
+                onAccepted = reportsRepository::invalidateGoalReadsAfterDelivery,
             ),
             // ADR-0042 Slice F: PATCH /api/income-plans/{publicId} via outbox.
             IncomePlanDispatcher(PendingMutationType.CreateIncomePlan, ::outboxApi,

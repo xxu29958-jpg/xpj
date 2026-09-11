@@ -10,7 +10,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
-import java.io.IOException
+import java.net.ConnectException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -34,10 +34,11 @@ class StatsProjectionRepositoryTest {
         val query = StatsQuery(requireNotNull(repository.statsBinding()), "2026-09", homeCurrencyCode = "JPY")
         val original = repository.monthlyStats(query).getOrThrow()
         api.response = api.response.copy(homeCurrencyCode = "CNY", totalAmountCents = 9000)
-        val rejected = repository.monthlyStats(query).getOrThrow()
-        assertTrue(rejected.fromCache)
-        assertEquals(original.value, rejected.value)
-        assertEquals(original.fetchedAt, rejected.fetchedAt)
+        assertTrue(repository.monthlyStats(query).isFailure)
+        api.offline = true
+        val preserved = repository.monthlyStats(query).getOrThrow()
+        assertEquals(original.value, preserved.value)
+        assertEquals(original.fetchedAt, preserved.fetchedAt)
     }
 
     @Test
@@ -47,9 +48,7 @@ class StatsProjectionRepositoryTest {
         val query = StatsQuery(requireNotNull(repository.statsBinding()), "2026-09", homeCurrencyCode = "CNY")
         val original = repository.lifestyleStats(query).getOrThrow()
         api.lifestyleExpense = api.lifestyleExpense.copy(publicId = null, amountCents = 9000)
-        val rejected = repository.lifestyleStats(query).getOrThrow()
-        assertTrue(rejected.fromCache)
-        assertEquals(original.value, rejected.value)
+        assertTrue(repository.lifestyleStats(query).isFailure)
         api.offline = true
         val offline = repository.lifestyleStats(query).getOrThrow()
         assertEquals(original.value, offline.value)
@@ -186,11 +185,11 @@ private class ProjectionApi : ApiService by FakeApiService(mutableListOf(), conf
     var lifestyleExpense = confirmedExpenseDtoFixture().copy(homeCurrency = "JPY", originalCurrencyCode = "JPY", amountCents = 1000)
     override suspend fun monthlyStats(month: String?, tag: String?, timezone: String?, homeCurrencyCode: String?): MonthlyStatsDto {
         tags.add(tag)
-        if (offline) throw IOException("offline")
+        if (offline) throw ConnectException("offline")
         return monthlyResponder?.invoke(month) ?: response
     }
     override suspend fun lifestyleStats(month: String?, timezone: String?, homeCurrencyCode: String?): LifestyleStatsDto {
-        if (offline) throw IOException("offline")
+        if (offline) throw ConnectException("offline")
         return LifestyleStatsDto(homeCurrencyCode = "CNY", month = "2026-09", aiSubscriptionAmountCents = 0,
             digitalAmountCents = 500, recent7DaysAmountCents = 500, frequentMerchants = emptyList(),
             maxExpense = lifestyleExpense)

@@ -53,6 +53,8 @@ internal class DebtAdjustmentConnectedFixture(private val context: Context, priv
     private val session = debtAdjustmentConnectedSession()
     var scheduleCalls = 0
     lateinit var outbox: OutboxRepository
+    lateinit var graph: RepositoryGraph
+        private set
 
 
     fun reopen(): RepositoryGraph {
@@ -73,6 +75,7 @@ internal class DebtAdjustmentConnectedFixture(private val context: Context, priv
         return RepositoryGraph(RepositoryGraphDependencies(db, ApiClient(),
             debtAdjustmentProxy<TicketboxSettingsStore> { error("Unexpected settings: $it") },
             sessions, credentials, ApiServiceProvider(factory, sessions, credentials), RepositoryGraphOutbox(outbox, adapters)))
+            .also { graph = it }
     }
 
     fun stored(): List<Map<String, String?>> = requireNotNull(database).openHelper.readableDatabase

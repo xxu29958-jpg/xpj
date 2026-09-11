@@ -151,6 +151,8 @@ internal class RepositoryGraph(
 
     val reportsRepository = ReportsRepository(
         apiProvider = apiServiceProvider,
+        expenseDao = database.expenseDao(),
+        sessionCoordinator = ledgerSessionCoordinator,
     )
 
     val ruleRepository = RuleRepository(

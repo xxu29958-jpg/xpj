@@ -6,7 +6,7 @@ import com.ticketbox.R
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.StatsActions
 import com.ticketbox.data.repository.StatsQuery
-import com.ticketbox.data.repository.StatsRead
+import com.ticketbox.data.repository.ReadSnapshot
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -121,7 +121,7 @@ class MonthlyStatsViewModel(
         }
     }
 
-    private fun handleStatsSuccess(read: StatsRead<MonthlyStats>, snapshot: MonthlyStatsRefreshSnapshot) {
+    private fun handleStatsSuccess(read: ReadSnapshot<MonthlyStats>, snapshot: MonthlyStatsRefreshSnapshot) {
         _uiState.update {
             it.copy(stats = read.value, statsFetchedAt = read.fetchedAt,
                 statsSource = if (read.fromCache) StatsSource.CachedSnapshot else StatsSource.Backend,
@@ -136,6 +136,7 @@ class MonthlyStatsViewModel(
     }
 
     private fun handleStatsFailure(error: Throwable, snapshot: MonthlyStatsRefreshSnapshot) {
+        if (clearRejectedRead(error)) return
         _uiState.update {
             it.copy(loading = false, statsSource = if (it.stats == null) StatsSource.None else StatsSource.CachedSnapshot,
                 lifestyleFromCache = it.lifestyleStats != null,
@@ -143,6 +144,17 @@ class MonthlyStatsViewModel(
                 message = if (it.stats == null) null else error.toUiText(R.string.stats_message_stats_failed))
         }
         loadDataQuality(snapshot)
+    }
+
+    private fun clearRejectedRead(error: Throwable): Boolean {
+        if (!error.isReadAccessDenied()) return false
+        // Invalidate any parallel response admitted before this explicit refusal.
+        refreshGeneration += 1
+        inFlightRefresh = null
+        _uiState.update { it.copy(stats = null, statsFetchedAt = null, statsSource = StatsSource.None,
+            lifestyleStats = null, lifestyleFetchedAt = null, lifestyleFromCache = false,
+            loading = false, statsLoadError = error.toUiText(R.string.stats_message_stats_failed), message = null) }
+        return true
     }
 
     private fun loadLifestyle(snapshot: MonthlyStatsRefreshSnapshot, homeCurrencyCode: String) {
@@ -153,6 +165,7 @@ class MonthlyStatsViewModel(
                 _uiState.update { it.copy(lifestyleStats = read.value, lifestyleFetchedAt = read.fetchedAt,
                     lifestyleFromCache = read.fromCache) }
             }.onFailure { error ->
+                if (clearRejectedRead(error)) return@launch
                 _uiState.update { it.copy(lifestyleFromCache = it.lifestyleStats != null,
                     message = error.toUiText(R.string.stats_message_lifestyle_failed)) }
             }

@@ -138,8 +138,8 @@ class ReportsRepositoryTest {
             assertEquals("2026-05", api.goalsCalls.single().month)
             assertEquals(true, api.goalsCalls.single().includeArchived)
             assertEquals("UTC", api.goalsCalls.single().timezone)
-            assertEquals(GoalProgressState.NearLimit, goals.single().progressState)
-            assertEquals("CNY", goals.single().homeCurrencyCode)
+            assertEquals(GoalProgressState.NearLimit, goals.value.single().progressState)
+            assertEquals("CNY", goals.value.single().homeCurrencyCode)
             assertEquals("android", api.dashboardCardCalls.single())
             assertEquals("goals", api.updateDashboardCardCalls.single().request.cards.first().key)
             assertEquals("reports", savedCards.items[1].key)
@@ -294,7 +294,7 @@ class ReportsRepositoryTest {
             assertEquals("debt_repayment", api.goalsCalls.single().goalType)
             assertEquals(true, api.goalsCalls.single().includeArchived)
             assertEquals("UTC", api.goalsCalls.single().timezone)
-            val goal = goals.single()
+            val goal = goals.value.single()
             assertTrue(goal.isDebtRepayment)
             val evaluation = goal.debtRepayment
             assertEquals("in_progress", evaluation?.evaluationState)
@@ -443,8 +443,11 @@ class ReportsRepositoryTest {
             ),
         ).apply { saveToken("session-token") }
         val apiClient = ReportsApiFactory(handler)
+        val dao = FakeExpenseDao()
         return ReportsRepository(
             apiProvider = testApiServiceProvider(apiClient, tokenStore),
+            expenseDao = dao,
+            sessionCoordinator = LocalLedgerSessionCoordinator(boundSettingsStore(), tokenStore.sessionStore, dao),
         )
     }
 }

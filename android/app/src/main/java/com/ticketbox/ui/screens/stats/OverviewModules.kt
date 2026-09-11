@@ -133,6 +133,9 @@ private fun OverviewLinkedModule(
                 Text(stringResource(R.string.dashboard_ledger_scope), style = MaterialTheme.typography.bodySmall)
             }
             Text(content.first, style = MaterialTheme.typography.bodyLarge)
+            if (card.key == DASHBOARD_CARD_GOALS && state.selectedTag.isBlank()) {
+                com.ticketbox.ui.screens.plan.GoalReadSource(state.reportGoalsFetchedAt, state.reportGoalsFromCache)
+            }
             TextButton(onClick = content.third) { Text(stringResource(content.second)) }
         }
     }

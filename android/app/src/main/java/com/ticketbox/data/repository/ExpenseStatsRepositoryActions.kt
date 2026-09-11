@@ -19,6 +19,7 @@ import com.ticketbox.data.remote.dto.StatsProjectionDto
 import java.time.Instant
 import java.time.YearMonth
 import java.time.ZoneId
+import retrofit2.HttpException
 
 private enum class StatsProjectionKind(val storageKey: String) { Monthly("monthly"), Lifestyle("lifestyle") }
 
@@ -46,12 +47,12 @@ internal class ExpenseStatsRepositoryActions(
 
     override suspend fun tags(): Result<List<String>> = ledgerActions.tags()
 
-    override suspend fun monthlyStats(query: StatsQuery): Result<StatsRead<MonthlyStats>> =
+    override suspend fun monthlyStats(query: StatsQuery): Result<ReadSnapshot<MonthlyStats>> =
         read(query, StatsProjectionKind.Monthly, monthlyAdapter, MonthlyStatsDto::toDomain) { api ->
             api.monthlyStats(query.month, query.tag.ifBlank { null }, query.timezone, query.homeCurrencyCode)
         }
 
-    override suspend fun lifestyleStats(query: StatsQuery): Result<StatsRead<LifestyleStats>> =
+    override suspend fun lifestyleStats(query: StatsQuery): Result<ReadSnapshot<LifestyleStats>> =
         read(query.copy(tag = ""), StatsProjectionKind.Lifestyle, lifestyleAdapter, LifestyleStatsDto::toDomain) { api ->
             api.lifestyleStats(query.month, query.timezone, query.homeCurrencyCode)
         }
@@ -62,39 +63,43 @@ internal class ExpenseStatsRepositoryActions(
         adapter: JsonAdapter<W>,
         project: (W) -> D,
         fetch: suspend (com.ticketbox.data.remote.ApiService) -> W,
-    ): Result<StatsRead<D>> {
+    ): Result<ReadSnapshot<D>> = core.errorHandler.safeCall {
+        YearMonth.parse(query.month)
+        ZoneId.of(query.timezone)
+        val bound = core.ledgerRequestGuard.bindExact(query.binding)
+        val bindingKey = bindingAdapter.toJson(query.binding)
+        val ticket = core.sessionCoordinator.beginSnapshotRead()
         val token = Any()
         cacheMutex.withLock { latestReads[kind] = token }
-        val result = core.errorHandler.safeCall {
-            YearMonth.parse(query.month)
-            ZoneId.of(query.timezone)
-            val bound = core.ledgerRequestGuard.bindExact(query.binding)
-            val wire = bound.call { fetch(it) }
-            validateScope(query, wire)
-            val value = project(wire)
-            val row = StatsProjectionCacheEntity(
-                bindingKey = bindingAdapter.toJson(query.binding), ledgerId = query.binding.ledgerId,
-                kind = kind.storageKey, month = query.month, tag = query.tag.trim(), homeCurrencyCode = wire.homeCurrencyCode,
-                timezone = query.timezone, responseJson = adapter.toJson(wire), fetchedAt = Instant.now().toString(),
-            )
-            core.withActiveBindingCommit(bound) {
-                cacheMutex.withLock {
-                    if (latestReads[kind] === token) core.expenseDao.saveStatsProjection(row)
-                }
+        val wire = try {
+            bound.call { fetch(it) }
+        } catch (error: HttpException) {
+            val failure = core.errorHandler.httpFailure(error)
+            core.sessionCoordinator.rejectSnapshotAccess(bound, bindingKey, failure)
+            throw failure
+        } catch (error: Exception) {
+            if (!error.isReadTransportUnavailable()) throw error
+            return@safeCall core.sessionCoordinator.acceptSnapshotRead(ticket, bound) {
+                val cached = core.expenseDao.statsProjections(bindingKey, kind.storageKey, query.month, query.tag.trim(), query.timezone)
+                    .firstOrNull { query.homeCurrencyCode == null || it.homeCurrencyCode == query.homeCurrencyCode } ?: throw error
+                val restored = requireNotNull(adapter.fromJson(cached.responseJson))
+                validateScope(query.copy(homeCurrencyCode = cached.homeCurrencyCode), restored)
+                ReadSnapshot(project(restored), cached.fetchedAt, fromCache = true)
             }
-            StatsRead(value, row.fetchedAt, fromCache = false)
         }
-        if (result.isSuccess || statsBinding() != query.binding) return result
-        val cached = core.expenseDao.statsProjections(
-            bindingAdapter.toJson(query.binding), kind.storageKey, query.month, query.tag.trim(), query.timezone,
-        ).firstOrNull { query.homeCurrencyCode == null || it.homeCurrencyCode == query.homeCurrencyCode } ?: return result
-        val restored = runCatching {
-            val wire = requireNotNull(adapter.fromJson(cached.responseJson))
-            validateScope(query.copy(homeCurrencyCode = cached.homeCurrencyCode), wire)
-            check(statsBinding() == query.binding)
-            StatsRead(project(wire), cached.fetchedAt, fromCache = true)
+        validateScope(query, wire)
+        val value = project(wire)
+        val row = StatsProjectionCacheEntity(
+            bindingKey = bindingKey, ledgerId = query.binding.ledgerId,
+            kind = kind.storageKey, month = query.month, tag = query.tag.trim(), homeCurrencyCode = wire.homeCurrencyCode,
+            timezone = query.timezone, responseJson = adapter.toJson(wire), fetchedAt = Instant.now().toString(),
+        )
+        core.sessionCoordinator.acceptSnapshotRead(ticket, bound) {
+            cacheMutex.withLock {
+                if (latestReads[kind] === token) core.expenseDao.saveStatsProjection(row)
+            }
+            ReadSnapshot(value, row.fetchedAt, fromCache = false)
         }
-        return if (restored.isSuccess) restored else result
     }
 
     private fun validateScope(query: StatsQuery, wire: StatsProjectionDto) {

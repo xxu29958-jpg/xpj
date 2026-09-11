@@ -454,7 +454,7 @@ internal class ExpenseRepositoryCore(
     fun activeLedgerIdOrLegacy(): String = ledgerRequestGuard.activeLedgerIdOrLegacy()
 
     suspend fun clearLocalCache() {
-        expenseDao.clearAllExpenseCaches()
+        sessionCoordinator.clearLocalCache()
         apiProvider.currentLedgerId()?.let(settingsStore::clearLastConfirmedSyncAtForLedger)
     }
 

@@ -402,10 +402,10 @@ class ExpenseRepository(
 
     override fun statsBinding(): LogicalSessionBinding? = statsRepository.statsBinding()
 
-    override suspend fun monthlyStats(query: StatsQuery): Result<StatsRead<MonthlyStats>> =
+    override suspend fun monthlyStats(query: StatsQuery): Result<ReadSnapshot<MonthlyStats>> =
         statsRepository.monthlyStats(query)
 
-    override suspend fun lifestyleStats(query: StatsQuery): Result<StatsRead<LifestyleStats>> =
+    override suspend fun lifestyleStats(query: StatsQuery): Result<ReadSnapshot<LifestyleStats>> =
         statsRepository.lifestyleStats(query)
 
     override suspend fun dataQualitySummary(): Result<DataQualitySummary> =

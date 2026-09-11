@@ -17,7 +17,6 @@ import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppContentStateCopy
 import com.ticketbox.ui.components.AppContentStateSpec
 import com.ticketbox.ui.components.AppContentStateSlot
-import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.ui.components.AppLoadingState
@@ -28,7 +27,6 @@ import com.ticketbox.ui.components.AppSecondaryPageSlots
 import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.AppStatusBanner
-import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.budget.MonthSwitcher
@@ -93,11 +91,7 @@ internal fun SpendingGoalsScreen(
 @Composable
 private fun SpendingGoalsStatus(state: SpendingGoalsUiState) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        if (state.isLoading || state.goals.isNotEmpty()) {
-            AppDataAuthorityStrip(
-                tone = if (state.isLoading) DataAuthorityTone.Refreshing else DataAuthorityTone.Backend,
-            )
-        }
+        GoalReadSource(state.fetchedAt, state.fromCache, state.isLoading)
         if (!state.canModify) {
             AppStatusBanner(
                 message = UiText.res(R.string.common_readonly_ledger),

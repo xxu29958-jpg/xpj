@@ -5,6 +5,7 @@ import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.DebtListPage
+import com.ticketbox.data.repository.ReadSnapshot
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.DashboardCardUpdate
@@ -367,17 +368,17 @@ private class FakeCreateReportsActions(
     override suspend fun exportReportsOverviewCsv(query: ReportsOverviewQuery, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<CsvExport> =
         Result.failure(UnsupportedOperationException())
 
-    override suspend fun goals(month: String?, includeArchived: Boolean): Result<List<Goal>> =
-        Result.success(emptyList())
+    override suspend fun goals(month: String?, includeArchived: Boolean, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String): Result<ReadSnapshot<List<Goal>>> =
+        Result.success(ReadSnapshot(emptyList(), "2026-09-09T00:00:00Z", false))
 
-    override suspend fun goal(publicId: String): Result<Goal> =
+    override suspend fun goal(publicId: String, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String): Result<ReadSnapshot<Goal>> =
         Result.failure(UnsupportedOperationException())
 
     override suspend fun archiveGoal(publicId: String, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding): Result<Goal> =
         Result.failure(UnsupportedOperationException())
 
-    override suspend fun debtGoals(includeArchived: Boolean): Result<List<Goal>> =
-        Result.success(emptyList())
+    override suspend fun debtGoals(includeArchived: Boolean, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String): Result<ReadSnapshot<List<Goal>>> =
+        Result.success(ReadSnapshot(emptyList(), "2026-09-09T00:00:00Z", false))
 
     override suspend fun replaceDebtLinks(
         publicId: String,

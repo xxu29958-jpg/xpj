@@ -37,6 +37,10 @@ data class DebtGoalUiState(
     val isSubmitting: Boolean = false,
     val error: UiText? = null,
     val flashMessage: UiText? = null,
+    val fetchedAt: String? = null,
+    val fromCache: Boolean = false,
+    val selectedFetchedAt: String? = null,
+    val selectedFromCache: Boolean = false,
 )
 
 /**
@@ -68,6 +72,7 @@ class DebtGoalViewModel(
     // on overlay (re-)entry, pull-to-refresh) and committed mutations bump it, so a slow
     // earlier load can't revert a just-applied review to a stale row_version (→ a 409 next).
     private var loadGeneration = 0L
+    private val timezone = java.util.TimeZone.getDefault().id
 
     // The latest refresh's token. The loading flag is owned by the latest refresh, so a
     // superseded refresh clears it only when no newer refresh has taken over (i.e. it was
@@ -103,7 +108,8 @@ class DebtGoalViewModel(
         }
         if (clearStale) {
             _state.update {
-                it.copy(goals = emptyList(), selectedGoal = null, error = null, flashMessage = null)
+                it.copy(goals = emptyList(), selectedGoal = null, error = null, flashMessage = null,
+                    fetchedAt = null, fromCache = false, selectedFetchedAt = null, selectedFromCache = false)
             }
         }
         val gen = ++loadGeneration
@@ -111,7 +117,7 @@ class DebtGoalViewModel(
         latestRefreshGeneration = gen
         _state.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
-            val result = repository.debtGoals()
+            val result = repository.debtGoals(expectedBinding = binding, timezone = timezone)
             // Drop a load superseded by a newer load or a committed mutation.
             if (gen != loadGeneration || binding != adjustments.currentAccess()?.binding) {
                 // Clear our loading flag unless a newer refresh now owns it (else a
@@ -123,59 +129,47 @@ class DebtGoalViewModel(
                 return@launch
             }
             result.fold(
-                onSuccess = { goals ->
-                    // The backend list now evaluates and writer-latches debt goals in one
-                    // request. When detail is open, still refresh that one selected row so the
-                    // pane stays canonical and the witnessed in_progress -> achieved edge fires.
+                onSuccess = { read ->
+                    // The complete server list also supplies the open detail's evaluation;
+                    // a cached result never creates a newly witnessed achievement.
                     _state.update { current ->
+                        val goals = read.value.map { incoming ->
+                            current.goals.firstOrNull { it.publicId == incoming.publicId && it.rowVersion > incoming.rowVersion } ?: incoming
+                        }
+                        val completeRead = goals == read.value
                         current.copy(
                             isLoading = false,
                             canModify = repository.canModifyLedger(),
                             goals = goals,
+                            fetchedAt = if (completeRead) read.fetchedAt else current.fetchedAt,
+                            fromCache = if (completeRead) read.fromCache else current.fromCache,
                             error = null,
                         )
                     }
-                    if (_state.value.selectedGoal != null) {
-                        latchSelectedDetail(gen)
+                    _state.value.selectedGoal?.let { selected ->
+                        val listed = read.value.firstOrNull { it.publicId == selected.publicId }
+                        if (listed == null) openDetail(selected)
+                        else applyDetailRead(selected, com.ticketbox.data.repository.ReadSnapshot(
+                            listed, read.fetchedAt, read.fromCache))
                     }
                 },
                 onFailure = { err ->
-                    _state.update {
-                        it.copy(isLoading = false, error = err.toUiText(R.string.debt_goal_load_failed))
-                    }
+                    _state.update { it.withReadFailure(err) }
                 },
             )
         }
     }
 
-    /**
-     * Re-fetch the open detail after a list load. The list endpoint already performs the
-     * writer-gated latch, so this is only one canonical detail refresh for the selected pane
-     * and for the witnessed achievement-edge celebration. Generation-guarded like the others.
-     */
-    private suspend fun latchSelectedDetail(gen: Long) {
-        val selected = _state.value.selectedGoal ?: return
-        val binding = adjustmentBinding
-        // Both endpoints return the complete canonical Goal, including metadata and OCC.
-        val listed = _state.value.goals.firstOrNull { it.publicId == selected.publicId }
-        if (listed != null) _state.update { it.copy(selectedGoal = listed) }
-        val result = repository.goal(selected.publicId)
-        if (gen != loadGeneration || binding != adjustments.currentAccess()?.binding ||
-            _state.value.selectedGoal?.publicId != selected.publicId) return
-        val fresh = result.getOrElse { err ->
-            _state.update { it.copy(error = err.toUiText(R.string.debt_goal_load_failed)) }
-            listed ?: return
-        }
+    private fun applyDetailRead(old: Goal, read: com.ticketbox.data.repository.ReadSnapshot<Goal>) {
+        val fresh = read.value
+        if (fresh.rowVersion < old.rowVersion) return
         _state.update { current ->
-            if (current.selectedGoal?.publicId == fresh.publicId) {
-                current.copy(selectedGoal = fresh, goals = current.goals.replaceGoal(fresh))
-            } else {
-                current
-            }
+            if (current.selectedGoal?.publicId == fresh.publicId) current.copy(selectedGoal = fresh,
+                goals = current.goals.replaceGoal(fresh),
+                selectedFetchedAt = read.fetchedAt, selectedFromCache = read.fromCache)
+            else current
         }
-        // 主路径：详情停在 in_progress 时一次 refresh 拉到 achieved（用户在场目击跨边沿，§6.6）。
-        // 成员达成 emit overlay 撒花信号；外部/混装返回轻量 flash 文案就展示（§6.7）。
-        celebrationController.onGoalApplied(old = selected, new = fresh)?.let { flash ->
+        if (!read.fromCache) celebrationController.onGoalApplied(old, fresh)?.let { flash ->
             _state.update { it.copy(flashMessage = flash) }
         }
     }
@@ -187,28 +181,17 @@ class DebtGoalViewModel(
     fun openDetail(goal: Goal) {
         val gen = ++loadGeneration
         val binding = adjustmentBinding
-        _state.update { it.copy(selectedGoal = goal) }
+        _state.update { it.copy(selectedGoal = goal, selectedFetchedAt = it.fetchedAt,
+            selectedFromCache = it.fromCache) }
         viewModelScope.launch {
-            val fresh = repository.goal(goal.publicId).getOrNull() ?: return@launch
-            // A newer load/mutation superseded this detail fetch — don't clobber it.
+            val result = repository.goal(goal.publicId, expectedBinding = binding, timezone = timezone)
             if (gen != loadGeneration || binding != adjustments.currentAccess()?.binding) return@launch
-            _state.update { current ->
-                if (current.selectedGoal?.publicId == fresh.publicId) {
-                    current.copy(selectedGoal = fresh, goals = current.goals.replaceGoal(fresh))
-                } else {
-                    current
-                }
-            }
-            // Opening a goal whose list copy is in_progress but whose fresh detail just turned
-            // achieved is a witnessed cross-edge. An already-achieved list copy -> no replay.
-            celebrationController.onGoalApplied(old = goal, new = fresh)?.let { flash ->
-                _state.update { it.copy(flashMessage = flash) }
-            }
+            result.fold(onSuccess = { read -> applyDetailRead(goal, read) }, onFailure = { error -> _state.update { it.withReadFailure(error) } })
         }
     }
 
     fun closeDetail() {
-        _state.update { it.copy(selectedGoal = null, error = null) }
+        _state.update { it.copy(selectedGoal = null, selectedFetchedAt = null, selectedFromCache = false, error = null) }
     }
 
     /** §6/F13 exit (a): drop the debt-voided link(s) → a new goal version. */
@@ -270,7 +253,7 @@ class DebtGoalViewModel(
             val result = repository.archiveGoal(goal.publicId, binding)
             if (adjustmentBinding != binding || adjustments.currentAccess()?.binding != binding) return@launch
             result.fold(
-                onSuccess = {
+                onSuccess = { archived ->
                     // Supersede in-flight loads, drop the detail, and reload the list
                     // (the archived goal falls out of the default list).
                     loadGeneration++
@@ -278,6 +261,8 @@ class DebtGoalViewModel(
                         it.copy(
                             isSubmitting = false,
                             selectedGoal = null,
+                            goals = it.goals.filterNot { listed -> listed.publicId == archived.publicId && listed.rowVersion <= archived.rowVersion },
+                            fetchedAt = null, fromCache = false, selectedFetchedAt = null, selectedFromCache = false,
                             flashMessage = UiText.res(R.string.debt_goal_archived),
                             error = null,
                         )
@@ -307,6 +292,7 @@ class DebtGoalViewModel(
                     current.copy(
                         isSubmitting = false,
                         selectedGoal = updated,
+                        fetchedAt = null, fromCache = false, selectedFetchedAt = null, selectedFromCache = false,
                         goals = current.goals.replaceGoal(updated),
                         flashMessage = UiText.res(successRes),
                         error = null,

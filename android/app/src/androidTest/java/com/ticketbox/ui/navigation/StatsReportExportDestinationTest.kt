@@ -17,6 +17,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.core.app.ActivityOptionsCompat
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.ReadSnapshot
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CsvExport
@@ -89,7 +90,7 @@ private fun exportActions(response: CompletableDeferred<Result<CsvExport>>): Rep
         override fun dashboardAccess() = access
         override fun observeReportsAccess() = flowOf(access)
         override suspend fun reportsOverview(query: ReportsOverviewQuery, expectedBinding: LogicalSessionBinding?) = Result.success(report)
-        override suspend fun goals(month: String?, includeArchived: Boolean): Result<List<Goal>> = Result.success(emptyList())
+        override suspend fun goals(month: String?, includeArchived: Boolean, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String): Result<ReadSnapshot<List<Goal>>> = Result.success(ReadSnapshot(emptyList(), "2026-09-09T00:00:00Z", false))
         override suspend fun exportReportsOverviewCsv(query: ReportsOverviewQuery, expectedBinding: LogicalSessionBinding?) = response.await()
     }
 }
