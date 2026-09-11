@@ -77,5 +77,8 @@ Direct verification covers shared refusal/rollback, explicit continuation and
 OCC conflict, native repeated fields and original tokens, Room restart/binding,
 and actual navigation to/from the rate command. Local pure checks are bounded;
 database, native browser and Android runtime qualification remain required.
+Installed-Web producers use the actual Secure session cookie over HTTPS and
+reject unexpected login redirects. The shared Android Room fixture observes
+binding changes through the same session projection as the application graph.
 
 Status: implemented candidate; bounded review closed, exact qualification open.

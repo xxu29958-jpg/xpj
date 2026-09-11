@@ -135,7 +135,9 @@ def _historical_expense(client, headers, ledger="owner"):
         fact["original_amount_minor"], fact["amount_cents"]) == ("confirmed", "USD", "JPY", 12, 60)
     with SessionLocal() as db:
         assert require_runtime_home_currency_code(db) == "CNY"
-    page = client.get(f"/web/expenses/{fact['id']}/correct", params={"ledger_id": ledger, **RETURN})
+        assert db.get(Expense, fact["id"]).tenant_id == ledger
+    page = client.get(f"/web/expenses/{fact['id']}/correct", params={"ledger_id": ledger, **RETURN},
+        follow_redirects=False)
     assert page.status_code == 200, page.text
     form = _read_form(page, fact["id"])
     assert form.one("original_currency") == "JPY"
@@ -315,6 +317,8 @@ def test_native_ledger_switch_preserves_both_forms_without_retargeting_or_writin
     token = _connect_local_session(installed)
     headers = current_protocol_headers({"Authorization": f"Bearer {token}"})
     client = installed.browser
+    # HTTPX sends the real Secure session cookie only over HTTPS.
+    client.base_url = client.base_url.copy_with(scheme="https")
     fact, original = _historical_expense(client, headers, installed.shared_ledger_id)
     recovery = _missing_rate(client, fact, original)
     recovery.set("fx_rate_to_cny", "0.08")

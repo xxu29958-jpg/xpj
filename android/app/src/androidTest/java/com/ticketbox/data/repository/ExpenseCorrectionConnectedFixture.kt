@@ -52,6 +52,7 @@ import java.time.ZoneOffset
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
 import okhttp3.ResponseBody
@@ -102,6 +103,7 @@ internal class ExpenseCorrectionConnectedFixture(
         database?.close()
         val db = Room.databaseBuilder(context, AppDatabase::class.java, name).build().also { database = it }
         outbox = OutboxRepository(db.pendingMutationDao(), clock, onRowsDeleted = {}, bindingProvider = { session.value.toOutboxBinding() },
+            bindingChanges = session.map { it.toOutboxBinding() },
             onEnqueued = { schedules++ })
         val sessions = object : LocalSessionStore by correctionProxy<LocalSessionStore>({ method -> when (method) {
             "currentSession" -> session.value
