@@ -2,6 +2,7 @@ package com.ticketbox.ui.screens
 
 import android.content.Context
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -9,6 +10,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.espresso.Espresso.closeSoftKeyboard
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CurrencyCode
@@ -35,21 +37,37 @@ class ManualExpenseDefaultChangeTest {
                 )
             }
         }
-        compose.onAllNodes(hasSetTextAction())[0].performTextInput("12")
+        enterAmount()
         compose.runOnIdle { defaultCurrency.value = CurrencyCode.JPY }
         save()
-        assertEquals(CurrencyCode.CNY, submitted.single().originalCurrencyCode)
-        assertEquals(1200L, submitted.single().originalAmountMinor)
-        assertEquals(CurrencyCode.CNY, submitted.single().ledgerHomeCurrency)
+        val original = compose.runOnIdle {
+            assertEquals(1, submitted.size)
+            submitted.single()
+        }
+        assertEquals(CurrencyCode.CNY, original.originalCurrencyCode)
+        assertEquals(1200L, original.originalAmountMinor)
+        assertEquals(CurrencyCode.CNY, original.ledgerHomeCurrency)
 
         compose.runOnIdle { visible.value = false }
         compose.waitForIdle()
         compose.runOnIdle { visible.value = true }
-        compose.onAllNodes(hasSetTextAction())[0].performTextInput("12")
+        enterAmount()
         save()
-        assertEquals(CurrencyCode.JPY, submitted.last().originalCurrencyCode)
-        assertEquals(12L, submitted.last().originalAmountMinor)
-        assertEquals(CurrencyCode.JPY, submitted.last().ledgerHomeCurrency)
+        val next = compose.runOnIdle {
+            assertEquals(2, submitted.size)
+            submitted.last()
+        }
+        assertEquals(CurrencyCode.JPY, next.originalCurrencyCode)
+        assertEquals(12L, next.originalAmountMinor)
+        assertEquals(CurrencyCode.JPY, next.ledgerHomeCurrency)
+    }
+
+    private fun enterAmount() {
+        val amount = compose.onAllNodes(hasSetTextAction())[0]
+        amount.performTextInput("12")
+        amount.assertTextEquals("12")
+        closeSoftKeyboard()
+        compose.waitForIdle()
     }
 
     private fun save() {
