@@ -11,7 +11,8 @@ Covers the Undo invariants:
   all collapse to 404 so client just re-fetches).
 - Past-window reject → 404, even though row physically exists. Simulated by
   hand-aging ``rejected_at`` past the 5-min cutoff in ``soft_delete_policy``.
-- Double-undo: second ``POST /undo`` is a no-op 404 (row already pending).
+- A new Undo intent on an already restored row returns 404. A replay of the
+  accepted Undo's original key/body returns its original successful receipt.
 - Cross-tenant: undo on another ledger's rejected expense → 404 (ledger-scoped
   WHERE matches zero rows, indistinguishable from missing).
 - No-auth: missing token → 401 (route-test-matrix audit gate).
@@ -26,7 +27,10 @@ ADR-0038 undo pattern is consistent across all three resources that support it.
 from __future__ import annotations
 
 from datetime import timedelta
+from uuid import uuid4
 
+import httpx
+import pytest
 from api_contract_helpers import (
     confirm_expense_api,
     patch_expense,
@@ -34,10 +38,12 @@ from api_contract_helpers import (
     undo_expense_api,
 )
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import event, func, select
+from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
-from app.models import Expense, LedgerAuditLog
+from app.errors import AppError
+from app.models import ApiIdempotencyKey, Expense, LedgerAuditLog
 from app.services.soft_delete_policy import SOFT_DELETE_RETENTION
 from app.services.time_service import now_utc
 from tests._infra.assets import PNG_BYTES
@@ -75,6 +81,148 @@ def _reject(client: TestClient, expense_id: int, *, identity) -> None:
     resp = reject_expense_api(client, expense_id, headers=identity.app_headers)
     assert resp.status_code == 200, resp.text
     assert resp.json()["status"] == "rejected"
+
+
+def _post_losing_successful_ack(client, monkeypatch, endpoint, *, headers, body):
+    def lose_response(response):
+        if response.request.method == "POST" and response.request.url.path == endpoint and response.status_code == 200:
+            raise httpx.ReadError("accepted response was not delivered", request=response.request)
+
+    with monkeypatch.context() as patch:
+        patch.setitem(client.event_hooks, "response", [lose_response])
+        with pytest.raises(httpx.ReadError, match="accepted response was not delivered"):
+            client.post(endpoint, headers=headers, json=body)
+
+
+def test_replayed_original_reject_cannot_supply_a_later_rejections_undo_token(client, identity, monkeypatch):
+    expense_id = _create_pending(client, identity=identity)
+    endpoint = f"/api/expenses/{expense_id}"
+    initial = client.get(endpoint, headers=identity.app_headers)
+    assert initial.status_code == 200, initial.text
+    original_body = {"expected_row_version": initial.json()["row_version"]}
+    original_headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
+    _post_losing_successful_ack(client, monkeypatch, f"{endpoint}/reject",
+        headers=original_headers, body=original_body)
+    with SessionLocal() as db:
+        first = db.get(Expense, expense_id)
+        assert first is not None and first.status == "rejected"
+        first_version, first_rejected_at = first.row_version, first.rejected_at
+        assert first_version == original_body["expected_row_version"] + 1
+
+    undo = client.post(f"{endpoint}/undo",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": first_version})
+    assert undo.status_code == 200, undo.text
+    second = client.post(f"{endpoint}/reject",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": undo.json()["row_version"]})
+    assert second.status_code == 200, second.text
+    second_version = second.json()["row_version"]
+    assert second_version > first_version
+
+    replay = client.post(f"{endpoint}/reject", headers=original_headers, json=original_body)
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["row_version"] == first_version
+    assert replay.json()["status"] == "rejected"
+    assert replay.json()["rejected_at"] == first_rejected_at.isoformat().replace("+00:00", "Z")
+    stale_undo = client.post(f"{endpoint}/undo",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": replay.json()["row_version"]})
+    assert stale_undo.status_code == 404, stale_undo.text
+    assert stale_undo.json()["error"] == "expense_not_found"
+    with SessionLocal() as db:
+        current = db.get(Expense, expense_id)
+        assert (current.status, current.row_version) == ("rejected", second_version)
+        receipt = db.scalar(select(ApiIdempotencyKey).where(
+            ApiIdempotencyKey.idempotency_key == original_headers["Idempotency-Key"]))
+        assert receipt.response_body == replay.json()
+        assert db.scalar(select(func.count()).select_from(LedgerAuditLog).where(
+            LedgerAuditLog.resource_public_id == current.public_id,
+            LedgerAuditLog.resource_type == "expense", LedgerAuditLog.action == "undo")) == 1
+
+
+def test_undo_ack_loss_replays_original_success_without_a_second_restore(client, identity, monkeypatch):
+    expense_id = _create_pending(client, identity=identity)
+    _reject(client, expense_id, identity=identity)
+    endpoint = f"/api/expenses/{expense_id}"
+    rejected = client.get(endpoint, headers=identity.app_headers)
+    assert rejected.status_code == 200, rejected.text
+    original_body = {"expected_row_version": rejected.json()["row_version"]}
+    key = str(uuid4())
+    original_headers = {**identity.app_headers, "Idempotency-Key": key}
+    _post_losing_successful_ack(client, monkeypatch, f"{endpoint}/undo",
+        headers=original_headers, body=original_body)
+    with SessionLocal() as db:
+        restored = db.get(Expense, expense_id)
+        assert (restored.status, restored.row_version, restored.rejected_at) == (
+            "pending", original_body["expected_row_version"] + 1, None)
+        restored_version = restored.row_version
+    replay = client.post(f"{endpoint}/undo", headers=original_headers, json=original_body)
+    assert replay.status_code == 200, replay.text
+    assert (replay.json()["status"], replay.json()["row_version"], replay.json()["rejected_at"]) == (
+        "pending", restored_version, None)
+    with SessionLocal() as db:
+        current = db.get(Expense, expense_id)
+        assert (current.status, current.row_version) == ("pending", restored_version)
+        receipt = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == key))
+        assert receipt is not None and receipt.status == "succeeded"
+        assert receipt.response_body == replay.json()
+        assert db.scalar(select(func.count()).select_from(LedgerAuditLog).where(
+            LedgerAuditLog.resource_public_id == current.public_id,
+            LedgerAuditLog.resource_type == "expense", LedgerAuditLog.action == "undo")) == 1
+
+
+@pytest.mark.parametrize("operation", ["reject", "undo"])
+def test_reject_or_undo_commit_failure_keeps_fact_audit_and_original_key_atomic(
+    client, identity, operation,
+):
+    expense_id = _create_pending(client, identity=identity)
+    if operation == "undo":
+        _reject(client, expense_id, identity=identity)
+    endpoint = f"/api/expenses/{expense_id}/{operation}"
+    with SessionLocal() as db:
+        original = db.get(Expense, expense_id)
+        original_status, original_version, original_rejected_at = original.status, original.row_version, original.rejected_at
+        public_id = original.public_id
+    intended_status = "rejected" if operation == "reject" else "pending"
+    key = str(uuid4())
+    headers = {**identity.app_headers, "Idempotency-Key": key}
+    body = {"expected_row_version": original_version}
+    interrupted = []
+
+    def fail_business_commit(session):
+        if session.in_nested_transaction():
+            return
+        actual = session.get(Expense, expense_id, populate_existing=True)
+        if actual is None or (actual.status, actual.row_version) != (intended_status, original_version + 1):
+            return
+        interrupted.append((actual.status, actual.row_version))
+        raise AppError("server_error", status_code=503)
+
+    event.listen(Session, "before_commit", fail_business_commit)
+    try:
+        failed = client.post(endpoint, headers=headers, json=body)
+    finally:
+        event.remove(Session, "before_commit", fail_business_commit)
+    assert interrupted == [(intended_status, original_version + 1)], "must interrupt the actual business commit"
+    assert failed.status_code == 503, failed.text
+    audit_query = select(func.count()).select_from(LedgerAuditLog).where(
+        LedgerAuditLog.resource_public_id == public_id,
+        LedgerAuditLog.resource_type == "expense", LedgerAuditLog.action == "undo")
+    with SessionLocal() as db:
+        current = db.get(Expense, expense_id)
+        assert (current.status, current.row_version, current.rejected_at) == (
+            original_status, original_version, original_rejected_at)
+        assert db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == key)) is None
+        assert db.scalar(audit_query) == 0
+    retried = client.post(endpoint, headers=headers, json=body)
+    assert retried.status_code == 200, retried.text
+    assert (retried.json()["status"], retried.json()["row_version"]) == (intended_status, original_version + 1)
+    with SessionLocal() as db:
+        receipt = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == key))
+        assert receipt is not None and receipt.status == "succeeded"
+        assert receipt.response_body == retried.json()
+        assert db.scalar(audit_query) == int(operation == "undo")
 
 
 def test_undo_after_reject_restores_pending_and_writes_audit(
