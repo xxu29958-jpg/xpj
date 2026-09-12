@@ -88,6 +88,7 @@ not reopen any Windows lifecycle HOLD.
   sanctioned writes or treating declarations as calls. Receipt adoption uses
   the same accepted result once, preserving version and source semantics.
 
-Status: implemented candidate; bounded review closed. Direct producer and
-audit corrections plus the genuine generated schema await exact cloud/Connected
-qualification; no local Gradle or long suite has run.
+Status: #401 CLOSED and independently main-qualified at f06983be. Candidate
+CI34591130351, CodeQL34591130415 and Connected34591130460 passed; main
+CI34593146043, CodeQL34593145923 and Connected34593145951 passed. No local
+Gradle or long suite ran. Budget/debt offline queries remain separate RC work.

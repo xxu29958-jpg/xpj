@@ -117,9 +117,9 @@ slice. Full Internal Beta RC completion is still outstanding.
 | Batch remainder and saved CSV continuation | `STRONG_SLICE`; #381 and #384 CLOSED, integrated and main-qualified. Full capture journey remains | [Batch](TICKETBOX_CAPTURE_BATCH_CONTINUATION_CONTRACT.md), [CSV](TICKETBOX_CSV_IMPORT_CONTINUATION_CONTRACT.md) |
 | Confirmed facts and composite correction | `STRONG_SLICE`; #382 CLOSED, durable correction owner integrated and main-qualified; actual OS interruption remains to rehearse | [Correction contract](TICKETBOX_EXPENSE_CORRECTION_CONTINUITY_CONTRACT.md) |
 | Recognition and assisted entry | `STRONG_SLICE`; #353 CLOSED. Shared configured suggestions remain drafts. Debt image/binding continuity #386 CLOSED, integrated and main-qualified | [Journeys](TICKETBOX_USER_JOURNEYS_CONTRACT.md#recognition-and-assisted-entry), [Debt image contract](TICKETBOX_DEBT_BILL_BINDING_CONTRACT.md) |
-| Currency choice and correction | `PARTIAL`; #397 CLOSED, explicit choice, changeable defaults and recorded-money consumers are integrated and main-qualified. Historical FX correction continuation remains | [Currency contract](TICKETBOX_CURRENCY_CHOICE_CORRECTION_CONTRACT.md) |
+| Currency choice and correction | `PARTIAL`; #397 CLOSED, explicit choice, changeable defaults and recorded-money consumers are integrated and main-qualified. Historical FX correction continuation #399 is also integrated and main-qualified | [Currency contract](TICKETBOX_CURRENCY_CHOICE_CORRECTION_CONTRACT.md) |
 | One-bill manual FX recovery | `STRONG_SLICE`; #355 CLOSED. Shared pending Expense editor, canonical review and Android PatchExpense intent | [FX journey](TICKETBOX_USER_JOURNEYS_CONTRACT.md#missing-fx-rate-recovery) |
-| Historical correction FX continuation | `PARTIAL`; exact missing pair/date, separate rate save and return to the original correction are implemented candidates awaiting qualification | [Historical FX](TICKETBOX_HISTORICAL_FX_CONTINUATION_CONTRACT.md) |
+| Historical correction FX continuation | `STRONG_SLICE`; #399 CLOSED. Exact pair/date, independent rate save and original correction continuation are integrated and main-qualified | [Historical FX](TICKETBOX_HISTORICAL_FX_CONTINUATION_CONTRACT.md) |
 | Manual expense and browser draft | `STRONG_SLICE`; #398 CLOSED. Durable admission, original receipt replay and visible submission continuation are integrated and independently main-qualified; remaining cross-client interruption rehearsal stays in delivery | [Manual continuity](TICKETBOX_MANUAL_CREATION_CONTINUITY_CONTRACT.md), [Manual entry](TICKETBOX_USER_JOURNEYS_CONTRACT.md#manual-expense-entry) |
 | External debt, split and reimbursement | `STRONG_SLICE`; existing relationship owners and #361 context integrated; complete settlement journeys remain | [Debt context](TICKETBOX_USER_JOURNEYS_CONTRACT.md#external-debt-context), [Plan](../superpowers/plans/2026-09-05-debt-context.md) |
 | Android external-debt creation and recovery | `STRONG_SLICE`; #369/#370 CLOSED. Original submitted intent and readable retry/discard; keyboard, OS interruption and unsubmitted editing restoration remain | [Convenience plan](../superpowers/plans/2026-09-05-consumer-art-convenience.md) |
@@ -132,7 +132,7 @@ slice. Full Internal Beta RC completion is still outstanding.
 | Public admin exposure | `RETIRED`; #383 CLOSED. Local governance boundary integrated and main-qualified; lawful remote ledger consumers remain | [Governance contract](TICKETBOX_LOCAL_GOVERNANCE_BOUNDARY_CONTRACT.md) |
 | Advisor readiness and FX worker recovery | `STRONG_SLICE`; #376/#374 CLOSED. Existing factory/consent/role and worker/lease owners; configuration and observed results stay distinct | [Migrated evidence](../qualification/2026-09-07-product-atlas-history.md) |
 | Runtime diagnostics and task recovery | `PARTIAL`; #389 CLOSED, original-bill continuation integrated and main-qualified. Ordinary connection diagnosis/recovery #390 CLOSED, integrated and main-qualified | [#389](https://github.com/xxu29958-jpg/xpj/pull/389), Backstage delivery below |
-| Durable offline financial reads | `PARTIAL`; expense/statistics storage exists. Goal list/detail reopening and explicit-access-refusal handling are under construction; budget and debt query persistence remain. Page memory, drafts and command receipts do not prove offline query coverage | [Goal read contract](TICKETBOX_GOAL_OFFLINE_READING_CONTRACT.md) |
+| Durable offline financial reads | `PARTIAL`; expense/statistics storage exists. Goal list/detail reopening and explicit-access-refusal handling #401 are integrated and main-qualified; budget and debt query persistence remain. Page memory, drafts and command receipts do not prove offline query coverage | [Goal read contract](TICKETBOX_GOAL_OFFLINE_READING_CONTRACT.md) |
 | Android offline publication across mutation families | `STRONG_SLICE`; preserve dispatcher/label coverage, original context and explicit recovery; never show raw keys or silently discard intent | Cross-client delivery below and affected slice contracts |
 | Consumer visual art and convenience | `PARTIAL`; selected art/frame/forms integrated. Full consumer art and real cross-screen interaction acceptance remain required | [Art / convenience plan](../superpowers/plans/2026-09-05-consumer-art-convenience.md) |
 | Windows Fresh G2 | `CLOSED`; preserve qualification boundary | Executable current-product counterexample required to reopen minimal host work |
@@ -178,11 +178,12 @@ feedback and efficient actions within each active capability change.
 [Member settlement evidence](TICKETBOX_MEMBER_SETTLEMENT_CONTINUITY_CONTRACT.md).
 [Spending-goal continuity evidence](TICKETBOX_PLANNING_GOAL_CONTINUITY_CONTRACT.md).
 
-**Next action:** #397/#398/#400 are independently main-qualified. Qualify
-[historical FX continuation](TICKETBOX_HISTORICAL_FX_CONTINUATION_CONTRACT.md)
-(#399) and the merged [Goal reads](TICKETBOX_GOAL_OFFLINE_READING_CONTRACT.md)
-(#401), then continue the remaining high-frequency offline read gaps. Original
-submission receipts remain distinct from queries; preserve offline intent throughout.
+**Next action:** close [financial read propagation](TICKETBOX_FINANCIAL_READ_PROPAGATION_CONTRACT.md)
+through retained Planning/Insights and original-task entries; then recover unknown
+results of direct financial commands. Correct shared-timezone configuration scope
+and missing frozen FX evidence in exports, then complete budget/debt offline reads.
+Original submission receipts remain distinct from queries. Discover remaining gaps
+through the delivery packages and actual journeys, not only reported defects.
 Preserve draft #372 for the later detail wave.
 The full Goal and all remaining packages above stay active.
 

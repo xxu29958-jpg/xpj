@@ -32,6 +32,7 @@ import com.ticketbox.data.remote.dto.IncomePlanListResponseDto
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.AppThemeMode
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import com.ticketbox.ui.theme.TicketboxTheme
 import java.time.YearMonth
 import java.util.concurrent.CopyOnWriteArrayList
@@ -49,13 +50,17 @@ class PlanningFinancialRefreshRouteTest {
     private val transport = PlanningBudgetTransport()
     private val harness = FactEntryNavigationHarness(context, transport::wrap)
     private val mounted = mutableStateOf(true)
+    private val skin = mutableStateOf(AppSkin.Paper)
     private lateinit var outer: NavHostController
 
     init {
         harness.fixture.network.current = harness.fixture.network.current.copy(
-            status = "pending", confirmedAt = null, homeCurrencyCode = "JPY", amountCents = 400,
+            status = "pending", confirmedAt = null, homeCurrency = "JPY",
+            originalCurrency = "JPY", originalCurrencyCode = "JPY", originalAmountMinor = 400, amountCents = 400,
         )
-        transport.hasConfirmedExpense = { harness.fixture.network.current.status == "confirmed" }
+        transport.confirmedAmount = { harness.fixture.network.current.let {
+            if (it.status == "confirmed") requireNotNull(it.amountCents) else 0L
+        } }
     }
 
     @After fun close() {
@@ -112,10 +117,46 @@ class PlanningFinancialRefreshRouteTest {
         assertTrue(!row.idempotencyKey.isNullOrBlank())
     }
 
+    @Test fun acceptedBackgroundCorrectionRefreshesTheRetainedPlanWithoutACompletionCallback() {
+        val fixture = harness.fixture
+        fixture.network.current = fixture.network.current.copy(status = "confirmed", confirmedAt = "2026-09-06T00:00:00Z")
+        fixture.network.loseResponse = false
+        showPlans()
+        waitForText("¥2,000")
+        compose.onNodeWithText("¥2,000").assertIsDisplayed()
+        switchDomain(PrimaryDomain.Inbox)
+
+        val repository = fixture.graph.expenseRepository
+        runBlocking {
+            val binding = requireNotNull(repository.captureDeferredLedgerBinding())
+            val originalFact = repository.fetchExpense(42).getOrThrow()
+            repository.submitCorrection(binding, originalFact,
+                ExpenseCorrectionDraft("核对实际支出", originalAmountMinor = 800)).getOrThrow()
+        }
+        val original = fixture.stored().single()
+        assertEquals("pending", original["status"])
+        assertEquals(1, runBlocking { fixture.drain().done })
+        assertEquals("done", fixture.stored().single()["status"])
+        for (column in listOf("payload", "idempotencyKey", "expectedRowVersion", "ledgerId", "ownerKey")) {
+            assertEquals(column, original[column], fixture.stored().single()[column])
+        }
+        assertEquals(800L, fixture.network.current.amountCents)
+        assertTrue(fixture.network.editCalls.isEmpty())
+
+        switchDomain(PrimaryDomain.Plans)
+        waitForText("¥1,600")
+        compose.onNodeWithText("¥1,600").assertIsDisplayed()
+        val acceptedReads = transport.reads.size
+        compose.runOnIdle { skin.value = AppSkin.Default }
+        compose.waitForIdle()
+        compose.onNodeWithText("¥1,600").assertIsDisplayed()
+        assertEquals("Appearance recomposition is not another financial change", acceptedReads, transport.reads.size)
+    }
+
     private fun showPlans() {
         compose.setContent {
             if (mounted.value) CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
-                TicketboxTheme(skin = AppSkin.Paper) {
+                TicketboxTheme(skin = skin.value) {
                     outer = rememberNavController()
                     MainNavGraph(
                         MainNavigationRuntime(outer, harness.shell, harness.screenFactory),
@@ -155,14 +196,14 @@ class PlanningFinancialRefreshRouteTest {
 
 private class PlanningBudgetTransport {
     val reads = CopyOnWriteArrayList<String>()
-    var hasConfirmedExpense: () -> Boolean = { false }
+    var confirmedAmount: () -> Long = { 0L }
     var budgetEditedElsewhere = false
 
     fun wrap(delegate: ApiService): ApiService = object : ApiService by delegate {
         override suspend fun monthlyBudget(month: String, timezone: String?): BudgetMonthlyDto {
             reads += month
             val total = if (budgetEditedElsewhere) 4800L else 2400L
-            val spent = if (hasConfirmedExpense()) 400L else 0L
+            val spent = confirmedAmount()
             return BudgetMonthlyDto(ledgerId = "correction-ledger", month = month, configured = true,
                 totalAmountCents = total, rolloverAmountCents = 0, fixedAmountCents = 0, nonMonthlyAmountCents = 0,
                 flexBudgetCents = total, spentAmountCents = spent, excludedAmountCents = 0,
