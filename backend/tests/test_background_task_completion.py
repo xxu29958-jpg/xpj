@@ -106,3 +106,21 @@ def test_child_submission_refusal_preserves_completed_parent(worker, monkeypatch
     monkeypatch.setattr("app.services.background_task_executor.submit_committed", refuse)
     background_task_worker.run_task(1, {}, registry)
     assert parent.status == "completed" and child.status == "failed"
+
+
+def test_completion_rechecks_a_task_retired_after_the_handler_loaded_it(worker):
+    db, parent, _child = worker
+    completion = Mock(side_effect=AssertionError("A retired original cannot admit a child"))
+
+    def refresh(task, **_kwargs):
+        assert task is parent
+        task.status = "cancelled"
+
+    db.refresh.side_effect = refresh
+    registry = CompletionRegistry(lambda *_: None, completion)
+
+    background_task_worker.run_task(1, {}, registry)
+
+    completion.assert_not_called()
+    assert parent.status == "cancelled"
+    db.flush.assert_not_called()

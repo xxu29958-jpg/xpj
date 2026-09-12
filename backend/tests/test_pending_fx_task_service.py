@@ -15,7 +15,7 @@ from app.auth import get_current_writer_context
 from app.database import SessionLocal
 from app.errors import AppError
 from app.models import BackgroundTask, Device, Expense, LedgerMember
-from app.services import background_task_service, background_task_worker
+from app.services import background_task_admission, background_task_service, background_task_worker
 from app.services import pending_fx_task_service as service
 from app.services.background_task_admission import BackgroundTaskCapacityFullError
 from app.services.currency_binding_service import resolve_write_capability
@@ -264,6 +264,7 @@ def test_optional_admission_capacity_does_not_rollback_staged_bill(identity, mon
 def test_edit_with_auto_sync_off_excludes_old_task_and_manual_request_uses_new_input(
     client, identity, monkeypatch, finish_stale_task,
 ):
+    monkeypatch.setattr(background_task_admission, "get_settings", lambda: SimpleNamespace(background_task_max_active=1))
     expense_id, version, task_id, _ = _seed_pending_task(identity)
     submitted = Mock()
     monkeypatch.setattr("app.services.background_task_executor.submit_task", submitted)
@@ -292,3 +293,123 @@ def test_edit_with_auto_sync_off_excludes_old_task_and_manual_request_uses_new_i
         original = json.loads(task.input_payload_json)
         assert (original["expected_row_version"], original["original_amount_minor"], original["rate_date"]) == (
             current_version, 2000, "2026-05-30")
+
+
+def test_repeated_pending_edits_replace_obsolete_tasks_within_one_active_slot(client, identity, monkeypatch):
+    monkeypatch.setattr(background_task_admission, "get_settings", lambda: SimpleNamespace(background_task_max_active=1))
+    submitted = Mock()
+    monkeypatch.setattr("app.services.background_task_executor.submit_task", submitted)
+    expense_id, version, task_id, _ = _seed_pending_task(identity)
+    original_inputs = {}
+    with SessionLocal() as db:
+        original_inputs[task_id] = db.get(BackgroundTask, task_id).input_payload_json
+
+    for amount in (2000, 3000, 4000):
+        response = client.patch(f"/api/expenses/{expense_id}",
+            headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+            json={"expected_row_version": version, "original_amount_minor": amount})
+        assert response.status_code == 200, response.text
+        expense = response.json()
+        version = expense["row_version"]
+        assert expense["fx_task"] is not None, "The current pending revision must retain automatic FX continuation"
+        with SessionLocal() as db:
+            tasks = list(db.scalars(select(BackgroundTask).where(BackgroundTask.source_expense_id == expense_id)
+                .order_by(BackgroundTask.id)))
+            active = [task for task in tasks if task.status in {"queued", "running"}]
+            assert len(active) == 1
+            current, = active
+            assert current.public_id == expense["fx_task"]["public_id"]
+            assert current.id != task_id and current.status == "queued"
+            original = json.loads(current.input_payload_json)
+            assert (original["expense_id"], original["expected_row_version"], original["original_amount_minor"]) == (
+                expense_id, version, amount)
+            for previous in tasks[:-1]:
+                assert previous.status == "cancelled"
+                assert previous.input_payload_json == original_inputs[previous.id]
+            original_inputs[current.id] = current.input_payload_json
+            task_id = current.id
+
+    provider = Mock(return_value=_daily())
+    monkeypatch.setattr(service, "fetch_pending_fx_reference", provider)
+    for historical_id in original_inputs:
+        _run(historical_id)
+    provider.assert_called_once()
+    with SessionLocal() as db:
+        current_expense = db.get(Expense, expense_id)
+        assert (current_expense.original_amount_minor, current_expense.amount_cents, current_expense.row_version) == (
+            4000, 28000, version + 1)
+        assert current_expense.status == "pending" and current_expense.confirmed_at is None
+
+
+@pytest.mark.parametrize("edit_at", ["provider", "apply"])
+def test_edit_during_running_fx_releases_original_slot_without_applying_old_result(client, identity, monkeypatch, edit_at):
+    monkeypatch.setattr(background_task_admission, "get_settings", lambda: SimpleNamespace(background_task_max_active=1))
+    monkeypatch.setattr("app.services.background_task_executor.submit_task", Mock())
+    expense_id, version, task_id, _ = _seed_pending_task(identity)
+    with SessionLocal() as db:
+        original_input = db.get(BackgroundTask, task_id).input_payload_json
+    edited = []
+
+    def edit_original():
+        response = client.patch(f"/api/expenses/{expense_id}",
+            headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+            json={"expected_row_version": version, "original_amount_minor": 2000})
+        assert response.status_code == 200, response.text
+        edited.append(response.json())
+
+    def fetch(_original):
+        if edit_at == "provider":
+            edit_original()
+        return _daily()
+
+    apply = service.apply_pending_fx
+
+    def apply_after_edit(db, original, daily):
+        if edit_at == "apply":
+            edit_original()
+        return apply(db, original, daily)
+
+    monkeypatch.setattr(service, "fetch_pending_fx_reference", fetch)
+    monkeypatch.setattr(service, "apply_pending_fx", apply_after_edit)
+    _run(task_id)
+
+    assert edited[0]["fx_task"] is not None, "A slow obsolete provider must not prevent the replacement admission"
+    with SessionLocal() as db:
+        old, expense = db.get(BackgroundTask, task_id), db.get(Expense, expense_id)
+        assert old.status == "cancelled" and old.input_payload_json == original_input
+        assert (expense.original_amount_minor, expense.amount_cents, expense.row_version) == (2000, None, version + 1)
+        replacement = db.scalar(select(BackgroundTask).where(BackgroundTask.public_id == edited[0]["fx_task"]["public_id"]))
+        assert replacement.status == "queued" and replacement.id != task_id
+        replacement_id = replacement.id
+    monkeypatch.setattr(service, "fetch_pending_fx_reference", Mock(return_value=_daily()))
+    monkeypatch.setattr(service, "apply_pending_fx", apply)
+    _run(replacement_id)
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert (expense.status, expense.amount_cents, expense.row_version) == ("pending", 14000, version + 2)
+
+
+def test_replacement_preserves_committed_fx_receipt_before_old_worker_terminal_publication(client, identity, monkeypatch):
+    monkeypatch.setattr(background_task_admission, "get_settings", lambda: SimpleNamespace(background_task_max_active=1))
+    monkeypatch.setattr("app.services.background_task_executor.submit_task", Mock())
+    monkeypatch.setattr(service, "fetch_pending_fx_reference", Mock(return_value=_daily()))
+    expense_id, version, task_id, _ = _seed_pending_task(identity)
+    with SessionLocal() as db:
+        original = background_task_worker.claim_queued_task(db, task_id)
+        service.run_pending_expense_fx_task(db, original, {})
+        assert original.status == "running"
+        receipt, original_input = original.result_summary_json, original.input_payload_json
+        assert json.loads(receipt)["outcome"] == "updated"
+
+    response = client.patch(f"/api/expenses/{expense_id}",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": version + 1, "original_amount_minor": 2000,
+            "spent_at": "2026-06-02T04:00:00Z"})
+    assert response.status_code == 200, response.text
+    assert response.json()["fx_task"] is not None, "Committed old evidence must not block the new dated continuation"
+    with SessionLocal() as db:
+        original = db.get(BackgroundTask, task_id)
+        assert original.status == "completed" and original.cancellation_requested_at is None
+        assert (original.result_summary_json, original.input_payload_json) == (receipt, original_input)
+        expense = db.get(Expense, expense_id)
+        assert (expense.original_amount_minor, expense.amount_cents, expense.row_version) == (2000, None, version + 2)
