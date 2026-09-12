@@ -4,6 +4,7 @@ import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
+import com.ticketbox.data.remote.ApiService
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -37,13 +38,42 @@ internal class RejectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestB
     )
 
     private fun dispatcherFor(
-        stub: ApiServiceStub,
+        stub: ApiService,
         publishExpense: suspend (String, ExpenseDto) -> Unit = { _, _ -> },
     ) = RejectExpenseDispatcher(
         apiProvider = { stub },
         payloadAdapter = moshi().adapter(ExpenseStateTokenRequest::class.java),
         publishExpense = publishExpense,
     )
+
+    @Test
+    fun `accepted reject retains its receipt when cache publication fails`() = runTest {
+        val response = successExpenseDto().copy(status = "rejected")
+        val stub = ApiServiceStub(rejectExpenseResult = ApiResult.Success(response))
+        val row = rejectRow(idempotencyKey = "cache-failure-key")
+        val api = object : ApiService by stub {
+            override suspend fun rejectExpense(
+                id: String,
+                request: ExpenseStateTokenRequest,
+                idempotencyKey: String?,
+            ): ExpenseDto {
+                assertEquals("42", id)
+                assertEquals(ExpenseStateTokenRequest(expectedRowVersion = row.expectedRowVersion), request)
+                return stub.rejectExpense(id, request, idempotencyKey)
+            }
+        }
+        var publicationAttempts = 0
+        val result = dispatcherFor(api) { ledgerId, expense ->
+            assertEquals(row.ledgerId, ledgerId)
+            assertEquals(response, expense)
+            publicationAttempts++
+            throw IllegalStateException("cache unavailable")
+        }.dispatch(row)
+
+        assertEquals(row.idempotencyKey, stub.lastRejectIdempotencyKey)
+        assertEquals(1, publicationAttempts)
+        assertEquals(DispatchResult.Success(newRowVersion = 2L, cacheRefreshVersion = 2L), result)
+    }
 
     @Test
     fun `dispatch replays the row's idempotency key and returns the new row_version`() = runTest {

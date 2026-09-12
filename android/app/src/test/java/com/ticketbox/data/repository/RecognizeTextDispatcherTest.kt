@@ -107,11 +107,35 @@ class RecognizeTextDispatcherTest {
         }
     }
 
-    private fun dispatcherFor(stub: ApiService) = RecognizeTextDispatcher(
+    private fun dispatcherFor(
+        stub: ApiService,
+        publishExpense: suspend (String, ExpenseDto) -> Unit = { ledgerId, expense -> published += ledgerId to expense },
+    ) = RecognizeTextDispatcher(
         apiProvider = { stub },
         payloadAdapter = moshi().adapter(ExpenseRecognizeTextRequestDto::class.java),
-        publishExpense = { ledgerId, expense -> published += ledgerId to expense },
+        publishExpense = publishExpense,
     )
+
+    @Test
+    fun `accepted text recognition retains its receipt when cache publication fails`() = runTest {
+        val response = recognizedExpenseDto(rowVersion = 8L)
+        val stub = Stub(Result.success(response))
+        val row = recognizeTextRow(idempotencyKey = "cache-failure-key")
+        var publicationAttempts = 0
+        val result = dispatcherFor(stub) { ledgerId, expense ->
+            assertEquals(row.ledgerId, ledgerId)
+            assertEquals(response, expense)
+            publicationAttempts++
+            throw IllegalStateException("cache unavailable")
+        }.dispatch(row)
+
+        val expectedRequest = requireNotNull(moshi().adapter(ExpenseRecognizeTextRequestDto::class.java).fromJson(row.payloadJson))
+            .copy(expectedRowVersion = row.expectedRowVersion)
+        assertEquals(row.idempotencyKey, stub.lastIdempotencyKey)
+        assertEquals(expectedRequest, stub.lastRequest)
+        assertEquals(1, publicationAttempts)
+        assertEquals(DispatchResult.Success(newRowVersion = 8L, cacheRefreshVersion = 8L), result)
+    }
 
     @Test
     fun `dispatch replays the row's idempotency key and returns the parent row_version`() = runTest {

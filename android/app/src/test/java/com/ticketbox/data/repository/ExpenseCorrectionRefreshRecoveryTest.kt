@@ -2,6 +2,7 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.PendingMutationEntity
 import com.ticketbox.data.local.PendingMutationDao
+import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ConfirmedExpenseStreamItemDto
@@ -26,6 +27,37 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 internal class ExpenseCorrectionRefreshRecoveryTest {
+    @Test
+    fun acceptedExpenseRefreshRequirementsRemainVisibleAcrossAllCommandTypes() = runTest {
+        val clock = Clock.fixed(Instant.parse("2026-05-04T00:00:00Z"), ZoneOffset.UTC)
+        val types = listOf(
+            PendingMutationType.PatchExpense,
+            PendingMutationType.ConfirmExpense,
+            PendingMutationType.RejectExpense,
+            PendingMutationType.MarkNotDuplicate,
+            PendingMutationType.RetryOcr,
+            PendingMutationType.RecognizeText,
+            PendingMutationType.CreateExpenseOffset,
+            PendingMutationType.VoidExpenseOffset,
+        )
+        for (type in types) {
+            val dao = FakePendingMutationDao()
+            val repo = testOutboxRepository(dao = dao, clock = clock)
+            val id = repo.enqueue(type, "expense:42", "{}", 7L, idempotencyKey = "original-${type.wireValue}")
+            repo.markDone(id)
+            assertEquals(false, repo.observeStatus().first().needsUserAction, "$type without a refresh requirement")
+            val accepted = dao.rows.getValue(id).copy(lastError = "correction_refresh_required:11")
+            dao.rows[id] = accepted
+
+            val status = repo.observeStatus().first()
+
+            assertEquals(0, status.queueDepth, "$type is already delivered")
+            assertTrue(status.conflicts.isEmpty() && status.failed.isEmpty(), "$type is not a rejected command")
+            assertEquals(accepted, dao.rows[id], "Observation must preserve the original accepted $type")
+            assertTrue(status.needsUserAction, "$type must expose its outstanding cache refresh")
+        }
+    }
+
     @Test
     fun aReadRejectedByTheCacheCannotAcknowledgeItsIncomingStreamVersion() = runTest {
         val fixture = CorrectionRefreshFixture()

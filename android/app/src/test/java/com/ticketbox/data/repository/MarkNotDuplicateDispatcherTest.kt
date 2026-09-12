@@ -5,6 +5,7 @@ import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
+import com.ticketbox.data.remote.ApiService
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -39,11 +40,43 @@ internal class MarkNotDuplicateDispatcherTest : ExpensePendingRepositoryOutboxTe
         idempotencyKey = idempotencyKey,
     )
 
-    private fun dispatcherFor(stub: ApiServiceStub) = MarkNotDuplicateDispatcher(
+    private fun dispatcherFor(
+        stub: ApiService,
+        publishExpense: suspend (String, ExpenseDto) -> Unit = { ledgerId, expense -> published += ledgerId to expense },
+    ) = MarkNotDuplicateDispatcher(
         apiProvider = { stub },
         payloadAdapter = moshi().adapter(ExpenseStateTokenRequest::class.java),
-        publishExpense = { ledgerId, expense -> published += ledgerId to expense },
+        publishExpense = publishExpense,
     )
+
+    @Test
+    fun `accepted mark not duplicate retains its receipt when cache publication fails`() = runTest {
+        val response = successExpenseDto()
+        val stub = ApiServiceStub(markNotDuplicateResult = ApiResult.Success(response))
+        val row = markRow(idempotencyKey = "cache-failure-key")
+        val api = object : ApiService by stub {
+            override suspend fun markNotDuplicate(
+                id: String,
+                request: ExpenseStateTokenRequest,
+                idempotencyKey: String?,
+            ): ExpenseDto {
+                assertEquals("42", id)
+                assertEquals(ExpenseStateTokenRequest(expectedRowVersion = row.expectedRowVersion), request)
+                return stub.markNotDuplicate(id, request, idempotencyKey)
+            }
+        }
+        var publicationAttempts = 0
+        val result = dispatcherFor(api) { ledgerId, expense ->
+            assertEquals(row.ledgerId, ledgerId)
+            assertEquals(response, expense)
+            publicationAttempts++
+            throw IllegalStateException("cache unavailable")
+        }.dispatch(row)
+
+        assertEquals(row.idempotencyKey, stub.lastMarkNotDuplicateIdempotencyKey)
+        assertEquals(1, publicationAttempts)
+        assertEquals(DispatchResult.Success(newRowVersion = 2L, cacheRefreshVersion = 2L), result)
+    }
 
     @Test
     fun `dispatch replays the row's idempotency key and returns the new row_version`() = runTest {

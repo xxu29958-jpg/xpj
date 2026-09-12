@@ -126,10 +126,15 @@ private class OffsetPublicationFixture(
         container.expenseRepository.onConfirmedCommitted = { attempts++ }
         val replay = replay(PendingMutationType.VoidExpenseOffset, bundle(++version, voided = true))
         database.close()
-        assertEquals(1, replay.engine.drainOnce().retryable)
+        val result = replay.engine.drainOnce()
+        assertEquals(1, result.done)
+        assertEquals(0, result.retryable)
+        assertEquals(0, result.failures)
         assertEquals(0, attempts)
-        assertEquals(0L, replay.outbox.acceptedReplayRevision.value)
-        assertEquals(replay.original.payload, replay.rows.rows.getValue(replay.original.id).payload)
+        assertEquals(1L, replay.outbox.acceptedReplayRevision.value)
+        assertOriginalDone(replay)
+        assertEquals(version, correctionRefreshVersion(replay.rows.rows.getValue(replay.original.id).lastError))
+        assertEquals(0, replay.engine.drainOnce().attempted)
     }
 
     private suspend fun replay(
