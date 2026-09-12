@@ -56,10 +56,14 @@ confirming a bill does not. Old hidden-currency creation and return-to-list exit
 are retired; existing payment search and financial command recovery remain.
 
 The direct native journey checks August's obligation paid in September, retained
-invalid input, ignore/undo, FX review, explicit link and one counted expense. Short
-Web/draft/return checks pass (37); changed Web function complexity excess remains
-9 to 9. Android has six direct Connected producers and scoped static checks, but
-new runtime qualification is still pending. Generated Web protocol fields are
+invalid input, ignore/undo, FX review, explicit link and one counted expense.
+Exact `f7d45a21` completed the native VM journey: August reserve 14000 to zero,
+September one counted expense of 17600, with installed data preserved. Its cloud
+run exposed test-producer omissions and the inherited task submission cycle;
+those are corrected, including actual valuation-date seeds and rendered inputs.
+The integrated short regression passes 39 checks. Android has six direct
+Connected producers; its test compilation import is corrected and actual final
+execution is still required. Generated Web protocol fields are
 optional navigation context; financial payloads and required API fields are unchanged.
 
 The full product map retains shared accounting-time, complete exports, offline
