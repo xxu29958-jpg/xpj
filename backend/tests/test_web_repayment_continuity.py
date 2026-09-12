@@ -81,8 +81,10 @@ def test_missing_occ_retains_native_input_and_original_key(web_client, identity)
         **original, "expected_row_version": "", "amount_major": "12.30", "paid_at": "2026-09-02",
     })
     assert refused.status_code in (409, 422), refused.text
-    assert "12.30" in refused.text and "2026-09-02" in refused.text
-    retained = hidden_post_forms(refused.text)[action]
+    returned_form = _NativeForm(refused.text, action)
+    retained = {name: returned_form.one(name) for name in returned_form.fields}
+    assert retained["amount_major"] == "12.30"
+    assert retained["paid_at"] == "2026-09-02"
     assert retained["idempotency_key"] == original["idempotency_key"]
     assert retained["expected_row_version"] == ""
     assert _repayment_facts(debt["public_id"]) == []
