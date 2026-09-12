@@ -895,21 +895,21 @@ class OutboxRepository private constructor(
     suspend fun activeForTarget(targetId: String): List<OutboxRow> =
         activeForTarget(currentBinding(), targetId)
 
-    /** Only the Debt adjustment owner can turn an unresolved command into a local stop. */
-    internal suspend fun abandonDebtAdjustment(boundRequest: BoundLedgerRequest, row: OutboxRow): Boolean =
+    /** Only the Debt write owner can turn an unresolved command into a local stop. */
+    internal suspend fun abandonDebtWrite(boundRequest: BoundLedgerRequest, row: OutboxRow): Boolean =
         withActiveBinding(boundRequest) { binding ->
-            require(row.type == PendingMutationType.RecordDebtAdjustment)
-            dao.abandonDebtAdjustment(row.id, binding.ownerStorageKey, binding.ledgerId,
+            require(row.type in DEBT_WRITE_TYPES)
+            dao.abandonDebtWrite(row.id, binding.ownerStorageKey, binding.ledgerId,
                 row.status.wireValue, ISO.format(Instant.now(clock))) > 0
         }.also { changed -> if (changed) schedulePending() }
 
     /** Explicit Debt history scope; other mutation types retain their existing observation policy. */
     @OptIn(ExperimentalCoroutinesApi::class)
-    internal fun observeDebtAdjustments(): Flow<List<OutboxRow>> = bindingFlow().flatMapLatest { binding ->
+    internal fun observeDebtWrites(): Flow<List<OutboxRow>> = bindingFlow().flatMapLatest { binding ->
         dao.observeActiveByTypes(
             ownerKey = binding.ownerStorageKey,
             ledgerId = binding.ledgerId,
-            types = listOf(PendingMutationType.RecordDebtAdjustment.wireValue),
+            types = DEBT_WRITE_TYPES.map { it.wireValue },
             activeStatuses = ACTIVE_STATUS_VALUES + listOf(PendingMutationStatus.Done.wireValue,
                 PendingMutationStatus.Abandoned.wireValue),
         )

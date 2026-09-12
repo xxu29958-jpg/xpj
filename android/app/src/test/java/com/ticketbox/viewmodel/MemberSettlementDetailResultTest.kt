@@ -27,7 +27,7 @@ class MemberSettlementDetailResultTest {
     fun acknowledgedFoldReachesParentAndSurvivesBothOldAndFailedReads() = runTest(dispatcher) {
         val old = sampleMemberDebt().copy(rowVersion = 2, status = "open", remainingAmountCents = 20000, paidAmountCents = 0)
         val repository = AdjustmentDetailActions().apply { getResult = Result.success(old) }
-        val model = DebtDetailViewModel(repository, FakeDebtAdjustmentActions())
+        val model = DebtDetailViewModel(repository, FakeDebtWriteActions())
         model.loadDebt("d1")
         advanceUntilIdle()
         val task = DebtTask(requireNotNull(model.state.value.binding), "d1")
@@ -55,8 +55,8 @@ class MemberSettlementDetailResultTest {
     fun staleResultCannotReplaceNewerFoldAnotherDebtOrBinding() = runTest(dispatcher) {
         val current = sampleMemberDebt()
         val repository = AdjustmentDetailActions().apply { getResult = Result.success(current) }
-        val adjustments = FakeDebtAdjustmentActions()
-        val model = DebtDetailViewModel(repository, adjustments)
+        val writes = FakeDebtWriteActions()
+        val model = DebtDetailViewModel(repository, writes)
         model.loadDebt("d1")
         advanceUntilIdle()
         val task = DebtTask(requireNotNull(model.state.value.binding), "d1")
@@ -64,7 +64,7 @@ class MemberSettlementDetailResultTest {
         model.applyMemberResult(task.copy(debtPublicId = "d2"), current.copy(publicId = "d2"))
         model.applyMemberResult(task.copy(binding = task.binding.copy(bindingRevision = "old")), current.copy(rowVersion = 8))
         assertEquals(current, model.state.value.debt)
-        adjustments.access.value = requireNotNull(adjustments.access.value).copy(binding = task.binding.copy(ownerKey = "replacement"))
+        writes.access.value = requireNotNull(writes.access.value).copy(binding = task.binding.copy(ownerKey = "replacement"))
         model.applyMemberResult(task, current.copy(rowVersion = 8))
         advanceUntilIdle()
         assertNull(model.state.value.debt)

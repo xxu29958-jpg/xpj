@@ -84,20 +84,20 @@ internal class OutboxCorrectionBindingTest : ExpensePendingRepositoryOutboxTestB
             val original = fixture.queue.rows.getValue(id)
             vm = fixture.model()
             runCurrent()
-            assertEquals(setOf(id), vm.uiState.value.debtAdjustments.keys)
+            assertEquals(setOf(id), vm.uiState.value.debtWrites.keys)
             fixture.session.switchLedgerForFixture("other", "Other ledger")
             runCurrent()
             assertTrue(fixture.waiting.isCompleted)
             assertTrue(vm.uiState.value.status.failed.isEmpty())
-            assertTrue(vm.uiState.value.debtAdjustments.isEmpty())
-            assertTrue(vm.uiState.value.waitingDebtAdjustments.isEmpty())
+            assertTrue(vm.uiState.value.debtWrites.isEmpty())
+            assertTrue(vm.uiState.value.waitingDebtWrites.isEmpty())
             assertFalse(vm.uiState.value.bindingReady)
             fixture.release.complete(Unit)
             runCurrent()
             assertTrue(vm.uiState.value.bindingReady)
             fixture.session.switchLedgerForFixture(access.binding.ledgerId, "Original ledger")
             runCurrent()
-            assertEquals(setOf(id), vm.uiState.value.debtAdjustments.keys)
+            assertEquals(setOf(id), vm.uiState.value.debtWrites.keys)
             assertEquals(original, fixture.queue.rows[id])
         } finally {
             fixture.release.complete(Unit)
@@ -139,7 +139,7 @@ private class CorrectionBindingFixture(private val delayedType: PendingMutationT
             outbox, adapters.categoryRuleUpdateAdapter, adapters.categoryRuleDeleteAdapter,
             adapters.categoryRuleSubmissionAdapter, adapters.categoryRuleReceiptAdapter)),
         incomePlans = IncomePlanRepository(binding.apiProvider, outbox, adapters.incomePlanSubmissionAdapter, adapters.incomePlanReceiptAdapter),
-        debtAdjustments = DebtAdjustmentRepository(binding.apiProvider, outbox, adapters.debtAdjustmentAdapter),
+        debtWrites = DebtWriteRepository(binding.apiProvider, outbox, adapters.debtAdjustmentAdapter, adapters.debtRepaymentAdapter),
         goalEdits = GoalEditRepository(binding.apiProvider, outbox, adapters.goalUpdateAdapter, adapters.goalReceiptAdapter, adapters.goalCreateAdapter),
             budgetSaves = BudgetRepository(binding.apiProvider, outbox, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter, adapters.manualRateAdapter, adapters.manualRateReceiptAdapter)))
 }

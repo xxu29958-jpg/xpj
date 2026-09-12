@@ -3,7 +3,7 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
-import com.ticketbox.data.repository.DebtAdjustmentActions
+import com.ticketbox.data.repository.DebtWriteActions
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.DebtGoalComposition
 import com.ticketbox.domain.model.Goal
@@ -52,10 +52,10 @@ data class DebtGoalCelebration(val goalName: String)
 
 class DebtGoalViewModel(
     private val repository: ReportsActions,
-    private val adjustments: DebtAdjustmentActions,
+    private val writes: DebtWriteActions,
 ) : ViewModel() {
 
-    private var adjustmentBinding = adjustments.currentAccess()?.binding
+    private var adjustmentBinding = writes.currentAccess()?.binding
     private var adjustmentSnapshotReady = false
 
     private val _state = MutableStateFlow(DebtGoalUiState(canModify = repository.canModifyLedger()))
@@ -81,7 +81,7 @@ class DebtGoalViewModel(
 
     init {
         viewModelScope.launch {
-            adjustments.observeAdjustments().collect { change ->
+            writes.observeWrites().collect { change ->
                 val changedBinding = adjustmentBinding != change.binding
                 adjustmentBinding = change.binding
                 adjustmentSnapshotReady = change.binding != null
@@ -103,7 +103,7 @@ class DebtGoalViewModel(
      */
     fun refresh(clearStale: Boolean = false) {
         if (!adjustmentSnapshotReady) {
-            _state.update { it.copy(isLoading = adjustments.currentAccess() != null) }
+            _state.update { it.copy(isLoading = writes.currentAccess() != null) }
             return
         }
         if (clearStale) {
@@ -119,7 +119,7 @@ class DebtGoalViewModel(
         viewModelScope.launch {
             val result = repository.debtGoals(expectedBinding = binding, timezone = timezone)
             // Drop a load superseded by a newer load or a committed mutation.
-            if (gen != loadGeneration || binding != adjustments.currentAccess()?.binding) {
+            if (gen != loadGeneration || binding != writes.currentAccess()?.binding) {
                 // Clear our loading flag unless a newer refresh now owns it (else a
                 // non-refresh superseder — openDetail / a mutation — would leave the
                 // screen stuck refreshing).
@@ -185,7 +185,7 @@ class DebtGoalViewModel(
             selectedFromCache = it.fromCache) }
         viewModelScope.launch {
             val result = repository.goal(goal.publicId, expectedBinding = binding, timezone = timezone)
-            if (gen != loadGeneration || binding != adjustments.currentAccess()?.binding) return@launch
+            if (gen != loadGeneration || binding != writes.currentAccess()?.binding) return@launch
             result.fold(onSuccess = { read -> applyDetailRead(goal, read) }, onFailure = { error -> _state.update { it.withReadFailure(error) } })
         }
     }
@@ -247,11 +247,11 @@ class DebtGoalViewModel(
     fun archiveSelected() {
         val goal = _state.value.selectedGoal ?: return
         val binding = adjustmentBinding ?: return
-        if (!_state.value.canModify || adjustments.currentAccess()?.binding != binding) return
+        if (!_state.value.canModify || writes.currentAccess()?.binding != binding) return
         _state.update { it.copy(isSubmitting = true, error = null) }
         viewModelScope.launch {
             val result = repository.archiveGoal(goal.publicId, binding)
-            if (adjustmentBinding != binding || adjustments.currentAccess()?.binding != binding) return@launch
+            if (adjustmentBinding != binding || writes.currentAccess()?.binding != binding) return@launch
             result.fold(
                 onSuccess = { archived ->
                     // Supersede in-flight loads, drop the detail, and reload the list

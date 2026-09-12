@@ -33,25 +33,25 @@ class DebtAdjustmentRecoveryViewModelTest {
 
     @Test
     fun preStopReadCannotReleaseBarrierAndConfirmedMissingTargetRetiresTheOldWriter() = runTest(dispatcher) {
-        val adjustments = DebtAdjustmentFixture()
-        val canonical = adjustments.debt
+        val writes = DebtAdjustmentFixture()
+        val canonical = writes.debt
         val fresh = canonical.copy(rowVersion = 3L, remainingAmountCents = 53_000L)
         val repo = AdjustmentDetailActions().apply { getResult = Result.success(canonical) }
-        val model = DebtDetailViewModel(repo, adjustments.repository)
+        val model = DebtDetailViewModel(repo, writes.repository)
         val oldRead = CompletableDeferred<Unit>()
         val newRead = CompletableDeferred<Unit>()
         try {
             model.loadDebt(canonical.publicId)
             advanceUntilIdle()
-            val id = adjustments.save().getOrThrow()
-            adjustments.outbox.markFailed(id, "debt_adjustment_response_unverified")
+            val id = writes.save().getOrThrow()
+            writes.outbox.markFailed(id, "debt_adjustment_response_unverified")
             advanceUntilIdle()
             repo.getGate = oldRead
             model.refresh()
             runCurrent()
             repo.getResult = Result.success(fresh)
             repo.getGate = newRead
-            adjustments.repository.recover(adjustments.binding, adjustments.pending(), true).getOrThrow()
+            writes.repository.recover(writes.binding, writes.pending(), true).getOrThrow()
             runCurrent()
             assertEquals(3, repo.getCalls.size)
             oldRead.complete(Unit)
@@ -71,7 +71,7 @@ class DebtAdjustmentRecoveryViewModelTest {
             assertFalse(model.state.value.canWriteActions)
             assertTrue(model.state.value.error != null)
             assertTrue(repo.mutations.isEmpty())
-            assertEquals("abandoned", adjustments.dao.rows.getValue(id).status)
+            assertEquals("abandoned", writes.dao.rows.getValue(id).status)
         } finally {
             oldRead.complete(Unit)
             newRead.complete(Unit)
@@ -81,34 +81,34 @@ class DebtAdjustmentRecoveryViewModelTest {
 
     @Test
     fun droppingUnverifiedAdjustmentBlocksOldFoldUntilCanonicalReadRecovers() = runTest(dispatcher) {
-        val adjustments = DebtAdjustmentFixture()
-        val canonical = adjustments.debt
+        val writes = DebtAdjustmentFixture()
+        val canonical = writes.debt
         val fresh = canonical.copy(rowVersion = 3L, remainingAmountCents = 53_000L)
         val repo = AdjustmentDetailActions().apply {
             getResult = Result.success(canonical)
             writeResult = Result.success(fresh.copy(rowVersion = 4L, remainingAmountCents = 52_900L))
         }
-        val model = DebtDetailViewModel(repo, adjustments.repository)
+        val model = DebtDetailViewModel(repo, writes.repository)
         val gate = CompletableDeferred<Unit>()
         try {
             model.loadDebt(canonical.publicId)
             advanceUntilIdle()
             model.openAction(DebtAction.Repayment)
             model.updateActionInput(amount = "1.00")
-            val id = adjustments.save().getOrThrow()
-            adjustments.outbox.markFailed(id, "debt_adjustment_response_unverified")
+            val id = writes.save().getOrThrow()
+            writes.outbox.markFailed(id, "debt_adjustment_response_unverified")
             advanceUntilIdle()
             assertFalse(model.state.value.canWriteActions)
-            val original = adjustments.pending()
+            val original = writes.pending()
             repo.getResult = Result.failure(IllegalStateException("Synthetic unavailable canonical read"))
             repo.getGate = gate
 
             val priorJobs = model.viewModelScope.coroutineContext.job.children.toSet()
-            model.recoverAdjustment(original, drop = true)
+            model.recoverDebtWrite(original, drop = true)
             model.viewModelScope.coroutineContext.job.children.single { it !in priorJobs }.join()
             runCurrent()
-            assertTrue(adjustments.outbox.observeStatus().first().failed.none { it.id == id })
-            assertTrue(adjustments.outbox.dequeueNextRunnable().isEmpty())
+            assertTrue(writes.outbox.observeStatus().first().failed.none { it.id == id })
+            assertTrue(writes.outbox.dequeueNextRunnable().isEmpty())
             assertEquals(listOf(canonical.publicId, canonical.publicId), repo.getCalls)
             assertFalse(model.state.value.canWriteActions)
             model.submit()
@@ -121,7 +121,7 @@ class DebtAdjustmentRecoveryViewModelTest {
             advanceUntilIdle()
             assertFalse(model.state.value.canWriteActions)
             assertTrue(model.state.value.error != null)
-            assertTrue(model.state.value.adjustmentWriteMessage != null)
+            assertTrue(model.state.value.writeMessage != null)
             assertNull(model.state.value.flashMessage)
 
             repo.getGate = null
@@ -134,8 +134,8 @@ class DebtAdjustmentRecoveryViewModelTest {
             model.submit()
             advanceUntilIdle()
             assertEquals(listOf("repayment:${canonical.publicId}:3:100"), repo.mutations)
-            assertTrue(adjustments.outbox.dequeueNextRunnable().isEmpty())
-            assertTrue(adjustments.api.calls.isEmpty())
+            assertTrue(writes.outbox.dequeueNextRunnable().isEmpty())
+            assertTrue(writes.api.calls.isEmpty())
         } finally {
             gate.complete(Unit)
             model.viewModelScope.coroutineContext.job.cancelAndJoin()
@@ -144,24 +144,24 @@ class DebtAdjustmentRecoveryViewModelTest {
 
     @Test
     fun droppedUnverifiedAdjustmentAcceptsUnchangedCanonicalVersionAndReopenStillRequiresRead() = runTest(dispatcher) {
-        val adjustments = DebtAdjustmentFixture()
-        val canonical = adjustments.debt
+        val writes = DebtAdjustmentFixture()
+        val canonical = writes.debt
         val repo = AdjustmentDetailActions().apply { getResult = Result.success(canonical) }
-        val model = DebtDetailViewModel(repo, adjustments.repository)
+        val model = DebtDetailViewModel(repo, writes.repository)
         var reopened: DebtDetailViewModel? = null
         val gate = CompletableDeferred<Unit>()
         try {
             model.loadDebt(canonical.publicId)
             advanceUntilIdle()
-            val id = adjustments.save().getOrThrow()
-            adjustments.outbox.markFailed(id, "debt_adjustment_response_unverified")
+            val id = writes.save().getOrThrow()
+            writes.outbox.markFailed(id, "debt_adjustment_response_unverified")
             advanceUntilIdle()
             val priorJobs = model.viewModelScope.coroutineContext.job.children.toSet()
-            model.recoverAdjustment(adjustments.pending(), drop = true)
+            model.recoverDebtWrite(writes.pending(), drop = true)
             model.viewModelScope.coroutineContext.job.children.single { it !in priorJobs }.join()
             advanceUntilIdle()
-            assertTrue(adjustments.outbox.observeStatus().first().failed.none { it.id == id })
-            assertTrue(adjustments.outbox.dequeueNextRunnable().isEmpty())
+            assertTrue(writes.outbox.observeStatus().first().failed.none { it.id == id })
+            assertTrue(writes.outbox.dequeueNextRunnable().isEmpty())
             assertEquals(listOf(canonical.publicId, canonical.publicId), repo.getCalls)
             assertEquals(canonical, model.state.value.debt)
             assertTrue(model.state.value.canWriteActions)
@@ -170,7 +170,7 @@ class DebtAdjustmentRecoveryViewModelTest {
 
             repo.getResult = Result.failure(IllegalStateException("Synthetic unavailable first read"))
             repo.getGate = gate
-            val next = DebtDetailViewModel(repo, adjustments.repository).also { reopened = it }
+            val next = DebtDetailViewModel(repo, writes.repository).also { reopened = it }
             next.loadDebt(canonical.publicId)
             runCurrent()
             assertFalse(next.state.value.canWriteActions)

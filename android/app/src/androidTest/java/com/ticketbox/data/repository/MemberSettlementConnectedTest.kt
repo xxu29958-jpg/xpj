@@ -41,7 +41,7 @@ class MemberSettlementConnectedTest {
     fun partialConfirmationRetriesTheOriginalThenReachesSummaryHistoryAndReentry() {
         val graph = fixture.reopen()
         val binding = requireNotNull(graph.debtRepository.proposals.currentAccess()).binding
-        runBlocking { graph.debtAdjustmentRepository.save(binding, fixture.network.current.toDomain(), 100, "原离线意图").getOrThrow() }
+        runBlocking { graph.debtWriteRepository.save(binding, fixture.network.current.toDomain(), 100, "原离线意图").getOrThrow() }
         val retained = fixture.stored()
         installModels()
         compose.setContent {
@@ -101,7 +101,7 @@ class MemberSettlementConnectedTest {
         compose.runOnIdle {
             proposals = MemberRepaymentProposalViewModel(graph.debtRepository.proposals)
             history = DebtRepaymentHistoryViewModel(graph.debtRepository.repayments)
-            detail.value = DebtDetailViewModel(graph.debtRepository, graph.debtAdjustmentRepository).also { it.loadDebt(network.current.publicId) }
+            detail.value = DebtDetailViewModel(graph.debtRepository, graph.debtWriteRepository).also { it.loadDebt(network.current.publicId) }
         }
     }
 

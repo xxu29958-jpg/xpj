@@ -32,7 +32,7 @@ internal data class DebtDetailScreenCallbacks(
     val onRefresh: () -> Unit,
     val onSelectKind: (String) -> Unit,
     val onOpenAction: (DebtAction) -> Unit,
-    val onRecoverAdjustment: (com.ticketbox.data.repository.PendingDebtAdjustment, Boolean) -> Unit,
+    val onRecoverDebtWrite: (com.ticketbox.data.repository.PendingDebtWrite, Boolean) -> Unit,
 )
 
 /** 还款记录段的回调组：作废入口走详情 VM 的统一动作面板，分页/重试走只读 history VM。 */
@@ -86,8 +86,11 @@ internal fun DebtDetailContent(
             proposalState = readableProposalState,
             bodyState = bodyState,
         )
-        if (state.pendingAdjustments.isNotEmpty()) item {
-            DebtPendingAdjustments(state.pendingAdjustments, callbacks.onRecoverAdjustment)
+        if (state.pendingWrites.isNotEmpty()) item {
+            DebtPendingWrites(state.pendingWrites.filter {
+                it.row.status != com.ticketbox.data.local.PendingMutationStatus.Done ||
+                    (state.debt?.rowVersion ?: 0) <= (it.row.expectedRowVersion ?: Long.MAX_VALUE)
+            }, callbacks.onRecoverDebtWrite)
         }
         debtDetailBodyItems(
             state = state,
@@ -159,7 +162,7 @@ private fun LazyListScope.debtDetailStatusItems(
     proposalState: MemberProposalUiState,
     bodyState: DebtDetailBodyState,
 ) {
-    state.adjustmentWriteMessage?.let { message -> item { AppStatusBanner(message = message, tone = MessageTone.Info) } }
+    state.writeMessage?.let { message -> item { AppStatusBanner(message = message, tone = MessageTone.Info) } }
     state.flashMessage?.let { msg -> item { AppStatusBanner(message = msg, tone = MessageTone.Success) } }
     proposalState.flashMessage?.let { msg -> item { AppStatusBanner(message = msg, tone = MessageTone.Success) } }
     debtDetailInlineMessage(bodyState = bodyState, message = state.error)?.let { err ->

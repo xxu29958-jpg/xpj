@@ -2,7 +2,7 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
-import com.ticketbox.data.repository.PendingDebtAdjustment
+import com.ticketbox.data.repository.PendingDebtWrite
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Debt
@@ -13,7 +13,7 @@ import com.ticketbox.domain.model.UiText
 /**
  * 欠款详情与 external/manual 事实动作：记还款、调整本金、作废欠款或作废一笔还款。
  * 同一个动作面板与提交 owner 持有目标和草稿。每次命令携带已读取的 parent Debt rowVersion，
- * 已确认命令换入服务端 Debt；调整先保留原意图，确认同步后重读。成员/拆账仍走对方确认流程。
+ * 还款与调整先保留原意图，确认同步后重读服务端 Debt。成员/拆账仍走对方确认流程。
  */
 data class DebtDetailUiState(
     val binding: LogicalSessionBinding? = null,
@@ -31,26 +31,26 @@ data class DebtDetailUiState(
     val validationError: UiText? = null,
     val isSubmitting: Boolean = false,
     val flashMessage: UiText? = null,
-    val pendingAdjustments: List<PendingDebtAdjustment> = emptyList(),
-    val adjustmentSnapshotLoaded: Boolean = false,
-    val locallyAcceptedAdjustmentId: Long? = null,
-    /** Original OCC of a confirmed adjustment whose newer canonical fold has not been installed. */
-    val adjustmentRefreshAfterVersion: Long? = null,
+    val pendingWrites: List<PendingDebtWrite> = emptyList(),
+    val writeSnapshotLoaded: Boolean = false,
+    val locallyAcceptedWriteId: Long? = null,
+    /** Original OCC of a confirmed amount command whose newer canonical fold has not been installed. */
+    val writeRefreshAfterVersion: Long? = null,
     /** A local stop allows the same RV, but only after a post-observation canonical read. */
-    val adjustmentRefreshAtVersion: Long? = null,
+    val writeRefreshAtVersion: Long? = null,
 ) {
     val canWriteActions: Boolean
-        get() = canModify && debt != null && !isSubmitting && adjustmentSnapshotLoaded &&
-            pendingAdjustments.none { it.isUnresolved } && locallyAcceptedAdjustmentId == null &&
-            adjustmentRefreshAfterVersion == null && adjustmentRefreshAtVersion == null
+        get() = canModify && debt != null && !isSubmitting && writeSnapshotLoaded &&
+            pendingWrites.none { it.isUnresolved } && locallyAcceptedWriteId == null &&
+            writeRefreshAfterVersion == null && writeRefreshAtVersion == null
 
-    val adjustmentWriteMessage: UiText?
+    val writeMessage: UiText?
         get() = when {
-            adjustmentRefreshAfterVersion != null || adjustmentRefreshAtVersion != null ->
-                UiText.res(R.string.debt_adjustment_refresh_required)
-            pendingAdjustments.any { it.isUnresolved } || locallyAcceptedAdjustmentId != null ->
-                UiText.res(R.string.debt_adjustment_write_waiting)
-            !adjustmentSnapshotLoaded && debt != null -> UiText.res(R.string.debt_adjustment_checking)
+            writeRefreshAfterVersion != null || writeRefreshAtVersion != null ->
+                UiText.res(R.string.debt_write_refresh_required)
+            pendingWrites.any { it.isUnresolved } || locallyAcceptedWriteId != null ->
+                UiText.res(R.string.debt_write_waiting_for_original)
+            !writeSnapshotLoaded && debt != null -> UiText.res(R.string.debt_write_checking)
             else -> null
         }
 
@@ -77,8 +77,8 @@ data class DebtDetailUiState(
 enum class DebtAction { Repayment, Adjustment, Void, RepaymentVoid }
 
 /** Updates the existing detail projection; Room rows remain the command authority. */
-internal fun DebtDetailUiState.withAdjustmentRows(
-    rows: List<PendingDebtAdjustment>,
+internal fun DebtDetailUiState.withWriteRows(
+    rows: List<PendingDebtWrite>,
     newlyTerminal: Boolean,
     initial: Boolean,
 ): DebtDetailUiState {
@@ -88,12 +88,12 @@ internal fun DebtDetailUiState.withAdjustmentRows(
         .mapNotNull { it.row.expectedRowVersion }.maxOrNull()
     val needsRefresh = newlyTerminal || confirmedVersion != null && (debt?.rowVersion ?: 0) <= confirmedVersion
     return copy(
-        pendingAdjustments = rows.filter { it.row.status != PendingMutationStatus.Done },
-        adjustmentSnapshotLoaded = true,
-        locallyAcceptedAdjustmentId = locallyAcceptedAdjustmentId?.takeUnless { id -> rows.any { it.row.id == id } },
-        adjustmentRefreshAfterVersion = if (needsRefresh && confirmedVersion != null) maxOf(adjustmentRefreshAfterVersion ?: 0, confirmedVersion)
-            else adjustmentRefreshAfterVersion,
-        adjustmentRefreshAtVersion = if (initial || newlyTerminal) maxOf(adjustmentRefreshAtVersion ?: 0, stoppedVersion ?: 0)
-            else adjustmentRefreshAtVersion,
+        pendingWrites = rows.filter { it.row.status != PendingMutationStatus.Done || it.repayment != null },
+        writeSnapshotLoaded = true,
+        locallyAcceptedWriteId = locallyAcceptedWriteId?.takeUnless { id -> rows.any { it.row.id == id } },
+        writeRefreshAfterVersion = if (needsRefresh && confirmedVersion != null) maxOf(writeRefreshAfterVersion ?: 0, confirmedVersion)
+            else writeRefreshAfterVersion,
+        writeRefreshAtVersion = if (initial || newlyTerminal) maxOf(writeRefreshAtVersion ?: 0, stoppedVersion ?: 0)
+            else writeRefreshAtVersion,
     )
 }

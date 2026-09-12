@@ -232,11 +232,11 @@ internal fun DebtRoute(
     // ViewModelStore 内「我欠」(payables) 与全账本页 (ledger) 是两份实例）。
     val debtListViewModel: DebtListViewModel = viewModel(
         key = "$DebtListViewModelKey:${lens.name}",
-        factory = debtViewModelFactory(screenFactory.debtRepository, screenFactory.debtCreationRepository, screenFactory.debtAdjustmentRepository, lens),
+        factory = debtViewModelFactory(screenFactory.debtRepository, screenFactory.debtCreationRepository, screenFactory.debtWriteRepository, lens),
     )
     val detailViewModel: DebtDetailViewModel = viewModel(
         key = DebtDetailViewModelKey,
-        factory = debtDetailViewModelFactory(screenFactory.debtRepository, screenFactory.debtAdjustmentRepository),
+        factory = debtDetailViewModelFactory(screenFactory.debtRepository, screenFactory.debtWriteRepository),
     )
     // ADR-0049 §3.2 (slice 8d): 成员欠款的 proposal 收发箱 VM,与详情 VM 同为 overlay 内单例(常量 key),
     // 详情屏在加载到成员欠款时用 loadProposals 拉取(见 DebtDetailScreen 内 LaunchedEffect)。
@@ -356,11 +356,11 @@ internal fun ReceivablesRoute(
 ) {
     val viewModel: ReceivablesViewModel = viewModel(
         key = ReceivablesViewModelKey,
-        factory = receivablesViewModelFactory(screenFactory.debtRepository, screenFactory.debtAdjustmentRepository),
+        factory = receivablesViewModelFactory(screenFactory.debtRepository, screenFactory.debtWriteRepository),
     )
     val detailViewModel: DebtDetailViewModel = viewModel(
         key = ReceivablesDetailViewModelKey,
-        factory = debtDetailViewModelFactory(screenFactory.debtRepository, screenFactory.debtAdjustmentRepository),
+        factory = debtDetailViewModelFactory(screenFactory.debtRepository, screenFactory.debtWriteRepository),
     )
     val proposalViewModel: MemberRepaymentProposalViewModel = viewModel(
         key = ReceivablesProposalViewModelKey,
@@ -412,7 +412,7 @@ internal fun RepaymentDraftRoute(
         factory = repaymentDraftInboxViewModelFactory(
             drafts = screenFactory.repaymentDraftRepository,
             debts = screenFactory.debtRepository,
-            adjustments = screenFactory.debtAdjustmentRepository,
+            writes = screenFactory.debtWriteRepository,
         ),
     )
     LaunchedEffect(Unit) {

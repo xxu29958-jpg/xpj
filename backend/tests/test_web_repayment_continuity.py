@@ -1,11 +1,16 @@
 """Native repayment recovery keeps the original command after an accepted write."""
 
+import html
+import json
+import re
 from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import select
 
 import app.routes._web_debt_write as debt_form_context
+import app.routes.web_debt_actions as web_commands
+import app.routes.web_debts as web_queries
 import app.services.debt_command_service as commands
 from app.database import SessionLocal
 from app.errors import AppError
@@ -50,6 +55,9 @@ def test_native_unknown_result_recovers_same_payment_even_after_settlement(
     monkeypatch.setattr(commands, "_repayment_response", read_after_commit)
     unknown = web_client.post(action, data=original)
     assert unknown.status_code == 503, unknown.text
+    assert "data-repayment-replacement=" not in unknown.text
+    assert "仅作记录，未保存" not in unknown.text
+    assert unknown.text.count('id="debt-action-error-repayment"') == 1
     accepted = _repayment_facts(public_id)
     assert len(accepted) == 1 and accepted[0].amount_cents == amount_minor
 
@@ -87,4 +95,77 @@ def test_missing_occ_retains_native_input_and_original_key(web_client, identity)
     assert retained["paid_at"] == "2026-09-02"
     assert retained["idempotency_key"] == original["idempotency_key"]
     assert retained["expected_row_version"] == ""
+    replacement = re.search(r'data-repayment-replacement="([^"]+)"', refused.text)
+    assert replacement is not None
+    prepared = json.loads(html.unescape(replacement[1]))
+    assert prepared["clientRef"] != original["idempotency_key"]
+    assert prepared["values"]["amount_major"] == "12.30"
+    assert prepared["values"]["paid_at"] == "2026-09-02"
+    assert prepared["values"]["expected_row_version"] == str(debt["row_version"])
     assert _repayment_facts(debt["public_id"]) == []
+
+
+def test_rejected_overpayment_can_be_corrected_without_losing_its_form(web_client, identity):
+    debt = _create_debt(web_client, identity=identity)
+    action = f"/web/debts/{debt['public_id']}/repayments"
+    form = _NativeForm(web_client.get(f"/web/debts/{debt['public_id']}?ledger_id=owner").text, action)
+    form.set("amount_major", "500.01")
+    form.set("paid_at", "2026-09-01")
+    original = {name: form.one(name) for name in form.fields}
+    refused = web_client.post(action, data=original)
+    assert refused.status_code == 422, refused.text
+    assert 'data-repayment-result="rejected"' in refused.text
+    assert _repayment_facts(debt["public_id"]) == []
+    returned = _NativeForm(refused.text, action)
+    assert returned.one("amount_major") == "500.01"
+    returned.set("amount_major", "500.00")
+    corrected = web_client.post(action, data={name: returned.one(name) for name in returned.fields})
+    assert corrected.status_code == 200, corrected.text
+    facts = _repayment_facts(debt["public_id"])
+    assert len(facts) == 1 and facts[0].amount_cents == 50_000
+
+
+def test_exact_acceptance_survives_failure_of_the_following_detail_query(web_client, identity, monkeypatch):
+    debt = _create_debt(web_client, identity=identity)
+    public_id = debt["public_id"]
+    action = f"/web/debts/{public_id}/repayments"
+    form = _NativeForm(web_client.get(f"/web/debts/{public_id}?ledger_id=owner").text, action)
+    form.set("amount_major", "500.00")
+    form.set("paid_at", "2026-09-01")
+    original = {name: form.one(name) for name in form.fields}
+
+    def detail_unavailable(*_args, **_kwargs):
+        raise AppError("dependency_unavailable", status_code=503)
+
+    monkeypatch.setattr(web_commands, "_render_debt_detail", detail_unavailable)
+    accepted = web_client.post(action, data=original)
+    assert accepted.status_code == 200, accepted.text
+    marker = re.search(r'data-repayment-ack="([^"]+)"', accepted.text)
+    assert marker is not None, "A failed subsequent query cannot erase the command acceptance"
+    ack = json.loads(html.unescape(marker[1]))
+    facts = _repayment_facts(public_id)
+    assert len(facts) == 1
+    assert ack["repaymentPublicId"] == facts[0].public_id
+    assert ack["clientRef"] == original["idempotency_key"]
+    assert all(ack["values"][key] == original[key] for key in ack["values"])
+    assert "还款事实已记录" in accepted.text
+
+
+def test_detail_query_failure_keeps_recovery_consumer_without_new_defaults(web_client, identity, monkeypatch):
+    debt = _create_debt(web_client, identity=identity)
+    public_id = debt["public_id"]
+
+    def detail_unavailable(*_args, **_kwargs):
+        raise AppError("dependency_unavailable", status_code=503)
+
+    monkeypatch.setattr(web_queries, "get_participant_debt_response", detail_unavailable)
+    unavailable = web_client.get(f"/web/debts/{public_id}?ledger_id=owner")
+    assert unavailable.status_code == 503, unavailable.text
+    form = _NativeForm(unavailable.text, f"/web/debts/{public_id}/repayments")
+    assert 'data-repayment-can-create="false"' in unavailable.text
+    assert "/static/web/repayment-entry.js" in unavailable.text
+    assert form.one("expected_row_version") == ""
+    assert form.one("paid_at") == ""
+    assert form.one("amount_major") == ""
+    assert form.one("idempotency_key") == ""
+    assert _repayment_facts(public_id) == []

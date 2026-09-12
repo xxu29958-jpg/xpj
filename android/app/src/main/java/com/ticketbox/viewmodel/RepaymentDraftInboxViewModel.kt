@@ -3,8 +3,8 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
-import com.ticketbox.data.repository.DebtAdjustmentActions
-import com.ticketbox.data.repository.DebtAdjustmentObservation
+import com.ticketbox.data.repository.DebtWriteActions
+import com.ticketbox.data.repository.DebtWriteObservation
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.RepaymentDraftActions
@@ -47,12 +47,12 @@ data class RepaymentDraftInboxUiState(
 class RepaymentDraftInboxViewModel(
     private val drafts: RepaymentDraftActions,
     private val debts: DebtActions,
-    private val adjustments: DebtAdjustmentActions,
+    private val writes: DebtWriteActions,
 ) : ViewModel() {
 
-    private var adjustmentBinding = adjustments.currentAccess()?.binding
+    private var adjustmentBinding = writes.currentAccess()?.binding
     private var adjustmentSnapshotReady = false
-    private var adjustmentSnapshot: DebtAdjustmentObservation? = null
+    private var adjustmentSnapshot: DebtWriteObservation? = null
 
     private val _state = MutableStateFlow(RepaymentDraftInboxUiState(canModify = drafts.canModifyLedger()))
     val state: StateFlow<RepaymentDraftInboxUiState> = _state.asStateFlow()
@@ -67,7 +67,7 @@ class RepaymentDraftInboxViewModel(
 
     init {
         viewModelScope.launch {
-            adjustments.observeAdjustments().collect { change ->
+            writes.observeWrites().collect { change ->
                 val changedBinding = adjustmentBinding != change.binding
                 adjustmentBinding = change.binding
                 adjustmentSnapshotReady = change.binding != null
@@ -105,7 +105,7 @@ class RepaymentDraftInboxViewModel(
 
     fun refresh() {
         if (!adjustmentSnapshotReady) {
-            _state.update { it.copy(isLoading = adjustments.currentAccess() != null) }
+            _state.update { it.copy(isLoading = writes.currentAccess() != null) }
             return
         }
         val gen = ++loadGeneration
@@ -161,10 +161,10 @@ class RepaymentDraftInboxViewModel(
         val generation = loadGeneration
         _state.update { it.copy(pendingActionDraftId = draftPublicId, error = null) }
         viewModelScope.launch {
-            val rows = adjustments.observeAdjustments(binding, target.publicId).first()
+            val rows = writes.observeWrites(binding, target.publicId).first()
             if (!ownsAdjustmentBinding(binding)) return@launch
-            val knownTerminals = adjustmentSnapshot?.adjustments.orEmpty().filter { it.isTerminal }.map { it.row.id }
-            if (adjustments.currentAccess()?.canModify != true ||
+            val knownTerminals = adjustmentSnapshot?.writes.orEmpty().filter { it.isTerminal }.map { it.row.id }
+            if (writes.currentAccess()?.canModify != true ||
                 generation != loadGeneration || rows.any { it.isUnresolved || it.isTerminal && it.row.id !in knownTerminals }
             ) {
                 _state.update { it.copy(pendingActionDraftId = null, error = UiText.res(R.string.repayment_draft_target_changed)) }
@@ -214,7 +214,7 @@ class RepaymentDraftInboxViewModel(
     private fun isRepayableDebt(debt: Debt): Boolean = debt.isOpen && debt.isDirectWritable
 
     private fun ownsAdjustmentBinding(binding: LogicalSessionBinding): Boolean =
-        binding == adjustmentBinding && binding == adjustments.currentAccess()?.binding
+        binding == adjustmentBinding && binding == writes.currentAccess()?.binding
 }
 
 /**

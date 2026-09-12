@@ -56,4 +56,4 @@ class ManualRateGlobalRecoveryViewModelTest {
 }
 
 private fun OutboxStatusHarness.rateGlobalViewModel() = OutboxStatusViewModel(outbox, expenseRepository,
-    OutboxRecoveryRepositories(debtCreation, null, incomePlans, debtAdjustments, goalEdits, budgetSaves, recurringItems, rules))
+    OutboxRecoveryRepositories(debtCreation, null, incomePlans, debtWrites, goalEdits, budgetSaves, recurringItems, rules))

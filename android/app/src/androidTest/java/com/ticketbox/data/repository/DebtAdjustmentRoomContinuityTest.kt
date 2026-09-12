@@ -76,12 +76,12 @@ class DebtAdjustmentRoomContinuityTest {
         fixture.network.failReads = true
         installModels()
         compose.waitUntil(10_000) { detail.value?.state?.value?.error != null &&
-            detail.value?.state?.value?.pendingAdjustments?.size == 1 }
+            detail.value?.state?.value?.pendingWrites?.size == 1 }
         for (key in listOf("payload", "expectedRowVersion", "idempotencyKey", "ownerKey", "ledgerId")) {
             assertEquals(original[key], fixture.stored().single()[key])
         }
         compose.onNodeWithText("补记原借款").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("重试原调整").performScrollTo().performClick()
+        compose.onNodeWithText("重试原提交").performScrollTo().performClick()
         compose.waitUntil(10_000) { fixture.stored().single()["status"] == "pending" && fixture.scheduleCalls == 2 }
         assertEquals(2, fixture.scheduleCalls)
         fixture.network.loseResponse = false
@@ -92,7 +92,7 @@ class DebtAdjustmentRoomContinuityTest {
         assertEquals(fixture.network.calls.first(), fixture.network.calls.last())
         assertEquals(original["idempotencyKey"], fixture.network.calls.last().second)
         assertEquals(1, fixture.network.results.size)
-        assertEquals(emptyList<PendingDebtAdjustment>(), detail.value?.state?.value?.pendingAdjustments)
+        assertEquals(emptyList<PendingDebtWrite>(), detail.value?.state?.value?.pendingWrites)
     }
 
     @Test
@@ -122,7 +122,7 @@ class DebtAdjustmentRoomContinuityTest {
                 retained = RetainedAdjustmentConsumers(graph)
                 global = outboxStatusViewModelFactory(fixture.outbox, graph.expenseRepository,
                     OutboxRecoveryRepositories(graph.debtCreationRepository, graph.recurringRepository.occurrences,
-                        graph.incomePlanRepository, graph.debtAdjustmentRepository, graph.goalEditRepository, graph.budgetRepository, graph.recurringRepository, graph.ruleRepository)).create(OutboxStatusViewModel::class.java)
+                        graph.incomePlanRepository, graph.debtWriteRepository, graph.goalEditRepository, graph.budgetRepository, graph.recurringRepository, graph.ruleRepository)).create(OutboxStatusViewModel::class.java)
             }
             val consumers = requireNotNull(retained)
             val sync = requireNotNull(global)
@@ -189,38 +189,9 @@ class DebtAdjustmentRoomContinuityTest {
             val graph = retained.reopen()
             lateinit var balance: () -> Long?
             compose.runOnIdle {
-                model = when (consumer) {
-                    "list" -> {
-                        DebtListViewModel(graph.debtRepository, graph.debtCreationRepository,
-                            graph.debtAdjustmentRepository).also { viewModel ->
-                            balance = { viewModel.state.value.debts.singleOrNull()?.remainingAmountCents }
-                        }
-                    }
-                    "receivables" -> {
-                        ReceivablesViewModel(graph.debtRepository, graph.debtAdjustmentRepository).also { viewModel ->
-                            balance = { viewModel.state.value.receivables.singleOrNull()?.remainingAmountCents }
-                        }
-                    }
-                    "goal" -> {
-                        DebtGoalViewModel(graph.reportsRepository, graph.debtAdjustmentRepository).also { viewModel ->
-                            balance = { viewModel.state.value.goals.singleOrNull()?.debtRepayment
-                                ?.linkedDebts?.singleOrNull()?.remainingAmountCents }
-                        }
-                    }
-                    "createGoal" -> {
-                        CreateDebtGoalViewModel(graph.reportsRepository, graph.debtRepository,
-                            graph.debtAdjustmentRepository).also { viewModel ->
-                            balance = { viewModel.state.value.candidates.singleOrNull()?.remainingAmountCents }
-                        }
-                    }
-                    "repaymentDraft" -> {
-                        RepaymentDraftInboxViewModel(graph.repaymentDraftRepository, graph.debtRepository,
-                            graph.debtAdjustmentRepository).also { viewModel ->
-                            balance = { viewModel.state.value.targetDebts.singleOrNull()?.remainingAmountCents }
-                        }
-                    }
-                    else -> error("Unknown retained consumer: $consumer")
-                }
+                val (created, read) = createRetainedConsumer(graph, consumer)
+                model = created
+                balance = read
             }
             compose.waitUntil(10_000) { balance() == 50_000L }
             compose.runOnIdle {
@@ -246,10 +217,35 @@ class DebtAdjustmentRoomContinuityTest {
         }
     }
 
+
+    private fun createRetainedConsumer(graph: RepositoryGraph, consumer: String): Pair<ViewModel, () -> Long?> = when (consumer) {
+        "list" -> {
+            val model = DebtListViewModel(graph.debtRepository, graph.debtCreationRepository, graph.debtWriteRepository)
+            model to { model.state.value.debts.singleOrNull()?.remainingAmountCents }
+        }
+        "receivables" -> {
+            val model = ReceivablesViewModel(graph.debtRepository, graph.debtWriteRepository)
+            model to { model.state.value.receivables.singleOrNull()?.remainingAmountCents }
+        }
+        "goal" -> {
+            val model = DebtGoalViewModel(graph.reportsRepository, graph.debtWriteRepository)
+            model to { model.state.value.goals.singleOrNull()?.debtRepayment?.linkedDebts?.singleOrNull()?.remainingAmountCents }
+        }
+        "createGoal" -> {
+            val model = CreateDebtGoalViewModel(graph.reportsRepository, graph.debtRepository, graph.debtWriteRepository)
+            model to { model.state.value.candidates.singleOrNull()?.remainingAmountCents }
+        }
+        "repaymentDraft" -> {
+            val model = RepaymentDraftInboxViewModel(graph.repaymentDraftRepository, graph.debtRepository, graph.debtWriteRepository)
+            model to { model.state.value.targetDebts.singleOrNull()?.remainingAmountCents }
+        }
+        else -> error("Unknown retained consumer: $consumer")
+    }
+
     private fun saveAndCloseDetail(graph: RepositoryGraph, retained: DebtAdjustmentConnectedFixture) {
         lateinit var model: DebtDetailViewModel
         compose.runOnIdle {
-            model = DebtDetailViewModel(graph.debtRepository, graph.debtAdjustmentRepository)
+            model = DebtDetailViewModel(graph.debtRepository, graph.debtWriteRepository)
             model.loadDebt(retained.network.current.publicId)
         }
         compose.waitUntil(10_000) { model.state.value.debt != null }
@@ -267,7 +263,7 @@ class DebtAdjustmentRoomContinuityTest {
         compose.runOnIdle {
             proposals = MemberRepaymentProposalViewModel(graph.debtRepository.proposals)
             history = DebtRepaymentHistoryViewModel(graph.debtRepository.repayments)
-            detail.value = DebtDetailViewModel(graph.debtRepository, graph.debtAdjustmentRepository)
+            detail.value = DebtDetailViewModel(graph.debtRepository, graph.debtWriteRepository)
                 .also { it.loadDebt(fixture.network.current.publicId) }
         }
     }

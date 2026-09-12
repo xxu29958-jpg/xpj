@@ -1,109 +1,123 @@
 package com.ticketbox.data.repository
 
-import androidx.lifecycle.viewModelScope
-import com.ticketbox.data.remote.ApiService
-import com.ticketbox.data.remote.ApiServiceFactory
-import com.ticketbox.data.remote.dto.DebtDto
-import com.ticketbox.data.remote.dto.RepaymentCreateRequestDto
-import com.ticketbox.viewmodel.DebtAction
-import com.ticketbox.viewmodel.DebtDetailViewModel
-import com.ticketbox.viewmodel.FakeDebtAdjustmentActions
-import java.io.IOException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.flow.MutableStateFlow
+import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.data.local.PendingMutationType
+import java.time.Clock
+import java.time.Duration
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.job
-import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.setMain
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.ResponseBody.Companion.toResponseBody
-import retrofit2.HttpException
-import retrofit2.Response
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
-@OptIn(ExperimentalCoroutinesApi::class)
 class DirectRepaymentIntentTest {
-    @Test fun retryingTheUnchangedOriginalFormAfterLostResponseKeepsItsCommand() = runTest {
-        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        val api = RepaymentResponseLossProbe()
-        val session = TestSessionFixture().apply { saveToken("synthetic-session") }
-        val provider = testApiServiceProvider(object : ApiServiceFactory {
-            override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = api
-        }, session)
-        val binding = requireNotNull(LedgerRequestGuard(provider).captureLogicalBinding())
-        val adjustments = FakeDebtAdjustmentActions(MutableStateFlow(LedgerAccessContext(binding, true)))
-        val model = DebtDetailViewModel(DebtRepository(provider), adjustments)
-        try {
-            model.loadDebt("d1")
-            withContext(Dispatchers.Default) {
-                withTimeout(5_000) { model.state.first { it.adjustmentSnapshotLoaded && !it.isLoading } }
-            }
-            assertTrue(model.state.value.canWriteActions)
-            model.openAction(DebtAction.Repayment)
-            model.updateActionInput(amount = "100")
-            model.submit()
-            withContext(Dispatchers.Default) { withTimeout(5_000) { model.state.first { !it.isSubmitting } } }
-            assertEquals(1, api.facts.size)
-            assertEquals(DebtAction.Repayment, model.state.value.activeAction)
-            assertEquals("100", model.state.value.amountInput)
-            assertNotNull(model.state.value.validationError)
+    @Test fun retryAfterLostResponseKeepsOriginalBindingBodyTimeOccAndKeyAcrossReopen() = runTest {
+        val fixture = DirectRepaymentTestFixture()
+        val id = fixture.save().getOrThrow()
+        val original = fixture.dao.rows.getValue(id)
+        assertEquals(listOf(1), fixture.publishedDepths)
+        assertTrue(fixture.api.calls.isEmpty())
+        assertEquals("2026-09-30T15:59:00Z", fixture.pending().repayment?.request?.paidAt)
+        assertEquals(1, fixture.engine().drainOnce().failures)
+        assertEquals(1, fixture.api.facts.size)
 
-            // The user continues this failed form; no new form, amount or intent.
-            model.submit()
-            withContext(Dispatchers.Default) { withTimeout(5_000) { model.state.first { !it.isSubmitting } } }
+        val nextDay = Clock.offset(fixture.clock, Duration.ofDays(1))
+        val reopenedOutbox = fixture.newOutbox(nextDay)
+        val reopenedOwner = fixture.newRepository(reopenedOutbox, nextDay)
+        reopenedOwner.recover(fixture.binding, fixture.pending(reopenedOwner), drop = false).getOrThrow()
+        assertEquals(1, fixture.engine(reopenedOutbox, nextDay).drainOnce().done)
 
-            assertEquals(2, api.calls.size)
-            assertEquals(api.calls.first(), api.calls.last())
-            assertEquals(1, api.facts.size)
-            assertEquals(40_000L, model.state.value.debt?.remainingAmountCents)
-        } finally {
-            model.viewModelScope.coroutineContext.job.cancelAndJoin()
-            Dispatchers.resetMain()
+        val delivered = fixture.dao.rows.getValue(id)
+        assertEquals(2, fixture.api.calls.size)
+        assertEquals(fixture.api.calls.first(), fixture.api.calls.last())
+        assertEquals(1, fixture.api.facts.size)
+        assertEquals(original.copy(status = delivered.status, retryCount = delivered.retryCount,
+            lastError = delivered.lastError, attemptedAt = delivered.attemptedAt,
+            completedAt = delivered.completedAt, receiptJson = delivered.receiptJson), delivered)
+        assertEquals(PendingMutationStatus.Done.wireValue, delivered.status)
+        val receipt = assertNotNull(fixture.adapters.debtRepaymentReceiptAdapter.fromJson(assertNotNull(delivered.receiptJson)))
+        assertEquals("repayment-original", receipt.repaymentPublicId)
+        assertEquals(40_000L, DebtRepository(fixture.provider).getDebt("d1").getOrThrow().remainingAmountCents)
+    }
+
+    @Test fun publicationRejectsInvalidAmountViewerAndNonDirectDebtBeforePersistOrSend() = runTest {
+        val fixture = DirectRepaymentTestFixture()
+        for (amount in listOf(0L, -1L, 50_001L)) assertTrue(fixture.save(amount).isFailure)
+        val viewer = DirectRepaymentTestFixture(role = "viewer")
+        assertTrue(viewer.save().isFailure)
+        assertTrue(fixture.repository.saveRepayment(fixture.binding, fixture.debt.copy(ledgerId = "other"), 100).isFailure)
+        assertTrue(fixture.repository.saveRepayment(fixture.binding,
+            fixture.debt.copy(counterpartyType = "member"), 100).isFailure)
+        assertTrue(fixture.dao.rows.isEmpty())
+        assertTrue(viewer.dao.rows.isEmpty())
+        assertTrue(fixture.api.calls.isEmpty())
+        assertTrue(viewer.api.calls.isEmpty())
+    }
+
+    @Test fun repaymentAndAdjustmentShareOneTargetPublicationBoundary() = runTest {
+        val fixture = DirectRepaymentTestFixture()
+        val outcomes = listOf(
+            async { fixture.save() },
+            async { fixture.repository.save(fixture.binding, fixture.debt, 100, "原调整") },
+        ).awaitAll()
+        assertEquals(1, outcomes.count { it.isSuccess })
+        assertEquals(1, fixture.dao.rows.size)
+        assertEquals(listOf(1), fixture.publishedDepths)
+        assertTrue(fixture.api.calls.isEmpty())
+    }
+
+    @Test fun protocolRefusalAndUnverifiedReceiptNeverSettleDone() = runTest {
+        for (case in listOf("upgrade", "missing_identity", "wrong_debt", "wrong_currency", "old_occ")) {
+            val fixture = DirectRepaymentTestFixture()
+            fixture.api.loseResponse = false
+            if (case == "upgrade") fixture.api.refusal = 426 to "client_upgrade_required"
+            fixture.api.receiptTransform = { when (case) {
+                "missing_identity" -> it.copy(repaymentPublicId = "")
+                "wrong_debt" -> it.copy(debtPublicId = "other")
+                "wrong_currency" -> it.copy(homeCurrencyCode = "JPY")
+                "old_occ" -> it.copy(rowVersion = 1)
+                else -> it
+            } }
+            val id = fixture.save().getOrThrow()
+            val original = fixture.dao.rows.getValue(id)
+            assertEquals(0, fixture.engine().drainOnce().done, case)
+            val failed = fixture.dao.rows.getValue(id)
+            assertEquals(PendingMutationStatus.Failed.wireValue, failed.status, case)
+            assertEquals(original.payload, failed.payload, case)
+            assertEquals(original.idempotencyKey, failed.idempotencyKey, case)
+            assertEquals(null, failed.receiptJson, case)
         }
     }
-}
 
-private data class OriginalRepaymentCall(
-    val target: String, val request: RepaymentCreateRequestDto, val key: String,
-)
+    @Test fun acceptedRepaymentDoesNotLendItsFreshOccToAFollowingOriginal() = runTest {
+        val fixture = DirectRepaymentTestFixture()
+        fixture.api.loseResponse = false
+        fixture.save().getOrThrow()
+        val original = fixture.pending()
+        val next = fixture.outbox.enqueue(PendingMutationType.RecordDebtRepayment, original.row.targetId,
+            original.row.payloadJson, 1, "separate-original-key")
+        val result = fixture.engine().drainOnce()
+        assertEquals(1, result.done)
+        assertEquals(1, result.conflicts)
+        assertEquals(1L, fixture.dao.rows.getValue(next).expectedRowVersion)
+        assertEquals(original.row.payloadJson, fixture.dao.rows.getValue(next).payload)
+        assertEquals(1, fixture.api.facts.size)
+    }
 
-private class RepaymentResponseLossProbe : ApiService by FakeApiService(mutableListOf(), 0) {
-    val calls = mutableListOf<OriginalRepaymentCall>()
-    val facts = mutableMapOf<String, Pair<RepaymentCreateRequestDto, DebtDto>>()
-    private var current = DebtDto(
-        publicId = "d1", ledgerId = "owner", direction = "i_owe", counterpartyType = "external",
-        counterpartyLabel = "Bank", principalAmountCents = 50_000L, remainingAmountCents = 50_000L,
-        paidAmountCents = 0L, status = "open", sourceType = "manual", homeCurrencyCode = "CNY",
-        createdAt = "2026-09-01T00:00:00Z", updatedAt = "2026-09-01T00:00:00Z", rowVersion = 1L,
-    )
-
-    override suspend fun debt(publicId: String): DebtDto = current
-
-    override suspend fun recordDebtRepayment(
-        publicId: String, request: RepaymentCreateRequestDto, idempotencyKey: String?,
-    ): DebtDto {
-        val key = requireNotNull(idempotencyKey)
-        calls += OriginalRepaymentCall(publicId, request, key)
-        facts[key]?.let { (original, receipt) ->
-            check(request == original)
-            return receipt
-        }
-        if (request.expectedRowVersion != current.rowVersion) {
-            throw HttpException(Response.error<DebtDto>(409,
-                """{"error":"state_conflict","message":"原版本已变化"}""".toResponseBody("application/json".toMediaType())))
-        }
-        current = current.copy(remainingAmountCents = current.remainingAmountCents - request.amountCents,
-            paidAmountCents = current.paidAmountCents + request.amountCents, rowVersion = current.rowVersion + 1L)
-        facts[key] = request to current
-        throw IOException("Synthetic lost response after repayment commit")
+    @Test fun bindingChangeCannotRetargetOriginalRetryOrStop() = runTest {
+        val fixture = DirectRepaymentTestFixture()
+        val id = fixture.save().getOrThrow()
+        fixture.engine().drainOnce()
+        val pending = fixture.pending()
+        val stored = fixture.dao.rows.getValue(id)
+        fixture.session.switchLedgerForFixture("other", "另一本账", "owner")
+        assertTrue(fixture.repository.recover(fixture.binding, pending, drop = false).isFailure)
+        assertTrue(fixture.repository.recover(fixture.binding, pending, drop = true).isFailure)
+        assertEquals(stored, fixture.dao.rows.getValue(id))
+        assertEquals(1, fixture.api.calls.size)
+        assertTrue(fixture.repository.observeWrites(fixture.binding, "d1").first().isEmpty())
     }
 }

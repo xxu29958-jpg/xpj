@@ -1,0 +1,43 @@
+{% set repayment = repayment_form %}
+<section class="product-panel product-panel--padded debt-actions" data-repayment-panel{% if not repayment.visible %} hidden{% endif %}>
+  <h2 class="product-panel-title">{{ '核对原还款' if repayment.result else '记一笔还款' }}</h2>
+  <form class="debt-action-form" method="post" action="/web/debts/{{ repayment.public_id }}/repayments"
+        data-repayment-scope="{{ repayment.scope | tojson | forceescape }}"
+        data-repayment-result="{{ repayment.result }}" data-repayment-can-create="{{ 'true' if repayment.can_create else 'false' }}"
+        data-repayment-can-recover="{{ 'true' if repayment.can_recover else 'false' }}"
+        {% if repayment.replacement %}data-repayment-replacement="{{ repayment.replacement | tojson | forceescape }}"{% endif %}
+        data-repayment-target="{{ repayment.public_id }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {% for name in ['debt_public_id', 'ledger_id', 'origin_binding', 'home_currency_code', 'expected_row_version', 'paid_at_timezone', 'idempotency_key'] %}
+    <input type="hidden" name="{{ name }}" value="{{ repayment.values[name] }}">
+    {% endfor %}
+    {% if repayment.error %}<div id="debt-action-error-repayment" class="product-feedback product-feedback--danger" role="alert">{{ repayment.error }}</div>{% endif %}
+    <div class="product-form-grid">
+      <div class="product-field">
+        <label for="debt-repay-amount">本次还款{% if repayment.currency_input %}（{{ repayment.currency_input.currency_code }} · {{ repayment.currency_input.currency_symbol }}，{{ repayment.currency_input.amount_input_hint }}）{% else %}（原币种金额）{% endif %}</label>
+        <input id="debt-repay-amount" class="product-input" name="amount_major" type="text"
+               step="{{ repayment.currency_input.amount_step if repayment.currency_input else 'any' }}"
+               min="{{ repayment.currency_input.positive_amount_min if repayment.currency_input else '0' }}"
+               inputmode="decimal" value="{{ repayment.values.amount_major }}" required{% if repayment.error %} aria-invalid="true" aria-describedby="debt-action-error-repayment"{% endif %}{% if repayment.result in ['submitted', 'blocked'] %} readonly{% endif %}>
+      </div>
+      <div class="product-field">
+        <label for="debt-repay-paid-at">还款日</label>
+        <input id="debt-repay-paid-at" class="product-input" name="paid_at" type="date" value="{{ repayment.values.paid_at }}" required{% if repayment.error %} aria-describedby="debt-action-error-repayment"{% endif %}{% if repayment.result in ['submitted', 'blocked'] %} readonly{% endif %}>
+      </div>
+    </div>
+    <p class="product-page-summary" data-repayment-status role="status" hidden></p>
+    <div class="debt-form-actions">
+      <button class="product-button product-button--primary" type="submit" data-repayment-submit{% if repayment.result == 'blocked' or not repayment.visible %} disabled{% endif %}>{{ '继续核实这笔还款' if repayment.result == 'submitted' else '记一笔还款' }}</button>
+      {% if repayment.replacement %}
+      <button class="product-button product-button--quiet" type="button" data-repayment-replace hidden>核对后重新填写</button>
+      <noscript><a href="/web/debts/{{ repayment.public_id }}?ledger_id={{ selected_ledger_id }}">核对后打开新表单</a></noscript>
+      {% endif %}
+    </div>
+  </form>
+</section>
+<section class="product-panel product-panel--padded" data-repayment-shelf hidden>
+  <h2 class="product-panel-title">此浏览器保留的还款</h2><ul data-repayment-list></ul>
+</section>
+{% if repayment.ack %}
+<div class="product-feedback" id="debt-action-feedback" role="status" data-repayment-ack="{{ repayment.ack | tojson | forceescape }}">还款事实已记录。<span data-repayment-ack-status></span></div>
+{% endif %}

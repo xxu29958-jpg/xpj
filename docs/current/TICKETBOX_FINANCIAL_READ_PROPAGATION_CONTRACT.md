@@ -60,5 +60,11 @@ behavior. New producer tests cover acceptance ordering, refusal and binding scop
 Bounded source review and short Detekt passed. At cb145ed9, 2426 cloud unit tests
 reached one new test-cleanup failure: its cancelled ViewModel collector resumed
 after Main dispatcher reset. Cleanup now joins cancellation before resetting Main;
-the original choice/payload/OCC assertions remain. Final candidate cloud GREEN
-remains required; this is an implemented candidate, not a closed slice or RC.
+the original choice/payload/OCC assertions remain.
+
+#402 CLOSED. Final candidate 2e97eeeb passed CI34688521320,
+CodeQL34688521368 and Connected34688521343 (275/0/0). Protected squash
+main 3503359ddac66d653c5f12f24c29eb30578ed76f has the same tree and independently
+passed CI34689383614, CodeQL34689383625 and Connected34689383640 (275/0/0).
+The clean verified baseline advanced only after these main results. This closes
+financial read propagation, not the remaining product tasks or the full RC.

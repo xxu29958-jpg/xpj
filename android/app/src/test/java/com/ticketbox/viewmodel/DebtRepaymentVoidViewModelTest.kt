@@ -31,7 +31,7 @@ class DebtRepaymentVoidViewModelTest {
     @Test
     fun selectedPaymentUsesExistingActionOwnerAndPublishesCanonicalParent() = runTest(dispatcher) {
         val repository = RecordingVoidActions()
-        val viewModel = DebtDetailViewModel(repository, FakeDebtAdjustmentActions())
+        val viewModel = DebtDetailViewModel(repository, FakeDebtWriteActions())
         viewModel.loadDebt("debt-1")
         advanceUntilIdle()
         viewModel.openAction(DebtAction.RepaymentVoid, payment())
@@ -53,7 +53,7 @@ class DebtRepaymentVoidViewModelTest {
         val repository = RecordingVoidActions().apply {
             writeResult = Result.failure(RepositoryException("欠款已变化，请刷新后再试"))
         }
-        val viewModel = DebtDetailViewModel(repository, FakeDebtAdjustmentActions())
+        val viewModel = DebtDetailViewModel(repository, FakeDebtWriteActions())
         viewModel.loadDebt("debt-1")
         advanceUntilIdle()
         viewModel.openAction(DebtAction.RepaymentVoid, payment())
@@ -70,7 +70,7 @@ class DebtRepaymentVoidViewModelTest {
     @Test
     fun inFlightVoidCannotBeDismissedOrSubmittedTwice() = runTest(dispatcher) {
         val repository = RecordingVoidActions().apply { gate = CompletableDeferred() }
-        val viewModel = DebtDetailViewModel(repository, FakeDebtAdjustmentActions())
+        val viewModel = DebtDetailViewModel(repository, FakeDebtWriteActions())
         viewModel.loadDebt("debt-1")
         advanceUntilIdle()
         viewModel.openAction(DebtAction.RepaymentVoid, payment())
@@ -90,7 +90,7 @@ class DebtRepaymentVoidViewModelTest {
     @Test
     fun anotherDebtCannotReceiveLateVoidResult() = runTest(dispatcher) {
         val repository = RecordingVoidActions().apply { gate = CompletableDeferred() }
-        val viewModel = DebtDetailViewModel(repository, FakeDebtAdjustmentActions())
+        val viewModel = DebtDetailViewModel(repository, FakeDebtWriteActions())
         viewModel.loadDebt("debt-1")
         advanceUntilIdle()
         viewModel.openAction(DebtAction.RepaymentVoid, payment())
@@ -113,7 +113,7 @@ class DebtRepaymentVoidViewModelTest {
         }
         val repositories = listOf(member, RecordingVoidActions(canModify = false))
         for (repository in repositories) {
-            val viewModel = DebtDetailViewModel(repository, FakeDebtAdjustmentActions())
+            val viewModel = DebtDetailViewModel(repository, FakeDebtWriteActions())
             viewModel.loadDebt("debt-1")
             advanceUntilIdle()
             viewModel.openAction(DebtAction.RepaymentVoid, payment())

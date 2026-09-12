@@ -12,8 +12,8 @@ This is the next Relationships task in the full Goal, following financial read
 propagation. Goal/latest rulings and the final Product contract sections 6.4/9
 govern it. Development and isolated test changes, draft PR, qualification and
 protected integration are authorized; daily-use data and unsent work are preserved.
-The starting source is #402 candidate 2e97eeeb, not a qualified main. Final release
-qualification must follow its actual integration. No long local suite or full
+The branch includes #402 integrated and independently qualified main 3503359d.
+Final release qualification applies to the resulting exact candidate and main. No long local suite or full
 Windows lifecycle work; Fresh G2 remains CLOSED and lifecycle HOLDs unchanged.
 
 ## Impact closure before construction
@@ -44,5 +44,30 @@ Prepared counterexamples exercise the unchanged Android detail form through the
 real repository after a committed response is lost; native Web recovery after a
 committed read fails (partial and fully settled debt), changed default timezone,
 missing OCC and stale OCC. Tests submit the returned form's actual controls, not
-replacement values supplied by the test. Static checks passed; cloud RED and
-production implementation remain open.
+replacement values supplied by the test.
+
+Cloud RED: 1e289979 / CI34689080308 ordinary1 executed 4 actual native failures
+(original OCC/key, cleared recovery, missing-OCC input loss), 2216 passed/3 skipped.
+Its Android failure was an IO wait fixture error, not a business failure. Corrected
+test-only 8b84af16 / CI34689821191 executed 2427 unit tests, with the one new
+counterexample failing on different keys for the identical original target/body/OCC.
+The load, first committed fact and unchanged-form assertions had passed.
+
+## Impact closure after construction
+
+| Path | Implemented result and direct proof |
+|---|---|
+| Android publication and recovery | DebtWriteRepository shares the existing Outbox lease/target/observation boundary for adjustment and repayment; original repayment payload is persisted before dispatch. DirectRepaymentIntentTest exercises actual owner/drain, refusal and retry |
+| Android receipt and consumers | RecordDebtRepaymentDispatcher validates the exact receipt before atomic receipt/Done persistence. Detail plus all five retained query consumers and both Sync entries consume DebtWrite observations; DirectRepaymentRoomContinuityTest covers real Save, disk reopen, lost ACK and recovery |
+| Android retirement/compatibility | Removed DebtActions.recordRepayment and the old direct success branch; replaced adjustment-only owner/surface with DebtWrite. Stored adjustment wire/payload remains readable; existing adjustment and member-owner tests retained |
+| Web original submission | Native POST preserves original key/OCC/raw amount/date/timezone/binding through unknown outcomes and closed-debt recovery. Exact service ACK survives an independent detail-query failure; actual form tests retain the original controls |
+| Web local continuation | repayment-entry uses the existing minimal draft store and Web Lock mechanism. Same-target originals block accidental replacement; explicit confirmed rejection can create a new draft. Existing Expense API/storage and six direct contracts retained; eight repayment browser-script contracts added |
+| Web binding and result | Real authentication/binding test checks all five axes, no-write refusals and one receipt on identical retry. ACK clearing requires exact original values and receipt identity; no balance/history inference |
+| Server/adjacent owners | record_repayment_idempotently remains the sole fact writer; no schema/migration/protocol version change. Member proposals, capture confirmation and their authorities remain separate; unrelated void/kind continuity stays in the product map |
+
+Short checks pass: scoped Kotlin Detekt, changed Python Ruff, three template parses,
+eight repayment plus six existing Expense browser-script contracts, and diff checks.
+Bounded Android/Web production review found no remaining formal P1/P2; these checks
+do not prove compilation or runtime. Exact candidate CI/CodeQL/Connected and isolated
+VM Edge lost-response/reopen verification are pending. No merge or RC acceptance is
+claimed; long suites stay cloud-only.

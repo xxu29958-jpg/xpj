@@ -72,7 +72,7 @@ class SyncStatusFailureTest {
                 quarantinedCount = 4,
             ),
             corrections = emptyList(),
-            adjustments = emptyList(),
+            writes = emptyList(),
         )
 
         assertEquals(3, overview.queuedCount)
@@ -93,14 +93,14 @@ class SyncStatusFailureTest {
                 failed = emptyList(),
             ),
             corrections = emptyList(),
-            adjustments = emptyList(),
+            writes = emptyList(),
         )
 
         assertEquals(0, overview.queuedCount)
         assertEquals(0, overview.reviewRequiredCount)
         assertTrue(overview.isSettled)
 
-        val stopped = com.ticketbox.data.repository.PendingDebtAdjustment(
+        val stopped = com.ticketbox.data.repository.PendingDebtWrite(
             row(id = 7).copy(type = PendingMutationType.RecordDebtAdjustment, status = PendingMutationStatus.Abandoned), null,
         )
         val localStop = syncStatusOverview(OutboxStatus(0, emptyList(), emptyList()), emptyList(), listOf(stopped))
@@ -124,7 +124,7 @@ class SyncStatusFailureTest {
                 writeBlock = OutboxWriteBlock.CURRENCY_ADOPTION_REQUIRED,
             ),
             corrections = emptyList(),
-            adjustments = emptyList(),
+            writes = emptyList(),
         )
 
         assertEquals(
@@ -186,7 +186,7 @@ class SyncStatusFailureTest {
         assertTrue(verified.delivered)
         val overview = syncStatusOverview(
             OutboxStatus(2, listOf(active[2].row), listOf(active[3].row)), active + verified,
-            adjustments = emptyList(),
+            writes = emptyList(),
         )
         assertEquals(0, overview.reviewRequiredCount)
         assertEquals(2, overview.queuedCount)

@@ -42,7 +42,7 @@ class ReceivablesScreenNavigationTest {
                     memberReceivable(publicId = "debt-2", debtorName = "小红"),
                 ),
             ),
-            adjustments = initialAdjustmentReadFixture(LedgerAccessContext(
+            writes = initialAdjustmentReadFixture(LedgerAccessContext(
                 LogicalSessionBinding("https://receivables.example.test", "ledger", "viewer", "session", "binding"),
                 canModify = false,
             )),

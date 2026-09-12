@@ -198,7 +198,9 @@ def test_web_void_appends_fact_and_closes_direct_actions(
 
     assert response.status_code == 200
     assert "原始事实仍保留" in response.text
-    assert f"/web/debts/{debt['public_id']}/repayments" not in response.text
+    # No fresh repayment on a voided Debt; a retained original command can still
+    # be inspected/reconciled by the same recovery consumer.
+    assert 'data-repayment-can-create="false"' in response.text
     current = _detail(web_client, identity=identity, public_id=debt["public_id"])
     assert current["status"] == "voided"
     assert current["row_version"] == debt["row_version"] + 1
@@ -264,16 +266,22 @@ def test_web_viewer_hides_and_cannot_post_direct_commands(
     assert "当前角色可查看欠款事实" in page.text
     assert web_client.get("/web/debts/new?ledger_id=owner").status_code == 403
 
+    original_key = str(uuid4())
     denied = web_client.post(
         f"/web/debts/{debt['public_id']}/repayments",
         data=_form(
             debt,
-            idempotency_key=str(uuid4()),
+            idempotency_key=original_key,
             amount_major="10.00",
         ),
     )
     assert denied.status_code == 403
-    assert denied.json()["error"] == "permission_denied"
+    retained = hidden_post_forms(denied.text)[f"/web/debts/{debt['public_id']}/repayments"]
+    assert retained["idempotency_key"] == original_key
+    assert retained["expected_row_version"] == str(debt["row_version"])
+    assert 'value="10.00"' in denied.text
+    assert 'data-repayment-can-recover="false"' in denied.text
+    assert "data-repayment-ack=" not in denied.text
     assert (
         _detail(
             web_client,
