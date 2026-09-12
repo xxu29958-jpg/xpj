@@ -76,9 +76,13 @@ lifecycle expansion. This closes one currency journey, not the full Goal or RC.
 Direct verification covers shared refusal/rollback, explicit continuation and
 OCC conflict, native repeated fields and original tokens, Room restart/binding,
 and actual navigation to/from the rate command. Local pure checks are bounded;
-database, native browser and Android runtime qualification remain required.
+database, native browser and Android runtime qualification are now complete.
 Installed-Web producers use the actual Secure session cookie over HTTPS and
 reject unexpected login redirects. The shared Android Room fixture observes
 binding changes through the same session projection as the application graph.
 
-Status: implemented candidate; bounded review closed, exact qualification open.
+Status: #399 CLOSED; bounded review and exact f2bc9621 candidate qualification
+passed (CI34593309760, CodeQL34593309751, Connected34593309820). Isolated VM
+native Edge/API correction and original return passed. Independently qualified
+main 10c56b3c: CI34685315881, CodeQL34685315909, Connected34685315923; 269
+Connected tests passed. Full product RC and Windows lifecycle remain outstanding.

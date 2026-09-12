@@ -160,12 +160,13 @@ retain explicit read-only feedback. No query, protocol, persistence or mutation
 owner changes. Goal VM and Room recovery producers remain applicable; the old
 blank-form/failed-read success labels and generic offline promise are retired.
 
-Goal queries currently preserve only active ViewModel results and specific
-submission receipts, not a durable complete query. The next capability is to
-reopen previously read goals offline through the existing query owner, retaining
-their recorded currencies, unknown progress and data time. This does not imply
-offline authority for permissions, governance or live tool health, nor a promise
-that every page works offline.
+Previously read Goal lists/details now reopen through the durable query owner,
+retaining recorded currencies, unknown progress and data time, with explicit
+access refusals handled separately. Budget/debt query persistence remains open;
+neither page memory nor a submitted-command receipt is a complete query snapshot.
+Unsubmitted goal/income drafts and returning after another client changed facts
+also need their own continuation. Offline reads do not confer permission or prove
+current governance/tool health, nor promise that every page works offline.
 
 ## Recycle recovery
 

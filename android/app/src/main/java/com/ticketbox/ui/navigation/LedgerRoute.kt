@@ -28,7 +28,7 @@ internal fun LedgerRoute(
     val binding by remember(screenFactory) { screenFactory.repository.observeLedgerAccess().map { it?.binding } }
         .collectAsStateWithLifecycle(initialValue = screenFactory.repository.captureDeferredLedgerBinding())
     val ledgerFactory = remember(screenFactory, shellState) {
-        screenFactory.repositoryViewModelFactory(shellState::markInsightsDataChanged)
+        screenFactory.repositoryViewModelFactory(shellState::markFinancialDataChanged)
     }
     val ledgerViewModel: LedgerViewModel = viewModel(key = "ledger-$binding", factory = ledgerFactory)
     // Narrow hook (218-B4 review P2-23): manual creates and category batch

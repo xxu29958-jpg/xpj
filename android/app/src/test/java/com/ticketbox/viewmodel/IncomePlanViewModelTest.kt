@@ -63,6 +63,25 @@ class IncomePlanViewModelTest {
     }
 
     @Test
+    fun refreshingForecastPreservesAnExplicitlyClearedDraftMonthAndOriginalIntentMonth() = runTest(dispatcher) {
+        val repo = FakeRepository()
+        val viewModel = IncomePlanViewModel(repo)
+        advanceUntilIdle()
+        assertEquals("2026-09", viewModel.state.value.addDraft.incomeMonthInput)
+        assertEquals("2026-09", viewModel.state.value.addDraft.intentMonth)
+
+        viewModel.updateDraftField(IncomePlanDraftField.IncomeMonth, "")
+        assertEquals("", viewModel.state.value.addDraft.incomeMonthInput)
+        repo.active = repo.active.copy(month = "2026-10")
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertEquals("2026-10", viewModel.state.value.forecastMonth)
+        assertEquals("", viewModel.state.value.addDraft.incomeMonthInput)
+        assertEquals("2026-09", viewModel.state.value.addDraft.intentMonth)
+    }
+
+    @Test
     fun stableAuthorityRoundTripClearsDraftAndReloadsTheExistingViewModel() = runTest(dispatcher) {
         val repo = FakeRepository(
             active = IncomePlanListing(listOf(plan("owner-a", 100_000)), 100_000, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0, homeCurrencyCode = "CNY"),

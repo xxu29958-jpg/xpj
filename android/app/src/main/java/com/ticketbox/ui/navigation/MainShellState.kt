@@ -122,9 +122,7 @@ internal class MainShellState(val launchAction: LaunchActionState = LaunchAction
     val accountOpen: Boolean
         get() = activeDestination == MainProductDestination.Workspace
 
-    var insightsDataRevision by mutableStateOf(0)
-
-    var planDataRevision by mutableStateOf(0)
+    var financialDataRevision by mutableStateOf(0)
 
     var expenseEditCompletionRevision by mutableStateOf(0)
 
@@ -176,6 +174,12 @@ internal class MainShellState(val launchAction: LaunchActionState = LaunchAction
 
     fun openSecondaryPage(page: ProductSecondaryPage) {
         navigationRequest = MainNavigationRequest.OpenSecondary(page)
+    }
+
+    fun openBudget(month: String) {
+        navigationRequest = MainNavigationRequest.OpenSecondary(
+            page = ProductSecondaryPage.Budget, route = budgetRoute(month),
+        )
     }
 
     fun openRepaymentDrafts(focusedDraftPublicId: String? = null) {
@@ -234,34 +238,28 @@ internal class MainShellState(val launchAction: LaunchActionState = LaunchAction
     }
 }
 
-internal fun MainShellState.markInsightsDataChanged() {
-    insightsDataRevision += 1
-}
-
-internal fun MainShellState.markPlanDataChanged() {
-    planDataRevision += 1
-    markInsightsDataChanged()
+internal fun MainShellState.markFinancialDataChanged() {
+    financialDataRevision += 1
 }
 
 internal fun MainShellState.markExpenseEditCompleted() {
     expenseEditCompletionRevision += 1
-    markInsightsDataChanged()
+    markFinancialDataChanged()
 }
 
 internal fun MainShellState.markTransactionVocabularyChanged() {
     transactionVocabularyRevision += 1
-    markInsightsDataChanged()
+    markFinancialDataChanged()
 }
 
 /**
  * Recycle-bin restores can revive rows from BOTH the transactions vocabulary
  * domain (category preferences) and the plan domain (budget / income plans /
- * recurring / goals), so a restore invalidates the two channels together.
- * Insights gets a single bump — the two marks above would double-count it.
+ * recurring / goals). Refresh the vocabulary and the shared financial reads.
  */
 internal fun MainShellState.markRecycleBinRestoreCompleted() {
     transactionVocabularyRevision += 1
-    markPlanDataChanged()
+    markFinancialDataChanged()
 }
 
 @Composable
