@@ -22,4 +22,6 @@ internal fun readReportRateContext(json: String?): ReportRateContext? =
     json?.let { runCatching { reportRateContextAdapter.fromJson(it) }.getOrNull() }
 
 internal fun reportRateRoute(context: ReportRateContext): String =
-    "${ProductSecondaryPage.BudgetAdvice.route}?report=${Uri.encode(reportRateContextAdapter.toJson(context))}"
+    "${ProductSecondaryPage.BudgetAdvice.route}?report=${encodeRateContext(context)}"
+
+internal fun encodeRateContext(context: ReportRateContext): String = Uri.encode(reportRateContextAdapter.toJson(context))

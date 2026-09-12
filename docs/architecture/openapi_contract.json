@@ -1631,6 +1631,240 @@
         "title": "Body_post_restore_web_income_plans__public_id__restore_post",
         "type": "object"
       },
+      "Body_save_correction_rate_web_expenses__expense_id__correction_rate_post": {
+        "properties": {
+          "amount_yuan": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Yuan"
+          },
+          "category": {
+            "default": "",
+            "title": "Category",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "expense_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Time"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "item_amount_yuan": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Item Amount Yuan",
+            "type": "array"
+          },
+          "item_category": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Item Category",
+            "type": "array"
+          },
+          "item_kind": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Item Kind",
+            "type": "array"
+          },
+          "item_name": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Item Name",
+            "type": "array"
+          },
+          "item_public_id": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Item Public Id",
+            "type": "array"
+          },
+          "item_quantity": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Item Quantity",
+            "type": "array"
+          },
+          "item_unit_price_yuan": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Item Unit Price Yuan",
+            "type": "array"
+          },
+          "merchant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "original_currency": {
+            "default": "",
+            "title": "Original Currency",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          },
+          "regret_score": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Regret Score"
+          },
+          "return_filter": {
+            "default": "",
+            "title": "Return Filter",
+            "type": "string"
+          },
+          "return_granularity": {
+            "default": "",
+            "title": "Return Granularity",
+            "type": "string"
+          },
+          "return_home_currency_code": {
+            "default": "",
+            "title": "Return Home Currency Code",
+            "type": "string"
+          },
+          "return_merchant_category": {
+            "default": "",
+            "title": "Return Merchant Category",
+            "type": "string"
+          },
+          "return_month": {
+            "default": "",
+            "title": "Return Month",
+            "type": "string"
+          },
+          "return_page": {
+            "default": "",
+            "title": "Return Page",
+            "type": "string"
+          },
+          "return_query": {
+            "default": "",
+            "title": "Return Query",
+            "type": "string"
+          },
+          "return_ranking_metric": {
+            "default": "",
+            "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_tag": {
+            "default": "",
+            "title": "Return Tag",
+            "type": "string"
+          },
+          "return_to": {
+            "default": "",
+            "title": "Return To",
+            "type": "string"
+          },
+          "split_amount_yuan": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Split Amount Yuan",
+            "type": "array"
+          },
+          "split_member_id": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Split Member Id",
+            "type": "array"
+          },
+          "split_note": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Split Note",
+            "type": "array"
+          },
+          "split_public_id": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Split Public Id",
+            "type": "array"
+          },
+          "tags": {
+            "default": "",
+            "title": "Tags",
+            "type": "string"
+          },
+          "value_score": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Score"
+          }
+        },
+        "title": "Body_save_correction_rate_web_expenses__expense_id__correction_rate_post",
+        "type": "object"
+      },
       "Body_web_budgets_save_web_budgets_save_post": {
         "properties": {
           "category_budget_amount_yuan": {
@@ -8368,6 +8602,18 @@
             "default": null,
             "title": "Conflict Tag Row Version"
           },
+          "currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Currency Code"
+          },
           "error": {
             "title": "Error",
             "type": "string"
@@ -8384,6 +8630,18 @@
             "default": null,
             "title": "Expense Id"
           },
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Home Currency Code"
+          },
           "message": {
             "title": "Message",
             "type": "string"
@@ -8399,6 +8657,18 @@
             ],
             "default": null,
             "title": "Public Id"
+          },
+          "rate_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rate Date"
           },
           "request_id": {
             "anyOf": [
@@ -40745,6 +41015,55 @@
           }
         },
         "summary": "Web Correct Get",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/expenses/{expense_id}/correction-rate": {
+      "post": {
+        "operationId": "save_correction_rate_web_expenses__expense_id__correction_rate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_save_correction_rate_web_expenses__expense_id__correction_rate_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Correction Rate",
         "tags": [
           "web"
         ]

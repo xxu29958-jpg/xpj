@@ -9,6 +9,7 @@ from api_contract_helpers import web_confirm_expense, web_save_expense
 from fastapi.testclient import TestClient
 
 from tests._runtime_protocol import negotiated_headers
+from tests._web_native_form_support import hidden_post_forms
 
 
 def _create_pending(client: TestClient, *, identity) -> int:
@@ -68,6 +69,9 @@ def test_web_correction_preserves_foreign_currency_fields(web_client: TestClient
     # 现在经显式更正命令闭合（表单同样携带 original_currency 隐藏字段）。
     snapshot = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
     assert snapshot.status_code == 200, snapshot.text
+    form = web_client.get(f"/web/expenses/{expense_id}/correct?ledger_id=owner")
+    assert form.status_code == 200, form.text
+    key = hidden_post_forms(form.text)[f"/web/expenses/{expense_id}/corrections"]["idempotency_key"]
     saved = web_client.post(
         f"/web/expenses/{expense_id}/corrections",
         data={
@@ -79,6 +83,7 @@ def test_web_correction_preserves_foreign_currency_fields(web_client: TestClient
             "category": "餐饮",
             "note": "kept as USD",
             "expected_row_version": str(snapshot.json()["row_version"]),
+            "idempotency_key": key,
         },
         follow_redirects=False,
     )

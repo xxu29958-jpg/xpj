@@ -46,4 +46,9 @@ data class MissingExchangeRateDto(
     @param:Json(name = "source_currency_code") val sourceCurrencyCode: String?,
     @param:Json(name = "home_currency_code") val homeCurrencyCode: String,
     @param:Json(name = "rate_date") val rateDate: String?,
-)
+) {
+    fun canEnterManualRate(): Boolean =
+        com.ticketbox.domain.model.CurrencyCode.fromStorageKeyOrNull(sourceCurrencyCode)?.storageKey == sourceCurrencyCode && sourceCurrencyCode != null &&
+            com.ticketbox.domain.model.CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode)?.storageKey == homeCurrencyCode && sourceCurrencyCode != homeCurrencyCode &&
+            rateDate != null && runCatching { java.time.LocalDate.parse(rateDate).toString() == rateDate }.getOrDefault(false)
+}

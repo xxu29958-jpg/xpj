@@ -69,7 +69,7 @@ class CategoryRuleGlobalRecoveryTest {
             status = OutboxStatus(0, emptyList(), listOf(row)), categoryRules = mapOf(row.id to pending))
         compose.setContent { TicketboxTheme(skin = AppSkin.Default) {
             CompositionLocalProvider(LocalCurrencyDisplay provides CurrencyDisplay(CurrencyCode.CNY)) {
-                SyncStatusScreenContent(state, SyncStatusActions(onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = { opened = it },
+                SyncStatusScreenContent(state, SyncStatusActions(onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = { opened = it },
                     onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
                     onOpenExpense = {}, onKeepMine = { error("Unexpected token rebase") }, onDropMine = { dropped = it },
                     onRetry = { error("Unexpected retry") }, onDropFailed = { dropped = it }, onClearQuarantined = {}), {}, {})

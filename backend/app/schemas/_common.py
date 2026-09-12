@@ -24,6 +24,9 @@ class ErrorResponse(BaseModel):
     request_id: str | None = None
     public_id: str | None = None
     expense_id: int | None = None
+    currency_code: str | None = None
+    home_currency_code: str | None = None
+    rate_date: str | None = None
     status: str | None = None
     conflict_tag_public_id: str | None = None
     conflict_tag_row_version: int | None = None

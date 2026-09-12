@@ -4,6 +4,8 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
+from tests._web_native_form_support import hidden_post_forms
+
 
 def _item_form_data(items: list[dict], *, names: list[str]) -> dict[str, list[str]]:
     kept = [bool(name.strip()) for name in names]
@@ -136,6 +138,8 @@ def test_web_item_correction_preserves_hidden_ocr_provenance(
             "ledger_id": "owner",
             "reason": "修正 OCR 识别名称",
             "expected_row_version": str(seeded["expense"]["row_version"]),
+            "idempotency_key": hidden_post_forms(correction_page.text)[
+                f"/web/expenses/{expense_id}/corrections"]["idempotency_key"],
             "item_public_id": [item["public_id"] for item in seeded_items],
             "item_name": ["", "人工修正名称"],
             "item_kind": ["product", "product"],

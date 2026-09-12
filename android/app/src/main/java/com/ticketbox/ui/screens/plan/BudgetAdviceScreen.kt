@@ -43,16 +43,17 @@ internal fun BudgetAdviceScreen(
     state: BudgetAdviceUiState,
     actions: BudgetAdviceActions,
     onBack: () -> Unit,
+    correctionContinuation: Boolean = false,
 ) {
     AppSecondaryScrollableColumn(
         chrome = AppSecondaryPageChrome(
             role = AppPageRole.Stats,
-            title = stringResource(R.string.budget_advice_page_title),
+            title = stringResource(if (correctionContinuation) R.string.correction_rate_title else R.string.budget_advice_page_title),
             subtitle = stringResource(
                 R.string.budget_advice_page_subtitle,
                 displayMonthLabel(state.month),
             ),
-            backText = stringResource(R.string.budget_advice_back_to_plan),
+            backText = stringResource(if (correctionContinuation) R.string.correction_rate_back else R.string.budget_advice_back_to_plan),
             onBack = onBack,
             verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
         ),
@@ -68,6 +69,11 @@ internal fun BudgetAdviceScreen(
             },
         ),
     ) {
+        if (correctionContinuation) {
+            Text(stringResource(R.string.correction_rate_continuation))
+            ManualRateContent(state, actions)
+            return@AppSecondaryScrollableColumn
+        }
         BudgetAdviceInputsContent(state, actions)
         if (state.inputsLoading || state.inputs?.readyForAdvice != true) return@AppSecondaryScrollableColumn
         BudgetAdviceBody(

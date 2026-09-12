@@ -119,11 +119,12 @@ slice. Full Internal Beta RC completion is still outstanding.
 | Recognition and assisted entry | `STRONG_SLICE`; #353 CLOSED. Shared configured suggestions remain drafts. Debt image/binding continuity #386 CLOSED, integrated and main-qualified | [Journeys](TICKETBOX_USER_JOURNEYS_CONTRACT.md#recognition-and-assisted-entry), [Debt image contract](TICKETBOX_DEBT_BILL_BINDING_CONTRACT.md) |
 | Currency choice and correction | `PARTIAL`; #397 CLOSED, explicit choice, changeable defaults and recorded-money consumers are integrated and main-qualified. Historical FX correction continuation remains | [Currency contract](TICKETBOX_CURRENCY_CHOICE_CORRECTION_CONTRACT.md) |
 | One-bill manual FX recovery | `STRONG_SLICE`; #355 CLOSED. Shared pending Expense editor, canonical review and Android PatchExpense intent | [FX journey](TICKETBOX_USER_JOURNEYS_CONTRACT.md#missing-fx-rate-recovery) |
+| Historical correction FX continuation | `PARTIAL`; exact missing pair/date, separate rate save and return to the original correction are implemented candidates awaiting qualification | [Historical FX](TICKETBOX_HISTORICAL_FX_CONTINUATION_CONTRACT.md) |
 | Manual expense and browser draft | `STRONG_SLICE`; #398 CLOSED. Durable admission, original receipt replay and visible submission continuation are integrated and independently main-qualified; remaining cross-client interruption rehearsal stays in delivery | [Manual continuity](TICKETBOX_MANUAL_CREATION_CONTINUITY_CONTRACT.md), [Manual entry](TICKETBOX_USER_JOURNEYS_CONTRACT.md#manual-expense-entry) |
 | External debt, split and reimbursement | `STRONG_SLICE`; existing relationship owners and #361 context integrated; complete settlement journeys remain | [Debt context](TICKETBOX_USER_JOURNEYS_CONTRACT.md#external-debt-context), [Plan](../superpowers/plans/2026-09-05-debt-context.md) |
 | Android external-debt creation and recovery | `STRONG_SLICE`; #369/#370 CLOSED. Original submitted intent and readable retry/discard; keyboard, OS interruption and unsubmitted editing restoration remain | [Convenience plan](../superpowers/plans/2026-09-05-consumer-art-convenience.md) |
 | Debt adjustment continuity | `STRONG_SLICE`; #379 CLOSED. Sole dispatcher preserves original submission and refreshes affected consumers | [Adjustment contract](TICKETBOX_DEBT_ADJUSTMENT_CONTINUITY_CONTRACT.md) |
-| Budgets and goals | `STRONG_SLICE`; existing owners and Web first-step form integrated. Compact Android first use and accurate query feedback (#400) are merged, in main qualification; durable offline Goal query reopening and remaining draft recovery need completion | [Budget journey](TICKETBOX_USER_JOURNEYS_CONTRACT.md#budget-first-step), [Query boundary](TICKETBOX_USER_JOURNEYS_CONTRACT.md#planning-query-status-and-offline-reading) |
+| Budgets and goals | `STRONG_SLICE`; #400 compact Android first use and accurate query feedback are main-qualified. Durable offline Goal reads (#401) are merged, awaiting main qualification; remaining budget/debt read persistence and draft recovery need completion | [Budget journey](TICKETBOX_USER_JOURNEYS_CONTRACT.md#budget-first-step), [Goal reads](TICKETBOX_GOAL_OFFLINE_READING_CONTRACT.md) |
 | Recurring occurrence and income plans | `STRONG_SLICE`; #373/#377 CLOSED. Actual payment association and server-month revision/recovery use shared owners; plans stay distinct from income accounting | [Recurring](TICKETBOX_RECURRING_OCCURRENCE_CONTRACT.md), [Income plans](TICKETBOX_INCOME_PLAN_CONTRACT.md) |
 | Reports, projections and data health | `STRONG_SLICE`; #380 CLOSED. Canonical unclassified scope and exact major-expense return navigation; integrated interpretation and state feedback remain | [Insight navigation contract](TICKETBOX_INSIGHT_FACT_NAVIGATION_CONTRACT.md) |
 | First use, connection and household entry | `STRONG_SLICE`; invitation, real local Web identity and #378 original-code continuation integrated; full Owner/member/viewer rehearsal remains | [Household journeys](TICKETBOX_USER_JOURNEYS_CONTRACT.md#household-invitation), [Desktop first use](TICKETBOX_DESKTOP_FIRST_USE_CONTRACT.md) |
@@ -177,11 +178,10 @@ feedback and efficient actions within each active capability change.
 [Member settlement evidence](TICKETBOX_MEMBER_SETTLEMENT_CONTINUITY_CONTRACT.md).
 [Spending-goal continuity evidence](TICKETBOX_PLANNING_GOAL_CONTINUITY_CONTRACT.md).
 
-**Next action:** #397/#398 are CLOSED and independently main-qualified. Qualify
-historical FX continuation (#399), complete #400 main qualification, and close
-previously read Goal list/detail reopening through the existing query owner,
-with visible data time, full binding isolation and explicit refusal. Continue
-the remaining high-frequency offline read gaps after that bounded slice. Original
+**Next action:** #397/#398/#400 are independently main-qualified. Qualify
+[historical FX continuation](TICKETBOX_HISTORICAL_FX_CONTINUATION_CONTRACT.md)
+(#399) and the merged [Goal reads](TICKETBOX_GOAL_OFFLINE_READING_CONTRACT.md)
+(#401), then continue the remaining high-frequency offline read gaps. Original
 submission receipts remain distinct from queries; preserve offline intent throughout.
 Preserve draft #372 for the later detail wave.
 The full Goal and all remaining packages above stay active.

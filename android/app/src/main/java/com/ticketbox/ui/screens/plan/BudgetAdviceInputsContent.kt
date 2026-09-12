@@ -25,7 +25,6 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.*
 import com.ticketbox.viewmodel.BudgetAdviceUiState
-import com.ticketbox.viewmodel.canEnterManualRate
 
 internal data class BudgetAdviceActions(val onGenerate: () -> Unit, val onRefreshInputs: () -> Unit,
     val onShiftMonth: (Long) -> Unit, val onOpenRate: (MissingExchangeRateDto) -> Unit,
@@ -67,6 +66,11 @@ internal fun BudgetAdviceInputsContent(state: BudgetAdviceUiState, actions: Budg
         state.inputsError?.let { Text(it.asString(), color = MaterialTheme.colorScheme.error) }
         TextButton(onClick = actions.onRefreshInputs, enabled = !state.inputsLoading) { Text(stringResource(R.string.advice_inputs_refresh)) }
     }
+    ManualRateContent(state, actions)
+}
+
+@Composable
+internal fun ManualRateContent(state: BudgetAdviceUiState, actions: BudgetAdviceActions) {
     ManualRateSubmissions(state, actions)
     state.rateMessage?.let { Text(it.asString()) }
     state.rateEditor?.let { ManualRateEditorCard(state, actions) }

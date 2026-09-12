@@ -16,13 +16,17 @@ import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.PendingExpenseCorrection
+import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.remote.dto.MissingExchangeRateDto
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.settings.friendlyLastError
 
 internal data class CorrectionSubmissionOptions(val canModify: Boolean, val busy: Boolean, val refreshPending: Boolean)
-internal data class CorrectionSubmissionActions(val recover: (Boolean) -> Unit, val reviewFact: (() -> Unit)? = null)
+typealias CorrectionRateAction = (LogicalSessionBinding, MissingExchangeRateDto) -> Unit
+internal data class CorrectionSubmissionActions(val recover: (Boolean) -> Unit, val reviewFact: (() -> Unit)? = null,
+    val repairRate: ((MissingExchangeRateDto) -> Unit)? = null)
 
 /** The same original-submission consumer in detail and both global recovery entrances. */
 @Composable
@@ -45,9 +49,7 @@ internal fun ExpenseCorrectionSubmissionCard(
         request?.let { Text(stringResource(R.string.correction_submission_reason, it.reason)) }
         TextButton(onClick = { expanded = !expanded }) { Text(stringResource(R.string.correction_submission_details)) }
         if (expanded) CorrectionSubmissionFields(pending)
-        if (pending.canRetry) TextButton(onClick = { recover(false) }, enabled = canModify && !busy) {
-            Text(stringResource(R.string.correction_submission_retry))
-        }
+        CorrectionRetryActions(pending, options, actions)
         if (reviewFact != null && (pending.canDiscard || pending.delivered && refreshPending)) {
             TextButton(onClick = reviewFact, enabled = !busy) { Text(stringResource(R.string.correction_submission_review)) }
         }
@@ -65,7 +67,24 @@ internal fun ExpenseCorrectionSubmissionCard(
 }
 
 @Composable
+private fun CorrectionRetryActions(pending: PendingExpenseCorrection, options: CorrectionSubmissionOptions,
+    actions: CorrectionSubmissionActions) {
+    val enabled = options.canModify && !options.busy
+    pending.missingExchangeRate?.let { gap ->
+        Text(stringResource(R.string.advice_rate_pair_date, gap.sourceCurrencyCode.orEmpty(), gap.homeCurrencyCode, gap.rateDate.orEmpty()))
+        actions.repairRate?.let { repair ->
+            TextButton(onClick = { repair(gap) }, enabled = enabled) { Text(stringResource(R.string.correction_rate_open)) }
+        }
+    }
+    if (pending.canRetry) TextButton(onClick = { actions.recover(false) }, enabled = enabled) {
+        Text(stringResource(if (pending.exchangeRatePending) R.string.correction_rate_recheck else R.string.correction_submission_retry))
+    }
+}
+
+@Composable
 private fun correctionStatusText(pending: PendingExpenseCorrection, refreshPending: Boolean): String {
+    if (pending.exchangeRatePending) return stringResource(if (pending.missingExchangeRate == null)
+        R.string.correction_rate_context_missing else R.string.correction_rate_required)
     val fallback = stringResource(when {
         !pending.hasSupportedIntent -> R.string.correction_submission_unsupported
         pending.row.lastError == "outbox_row_expired" -> R.string.correction_submission_expired

@@ -14,6 +14,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertSame
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class CorrectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestBase() {
@@ -119,6 +121,44 @@ internal class CorrectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
         )
 
         assertTrue(dispatcher.dispatch(originalRow.copy(idempotencyKey = null)) is DispatchResult.Failure)
+    }
+
+    @Test
+    fun `missing FX retains the server pair and historical date without changing the original`() = runTest {
+        val adapter = com.ticketbox.OutboxAdapterGraph().correctionAdapter
+        val stub = Stub(StubResult.Throw(httpException(409,
+            """{"error":"exchange_rate_pending","message":"汇率待补","currency_code":"JPY","home_currency_code":"CNY","rate_date":"2025-12-03"}""")))
+        val dispatcher = CorrectExpenseDispatcher({ stub }, adapter, { _, _ -> error("No accepted correction") },
+            { error("No committed notification") })
+        val result = dispatcher.dispatch(originalRow)
+        assertTrue(result is DispatchResult.Failure)
+        val failed = originalRow.copy(status = PendingMutationStatus.Failed, lastError = result.message)
+        val pending = PendingExpenseCorrection(failed, adapter.readSupportedCorrection(failed))
+        assertTrue(pending.exchangeRatePending)
+        assertEquals(com.ticketbox.data.remote.dto.MissingExchangeRateDto("JPY", "CNY", "2025-12-03"), pending.missingExchangeRate)
+        assertTrue(pending.canRetry, "Recheck remains an explicit replay, never an automatic loop")
+        assertEquals(originalRow.payloadJson, failed.payloadJson)
+        assertEquals(originalRow.idempotencyKey, stub.lastKey)
+        assertEquals(originalRow.expectedRowVersion, stub.lastRequest?.expectedRowVersion)
+        assertEquals(1, stub.calls)
+    }
+
+    @Test
+    fun `old or invalid FX context only offers recheck and never guesses the date or default`() = runTest {
+        val adapter = com.ticketbox.OutboxAdapterGraph().correctionAdapter
+        for (fields in listOf("", ",\"currency_code\":\"JPY\",\"home_currency_code\":\"CNY\"",
+            ",\"currency_code\":\"ZZZ\",\"home_currency_code\":\"CNY\",\"rate_date\":\"2025-12-03\"",
+            ",\"currency_code\":\"JPY\",\"home_currency_code\":\"CNY\",\"rate_date\":\"2025-13-03\"")) {
+            val stub = Stub(StubResult.Throw(httpException(409, "{\"error\":\"exchange_rate_pending\",\"message\":\"汇率待补\"$fields}")))
+            val result = CorrectExpenseDispatcher({ stub }, adapter, { _, _ -> error("No acceptance") }, {}).dispatch(originalRow)
+            assertTrue(result is DispatchResult.Failure)
+            val failed = originalRow.copy(status = PendingMutationStatus.Failed, lastError = result.message)
+            val pending = PendingExpenseCorrection(failed, adapter.readSupportedCorrection(failed))
+            assertTrue(pending.exchangeRatePending)
+            assertNull(pending.missingExchangeRate)
+            assertTrue(pending.canRetry)
+            assertNotNull(pending.intent)
+        }
     }
 
     @Test

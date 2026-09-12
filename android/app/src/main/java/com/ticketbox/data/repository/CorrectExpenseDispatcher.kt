@@ -16,6 +16,7 @@ class CorrectExpenseDispatcher(
     private val onConfirmedCommitted: (ledgerId: String) -> Unit,
 ) : OutboxMutationDispatcher {
     override val type: PendingMutationType = PendingMutationType.CorrectExpense
+    private val errors = NetworkErrorHandler(serverUrlProvider = { null }, context = "ExpenseCorrection")
 
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
         val intent = payloadAdapter.readSupportedCorrection(row)
@@ -23,9 +24,7 @@ class CorrectExpenseDispatcher(
         val response = try {
             apiProvider(row).correctExpense(intent.expenseId.toString(), intent.request, requireNotNull(row.idempotencyKey))
         } catch (e: HttpException) {
-            if (e.code() == 422) return DispatchResult.Failure("correction_requires_review")
-            val result = mapOutboxHttpException(e)
-            return if (result is DispatchResult.Discarded) DispatchResult.Failure("correction_target_unavailable") else result
+            return refusal(e)
         } catch (_: IOException) {
             return DispatchResult.RetryableFailure("correction_delivery_unknown")
         } catch (e: CancellationException) {
@@ -55,5 +54,15 @@ class CorrectExpenseDispatcher(
         }
         cancellation?.let { throw it }
         return DispatchResult.Success(newRowVersion = response.expense.rowVersion, cacheRefreshVersion = cacheRefreshVersion)
+    }
+
+    private fun refusal(error: HttpException): DispatchResult {
+        if (error.code() == 422) return DispatchResult.Failure("correction_requires_review")
+        val parsed = errors.parseHttpError(error)
+        if (error.code() == 409 && parsed.errorCode == CORRECTION_RATE_PENDING) {
+            return DispatchResult.Failure(parsed.correctionRateFailure())
+        }
+        val result = mapOutboxHttpError(error.code(), parsed)
+        return if (result is DispatchResult.Discarded) DispatchResult.Failure("correction_target_unavailable") else result
     }
 }

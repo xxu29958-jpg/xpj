@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="correction_rate_open">补录所需汇率</string>
+    <string name="correction_rate_recheck">重新检查并重试原更正</string>
+    <string name="correction_rate_required">这次更正需要下列汇率。补录后返回这里，重试原更正；原金额、日期和提交内容均已保留。</string>
+    <string name="correction_rate_context_missing">原更正已保留，但这次失败没有可用的汇率日期或币种对。重新检查可取得服务器的最新处理结果。</string>
+    <string name="correction_rate_title">补齐更正所需汇率</string>
+    <string name="correction_rate_back">返回原提交</string>
+    <string name="correction_rate_continuation">保存汇率不会自动更改账单。汇率提交完成后，请返回原提交，明确重试原更正。</string>
+</resources>

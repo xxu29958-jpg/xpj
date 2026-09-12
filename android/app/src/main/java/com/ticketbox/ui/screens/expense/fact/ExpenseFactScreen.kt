@@ -43,6 +43,7 @@ fun ExpenseFactScreen(
     state: ExpenseFactUiState,
     viewModel: ExpenseFactViewModel,
     onBack: () -> Unit,
+    onRepairCorrectionRate: CorrectionRateAction,
 ) {
     AppSecondaryScrollableColumn(
         chrome = AppSecondaryPageChrome(
@@ -57,7 +58,7 @@ fun ExpenseFactScreen(
         ),
     ) {
         AppStatusBanner(message = state.message, tone = state.messageTone)
-        FactCorrectionSubmissions(state, viewModel)
+        FactCorrectionSubmissions(state, viewModel, onRepairCorrectionRate)
         if (state.expense == null) FactBillSplitSubmissions(state, viewModel)
         when {
             // 首载：骨架占位（成熟产品的加载形态，不是白屏）。
@@ -81,7 +82,7 @@ fun ExpenseFactScreen(
 }
 
 @Composable
-private fun FactCorrectionSubmissions(state: ExpenseFactUiState, viewModel: ExpenseFactViewModel) {
+private fun FactCorrectionSubmissions(state: ExpenseFactUiState, viewModel: ExpenseFactViewModel, onRepairRate: CorrectionRateAction) {
         state.corrections.forEach { pending ->
             ExpenseCorrectionSubmissionCard(pending,
                 options = CorrectionSubmissionOptions(canModify = !state.readOnly, busy = state.correctionRecoveryBusy,
@@ -91,7 +92,8 @@ private fun FactCorrectionSubmissions(state: ExpenseFactUiState, viewModel: Expe
                         state.revisionsLoadState != ExpenseDetailDataLoadState.Loaded ||
                         state.factBundleLoadState != ExpenseDetailDataLoadState.Loaded),
                 actions = CorrectionSubmissionActions(recover = { drop -> viewModel.recoverCorrection(pending.row.id, drop) },
-                    reviewFact = viewModel::refreshCorrectionFact))
+                    reviewFact = viewModel::refreshCorrectionFact,
+                    repairRate = state.correctionAccess?.binding?.let { binding -> { gap -> onRepairRate(binding, gap) } }))
         }
 }
 

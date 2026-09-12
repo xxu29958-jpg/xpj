@@ -101,6 +101,7 @@ internal fun MainNavGraph(
             )
         }
         addManualExpenseSubmissionRoute(runtime)
+        addCorrectionRateRoute(runtime.screenFactory) { runtime.navController.popBackStack() }
         composable(
             route = EXPENSE_ROUTE,
             arguments = listOf(navArgument(EXPENSE_ID_ARG) { type = NavType.LongType }),
@@ -125,10 +126,10 @@ internal fun MainNavGraph(
                     }
                     runtime.navController.popBackStack()
                 },
-                onOpenRepaymentDrafts = { draftPublicId ->
+                related = ExpenseFactNavigation(onOpenRepaymentDrafts = { draftPublicId ->
                     runtime.shellState.openRepaymentDrafts(draftPublicId)
                     runtime.navController.popBackStack()
-                },
+                }, onRepairRate = { binding, gap -> runtime.navController.navigate(correctionRateRoute(binding, gap)) }),
             )
         }
     }
@@ -323,6 +324,7 @@ private fun MainProductNavHost(
         addPlanRoutes(dependencies)
         addInsightsRoutes(dependencies)
         addTransactionRoutes(dependencies)
+        addCorrectionRateRoute(runtime.screenFactory) { navController.popBackStack() }
         addObligationRoutes(dependencies)
     }
 }

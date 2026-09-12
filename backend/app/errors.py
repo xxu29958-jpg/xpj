@@ -27,7 +27,7 @@ ERROR_MESSAGES = {
     "invitation_not_cancellable": "拆账邀请已被对方处理，无法撤回。",
     "invitation_expired": "拆账邀请已过期。",
     "bill_split_owner_account_missing": "未找到可发起拆账的拥有者账号。",
-    "exchange_rate_pending": "汇率还没同步完成，稍后再确认。",
+    "exchange_rate_pending": "这笔账单缺少换算汇率，请补齐后再继续。",
     "invalid_token": "登录已失效，请重新绑定设备。",
     "legacy_auth_removed": "旧版访问方式已停用，请重新绑定。",
     "bootstrap_already_initialized": "小票夹已经初始化过了。",

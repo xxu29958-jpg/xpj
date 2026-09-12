@@ -72,6 +72,13 @@ def web_correction_context(
         # 冲突重渲必须带服务器最新 token；调用方同时负责不把过期标量值
         # 与这把新 token 组合起来。
         ctx["expense"]["row_version"] = ctx["conflict_current"]["row_version"]
+    if form_values is not None:
+        # A submitted correction keeps its identity, including invalid blanks.
+        # Only a new GET or an explicit conflict review prepares a fresh intent.
+        if not conflict and "expected_row_version" in form_values:
+            ctx["expense"]["row_version"] = form_values["expected_row_version"]
+        if "idempotency_key" in form_values:
+            ctx["confirm_idempotency_key"] = form_values["idempotency_key"]
     ctx["frozen_scalars"] = (
         (*_SPLIT_RECEIVED_FROZEN_FIELDS, "original_currency") if ctx["expense"]["is_split_received"] else ()
     )
@@ -109,6 +116,7 @@ def correction_form_error_response(
     receipt_item_rows: list[dict] | None = None,
     split_form_rows: list[dict] | None = None,
     return_context: ExpenseReturnContext = ExpenseReturnContext(),
+    rate_recovery: dict | None = None,
 ) -> Response:
     """更正表单的错误重渲（保留提交值/行级错误/冲突态）；行在提交与重读
     之间消失时退化为列表页 flash 重定向（与编辑页守卫同一语义）。"""
@@ -128,6 +136,7 @@ def correction_form_error_response(
             split_form_rows=split_form_rows,
             return_context=return_context,
         )
+        ctx["rate_recovery"] = rate_recovery
     except AppError as exc:
         return _web_redirect(
             resolve_return_to(return_context.return_to, "/web/confirmed"),

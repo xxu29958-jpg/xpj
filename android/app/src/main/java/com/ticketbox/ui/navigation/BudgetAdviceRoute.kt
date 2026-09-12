@@ -16,6 +16,7 @@ internal fun BudgetAdviceRoute(
     onBack: () -> Unit,
     originalSubmissionId: Long? = null,
     reportContext: ReportRateContext? = null,
+    correctionContinuation: Boolean = false,
 ) {
     val viewModel: BudgetAdviceViewModel = viewModel(
         factory = budgetAdviceViewModelFactory(screenFactory.budgetRepository),
@@ -36,5 +37,6 @@ internal fun BudgetAdviceRoute(
             viewModel::shiftMonth, { viewModel.openRate(it) }, viewModel::editRate, viewModel::updateRateInput,
             viewModel::saveRate, viewModel::closeRateEditor, viewModel::reviewRate, viewModel::recoverRate),
         onBack = onBack,
+        correctionContinuation = correctionContinuation,
     )
 }

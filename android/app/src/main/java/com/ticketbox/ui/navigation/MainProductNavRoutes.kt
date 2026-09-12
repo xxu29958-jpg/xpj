@@ -78,6 +78,7 @@ internal fun NavGraphBuilder.addWorkspaceRoute(
                     onOpenRuleSubmission = { id -> runtime.navController.navigate(categoryRuleSubmissionRoute(id)) },
                     onOpenIncomeSubmission = { id -> runtime.navController.navigate(incomePlanSubmissionRoute(id)) },
                     onOpenRateSubmission = { id -> runtime.navController.navigate(budgetAdviceSubmissionRoute(id)) },
+                    onRepairCorrectionRate = { binding, gap -> navController.navigate(correctionRateRoute(binding, gap)) },
                     onOpenRecurring = { shellState.openSecondaryPage(ProductSecondaryPage.Recurring) }, onCloseRoot = onBack),
                 screenFactory = screenFactory,
                 preferenceControls = workspaceControls.preferences,
@@ -207,6 +208,7 @@ private fun NavGraphBuilder.addObligationSyncRoute(dependencies: MainProductRout
                     onOpenRuleSubmission = { id -> runtime.navController.navigate(categoryRuleSubmissionRoute(id)) },
                     onOpenIncomeSubmission = { id -> runtime.navController.navigate(incomePlanSubmissionRoute(id)) },
                     onOpenRateSubmission = { id -> runtime.navController.navigate(budgetAdviceSubmissionRoute(id)) },
+                    onRepairCorrectionRate = { binding, gap -> navController.navigate(correctionRateRoute(binding, gap)) },
                     onOpenRecurring = { shellState.openSecondaryPage(ProductSecondaryPage.Recurring) },
                 ))
         }

@@ -3,13 +3,10 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.remote.dto.ExchangeRateDto
-import com.ticketbox.data.remote.dto.MissingExchangeRateDto
 import com.ticketbox.data.repository.LogicalSessionBinding
-import com.ticketbox.domain.model.CurrencyCode
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.time.LocalDate
 import java.time.YearMonth
 
 data class ManualRateEditor(val binding: LogicalSessionBinding, val currencyCode: String,
@@ -85,11 +82,6 @@ fun BudgetAdviceViewModel.shiftMonth(delta: Long) {
         error = null, terminalErrorCode = null, selectedRateSubmissionId = null, rateEditor = null) }
     refreshInputs()
 }
-
-fun MissingExchangeRateDto.canEnterManualRate(): Boolean =
-    CurrencyCode.fromStorageKeyOrNull(sourceCurrencyCode)?.storageKey == sourceCurrencyCode && sourceCurrencyCode != null &&
-        CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode)?.storageKey == homeCurrencyCode && sourceCurrencyCode != homeCurrencyCode &&
-        rateDate != null && runCatching { LocalDate.parse(rateDate).toString() == rateDate }.getOrDefault(false)
 
 fun BudgetAdviceViewModel.openRateSubmission(id: Long) {
     _state.update { it.copy(selectedRateSubmissionId = id) }
