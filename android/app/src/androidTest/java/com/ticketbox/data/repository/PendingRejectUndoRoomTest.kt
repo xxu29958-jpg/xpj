@@ -16,6 +16,7 @@ import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
+import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.ui.screens.pending.PendingUndoRejectBanner
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.PendingViewModel
@@ -75,7 +76,7 @@ class PendingRejectUndoRoomTest {
         val repository = fixture.reopen().expenseRepository
         lateinit var vm: PendingViewModel
         compose.runOnIdle { vm = PendingViewModel(repository, fixture.uploadIntents); pending = vm }
-        compose.setContent { TicketboxTheme {
+        compose.setContent { TicketboxTheme(skin = AppSkin.Paper) {
             val state by vm.uiState.collectAsState()
             state.undoableExpense?.let { PendingUndoRejectBanner(expense = it, onUndo = vm::undoReject) }
         } }
