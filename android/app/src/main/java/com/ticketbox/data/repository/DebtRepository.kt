@@ -7,7 +7,6 @@ import com.ticketbox.data.remote.dto.MemberRepaymentProposalConfirmRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalCreateRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalRejectRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalWithdrawRequestDto
-import com.ticketbox.data.remote.dto.RepaymentCreateRequestDto
 import com.ticketbox.data.remote.dto.RepaymentVoidCreateRequestDto
 import com.ticketbox.domain.model.DebtBillSuggestion
 import com.ticketbox.domain.model.Debt
@@ -22,7 +21,7 @@ import kotlinx.coroutines.flow.Flow
 
 /**
  * Canonical Debt queries and existing online fact/proposal operations.
- * External creation and adjustment belong to [DebtCreationActions] and [DebtAdjustmentActions].
+ * External creation and adjustment belong to [DebtCreationActions] and [DebtWriteActions].
  */
 interface DebtActions {
     fun canModifyLedger(): Boolean
@@ -33,7 +32,6 @@ interface DebtActions {
     // ADR-0049 §3 (slice 8c) direct fact writes on an external/manual Debt. [expectedRowVersion]
     // is the §2.1 OCC carrier (the local Debt's row_version); the response is the fold-after Debt
     // (status / remaining / paid / a fresh row_version) the detail screen swaps in.
-    suspend fun recordRepayment(publicId: String, expectedRowVersion: Long, amountCents: Long): Result<Debt>
     suspend fun voidDebt(publicId: String, expectedRowVersion: Long, reason: String): Result<Debt>
 
     suspend fun voidRepayment(
@@ -172,28 +170,6 @@ class DebtRepository(
             val filePart = MultipartBody.Part.createFormData("file", cleanName, body)
             ledgerRequestGuard.bindExact(expectedBinding).call { api ->
                 api.parseDebtBill(filePart).toDomain()
-            }
-        }
-    }
-
-    override suspend fun recordRepayment(
-        publicId: String,
-        expectedRowVersion: Long,
-        amountCents: Long,
-    ): Result<Debt> {
-        if (!canModifyLedger()) return Result.failure(RepositoryException(DEBT_VIEWER_READONLY))
-        if (amountCents <= 0L) return Result.failure(RepositoryException("还款金额必须大于 0。"))
-        return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
-                api.recordDebtRepayment(
-                    publicId = publicId,
-                    request = RepaymentCreateRequestDto(
-                        amountCents = amountCents,
-                        expectedRowVersion = expectedRowVersion,
-                    ),
-                    // ADR-0042: single-use key — direct-only path, no offline replay.
-                    idempotencyKey = UUID.randomUUID().toString(),
-                ).toDomain()
             }
         }
     }

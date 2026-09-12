@@ -96,7 +96,10 @@ def test_terminal_conflict_keeps_honest_attempt_receipt(
     assert "2026-07-19" in stale.text
     assert "已结清" in stale.text
     assert "你填写的内容还在" not in stale.text
-    assert f'action="/web/debts/{debt["public_id"]}/repayments"' not in stale.text
+    assert 'data-repayment-can-create="false"' in stale.text
+    assert 'data-repayment-result="blocked"' in stale.text
+    assert f'action="/web/debts/{debt["public_id"]}/repayments"' in stale.text
+    assert f'name="expected_row_version" value="{debt["row_version"]}"' in stale.text
     current = web_client.get(
         f"/api/debts/{debt['public_id']}",
         headers=identity.app_headers,

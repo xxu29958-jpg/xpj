@@ -36,8 +36,8 @@ class DebtAdjustmentViewModelTest {
         for (status in listOf(PendingMutationStatus.Pending, PendingMutationStatus.InFlight,
             PendingMutationStatus.Failed, PendingMutationStatus.Conflict)) {
             val repository = AdjustmentDetailActions()
-            val adjustments = FakeDebtAdjustmentActions().apply { rows.value = listOf(pendingAdjustment(status = status)) }
-            val viewModel = DebtDetailViewModel(repository, adjustments)
+            val writes = FakeDebtWriteActions().apply { rows.value = listOf(pendingAdjustment(status = status)) }
+            val viewModel = DebtDetailViewModel(repository, writes)
             viewModel.loadDebt("debt-1")
             advanceUntilIdle()
 
@@ -48,8 +48,8 @@ class DebtAdjustmentViewModelTest {
             viewModel.selectKind("installment")
             advanceUntilIdle()
             assertTrue(repository.mutations.isEmpty())
-            assertTrue(adjustments.saveCalls.isEmpty())
-            assertEquals(listOf(pendingAdjustment(status = status)), viewModel.state.value.pendingAdjustments)
+            assertTrue(writes.saveCalls.isEmpty())
+            assertEquals(listOf(pendingAdjustment(status = status)), viewModel.state.value.pendingWrites)
         }
     }
 
@@ -57,38 +57,38 @@ class DebtAdjustmentViewModelTest {
     fun originalAdjustmentArrivingAfterFormOpenedBlocksItsSubmission() = runTest(dispatcher) {
         for (action in DebtAction.entries) {
             val repository = AdjustmentDetailActions()
-            val adjustments = FakeDebtAdjustmentActions()
-            val viewModel = DebtDetailViewModel(repository, adjustments)
+            val writes = FakeDebtWriteActions()
+            val viewModel = DebtDetailViewModel(repository, writes)
             viewModel.loadDebt("debt-1")
             advanceUntilIdle()
             viewModel.openAction(action, adjustmentRepayment())
             viewModel.updateActionInput(amount = "30", reason = "核对原记录")
             assertEquals(action, viewModel.state.value.activeAction)
-            adjustments.rows.value = listOf(pendingAdjustment(status = PendingMutationStatus.InFlight))
+            writes.rows.value = listOf(pendingAdjustment(status = PendingMutationStatus.InFlight))
             advanceUntilIdle()
 
             viewModel.submit()
             advanceUntilIdle()
 
             assertTrue(repository.mutations.isEmpty(), "$action must not send against the old fold")
-            assertTrue(adjustments.saveCalls.isEmpty())
+            assertTrue(writes.saveCalls.isEmpty())
             assertEquals(7L, viewModel.state.value.debt?.rowVersion)
             assertEquals(listOf(pendingAdjustment(status = PendingMutationStatus.InFlight)),
-                viewModel.state.value.pendingAdjustments)
+                viewModel.state.value.pendingWrites)
         }
     }
 
     @Test
     fun deliveredAdjustmentBlocksStaleWritesUntilAuthoritativeRefreshSucceeds() = runTest(dispatcher) {
         val repository = AdjustmentDetailActions()
-        val adjustments = FakeDebtAdjustmentActions().apply { rows.value = listOf(pendingAdjustment()) }
-        val viewModel = DebtDetailViewModel(repository, adjustments)
+        val writes = FakeDebtWriteActions().apply { rows.value = listOf(pendingAdjustment()) }
+        val viewModel = DebtDetailViewModel(repository, writes)
         viewModel.loadDebt("debt-1")
         advanceUntilIdle()
         val original = viewModel.state.value.debt
         repository.getResult = Result.failure(RepositoryException("Synthetic unavailable canonical refresh"))
         repository.getGate = CompletableDeferred()
-        adjustments.rows.value = listOf(pendingAdjustment(status = PendingMutationStatus.Done))
+        writes.rows.value = listOf(pendingAdjustment(status = PendingMutationStatus.Done))
         runCurrent()
         assertTrue(viewModel.state.value.isLoading)
         viewModel.openAction(DebtAction.Repayment)
@@ -104,7 +104,7 @@ class DebtAdjustmentViewModelTest {
         viewModel.selectKind("installment")
         advanceUntilIdle()
         assertTrue(repository.mutations.isEmpty())
-        assertEquals(PendingMutationStatus.Done, adjustments.rows.value.single().row.status)
+        assertEquals(PendingMutationStatus.Done, writes.rows.value.single().row.status)
 
         repository.getGate = null
         repository.getResult = Result.success(requireNotNull(original).copy(rowVersion = 8, remainingAmountCents = 45_000))
@@ -114,15 +114,15 @@ class DebtAdjustmentViewModelTest {
         assertEquals(45_000L, viewModel.state.value.debt?.remainingAmountCents)
         viewModel.openAction(DebtAction.Repayment)
         assertEquals(DebtAction.Repayment, viewModel.state.value.activeAction)
-        assertTrue(adjustments.saveCalls.isEmpty())
+        assertTrue(writes.saveCalls.isEmpty())
     }
 
     @Test
     fun acceptingLocalAdjustmentClosesDraftWithoutInventingCanonicalDebt() = runTest(dispatcher) {
         val repository = AdjustmentDetailActions()
         val canonical = repository.getResult.getOrThrow()
-        val adjustments = FakeDebtAdjustmentActions()
-        val viewModel = DebtDetailViewModel(repository, adjustments)
+        val writes = FakeDebtWriteActions()
+        val viewModel = DebtDetailViewModel(repository, writes)
         viewModel.loadDebt("debt-1")
         advanceUntilIdle()
 
@@ -132,7 +132,7 @@ class DebtAdjustmentViewModelTest {
         viewModel.submit()
         advanceUntilIdle()
 
-        assertEquals(AdjustmentSaveCall(adjustmentBinding(), canonical, -5_000, "减免"), adjustments.saveCalls.single())
+        assertEquals(AdjustmentSaveCall(adjustmentBinding(), canonical, -5_000, "减免"), writes.saveCalls.single())
         assertEquals(canonical, viewModel.state.value.debt)
         assertEquals(listOf("debt-1"), repository.getCalls)
         assertNull(viewModel.state.value.activeAction)
@@ -142,9 +142,9 @@ class DebtAdjustmentViewModelTest {
         assertEquals(UiText.res(R.string.debt_adjustment_saved), viewModel.state.value.flashMessage)
 
         val pending = pendingAdjustment()
-        adjustments.rows.value = listOf(pending)
+        writes.rows.value = listOf(pending)
         advanceUntilIdle()
-        assertEquals(listOf(pending), viewModel.state.value.pendingAdjustments)
+        assertEquals(listOf(pending), viewModel.state.value.pendingWrites)
         assertEquals(canonical, viewModel.state.value.debt)
         viewModel.openAction(DebtAction.Adjustment)
         assertNull(viewModel.state.value.activeAction)
@@ -153,23 +153,23 @@ class DebtAdjustmentViewModelTest {
     @Test
     fun failedDetailReadStillExposesAndRecoversTheOriginalAdjustment() = runTest(dispatcher) {
         val original = pendingAdjustment(status = PendingMutationStatus.Failed)
-        val adjustments = FakeDebtAdjustmentActions().apply { rows.value = listOf(original) }
+        val writes = FakeDebtWriteActions().apply { rows.value = listOf(original) }
         val repository = AdjustmentDetailActions().apply {
             getResult = Result.failure(RepositoryException("offline"))
         }
-        val viewModel = DebtDetailViewModel(repository, adjustments)
+        val viewModel = DebtDetailViewModel(repository, writes)
         viewModel.loadDebt("debt-1")
         advanceUntilIdle()
 
         assertNull(viewModel.state.value.debt)
         assertNotNull(viewModel.state.value.error)
-        assertEquals(listOf(original), viewModel.state.value.pendingAdjustments)
-        viewModel.recoverAdjustment(viewModel.state.value.pendingAdjustments.single(), drop = false)
+        assertEquals(listOf(original), viewModel.state.value.pendingWrites)
+        viewModel.recoverDebtWrite(viewModel.state.value.pendingWrites.single(), drop = false)
         advanceUntilIdle()
 
-        assertEquals(AdjustmentRecoveryCall(adjustmentBinding(), original, false), adjustments.recoveryCalls.single())
-        assertTrue(adjustments.saveCalls.isEmpty())
-        assertEquals(listOf(original), adjustments.rows.value)
+        assertEquals(AdjustmentRecoveryCall(adjustmentBinding(), original, false), writes.recoveryCalls.single())
+        assertTrue(writes.saveCalls.isEmpty())
+        assertEquals(listOf(original), writes.rows.value)
         assertEquals(listOf("debt-1"), repository.getCalls)
     }
 
@@ -177,25 +177,25 @@ class DebtAdjustmentViewModelTest {
     fun newlyDoneAdjustmentRefreshesOnceWhileHistoricalDoneDoesNotReplay() = runTest(dispatcher) {
         val historical = pendingAdjustment(id = 1, status = PendingMutationStatus.Done)
         val pending = pendingAdjustment(id = 2)
-        val adjustments = FakeDebtAdjustmentActions().apply { rows.value = listOf(historical, pending) }
+        val writes = FakeDebtWriteActions().apply { rows.value = listOf(historical, pending) }
         val repository = AdjustmentDetailActions()
-        val viewModel = DebtDetailViewModel(repository, adjustments)
+        val viewModel = DebtDetailViewModel(repository, writes)
         viewModel.loadDebt("debt-1")
         advanceUntilIdle()
         assertEquals(listOf("debt-1"), repository.getCalls)
-        assertEquals(listOf(pending), viewModel.state.value.pendingAdjustments)
+        assertEquals(listOf(pending), viewModel.state.value.pendingWrites)
 
         val committed = repository.getResult.getOrThrow().copy(rowVersion = 8, remainingAmountCents = 45_000)
         repository.getResult = Result.success(committed)
         val done = pending.copy(row = pending.row.copy(status = PendingMutationStatus.Done, completedAt = "2026-09-06T08:01:00Z"))
-        adjustments.rows.value = listOf(historical, done)
+        writes.rows.value = listOf(historical, done)
         advanceUntilIdle()
         assertEquals(2, repository.getCalls.size)
         assertEquals(committed, viewModel.state.value.debt)
-        assertTrue(viewModel.state.value.pendingAdjustments.isEmpty())
+        assertTrue(viewModel.state.value.pendingWrites.isEmpty())
 
         // A new queue emission still contains the same completed identities.
-        adjustments.rows.value = listOf(done, historical)
+        writes.rows.value = listOf(done, historical)
         advanceUntilIdle()
         assertEquals(2, repository.getCalls.size)
         viewModel.loadDebt("debt-1")
@@ -207,9 +207,9 @@ class DebtAdjustmentViewModelTest {
     @Test
     fun doneBeforeLocalAcknowledgementStillRefreshesCanonicalDebtOnlyOnce() = runTest(dispatcher) {
         val gate = CompletableDeferred<Unit>()
-        val adjustments = FakeDebtAdjustmentActions().apply { saveGate = gate }
+        val writes = FakeDebtWriteActions().apply { saveGate = gate }
         val repository = AdjustmentDetailActions()
-        val viewModel = DebtDetailViewModel(repository, adjustments)
+        val viewModel = DebtDetailViewModel(repository, writes)
         viewModel.loadDebt("debt-1")
         advanceUntilIdle()
         viewModel.openAction(DebtAction.Adjustment)
@@ -220,7 +220,7 @@ class DebtAdjustmentViewModelTest {
 
         val committed = repository.getResult.getOrThrow().copy(rowVersion = 8, remainingAmountCents = 45_000)
         repository.getResult = Result.success(committed)
-        adjustments.rows.value = listOf(pendingAdjustment(status = PendingMutationStatus.Done))
+        writes.rows.value = listOf(pendingAdjustment(status = PendingMutationStatus.Done))
         advanceUntilIdle()
         assertEquals(committed, viewModel.state.value.debt)
         assertEquals(2, repository.getCalls.size)
@@ -235,8 +235,8 @@ class DebtAdjustmentViewModelTest {
     @Test
     fun sameLedgerIdentitySwitchDropsOldLoadAndDraftBeforeAnotherSave() = runTest(dispatcher) {
         val repository = AdjustmentDetailActions()
-        val adjustments = FakeDebtAdjustmentActions()
-        val viewModel = DebtDetailViewModel(repository, adjustments)
+        val writes = FakeDebtWriteActions()
+        val viewModel = DebtDetailViewModel(repository, writes)
         viewModel.loadDebt("debt-1")
         advanceUntilIdle()
         viewModel.openAction(DebtAction.Adjustment)
@@ -247,11 +247,11 @@ class DebtAdjustmentViewModelTest {
         runCurrent()
 
         val original = pendingAdjustment(status = PendingMutationStatus.Failed)
-        adjustments.rows.value = listOf(original)
+        writes.rows.value = listOf(original)
         advanceUntilIdle()
-        assertEquals(listOf(original), viewModel.state.value.pendingAdjustments)
+        assertEquals(listOf(original), viewModel.state.value.pendingWrites)
         val replacement = adjustmentBinding().copy(ownerKey = "other-owner", sessionGeneration = "session-2", bindingRevision = "binding-2")
-        adjustments.access.value = LedgerAccessContext(replacement, canModify = true)
+        writes.access.value = LedgerAccessContext(replacement, canModify = true)
         // Simulate Save before the access observer gets its next turn.
         viewModel.submit()
         runCurrent()
@@ -262,18 +262,18 @@ class DebtAdjustmentViewModelTest {
         assertNull(viewModel.state.value.activeAction)
         assertEquals("", viewModel.state.value.amountInput)
         assertEquals("", viewModel.state.value.reasonInput)
-        assertTrue(viewModel.state.value.pendingAdjustments.isEmpty())
+        assertTrue(viewModel.state.value.pendingWrites.isEmpty())
         assertFalse(viewModel.state.value.isLoading)
-        assertTrue(adjustments.saveCalls.isEmpty())
-        assertEquals(listOf(original), adjustments.rows.value)
+        assertTrue(writes.saveCalls.isEmpty())
+        assertEquals(listOf(original), writes.rows.value)
     }
 
     @Test
     fun lateLocalAcceptanceCannotPublishIntoReplacementBinding() = runTest(dispatcher) {
         val repository = AdjustmentDetailActions()
         val gate = CompletableDeferred<Unit>()
-        val adjustments = FakeDebtAdjustmentActions().apply { saveGate = gate }
-        val viewModel = DebtDetailViewModel(repository, adjustments)
+        val writes = FakeDebtWriteActions().apply { saveGate = gate }
+        val viewModel = DebtDetailViewModel(repository, writes)
         viewModel.loadDebt("debt-1")
         advanceUntilIdle()
         viewModel.openAction(DebtAction.Adjustment)
@@ -281,11 +281,11 @@ class DebtAdjustmentViewModelTest {
         viewModel.updateActionInput(adjustmentIncrease = false)
         viewModel.submit()
         runCurrent()
-        assertEquals(adjustmentBinding(), adjustments.saveCalls.single().binding)
+        assertEquals(adjustmentBinding(), writes.saveCalls.single().binding)
 
         val original = pendingAdjustment()
-        adjustments.rows.value = listOf(original)
-        adjustments.access.value = LedgerAccessContext(adjustmentBinding().copy(ledgerId = "another-ledger"), canModify = true)
+        writes.rows.value = listOf(original)
+        writes.access.value = LedgerAccessContext(adjustmentBinding().copy(ledgerId = "another-ledger"), canModify = true)
         runCurrent()
         gate.complete(Unit)
         advanceUntilIdle()
@@ -294,9 +294,9 @@ class DebtAdjustmentViewModelTest {
         assertNull(viewModel.state.value.flashMessage)
         assertNull(viewModel.state.value.activeAction)
         assertFalse(viewModel.state.value.isSubmitting)
-        assertTrue(viewModel.state.value.pendingAdjustments.isEmpty())
-        assertEquals(listOf(original), adjustments.rows.value)
-        assertEquals(1, adjustments.saveCalls.size)
+        assertTrue(viewModel.state.value.pendingWrites.isEmpty())
+        assertEquals(listOf(original), writes.rows.value)
+        assertEquals(1, writes.saveCalls.size)
     }
 }
 

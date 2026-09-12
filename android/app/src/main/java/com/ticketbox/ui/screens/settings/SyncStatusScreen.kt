@@ -158,11 +158,11 @@ internal fun SyncStatusScreenContent(
             onOpenInbox = onOpenInbox,
             actions = actions.copy(
                 onDropMine = { confirmingDrop = SyncStatusDropSelection(it, failed = false, debtCreation = null,
-                    recurringOccurrence = state.recurringOccurrences[it.id], incomeSubmission = state.incomeSubmissions[it.id], debtAdjustment = state.debtAdjustments[it.id], budgetSave = state.budgetSaves[it.id], recurringOriginal = state.recurringItems[it.id], goalCreation = state.goalCreations[it.id], goalEdit = state.goalEdits[it.id], categoryRule = state.categoryRules[it.id]) },
+                    recurringOccurrence = state.recurringOccurrences[it.id], incomeSubmission = state.incomeSubmissions[it.id], debtWrite = state.debtWrites[it.id], budgetSave = state.budgetSaves[it.id], recurringOriginal = state.recurringItems[it.id], goalCreation = state.goalCreations[it.id], goalEdit = state.goalEdits[it.id], categoryRule = state.categoryRules[it.id]) },
                 onDropFailed = { row ->
                     if (row.type in setOf(PendingMutationType.CorrectExpense, PendingMutationType.CreateBillSplitInvitation)) actions.onDropFailed(row)
                     else confirmingDrop = SyncStatusDropSelection(row, failed = true, debtCreation = state.failedDebtCreations[row.id],
-                        recurringOccurrence = state.recurringOccurrences[row.id], incomeSubmission = state.incomeSubmissions[row.id], debtAdjustment = state.debtAdjustments[row.id], budgetSave = state.budgetSaves[row.id], recurringOriginal = state.recurringItems[row.id], goalCreation = state.goalCreations[row.id], goalEdit = state.goalEdits[row.id], categoryRule = state.categoryRules[row.id])
+                        recurringOccurrence = state.recurringOccurrences[row.id], incomeSubmission = state.incomeSubmissions[row.id], debtWrite = state.debtWrites[row.id], budgetSave = state.budgetSaves[row.id], recurringOriginal = state.recurringItems[row.id], goalCreation = state.goalCreations[row.id], goalEdit = state.goalEdits[row.id], categoryRule = state.categoryRules[row.id])
                 },
                 onClearQuarantined = { confirmingClearQuarantined = true },
             ),
@@ -184,7 +184,7 @@ private fun SyncStatusPageBody(
     val status = state.status
     ManualCreationSubmissionSection(state, actions, manualClientRef)
     if (manualClientRef != null) return
-    SyncStatusOverviewSection(status, state.correctionObservation.corrections, state.debtAdjustments.values.toList(), state.incomeSubmissions.values.toList(), state.manualRates.values.toList())
+    SyncStatusOverviewSection(status, state.correctionObservation.corrections, state.debtWrites.values.toList(), state.incomeSubmissions.values.toList(), state.manualRates.values.toList())
     SyncStatusIncomeReviews(state, actions)
     SyncStatusRateReviews(state, actions)
     SyncStatusBillSplitSection(state, actions)
@@ -483,6 +483,7 @@ internal val syncStatusMutationLabelResources = mapOf(
     PendingMutationType.CreateBillSplitInvitation to R.string.sync_status_mutation_create_bill_split,
     PendingMutationType.CreateDebt to R.string.sync_status_mutation_create_debt,
     PendingMutationType.RecordDebtAdjustment to R.string.debt_action_adjustment_title,
+    PendingMutationType.RecordDebtRepayment to R.string.debt_action_repayment_title,
     PendingMutationType.ConfirmExpense to R.string.sync_status_mutation_confirm_expense,
     PendingMutationType.RejectExpense to R.string.sync_status_mutation_reject_expense,
     PendingMutationType.MarkNotDuplicate to R.string.sync_status_mutation_mark_not_duplicate,

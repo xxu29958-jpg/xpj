@@ -14,7 +14,6 @@ import com.ticketbox.data.remote.dto.MemberRepaymentProposalConfirmRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalCreateRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalListResponseDto
-import com.ticketbox.data.remote.dto.RepaymentCreateRequestDto
 import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.DebtKinds
@@ -211,60 +210,6 @@ class DebtRepositoryTest {
         val result = repository(handler).listReceivables()
 
         assertTrue(result.isFailure)
-    }
-
-    @Test
-    fun recordRepaymentSendsAmountVersionKeyAndRefolds() = runTest {
-        val handler = DebtApiHandler().apply { writeResult = debtDto(publicId = "d1", remaining = 40_000L) }
-
-        val updated = repository(handler).recordRepayment(
-            publicId = "d1",
-            expectedRowVersion = 3L,
-            amountCents = 10_000L,
-        ).getOrThrow()
-
-        val call = handler.repaymentCalls.single()
-        assertEquals("d1", call.publicId)
-        assertEquals(10_000L, call.request.amountCents)
-        assertEquals(3L, call.request.expectedRowVersion)
-        assertTrue(!call.idempotencyKey.isNullOrBlank())
-        // The fold-after Debt from the response is swapped in (remaining dropped to 40_000).
-        assertEquals(40_000L, updated.remainingAmountCents)
-    }
-
-    @Test
-    fun recordRepaymentRejectsNonPositiveAmountBeforeApiCall() = runTest {
-        val handler = DebtApiHandler()
-
-        val result = repository(handler).recordRepayment("d1", expectedRowVersion = 1L, amountCents = 0L)
-
-        assertTrue(result.isFailure)
-        assertTrue(handler.repaymentCalls.isEmpty())
-    }
-
-    @Test
-    fun recordRepaymentViewerShortCircuitsWithoutApiCall() = runTest {
-        val handler = DebtApiHandler()
-
-        val result = repository(handler, role = "viewer")
-            .recordRepayment("d1", expectedRowVersion = 1L, amountCents = 10_000L)
-
-        assertTrue(result.isFailure)
-        assertEquals("当前角色为只读，无法修改账本。", result.exceptionOrNull()?.message)
-        assertTrue(handler.repaymentCalls.isEmpty())
-    }
-
-    @Test
-    fun recordRepaymentMintsFreshKeyPerCall() = runTest {
-        val handler = DebtApiHandler()
-        val repository = repository(handler)
-
-        repository.recordRepayment("d1", expectedRowVersion = 1L, amountCents = 10_000L).getOrThrow()
-        repository.recordRepayment("d1", expectedRowVersion = 2L, amountCents = 10_000L).getOrThrow()
-
-        val keys = handler.repaymentCalls.mapNotNull { it.idempotencyKey }
-        assertEquals(2, keys.size)
-        assertEquals(2, keys.toSet().size)
     }
 
     @Test
@@ -611,7 +556,6 @@ private fun debtDto(
     isForgiven = isForgiven,
 )
 
-private data class RepaymentCall(val publicId: String, val request: RepaymentCreateRequestDto, val idempotencyKey: String?)
 private data class VoidCall(val publicId: String, val request: DebtVoidCreateRequestDto, val idempotencyKey: String?)
 private data class SetKindCall(val publicId: String, val request: DebtKindSetRequestDto, val idempotencyKey: String?)
 private data class ForgiveCall(val publicId: String, val request: DebtForgiveCreateRequestDto, val idempotencyKey: String?)
@@ -644,7 +588,6 @@ private fun proposalDto(publicId: String = "p1", proposed: Long = 20_000L): Memb
 private class DebtApiHandler : InvocationHandler, ApiServiceFactory {
     val listLenses = mutableListOf<String?>()
     val parseBillCalls = mutableListOf<MultipartBody.Part>()
-    val repaymentCalls = mutableListOf<RepaymentCall>()
     val voidCalls = mutableListOf<VoidCall>()
     // ADR-0049 §7.0 / 8e-6e debt_kind correction-setter route recording.
     val setKindCalls = mutableListOf<SetKindCall>()
@@ -702,14 +645,6 @@ private class DebtApiHandler : InvocationHandler, ApiServiceFactory {
             "parseDebtBill" -> {
                 parseBillCalls += values[0] as MultipartBody.Part
                 parseBillResult ?: DebtBillParseResponseDto()
-            }
-            "recordDebtRepayment" -> {
-                repaymentCalls += RepaymentCall(
-                    publicId = values[0] as String,
-                    request = values[1] as RepaymentCreateRequestDto,
-                    idempotencyKey = values[2] as String?,
-                )
-                writeResult ?: debtDto(publicId = values[0] as String)
             }
             "voidDebt" -> {
                 voidCalls += VoidCall(

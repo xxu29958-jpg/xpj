@@ -3,6 +3,11 @@
 {% set product_body_domain = 'obligations' %}
 {% block title %}{{ debt.name }} · 欠款详情 · 小票夹{% endblock %}
 
+{% block page_scripts %}
+<script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/repayment-entry.js?v={{ asset_version }}"></script>
+{% endblock %}
+
 {# C3a 欠款详情 (product 正文栈)。成员 communal / 外部 businesslike 双语义不变:
    成员 = 关系主句 + 剩余金额 + native progress + 「看看账」; 外部 = 剩余
    editorial 英雄 + 中性已偿还 progress + 本金/已偿还/类型/状态行。
@@ -205,35 +210,13 @@
    creditor 专属 (guard_member_debt + creditor-only, external 必 409), 且
    service 原子 supersede pending proposal, 不以 pending 为闸门; member
    debtor 无任何 direct 动作, 只走下方 proposal flow。 #}
+{% if not debt.is_member and (can_write or action_form.kind == 'repayment') %}
+{% include '_debt_repayment_form.html' %}
+{% endif %}
+
 {% if can_write and debt_open and action_keys and (not debt.is_member or viewer_is_debtor == false) %}
 <section class="product-panel product-panel--padded debt-actions" aria-labelledby="debt-actions-title">
   <h2 class="product-panel-title" id="debt-actions-title">处理这笔欠款</h2>
-
-  {% if not debt.is_member %}
-  {# 主动作: 记一笔还款 (不折叠)。失败时错误锚在本表单, 金额与还款日都回填。 #}
-  <form class="debt-action-form" method="post" action="/web/debts/{{ debt.public_id }}/repayments">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <input type="hidden" name="idempotency_key" value="{{ action_keys.repay }}">
-    <input type="hidden" name="expected_row_version" value="{{ expected_row_version }}">
-    {% if action_form.kind == 'repayment' %}
-    <div id="debt-action-error-repayment" class="product-feedback product-feedback--danger debt-action-error" role="alert">{{ action_form.error }}</div>
-    {% endif %}
-    <div class="product-form-grid">
-      <div class="product-field">
-        <label for="debt-repay-amount">本次还款（{{ currency_input.currency_code }} · {{ currency_input.currency_symbol }}，{{ currency_input.amount_input_hint }}）</label>
-        <input id="debt-repay-amount" class="product-input" name="amount_major" type="number" step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" value="{{ action_form.draft.amount_major if action_form.kind == 'repayment' else '' }}"{% if action_form.kind == 'repayment' %} aria-invalid="true" aria-describedby="debt-action-error-repayment"{% endif %} required>
-      </div>
-      <div class="product-field">
-        <label for="debt-repay-paid-at">还款日</label>
-        <input id="debt-repay-paid-at" class="product-input" name="paid_at" type="date" value="{{ action_form.draft.paid_at if action_form.kind == 'repayment' else today }}"{% if action_form.kind == 'repayment' %} aria-describedby="debt-action-error-repayment"{% endif %} required>
-      </div>
-    </div>
-    <div class="debt-form-actions">
-      <button class="product-button product-button--primary" type="submit">记一笔还款</button>
-    </div>
-  </form>
-  {% endif %}
 
   {# 低频/危险动作收进 secondary disclosure; 提交失败时对应面板自动展开。 #}
   <div class="debt-secondary-actions">

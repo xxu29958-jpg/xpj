@@ -180,8 +180,9 @@ feedback and efficient actions within each active capability change.
 [Member settlement evidence](TICKETBOX_MEMBER_SETTLEMENT_CONTINUITY_CONTRACT.md).
 [Spending-goal continuity evidence](TICKETBOX_PLANNING_GOAL_CONTINUITY_CONTRACT.md).
 
-**Next action:** qualify and integrate [financial read propagation](TICKETBOX_FINANCIAL_READ_PROPAGATION_CONTRACT.md),
-then close the direct repayment task's unknown-result recovery. Continue the
+**#402 CLOSED:** [financial read propagation](TICKETBOX_FINANCIAL_READ_PROPAGATION_CONTRACT.md) is integrated and main-qualified.
+
+**Next action:** close [direct repayment recovery](TICKETBOX_DIRECT_REPAYMENT_CONTINUITY_CONTRACT.md) across its real Android and Web entries. Continue the
 historical foreign-bill and fixed-commitment journeys, shared accounting-time and
 complete export, then remaining read/draft/Backstage continuity. Select each
 bounded change from these full user outcomes; an isolated semantic fix, working

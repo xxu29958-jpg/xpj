@@ -52,7 +52,7 @@ class ReceivablesViewModelTest {
                 ),
             ),
         )
-        val viewModel = ReceivablesViewModel(repo, adjustments = FakeDebtAdjustmentActions())
+        val viewModel = ReceivablesViewModel(repo, writes = FakeDebtWriteActions())
         advanceUntilIdle()
 
         assertEquals(listOf("open", "cleared"), viewModel.state.value.receivables.map { it.publicId })
@@ -63,7 +63,7 @@ class ReceivablesViewModelTest {
     @Test
     fun refreshFailureSetsErrorAndClearsLoading() = runTest(dispatcher) {
         val repo = FakeReceivablesActions(result = Result.failure(RuntimeException("offline")))
-        val viewModel = ReceivablesViewModel(repo, adjustments = FakeDebtAdjustmentActions())
+        val viewModel = ReceivablesViewModel(repo, writes = FakeDebtWriteActions())
         advanceUntilIdle()
 
         assertTrue(viewModel.state.value.receivables.isEmpty())
@@ -75,7 +75,7 @@ class ReceivablesViewModelTest {
     fun staleRefreshDoesNotClobberNewerData() = runTest(dispatcher) {
         // A slow earlier refresh must not overwrite a newer one (loadGeneration guard).
         val repo = FakeReceivablesActions(result = Result.success(listOf(sampleReceivable("first"))))
-        val viewModel = ReceivablesViewModel(repo, adjustments = FakeDebtAdjustmentActions())
+        val viewModel = ReceivablesViewModel(repo, writes = FakeDebtWriteActions())
         advanceUntilIdle()
 
         // A slow refresh stalls inside listReceivables (it captured the "first" snapshot)...
@@ -104,8 +104,8 @@ class ReceivablesViewModelTest {
         for (terminal in listOf(PendingMutationStatus.Done, PendingMutationStatus.Abandoned)) {
             val original = sampleReceivable("debt-1").copy(rowVersion = 7, ledgerId = "owner")
             val repo = FakeReceivablesActions(Result.success(listOf(original)))
-            val adjustments = FakeDebtAdjustmentActions()
-            val vm = ReceivablesViewModel(repo, adjustments)
+            val writes = FakeDebtWriteActions()
+            val vm = ReceivablesViewModel(repo, writes)
             try {
                 advanceUntilIdle()
                 val oldRead = CompletableDeferred<Unit>()
@@ -114,7 +114,7 @@ class ReceivablesViewModelTest {
                 runCurrent()
                 repo.gate = null
                 repo.result = Result.failure(IllegalStateException("terminal refresh failed"))
-                adjustments.rows.value = listOf(pendingAdjustment(status = terminal))
+                writes.rows.value = listOf(pendingAdjustment(status = terminal))
                 advanceUntilIdle()
                 assertNotNull(vm.state.value.error)
                 oldRead.complete(Unit)

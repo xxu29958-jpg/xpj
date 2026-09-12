@@ -3,7 +3,7 @@ package com.ticketbox.viewmodel
 import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.DebtCreationRepository
-import com.ticketbox.data.repository.DebtAdjustmentRepository
+import com.ticketbox.data.repository.DebtWriteRepository
 import com.ticketbox.data.repository.FakeApiService
 import com.ticketbox.data.repository.FakeApiServiceFactory
 import com.ticketbox.data.repository.FakeExpenseDao
@@ -30,8 +30,8 @@ internal fun outboxStatusHarness(onEnqueued: () -> Unit = {}): OutboxStatusHarne
         ),
         incomePlans = IncomePlanRepository(testApiServiceProvider(api, tokenStore), outbox,
             OutboxAdapterGraph().incomePlanSubmissionAdapter, OutboxAdapterGraph().incomePlanReceiptAdapter),
-        debtAdjustments = DebtAdjustmentRepository(testApiServiceProvider(api, tokenStore), outbox,
-            OutboxAdapterGraph().debtAdjustmentAdapter),
+        debtWrites = DebtWriteRepository(testApiServiceProvider(api, tokenStore), outbox,
+            OutboxAdapterGraph().debtAdjustmentAdapter, OutboxAdapterGraph().debtRepaymentAdapter),
         goalEdits = com.ticketbox.data.repository.GoalEditRepository(testApiServiceProvider(api, tokenStore), outbox,
             OutboxAdapterGraph().goalUpdateAdapter, OutboxAdapterGraph().goalReceiptAdapter, OutboxAdapterGraph().goalCreateAdapter),
         budgetSaves = com.ticketbox.data.repository.BudgetRepository(testApiServiceProvider(api, tokenStore), outbox,
@@ -51,7 +51,7 @@ internal data class OutboxStatusHarness(
     val expenseRepository: ExpenseRepository,
     val debtCreation: DebtCreationRepository,
     val incomePlans: IncomePlanRepository,
-    val debtAdjustments: DebtAdjustmentRepository,
+    val debtWrites: DebtWriteRepository,
     val goalEdits: com.ticketbox.data.repository.GoalEditRepository,
     val budgetSaves: com.ticketbox.data.repository.BudgetActions,
     val recurringItems: com.ticketbox.data.repository.RecurringManualMutationActions,

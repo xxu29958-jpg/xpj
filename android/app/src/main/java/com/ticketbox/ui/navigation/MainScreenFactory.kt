@@ -32,7 +32,7 @@ internal class MainScreenFactory(
     val incomePlanRepository: IncomePlanActions get() = repositories.incomePlanRepository
     val debtRepository: DebtRepository get() = repositories.debtRepository
     val debtCreationRepository: DebtCreationActions get() = repositories.debtCreationRepository
-    val debtAdjustmentRepository: com.ticketbox.data.repository.DebtAdjustmentActions get() = repositories.debtAdjustmentRepository
+    val debtWriteRepository: com.ticketbox.data.repository.DebtWriteActions get() = repositories.debtWriteRepository
     val debtRepaymentRepository: DebtRepaymentQueries get() = repositories.debtRepository.repayments
     val repaymentDraftRepository: RepaymentDraftRepository get() = repositories.repaymentDraftRepository
     val outboxRepository: OutboxRepository get() = repositories.outboxRepository
@@ -82,7 +82,7 @@ internal data class MainFeatureRepositories(
     val incomePlanRepository: IncomePlanActions,
     val debtRepository: DebtRepository,
     val debtCreationRepository: DebtCreationActions,
-    val debtAdjustmentRepository: com.ticketbox.data.repository.DebtAdjustmentActions,
+    val debtWriteRepository: com.ticketbox.data.repository.DebtWriteActions,
     val repaymentDraftRepository: RepaymentDraftRepository,
     val outboxRepository: OutboxRepository,
     val tagRepository: TagRepository,

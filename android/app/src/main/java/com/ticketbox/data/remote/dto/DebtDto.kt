@@ -171,16 +171,19 @@ data class DebtCreateRequestDto(
 /**
  * Body for `POST /api/debts/{id}/repayments` — record one committed repayment fact (ADR-0049 §3.1,
  * slice 8c). slice 8c submits the home-currency path only (`amountCents`); the foreign-currency path
- * (`original_currency` + `original_amount` + `paid_at`) is deferred. [expectedRowVersion] is the
+ * (`original_currency` + `original_amount`) is deferred. The original `paid_at` is frozen before local publication. [expectedRowVersion] is the
  * §2.1 stale-intent token (carries the Debt's `row_version`) + the §3.6 idempotency fingerprint
  * component. The backend marks this body `additionalProperties=false`, so the DTO field set must
  * stay a subset of the schema (the contract gate's forward check is the forbid protection).
  */
+@JsonClass(generateAdapter = true)
 data class RepaymentCreateRequestDto(
     @param:Json(name = "amount_cents")
     val amountCents: Long,
     @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long,
+    @param:Json(name = "paid_at")
+    val paidAt: String,
 )
 
 /**

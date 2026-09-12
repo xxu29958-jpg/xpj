@@ -67,7 +67,7 @@ internal fun ManualExpenseSubmissionRoute(
             val vm: OutboxStatusViewModel = viewModel(key = "manual-submission-$clientRef",
                 factory = outboxStatusViewModelFactory(screenFactory.outboxRepository, screenFactory.repository,
                     OutboxRecoveryRepositories(screenFactory.debtCreationRepository, screenFactory.recurringRepository.occurrences,
-                        screenFactory.incomePlanRepository, screenFactory.debtAdjustmentRepository, screenFactory.goalEditRepository,
+                        screenFactory.incomePlanRepository, screenFactory.debtWriteRepository, screenFactory.goalEditRepository,
                         screenFactory.budgetRepository, screenFactory.recurringRepository, screenFactory.ruleRepository)))
             SyncStatusScreen(vm, onBack, manualClientRef = clientRef, navigation = SyncStatusNavigation(
                 onOpenExpense = { if (it > 0 && binding != null &&

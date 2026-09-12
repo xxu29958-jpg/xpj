@@ -6,9 +6,9 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.DebtTask
 import com.ticketbox.data.local.PendingMutationStatus
-import com.ticketbox.data.repository.DebtAdjustmentActions
+import com.ticketbox.data.repository.DebtWriteActions
 import com.ticketbox.data.repository.LogicalSessionBinding
-import com.ticketbox.data.repository.PendingDebtAdjustment
+import com.ticketbox.data.repository.PendingDebtWrite
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.isDebtAdjustmentReasonValid
@@ -36,7 +36,7 @@ data class DebtSettleCelebration(val counterpartyLabel: String?)
 
 class DebtDetailViewModel(
     private val repository: DebtActions,
-    private val adjustments: DebtAdjustmentActions,
+    private val writes: DebtWriteActions,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(DebtDetailUiState(canModify = repository.canModifyLedger()))
@@ -57,9 +57,9 @@ class DebtDetailViewModel(
     // retained stale fold; [refresh] (pull-to-refresh) re-reads the same id.
     private var loadedPublicId: String? = null
     private var loadedBinding: LogicalSessionBinding? = null
-    private var adjustmentObservation: Job? = null
-    private var completedAdjustments: Set<Long>? = null
-    private val refreshedAdjustments = mutableSetOf<Long>()
+    private var writeObservation: Job? = null
+    private var completedWrites: Set<Long>? = null
+    private val refreshedWrites = mutableSetOf<Long>()
     private val observedTerminals = mutableSetOf<Long>()
 
     // Monotonic load token (mirrors DebtGoalViewModel): a refresh applies its result only if it is
@@ -77,13 +77,13 @@ class DebtDetailViewModel(
 
     init {
         viewModelScope.launch {
-            adjustments.observeActiveLedgerAccess().collect { access ->
+            writes.observeActiveLedgerAccess().collect { access ->
                 if (loadedBinding != null && loadedBinding != access?.binding) {
                     loadGeneration++
-                    adjustmentObservation?.cancel()
+                    writeObservation?.cancel()
                     loadedPublicId = null
                     loadedBinding = null
-                    completedAdjustments = null
+                    completedWrites = null
                     previousStatusByPublicId.clear()
                     celebratedDebtIds.clear()
                     _celebration.value = null
@@ -99,13 +99,13 @@ class DebtDetailViewModel(
         val previousPublicId = loadedPublicId
         val previousBinding = loadedBinding
         loadedPublicId = publicId
-        loadedBinding = adjustments.currentAccess()?.binding
-        adjustmentObservation?.cancel()
-        completedAdjustments = null
-        refreshedAdjustments.clear()
+        loadedBinding = writes.currentAccess()?.binding
+        writeObservation?.cancel()
+        completedWrites = null
+        refreshedWrites.clear()
         observedTerminals.clear()
-        _state.update { it.copy(isLoading = loadedBinding != null, pendingAdjustments = emptyList(), adjustmentSnapshotLoaded = false,
-            locallyAcceptedAdjustmentId = null, adjustmentRefreshAfterVersion = null, adjustmentRefreshAtVersion = null) }
+        _state.update { it.copy(isLoading = loadedBinding != null, pendingWrites = emptyList(), writeSnapshotLoaded = false,
+            locallyAcceptedWriteId = null, writeRefreshAfterVersion = null, writeRefreshAtVersion = null) }
         if (previousPublicId != publicId || previousBinding != loadedBinding) {
             _state.update {
                 it.copy(
@@ -124,17 +124,17 @@ class DebtDetailViewModel(
             }
         }
         loadedBinding?.let { binding ->
-            adjustmentObservation = viewModelScope.launch {
-                adjustments.observeAdjustments(binding, publicId).collect { rows ->
-                    if (loadedBinding != binding || loadedPublicId != publicId || adjustments.currentAccess()?.binding != binding) return@collect
+            writeObservation = viewModelScope.launch {
+                writes.observeWrites(binding, publicId).collect { rows ->
+                    if (loadedBinding != binding || loadedPublicId != publicId || writes.currentAccess()?.binding != binding) return@collect
                     val done = rows.filter { it.row.status == PendingMutationStatus.Done }.mapTo(mutableSetOf()) { it.row.id }
-                    val initial = completedAdjustments == null
+                    val initial = completedWrites == null
                     val terminal = rows.filter { it.isTerminal }.mapTo(mutableSetOf()) { it.row.id }
                     val arrived = if (initial) emptySet() else terminal - observedTerminals
                     observedTerminals += terminal
-                    completedAdjustments = completedAdjustments.orEmpty() + done
-                    _state.update { it.withAdjustmentRows(rows, arrived.isNotEmpty(), initial) }
-                    if (initial || arrived.isNotEmpty()) { refreshedAdjustments += done; refresh() }
+                    completedWrites = completedWrites.orEmpty() + done
+                    _state.update { it.withWriteRows(rows, arrived.isNotEmpty(), initial) }
+                    if (initial || arrived.isNotEmpty()) { refreshedWrites += done; refresh() }
                 }
             }
         }
@@ -143,7 +143,7 @@ class DebtDetailViewModel(
     fun refresh() {
         val publicId = loadedPublicId ?: return
         val binding = loadedBinding ?: return
-        if (!_state.value.adjustmentSnapshotLoaded) return
+        if (!_state.value.writeSnapshotLoaded) return
         val gen = ++loadGeneration
         latestRefreshGeneration = gen
         _state.update { it.copy(isLoading = true, error = null) }
@@ -153,7 +153,7 @@ class DebtDetailViewModel(
             // detection (a discarded snapshot must not record a status edge). Clear our loading flag
             // only when no newer refresh now owns it (a non-refresh superseder — submit — would
             // otherwise leave the screen stuck loading).
-            if (gen != loadGeneration || adjustments.currentAccess()?.binding != binding) {
+            if (gen != loadGeneration || writes.currentAccess()?.binding != binding) {
                 if (gen == latestRefreshGeneration) {
                     _state.update { it.copy(isLoading = false) }
                 }
@@ -167,9 +167,9 @@ class DebtDetailViewModel(
                         it.copy(
                             isLoading = false,
                             debt = debt,
-                            adjustmentRefreshAfterVersion = it.adjustmentRefreshAfterVersion?.takeIf { version -> debt.rowVersion <= version },
-                            adjustmentRefreshAtVersion = it.adjustmentRefreshAtVersion?.takeIf { version -> debt.rowVersion < version },
-                            canModify = repository.canModifyLedger() && adjustments.currentAccess()?.canModify == true,
+                            writeRefreshAfterVersion = it.writeRefreshAfterVersion?.takeIf { version -> debt.rowVersion <= version },
+                            writeRefreshAtVersion = it.writeRefreshAtVersion?.takeIf { version -> debt.rowVersion < version },
+                            canModify = repository.canModifyLedger() && writes.currentAccess()?.canModify == true,
                             error = null,
                         )
                     }
@@ -189,13 +189,13 @@ class DebtDetailViewModel(
     fun applyMemberResult(task: DebtTask, updated: Debt) {
         val current = _state.value.debt ?: return
         if (loadedPublicId != task.debtPublicId || loadedBinding != task.binding ||
-            adjustments.currentAccess()?.binding != task.binding || updated.publicId != task.debtPublicId ||
+            writes.currentAccess()?.binding != task.binding || updated.publicId != task.debtPublicId ||
             updated.rowVersion < current.rowVersion) return
         loadGeneration++
         detectSettleCelebration(updated, previousStatusByPublicId, celebratedDebtIds)?.let { _celebration.value = it }
         _state.update { it.copy(debt = updated, isLoading = false, error = null,
-            adjustmentRefreshAfterVersion = it.adjustmentRefreshAfterVersion?.takeIf { version -> updated.rowVersion <= version },
-            adjustmentRefreshAtVersion = it.adjustmentRefreshAtVersion?.takeIf { version -> updated.rowVersion < version }) }
+            writeRefreshAfterVersion = it.writeRefreshAfterVersion?.takeIf { version -> updated.rowVersion <= version },
+            writeRefreshAtVersion = it.writeRefreshAtVersion?.takeIf { version -> updated.rowVersion < version }) }
     }
 
     fun openAction(action: DebtAction, repayment: DebtRepayment? = null) {
@@ -241,20 +241,18 @@ class DebtDetailViewModel(
     }
 
     fun submit() {
-        val (debt, action, input) = _state.value.actionSubmission() ?: return
+        val command = _state.value.actionSubmission() ?: return
+        val (debt, action, input) = command
         val binding = loadedBinding ?: return
-        if (adjustments.currentAccess()?.binding != binding) return
+        if (writes.currentAccess()?.binding != binding) return
         input.errorRes?.let { errorRes ->
             _state.update { it.copy(validationError = UiText.res(errorRes)) }
             return
         }
         _state.update { it.copy(isSubmitting = true) }
         viewModelScope.launch {
-            val result = if (action == DebtAction.Adjustment) {
-                adjustments.save(binding, debt, requireNotNull(input.amountCents), input.reason)
-                    .map { DebtActionOutcome.Queued(it) }
-            } else repository.performAction(debt, action, input).map { DebtActionOutcome.Committed(it) }
-            if (loadedPublicId != debt.publicId || loadedBinding != binding || adjustments.currentAccess()?.binding != binding) return@launch
+            val result = command.execute(repository, writes, binding)
+            if (loadedPublicId != debt.publicId || loadedBinding != binding || writes.currentAccess()?.binding != binding) return@launch
             result.fold(
                 onSuccess = { outcome ->
                     val updated = (outcome as? DebtActionOutcome.Committed)?.debt
@@ -265,9 +263,9 @@ class DebtDetailViewModel(
                         detectSettleCelebration(updated, previousStatusByPublicId, celebratedDebtIds)
                             ?.let { _celebration.value = it }
                     }
-                    _state.update { it.acceptAction(outcome, action, completedAdjustments.orEmpty()) }
-                    if (outcome is DebtActionOutcome.Queued && outcome.intentId in completedAdjustments.orEmpty() &&
-                        refreshedAdjustments.add(outcome.intentId)) refresh()
+                    _state.update { it.acceptAction(outcome, action, completedWrites.orEmpty()) }
+                    if (outcome is DebtActionOutcome.Queued && outcome.intentId in completedWrites.orEmpty() &&
+                        refreshedWrites.add(outcome.intentId)) refresh()
                 },
                 onFailure = { err ->
                     _state.update {
@@ -290,11 +288,11 @@ class DebtDetailViewModel(
         if (!current.canWriteActions) return
         val debt = current.debt ?: return
         val binding = loadedBinding ?: return
-        if (kind == debt.debtKind || adjustments.currentAccess()?.binding != binding) return
+        if (kind == debt.debtKind || writes.currentAccess()?.binding != binding) return
         _state.update { it.copy(isSubmitting = true) }
         viewModelScope.launch {
             val result = repository.setDebtKind(debt.publicId, debt.rowVersion, kind)
-            if (loadedPublicId != debt.publicId || loadedBinding != binding || adjustments.currentAccess()?.binding != binding) return@launch
+            if (loadedPublicId != debt.publicId || loadedBinding != binding || writes.currentAccess()?.binding != binding) return@launch
             result.fold(
                 onSuccess = { updated ->
                     loadGeneration++
@@ -309,10 +307,10 @@ class DebtDetailViewModel(
         }
     }
 
-    fun recoverAdjustment(pending: PendingDebtAdjustment, drop: Boolean) {
+    fun recoverDebtWrite(pending: PendingDebtWrite, drop: Boolean) {
         val binding = loadedBinding ?: return
         viewModelScope.launch {
-            adjustments.recover(binding, pending, drop).onFailure { error ->
+            writes.recover(binding, pending, drop).onFailure { error ->
                 if (loadedBinding == binding) _state.update { it.copy(error = error.toUiText(R.string.debt_action_failed)) }
             }
         }
@@ -336,6 +334,15 @@ private sealed interface DebtActionOutcome {
 /** Validated target and parsed form for this submission, captured before asynchronous work. */
 private data class DebtActionSubmission(val debt: Debt, val action: DebtAction, val input: DebtActionInput)
 
+private suspend fun DebtActionSubmission.execute(repository: DebtActions, writes: DebtWriteActions,
+    binding: LogicalSessionBinding): Result<DebtActionOutcome> = when (action) {
+    DebtAction.Adjustment -> writes.save(binding, debt, requireNotNull(input.amountCents), input.reason)
+        .map { DebtActionOutcome.Queued(it) }
+    DebtAction.Repayment -> writes.saveRepayment(binding, debt, requireNotNull(input.amountCents))
+        .map { DebtActionOutcome.Queued(it) }
+    else -> repository.performAction(debt, action, input).map { DebtActionOutcome.Committed(it) }
+}
+
 private fun DebtDetailUiState.actionSubmission(): DebtActionSubmission? {
     if (!canWriteActions) return null
     val target = debt ?: return null
@@ -347,15 +354,17 @@ private fun DebtDetailUiState.actionSubmission(): DebtActionSubmission? {
 private fun DebtDetailUiState.acceptAction(
     outcome: DebtActionOutcome,
     action: DebtAction,
-    completedAdjustments: Set<Long>,
+    completedWrites: Set<Long>,
 ): DebtDetailUiState = copy(
     debt = (outcome as? DebtActionOutcome.Committed)?.debt ?: debt,
     activeAction = null, repaymentToVoid = null, amountInput = "", reasonInput = "",
     isSubmitting = false, validationError = null,
-    locallyAcceptedAdjustmentId = if (outcome is DebtActionOutcome.Queued &&
-        outcome.intentId !in completedAdjustments && pendingAdjustments.none { it.row.id == outcome.intentId }
-    ) outcome.intentId else locallyAcceptedAdjustmentId,
-    flashMessage = UiText.res(if (outcome is DebtActionOutcome.Queued) R.string.debt_adjustment_saved else debtActionDoneRes(action)),
+    locallyAcceptedWriteId = if (outcome is DebtActionOutcome.Queued &&
+        outcome.intentId !in completedWrites && pendingWrites.none { it.row.id == outcome.intentId }
+    ) outcome.intentId else locallyAcceptedWriteId,
+    flashMessage = UiText.res(if (outcome is DebtActionOutcome.Queued) {
+        if (action == DebtAction.Repayment) R.string.debt_repayment_saved else R.string.debt_adjustment_saved
+    } else debtActionDoneRes(action)),
 )
 
 /** Parsed input for one attempt, not a second draft or settlement owner. */
@@ -389,8 +398,7 @@ private fun DebtDetailUiState.actionInput(debt: Debt, action: DebtAction): DebtA
 
 private suspend fun DebtActions.performAction(debt: Debt, action: DebtAction, input: DebtActionInput): Result<Debt> =
     when (action) {
-        DebtAction.Repayment -> recordRepayment(debt.publicId, debt.rowVersion, requireNotNull(input.amountCents))
-        DebtAction.Adjustment -> error("Adjustment publishes through its durable command owner")
+        DebtAction.Repayment, DebtAction.Adjustment -> error("Debt amount commands publish through their durable owner")
         DebtAction.Void -> voidDebt(debt.publicId, debt.rowVersion, input.reason)
         DebtAction.RepaymentVoid -> voidRepayment(
             debt.publicId, requireNotNull(input.repaymentPublicId), debt.rowVersion, input.reason,
@@ -442,8 +450,7 @@ private fun validateDebtAction(action: DebtAction, amountCents: Long?, reason: S
 
 @StringRes
 private fun debtActionDoneRes(action: DebtAction): Int = when (action) {
-    DebtAction.Repayment -> R.string.debt_action_repayment_done
-    DebtAction.Adjustment -> R.string.debt_action_adjustment_done
+    DebtAction.Repayment, DebtAction.Adjustment -> error("Debt amount commands report durable publication, then canonical recovery")
     DebtAction.Void -> R.string.debt_action_void_done
     DebtAction.RepaymentVoid -> R.string.debt_action_repayment_void_done
 }

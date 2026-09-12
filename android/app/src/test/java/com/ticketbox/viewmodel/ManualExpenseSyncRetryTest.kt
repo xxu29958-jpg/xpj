@@ -110,6 +110,6 @@ class ManualExpenseSyncRetryTest {
     }
 
     private fun OutboxStatusHarness.viewModel() = OutboxStatusViewModel(outbox, expenseRepository,
-        OutboxRecoveryRepositories(debtCreation, null, incomePlans, debtAdjustments, goalEdits,
+        OutboxRecoveryRepositories(debtCreation, null, incomePlans, debtWrites, goalEdits,
             budgetSaves, recurringItems, rules))
 }

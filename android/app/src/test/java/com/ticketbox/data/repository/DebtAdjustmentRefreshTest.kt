@@ -36,9 +36,9 @@ class DebtAdjustmentRefreshTest {
         }
         val outbox = OutboxRepository(onRowsDeleted = {}, dao = delayed, clock = fixture.clock,
             bindingProvider = { fixture.provider.currentSession().toOutboxBinding() }, onEnqueued = {})
-        val events = mutableListOf<DebtAdjustmentObservation>()
+        val events = mutableListOf<DebtWriteObservation>()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
-            fixture.newRepository(outbox).observeAdjustments().collect { events += it }
+            fixture.newRepository(outbox).observeWrites().collect { events += it }
         }
         runCurrent()
         assertTrue(events.isEmpty(), "No synthetic empty snapshot may release the initial read")
@@ -49,7 +49,7 @@ class DebtAdjustmentRefreshTest {
         assertEquals(fixture.binding, events.single().binding)
         assertTrue(events.single().initial)
         assertTrue(events.single().newlyTerminal.isEmpty())
-        assertEquals(PendingMutationStatus.Done, events.single().adjustments.single().row.status)
+        assertEquals(PendingMutationStatus.Done, events.single().writes.single().row.status)
         assertTrue(fixture.api.calls.isEmpty())
     }
 
@@ -58,9 +58,9 @@ class DebtAdjustmentRefreshTest {
         val fixture = DebtAdjustmentFixture()
         val historicalId = fixture.save().getOrThrow()
         fixture.outbox.markDone(historicalId)
-        val events = mutableListOf<DebtAdjustmentObservation>()
+        val events = mutableListOf<DebtWriteObservation>()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
-            fixture.repository.observeAdjustments().collect { events += it }
+            fixture.repository.observeWrites().collect { events += it }
         }
         runCurrent()
         val next = fixture.save().getOrThrow()
@@ -93,9 +93,9 @@ class DebtAdjustmentRefreshTest {
     fun bindingReplacementAndCollectorReopenRequireTheirOwnAuthoritativeInitialRead() = runTest {
         val fixture = DebtAdjustmentFixture()
         fixture.outbox.markDone(fixture.save().getOrThrow())
-        val events = mutableListOf<DebtAdjustmentObservation>()
+        val events = mutableListOf<DebtWriteObservation>()
         val observer = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
-            fixture.repository.observeAdjustments().collect { events += it }
+            fixture.repository.observeWrites().collect { events += it }
         }
         runCurrent()
         fixture.session.switchLedgerForFixture("other", "另一账本")
@@ -105,21 +105,21 @@ class DebtAdjustmentRefreshTest {
         assertTrue(events.all { it.initial })
         observer.cancel()
 
-        val reopened = mutableListOf<DebtAdjustmentObservation>()
+        val reopened = mutableListOf<DebtWriteObservation>()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
-            fixture.repository.observeAdjustments().collect { reopened += it }
+            fixture.repository.observeWrites().collect { reopened += it }
         }
         runCurrent()
-        assertEquals(listOf(DebtAdjustmentObservation(replacement, emptyList(), true, emptyList())), reopened)
+        assertEquals(listOf(DebtWriteObservation(replacement, emptyList(), true, emptyList())), reopened)
         assertTrue(fixture.api.calls.isEmpty())
     }
 
     @Test
     fun localStopNotifiesContinuationButReopenNeverClaimsDeliveryOrReplays() = runTest {
         val fixture = DebtAdjustmentFixture()
-        val events = mutableListOf<DebtAdjustmentObservation>()
+        val events = mutableListOf<DebtWriteObservation>()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
-            fixture.repository.observeAdjustments().collect { events += it }
+            fixture.repository.observeWrites().collect { events += it }
         }
         val id = fixture.save().getOrThrow()
         fixture.outbox.markFailed(id, "debt_adjustment_response_unverified")
@@ -132,10 +132,10 @@ class DebtAdjustmentRefreshTest {
         assertTrue(stopped.completedAt != null)
         assertEquals(listOf(id), events.last().newlyTerminal.map { it.row.id })
         assertTrue(events.last().unresolvedTargetIds.isEmpty())
-        val reopened = fixture.newRepository(fixture.outbox).observeAdjustments().first()
+        val reopened = fixture.newRepository(fixture.outbox).observeWrites().first()
         assertTrue(reopened.initial)
         assertTrue(reopened.newlyTerminal.isEmpty())
-        assertEquals(PendingMutationStatus.Abandoned, reopened.adjustments.single().row.status)
+        assertEquals(PendingMutationStatus.Abandoned, reopened.writes.single().row.status)
         assertTrue(reopened.acceptsCanonical(fixture.debt), "A post-stop read may retain the original RV")
         val later = fixture.newOutbox(Clock.offset(fixture.clock, Duration.ofDays(40)))
         assertEquals(0, later.gcCompleted(retentionMillis = 0))
@@ -154,17 +154,17 @@ class DebtAdjustmentRefreshTest {
         val original = fixture.pending()
         val bound = LedgerRequestGuard(fixture.provider).bindExact(fixture.binding)
         fixture.repository.recover(fixture.binding, original, false).getOrThrow()
-        assertFalse(fixture.outbox.abandonDebtAdjustment(bound, original.row))
+        assertFalse(fixture.outbox.abandonDebtWrite(bound, original.row))
         for (status in listOf("pending", "in_flight", "done")) {
             val current = fixture.dao.rows.getValue(id).copy(status = status)
             fixture.dao.rows[id] = current
-            assertEquals(0, fixture.dao.abandonDebtAdjustment(id, requireNotNull(current.ownerKey), current.ledgerId, status, "stop"))
+            assertEquals(0, fixture.dao.abandonDebtWrite(id, requireNotNull(current.ownerKey), current.ledgerId, status, "stop"))
             assertEquals(current, fixture.dao.rows.getValue(id))
         }
         val failed = fixture.dao.rows.getValue(id).copy(status = "failed")
         fixture.dao.rows[id] = failed
-        assertEquals(0, fixture.dao.abandonDebtAdjustment(id, "other-owner", failed.ledgerId, "failed", "stop"))
-        assertEquals(0, fixture.dao.abandonDebtAdjustment(id, requireNotNull(failed.ownerKey), "other-ledger", "failed", "stop"))
+        assertEquals(0, fixture.dao.abandonDebtWrite(id, "other-owner", failed.ledgerId, "failed", "stop"))
+        assertEquals(0, fixture.dao.abandonDebtWrite(id, requireNotNull(failed.ownerKey), "other-ledger", "failed", "stop"))
         assertEquals(failed, fixture.dao.rows.getValue(id))
     }
 }

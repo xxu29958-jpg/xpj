@@ -44,7 +44,7 @@ class DebtDetailViewModelLoadSwitchTest {
     @Test
     fun loadingNewDebtClearsPreviousDebtUntilFreshDetailArrives() = runTest(dispatcher) {
         val repository = SwitchingDebtActions(getResult = Result.success(switchDebt("A")))
-        val viewModel = DebtDetailViewModel(repository, FakeDebtAdjustmentActions())
+        val viewModel = DebtDetailViewModel(repository, FakeDebtWriteActions())
         viewModel.loadDebt("A")
         advanceUntilIdle()
         assertEquals("A", viewModel.state.value.debt?.publicId)
@@ -87,11 +87,6 @@ private class SwitchingDebtActions(
         bytes: ByteArray,
     ): Result<DebtBillSuggestion> = Result.failure(UnsupportedOperationException())
 
-    override suspend fun recordRepayment(
-        publicId: String,
-        expectedRowVersion: Long,
-        amountCents: Long,
-    ): Result<Debt> = Result.success(switchDebt(publicId))
 
     override suspend fun voidRepayment(
         publicId: String,

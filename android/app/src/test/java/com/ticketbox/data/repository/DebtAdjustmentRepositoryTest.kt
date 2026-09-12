@@ -46,7 +46,7 @@ class DebtAdjustmentRepositoryTest {
         assertEquals(fixture.binding.sessionGeneration, payload.originSessionGeneration)
         assertEquals(fixture.binding.bindingRevision, payload.originBindingRevision)
         assertEquals(1, payload.revision)
-        assertEquals(DebtAdjustmentSubject("d1", "房东", "CNY"), payload.subject)
+        assertEquals(DebtWriteSubject("d1", "房东", "CNY"), payload.subject)
         assertEquals(DebtAdjustmentCreateRequestDto(-5_000L, "减免部分", 2L), payload.request)
         assertEquals(2L, stored.expectedRowVersion)
         assertTrue(!stored.idempotencyKey.isNullOrBlank())
@@ -74,9 +74,9 @@ class DebtAdjustmentRepositoryTest {
         val restartedClock = Clock.offset(fixture.clock, Duration.ofMinutes(2))
         val restartedOutbox = fixture.newOutbox(restartedClock)
         val restartedRepository = fixture.newRepository(restartedOutbox)
-        val recovered = restartedRepository.observeAdjustments(fixture.binding, "d1").first().single()
+        val recovered = restartedRepository.observeWrites(fixture.binding, "d1").first().single()
         assertEquals(original.payload, recovered.row.payloadJson)
-        assertEquals(DebtAdjustmentCreateRequestDto(3_000L, "补记借款", 2L), recovered.intent?.request)
+        assertEquals(DebtAdjustmentCreateRequestDto(3_000L, "补记借款", 2L), recovered.adjustment?.request)
         fixture.api.loseResponse = false
 
         assertEquals(1, fixture.engine(restartedOutbox, restartedClock).drainOnce().done)
@@ -87,7 +87,7 @@ class DebtAdjustmentRepositoryTest {
         assertEquals(3L, fixture.api.facts.values.single().second.rowVersion)
         assertEquals(53_000L, fixture.api.facts.values.single().second.remainingAmountCents)
         assertOriginalIntent(original, fixture.dao.rows.getValue(id))
-        assertEquals(PendingMutationStatus.Done, restartedRepository.observeAdjustments(fixture.binding, "d1").first().single().row.status)
+        assertEquals(PendingMutationStatus.Done, restartedRepository.observeWrites(fixture.binding, "d1").first().single().row.status)
     }
 
     @Test
@@ -262,7 +262,7 @@ class DebtAdjustmentRepositoryTest {
         for (reason in listOf("界".repeat(500), "🧾".repeat(500))) {
             val fixture = DebtAdjustmentFixture()
             fixture.save(reason = " \u0085$reason\u0085 ").getOrThrow()
-            assertEquals(reason, fixture.pending().intent?.request?.reason)
+            assertEquals(reason, fixture.pending().adjustment?.request?.reason)
             assertEquals(listOf(1), fixture.queueDepthAtSchedule)
             assertTrue(fixture.api.calls.isEmpty())
             assertEquals(1, fixture.engine().drainOnce().done)
@@ -270,7 +270,7 @@ class DebtAdjustmentRepositoryTest {
         }
         val cleared = DebtAdjustmentFixture()
         cleared.save(amountCents = -50_000L, reason = "减至零").getOrThrow()
-        assertEquals(-50_000L, cleared.pending().intent?.request?.amountCents)
+        assertEquals(-50_000L, cleared.pending().adjustment?.request?.amountCents)
         assertEquals(listOf(1), cleared.queueDepthAtSchedule)
         assertTrue(cleared.api.calls.isEmpty())
         assertEquals(1, cleared.engine().drainOnce().done)
@@ -311,8 +311,8 @@ class DebtAdjustmentRepositoryTest {
 
         assertTrue(fixture.save().isFailure)
         assertTrue(fixture.repository.recover(fixture.binding, pending, drop = false).isFailure)
-        assertNull(fixture.repository.describeAdjustment(pending.row))
-        assertTrue(fixture.repository.observeAdjustments(fixture.binding, "d1").first().isEmpty())
+        assertNull(fixture.repository.describeWrite(pending.row))
+        assertTrue(fixture.repository.observeWrites(fixture.binding, "d1").first().isEmpty())
         assertEquals(original, fixture.dao.rows.getValue(id))
         assertEquals(listOf(1), fixture.queueDepthAtSchedule)
         assertTrue(fixture.api.calls.isEmpty())
@@ -379,12 +379,12 @@ internal class DebtAdjustmentFixture(role: String = "owner") {
         onEnqueued = { queueDepthAtSchedule += dao.rows.size },
     )
 
-    fun newRepository(outbox: OutboxRepository) = DebtAdjustmentRepository(provider, outbox, adapters.debtAdjustmentAdapter)
+    fun newRepository(outbox: OutboxRepository) = DebtWriteRepository(provider, outbox, adapters.debtAdjustmentAdapter, adapters.debtRepaymentAdapter)
 
     suspend fun save(amountCents: Long = 3_000L, reason: String = "  补记借款  ", debt: Debt = this.debt) =
         repository.save(binding, debt, amountCents, reason)
 
-    suspend fun pending() = repository.observeAdjustments(binding, debt.publicId).first().single()
+    suspend fun pending() = repository.observeWrites(binding, debt.publicId).first().single()
 
     fun engine(outbox: OutboxRepository = this.outbox, clock: Clock = this.clock) = OutboxDrainEngine(
         outbox = outbox,

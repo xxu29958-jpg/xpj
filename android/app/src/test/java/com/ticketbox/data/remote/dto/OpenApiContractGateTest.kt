@@ -163,6 +163,7 @@ class OpenApiContractGateTest {
         // properties (reverse check needs every required field; +is_forgiven in slice 8e-3); the
         // create body is additionalProperties=false → the forward check is the forbid protection.
         Pairing(DebtDto::class, "DebtResponse"),
+        Pairing(DebtRepaymentReceiptDto::class, "RepaymentCreateResponse"),
         // Transient OCR/vision parse suggestions (POST /api/debts/parse-bill). The schema
         // has no required fields; the DTO keeps source_text non-null with a default so the
         // reverse check stays trivially satisfied while the forward check pins the wire names.
@@ -217,6 +218,9 @@ class OpenApiContractGateTest {
     // consume them). Keyed by backend schema name. Anything a schema requires but the
     // DTO omits AND is not listed here is drift → CI red. Populated from a real gate run.
     private val ignoredRequiredFields: Map<String, Set<String>> = mapOf(
+        // This command consumer retains acceptance identity; canonical Debt/history queries own the fold.
+        "RepaymentCreateResponse" to setOf("direction", "counterparty_type", "principal_amount_cents",
+            "remaining_amount_cents", "paid_amount_cents", "status", "source_type", "created_at", "updated_at"),
         // Split lists consume the frozen home amount and currency. Original-currency
         // detail is not part of these rows; its required code remains intentionally omitted.
         "BillSplitSentResponse" to setOf("original_currency_code"),

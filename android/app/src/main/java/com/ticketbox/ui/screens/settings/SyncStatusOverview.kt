@@ -16,7 +16,7 @@ import com.ticketbox.data.repository.OutboxStatus
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.OutboxWriteBlock
 import com.ticketbox.data.repository.PendingExpenseCorrection
-import com.ticketbox.data.repository.PendingDebtAdjustment
+import com.ticketbox.data.repository.PendingDebtWrite
 import com.ticketbox.data.repository.PendingIncomePlanSubmission
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.OutboxStatusUiState
@@ -61,7 +61,7 @@ internal fun SyncStatusOriginalIntentSummary(row: OutboxRow, state: OutboxStatus
             Text(stringResource(R.string.income_plan_submission_open))
         }
     }
-    state.debtAdjustments[row.id]?.let { com.ticketbox.ui.screens.DebtAdjustmentIntentSummary(it) }
+    state.debtWrites[row.id]?.let { com.ticketbox.ui.screens.DebtWriteIntentSummary(it) }
     state.budgetSaves[row.id]?.let { pending ->
         com.ticketbox.ui.screens.budget.BudgetSaveIntentSummary(pending)
         if (pending.hasSupportedIntent) {
@@ -102,7 +102,7 @@ internal data class SyncStatusOverview(
 internal fun syncStatusOverview(
     status: OutboxStatus,
     corrections: List<PendingExpenseCorrection>,
-    adjustments: List<PendingDebtAdjustment>,
+    writes: List<PendingDebtWrite>,
     incomeSubmissions: List<PendingIncomePlanSubmission> = emptyList(),
     manualRates: List<com.ticketbox.data.repository.PendingManualRateSubmission> = emptyList(),
 ): SyncStatusOverview =
@@ -114,15 +114,15 @@ internal fun syncStatusOverview(
         reviewRequiredCount = corrections.count { !it.delivered && it.row.status == PendingMutationStatus.Done } +
             incomeSubmissions.count { it.requiresReview } + manualRates.count { it.row.status == PendingMutationStatus.Done && !it.isConfirmed },
         refreshRequiredCount = corrections.count { it.refreshRequired },
-        stoppedCount = adjustments.count { it.row.status == PendingMutationStatus.Abandoned },
+        stoppedCount = writes.count { it.row.status == PendingMutationStatus.Abandoned },
         writeBlock = status.writeBlock,
     )
 
 @Composable
 internal fun SyncStatusOverviewSection(status: OutboxStatus, corrections: List<PendingExpenseCorrection>,
-    adjustments: List<PendingDebtAdjustment>, incomeSubmissions: List<PendingIncomePlanSubmission>,
+    writes: List<PendingDebtWrite>, incomeSubmissions: List<PendingIncomePlanSubmission>,
     manualRates: List<com.ticketbox.data.repository.PendingManualRateSubmission>) {
-    val overview = syncStatusOverview(status, corrections, adjustments, incomeSubmissions, manualRates)
+    val overview = syncStatusOverview(status, corrections, writes, incomeSubmissions, manualRates)
     SettingsSection(
         title = stringResource(R.string.sync_status_overview_title),
         icon = Icons.Filled.Sync,
@@ -213,15 +213,15 @@ private fun overviewCaption(overview: SyncStatusOverview): String = when {
 /** Both Sync entrances share the pending and explicit local-stop descriptions. */
 @Composable
 internal fun SyncStatusDebtSections(state: OutboxStatusUiState) {
-    if (state.waitingDebtAdjustments.isNotEmpty()) {
-        SettingsSection(title = stringResource(R.string.debt_adjustment_waiting), icon = Icons.Filled.CloudUpload) {
-            state.waitingDebtAdjustments.forEach { com.ticketbox.ui.screens.DebtAdjustmentIntentSummary(it) }
+    if (state.waitingDebtWrites.isNotEmpty()) {
+        SettingsSection(title = stringResource(R.string.debt_write_waiting), icon = Icons.Filled.CloudUpload) {
+            state.waitingDebtWrites.forEach { com.ticketbox.ui.screens.DebtWriteIntentSummary(it) }
         }
     }
-    val stopped = state.debtAdjustments.values.filter { it.row.status == PendingMutationStatus.Abandoned }
+    val stopped = state.debtWrites.values.filter { it.row.status == PendingMutationStatus.Abandoned }
     if (stopped.isNotEmpty()) {
-        SettingsSection(title = stringResource(R.string.debt_adjustment_stopped), icon = Icons.Filled.Sync) {
-            stopped.forEach { com.ticketbox.ui.screens.DebtAdjustmentIntentSummary(it) }
+        SettingsSection(title = stringResource(R.string.debt_write_stopped), icon = Icons.Filled.Sync) {
+            stopped.forEach { com.ticketbox.ui.screens.DebtWriteIntentSummary(it) }
         }
     }
 }
@@ -259,11 +259,15 @@ internal val syncStatusExactErrorMessageResources = mapOf(
     "offset_create_requires_review" to R.string.expense_offset_original_requires_review,
     "client_upgrade_required" to R.string.sync_status_error_protocol_mismatch,
     "rule_category_deleted" to R.string.sync_status_error_rule_category_deleted,
-    "debt_adjustment_payload_unsupported" to R.string.debt_adjustment_unsupported,
+    "debt_repayment_payload_unsupported" to R.string.debt_write_unsupported,
+    "debt_repayment_response_unverified" to R.string.debt_write_attention,
+    "debt_repayment_binding_changed" to R.string.debt_write_attention,
+    "debt_repayment_connection_interrupted" to R.string.debt_write_attention,
+    "debt_adjustment_payload_unsupported" to R.string.debt_write_unsupported,
     "debt_adjustment_negative_remaining" to R.string.debt_adjustment_reduction_rejected,
-    "debt_adjustment_response_unverified" to R.string.debt_adjustment_attention,
-    "debt_adjustment_binding_changed" to R.string.debt_adjustment_attention,
-    "debt_adjustment_connection_interrupted" to R.string.debt_adjustment_attention,
+    "debt_adjustment_response_unverified" to R.string.debt_write_attention,
+    "debt_adjustment_binding_changed" to R.string.debt_write_attention,
+    "debt_adjustment_connection_interrupted" to R.string.debt_write_attention,
     "debt_create_payload_unsupported" to R.string.debt_create_pending_unsupported,
     "debt_create_intent_invalid" to R.string.debt_create_sync_rejected,
     "debt_create_binding_changed" to R.string.debt_create_sync_rejected,

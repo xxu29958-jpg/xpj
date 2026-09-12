@@ -178,7 +178,7 @@ private fun RelationsComposerHost(
 ): RelationsComposerHandles {
     val composerViewModel: DebtListViewModel = viewModel(
         key = RelationsDebtComposerViewModelKey,
-        factory = debtViewModelFactory(screenFactory.debtRepository, screenFactory.debtCreationRepository, screenFactory.debtAdjustmentRepository, DebtListLens.Ledger),
+        factory = debtViewModelFactory(screenFactory.debtRepository, screenFactory.debtCreationRepository, screenFactory.debtWriteRepository, DebtListLens.Ledger),
     )
     val composerState by composerViewModel.state.collectAsStateWithLifecycle()
     var showAddSheet by rememberSaveable { mutableStateOf(false) }
