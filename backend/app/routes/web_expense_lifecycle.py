@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -191,10 +192,16 @@ def web_expense_undo(
             msg="页面已过期，请刷新后重新操作。",
             flash_type="error",
         )
+    actor_account_id, _ = resolve_web_actor(db, request, selected_id)
     try:
-        undo_reject_expense(db, expense_id, selected_id, parsed)
+        undo_reject_expense(db, expense_id, selected_id, parsed, actor_account_id=actor_account_id)
+        db.commit()
         message, flash_type = "已撤销，账单已恢复待确认。", "success"
     except AppError:
+        db.rollback()
         message = "无法撤销：账单已超过 5 分钟保留窗口，或已被清理。"
         flash_type = "error"
+    except SQLAlchemyError:
+        db.rollback()
+        message, flash_type = "当前无法确认撤销结果，请重新查看这笔账单。", "error"
     return _web_redirect("/web/pending", selected_id, msg=message, flash_type=flash_type)

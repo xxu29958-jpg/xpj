@@ -179,8 +179,7 @@ class ExpenseConfirmRequest(BaseModel):
 
 
 class ExpenseRejectRequest(BaseModel):
-    """ADR-0038 PR-2b: ``POST /api/expenses/{id}/reject`` body — same
-    contract as ExpenseConfirmRequest; ``rejected`` is also terminal."""
+    """Review token for rejecting a pending bill; original-key replay owns its receipt."""
 
     model_config = ConfigDict(extra="forbid")
 

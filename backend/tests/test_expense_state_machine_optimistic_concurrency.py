@@ -200,7 +200,7 @@ def test_reject_without_expected_row_version_returns_422(
     assert resp.json()["error"] == "invalid_request"  # Pydantic, not missing-key
 
 
-def test_reject_already_rejected_is_idempotent(
+def test_reject_already_rejected_requires_its_current_reviewed_token(
     client: TestClient, *, identity
 ) -> None:
     expense_id = _create_pending(client, identity=identity)
@@ -211,8 +211,16 @@ def test_reject_already_rejected_is_idempotent(
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": 999999},
     )
-    assert replay.status_code == 200, replay.text
-    assert replay.json()["status"] == "rejected"
+    assert replay.status_code == 409, replay.text
+    assert replay.json()["error"] == "state_conflict"
+    reviewed = client.post(
+        f"/api/expenses/{expense_id}/reject",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": first.json()["row_version"]},
+    )
+    assert reviewed.status_code == 200, reviewed.text
+    assert reviewed.json()["status"] == "rejected"
+    assert reviewed.json()["row_version"] == first.json()["row_version"]
 
 
 # ---------------------------------------------------------------------------

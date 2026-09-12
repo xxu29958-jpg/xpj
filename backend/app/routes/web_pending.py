@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -316,6 +317,7 @@ def web_pending_batch_undo(
             flash_type="error",
         )
 
+    actor_account_id, _ = resolve_web_actor(db, request, selected_id)
     restored = 0
     skipped = 0
     for expense_id, raw_token in zip(expense_ids, expected_row_version, strict=True):
@@ -324,9 +326,11 @@ def web_pending_batch_undo(
             skipped += 1
             continue
         try:
-            undo_reject_expense(db, expense_id, selected_id, parsed)
+            undo_reject_expense(db, expense_id, selected_id, parsed, actor_account_id=actor_account_id)
+            db.commit()
             restored += 1
-        except AppError:
+        except (AppError, SQLAlchemyError):
+            db.rollback()
             skipped += 1
 
     parts: list[str] = []

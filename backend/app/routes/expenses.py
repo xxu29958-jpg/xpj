@@ -53,7 +53,7 @@ from app.services.expense_response_service import (
     expense_raw_text_by_id,
     expense_to_response,
 )
-from app.services.expense_review_command_service import confirm_expense_submission
+from app.services.expense_review_command_service import confirm_expense_submission, submit_expense_rejection
 from app.services.expense_service import (
     create_manual_expense,
     create_notification_draft,
@@ -65,10 +65,8 @@ from app.services.expense_service import (
     list_pending,
     mark_expense_not_duplicate,
     recognize_expense_text,
-    reject_expense,
     resolve_expense_for_mutation,
     retry_expense_ocr,
-    undo_reject_expense,
 )
 from app.services.expense_split_service import list_expense_splits, replace_expense_splits
 from app.services.idempotency import (
@@ -597,37 +595,18 @@ def post_reject_expense(
         device_id=auth.device_id,
         expected_row_version=payload.expected_row_version,
     )
-    claim = claim_idempotent_request(
-        db,
-        idempotency_key=idempotency_key,
-        tenant_id=auth.tenant_id,
-        operation="reject_expense",
-        target_id=str(expense_pk),
-        body=payload.model_dump(mode="json", exclude_unset=True, exclude={"expected_row_version"}),
-        expected_row_version=payload.expected_row_version,
-    )
-    if claim is None:
-        expense = get_expense(db, expense_pk, auth.tenant_id)
-        return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
-
-    expense = reject_expense(
-        db,
-        expense_pk,
-        auth.tenant_id,
-        expected_row_version=effective_row_version,
-        commit=False,
-    )
-    mark_idempotency_succeeded(db, claim, resource_type="expense", resource_id=str(expense_pk))
-    db.commit()
-    db.refresh(expense)
-    return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
+    return submit_expense_rejection(db, operation="reject_expense", expense_id=expense_pk,
+        tenant_id=auth.tenant_id, expected_row_version=effective_row_version,
+        request_expected_row_version=payload.expected_row_version, idempotency_key=idempotency_key,
+        actor_account_id=auth.account_id)
 
 
 @router.post("/{expense_id}/undo", response_model=ExpenseResponse)
 def post_undo_expense(
     expense_id: int,
     payload: ExpenseUndoRequest,
-    auth: AuthContext = Depends(get_current_writer_context),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: AuthContext = Depends(get_current_protocol_writer_context),
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
     # ADR-0038 undo: restore a recently-rejected expense within the 5-minute
@@ -646,14 +625,10 @@ def post_undo_expense(
     # If we ever want the symmetric inverse, we'd need a fresh duplicate-detection
     # pass against the unrejected target; flip
     # ``test_undo_does_not_restore_cleared_duplicate_references`` accordingly.
-    expense = undo_reject_expense(
-        db,
-        expense_id,
-        auth.tenant_id,
-        payload.expected_row_version,
-        actor_account_id=auth.account_id,
-    )
-    return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
+    return submit_expense_rejection(db, operation="undo_expense", expense_id=expense_id,
+        tenant_id=auth.tenant_id, expected_row_version=payload.expected_row_version,
+        request_expected_row_version=payload.expected_row_version, idempotency_key=idempotency_key,
+        actor_account_id=auth.account_id)
 
 
 @router.post("/{expense_id}/ocr/retry", response_model=ExpenseResponse)
