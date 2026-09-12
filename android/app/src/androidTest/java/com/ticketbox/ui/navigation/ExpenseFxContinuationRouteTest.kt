@@ -13,6 +13,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
+import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso.closeSoftKeyboard
 import com.ticketbox.R
@@ -24,6 +25,8 @@ import com.ticketbox.data.remote.dto.ExpenseSplitsResponseDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.ui.theme.TicketboxTheme
+import com.ticketbox.viewmodel.ExpenseEditViewModel
+import com.ticketbox.viewmodel.expenseEditViewModelFactory
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -37,6 +40,7 @@ class ExpenseFxContinuationRouteTest {
     private var currentTask = BackgroundTaskDto("fx-1", "expense_fx", "failed",
         createdAt = "2026-09-12T00:00:00Z", sourceExpenseId = 9)
     private var converted = false
+    private var taskPresent = true
     private var missingAmount = false
     private var reads = 0
     private val retryVersions = mutableListOf<Long>()
@@ -48,11 +52,11 @@ class ExpenseFxContinuationRouteTest {
                 originalAmount = if (missingAmount) null else "10.00", originalAmountMinor = if (missingAmount) null else 1000, amountCents = if (converted) 7000 else null,
                 homeAmountCents = if (converted) 7000 else null, fxRate = if (converted) "7" else null,
                 fxRateDate = if (converted) "2026-09-11" else null, fxSource = if (converted) "reference" else null,
-                fxStatus = if (converted) "ready" else "pending", fxTask = currentTask.takeUnless { missingAmount },
+                fxStatus = if (converted) "ready" else "pending", fxTask = currentTask.takeIf { taskPresent && !missingAmount },
                 rowVersion = if (converted) 2 else 1,
                 updatedAt = if (converted) "2026-09-12T01:00:00Z" else "2026-09-12T00:00:00Z")
         }
-        override suspend fun expenseFx(id: Long): BackgroundTaskDto = currentTask
+        override suspend fun expenseFx(id: Long): BackgroundTaskDto? = currentTask.takeIf { taskPresent }
         override suspend fun expenseItems(id: Long): ExpenseItemsResponseDto = api.expenseItems(id).copy(
             rowVersion = if (converted) 2 else 1,
             parentAmountCents = if (converted) 7000 else null,
@@ -124,6 +128,49 @@ class ExpenseFxContinuationRouteTest {
         compose.waitUntil(5_000) { compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText(context.getString(R.string.expense_fx_retry)).assertDoesNotExist()
         assertEquals(1, reads)
+        assertEquals(emptyList<Long>(), retryVersions)
+        assertEquals(0, confirmed)
+    }
+
+    @Test fun missingCurrentTaskStillOffersExplicitReviewAfterAnotherClientSuppliesTheRate() {
+        compose.setContent {
+            CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
+                TicketboxTheme(skin = AppSkin.Default) {
+                    if (mounted.value) ExpenseEditRoute(9, harness.screenFactory, ExpenseEditExitActions({}, {}), ExpenseFactNavigation({}, { _, _ -> }))
+                }
+            }
+        }
+        val refresh = context.getString(R.string.expense_fx_refresh)
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText(refresh)).fetchSemanticsNodes().isNotEmpty() }
+        val vm = compose.runOnIdle {
+            ViewModelProvider(harness.models, expenseEditViewModelFactory(9, harness.screenFactory.repository))
+                .get("expense-edit-9", ExpenseEditViewModel::class.java)
+        }
+        val original = vm.uiState.value.expense
+        val originalCommands = harness.fixture.stored()
+        compose.onAllNodes(hasSetTextAction())[0].performTextReplacement("12.34")
+        closeSoftKeyboard()
+        compose.runOnIdle { converted = true; taskPresent = false }
+        compose.onNodeWithText(refresh).performScrollTo().performClick()
+        compose.waitUntil(5_000) { vm.uiState.value.fx.task == null && !vm.uiState.value.fx.loading }
+        assertEquals(original, vm.uiState.value.expense)
+        assertEquals(originalCommands, harness.fixture.stored())
+        assertEquals(1, reads)
+        compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("12.34")
+
+        val load = context.getString(R.string.expense_fx_load_review)
+        compose.onNodeWithText(load).assertExists()
+        compose.onNodeWithText(load).assertIsNotEnabled()
+        compose.onAllNodes(hasSetTextAction())[0].performTextReplacement("10.00")
+        closeSoftKeyboard()
+        compose.onNodeWithText(load).performScrollTo().performClick()
+        compose.waitUntil(5_000) { vm.uiState.value.expense?.rowVersion == 2L && !vm.uiState.value.fx.loading }
+        assertEquals(2, reads)
+        assertEquals("ready", vm.uiState.value.expense?.fxStatus)
+        assertEquals(7000L, vm.uiState.value.expense?.amountCents)
+        compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("10.00")
+        compose.onNodeWithText(context.getString(R.string.expense_fx_retry)).assertDoesNotExist()
+        assertEquals(originalCommands, harness.fixture.stored())
         assertEquals(emptyList<Long>(), retryVersions)
         assertEquals(0, confirmed)
     }

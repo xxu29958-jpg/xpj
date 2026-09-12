@@ -55,7 +55,6 @@ class ExpenseFxViewModelTest {
             fake.fetchSplitsResponder = { Result.success(originalSplits) }
             val vm = ExpenseEditViewModel(7, fake)
             advanceUntilIdle()
-            fake.fxTaskResult = Result.success(task("completed"))
             val fresh = pending.copy(amountCents = 7000, fxStatus = "ready", rowVersion = 2,
                 fxRateDate = "2026-09-11", updatedAt = "2026-09-12T10:00:00Z")
             fake.fetchExpenseResponder = { Result.success(fresh) }
@@ -63,17 +62,20 @@ class ExpenseFxViewModelTest {
             val freshSplits = originalSplits.copy(parentAmountCents = 7000, parentRowVersion = 2)
             fake.fetchItemsResponder = { Result.success(freshItems) }
             fake.fetchSplitsResponder = { Result.success(freshSplits) }
-            vm.refreshFx()
-            advanceUntilIdle()
-            assertSame(pending, vm.uiState.value.expense)
-            assertEquals("completed", vm.uiState.value.fx.task?.status)
-            assertEquals(0, fake.fxReviewCalls)
-            vm.loadFxReview(hasDraftChanges = true)
-            advanceUntilIdle()
-            assertSame(pending, vm.uiState.value.expense)
-            assertEquals(0, fake.fxReviewCalls)
-            assertEquals(originalItems, vm.uiState.value.expenseItems)
-            assertEquals(originalSplits, vm.uiState.value.expenseSplits)
+            for (observedTask in listOf(task("completed"), null)) {
+                fake.fxTaskResult = Result.success(observedTask)
+                vm.refreshFx()
+                advanceUntilIdle()
+                assertSame(pending, vm.uiState.value.expense)
+                assertEquals(observedTask, vm.uiState.value.fx.task)
+                assertEquals(0, fake.fxReviewCalls)
+                vm.loadFxReview(hasDraftChanges = true)
+                advanceUntilIdle()
+                assertSame(pending, vm.uiState.value.expense)
+                assertEquals(0, fake.fxReviewCalls)
+                assertEquals(originalItems, vm.uiState.value.expenseItems)
+                assertEquals(originalSplits, vm.uiState.value.expenseSplits)
+            }
             vm.loadFxReview(hasDraftChanges = false)
             advanceUntilIdle()
             assertEquals(fresh, vm.uiState.value.expense)

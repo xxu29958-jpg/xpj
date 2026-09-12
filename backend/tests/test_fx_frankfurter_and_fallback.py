@@ -260,7 +260,8 @@ def test_owner_fx_manual_refresh_fetches_and_renders(local_client: TestClient) -
 
 @pytest.mark.parametrize(
     ("running", "config_error", "expected"),
-    [(True, False, "运行中"), (False, True, "启动配置无效"), (False, False, "任务未运行")],
+    [(True, False, "运行中"), (False, True, "报价计划配置无效"),
+        (True, True, "报价计划配置无效"), (False, False, "任务未运行")],
 )
 def test_owner_fx_distinguishes_enabled_configuration_from_running_task(
     local_client: TestClient, monkeypatch: pytest.MonkeyPatch, running: bool, config_error: bool, expected: str
@@ -279,5 +280,9 @@ def test_owner_fx_distinguishes_enabled_configuration_from_running_task(
     assert page.status_code == 200
     assert "自动同步配置" in page.text
     assert expected in page.text
+    if config_error:
+        assert "自动任务会在后续计划时间继续尝试" not in page.text
+    if running and config_error:
+        assert "待补汇率的账单仍会继续处理" in page.text
     assert "本次同步未完成，已保留上次汇率。" in page.text
     assert "fx-private-sentinel" not in page.text
