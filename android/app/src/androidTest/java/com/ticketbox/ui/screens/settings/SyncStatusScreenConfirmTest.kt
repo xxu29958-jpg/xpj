@@ -71,7 +71,9 @@ class SyncStatusScreenConfirmTest {
     fun missingOffsetRateOpensOriginalPairAndDateWithoutRewritingOrRetryingCommand() {
         val binding = com.ticketbox.data.repository.LogicalSessionBinding("https://qa.invalid", "ledger-1", "owner", "session", "first")
         val error = com.ticketbox.data.repository.NetworkErrorHandler({ null }, "OffsetRecoveryTest").parseErrorMessage(409,
-            """{"error":"exchange_rate_pending","currency_code":"USD","home_currency_code":"CNY","rate_date":"2026-09-03"}""")
+            """{"error":"exchange_rate_pending","message":"这笔账单缺少换算汇率，请补齐后再继续。","currency_code":"USD","home_currency_code":"CNY","rate_date":"2026-09-03"}""")
+        assertEquals("exchange_rate_pending", error.errorCode)
+        assertEquals("2026-09-03", error.missingExchangeRate?.rateDate)
         val original = outboxRow(PendingMutationStatus.Failed, error.correctionRateFailure())
             .copy(type = PendingMutationType.CreateExpenseOffset, idempotencyKey = "original-refund")
         var opened: Pair<com.ticketbox.data.repository.LogicalSessionBinding, com.ticketbox.data.remote.dto.MissingExchangeRateDto>? = null
@@ -95,6 +97,7 @@ class SyncStatusScreenConfirmTest {
             assertEquals("2026-09-03", opened?.second?.rateDate)
             assertEquals(0, retried)
             assertEquals("original-refund", state.status.failed.single().idempotencyKey)
+            assertEquals(original, state.status.failed.single())
         }
     }
 

@@ -4,6 +4,7 @@ import json
 from datetime import date
 from decimal import Decimal
 from unittest.mock import Mock
+from xml.etree.ElementTree import ParseError
 
 import pytest
 from sqlalchemy.exc import SQLAlchemyError
@@ -69,7 +70,9 @@ def test_covered_cache_avoids_provider_and_saved_result_avoids_reexecution(execu
 
 
 @pytest.mark.parametrize("error", [FxFetchError("https://configured.private/rates?secret=example"),
-    ValueError("private parse content"), SQLAlchemyError("SELECT private_storage_details")])
+    ValueError("private parse content"), ParseError("private XML content"),
+    TypeError("private result content"), ArithmeticError("private amount content"),
+    SQLAlchemyError("SELECT private_storage_details")])
 def test_failure_is_rolled_back_and_never_publishes_provider_or_sql_details(execution, monkeypatch, error):
     db, task, _ = execution
     monkeypatch.setattr(service, "fetch_pending_fx_reference", Mock(side_effect=error))
