@@ -130,6 +130,7 @@ internal class ExpenseOffsetRepository(
                 expectedRowVersion = request.expectedRowVersion,
                 idempotencyKey = key,
             ),
+            validateTargetRows = ::requireExpenseRefreshComplete,
         )
     }
 
@@ -150,6 +151,7 @@ internal class ExpenseOffsetRepository(
                 expectedRowVersion = expectedRowVersion,
                 idempotencyKey = key,
             ),
+            validateTargetRows = ::requireExpenseRefreshComplete,
         )
     }
 }

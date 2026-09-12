@@ -263,9 +263,9 @@ private class CorrectionRefreshFixture(failAcknowledgment: () -> Boolean = { fal
     }
     val binding = testServerSessionBinding(TestApiServiceFactory(api), seededSettingsStore(), session)
     private val dao = object : PendingMutationDao by queue {
-        override suspend fun clearCorrectionRefresh(id: Long, expectedError: String): Int {
+        override suspend fun clearExpenseRefresh(id: Long, expectedError: String): Int {
             if (failAcknowledgment()) throw IOException("Synthetic local acknowledgment failure")
-            return queue.clearCorrectionRefresh(id, expectedError)
+            return queue.clearExpenseRefresh(id, expectedError)
         }
     }
     val outbox = OutboxRepository(dao,

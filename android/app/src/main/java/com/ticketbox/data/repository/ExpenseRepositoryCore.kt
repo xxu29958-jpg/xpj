@@ -237,31 +237,31 @@ internal class ExpenseRepositoryCore(
     }
 
     suspend fun cacheServerExpense(dto: ExpenseDto, bound: BoundLedgerRequest): ExpenseDto {
-        withActiveBindingCommit(bound) {
+        val accepted = withActiveBindingCommit(bound) {
             val accepted = expenseDao.applyServerExpense(bound.ledgerId, dto.toEntity(bound.ledgerId))
-            if (accepted && dto.status == "confirmed") onConfirmedCommitted(bound.ledgerId)
+            if (accepted && dto.status == "confirmed") notifyConfirmedExpenseWrite(bound.ledgerId, onConfirmedCommitted)
+            accepted
         }
+        if (accepted && dto.status != "confirmed") acknowledgeExpenseRefresh(bound, mapOf(dto.id to dto.rowVersion))
         return dto
     }
 
     suspend fun fetchAuthoritativeExpense(bound: BoundLedgerRequest, id: Long): ExpenseDto {
         val dto = cacheServerExpense(bound.call { it.expense(id) }, bound)
         if (dto.status == "confirmed") {
-            val needsProjection = outbox?.observeActiveByTypes(setOf(PendingMutationType.CorrectExpense),
+            val needsProjection = outbox?.observeActiveByTypes(EXPENSE_REFRESH_TYPES,
                 includeCompleted = true)?.first()?.any {
-                it.targetId == "expense:$id" && correctionRefreshVersion(it.lastError) != null
+                it.targetId == "expense:$id" && it.requiresExpenseRefresh()
             } == true
             if (needsProjection) syncConfirmedFromService(bound)
-        } else {
-            acknowledgeCorrectionRefresh(bound, mapOf(id to dto.rowVersion))
         }
         return dto
     }
 
     /** Marker cleanup must not turn a successful mutation into an offline enqueue. */
-    suspend fun acknowledgeCorrectionRefresh(bound: BoundLedgerRequest, versions: Map<Long, Long>) {
+    suspend fun acknowledgeExpenseRefresh(bound: BoundLedgerRequest, versions: Map<Long, Long>) {
         try {
-            outbox?.acknowledgeCorrectionRefresh(bound, versions)
+            outbox?.acknowledgeExpenseRefresh(bound, versions)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (bindingError: RepositoryException) {
@@ -362,11 +362,11 @@ internal class ExpenseRepositoryCore(
             }
             accepted
         }
-        acknowledgeCorrectionRefresh(bound, roots.filter { it.streamDate != null && it.serverId in acceptedRootIds }
-            .associate { requireNotNull(it.serverId) to it.rowVersion })
-        // Only a full-ledger sync delivers the confirmed set the budget
-        // advisor consumes; filtered syncs fingerprint a subset and would flap.
+        // A root month can omit an offset in another month. Only the complete projection repairs the receipt.
         if (request.isFullLedger) {
+            acknowledgeExpenseRefresh(bound, roots.filter { it.streamDate != null && it.serverId in acceptedRootIds }
+                .associate { requireNotNull(it.serverId) to it.rowVersion })
+            // The advisor also consumes the complete set; a filtered fingerprint would flap.
             onFullConfirmedSyncSnapshot(
                 "entries=${collectedDtos.size};roots=${roots.size};" +
                     "rv=${roots.maxOfOrNull { it.rowVersion } ?: 0};" +

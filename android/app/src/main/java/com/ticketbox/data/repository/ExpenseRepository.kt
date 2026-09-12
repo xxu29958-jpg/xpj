@@ -165,6 +165,8 @@ class ExpenseRepository(
 
     override fun observeCorrections(): Flow<ExpenseCorrectionObservation> = correctionRepository.observe()
 
+    override fun observeExpenseOutboxStatus(): Flow<OutboxStatus> = core.offlineMutations.outbox.observeStatus()
+
     internal suspend fun publishDeliveredCorrection(row: OutboxRow, expense: com.ticketbox.data.remote.dto.ExpenseDto) =
         correctionRepository.publishDelivered(row, expense)
 

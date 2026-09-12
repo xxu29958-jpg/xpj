@@ -2,8 +2,10 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.repository.ExpenseFactActions
 import com.ticketbox.data.repository.LedgerAccessContext
+import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
@@ -20,6 +22,61 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class ExpenseFactViewModelRefreshRecoveryTest : ExpenseFactViewModelTestBase() {
+    @Test
+    fun anOffsetReceiptBlocksCachedAndLiveFactsUntilAdoptionWithoutReplacingTheDraft() = edit { fake ->
+        fake.baseExpense = fake.baseExpense.copy(rowVersion = 7)
+        val vm = viewModel(fake)
+        vm.openCorrectionSheet()
+        vm.updateCorrectionField(CorrectionScalarField.Merchant, "  My unfinished merchant  ")
+        val draft = vm.uiState.value.correction
+        val baseline = vm.correctionBaseline
+        val binding = fake.correctionBinding
+        val original = OutboxRow(901, binding.serverUrl, binding.ledgerId, binding.ownerKey,
+            PendingMutationType.CreateExpenseOffset, "expense:${fake.baseExpense.id}", "original-offset-payload", 7,
+            PendingMutationStatus.Done, 0, "correction_refresh_required:8", "2026-09-13T00:00:00Z",
+            "2026-09-13T00:00:01Z", "2026-09-13T00:00:02Z", "original-offset-key")
+        val unrelated = listOf(original.copy(id = 902, ledgerId = "another-ledger"),
+            original.copy(id = 903, serverUrl = "https://another.example.test"),
+            original.copy(id = 904, ownerKey = binding.ownerKey.replace(
+                "00000000-0000-0000-0000-000000000003", "00000000-0000-0000-0000-000000000005")),
+            original.copy(id = 905, targetId = "expense:99"))
+        fake.expenseOutboxStatus.value = fake.expenseOutboxStatus.value.copy(refreshRequired = unrelated)
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.authoritativeRootReady)
+        assertEquals(1, fake.fetchExpenseCalls, "Other facts and identities do not invalidate this read")
+
+        fake.baseExpense = fake.baseExpense.copy(rowVersion = 8, merchant = "Accepted current merchant")
+        fake.expenseOutboxStatus.value = fake.expenseOutboxStatus.value.copy(refreshRequired = unrelated + original)
+        advanceUntilIdle()
+        assertEquals(fake.baseExpense, vm.uiState.value.expense)
+        assertFalse(vm.uiState.value.authoritativeRootReady, "Root GET alone cannot acknowledge a missing offset stream")
+        assertEquals(draft, vm.uiState.value.correction)
+        assertEquals(baseline, vm.correctionBaseline)
+        assertEquals(2, fake.fetchExpenseCalls)
+
+        val reopened = ExpenseFactViewModel(fake.baseExpense.id, fake, preferLocalCache = true)
+        try {
+            advanceUntilIdle()
+            assertEquals(fake.baseExpense, reopened.uiState.value.expense)
+            assertFalse(reopened.uiState.value.authoritativeRootReady, "A matching cached RV still needs full adoption")
+            assertEquals(3, fake.fetchExpenseCalls)
+            fake.expenseOutboxStatus.value = fake.expenseOutboxStatus.value.copy(queueDepth = 1)
+            advanceUntilIdle()
+            assertEquals(3, fake.fetchExpenseCalls, "An unchanged receipt must not create a read loop")
+            fake.expenseOutboxStatus.value = fake.expenseOutboxStatus.value.copy(refreshRequired = unrelated)
+            advanceUntilIdle()
+            assertTrue(vm.uiState.value.authoritativeRootReady)
+            assertTrue(reopened.uiState.value.authoritativeRootReady)
+            assertEquals(draft, vm.uiState.value.correction)
+            assertEquals(baseline, vm.correctionBaseline, "An open draft keeps its original OCC")
+            assertEquals(3, fake.fetchExpenseCalls, "Acknowledgment does not repeat the completed read")
+            assertEquals(0, fake.correctCalls)
+        } finally {
+            vm.viewModelScope.coroutineContext.job.cancelAndJoin()
+            reopened.viewModelScope.coroutineContext.job.cancelAndJoin()
+        }
+    }
+
     @Test
     fun liveDeliveryAdoptsTheCachedResponseWhenSubsequentReadsAreOffline() = edit { fake ->
         var cached = fake.baseExpense

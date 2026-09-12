@@ -40,6 +40,7 @@ interface ExpenseFactReadActions {
 interface ExpenseFactCommandActions {
     fun canModifyLedger(): Boolean
     fun observeCorrections(): kotlinx.coroutines.flow.Flow<ExpenseCorrectionObservation>
+    fun observeExpenseOutboxStatus(): kotlinx.coroutines.flow.Flow<OutboxStatus>
     suspend fun submitCorrection(expectedBinding: LogicalSessionBinding, expense: Expense,
         correction: ExpenseCorrectionDraft): Result<Long>
     suspend fun recoverCorrection(expectedBinding: LogicalSessionBinding, rowId: Long, drop: Boolean): Result<Unit>

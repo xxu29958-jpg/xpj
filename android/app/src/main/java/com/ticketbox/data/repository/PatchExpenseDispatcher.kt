@@ -80,8 +80,7 @@ class PatchExpenseDispatcher(
             // committed-but-unseen first attempt is deduped server-side (HIT →
             // canonical row) instead of false-409ing on the stale row_version.
             val updated = apiProvider(row).updateExpense(expenseRef, request, idempotencyKey)
-            publishExpense(row.ledgerId, updated)
-            DispatchResult.Success(newRowVersion = updated.rowVersion)
+            publishAcceptedExpense(updated.rowVersion) { publishExpense(row.ledgerId, updated) }
         } catch (e: HttpException) {
             mapOutboxHttpException(e)
         } catch (e: IOException) {

@@ -28,8 +28,7 @@ class CreateExpenseOffsetDispatcher(
             ?: return DispatchResult.Failure("CreateExpenseOffset row missing idempotency key")
         val result = dispatchOffsetCommand {
             val bundle = apiProvider(row).createExpenseOffset(expenseRef, request, key)
-            publishBundle(row.ledgerId, bundle)
-            DispatchResult.Success(bundle.root.rowVersion)
+            publishAcceptedExpense(bundle.root.rowVersion) { publishBundle(row.ledgerId, bundle) }
         }
         return if (result is DispatchResult.Discarded) DispatchResult.Failure("offset_create_requires_review") else result
     }
@@ -57,8 +56,7 @@ class VoidExpenseOffsetDispatcher(
                 request,
                 key,
             )
-            publishBundle(row.ledgerId, bundle)
-            DispatchResult.Success(bundle.root.rowVersion)
+            publishAcceptedExpense(bundle.root.rowVersion) { publishBundle(row.ledgerId, bundle) }
         }
     }
 }

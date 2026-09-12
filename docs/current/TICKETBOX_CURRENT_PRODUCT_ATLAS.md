@@ -134,7 +134,7 @@ slice. Full Internal Beta RC completion is still outstanding.
 | Advisor readiness and FX worker recovery | `STRONG_SLICE`; #376/#374 CLOSED. Existing factory/consent/role and worker/lease owners; configuration and observed results stay distinct | [Migrated evidence](../qualification/2026-09-07-product-atlas-history.md) |
 | Runtime diagnostics and task recovery | `PARTIAL`; original-bill continuation and ordinary connection recovery are integrated. Recognition settings/diagnostics still expose configuration without a recent execution result or its task continuation | [#389](https://github.com/xxu29958-jpg/xpj/pull/389), Backstage delivery below |
 | Durable offline financial reads | `PARTIAL`; expense/statistics storage exists. Goal list/detail reopening and explicit-access-refusal handling #401 are integrated and main-qualified; budget and debt query persistence remain. Page memory, drafts and command receipts do not prove offline query coverage | [Goal read contract](TICKETBOX_GOAL_OFFLINE_READING_CONTRACT.md) |
-| Android offline publication across mutation families | `STRONG_SLICE`; preserve dispatcher/label coverage, original context and explicit recovery; never show raw keys or silently discard intent | Cross-client delivery below and affected slice contracts |
+| Android financial submission and recovery | `PARTIAL`; durable dispatch exists and accepted-response cache repair is under qualification. Online-first pending-bill commands still need durable admission. Preserve original context, visible recovery and dispatcher coverage | Capture and cross-client delivery below and affected slice contracts |
 | Consumer visual art and convenience | `PARTIAL`; selected art/frame/forms integrated. Full consumer art and real cross-screen interaction acceptance remain required | [Art / convenience plan](../superpowers/plans/2026-09-05-consumer-art-convenience.md) |
 | Windows Fresh G2 | `CLOSED`; preserve qualification boundary | Executable current-product counterexample required to reopen minimal host work |
 | Complete Windows lifecycle | `HOLD`; repair, preserved reinstall, complete uninstall, upgrade/downgrade, complete backup/restore and Cut C/D/E | Outside current delivery; no implicit lifecycle claim |
@@ -150,7 +150,7 @@ or visual quality remains qualification work, not a claimed missing feature.
 | Package | Remaining user outcome / exit |
 |---|---|
 | First use and household | Rehearse the integrated explicit currency choice and changeable defaults, household admission, roles and connection recovery. Make default accounting time discoverable and shared across clients without reinterpreting recorded facts |
-| Capture, facts and reference | Complete historical foreign-bill import through dated reference-rate acquisition, visible pending/retry and human confirmation. Manual creation and historical correction recovery are already integrated. Rehearse search, reference maintenance and correction through their real entries |
+| Capture, facts and reference | Complete historical foreign-bill import through dated reference-rate acquisition, visible pending/retry and human confirmation. Next, move online-first pending-bill commands into their durable submission owner and retire direct writers; server success followed by local failure must retain the original key and recovery. Finish manual identity-adoption recovery, then rehearse search, reference maintenance and correction through their real entries |
 | Relationships | Qualify complete settlement through debt balances, goal progress and history. Original direct-repayment recovery after ACK loss/restart is integrated; the direct per-call writer is retired. Preserve split/member settlement and adjustment owners |
 | Planning and insights | Express a foreign fixed commitment, understand its budget valuation, record actual payment and return to the original period to associate it. Retained views must reflect accepted facts; period queries and refund/reversal exports must explain the same recorded money/time |
 | Backstage | Surface recent recognition execution and its existing task continuation alongside configuration. Keep Advisor readiness, ordinary connection recovery and original-bill task recovery; do not build another health/configuration system |
@@ -183,7 +183,7 @@ feedback and efficient actions within each active capability change.
 **#402 CLOSED:** [financial read propagation](TICKETBOX_FINANCIAL_READ_PROPAGATION_CONTRACT.md) is integrated and main-qualified.
 **#403 CLOSED:** [direct repayment recovery](TICKETBOX_DIRECT_REPAYMENT_CONTINUITY_CONTRACT.md) is integrated and main-qualified.
 
-**Next action:** qualify and integrate [foreign-bill continuation](TICKETBOX_FOREIGN_BILL_CONTINUATION_CONTRACT.md) across import, review, affected money commands and actual Web/Android consumers. Continue the
+**Next action:** qualify and integrate [foreign-bill continuation](TICKETBOX_FOREIGN_BILL_CONTINUATION_CONTRACT.md) across import, review, affected money commands and actual Web/Android consumers. Complete durable admission for online-first pending-bill commands, then continue the
 fixed-commitment journey, shared accounting-time and
 complete export, then remaining read/draft/Backstage continuity. Select each
 bounded change from these full user outcomes; an isolated semantic fix, working

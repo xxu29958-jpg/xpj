@@ -44,6 +44,7 @@ import com.ticketbox.data.repository.UpdateMerchantAliasDispatcher
 import com.ticketbox.data.repository.UpdateRecurringItemDispatcher
 import com.ticketbox.data.repository.VoidExpenseOffsetDispatcher
 import com.ticketbox.data.repository.bindingOrNull
+import com.ticketbox.data.repository.notifyConfirmedExpenseWrite
 import com.ticketbox.data.repository.reconcileLocalSession
 import com.ticketbox.data.repository.toEntity
 import com.ticketbox.data.remote.dto.ExpenseDto
@@ -56,7 +57,6 @@ import com.ticketbox.security.SecureSessionStore
 import com.ticketbox.security.SessionCredentialAdapter
 import com.ticketbox.security.isBusinessReady
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
@@ -154,7 +154,9 @@ class AppContainer(context: Context) {
 
     private suspend fun publishExpenseSnapshot(ledgerId: String, expense: ExpenseDto) {
         val accepted = database.expenseDao().applyServerExpense(ledgerId, expense.toEntity(ledgerId))
-        if (accepted && expense.status == "confirmed") expenseRepository.onConfirmedCommitted(ledgerId)
+        if (accepted && expense.status == "confirmed") {
+            notifyConfirmedExpenseWrite(ledgerId, expenseRepository.onConfirmedCommitted)
+        }
     }
 
     private suspend fun publishExpenseFactBundle(ledgerId: String, bundle: ExpenseFactBundleDto) {
@@ -164,14 +166,7 @@ class AppContainer(context: Context) {
             root = projection.root,
             activeOffsets = projection.activeOffsets,
         )
-        if (!accepted) return
-        try {
-            expenseRepository.onConfirmedCommitted(ledgerId)
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            // Notification failure cannot turn an accepted financial command into a retry.
-        }
+        if (accepted) notifyConfirmedExpenseWrite(ledgerId, expenseRepository.onConfirmedCommitted)
     }
 
     /**

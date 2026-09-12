@@ -284,9 +284,9 @@ class FakePendingMutationDao : PendingMutationDao {
         return 1
     }
 
-    override suspend fun clearCorrectionRefresh(id: Long, expectedError: String): Int {
+    override suspend fun clearExpenseRefresh(id: Long, expectedError: String): Int {
         val current = rows[id] ?: return 0
-        if (current.type != "correct_expense" || current.status != "done" || current.lastError != expectedError) return 0
+        if (current.status != "done" || current.lastError != expectedError) return 0
         rows[id] = current.copy(lastError = null)
         refreshObservables()
         return 1
@@ -461,7 +461,7 @@ class FakePendingMutationDao : PendingMutationDao {
             it.status == doneStatus &&
                 it.completedAt != null &&
                 it.completedAt < cutoffIso &&
-                !(it.type == "correct_expense" && it.lastError?.startsWith("correction_refresh_required:") == true)
+                it.lastError?.startsWith("correction_refresh_required:") != true
         }.map { it.id }
         victims.forEach { rows.remove(it) }
         refreshObservables()

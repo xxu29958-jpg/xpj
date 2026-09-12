@@ -133,7 +133,7 @@ private class OffsetPublicationFixture(
         assertEquals(0, attempts)
         assertEquals(1L, replay.outbox.acceptedReplayRevision.value)
         assertOriginalDone(replay)
-        assertEquals(version, correctionRefreshVersion(replay.rows.rows.getValue(replay.original.id).lastError))
+        assertEquals(version, expenseRefreshVersion(replay.rows.rows.getValue(replay.original.id).lastError))
         assertEquals(0, replay.engine.drainOnce().attempted)
     }
 

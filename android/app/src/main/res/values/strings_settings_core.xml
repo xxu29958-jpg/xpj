@@ -6,7 +6,11 @@
 <resources>
     <string name="sync_status_upload_recovery_body">原上传记录已保留。请到收件箱查看原截图，并继续或停止原批次。</string>
     <string name="sync_status_open_uploads">查看待上传截图</string>
-    <string name="sync_status_overview_caption_refresh_required">%1$d 笔更正已送达，仍需刷新并核对账单。</string>
+    <string name="sync_status_overview_caption_refresh_required">%1$d 项操作已完成，账单显示仍待更新。</string>
+    <string name="sync_status_refresh_title">账单显示待更新</string>
+    <string name="sync_status_refresh_required">操作已完成，账单显示尚待更新。</string>
+    <string name="sync_status_refresh_expense">刷新账单</string>
+    <string name="sync_status_refresh_failed">暂时无法刷新账单。操作已完成，可以稍后再试。</string>
 
     <!-- 设置 根屏（SettingsRootScreen）：分组标题、入口标题/副标题、连接入口动态文案 -->
     <string name="settings_root_connection_title_advanced">连接与同步</string>

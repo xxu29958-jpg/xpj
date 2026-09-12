@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.ExpenseFactActions
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
@@ -74,6 +75,8 @@ data class ExpenseFactUiState(
     val timelineExpanded: Boolean = false,
     val correctionAccess: com.ticketbox.data.repository.LedgerAccessContext? = null,
     val corrections: List<com.ticketbox.data.repository.PendingExpenseCorrection> = emptyList(),
+    /** Accepted non-correction commands whose complete financial projection is still missing. */
+    val expenseRefreshRequirements: List<OutboxRow> = emptyList(),
     val correctionRecoveryBusy: Boolean = false,
     // 更正流（correction 扩展拥有全部逻辑）。
     val correction: CorrectionFormState = CorrectionFormState(),
@@ -114,7 +117,8 @@ data class ExpenseFactUiState(
     val authoritativeRootReady: Boolean get() = correctionAccess != null && expense != null &&
         !initialRootVerificationPending && expense.rowVersion >= requiredRootRowVersion &&
         !expenseLoading && !expenseStale &&
-        expenseLoadState == ExpenseDetailDataLoadState.Loaded && corrections.none { !it.delivered || it.refreshRequired }
+        expenseLoadState == ExpenseDetailDataLoadState.Loaded && expenseRefreshRequirements.isEmpty() &&
+        corrections.none { !it.delivered || it.refreshRequired }
 
     val canStartCorrection: Boolean get() = !readOnly && authoritativeRootReady
 }
@@ -179,7 +183,7 @@ class ExpenseFactViewModel(
     init {
         observeBillSplitSubmissions()
         var verifyInitialCache = preferLocalCache
-        observeCorrectionSubmissions {
+        observeFactSubmissions {
             if (verifyInitialCache) {
                 verifyInitialCache = false
                 verifyInitialExpenseFromCache { loadExpense(initialLoad = true) }

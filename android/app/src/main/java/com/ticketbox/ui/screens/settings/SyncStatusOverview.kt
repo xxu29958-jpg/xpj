@@ -113,7 +113,7 @@ internal fun syncStatusOverview(
         quarantinedCount = status.quarantinedCount.coerceAtLeast(0),
         reviewRequiredCount = corrections.count { !it.delivered && it.row.status == PendingMutationStatus.Done } +
             incomeSubmissions.count { it.requiresReview } + manualRates.count { it.row.status == PendingMutationStatus.Done && !it.isConfirmed },
-        refreshRequiredCount = corrections.count { it.refreshRequired },
+        refreshRequiredCount = status.refreshRequired.size,
         stoppedCount = writes.count { it.row.status == PendingMutationStatus.Abandoned },
         writeBlock = status.writeBlock,
     )
