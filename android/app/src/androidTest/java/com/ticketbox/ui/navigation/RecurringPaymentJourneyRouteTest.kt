@@ -153,6 +153,44 @@ class RecurringPaymentJourneyRouteTest {
         completeAndAssociateOriginalPayment()
     }
 
+    @Test fun loadedObligationCanCaptureItsOriginalPaymentAfterTheDeviceGoesOffline() {
+        transport.ledgerHomeCurrencyCode = "USD"
+        showRecurring()
+        openAugustOccurrence()
+        val originalReads = transport.preparationReads.toList()
+        compose.runOnIdle { transport.offline = true }
+        compose.onNodeWithText("记录本期付款").performScrollTo().assertIsEnabled().performClick()
+        waitForText(context.getString(R.string.ledger_manual_sheet_title))
+        val origin = compose.runOnIdle {
+            requireNotNull(readRecurringPaymentOrigin(outer.currentBackStackEntry?.arguments?.getString("origin")))
+        }
+        compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("1200")
+        compose.onAllNodes(hasSetTextAction())[1].assertTextEquals("日元订阅")
+        compose.onAllNodes(hasSetTextAction())[2].performTextReplacement("购物")
+        closeSoftKeyboard()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        compose.waitUntil(5_000) { runBlocking { harness.fixture.pendingDao.allRows().size == 1 } }
+        val row = runBlocking { harness.fixture.pendingDao.allRows().single() }
+        val request = requireNotNull(OutboxAdapterGraph().manualCreateAdapter.fromJson(row.payload))
+        assertEquals(PendingMutationType.CreateExpense.wireValue, row.type)
+        assertEquals(origin.binding.ownerKey, row.ownerKey)
+        assertEquals(origin.binding.ledgerId, row.ledgerId)
+        assertEquals(origin.clientRef, request.clientRef)
+        assertEquals("USD", request.homeCurrencyCode)
+        assertEquals("JPY", request.originalCurrency)
+        assertEquals("1200", request.originalAmount)
+        assertEquals("日元订阅", request.merchant)
+        assertEquals("购物", request.category)
+        assertFalse(row.idempotencyKey.isNullOrBlank())
+        assertEquals("2026-08", origin.period)
+        assertEquals(originalReads, transport.preparationReads.toList())
+        assertTrue(transport.linkCalls.isEmpty())
+        val originalRows = harness.fixture.stored()
+        restoration.emulateSavedInstanceStateRestore()
+        waitForText(context.getString(R.string.manual_submission_title))
+        assertEquals(originalRows, harness.fixture.stored())
+    }
+
     private fun completeAndAssociateOriginalPayment() {
         waitForText(context.getString(R.string.manual_submission_title))
         val originalRows = harness.fixture.stored()

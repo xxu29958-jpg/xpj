@@ -29,6 +29,23 @@ def _create_series(client: TestClient, identity) -> dict:
     return response.json()
 
 
+def test_unpaid_foreign_occurrence_carries_the_actual_ledger_currency(client: TestClient, identity) -> None:
+    created = client.post("/api/recurring/items",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "JPY", "merchant": "日元订阅", "baseline_amount_cents": 1200,
+            "next_expected_date": "2026-09-05"})
+    assert created.status_code == 201, created.json()
+    response = client.get(f"/api/recurring/items/{created.json()['public_id']}/occurrences/2026-09",
+        headers=identity.app_headers)
+    assert response.status_code == 200, response.json()
+    occurrence = response.json()
+    assert occurrence["state"] == "unfulfilled"
+    assert occurrence["home_currency_code"] == "JPY"
+    assert occurrence["planned_amount_cents"] == 1200
+    assert occurrence["paid_home_currency_code"] is None
+    assert occurrence["ledger_home_currency_code"] == "CNY"
+
+
 def _payment(client: TestClient, identity) -> dict:
     response = client.post(
         "/api/expenses/manual", headers=identity.app_headers,

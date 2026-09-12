@@ -17,12 +17,18 @@ import com.ticketbox.data.remote.dto.RecurringItemListResponseDto
 import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
 import com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto
 import com.ticketbox.domain.model.ExpenseSourceValues
+import com.squareup.moshi.Moshi
+import java.io.IOException
 import java.util.concurrent.CopyOnWriteArrayList
 
 internal class RecurringPaymentJourneyTransport {
     var fulfilled = false
     var recording = false
     var recordedCurrency: String? = "JPY"
+    var ledgerHomeCurrencyCode = "CNY"
+    var offline = false
+    val preparationReads = CopyOnWriteArrayList<String>()
+    private val occurrenceAdapter = Moshi.Builder().build().adapter(RecurringOccurrenceDto::class.java)
     lateinit var network: CorrectionConnectedNetwork
     private lateinit var service: ApiService
     private var fxTask = BackgroundTaskDto("payment-fx", "expense_fx", "running",
@@ -47,6 +53,7 @@ internal class RecurringPaymentJourneyTransport {
     }
 
     private fun create(request: ExpenseManualCreateRequestDto): ExpenseDto {
+        requireOnline()
         check(recording)
         return original ?: network.current.copy(status = "pending", source = ExpenseSourceValues.MANUAL_ENTRY,
             amountCents = null, homeAmountCents = null, homeCurrency = "CNY", originalCurrency = "JPY",
@@ -59,25 +66,42 @@ internal class RecurringPaymentJourneyTransport {
     val reads = CopyOnWriteArrayList<Pair<String, String>>()
     val linkCalls = CopyOnWriteArrayList<RecurringOccurrencePaymentRequestDto>()
 
+    private fun requireOnline() {
+        if (offline) throw IOException("The device is offline")
+    }
+
     fun wrap(delegate: ApiService): ApiService = object : ApiService by delegate {
         override suspend fun createManualExpense(request: ExpenseManualCreateRequestDto): ExpenseDto = create(request)
         override suspend fun expenseFx(id: Long): BackgroundTaskDto = fxTask
-        override suspend fun debts(lens: String?) = DebtListResponseDto(emptyList(), homeCurrencyCode = "CNY")
-        override suspend fun recurringItems(status: String?, includeArchived: Boolean, month: String?, timezone: String?) =
-            RecurringItemListResponseDto(listOf(RecurringItemDto(publicId = "navigation-recurring", ledgerId = "correction-ledger",
+        override suspend fun debts(lens: String?): DebtListResponseDto {
+            preparationReads += "debts"
+            requireOnline()
+            return DebtListResponseDto(emptyList(), homeCurrencyCode = ledgerHomeCurrencyCode)
+        }
+        override suspend fun recurringItems(status: String?, includeArchived: Boolean, month: String?, timezone: String?): RecurringItemListResponseDto {
+            preparationReads += "recurringItems"
+            requireOnline()
+            return RecurringItemListResponseDto(listOf(RecurringItemDto(publicId = "navigation-recurring", ledgerId = "correction-ledger",
                 merchant = "日元订阅", merchantKey = "日元订阅", frequency = "monthly", baselineAmountCents = 1200,
                 lastAmountCents = 1200, occurrenceCount = 1, lastSeenAt = null, nextExpectedDate = "2026-09-05", status = "active",
                 confidence = null, source = "manual", createdAt = "2026-07-01T00:00:00Z", updatedAt = "2026-09-06T00:00:00Z",
                 rowVersion = 2, pausedAt = null, archivedAt = null, homeCurrencyCode = recordedCurrency)))
+        }
 
         override suspend fun recurringOccurrence(publicId: String, month: String): RecurringOccurrenceDto {
+            requireOnline()
             check(publicId == "navigation-recurring")
             reads += publicId to month
             val period = if (month == "current") "2026-09" else month
-            return RecurringOccurrenceDto(publicId, period, 2, if (fulfilled) 1 else 0,
+            val response = RecurringOccurrenceDto(publicId, period, 2, if (fulfilled) 1 else 0,
                 if (fulfilled) "fulfilled" else "unfulfilled", 1200, if (fulfilled) 0 else 1200,
                 if (fulfilled) "expense-42" else null, if (fulfilled) 1000 else null, "2026-09-05",
-                expenseId = if (fulfilled) 42 else null, homeCurrencyCode = recordedCurrency, paidHomeCurrencyCode = "CNY")
+                expenseId = if (fulfilled) 42 else null, homeCurrencyCode = recordedCurrency,
+                paidHomeCurrencyCode = ledgerHomeCurrencyCode.takeIf { fulfilled })
+            // Keep this test-first producer compilable before the optional DTO projection is added.
+            val wire = occurrenceAdapter.toJson(response).dropLast(1) +
+                ",\"ledger_home_currency_code\":\"$ledgerHomeCurrencyCode\"}"
+            return requireNotNull(occurrenceAdapter.fromJson(wire))
         }
 
         override suspend fun setRecurringOccurrencePayment(

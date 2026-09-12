@@ -74,7 +74,10 @@ def test_native_foreign_commitment_records_later_payment_and_returns_for_explici
     session = _connect_local_session(installed_web, next_url="/web/recurring")
 
     def get(path):
-        response = browser.get(path, headers={"Cookie": f"{SESSION_COOKIE_NAME}={session}"}, follow_redirects=False)
+        cookie = f"{SESSION_COOKIE_NAME}={session}"
+        if seed := browser.cookies.get(CSRF_COOKIE_NAME):
+            cookie += f"; {CSRF_COOKIE_NAME}={seed}"
+        response = browser.get(path, headers={"Cookie": cookie}, follow_redirects=False)
         assert response.status_code == 200, response.text
         return response
 
