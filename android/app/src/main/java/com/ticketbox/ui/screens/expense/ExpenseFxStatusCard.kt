@@ -14,6 +14,7 @@ import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.FxContract
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.screens.ExpenseEditPrimaryActions
 import com.ticketbox.viewmodel.ExpenseEditUiState
 
 @StringRes
@@ -30,9 +31,7 @@ internal fun ExpenseFxStatusCard(
     expense: Expense,
     editState: ExpenseEditUiState,
     hasDraftChanges: Boolean,
-    onRefresh: () -> Unit,
-    onRetry: () -> Unit,
-    onLoadReview: () -> Unit,
+    actions: ExpenseEditPrimaryActions,
 ) {
     val state = editState.fx
     if (expense.status != "pending" || (expense.fxStatus != FxContract.StatusPending && state.task == null)) return
@@ -42,15 +41,15 @@ internal fun ExpenseFxStatusCard(
         Text(stringResource(expenseFxTaskStatusRes(state.task)), style = MaterialTheme.typography.titleSmall)
         Text(stringResource(R.string.expense_fx_manual_recovery), style = MaterialTheme.typography.bodySmall)
         state.message?.let { Text(it.asString(), color = MaterialTheme.colorScheme.error) }
-        TextButton(onClick = onRefresh, enabled = actionsEnabled) {
+        TextButton(onClick = actions.onRefreshFx, enabled = actionsEnabled) {
             Text(stringResource(R.string.expense_fx_refresh))
         }
         if (!editState.readOnly && (state.task == null || state.task.status in setOf("failed", "cancelled"))) {
-            TextButton(onClick = onRetry, enabled = actionsEnabled) { Text(stringResource(R.string.expense_fx_retry)) }
+            TextButton(onClick = actions.onRetryFx, enabled = actionsEnabled) { Text(stringResource(R.string.expense_fx_retry)) }
         }
         if (state.task?.status == "completed") {
             if (hasDraftChanges) Text(stringResource(R.string.expense_fx_save_draft_first), style = MaterialTheme.typography.bodySmall)
-            TextButton(onClick = onLoadReview, enabled = actionsEnabled && !hasDraftChanges) {
+            TextButton(onClick = { actions.onLoadFxReview(hasDraftChanges) }, enabled = actionsEnabled && !hasDraftChanges) {
                 Text(stringResource(R.string.expense_fx_load_review))
             }
         }

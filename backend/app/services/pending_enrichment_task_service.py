@@ -20,7 +20,7 @@ from app.services.background_task_handler_api import (
 )
 from app.services.expense_query import resolve_expense
 from app.services.expense_service import enrich_pending_expense
-from app.services.pending_fx_task_service import prepare_pending_expense_fx, submit_pending_expense_fx
+from app.services.pending_fx_task_service import prepare_pending_expense_fx
 
 PENDING_EXPENSE_ENRICHMENT_TASK_TYPE = "expense_enrichment"
 
@@ -197,17 +197,29 @@ def run_pending_expense_enrichment_task(
     task.progress_current = 1
     task.progress_total = 1
     task.progress_message = _PROGRESS_MESSAGES[result.outcome]
-    expense = resolve_expense(db, tenant_id, expense_id)
-    fx_task = prepare_pending_expense_fx(db, expense=expense,
-        initiator_account_id=task.initiated_by_account_id,
-        initiator_device_id=task.initiated_by_device_id) if expense is not None else None
     db.commit()
-    if fx_task is not None:
-        submit_pending_expense_fx(db, fx_task)
+
+
+def prepare_pending_enrichment_completion(
+    db: Session, task: BackgroundTask,
+) -> background_task_service.PreparedBackgroundTask | None:
+    """Stage the current bill's FX continuation inside worker-owned completion."""
+    if task.result_summary_json is None or task.input_payload_json is None:
+        return None
+    expense_id, tenant_id, _timezone, _predecessor = _task_payload(task, json.loads(task.input_payload_json))
+    if task.source_expense_id is not None and task.source_expense_id != expense_id:
+        raise ValueError("Original enrichment input does not match its source expense")
+    expense = resolve_expense(db, tenant_id, expense_id)
+    if expense is None:
+        return None
+    return prepare_pending_expense_fx(db, expense=expense,
+        initiator_account_id=task.initiated_by_account_id,
+        initiator_device_id=task.initiated_by_device_id)
 
 
 __all__ = [
     "PENDING_EXPENSE_ENRICHMENT_TASK_TYPE",
+    "prepare_pending_enrichment_completion",
     "prepare_pending_expense_enrichment",
     "resume_pending_expense_enrichment",
     "run_pending_expense_enrichment_task",

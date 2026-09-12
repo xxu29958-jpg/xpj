@@ -196,3 +196,39 @@ def test_bill_fx_read_uses_bill_access_and_mutation_keeps_ledger_and_occ_guards(
         json={"expected_row_version": bill["row_version"]}).status_code == 404
     stale = client.post(url, headers=identity.app_headers, json={"expected_row_version": bill["row_version"] + 1})
     assert stale.status_code == 409 and stale.json()["error"] == "state_conflict"
+
+
+@pytest.mark.real_db
+@pytest.mark.parametrize("child", ["items", "splits"])
+def test_fx_worker_keeps_receipt_reconciliation_and_split_allocation_consistent(client, identity, monkeypatch, child):
+    from app.services import pending_fx_task_service
+    from tests.expense_split_test_support import personal_owner_member_id
+
+    monkeypatch.setattr(background_task_service, "_submit_task", Mock())
+    bill = _import_foreign_bill(client, identity)
+    url = f"/api/expenses/{bill['id']}"
+    values = [{"name": "Receipt line", "amount_cents": 85000}] if child == "items" else [
+        {"member_id": personal_owner_member_id(), "amount_cents": 90000}]
+    saved = client.put(f"{url}/{child}", headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": bill["row_version"], child: values})
+    assert saved.status_code == 200, saved.text
+    version = saved.json()["row_version"]
+    prepared = client.post(f"{url}/fx", headers=identity.app_headers, json={"expected_row_version": version})
+    assert prepared.status_code == 200, prepared.text
+    with SessionLocal() as db:
+        task_id = db.scalar(select(BackgroundTask.id).where(BackgroundTask.public_id == prepared.json()["public_id"]))
+    monkeypatch.setattr(pending_fx_task_service, "fetch_pending_fx_reference", lambda _: EcbDailyRates(
+        date(2026, 5, 4), {"EUR": Decimal(1), "USD": Decimal(1), "CNY": Decimal(7)}))
+    background_task_worker.run_task(task_id, {})
+    current = client.get(url, headers=identity.app_headers).json()
+    detail = client.get(f"{url}/{child}", headers=identity.app_headers).json()
+    if child == "items":
+        assert (current["amount_cents"], detail["items_sum_status"], detail["mismatch_cents"]) == (
+            86415, "mismatch_known", 1415)
+        assert detail["row_version"] == current["row_version"] == version + 1
+        assert current["fx_task"]["status"] == "completed"
+    else:
+        assert current["amount_cents"] is None and current["row_version"] == version
+        assert current["fx_task"]["status"] == "failed"
+        assert detail["splits_total_amount_cents"] == 90000
+    assert current["status"] == "pending"

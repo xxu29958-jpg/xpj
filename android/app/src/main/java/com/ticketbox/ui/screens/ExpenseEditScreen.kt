@@ -456,9 +456,7 @@ fun ExpenseEditScreen(
             expense = currentExpense,
             editState = state,
             hasDraftChanges = hasDraftChanges,
-            onRefresh = primaryActions.onRefreshFx,
-            onRetry = primaryActions.onRetryFx,
-            onLoadReview = { primaryActions.onLoadFxReview(hasDraftChanges) },
+            actions = primaryActions,
         )
         ExpenseEditAmountCluster(
             state = ExpenseEditAmountClusterState(

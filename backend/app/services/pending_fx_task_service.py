@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from contextlib import suppress
 from dataclasses import asdict
+from xml.etree.ElementTree import ParseError
 
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -26,6 +27,7 @@ from app.services.expense_service._fx import (
     check_pending_fx,
     fetch_pending_fx_reference,
 )
+from app.services.fx_rate_provider import FxFetchError
 from app.services.ledger_service import get_ledger_for_account
 from app.services.permission_service import ROLES_WRITE
 from app.services.session_credential_lock import lock_bootstrap_owner_transaction
@@ -280,5 +282,7 @@ def run_pending_expense_fx_task(db: Session, task: BackgroundTask, payload: dict
     except TaskCancelledError:
         db.rollback()
         raise
-    except Exception as exc:  # Keep provider and storage details out of public task errors.
+    except (AppError, FxFetchError, ParseError, SQLAlchemyError, ValueError, TypeError, ArithmeticError) as exc:
+        # Transport, decoding, money and persistence failures preserve the bill
+        # without publishing provider payloads or SQL details.
         _publish_failure(db, task_id, exc)

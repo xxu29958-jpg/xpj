@@ -14,6 +14,7 @@ from app.services.currency_binding_service import resolve_write_capability
 from app.services.duplicate_service import mark_duplicate_status
 from app.services.exchange_rate_service import apply_resolved_currency_rate, resolve_payload_rate
 from app.services.expense_query import resolve_expense
+from app.services.expense_split_service import validate_current_expense_split_allocation
 from app.services.fx_rate_provider import (
     EcbDailyRates,
     cache_reference_rates_for_date,
@@ -22,6 +23,7 @@ from app.services.fx_rate_provider import (
     fetch_reference_rates_for_date,
 )
 from app.services.optimistic_concurrency import bump_row_version
+from app.services.receipt_item_service import recompute_items_sum_status
 from app.services.spending_contract_service import accounting_zone
 from app.services.time_service import now_utc
 
@@ -107,6 +109,8 @@ def apply_pending_fx(
     if rate is None:
         raise AppError("exchange_rate_pending", "仍未取得这笔账单日期的汇率，可重试或填写本笔汇率。", status_code=409)
     apply_resolved_currency_rate(current, rate=rate, source=source, fx_status=status, rate_date=published)
+    validate_current_expense_split_allocation(db, expense=current)
+    recompute_items_sum_status(db, current)
     mark_duplicate_status(db, current)
     bump_row_version(current)
     current.updated_at = now_utc()

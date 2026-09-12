@@ -23,6 +23,7 @@ qualified at 45044f8b; this candidate incorporates that integration.
 | Reference lookup | Fetch by requested historical date and preserve actual publication date/source. An arbitrary older cached row is not proof that the requested date was checked; do not invent a fixed age threshold |
 | Cache and provider | Keep manual exact-date overrides and per-bill manual rates distinct. Concentrate any coverage evidence in the existing reference cache; retain configured transport and ECB provenance |
 | Background execution | Existing persistent task owner reports queued/running/result/failure and supports bounded retry/restart; network work cannot hold the financial command transaction. A nullable indexed source-expense relation supports direct per-bill queries; migrate the current enrichment source producer and valid stored inputs, rather than scanning task history or matching serialized JSON |
+| Release schema declaration | The release manifest's maximum schema must match the actual migration head consumed by the frozen backend; preserve the existing pre-freeze build check. This qualifies packaging of the product change and does not reopen Windows lifecycle |
 | Pending mutation | Revalidate status/OCC/current binding after fetching, preserve later user edits and confirmed snapshots, and use the existing Expense owner; conversion does not auto-confirm |
 | Product consumers | Web/Android pending queue, bill editor/detail, import result and data-health entries identify blocked bills and return to review; Owner FX status describes actual relevant outcome |
 | Actionable classification | A complete original amount awaiting conversion is missing FX, not missing amount. Data-health counts, both pending filters, quick-entry queues and labels must agree; task updates never replace unsaved form fields or OCC |
@@ -70,6 +71,19 @@ The direct POST, Synced success branch, session-only pending chip and unreachabl
 direct-conflict refresh state are retired. Fact reads consume financial revisions
 without publishing another write signal. Web rate recovery retains the original
 financial form, including final-submit ledger checks; rate acceptance never submits it.
+
+The post-construction impact check includes dependent receipt items and splits:
+FX uses their existing reconciliation/allocation validators before publishing a
+pending version. Android adopts the root and matching child versions together;
+an incomplete original amount remains an actionable amount gap. Enrichment passes
+its bounded slot to FX in worker-owned completion: parent completion and child
+admission commit together, then the existing executor submits the child. The old
+running-parent admission path is removed; durable-result replay uses the same
+completion path. No task status, financial authority or persistence model is added.
+Formal review retains five FIX dispositions and rejects the old queued-refund
+refresh finding against the existing dispatcher-to-shell-to-Fact refresh chain.
+Short transaction/worker counterexamples changed from five failures to 27 passing
+checks; real database, Android and final exact-source qualification remain required.
 
 | Exit | Direct qualification producer |
 |---|---|

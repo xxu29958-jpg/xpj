@@ -19,6 +19,8 @@ import com.ticketbox.R
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.BackgroundTaskDto
 import com.ticketbox.data.remote.dto.ExpenseDto
+import com.ticketbox.data.remote.dto.ExpenseItemsResponseDto
+import com.ticketbox.data.remote.dto.ExpenseSplitsResponseDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.ui.theme.TicketboxTheme
@@ -50,6 +52,14 @@ class ExpenseFxContinuationRouteTest {
                 updatedAt = if (converted) "2026-09-12T01:00:00Z" else "2026-09-12T00:00:00Z")
         }
         override suspend fun expenseFx(id: Long): BackgroundTaskDto = currentTask
+        override suspend fun expenseItems(id: Long): ExpenseItemsResponseDto = api.expenseItems(id).copy(
+            rowVersion = if (converted) 2 else 1,
+            parentAmountCents = if (converted) 7000 else null,
+        )
+        override suspend fun expenseSplits(id: Long): ExpenseSplitsResponseDto = api.expenseSplits(id).copy(
+            rowVersion = if (converted) 2 else 1,
+            parentAmountCents = if (converted) 7000 else null,
+        )
         override suspend fun getBackgroundTask(publicId: String): BackgroundTaskDto = error("initiator-only task endpoint")
         override suspend fun retryExpenseFx(id: Long, request: ExpenseStateTokenRequest): BackgroundTaskDto {
             retryVersions += request.expectedRowVersion
@@ -72,7 +82,7 @@ class ExpenseFxContinuationRouteTest {
         compose.setContent {
             CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
                 TicketboxTheme(skin = AppSkin.Default) {
-                    if (mounted.value) ExpenseEditRoute(9, harness.screenFactory, {}, {}, ExpenseFactNavigation({}, { _, _ -> }))
+                    if (mounted.value) ExpenseEditRoute(9, harness.screenFactory, ExpenseEditExitActions({}, {}), ExpenseFactNavigation({}, { _, _ -> }))
                 }
             }
         }
