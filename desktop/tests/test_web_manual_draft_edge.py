@@ -25,6 +25,7 @@ _ROOT = Path(__file__).resolve().parents[2]
 _WEB = _ROOT / "backend/app/static/web"
 _SCOPE = {"datasetId": "dataset", "clientGeneration": "generation", "accountId": "account", "ledgerId": "ledger", "deviceId": "device"}
 _VALUES = {"amount_major": "", "currency_code": "CNY", "home_currency_code": "CNY", "merchant": "", "category": "其他", "spent_at": "2026-09-06T12:30", "note": ""}
+_ORIGIN_FIELDS = ("return_to", "return_recurring_public_id", "return_month", "return_payment_expense_id")
 
 pytestmark = pytest.mark.skipif(os.name != "nt", reason="cloud Windows Edge consumer")
 
@@ -35,6 +36,7 @@ def _form(query: dict[str, list[str]]) -> bytes:
         f'<label>{name}<input name="{name}" value="{html.escape(value)}"></label>'
         for name, value in _VALUES.items() if name != "currency_code"
     )
+    origin_inputs = "".join(f'<input name="{name}" type="hidden" value="">' for name in _ORIGIN_FIELDS)
     setup = ""
     if "noStorage" in query:
         setup = "Object.defineProperty(window, 'localStorage', {get() {throw Error('denied');}});"
@@ -44,6 +46,8 @@ def _form(query: dict[str, list[str]]) -> bytes:
 <form method="post" action="/submit" data-manual-draft-scope="{html.escape(json.dumps(scope))}" data-manual-draft-result="">
   <input name="client_ref" type="hidden" value="{uuid4().hex}">
   <input name="csrf_token" type="hidden" value="synthetic-not-a-credential">
+  <input name="ledger_id" type="hidden" value="{html.escape(scope['ledgerId'])}">
+  {origin_inputs}
   <fieldset data-manual-edit-fields>
     {inputs}<select name="currency_code"><option>CNY</option><option>EUR</option></select>
     <details open data-manual-options data-start-expanded="false"><summary hidden>补充资料</summary></details>
@@ -51,6 +55,8 @@ def _form(query: dict[str, list[str]]) -> bytes:
   <button type="submit" data-manual-submit>记下这笔支出</button>
   <p hidden data-manual-draft-status></p>
 </form>
+<a data-manual-return href="/web/confirmed">返回流水</a>
+<p data-manual-origin-note hidden>原期付款</p>
 <div hidden data-manual-draft-actions><a href="/form">另记一笔</a></div>
 <details hidden data-manual-draft-shelf><span data-manual-draft-count></span><ul data-manual-draft-list></ul></details>
 <script>{setup}</script>

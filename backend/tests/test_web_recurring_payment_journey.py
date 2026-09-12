@@ -14,10 +14,11 @@ from app.middleware.csrf import CSRF_COOKIE_NAME
 from app.models import Expense, RecurringItem, RecurringOccurrenceRevision
 from app.routes.web_auth import SESSION_COOKIE_NAME
 from app.schemas import ExchangeRateRequest
-from app.services import background_task_service
 from app.services.budget_advisor_service import read_budget_inputs
 from app.services.exchange_rate_service import set_exchange_rate_idempotently
 from app.services.recurring_occurrence_query import occurrence_response
+from app.services.spending_contract_service import accounting_zone
+from app.services.time_service import now_utc
 from tests._local_web_identity_support import _connect_local_session, installed_web_setup
 from tests.test_web_recurring_payment_surface import _currency_selector, _fields, _form, _payment_link
 
@@ -27,7 +28,7 @@ pytestmark = [pytest.mark.real_db, pytest.mark.currency_binding_unbound]
 @pytest.fixture()
 def installed_web(monkeypatch):
     # Exercise saved pending bills without an unrelated executor racing this review.
-    monkeypatch.setattr(background_task_service, "_submit_task", lambda *a, **kw: None)
+    monkeypatch.setattr("app.services.background_task_executor.submit_task", lambda *a, **kw: None)
     yield from installed_web_setup()
 
 
@@ -56,6 +57,18 @@ def _state(ledger, series_id):
         return occurrence, august, september
 
 
+def _seed_commitment_valuation_rates(installed_web):
+    # A closed month's commitment uses month-end valuation; the current month uses today.
+    # Neither quote grants coverage to the separate September 5 payment.
+    today = now_utc().astimezone(accounting_zone()).date()
+    with SessionLocal() as db:
+        for day in (min(today, date(2026, 8, 31)), min(today, date(2026, 9, 30))):
+            set_exchange_rate_idempotently(db, tenant_id=installed_web.shared_ledger_id,
+                actor_account_id=installed_web.installation_account_id, idempotency_key=str(uuid4()),
+                payload=ExchangeRateRequest(currency_code="USD", home_currency_code="CNY", rate_date=day,
+                    rate_to_cny="7", expected_row_version=0))
+
+
 def test_native_foreign_commitment_records_later_payment_and_returns_for_explicit_original_period_link(installed_web):
     browser, ledger = installed_web.browser, installed_web.shared_ledger_id
     session = _connect_local_session(installed_web, next_url="/web/recurring")
@@ -70,13 +83,7 @@ def test_native_foreign_commitment_records_later_payment_and_returns_for_explici
         return browser.post(path, data=fields, headers={"Cookie": cookie, "Origin": "http://127.0.0.1:8000"},
             follow_redirects=False)
 
-    # Exact first-of-month references serve plan valuation, not the September 5 payment.
-    with SessionLocal() as db:
-        for day in (date(2026, 8, 1), date(2026, 9, 1)):
-            set_exchange_rate_idempotently(db, tenant_id=ledger,
-                actor_account_id=installed_web.installation_account_id, idempotency_key=str(uuid4()),
-                payload=ExchangeRateRequest(currency_code="USD", home_currency_code="CNY", rate_date=day,
-                    rate_to_cny="7", expected_row_version=0))
+    _seed_commitment_valuation_rates(installed_web)
     create_form = _form(get(f"/web/recurring?ledger_id={ledger}").text, "/web/recurring/create")
     assert 'value="USD"' in _currency_selector(create_form)
     fields = {**_fields(create_form), "home_currency_code": "USD", "merchant": "Overseas subscription",

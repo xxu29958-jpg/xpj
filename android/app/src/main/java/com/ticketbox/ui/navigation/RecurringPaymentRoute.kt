@@ -69,12 +69,13 @@ private fun RecurringPaymentRoute(
     var saving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var attempt by remember { mutableStateOf(0) }
+    val bindingChangedMessage = stringResource(R.string.recurring_payment_binding_changed)
     LaunchedEffect(origin, attempt) {
         error = null
         if (saved) return@LaunchedEffect
         repository.hasManualExpense(origin.binding, clientRef).fold(onSuccess = { exists ->
             saved = exists
-            if (!exists) prepareRecurringPayment(factory, origin).fold(
+            if (!exists) prepareRecurringPayment(factory, origin, bindingChangedMessage).fold(
                 onSuccess = { prepared = it }, onFailure = { error = it.message })
         }, onFailure = { error = it.message })
     }
@@ -115,12 +116,16 @@ private fun RecurringPaymentSheet(state: ManualExpenseSheetState, actions: Manua
     }
 }
 
-private suspend fun prepareRecurringPayment(factory: MainScreenFactory, origin: RecurringPaymentOrigin): Result<ManualExpenseSheetState> =
+private suspend fun prepareRecurringPayment(
+    factory: MainScreenFactory,
+    origin: RecurringPaymentOrigin,
+    bindingChangedMessage: String,
+): Result<ManualExpenseSheetState> =
     runCatching {
         val item = factory.recurringRepository.items(origin.binding).getOrThrow().single { it.publicId == origin.seriesPublicId }
         val currency = CurrencyCode.fromStorageKeyOrNull(item.homeCurrencyCode)
         val home = requireNotNull(CurrencyCode.fromStorageKeyOrNull(factory.debtRepository.listDebts().getOrThrow().ledgerHomeCurrencyCode))
-        check(factory.repository.captureDeferredLedgerBinding() == origin.binding) { "账本已切换，请返回原账本继续。" }
+        check(factory.repository.captureDeferredLedgerBinding() == origin.binding) { bindingChangedMessage }
         ManualExpenseSheetState(DEFAULT_EXPENSE_CATEGORIES, saving = false, initialCurrency = home,
             prefill = ManualExpensePrefill(item.merchant, currency, currency?.let { formatAmountInput(item.baselineAmountCents, it) }.orEmpty()))
     }

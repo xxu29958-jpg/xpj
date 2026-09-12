@@ -57,7 +57,7 @@ def _payments(db, *, ledger_id, month, query, origin):
     return [_payment_view(row, ledger_id=ledger_id, origin=origin) for row in rows[:100]], len(rows) > 100
 
 
-def _focused_payment(db, *, ledger_id, payment_id, origin):
+def _focused_payment(db, *, ledger_id, payment_id, origin) -> dict[str, object] | None:
     if not payment_id or not str(payment_id).isascii() or not str(payment_id).isdigit():
         return None
     if len(str(payment_id)) > 10 or not 0 < int(payment_id) <= 2_147_483_647:
