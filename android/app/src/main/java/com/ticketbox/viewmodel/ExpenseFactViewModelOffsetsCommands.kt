@@ -3,10 +3,8 @@ package com.ticketbox.viewmodel
 import androidx.annotation.StringRes
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
-import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseOffsetDraft
-import com.ticketbox.domain.model.ExpenseOffsetMutationOutcome
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.StreamOffsetKind
 import com.ticketbox.domain.model.UiText
@@ -49,21 +47,14 @@ fun ExpenseFactViewModel.submitOffset() {
         if (_uiState.value.correctionAccess?.binding != binding || blockUnreadyFactWrite(expense.rowVersion)) return@launch
         updateOffsetForm { it.copy(saving = true) }
         repository.createExpenseOffsetAllowingOffline(binding, expense, draft)
-            .onSuccess { outcome ->
+            .onSuccess {
                 if (_uiState.value.correctionAccess?.binding != binding) return@onSuccess
-                publishOffsetOutcome(outcome, offsetSuccessRes(draft.kind))
+                publishOffsetQueued()
             }
             .onFailure { error ->
                 if (_uiState.value.correctionAccess?.binding == binding) publishOffsetFailure(error, isVoid = false)
             }
     }
-}
-
-@StringRes
-private fun offsetSuccessRes(kind: StreamOffsetKind): Int = when (kind) {
-    StreamOffsetKind.Refund -> R.string.expense_offset_success_refund
-    StreamOffsetKind.Chargeback -> R.string.expense_offset_success_chargeback
-    StreamOffsetKind.Reversal -> R.string.expense_offset_success_reversal
 }
 
 /**
@@ -111,98 +102,36 @@ private fun ExpenseFactViewModel.rejectOffset(@StringRes resId: Int): ExpenseOff
     return null
 }
 
-/**
- * Synced/Queued 双态发布：Synced 用返回 bundle 同源替换事实并刷新时间线；
- * Queued 只留会话内 pending chip + 页面级说明（持久队列表达归 Outbox）。
- */
-internal fun ExpenseFactViewModel.publishOffsetOutcome(
-    outcome: ExpenseOffsetMutationOutcome,
-    @StringRes successRes: Int,
-) {
-    when (outcome) {
-        is ExpenseOffsetMutationOutcome.Synced -> {
-            _uiState.update {
-                it.copy(
-                    offsetForm = OffsetFormState(),
-                    voidOffsetForm = VoidOffsetFormState(),
-                    message = offsetSuccessMessage(outcome, successRes),
-                    messageTone = if (outcome.refreshPending) MessageTone.Info else MessageTone.Success,
-                    doneAdviceInputsChanged = true,
-                )
-            }
-            applyFactBundle(outcome.bundle)
-            loadExpenseRevisions()
-        }
-        is ExpenseOffsetMutationOutcome.Queued -> {
-            _uiState.update {
-                it.copy(
-                    offsetForm = OffsetFormState(),
-                    voidOffsetForm = VoidOffsetFormState(),
-                    pendingOffsetIntent = outcome.intent,
-                    message = UiText.res(R.string.expense_offset_queued),
-                    messageTone = MessageTone.Info,
-                    doneAdviceInputsChanged = true,
-                )
-            }
-        }
-    }
-}
-
-/** 成功回执：撤回回执计数与主文案同条呈现（不另造通知系统）。 */
-private fun offsetSuccessMessage(
-    outcome: ExpenseOffsetMutationOutcome.Synced,
-    @StringRes successRes: Int,
-): UiText {
-    val base = UiText.res(
-        if (outcome.refreshPending) R.string.expense_offset_success_refresh_pending else successRes,
-    )
-    val cancelled = outcome.bundle.relationshipImpacts.pendingInvitesCancelled.size
-    return if (cancelled > 0) {
-        UiText.compound(
-            listOf(base, UiText.res(R.string.expense_offset_cancelled_invites, cancelled)),
-            " ",
+/** Enqueue only acknowledges durable intent. Accepted facts arrive through the authoritative bundle reader. */
+internal fun ExpenseFactViewModel.publishOffsetQueued() {
+    _uiState.update {
+        it.copy(
+            offsetForm = OffsetFormState(),
+            voidOffsetForm = VoidOffsetFormState(),
+            message = UiText.res(R.string.expense_offset_queued),
+            messageTone = MessageTone.Info,
         )
-    } else {
-        base
     }
 }
 
-/**
- * 失败发布：direct 409 → conflict banner + 权威刷新 + 保留草稿。刷新期间
- * refreshingAfterConflict 禁用提交（不拿旧 root token 循环 409）；刷新成功由
- * adoptFactBundle 采用 bundle.root 并解禁，失败由 sheet/段落给可重试出口。
- */
+/** Admission failure keeps the form; submitted-command conflicts belong to Outbox. */
 internal fun ExpenseFactViewModel.publishOffsetFailure(error: Throwable, isVoid: Boolean) {
-    val isConflict = (error as? RepositoryException)?.errorCode == "state_conflict"
-    val message = if (isConflict) {
-        UiText.res(R.string.expense_offset_conflict)
-    } else {
-        error.toUiText(R.string.expense_offset_submit_failed)
-    }
+    val message = error.toUiText(R.string.expense_offset_submit_failed)
     _uiState.update {
         if (isVoid) {
             it.copy(
-                offsetCommandsBlockedUntilRefresh = it.offsetCommandsBlockedUntilRefresh || isConflict,
                 voidOffsetForm = it.voidOffsetForm.copy(
-                    conflictMessage = message.takeIf { isConflict },
-                    refreshingAfterConflict = isConflict,
-                    submitError = message.takeIf { !isConflict },
+                    submitError = message,
                     saving = false,
                 ),
             )
         } else {
             it.copy(
-                offsetCommandsBlockedUntilRefresh = it.offsetCommandsBlockedUntilRefresh || isConflict,
                 offsetForm = it.offsetForm.copy(
-                    conflictMessage = message.takeIf { isConflict },
-                    refreshingAfterConflict = isConflict,
-                    submitError = message.takeIf { !isConflict },
+                    submitError = message,
                     saving = false,
                 ),
             )
         }
-    }
-    if (isConflict) {
-        loadExpenseFactBundle()
     }
 }

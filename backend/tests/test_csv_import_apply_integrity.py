@@ -12,6 +12,7 @@ from app.services.csv_import_batch_service import (
     apply_csv_import_batch,
     create_csv_import_batch,
 )
+from app.services.ledger_service import find_owner_account_id_for_ledger
 
 
 def _csv_bytes(row_count: int) -> BytesIO:
@@ -53,6 +54,8 @@ def test_csv_import_integrity_error_marks_only_failed_row_insert_failed(
         applied = apply_csv_import_batch(
             db,
             tenant_id="owner",
+            initiator_account_id=find_owner_account_id_for_ledger(db, ledger_id="owner"),
+            initiator_device_id=None,
             public_id=public_id,
             batch_size=10,
         )

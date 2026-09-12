@@ -41,6 +41,19 @@ _SHELL_KEYBOARD_JS = (
 _EDGE_CDP: ModuleType | None = None
 
 
+def test_drawer_fx_status_and_retry_keep_draft_until_explicit_load_in_real_edge(tmp_path: Path) -> None:
+    fixture = _REPO_ROOT / "backend/tests/fixtures/drawer_fx_original_form_contract.html"
+    page = _write_fixture(tmp_path, fixture.name, fixture.read_text(encoding="utf-8").replace(
+        "__DRAWER_URI__", html.escape(_DRAWER_JS.as_uri(), quote=True)))
+    value = _evaluate_fixture(tmp_path, page=page, width=1024, height=768, profile_name="edge-drawer-fx-form")
+    assert value == {
+        "posts": [{"url": f"/web/expenses/1/{action}", "version": "11", "key": "original-key",
+            "merchant": "Unsent merchant"} for action in ("fx-status", "fx")],
+        "retained": {"reads": 1, "version": "11", "key": "original-key", "merchant": "Unsent merchant", "rowVersion": "11"},
+        "loaded": {"reads": 2, "version": "12", "merchant": "Saved merchant", "rowVersion": "12"},
+    }
+
+
 def _discover_edge() -> str:
     if sys.platform != "win32":
         pytest.skip("real Web consumer gate requires Windows Microsoft Edge")

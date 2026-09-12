@@ -37,8 +37,22 @@
 
   function showValues(saved) {
     controls.forEach(control => { control.value = saved[control.name] ?? ""; });
+    showOrigin(saved);
     if (saved.merchant || saved.note || saved.category !== nativeValues.category ||
         saved.spent_at !== nativeValues.spent_at) options.open = true;
+  }
+
+  function showOrigin(saved) {
+    const link = document.querySelector("[data-manual-return]");
+    const note = document.querySelector("[data-manual-origin-note]");
+    const recurring = saved.return_to === "recurring_occurrence" &&
+      /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(saved.return_recurring_public_id || "") &&
+      /^\d{4}-(0[1-9]|1[0-2])$/.test(saved.return_month || "");
+    const query = new URLSearchParams({ledger_id: form.elements.namedItem("ledger_id").value});
+    if (recurring) query.set("month", saved.return_month);
+    link.href = (recurring ? "/web/recurring/" + saved.return_recurring_public_id + "/occurrence" : "/web/confirmed") + "?" + query;
+    link.textContent = recurring ? "← 返回本期付款关联" : "← 返回流水";
+    note.hidden = !recurring;
   }
 
   function readOnly(value) {

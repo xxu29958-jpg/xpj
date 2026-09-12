@@ -19,6 +19,7 @@ data class Expense(
     val fxRateDate: String? = null,
     val fxSource: String? = null,
     val fxStatus: String = FxContract.StatusReady,
+    val fxTask: BackgroundTask? = null,
     val originalCurrencyCode: CurrencyCode = FxContract.HomeCurrency,
     val originalAmountMinor: Long? = null,
     val exchangeRateToCny: String? = null,
@@ -300,6 +301,7 @@ data class RecurringCandidate(
 data class DataQualitySummary(
     val pendingTotal: Int,
     val missingAmount: Int,
+    val missingFx: Int = 0,
     val missingMerchant: Int,
     val missingCategory: Int,
     // Null when the backend predates the split (N-1) — callers must fall back

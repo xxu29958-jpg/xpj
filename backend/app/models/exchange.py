@@ -95,6 +95,10 @@ class FxRate(Base):
             name="uq_fx_rates_source_home_currency_date",
         ),
         CheckConstraint("rate_to_home > 0", name="ck_fx_rates_rate_positive"),
+        CheckConstraint(
+            "verified_through IS NULL OR verified_through >= rate_date",
+            name="ck_fx_rates_coverage_date",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -103,6 +107,8 @@ class FxRate(Base):
     home_currency_code: Mapped[str] = mapped_column(String(3), nullable=False, index=True)
     currency_code: Mapped[str] = mapped_column(String(3), nullable=False, index=True)
     rate_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    # A dated provider response can prove coverage beyond its actual publication day.
+    verified_through: Mapped[date | None] = mapped_column(Date, nullable=True)
     rate_to_home: Mapped[Decimal] = mapped_column(Numeric(18, 8), nullable=False)
     provider_base_currency: Mapped[str] = mapped_column(String(3), default=ECB_PROVIDER_BASE_CURRENCY, nullable=False)
     provider_rate: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)

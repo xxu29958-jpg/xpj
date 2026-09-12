@@ -42,6 +42,7 @@ data class OccurrenceSheetActions(
     val onSubmit: () -> Unit,
     val onRecover: (PendingOccurrencePayment, Boolean) -> Unit,
     val onOpenExpense: (Long) -> Unit = {},
+    val onRecordPayment: () -> Unit,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -49,6 +50,7 @@ data class OccurrenceSheetActions(
 fun RecurringOccurrenceSheet(
     state: RecurringOccurrenceUiState,
     actions: OccurrenceSheetActions,
+    preferredExpenseId: Long? = null,
 ) {
     val item = state.item ?: return
     ModalBottomSheet(onDismissRequest = actions.onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
@@ -70,8 +72,13 @@ fun RecurringOccurrenceSheet(
                     TextButton(onClick = { actions.onChoose(null) }, enabled = state.canWrite) { Text(stringResource(R.string.occurrence_clear)) }
                 }
                 if (state.access?.canModify == false) Text(stringResource(R.string.occurrence_readonly))
+                if (occurrence.expensePublicId == null) {
+                    TextButton(onClick = actions.onRecordPayment, enabled = state.canWrite) {
+                        Text(stringResource(R.string.recurring_payment_record))
+                    }
+                }
                 OccurrenceChoice(state, actions.onSubmit)
-                if (state.canWrite) OccurrencePaymentPicker(state, actions.onChoose)
+                if (state.canWrite) OccurrencePaymentPicker(state, actions.onChoose, preferredExpenseId)
             }
         }
     }
@@ -125,10 +132,11 @@ private fun OccurrencePending(pending: PendingOccurrencePayment, canModify: Bool
 }
 
 @Composable
-private fun OccurrencePaymentPicker(state: RecurringOccurrenceUiState, choose: (ConfirmedStreamItem.ExpenseRow) -> Unit) {
+private fun OccurrencePaymentPicker(state: RecurringOccurrenceUiState, choose: (ConfirmedStreamItem.ExpenseRow) -> Unit, preferredExpenseId: Long?) {
     var month by rememberSaveable(state.occurrence?.period) { mutableStateOf(state.occurrence?.period.orEmpty()) }
     var query by rememberSaveable(state.item?.publicId) { mutableStateOf("") }
-    val payments = occurrencePaymentChoices(state.payments, month, query)
+    val preferred = occurrencePaymentChoices(state.payments, "", "").filter { it.root.id == preferredExpenseId }
+    val payments = (preferred + occurrencePaymentChoices(state.payments, month, query)).distinctBy { it.root.id }
     HorizontalDivider()
     Text(stringResource(R.string.occurrence_pick_explanation))
     OutlinedTextField(value = month, onValueChange = { month = it }, singleLine = true,

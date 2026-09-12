@@ -218,6 +218,7 @@ def _budget_view(budget: BudgetMonthlyResponse, *, currency_code: str) -> dict:
         "month": budget.month,
         "configured": budget.configured,
         "missing_currency_codes": budget.missing_currency_codes,
+        "reference_rates": budget.reference_rates,
         "total_yuan": _amount_yuan(budget.total_amount_cents, currency_code),
         "rollover_yuan": _amount_yuan(budget.rollover_amount_cents, currency_code),
         "fixed_yuan": _amount_yuan(budget.fixed_amount_cents, currency_code),

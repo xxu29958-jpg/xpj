@@ -21,6 +21,8 @@ import com.ticketbox.domain.model.DuplicateStatusValues
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.PendingPrimaryReviewAction
 import com.ticketbox.domain.model.pendingMerchantPresentation
+import com.ticketbox.domain.model.pendingNeedsAmount
+import com.ticketbox.domain.model.pendingNeedsFx
 import com.ticketbox.domain.model.pendingNeedsCategory
 import com.ticketbox.domain.model.pendingPrimaryReviewAction
 import com.ticketbox.ui.components.AppCompactChips
@@ -36,6 +38,7 @@ import com.ticketbox.ui.design.AppTextHierarchy
 enum class NeedsReviewFilter(@param:StringRes val labelRes: Int) {
     All(R.string.pending_filter_label_all),
     NeedsAmount(R.string.pending_filter_label_needs_amount),
+    NeedsFx(R.string.expense_fx_waiting),
     NeedsMerchant(R.string.pending_filter_label_needs_merchant),
     NeedsCategory(R.string.pending_filter_label_needs_category),
     Duplicate(R.string.pending_filter_label_duplicate),
@@ -88,6 +91,7 @@ internal data class PendingQueueCounts(
     val readyToConfirm: Int,
     val needsCategory: Int = 0,
     val needsInformation: Int = 0,
+    val needsFx: Int = 0,
 )
 
 internal fun visibleNeedsReviewFilters(
@@ -142,7 +146,8 @@ internal fun InboxSectionNavigation(
 internal fun applyNeedsReviewFilter(items: List<Expense>, filter: NeedsReviewFilter): List<Expense> {
     return when (filter) {
         NeedsReviewFilter.All -> items
-        NeedsReviewFilter.NeedsAmount -> items.filter { it.amountCents == null }
+        NeedsReviewFilter.NeedsAmount -> items.filter(::pendingNeedsAmount)
+        NeedsReviewFilter.NeedsFx -> items.filter(::pendingNeedsFx)
         NeedsReviewFilter.NeedsMerchant -> items.filter { pendingMerchantPresentation(it).needsReview }
         NeedsReviewFilter.NeedsCategory -> items.filter(::pendingNeedsCategory)
         NeedsReviewFilter.Duplicate -> items.filter { it.duplicateStatus == DuplicateStatusValues.SUSPECTED }
@@ -187,6 +192,7 @@ internal data class NeedsReviewFilterBarState(
 private fun PendingQueueCounts.countFor(filter: NeedsReviewFilter): Int = when (filter) {
     NeedsReviewFilter.All -> all
     NeedsReviewFilter.NeedsAmount -> needsAmount
+    NeedsReviewFilter.NeedsFx -> needsFx
     NeedsReviewFilter.NeedsMerchant -> needsMerchant
     NeedsReviewFilter.NeedsCategory -> needsCategory
     NeedsReviewFilter.Duplicate -> duplicate
@@ -203,6 +209,7 @@ private val PendingQueueCounts.hasSingleCompleteSignal: Boolean
 
 private val pendingSignalFilters = listOf(
     NeedsReviewFilter.NeedsAmount,
+    NeedsReviewFilter.NeedsFx,
     NeedsReviewFilter.NeedsMerchant,
     NeedsReviewFilter.NeedsCategory,
     NeedsReviewFilter.ReadyToConfirm,

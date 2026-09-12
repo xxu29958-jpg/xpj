@@ -14,7 +14,6 @@ from app.routes._web_expense_return_context import (
     edit_context_params,
     expense_return_form_context,
     flow_href,
-    resolve_return_to,
     return_context_params,
 )
 from app.routes._web_session_common import (
@@ -285,7 +284,7 @@ def _invite_error_response(
         ctx = web_fact_context(db, request, options, selected_id, expense_id,
             error=exc.message, return_context=return_context)
     except AppError:
-        return _web_redirect(resolve_return_to(return_context.return_to, "/web/bill-splits/sent"),
+        return _web_redirect(return_context.resolve_path("/web/bill-splits/sent"),
             selected_id, msg=exc.message, flash_type="error", **return_context_params(**return_context.as_kwargs()))
     if ctx["split_invite"] is not None:
         ctx["split_invite"].update(draft, requires_review=exc.error in {

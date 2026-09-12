@@ -58,8 +58,10 @@ internal class RecurringInteractionStates(
 internal class RecurringEditorSession internal constructor(
     private val draft: RecurringDraftStates,
     private val interaction: RecurringInteractionStates,
-    val homeCurrencyCode: String?,
+    homeCurrencyCode: String?,
 ) {
+    var homeCurrencyCode by mutableStateOf(homeCurrencyCode)
+        private set
     var editing by draft.editing
     var merchant by draft.merchant
     var amountText by draft.amountText
@@ -68,6 +70,11 @@ internal class RecurringEditorSession internal constructor(
     var showDatePicker by interaction.showDatePicker
     var submitUi by interaction.submitUi
     var rebaseUi by interaction.rebaseUi
+
+    fun selectCurrency(currency: CurrencyCode) {
+        if (editing != null || submitUi.awaiting) return
+        homeCurrencyCode = currency.storageKey
+    }
 
     fun applyRebase(rebase: RecurringEditorRebase, attemptId: Long) {
         val currency = CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode) ?: return

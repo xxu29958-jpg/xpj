@@ -15,6 +15,7 @@ internal class ExpenseLedgerRepositoryActions(
 ) : LedgerActions {
     private val confirmedBatchIntentLock = Any()
     private var unresolvedConfirmedBatchIntent: ConfirmedBatchIntent? = null
+    val manualCreation = ExpenseManualCreation(core)
 
     override fun canModifyLedger(): Boolean = core.canModifyLedger()
 
@@ -85,11 +86,7 @@ internal class ExpenseLedgerRepositoryActions(
         }
     }
 
-    override suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense> = core.errorHandler.safeCall {
-        require(draft.amountCents != null || draft.originalAmountMinor != null) { "请先填写金额。" }
-        val bound = core.ledgerRequestGuard.bind()
-        core.enqueueLocalCreate(bound, draft, UUID.randomUUID().toString())
-    }
+    override suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense> = manualCreation.create(draft)
 
     override suspend fun applyConfirmedBatch(
         expenses: List<Expense>,

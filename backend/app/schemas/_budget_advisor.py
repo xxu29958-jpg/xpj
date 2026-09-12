@@ -6,6 +6,7 @@ from datetime import date
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas._exchange import ProjectionReferenceDto
 from app.schemas._money import (
     NonNegativeMoneyAggregate,
     NonNegativeMoneyMinor,
@@ -57,6 +58,7 @@ class BudgetInputsResponse(BaseModel):
     breakdown: DiscretionaryResponse
     missing_rates: list[ProjectionGapDto]
     inputs_fingerprint: str | None
+    reference_rates: list[ProjectionReferenceDto] = Field(default_factory=list)
 
 
 class BudgetAdviseRequest(BaseModel):

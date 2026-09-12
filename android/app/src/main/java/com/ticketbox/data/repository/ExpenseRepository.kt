@@ -141,6 +141,15 @@ class ExpenseRepository(
     override suspend fun syncPending(): Result<List<Expense>> =
         pendingRepository.syncPending()
 
+    override suspend fun fetchExpenseFx(binding: LogicalSessionBinding, id: Long): Result<BackgroundTask?> =
+        backgroundTaskRepository.fetchExpenseFx(binding, id)
+
+    override suspend fun retryExpenseFx(binding: LogicalSessionBinding, expense: Expense): Result<BackgroundTask> =
+        backgroundTaskRepository.retryExpenseFx(binding, expense)
+
+    override suspend fun fetchExpenseForFxReview(binding: LogicalSessionBinding, id: Long): Result<Expense> =
+        backgroundTaskRepository.fetchExpenseForFxReview(binding, id)
+
     override suspend fun fetchExpense(id: Long): Result<Expense> =
         detailRepository.fetchExpense(id)
 
@@ -291,6 +300,15 @@ class ExpenseRepository(
     override suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense> =
         ledgerRepository.createManualExpense(draft)
 
+    suspend fun createManualExpense(draft: ExpenseDraft, binding: LogicalSessionBinding, clientRef: String): Result<Unit> =
+        ledgerRepository.manualCreation.create(draft, binding, clientRef)
+
+    suspend fun hasManualExpense(binding: LogicalSessionBinding, clientRef: String): Result<Boolean> =
+        ledgerRepository.manualCreation.isSaved(binding, clientRef)
+
+    internal fun observeManualExpense(clientRef: String): Flow<ManualExpenseCreationProjection?> =
+        ledgerRepository.manualCreation.observe(clientRef)
+
     override suspend fun applyConfirmedBatch(
         expenses: List<Expense>,
         category: String?,
@@ -304,7 +322,7 @@ class ExpenseRepository(
         notificationKey: String? = null,
     ): Result<Expense> = detailRepository.createNotificationDraft(draft, expectedBinding, notificationKey)
 
-    internal fun captureDeferredLedgerBinding(): LogicalSessionBinding? =
+    override fun captureDeferredLedgerBinding(): LogicalSessionBinding? =
         core.ledgerRequestGuard.captureLogicalBinding()
 
     internal fun observeLedgerAccess(): Flow<LedgerAccessContext?> = core.apiProvider.observeActiveLedgerAccess()

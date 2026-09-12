@@ -18,8 +18,8 @@ import com.ticketbox.viewmodel.recurringViewModelFactory
 internal fun RecurringRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
+    navigation: RecurringNavigation,
     onDataChanged: () -> Unit = {},
-    onOpenExpense: (Long) -> Unit = {},
     financialDataRevision: Int = 0,
 ) {
     val recurringViewModel: RecurringViewModel = viewModel(
@@ -44,7 +44,7 @@ internal fun RecurringRoute(
         actions = RecurringScreenActions(
             onRefresh = recurringViewModel::refresh,
             items = RecurringItemActions(
-                onOpenOccurrence = occurrenceModel::open,
+                onOpenOccurrence = { occurrenceModel.open(it) },
                 onPause = recurringViewModel::pause,
                 onResume = recurringViewModel::resume,
                 onArchive = recurringViewModel::archive,
@@ -62,5 +62,5 @@ internal fun RecurringRoute(
             onBack = onBack,
         ),
     )
-    RecurringOccurrenceHost(occurrenceModel, onOpenExpense)
+    RecurringOccurrenceHost(occurrenceModel, screenFactory.repository, state.items, navigation.onOpenExpense, navigation.onRecordPayment)
 }

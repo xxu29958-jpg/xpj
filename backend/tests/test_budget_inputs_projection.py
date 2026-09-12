@@ -11,11 +11,11 @@ from app.services.budget_advisor_service import _inputs_builder as builder
 from app.services.budget_advisor_service import _runner
 from app.services.budget_advisor_service._models import BudgetInputs
 from app.services.budget_advisor_service._outbound_guard import to_outbound_dict
-from app.services.money_projection_service import ProjectionGap
+from app.services.money_projection_service import ProjectionGap, ProjectionReference
 from app.services.monthly_report_service import CategoryRollup, MonthlyReport, compose_monthly_report
 
 
-def seed_reads(monkeypatch, *, gap=None):
+def seed_reads(monkeypatch, *, gap=None, references=()):
     report = MonthlyReport("2026-08", "JPY", 300, 1, [CategoryRollup("餐饮", 300, 1)])
     monkeypatch.setattr(builder, "compose_monthly_report", lambda *args, **kwargs: report)
     monkeypatch.setattr(builder, "compose_budget_explanation", lambda *args, **kwargs: SimpleNamespace(
@@ -23,7 +23,7 @@ def seed_reads(monkeypatch, *, gap=None):
     ))
     plan = SimpleNamespace(source_type="private employer", pay_day=15)
     monkeypatch.setattr(builder, "income_forecast", lambda *args, **kwargs: SimpleNamespace(
-        expected_amount_cents=2000, projected_entries=((plan, 2000),),
+        expected_amount_cents=2000, projected_entries=((plan, 2000),), reference_rates=references,
     ))
     monkeypatch.setattr(builder, "_active_recurring_items", lambda *args, **kwargs: [])
     monkeypatch.setattr(builder, "recurring_monthly_total", lambda *args, **kwargs: 500)
@@ -52,6 +52,18 @@ def test_complete_projection_preserves_outbound_privacy_and_paid_reservation(mon
     assert payload["income_plan"] == [{"source_type": "other", "amount_cents": 2000, "pay_day": 15}]
     assert "missing_rates" not in payload
     assert "private employer" not in repr(payload)
+
+
+def test_budget_input_response_preserves_the_actual_reference_dates(monkeypatch):
+    from app.schemas._budget_advisor import BudgetInputsResponse
+
+    seed_reads(monkeypatch, references=(ProjectionReference("USD", "JPY", date(2026, 8, 28)),))
+    projection = builder.read_budget_inputs(object(), tenant_id="owner", month="2026-08", home_currency_code="JPY")
+    response = BudgetInputsResponse.model_validate(projection).model_dump(mode="json")
+    assert response["reference_rates"] == [{"source_currency_code": "USD", "home_currency_code": "JPY",
+        "rate_date": "2026-08-28"}]
+    assert response["missing_rates"] == []
+    assert "reference_rates" not in to_outbound_dict(projection.provider_inputs)
 
 
 def test_hidden_historical_rate_change_invalidates_advice_without_changing_month_totals(monkeypatch):

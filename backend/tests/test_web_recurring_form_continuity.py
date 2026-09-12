@@ -1,6 +1,7 @@
 """Rejected native recurring forms preserve intentions independently of facts."""
 
 import re
+from html import unescape
 from uuid import uuid4
 
 import pytest
@@ -28,7 +29,14 @@ def web_recurring(client):
 def _form(page, action):
     matched = re.search(r'<form[^>]*action="' + re.escape(action) + r'".*?</form>', page.text, re.DOTALL)
     assert matched is not None, page.text
-    return matched.group(0), hidden_post_forms(matched.group(0))[action]
+    form = matched.group(0)
+    fields = hidden_post_forms(form)[action]
+    selector = re.search(r'<select\b[^>]*name="home_currency_code"[^>]*>(.*?)</select>', form, re.DOTALL)
+    if selector:
+        selected = re.search(r'<option\b[^>]*value="([^"]*)"[^>]*selected', selector.group(1))
+        assert selected is not None, "The native form must select its captured original currency"
+        fields["home_currency_code"] = unescape(selected.group(1))
+    return form, fields
 
 
 def test_create_validation_preserves_fields_and_original_key_until_single_success(web_recurring):

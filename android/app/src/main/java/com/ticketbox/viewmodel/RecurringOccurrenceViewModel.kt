@@ -72,10 +72,10 @@ class RecurringOccurrenceViewModel(
         }
     }
 
-    fun open(item: RecurringItem) {
+    fun open(item: RecurringItem, period: String = "current") {
         if (item.ledgerId != mutableState.value.access?.binding?.ledgerId) return
-        mutableState.update { it.copy(item = item, occurrence = null, choice = null, acceptedId = null, message = null, requestedPeriod = "current") }
-        load("current")
+        mutableState.update { it.copy(item = item, occurrence = null, choice = null, acceptedId = null, message = null, requestedPeriod = period) }
+        load(period)
     }
 
     fun dismiss() {

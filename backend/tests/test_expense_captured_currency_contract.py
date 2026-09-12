@@ -42,10 +42,11 @@ def _rates(monkeypatch) -> Mock:
     return lookup
 
 
-def test_pending_fx_refresh_preserves_the_saved_currency_under_another_current_default(monkeypatch):
+def test_pending_currency_resolution_preserves_the_saved_currency_under_another_current_default(monkeypatch):
     lookup = _rates(monkeypatch)
     expense = _jpy_expense()
-    exchange_rate_service.refresh_currency_snapshot(_current_cny_session(), tenant_id="owner", expense=expense)
+    exchange_rate_service.apply_currency_payload(_current_cny_session(), tenant_id="owner",
+        home_currency_code=expense.home_currency_code, expense=expense, payload=expense, amount_was_explicit=False)
     assert expense.home_currency_code == "JPY"
     assert expense.amount_cents == 150
     assert expense.original_currency_code == "USD"

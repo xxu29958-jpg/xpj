@@ -336,6 +336,8 @@ def apply_web_expense_form(
     *,
     expense_id: int,
     selected_ledger_id: str,
+    initiator_account_id: int,
+    initiator_device_id: int | None,
     form: WebExpenseEditForm,
 ) -> WebExpenseSaveOutcome:
     """Validate browser input against the persisted currency snapshot, then save."""
@@ -363,6 +365,8 @@ def apply_web_expense_form(
             db,
             expense_id=expense_id,
             tenant_id=selected_ledger_id,
+            initiator_account_id=initiator_account_id,
+            initiator_device_id=initiator_device_id,
             expected_row_version=payload.expected_row_version,
             request_expected_row_version=payload.expected_row_version,
             idempotency_key=form.idempotency_key or None,

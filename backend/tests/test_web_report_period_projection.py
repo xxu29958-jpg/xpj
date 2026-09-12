@@ -38,7 +38,7 @@ def period_page(monkeypatch):
 
     from app.database import get_db
     from app.routes import web_reports
-    from app.services.money_projection_service import ProjectionGap
+    from app.services.money_projection_service import ProjectionGap, ProjectionReference
 
     def no_database(*_args, **_kwargs):
         pytest.fail("Browser projection checks must not connect to a database")
@@ -48,7 +48,8 @@ def period_page(monkeypatch):
     rows = [{"month": month, "home_currency_code": "JPY", "amount_cents": amount, "amount_yuan": amount,
         "amount_major_text": None if amount is None else str(amount), "count": 2,
         "budget_cents": budget, "budget_yuan": budget, "budget_major_text": None if budget is None else str(budget),
-        "missing_rates": (gap,) if amount is None else ()}
+        "missing_rates": (gap,) if amount is None else (),
+        "reference_rates": () if budget is None else (ProjectionReference("USD", "JPY", date(2026, 4, 15)),)}
         for month, amount, budget in [("2026-04", 1200, 1500), ("2026-05", None, None)]]
     state = SimpleNamespace(module=web_reports, gap=gap, payload=_overview(gap), rows=rows, calls=[])
 
@@ -133,6 +134,9 @@ def test_full_page_preserves_currency_unknown_metrics_and_unavailable_rankings(p
     assert "上月无数据" not in response.text and "前 5 笔" not in response.text and "前 8 名" not in response.text
     payload = json.loads(re.search(r'id="reports-overview-data">(.*?)</script>', response.text, re.DOTALL).group(1))
     assert payload["total_amount_cents"] is None and payload["count"] == 2
+    assert "参考汇率日期：USD → JPY · 2026-04-15" in response.text
+    history = json.loads(unescape(re.search(r"id=\"chart-trend\"[^>]*data-series='([^']+)'", response.text, re.S).group(1)))
+    assert history[0]["reference_rates"] == [{"source_currency_code": "USD", "home_currency_code": "JPY", "rate_date": "2026-04-15"}]
     for name, kwargs in period_page.calls:
         assert kwargs["tenant_id"] == "family"
         assert kwargs.get("home_currency_code", kwargs.get("currency_code")) == "JPY", name

@@ -76,6 +76,7 @@ enum class ExpenseDetailDataLoadState {
 data class ExpenseEditUiState(
     val expense: Expense? = null,
     val expenseLoading: Boolean = true,
+    val fx: ExpenseFxUiState = ExpenseFxUiState(),
     val thumbnail: ProtectedImage? = null,
     val fullImage: ProtectedImage? = null,
     val categories: List<String> = DEFAULT_EXPENSE_CATEGORIES,
@@ -111,7 +112,9 @@ data class ExpenseEditUiState(
      *  (confirm / reject). Consumed by the route to decide advice-cache
      *  invalidation; note/tag/merchant-only edits stay false. */
     val doneAdviceInputsChanged: Boolean = false,
-)
+) {
+    val loadingFxReview: Boolean get() = fx.loading && expenseLoading
+}
 
 /**
  * 主编辑面：加载（expense / categories / 图片 / items / splits）+ 保存 /
@@ -130,6 +133,8 @@ class ExpenseEditViewModel(
     private companion object {
         const val IMAGE_LOG_TAG = "TicketboxImage"
     }
+
+    internal val fxBinding = repository.captureDeferredLedgerBinding()
 
     internal val _uiState = MutableStateFlow(
         ExpenseEditUiState(readOnly = !repository.canModifyLedger()),
@@ -151,11 +156,15 @@ class ExpenseEditViewModel(
             }
             // issue #65 slice 5: a not-yet-synced offline create has a NEGATIVE
             // local id the server can't resolve — load it from the local cache.
+            var cachedFallback = false
             val loaded = if (expenseId < 0) {
                 repository.fetchExpenseFromLocalCache(expenseId)
             } else {
                 repository.fetchExpense(expenseId).let { remote ->
-                    if (remote.isSuccess) remote else repository.fetchExpenseFromLocalCache(expenseId)
+                    if (remote.isSuccess) remote else {
+                        cachedFallback = true
+                        repository.fetchExpenseFromLocalCache(expenseId)
+                    }
                 }
             }
             loaded
@@ -163,6 +172,10 @@ class ExpenseEditViewModel(
                     _uiState.update {
                         it.copy(
                             expense = expense,
+                            fx = ExpenseFxUiState(
+                                task = expense.fxTask,
+                                message = if (cachedFallback) UiText.res(R.string.expense_fx_cached_read) else null,
+                            ),
                             expenseLoading = false,
                             message = null,
                             messageTone = MessageTone.Neutral,

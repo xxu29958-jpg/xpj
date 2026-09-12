@@ -12,6 +12,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
+from app.schemas._background_task import BackgroundTaskResponse
 from app.schemas._money import (
     NonNegativeCanonicalDecimalInput,
     NonNegativeMoneyAggregate,
@@ -316,6 +317,7 @@ class ExpenseResponse(BaseModel):
     fx_rate_date: date | None
     fx_source: str | None
     fx_status: str
+    fx_task: BackgroundTaskResponse | None = None
     original_currency_code: str
     original_amount_minor: NonNegativeMoneyMinor | None
     exchange_rate_to_cny: Decimal | None

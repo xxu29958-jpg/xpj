@@ -10,6 +10,7 @@ from app.services.currency_common import minor_amount_major_number, minor_amount
 from app.services.money_projection_service import (
     ordered_projection_gaps,
     project_recorded_amount,
+    project_valuation_amount,
     sum_projected_amounts,
 )
 from app.services.reports_service._aggregation import (
@@ -25,16 +26,19 @@ from app.services.time_service import now_utc
 def _history_row(db, *, tenant_id, month, period, entries, home, zone, today, rate_cache):
     rows = _entries_in_range(entries, period, zone)
     gaps = set(entry_gaps(rows))
+    references = set()
     amount, count = _amount_count(rows)
     budget = _get_budget(db, tenant_id=tenant_id, month=month)
     limit = 0
     if budget is not None:
         rate_date = min(today, period[1].astimezone(zone).date() - timedelta(days=1))
-        limit = sum_projected_amounts((project_recorded_amount(db, tenant_id=tenant_id,
+        project_amount = project_valuation_amount if rate_date == today else project_recorded_amount
+        limit = sum_projected_amounts((project_amount(db, tenant_id=tenant_id,
             amount_minor=value, source_currency=budget.home_currency_code, home_currency=home,
-            rate_date=rate_date, missing_rates=gaps, rate_cache=rate_cache)
+            rate_date=rate_date, missing_rates=gaps, rate_cache=rate_cache, reference_rates=references)
             for value in (budget.total_amount_cents, budget.rollover_amount_cents)), label="reports.budget_available")
     return {"month": month, "home_currency_code": home, "missing_rates": ordered_projection_gaps(gaps),
+        "reference_rates": tuple(sorted(references)),
         "amount_cents": amount, "count": count, "budget_cents": limit,
         "amount_yuan": None if amount is None else minor_amount_major_number(amount, home),
         "amount_major_text": None if amount is None else minor_amount_value(amount, home),

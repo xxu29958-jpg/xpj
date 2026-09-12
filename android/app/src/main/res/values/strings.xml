@@ -167,4 +167,19 @@
     <string name="bill_split_submission_review">来源账单已经变化，本次邀请未发出。请停止原提交，核对当前账单后重新发起。</string>
     <string name="bill_split_submission_stop">停止这次提交</string>
     <string name="bill_split_submission_stop_explanation">停止后将不再重试。若服务器已经收到邀请，它仍然有效；请先查看已发邀请，需要取消时使用撤回。</string>
+    <string name="expense_fx_task_title">账单换算</string>
+    <string name="expense_fx_waiting">待换算</string>
+    <string name="expense_fx_queued">换算已排队</string>
+    <string name="expense_fx_running">正在查询账单日期的汇率</string>
+    <string name="expense_fx_completed">换算任务已完成，请加载账单核对</string>
+    <string name="expense_fx_failed">换算未完成，可重试或填写手工汇率</string>
+    <string name="expense_fx_manual_recovery">换算不会自动入账。也可在下方填写手工汇率，保存后核对。</string>
+    <string name="expense_fx_refresh">刷新换算状态</string>
+    <string name="expense_fx_retry">重新换算</string>
+    <string name="expense_fx_load_review">加载换算结果</string>
+    <string name="expense_fx_save_draft_first">当前修改仍保留。请先保存草稿，再加载新版本核对。</string>
+    <string name="expense_fx_read_failed">无法读取换算状态，请联网后重试；当前输入仍保留。</string>
+    <string name="expense_fx_cached_read">正在显示已保存的账单。换算进度尚未读取，请联网后刷新。</string>
+    <string name="expense_fx_binding_changed">登录或账本已变化，请重新打开账单。</string>
+    <string name="projection_reference_date">%1$s → %2$s · 参考汇率发布于 %3$s</string>
 </resources>

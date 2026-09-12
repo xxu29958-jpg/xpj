@@ -54,6 +54,7 @@ import com.ticketbox.ui.screens.expense.ExpenseDateControlActions
 import com.ticketbox.ui.screens.expense.ExpenseDateControlLabels
 import com.ticketbox.ui.screens.expense.ExpenseDateControlState
 import com.ticketbox.ui.screens.expense.ExpenseCurrencyFields
+import com.ticketbox.ui.screens.expense.ExpenseCurrencyChoices
 import com.ticketbox.ui.screens.expense.ExpenseCurrencyFieldOptions
 import com.ticketbox.ui.screens.expense.ExpenseEditTextField
 import com.ticketbox.ui.screens.expense.ExpenseEditTextFieldState
@@ -64,7 +65,10 @@ data class ManualExpenseSheetState(
     val recentMerchants: List<RecentMerchant> = emptyList(),
     val initialCurrency: CurrencyCode,
     val errorMessage: String? = null,
+    val prefill: ManualExpensePrefill? = null,
 )
+
+data class ManualExpensePrefill(val merchant: String, val currency: CurrencyCode?, val amountText: String)
 
 data class ManualExpenseSheetActions(
     val onCreate: (ExpenseDraft) -> Unit,
@@ -77,59 +81,24 @@ fun ManualExpenseSheet(
     state: ManualExpenseSheetState,
     actions: ManualExpenseSheetActions,
 ) {
-    var amountText by rememberSaveable { mutableStateOf("") }
+    var amountText by rememberSaveable { mutableStateOf(state.prefill?.amountText.orEmpty()) }
     val homeCurrency by rememberSaveable { mutableStateOf(state.initialCurrency) }
-    var currency by rememberSaveable { mutableStateOf(state.initialCurrency) }
-    var merchant by rememberSaveable { mutableStateOf("") }
-    var category by rememberSaveable { mutableStateOf(DEFAULT_EXPENSE_CATEGORIES.first()) }
+    var currency by rememberSaveable { mutableStateOf(if (state.prefill != null) state.prefill.currency else state.initialCurrency) }
+    var merchant by rememberSaveable { mutableStateOf(state.prefill?.merchant.orEmpty()) }
+    var category by rememberSaveable { mutableStateOf(if (state.prefill == null) DEFAULT_EXPENSE_CATEGORIES.first() else "") }
     var note by rememberSaveable { mutableStateOf("") }
     var expenseTime by rememberSaveable { mutableStateOf(nowUtcIso()) }
     var message by rememberSaveable { mutableStateOf<String?>(null) }
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
     var showTimePicker by rememberSaveable { mutableStateOf(false) }
     val invalidAmountMessage = stringResource(R.string.ledger_manual_amount_invalid)
+    val missingCategoryMessage = stringResource(R.string.recurring_payment_category_required)
+    val missingCurrencyMessage = stringResource(R.string.recurring_payment_currency_required)
     val density = LocalDensity.current
     val keyboardVisible = LocalAppImeVisible.current || WindowInsets.ime.getBottom(density) > 0
 
-    if (showDatePicker) {
-        val datePickerState = androidx.compose.material3.rememberDatePickerState(
-            initialSelectedDateMillis = selectedDateMillisFromIso(expenseTime),
-        )
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        datePickerState.selectedDateMillis?.let { selected ->
-                            expenseTime = datePickerMillisToUtcIso(selected, expenseTime)
-                        }
-                        showDatePicker = false
-                    },
-                ) {
-                    Text(stringResource(R.string.common_confirm))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) {
-                    Text(stringResource(R.string.common_cancel))
-                }
-            },
-        ) {
-            DatePicker(
-                state = datePickerState,
-                title = {
-                    Text(
-                        stringResource(R.string.ledger_manual_date_picker_title),
-                        modifier = Modifier.padding(
-                            start = AppSpacing.cardPadding,
-                            end = AppSpacing.compactGap,
-                            top = AppSpacing.cardPaddingSmall,
-                        ),
-                    )
-                },
-            )
-        }
-    }
+    ManualExpenseDateDialog(showDatePicker, expenseTime,
+        onSelect = { expenseTime = it }, onDismiss = { showDatePicker = false })
 
     if (showTimePicker) {
         val timePickerState = androidx.compose.material3.rememberTimePickerState(
@@ -164,14 +133,23 @@ fun ManualExpenseSheet(
     }
 
     fun draftOrMessage(): ExpenseDraft? {
-        val originalMinor = parseMinorAmount(amountText, currency)
+        val selectedCurrency = currency
+        if (selectedCurrency == null) {
+            message = missingCurrencyMessage
+            return null
+        }
+        if (state.prefill != null && category.isBlank()) {
+            message = missingCategoryMessage
+            return null
+        }
+        val originalMinor = parseMinorAmount(amountText, selectedCurrency)
         if (originalMinor == null) {
             message = invalidAmountMessage
             return null
         }
         return ExpenseDraft(
             amountCents = null,
-            originalCurrencyCode = currency,
+            originalCurrencyCode = selectedCurrency,
             originalAmountMinor = originalMinor,
             merchant = merchant.ifBlank { null },
             category = normalizeExpenseCategory(category),
@@ -199,21 +177,8 @@ fun ManualExpenseSheet(
             subtitle = stringResource(R.string.ledger_manual_sheet_subtitle),
             compact = keyboardVisible,
         ) {
-            ExpenseCurrencyFields(
-                    currency = currency,
-                    onCurrencyChange = {
-                        currency = it
-                },
-                amountText = amountText,
-                onAmountChange = { amountText = it },
-                options = ExpenseCurrencyFieldOptions(
-                    enabled = !state.saving,
-                    autoFocusAmount = false,
-                    showFxHint = false,
-                    showSectionTitle = false,
-                    supportingText = stringResource(R.string.ledger_manual_amount_supporting_text),
-                ),
-            )
+            ManualExpenseAmountFields(currency, amountText, state.saving,
+                onCurrency = { currency = it }, onAmount = { amountText = it })
             val feedbackMessage = message ?: state.errorMessage
             ExpenseEditTextField(
                 state = ExpenseEditTextFieldState(
@@ -452,4 +417,64 @@ fun SelectableFilterChip(
             selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
         ),
     )
+}
+
+/** A legacy plan can suggest a merchant while leaving its unknown denomination unselected. */
+@Composable
+private fun ManualExpenseAmountFields(currency: CurrencyCode?, amountText: String, saving: Boolean,
+    onCurrency: (CurrencyCode) -> Unit, onAmount: (String) -> Unit) {
+    if (currency == null) {
+        Text(stringResource(R.string.recurring_payment_currency_required))
+        ExpenseCurrencyChoices(null, !saving, onCurrency)
+    } else {
+        ExpenseCurrencyFields(currency = currency, onCurrencyChange = onCurrency, amountText = amountText,
+            onAmountChange = onAmount, options = ExpenseCurrencyFieldOptions(enabled = !saving,
+                autoFocusAmount = false, showFxHint = false, showSectionTitle = false,
+                supportingText = stringResource(R.string.ledger_manual_amount_supporting_text)))
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ManualExpenseDateDialog(visible: Boolean, expenseTime: String,
+    onSelect: (String) -> Unit, onDismiss: () -> Unit) {
+    if (visible) {
+        val datePickerState = androidx.compose.material3.rememberDatePickerState(
+            initialSelectedDateMillis = selectedDateMillisFromIso(expenseTime),
+        )
+        DatePickerDialog(
+            onDismissRequest = { onDismiss() },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        datePickerState.selectedDateMillis?.let { selected ->
+                            onSelect(datePickerMillisToUtcIso(selected, expenseTime))
+                        }
+                        onDismiss()
+                    },
+                ) {
+                    Text(stringResource(R.string.common_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { onDismiss() }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            },
+        ) {
+            DatePicker(
+                state = datePickerState,
+                title = {
+                    Text(
+                        stringResource(R.string.ledger_manual_date_picker_title),
+                        modifier = Modifier.padding(
+                            start = AppSpacing.cardPadding,
+                            end = AppSpacing.compactGap,
+                            top = AppSpacing.cardPaddingSmall,
+                        ),
+                    )
+                },
+            )
+        }
+    }
 }

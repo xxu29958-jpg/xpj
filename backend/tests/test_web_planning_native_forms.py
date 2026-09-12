@@ -22,7 +22,7 @@ from tests._runtime_protocol import negotiated_headers
         ),
         (
             "/web/recurring",
-            {"merchant": "原生固定支出", "baseline_amount_yuan": "18.25", "next_expected_date": "2026-06-04"},
+            {"merchant": "原生固定支出", "baseline_amount_yuan": "18.25", "home_currency_code": "CNY", "next_expected_date": "2026-06-04"},
             "/api/recurring/items",
             "baseline_amount_cents",
             1825,

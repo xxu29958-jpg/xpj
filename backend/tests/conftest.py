@@ -173,17 +173,17 @@ def _background_tasks_respect_db_isolation(
         yield
         return
 
-    from app.services import background_task_service
+    from app.services import background_task_executor
 
     monkeypatch = request.getfixturevalue("monkeypatch")
-    submit = background_task_service._submit_task
+    submit = background_task_executor.submit_task
 
     def submit_on_calling_thread_only(*args, **kwargs):
         if os.environ.get("XPJ_BACKGROUND_TASK_INLINE") == "1":
             return submit(*args, **kwargs)
         return None
 
-    monkeypatch.setattr(background_task_service, "_submit_task", submit_on_calling_thread_only)
+    monkeypatch.setattr("app.services.background_task_executor.submit_task", submit_on_calling_thread_only)
     yield
 
 

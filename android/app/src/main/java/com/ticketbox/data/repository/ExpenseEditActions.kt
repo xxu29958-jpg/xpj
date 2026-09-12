@@ -26,6 +26,10 @@ import com.ticketbox.domain.model.ProtectedImage
  */
 interface ExpenseEditActions {
     fun canModifyLedger(): Boolean = true
+    fun captureDeferredLedgerBinding(): LogicalSessionBinding?
+    suspend fun fetchExpenseFx(binding: LogicalSessionBinding, id: Long): Result<com.ticketbox.domain.model.BackgroundTask?>
+    suspend fun retryExpenseFx(binding: LogicalSessionBinding, expense: Expense): Result<com.ticketbox.domain.model.BackgroundTask>
+    suspend fun fetchExpenseForFxReview(binding: LogicalSessionBinding, id: Long): Result<Expense>
     suspend fun fetchExpense(id: Long): Result<Expense>
 
     /**

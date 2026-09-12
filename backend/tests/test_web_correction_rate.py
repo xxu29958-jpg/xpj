@@ -8,14 +8,14 @@ from unittest.mock import Mock
 import pytest
 from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader
 
-from app.routes import web_expense_correction_rate as web
+from app.routes import _web_rate_recovery as web
 
 
 def test_gap_context_uses_only_server_pair_and_date(monkeypatch):
     read = Mock(return_value=[])
     monkeypatch.setattr(web, "list_exchange_rates", read)
     details = {"currency_code": "USD", "home_currency_code": "JPY", "rate_date": "2026-05-04"}
-    context = web.correction_rate_context(object(), "original", details)
+    context = web.rate_recovery_context(object(), "original", details)
     assert {key: context[key] for key in details} == details
     assert context["expected_row_version"] == "0" and context["idempotency_key"]
     assert read.call_args.kwargs == {"tenant_id": "original", "currency_code": "USD",
@@ -28,7 +28,7 @@ def test_gap_context_uses_only_server_pair_and_date(monkeypatch):
 def test_unknown_gap_cannot_offer_a_guessed_manual_rate(monkeypatch, details):
     read = Mock()
     monkeypatch.setattr(web, "list_exchange_rates", read)
-    assert web.correction_rate_context(object(), "original", details) is None
+    assert web.rate_recovery_context(object(), "original", details) is None
     read.assert_not_called()
 
 
@@ -41,7 +41,7 @@ def test_rate_conflict_preserves_original_rate_key_version_and_value(monkeypatch
     command = Mock(side_effect=AppError("state_conflict", status_code=409))
     monkeypatch.setattr(web, "set_exchange_rate_idempotently", command)
     monkeypatch.setattr(web, "resolve_web_actor_account_id", lambda *_: 7)
-    result = web.submit_correction_rate(Mock(), object(), "original", values)
+    result = web.submit_recovery_rate(Mock(), object(), "original", values)
     assert result["error"] and result["conflict"] and result["status_code"] == 409
     assert values == before
     assert command.call_args.kwargs["idempotency_key"] == "original-rate"
@@ -55,7 +55,7 @@ def test_success_reports_original_receipt_without_running_correction(monkeypatch
         rate_date=date(2026, 5, 4), rate_to_cny="150", row_version=1))
     monkeypatch.setattr(web, "set_exchange_rate_idempotently", command)
     monkeypatch.setattr(web, "resolve_web_actor_account_id", lambda *_: 7)
-    result = web.submit_correction_rate(Mock(), object(), "original", values)
+    result = web.submit_recovery_rate(Mock(), object(), "original", values)
     assert result["status_code"] == 200 and result["saved"]
     assert "尚未保存" in result["message"]
     assert values["idempotency_key"] == "original-rate" and values["expected_row_version"] == "0"
@@ -85,7 +85,7 @@ def test_rate_review_displays_the_current_value_before_authorizing_a_replacement
     monkeypatch.setattr(web, "list_exchange_rates", Mock(return_value=[SimpleNamespace(rate_to_cny="140", row_version=4)]))
     command = Mock()
     monkeypatch.setattr(web, "set_exchange_rate_idempotently", command)
-    result = web.submit_correction_rate(Mock(), object(), "original", values, review_latest=True)
+    result = web.submit_recovery_rate(Mock(), object(), "original", values, review_latest=True)
     assert "140" in result["message"] and "USD" in result["message"] and "JPY" in result["message"]
     assert values["rate_to_cny"] == "150" and values["expected_row_version"] == "4"
     assert values["idempotency_key"] != "original-rate"

@@ -1,11 +1,11 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.PendingMutationType
+import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.ExpenseFactBundleDto
 import com.ticketbox.data.remote.dto.ExpenseOffsetCreateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseOffsetVoidRequestDto
-import com.ticketbox.domain.model.ExpenseLineageStatus
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import com.ticketbox.domain.model.ExpenseOffsetDraft
@@ -15,10 +15,6 @@ import com.ticketbox.domain.model.ExpenseOffsetStatus
 import com.ticketbox.domain.model.StreamOffsetKind
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.async
-import kotlinx.coroutines.cancelAndJoin
 import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -28,52 +24,26 @@ import kotlin.test.assertTrue
 
 internal class ExpenseOffsetRepositoryTest : ExpensePendingRepositoryOutboxTestBase() {
     @Test
-    fun currencyCorrectionDuringLostRefundResponseCannotRebaseTheOriginalRefund() = runTest {
+    fun persistedRefundBlocksCurrencyCorrectionAndCannotBeRebasedByTokenPropagation() = runTest {
         val mutationDao = FakePendingMutationDao()
         val outbox = testOutboxRepository(dao = mutationDao)
-        val entered = CompletableDeferred<Pair<ExpenseOffsetCreateRequestDto, String>>()
-        val release = CompletableDeferred<Unit>()
-        val api = object : ApiService by FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0) {
-            override suspend fun createExpenseOffset(
-                id: String, request: ExpenseOffsetCreateRequestDto, idempotencyKey: String,
-            ): ExpenseFactBundleDto {
-                entered.complete(request to idempotencyKey)
-                release.await()
-                throw IOException("response unavailable")
-            }
-        }
+        val api = OffsetApiService(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0))
         val repository = buildRepository(api, FakeExpenseDao(), outbox)
         val binding = requireNotNull(repository.observeCorrections().first().access).binding
         val root = rootExpense(7).copy(originalAmountMinor = 10_000L,
             originalCurrencyCode = CurrencyCode.CNY, originalCurrencyCodeRaw = "CNY")
-        val attempt = async(start = CoroutineStart.UNDISPATCHED) {
-            repository.createExpenseOffsetAllowingOffline(binding, root,
-                ExpenseOffsetDraft(StreamOffsetKind.Refund, 1_000L, "2026-09-03", "Original CNY refund"))
-        }
-        try {
-            val (sentRequest, sentKey) = entered.await()
-            assertTrue(mutationDao.rows.isEmpty(), "the initial request is in flight before fallback persistence")
-            repository.submitCorrection(binding, root,
-                ExpenseCorrectionDraft("The receipt is in yen", originalCurrencyCode = CurrencyCode.JPY,
-                    originalAmountMinor = 1_000L)).getOrThrow()
-            val correction = mutationDao.rows.values.single()
-            release.complete(Unit)
-            assertIs<ExpenseOffsetMutationOutcome.Queued>(attempt.await().getOrThrow())
-            val refund = mutationDao.rows.values.single { it.type == PendingMutationType.CreateExpenseOffset.wireValue }
-            assertEquals(sentKey, refund.idempotencyKey)
-            assertEquals(sentRequest.expectedRowVersion, refund.expectedRowVersion)
-            assertTrue(correction.id < refund.id, "the accepted correction precedes the fallback refund")
-            assertEquals(correction, mutationDao.rows.getValue(correction.id))
 
-            // Exercise the actual completion consumer; no test-local token rewrite.
-            outbox.cascadeFreshToken(correction.targetId, 8L)
+        assertIs<ExpenseOffsetMutationOutcome.Queued>(repository.createExpenseOffsetAllowingOffline(binding, root,
+            ExpenseOffsetDraft(StreamOffsetKind.Refund, 1_000L, "2026-09-03", "Original CNY refund")).getOrThrow())
+        val original = mutationDao.rows.values.single()
+        assertEquals(null, api.createRequest)
+        assertTrue(repository.submitCorrection(binding, root,
+            ExpenseCorrectionDraft("The receipt is in yen", originalCurrencyCode = CurrencyCode.JPY,
+                originalAmountMinor = 1_000L)).isFailure)
 
-            assertEquals(refund, mutationDao.rows.getValue(refund.id),
-                "the original refund key, body and CNY-root OCC must survive correction completion")
-        } finally {
-            release.complete(Unit)
-            attempt.cancelAndJoin()
-        }
+        outbox.cascadeFreshToken(original.targetId, 8L)
+        assertEquals(listOf(original), mutationDao.rows.values.toList(),
+            "The original currency-basis OCC, body, binding and key survive subsequent read/token propagation")
     }
 
     @Test
@@ -119,45 +89,85 @@ internal class ExpenseOffsetRepositoryTest : ExpensePendingRepositoryOutboxTestB
     }
 
     @Test
-    fun directRefundPublishesAuthoritativeBundleAndPreservesRootDate() = runTest {
+    fun queuedRefundLosingItsAckReplaysOriginalThroughDispatcherAndEngineOnlyOnce() = runTest {
+        val mutationDao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(mutationDao)
         val dao = FakeExpenseDao()
-        dao.insert(
-            cachedConfirmedEntity(9, "root-9", "高德").copy(
-                rowVersion = 3,
-                streamDate = "2026-05-07",
-                streamAmountCents = 1_200,
-                lineageStatus = "confirmed",
-                lineageHomeNetCents = 1_200,
-            ),
-        )
-        val api = OffsetApiService(
-            FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0),
-            createResponse = expenseFactBundleDtoFixture(
-                root = confirmedExpenseDtoFixture(
-                    ConfirmedExpenseFixture(amountCents = 1_200, rowVersion = 4),
-                ),
-            ),
-        )
+        dao.insert(cachedConfirmedEntity(9, "root-9", "高德").copy(rowVersion = 3,
+            streamDate = "2026-05-07", streamAmountCents = 1_200, lineageStatus = "confirmed",
+            lineageHomeNetCents = 1_200))
+        val receipt = expenseFactBundleDtoFixture(root = confirmedExpenseDtoFixture(
+            ConfirmedExpenseFixture(amountCents = 1_200, rowVersion = 4)))
+        val requests = mutableListOf<Pair<ExpenseOffsetCreateRequestDto, String>>()
+        val accepted = mutableMapOf<String, ExpenseFactBundleDto>()
+        val api = object : ApiService by FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0) {
+            override suspend fun createExpenseOffset(
+                id: String, request: ExpenseOffsetCreateRequestDto, idempotencyKey: String,
+            ): ExpenseFactBundleDto {
+                val original = mutationDao.rows.values.single()
+                assertEquals(PendingMutationStatus.InFlight.wireValue, original.status)
+                assertEquals(idempotencyKey, original.idempotencyKey)
+                requests += request to idempotencyKey
+                val result = accepted.getOrPut(idempotencyKey) { receipt }
+                if (requests.size == 1) throw IOException("accepted, but response lost")
+                return result
+            }
+        }
+        val repository = buildRepository(api, dao, outbox)
+        val binding = requireNotNull(repository.observeCorrections().first().access).binding
+        assertIs<ExpenseOffsetMutationOutcome.Queued>(repository.createExpenseOffsetAllowingOffline(binding,
+            rootExpense(3), ExpenseOffsetDraft(StreamOffsetKind.Refund, 300, "2026-09-03", "退款到账")).getOrThrow())
+        val original = mutationDao.rows.values.single()
+        assertTrue(requests.isEmpty())
+        assertEquals(binding.ownerKey, original.ownerKey)
+        assertEquals(binding.ledgerId, original.ledgerId)
+        assertEquals(binding.serverUrl, original.serverUrl)
+        val dispatcher = CreateExpenseOffsetDispatcher({ api },
+            moshi().adapter(ExpenseOffsetCreateRequestDto::class.java), { ledger, dto ->
+                val projection = dto.toCacheProjection(ledger)
+                dao.applyExpenseFactBundle(ledger, projection.root, projection.activeOffsets)
+            })
+        val engine = OutboxDrainEngine(outbox, listOf(dispatcher))
+
+        assertEquals(1, engine.drainOnce().retryable)
+        assertEquals(1, accepted.size)
+        assertTrue(dao.getConfirmedStreamOffsets("owner").isEmpty())
+        assertEquals(0L, outbox.acceptedReplayRevision.value)
+        assertEquals(original.payload, mutationDao.rows.getValue(original.id).payload)
+        assertEquals(1, engine.drainOnce().done)
+        assertEquals(2, requests.size)
+        assertEquals(requests[0], requests[1])
+        assertEquals(original.idempotencyKey, requests[1].second)
+        assertEquals(3L, requests[1].first.expectedRowVersion)
+        assertEquals(300L, requests[1].first.originalAmountMinor)
+        assertEquals("2026-09-03", requests[1].first.accountingDate)
+        assertEquals(1, accepted.size)
+        assertEquals(1L, outbox.acceptedReplayRevision.value)
+        assertEquals("refund-1", dao.getConfirmedStreamOffsets("owner").single().publicId)
+        val cached = assertNotNull(dao.findByServerId("owner", 9))
+        assertEquals("2026-05-07", cached.streamDate)
+        assertEquals(1_200L, cached.streamAmountCents)
+        assertEquals(PendingMutationStatus.Done.wireValue, mutationDao.rows.getValue(original.id).status)
+    }
+
+    @Test
+    fun repeatedAuthoritativeBundleReadsUpdateCacheWithoutPublishingWriteSignals() = runTest {
+        val dao = FakeExpenseDao()
+        val bundle = expenseFactBundleDtoFixture()
+        val api = OffsetApiService(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0), createResponse = bundle)
         val repository = buildRepository(api, dao)
+        var writes = 0
+        repository.onConfirmedCommitted = { writes += 1 }
 
-        val outcome = repository.createExpenseOffsetAllowingOffline(
-            requireNotNull(repository.observeCorrections().first().access).binding,
-            rootExpense(rowVersion = 3),
-            ExpenseOffsetDraft(StreamOffsetKind.Refund, 300, "2026-09-03", " 退款到账 "),
-        ).getOrThrow()
+        repeat(2) { assertEquals(bundle.toDomain(), repository.fetchExpenseFactBundle(9).getOrThrow()) }
 
-        val synced = assertIs<ExpenseOffsetMutationOutcome.Synced>(outcome)
-        assertTrue(!synced.refreshPending)
-        assertEquals(3L, api.createRequest?.expectedRowVersion)
-        assertNotNull(api.idempotencyKey)
-        val cachedRoot = assertNotNull(dao.findByServerId("owner", 9))
-        assertEquals("2026-05-07", cachedRoot.streamDate)
-        assertEquals(1_200L, cachedRoot.streamAmountCents)
+        assertEquals(0, writes)
+        assertNotNull(dao.findByServerId("owner", 9))
         assertEquals("refund-1", dao.getConfirmedStreamOffsets("owner").single().publicId)
     }
 
     @Test
-    fun networkLossQueuesRefundIntentWithoutCreatingPhantomStreamRow() = runTest {
+    fun refundPersistsOriginalPayloadBeforeAnyHttpAndCreatesNoPhantomStreamRow() = runTest {
         val mutationDao = FakePendingMutationDao()
         val outbox = testOutboxRepository(dao = mutationDao)
         val dao = FakeExpenseDao()
@@ -179,14 +189,17 @@ internal class ExpenseOffsetRepositoryTest : ExpensePendingRepositoryOutboxTestB
         assertEquals(PendingMutationType.CreateExpenseOffset.wireValue, row.type)
         assertEquals("expense:9", row.targetId)
         assertEquals(7L, row.expectedRowVersion)
-        assertEquals(api.idempotencyKey, row.idempotencyKey)
+        assertEquals(null, api.idempotencyKey)
+        assertEquals(null, api.createRequest)
+        assertTrue(!row.idempotencyKey.isNullOrBlank())
         val originalRequest = moshi().adapter(ExpenseOffsetCreateRequestDto::class.java).fromJson(row.payload)
-        assertEquals(api.createRequest, originalRequest)
+        assertEquals(ExpenseOffsetCreateRequestDto(com.ticketbox.data.remote.dto.ExpenseOffsetKindDto.Chargeback,
+            300, "2026-09-03", "拒付", 7), originalRequest)
         assertEquals(7L, originalRequest?.expectedRowVersion)
     }
 
     @Test
-    fun voidUsesOffsetOccAndRemovesOnlyTheServerOmittedActiveOffset() = runTest {
+    fun queuedVoidUsesOffsetOccAndKeepsTheFactUntilDispatcherAcceptance() = runTest {
         val dao = FakeExpenseDao()
         dao.insert(cachedConfirmedEntity(9, "root-9", "高德"))
         dao.upsertConfirmedStreamOffsets(listOf(cachedOffsetEntity()))
@@ -198,7 +211,9 @@ internal class ExpenseOffsetRepositoryTest : ExpensePendingRepositoryOutboxTestB
                 activeOffsets = emptyList(),
             ),
         )
-        val repository = buildRepository(api, dao)
+        val mutationDao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(mutationDao)
+        val repository = buildRepository(api, dao, outbox)
 
         val outcome = repository.voidExpenseOffsetAllowingOffline(
             rootExpense(rowVersion = 3),
@@ -206,19 +221,29 @@ internal class ExpenseOffsetRepositoryTest : ExpensePendingRepositoryOutboxTestB
             "误记退款",
         ).getOrThrow()
 
-        assertIs<ExpenseOffsetMutationOutcome.Synced>(outcome)
+        assertIs<ExpenseOffsetMutationOutcome.Queued>(outcome)
+        assertEquals(null, api.voidRequest)
+        assertEquals(1, dao.getConfirmedStreamOffsets("owner").size)
+        val original = mutationDao.rows.values.single()
+        assertEquals(2L, original.expectedRowVersion)
+        val dispatcher = VoidExpenseOffsetDispatcher({ api },
+            moshi().adapter(ExpenseOffsetVoidOutboxPayload::class.java), { ledger, dto ->
+                val projection = dto.toCacheProjection(ledger)
+                dao.applyExpenseFactBundle(ledger, projection.root, projection.activeOffsets)
+            })
+        assertEquals(1, OutboxDrainEngine(outbox, listOf(dispatcher)).drainOnce().done)
+        assertEquals(original.idempotencyKey, api.idempotencyKey)
         assertEquals(2L, api.voidRequest?.expectedRowVersion)
         assertTrue(dao.getConfirmedStreamOffsets("owner").isEmpty())
     }
 
     @Test
-    fun networkLossQueuesVoidBehindTheSameRootAndCarriesItsOffsetIdentity() = runTest {
+    fun voidPersistsOriginalIdentityBeforeAnyHttp() = runTest {
         val mutationDao = FakePendingMutationDao()
+        val api = OffsetApiService(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0),
+            failure = IOException("offline"))
         val repository = buildRepository(
-            api = OffsetApiService(
-                FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0),
-                failure = IOException("offline"),
-            ),
+            api = api,
             dao = FakeExpenseDao(),
             outbox = testOutboxRepository(dao = mutationDao),
         )
@@ -230,7 +255,14 @@ internal class ExpenseOffsetRepositoryTest : ExpensePendingRepositoryOutboxTestB
         ).getOrThrow()
 
         assertIs<ExpenseOffsetMutationOutcome.Queued>(outcome)
+        assertEquals(null, api.voidRequest)
+        assertEquals(null, api.idempotencyKey)
         val row = mutationDao.rows.values.single()
+        val binding = requireNotNull(repository.observeCorrections().first().access).binding
+        assertEquals(binding.ownerKey, row.ownerKey)
+        assertEquals(binding.ledgerId, row.ledgerId)
+        assertEquals(binding.serverUrl, row.serverUrl)
+        assertTrue(!row.idempotencyKey.isNullOrBlank())
         assertEquals("expense:9", row.targetId)
         assertEquals(2L, row.expectedRowVersion)
         assertTrue("\"offset_public_id\":\"refund-1\"" in row.payload, row.payload)
@@ -250,8 +282,8 @@ internal class ExpenseOffsetRepositoryTest : ExpensePendingRepositoryOutboxTestB
         ),
         offlineMutations = ExpenseOfflineMutationWiring(
             outbox = outbox ?: testOutboxRepository(FakePendingMutationDao()),
-            offsetCreateAdapter = moshi().adapter(ExpenseOffsetCreateRequestDto::class.java).takeIf { outbox != null },
-            offsetVoidAdapter = moshi().adapter(ExpenseOffsetVoidOutboxPayload::class.java).takeIf { outbox != null },
+            offsetCreateAdapter = moshi().adapter(ExpenseOffsetCreateRequestDto::class.java),
+            offsetVoidAdapter = moshi().adapter(ExpenseOffsetVoidOutboxPayload::class.java),
             correctionAdapter = com.ticketbox.OutboxAdapterGraph().correctionAdapter,
             billSplitReceiptAdapter = com.ticketbox.OutboxAdapterGraph().billSplitReceiptAdapter,
             billSplitCreateAdapter = com.ticketbox.OutboxAdapterGraph().billSplitCreateAdapter,
@@ -299,6 +331,8 @@ internal class ExpenseOffsetRepositoryTest : ExpensePendingRepositoryOutboxTestB
         var createRequest: ExpenseOffsetCreateRequestDto? = null
         var voidRequest: ExpenseOffsetVoidRequestDto? = null
         var idempotencyKey: String? = null
+
+        override suspend fun expenseFactBundle(id: String): ExpenseFactBundleDto = requireNotNull(createResponse)
 
         override suspend fun createExpenseOffset(
             id: String,

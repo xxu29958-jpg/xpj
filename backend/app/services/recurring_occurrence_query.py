@@ -12,7 +12,7 @@ from app.models import Expense, ExpenseOffsetFact, RecurringItem, RecurringOccur
 from app.money_contract import projection_sum_to_int
 from app.schemas._recurring_occurrence import RecurringOccurrenceResponse
 from app.services.currency_binding_service import require_runtime_home_currency_code
-from app.services.money_projection_service import ProjectionGap
+from app.services.money_projection_service import ProjectionGap, ProjectionReference
 from app.services.recurring_service import recurring_monthly_total
 from app.services.spending_contract_service import (
     clean_month,
@@ -54,8 +54,12 @@ def _eligible_payments_for_ledgers(tenant_ids: list[str]):
     )
 
 
-def find_recurring_payments(db: Session, *, tenant_id: str, month: str | None, query: str) -> list[Expense]:
+def find_recurring_payments(
+    db: Session, *, tenant_id: str, month: str | None, query: str, expense_id: int | None = None,
+) -> list[Expense]:
     statement = eligible_payment_query(tenant_id=tenant_id)
+    if expense_id is not None:
+        statement = statement.where(Expense.id == expense_id)
     if month:
         start, end = month_bounds_utc(month)
         statement = statement.where(stat_time_expr() >= start, stat_time_expr() < end)
@@ -153,6 +157,7 @@ def _occurrence_payment_fields(expense: Expense | None, *, valid: bool) -> dict:
 def total_outstanding_recurring_cents(
     db: Session, *, tenant_id: str, month: str,
     home_currency_code: str | None = None, missing_rates: set[ProjectionGap] | None = None,
+    reference_rates: set[ProjectionReference] | None = None,
 ) -> int | None:
     period = occurrence_period(month)
     items = list(db.scalars(select(RecurringItem).where(
@@ -164,4 +169,4 @@ def total_outstanding_recurring_cents(
     return recurring_monthly_total(db, tenant_id=tenant_id,
         items=[item for item in items if period not in paid.get(item.id, set())],
         home_currency_code=home_currency_code or require_runtime_home_currency_code(db),
-        month=period.strftime("%Y-%m"), missing_rates=missing_rates)
+        month=period.strftime("%Y-%m"), missing_rates=missing_rates, reference_rates=reference_rates)

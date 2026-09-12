@@ -10,6 +10,7 @@ from app.auth import get_current_app_context, get_current_protocol_writer_contex
 from app.database import get_db
 from app.errors import AppError
 from app.schemas import (
+    BackgroundTaskResponse,
     CategoriesResponse,
     CategoryPreferenceListResponse,
     CategoryPreferenceResponse,
@@ -38,6 +39,7 @@ from app.schemas import (
     StatusResponse,
     TagsResponse,
 )
+from app.services.background_task_response import task_response_dicts
 from app.services.category_preference_service import (
     CategoryPreferenceView,
     delete_category_preference,
@@ -47,6 +49,7 @@ from app.services.category_preference_service import (
 from app.services.debt_service import repayment_draft_response
 from app.services.expense_edit_command_service import edit_expense_submission
 from app.services.expense_response_service import (
+    expense_fx_tasks_by_id,
     expense_raw_text_by_id,
     expense_to_response,
 )
@@ -71,6 +74,11 @@ from app.services.expense_split_service import list_expense_splits, replace_expe
 from app.services.idempotency import (
     claim_idempotent_request,
     mark_idempotency_succeeded,
+)
+from app.services.pending_fx_task_service import (
+    prepare_pending_expense_fx,
+    request_pending_expense_fx,
+    submit_pending_expense_fx,
 )
 from app.services.pending_suggestion_service import (
     record_pending_suggestion_event,
@@ -101,6 +109,7 @@ def get_pending_expenses(
 ) -> list[ExpenseResponse]:
     expenses = list_pending(db, auth.tenant_id)
     raw_text_by_id = expense_raw_text_by_id(db, tenant_id=auth.tenant_id, expenses=expenses)
+    fx_tasks_by_id = expense_fx_tasks_by_id(db, tenant_id=auth.tenant_id, expenses=expenses)
     items: list[ExpenseResponse] = []
     for expense in expenses:
         items.append(
@@ -109,10 +118,34 @@ def get_pending_expenses(
                 tenant_id=auth.tenant_id,
                 expense=expense,
                 raw_text_by_id=raw_text_by_id,
+                fx_tasks_by_id=fx_tasks_by_id,
             )
         )
     db.commit()
     return items
+
+
+@router.get("/{expense_id}/fx", response_model=BackgroundTaskResponse | None)
+def get_expense_fx(
+    expense_id: int,
+    auth: AuthContext = Depends(get_current_app_context),
+    db: Session = Depends(get_db),
+) -> BackgroundTaskResponse | None:
+    expense = get_expense(db, expense_id, auth.tenant_id)
+    return expense_fx_tasks_by_id(db, tenant_id=auth.tenant_id, expenses=[expense]).get(expense.id)
+
+
+@router.post("/{expense_id}/fx", response_model=BackgroundTaskResponse)
+def post_expense_fx(
+    expense_id: int,
+    payload: ExpenseConfirmRequest,
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> BackgroundTaskResponse:
+    task = request_pending_expense_fx(db, tenant_id=auth.tenant_id,
+        initiator_account_id=auth.account_id, initiator_device_id=auth.device_id,
+        expense_id=expense_id, expected_row_version=payload.expected_row_version)
+    return BackgroundTaskResponse.model_validate(task_response_dicts(db, [task], tenant_id=auth.tenant_id)[0])
 
 
 @router.post("/manual", response_model=ExpenseResponse)
@@ -130,7 +163,7 @@ def post_notification_draft(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
-    expense = create_notification_draft(db, payload, auth.tenant_id)
+    expense = create_notification_draft(db, payload, auth)
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 
 
@@ -504,6 +537,8 @@ def patch_expense(
         db,
         expense_id=expense_pk,
         tenant_id=auth.tenant_id,
+        initiator_account_id=auth.account_id,
+        initiator_device_id=auth.device_id,
         expected_row_version=effective_row_version,
         request_expected_row_version=payload.expected_row_version,
         idempotency_key=idempotency_key,
@@ -656,8 +691,12 @@ def post_retry_ocr(
         expected_row_version=effective_row_version,
         commit=False,
     )
+    fx_task = prepare_pending_expense_fx(db, expense=expense,
+        initiator_account_id=auth.account_id, initiator_device_id=auth.device_id)
     mark_idempotency_succeeded(db, claim, resource_type="expense", resource_id=str(expense_pk))
     db.commit()
+    if fx_task is not None:
+        submit_pending_expense_fx(db, fx_task)
     db.refresh(expense)
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 
@@ -697,8 +736,12 @@ def post_recognize_text(
         payload.model_copy(update={"expected_row_version": effective_row_version}),
         commit=False,
     )
+    fx_task = prepare_pending_expense_fx(db, expense=expense,
+        initiator_account_id=auth.account_id, initiator_device_id=auth.device_id)
     mark_idempotency_succeeded(db, claim, resource_type="expense", resource_id=str(expense_pk))
     db.commit()
+    if fx_task is not None:
+        submit_pending_expense_fx(db, fx_task)
     db.refresh(expense)
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 
@@ -802,6 +845,7 @@ def _expense_response_with_suggestions(
     tenant_id: str,
     expense: Expense,
     raw_text_by_id: dict[int, str] | None = None,
+    fx_tasks_by_id: dict[int, BackgroundTaskResponse] | None = None,
 ) -> ExpenseResponse:
     suggestions = suggestions_for_pending_expense(db, tenant_id=tenant_id, expense=expense)
     dto = expense_to_response(
@@ -809,6 +853,7 @@ def _expense_response_with_suggestions(
         tenant_id=tenant_id,
         expense=expense,
         raw_text_by_id=raw_text_by_id,
+        fx_tasks_by_id=fx_tasks_by_id,
     )
     if suggestions.category_suggestion is not None:
         dto.category_suggestion = PendingCategorySuggestionResponse(

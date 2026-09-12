@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from decimal import Decimal, InvalidOperation
-from urllib.parse import urlencode
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -20,6 +20,15 @@ from app.routes._web_expense_form import (
     parse_expense_time_local,
     web_form_error_status,
 )
+from app.routes._web_expense_return_context import (
+    ExpenseReturnContext,
+    edit_context_params,
+    expense_return_form_context,
+    expense_return_query_context,
+    flow_href,
+    return_href,
+    return_label,
+)
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -33,11 +42,13 @@ from app.routes.web_common import (
 from app.schemas import ExpenseManualCreateRequest
 from app.services.category_service import list_ledger_category_options
 from app.services.currency_common import (
+    minor_amount_value,
     normalize_currency_code,
     supported_currency_codes,
 )
 from app.services.expense_service import create_manual_expense
 from app.services.manual_expense_draft_presenter import manual_draft_scope
+from app.services.recurring_service import get_recurring_item
 from app.services.spending_contract_service import accounting_zone
 from app.services.time_service import now_utc
 from app.tenants import AuthContext
@@ -58,6 +69,7 @@ def _manual_expense_context(
     error: str | None = None,
     draft_result: str = "",
     review_expense_id: int | None = None,
+    return_context: ExpenseReturnContext = ExpenseReturnContext(),
 ) -> dict:
     context = _base_ctx(
         request,
@@ -69,6 +81,7 @@ def _manual_expense_context(
     )
     home = context["home_currency_code"]
     current_values = values or {}
+    origin = edit_context_params(**return_context.as_kwargs())
     context.update(
         {
             "category_options": list_ledger_category_options(
@@ -87,13 +100,17 @@ def _manual_expense_context(
             "manual_draft_scope": manual_draft_scope(db, _session_writer_auth(request, selected_id)),
             "manual_draft_result": draft_result,
             "manual_review_href": (
-                f"/web/expenses/{review_expense_id}/edit?{urlencode({'ledger_id': selected_id})}"
+                flow_href(f"/web/expenses/{review_expense_id}/edit", ledger_id=form_ledger_id,
+                    **replace(return_context, return_payment_expense_id=str(review_expense_id)).as_kwargs())
                 if type(review_expense_id) is int and review_expense_id > 0 else None
             ),
-            "spent_at": current_values.get("spent_at")
-            or now_utc()
+            "manual_return_fields": {name: origin.get(name, "") for name in (
+                "return_to", "return_month", "return_recurring_public_id", "return_payment_expense_id")},
+            "manual_return_href": return_href(ledger_id=form_ledger_id, default_path="/web/confirmed", **return_context.as_kwargs()),
+            "manual_return_label": return_label(origin.get("return_to", "")),
+            "spent_at": current_values.get("spent_at", now_utc()
             .astimezone(accounting_zone())
-            .strftime("%Y-%m-%dT%H:%M"),
+            .strftime("%Y-%m-%dT%H:%M")),
             "values": current_values,
         }
     )
@@ -194,6 +211,7 @@ def _manual_expense_payload(
 def web_manual_expense_new(
     request: Request,
     ledger_id: str | None = None,
+    return_context: ExpenseReturnContext = Depends(expense_return_query_context),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -206,6 +224,7 @@ def web_manual_expense_new(
     )
     _require_selected_ledger_write(options, selected_id)
     auth = _session_writer_auth(request, selected_id)
+    values = _recurring_payment_prefill(db, selected_id=selected_id, return_context=return_context)
     return templates.TemplateResponse(
         request=request,
         name="expense_new.html",
@@ -216,8 +235,21 @@ def web_manual_expense_new(
             selected_id=selected_id,
             form_ledger_id=selected_id,
             form_device_public_id=auth.device_public_id,
+            values=values,
+            return_context=return_context,
         ),
     )
+
+
+def _recurring_payment_prefill(db, *, selected_id, return_context):
+    origin = edit_context_params(**return_context.as_kwargs())
+    if origin.get("return_to") != "recurring_occurrence":
+        return {}
+    item = get_recurring_item(db, tenant_id=selected_id, public_id=origin["return_recurring_public_id"])
+    if not item.home_currency_code:
+        return {"merchant": item.merchant_name, "currency_code": "", "amount_major": ""}
+    return {"merchant": item.merchant_name, "currency_code": item.home_currency_code,
+        "amount_major": minor_amount_value(item.baseline_amount_cents, item.home_currency_code)}
 
 
 def _manual_expense_failure(exc: AppError | ValidationError | InvalidOperation) -> tuple[str, int, str]:
@@ -243,6 +275,7 @@ def web_manual_expense_create(
     spent_at: str = Form(default=""),
     note: str = Form(default=""),
     csrf_token: str = Form(default=""),
+    return_context: ExpenseReturnContext = Depends(expense_return_form_context),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> Response:
@@ -303,12 +336,17 @@ def web_manual_expense_create(
                 form_device_public_id=expected_device_public_id,
                 draft_result=draft_result,
                 review_expense_id=review_id,
+                return_context=return_context,
             ),
             status_code=status_code,
         )
-    return_to = "pending" if created.status == "pending" else "confirmed"
+    origin = edit_context_params(**return_context.as_kwargs())
+    if origin.get("return_to") == "recurring_occurrence":
+        origin = edit_context_params(**replace(return_context, return_payment_expense_id=str(created.id)).as_kwargs())
+    else:
+        origin = {"return_to": "pending" if created.status == "pending" else "confirmed"}
     return _web_redirect(
         f"/web/expenses/{created.id}/edit",
         selected_id,
-        return_to=return_to,
+        **origin,
     )

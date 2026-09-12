@@ -16,7 +16,6 @@ from app.routes._web_expense_helpers import confirm_reject_error, drawer_fragmen
 from app.routes._web_expense_return_context import (
     ExpenseReturnContext,
     expense_return_form_context,
-    resolve_return_to,
     return_context_params,
 )
 from app.routes._web_session_common import resolve_web_actor
@@ -74,7 +73,7 @@ def web_confirm(
         return drawer_fragment_ok("confirm")
     return_context = form.return_context
     return _web_redirect(
-        resolve_return_to(return_context.return_to, "/web/pending"),
+        return_context.resolve_path("/web/pending"),
         selected_id,
         **return_context_params(**{**return_context.as_kwargs(), "return_to": return_context.return_to or "pending"}),
     )
@@ -161,13 +160,15 @@ def web_reject(
         )
     if fragment:
         return drawer_fragment_ok("reject")
+    origin = return_context if return_context.return_to == "recurring_occurrence" else ExpenseReturnContext(
+        return_to="pending", return_filter=return_context.return_filter)
     return _web_redirect(
-        "/web/pending",
+        origin.resolve_path("/web/pending"),
         selected_id,
         msg="已忽略这笔账单。",
         undo=str(expense_id),
         flash_type="success",
-        **return_context_params("pending", return_filter=return_context.return_filter),
+        **return_context_params(**origin.as_kwargs()),
     )
 
 
@@ -177,6 +178,7 @@ def web_expense_undo(
     expense_id: int,
     ledger_id: str = Form(default=""),
     expected_row_version: str = Form(default=""),
+    return_context: ExpenseReturnContext = Depends(expense_return_form_context),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
@@ -186,10 +188,11 @@ def web_expense_undo(
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
         return _web_redirect(
-            "/web/pending",
+            return_context.resolve_path("/web/pending"),
             selected_id,
             msg="页面已过期，请刷新后重新操作。",
             flash_type="error",
+            **return_context_params(**return_context.as_kwargs()),
         )
     try:
         undo_reject_expense(db, expense_id, selected_id, parsed)
@@ -197,4 +200,5 @@ def web_expense_undo(
     except AppError:
         message = "无法撤销：账单已超过 5 分钟保留窗口，或已被清理。"
         flash_type = "error"
-    return _web_redirect("/web/pending", selected_id, msg=message, flash_type=flash_type)
+    return _web_redirect(return_context.resolve_path("/web/pending"), selected_id,
+        msg=message, flash_type=flash_type, **return_context_params(**return_context.as_kwargs()))

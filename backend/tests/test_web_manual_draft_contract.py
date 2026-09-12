@@ -71,6 +71,17 @@ assert.equal(drafts.read(ref).values.home_currency_code, undefined);
 assert.equal(drafts.save(scope, ref, 'submitted', legacy.values).values.home_currency_code, '');
 assert.throws(() => drafts.save(scope, ref, 'submitted', fields));
 entries.clear();
+// An original obligation travels with its immutable cross-month payment draft.
+const origin = {return_to:'recurring_occurrence', return_recurring_public_id:'6dce3575-fb65-4df5-bb93-7bb270e8df9b', return_month:'2026-08'};
+drafts.save(scope, ref, 'submitted', {...fields, ...origin});
+assert.equal(drafts.read(ref).values.return_month, '2026-08');
+assert.equal(drafts.read(ref).values.return_recurring_public_id, origin.return_recurring_public_id);
+assert.throws(() => drafts.save(scope, ref, 'submitted', {...fields, ...origin, return_month:'2026-09'}));
+assert.equal(drafts.acknowledge({scope, clientRef:ref}), true);
+entries.set(drafts.key(ref), JSON.stringify({...record, values:fields}));
+assert.equal(drafts.save(scope, ref, 'submitted', fields).values.return_to, '');
+assert.equal(drafts.read(ref).values.currency_code, 'CNY');
+entries.clear();
 // Unknown/corrupt data is not interpreted or overwritten as a fresh intent.
 entries.set(drafts.key(ref), JSON.stringify({...record, version:2}));
 assert.throws(() => drafts.read(ref));

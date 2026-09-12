@@ -18,6 +18,15 @@ interface ExpenseDetailApi {
     @GET("api/expenses/{id}")
     suspend fun expense(@Path("id") id: Long): ExpenseDto
 
+    @GET("api/expenses/{id}/fx")
+    suspend fun expenseFx(@Path("id") id: Long): com.ticketbox.data.remote.dto.BackgroundTaskDto?
+
+    @POST("api/expenses/{id}/fx")
+    suspend fun retryExpenseFx(
+        @Path("id") id: Long,
+        @Body request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
+    ): com.ticketbox.data.remote.dto.BackgroundTaskDto
+
     @PATCH("api/expenses/{id}")
     suspend fun updateExpense(
         // issue #65 slice 3: server-id-or-``local:{client_ref}`` string ref.

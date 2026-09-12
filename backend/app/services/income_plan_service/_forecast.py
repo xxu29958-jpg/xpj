@@ -2,7 +2,7 @@
 
 from calendar import monthrange
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 
 from sqlalchemy import select
@@ -13,7 +13,12 @@ from app.models import IncomePlanRevision
 from app.money_contract import projection_sum_to_int
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import normalize_currency_code
-from app.services.money_projection_service import ProjectionGap, project_recorded_amount
+from app.services.money_projection_service import (
+    ProjectionGap,
+    ProjectionReference,
+    project_recorded_amount,
+    project_valuation_amount,
+)
 
 
 @dataclass(frozen=True)
@@ -23,6 +28,7 @@ class IncomeForecast:
     expected_amount_cents: int | None
     scheduled_amount_cents: int | None
     missing_currency_codes: tuple[str, ...]
+    reference_rates: tuple[ProjectionReference, ...] = ()
 
     @property
     def entries(self) -> tuple[IncomePlanRevision, ...]:
@@ -108,16 +114,19 @@ def query_income_forecast(
 ) -> IncomeForecast:
     home = normalize_currency_code(home_currency_code or require_runtime_home_currency_code(db))
     rate_date = min(today, period.replace(day=monthrange(period.year, period.month)[1]))
+    project_amount = project_valuation_amount if rate_date == today else project_recorded_amount
+    references: set[ProjectionReference] = set()
     revisions = db.scalars(select(IncomePlanRevision).where(
         IncomePlanRevision.tenant_id == tenant_id,
     ))
     forecast = forecast_from_revisions(
         revisions, period=period, today=today, home_currency_code=home,
-        project_amount=lambda amount, code: project_recorded_amount(
+        project_amount=lambda amount, code: project_amount(
             db, tenant_id=tenant_id, amount_minor=amount, source_currency=code, home_currency=home, rate_date=rate_date,
+            reference_rates=references,
         ),
     )
     if missing_rates is not None:
         missing_rates.update(ProjectionGap(row.home_currency_code, home, rate_date)
             for row, amount in forecast.projected_entries if amount is None)
-    return forecast
+    return replace(forecast, reference_rates=tuple(sorted(references)))

@@ -22,8 +22,6 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.ExpenseOffsetFact
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.StreamOffsetKind
-import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.AppSheetAction
 import com.ticketbox.ui.components.AppSheetActionRow
 import com.ticketbox.ui.components.AppStatusBanner
@@ -46,7 +44,6 @@ import com.ticketbox.viewmodel.reviewOffsetDraft
 import com.ticketbox.viewmodel.canSubmitVoidOffset
 import com.ticketbox.viewmodel.closeOffsetSheet
 import com.ticketbox.viewmodel.closeVoidOffsetSheet
-import com.ticketbox.viewmodel.loadExpenseFactBundle
 import com.ticketbox.viewmodel.submitOffset
 import com.ticketbox.viewmodel.submitVoidOffset
 import com.ticketbox.viewmodel.updateOffsetFormField
@@ -56,8 +53,7 @@ import com.ticketbox.viewmodel.updateVoidOffsetReason
 /**
  * Refund/Chargeback/Reversal 纵向片：事实屏 offset sheet 托管（FactSheetHosts 的
  * offsets 部分，detekt 拆分）。登记 = 退款/拒付分段 + 金额/日期/原因；冲销无金额；
- * 撤销 = echo 目标 + 必填原因。conflict 三态（刷新中/刷新失败可重试/已刷新待核对）
- * 由 [FactOffsetSheetFeedback] 统一表达；supportingText 复用 quickMerchant 同形范式。
+ * 撤销 = echo 目标 + 必填原因。入队失败保留原表单，已提交操作的恢复归同步页面。
  *
  * saving 用户后置条件：Back/手势在 `saving=true` 时不得隐藏 sheet（草稿与 in-flight
  * feedback 不消失）——confirmValueChange 拒 Hidden，onDismissRequest 同步 no-op。
@@ -125,13 +121,7 @@ private fun OffsetFormContent(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
     ) {
-        FactOffsetSheetFeedback(
-            conflictMessage = form.conflictMessage,
-            submitError = form.submitError,
-            refreshing = form.refreshingAfterConflict,
-            refreshFailed = state.factBundleLoadState == ExpenseDetailDataLoadState.Failed,
-            onRetryRefresh = viewModel::loadExpenseFactBundle,
-        )
+        form.submitError?.let { AppStatusBanner(message = it, tone = MessageTone.Danger) }
         if (!form.matchesRoot(state.expense)) {
             OffsetDraftReview(state = state, viewModel = viewModel)
         }
@@ -171,39 +161,6 @@ private fun OffsetFormContent(
             ),
         )
     }
-}
-
-/** conflict 三态：刷新中（禁提交）/ 刷新失败（可重试出口）/ 已刷新（banner 提示核对）。 */
-@Composable
-private fun FactOffsetSheetFeedback(
-    conflictMessage: UiText?,
-    submitError: UiText?,
-    refreshing: Boolean,
-    refreshFailed: Boolean,
-    onRetryRefresh: () -> Unit,
-) {
-    if (refreshing) {
-        if (refreshFailed) {
-            AppStatusBanner(
-                message = UiText.res(R.string.expense_offset_conflict_refresh_failed),
-                tone = MessageTone.Danger,
-            )
-            AppSecondaryButton(
-                text = stringResource(R.string.common_retry),
-                modifier = Modifier.fillMaxWidth(),
-                onClick = onRetryRefresh,
-            )
-        } else {
-            AppStatusBanner(
-                message = UiText.res(R.string.expense_offset_conflict_refreshing),
-                tone = MessageTone.Info,
-                announceUpdates = false,
-            )
-        }
-        return
-    }
-    conflictMessage?.let { AppStatusBanner(message = it, tone = MessageTone.Danger) }
-    submitError?.let { AppStatusBanner(message = it, tone = MessageTone.Danger) }
 }
 
 @Composable
@@ -345,13 +302,7 @@ private fun FactVoidOffsetSheet(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             ) {
-                FactOffsetSheetFeedback(
-                    conflictMessage = form.conflictMessage,
-                    submitError = form.submitError,
-                    refreshing = form.refreshingAfterConflict,
-                    refreshFailed = state.factBundleLoadState == ExpenseDetailDataLoadState.Failed,
-                    onRetryRefresh = viewModel::loadExpenseFactBundle,
-                )
+                form.submitError?.let { AppStatusBanner(message = it, tone = MessageTone.Danger) }
                 VoidOffsetEcho(target = target)
                 VoidOffsetReasonInput(form = form, viewModel = viewModel)
                 AppSheetActionRow(

@@ -644,6 +644,21 @@ internal class FakeExpenseEditActions : ExpenseEditActions {
     var fetchSplitsCalls: Int = 0
         private set
 
+    var fxTaskResult: Result<com.ticketbox.domain.model.BackgroundTask?> = Result.success(null)
+    var fxRetryCalls = 0
+    var fxReviewCalls = 0
+    override fun captureDeferredLedgerBinding() = com.ticketbox.data.repository.LogicalSessionBinding(
+        "https://example.test", "ledger", "owner", "session", "binding",
+    )
+    override suspend fun fetchExpenseFx(binding: com.ticketbox.data.repository.LogicalSessionBinding, id: Long) = fxTaskResult
+    override suspend fun retryExpenseFx(binding: com.ticketbox.data.repository.LogicalSessionBinding, expense: Expense): Result<com.ticketbox.domain.model.BackgroundTask> {
+        fxRetryCalls += 1
+        return fxTaskResult.map { requireNotNull(it) }
+    }
+    override suspend fun fetchExpenseForFxReview(binding: com.ticketbox.data.repository.LogicalSessionBinding, id: Long): Result<Expense> {
+        fxReviewCalls += 1
+        return fetchExpense(id)
+    }
     override fun canModifyLedger(): Boolean = canModifyLedgerFlag
 
     override suspend fun fetchExpense(id: Long): Result<Expense> =

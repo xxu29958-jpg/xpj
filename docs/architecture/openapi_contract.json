@@ -1793,6 +1793,11 @@
             "title": "Return Page",
             "type": "string"
           },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -1801,6 +1806,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -2144,6 +2154,11 @@
             "title": "Return Page",
             "type": "string"
           },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -2152,6 +2167,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -2432,6 +2452,11 @@
             "title": "Return Page",
             "type": "string"
           },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -2440,6 +2465,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -2642,6 +2672,11 @@
             "title": "Return Page",
             "type": "string"
           },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -2650,6 +2685,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -2946,6 +2986,17 @@
         "title": "Body_web_debt_goal_target_date_web_debt_goals__public_id__target_date_post",
         "type": "object"
       },
+      "Body_web_debt_rate_web_debts_rate_post": {
+        "properties": {
+          "fx_expected_row_version": {
+            "default": "",
+            "title": "Fx Expected Row Version",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_debt_rate_web_debts_rate_post",
+        "type": "object"
+      },
       "Body_web_dismiss_repayment_draft_web_repayment_drafts__public_id__dismiss_post": {
         "properties": {
           "csrf_token": {
@@ -3035,6 +3086,66 @@
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
+            "type": "string"
+          },
+          "return_filter": {
+            "default": "",
+            "title": "Return Filter",
+            "type": "string"
+          },
+          "return_granularity": {
+            "default": "",
+            "title": "Return Granularity",
+            "type": "string"
+          },
+          "return_home_currency_code": {
+            "default": "",
+            "title": "Return Home Currency Code",
+            "type": "string"
+          },
+          "return_merchant_category": {
+            "default": "",
+            "title": "Return Merchant Category",
+            "type": "string"
+          },
+          "return_month": {
+            "default": "",
+            "title": "Return Month",
+            "type": "string"
+          },
+          "return_page": {
+            "default": "",
+            "title": "Return Page",
+            "type": "string"
+          },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
+          "return_query": {
+            "default": "",
+            "title": "Return Query",
+            "type": "string"
+          },
+          "return_ranking_metric": {
+            "default": "",
+            "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
+            "type": "string"
+          },
+          "return_tag": {
+            "default": "",
+            "title": "Return Tag",
+            "type": "string"
+          },
+          "return_to": {
+            "default": "",
+            "title": "Return To",
             "type": "string"
           }
         },
@@ -3418,6 +3529,11 @@
             "title": "Return Page",
             "type": "string"
           },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -3426,6 +3542,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -3532,6 +3653,11 @@
             "title": "Return Page",
             "type": "string"
           },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -3540,6 +3666,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -3713,6 +3844,77 @@
           }
         },
         "title": "Body_web_merchant_catalog_toggle_web_merchants_catalog__public_id__toggle_post",
+        "type": "object"
+      },
+      "Body_web_offset_rate_web_expenses__expense_id__offset_rate_post": {
+        "properties": {
+          "fx_expected_row_version": {
+            "default": "",
+            "title": "Fx Expected Row Version",
+            "type": "string"
+          },
+          "return_filter": {
+            "default": "",
+            "title": "Return Filter",
+            "type": "string"
+          },
+          "return_granularity": {
+            "default": "",
+            "title": "Return Granularity",
+            "type": "string"
+          },
+          "return_home_currency_code": {
+            "default": "",
+            "title": "Return Home Currency Code",
+            "type": "string"
+          },
+          "return_merchant_category": {
+            "default": "",
+            "title": "Return Merchant Category",
+            "type": "string"
+          },
+          "return_month": {
+            "default": "",
+            "title": "Return Month",
+            "type": "string"
+          },
+          "return_page": {
+            "default": "",
+            "title": "Return Page",
+            "type": "string"
+          },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
+          "return_query": {
+            "default": "",
+            "title": "Return Query",
+            "type": "string"
+          },
+          "return_ranking_metric": {
+            "default": "",
+            "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
+            "type": "string"
+          },
+          "return_tag": {
+            "default": "",
+            "title": "Return Tag",
+            "type": "string"
+          },
+          "return_to": {
+            "default": "",
+            "title": "Return To",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_offset_rate_web_expenses__expense_id__offset_rate_post",
         "type": "object"
       },
       "Body_web_pending_batch_reject_web_pending_batch_reject_post": {
@@ -4058,6 +4260,155 @@
         "title": "Body_web_recurring_resume_web_recurring__public_id__resume_post",
         "type": "object"
       },
+      "Body_web_refresh_expense_fx_web_expenses__expense_id__fx_status_post": {
+        "properties": {
+          "amount_yuan": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Yuan"
+          },
+          "category": {
+            "default": "",
+            "title": "Category",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "expense_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Time"
+          },
+          "fragment": {
+            "default": 0,
+            "title": "Fragment",
+            "type": "integer"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "manual_exchange_rate": {
+            "default": "",
+            "title": "Manual Exchange Rate",
+            "type": "string"
+          },
+          "merchant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "original_currency": {
+            "default": "",
+            "title": "Original Currency",
+            "type": "string"
+          },
+          "return_filter": {
+            "default": "",
+            "title": "Return Filter",
+            "type": "string"
+          },
+          "return_granularity": {
+            "default": "",
+            "title": "Return Granularity",
+            "type": "string"
+          },
+          "return_home_currency_code": {
+            "default": "",
+            "title": "Return Home Currency Code",
+            "type": "string"
+          },
+          "return_merchant_category": {
+            "default": "",
+            "title": "Return Merchant Category",
+            "type": "string"
+          },
+          "return_month": {
+            "default": "",
+            "title": "Return Month",
+            "type": "string"
+          },
+          "return_page": {
+            "default": "",
+            "title": "Return Page",
+            "type": "string"
+          },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
+          "return_query": {
+            "default": "",
+            "title": "Return Query",
+            "type": "string"
+          },
+          "return_ranking_metric": {
+            "default": "",
+            "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
+            "type": "string"
+          },
+          "return_tag": {
+            "default": "",
+            "title": "Return Tag",
+            "type": "string"
+          },
+          "return_to": {
+            "default": "",
+            "title": "Return To",
+            "type": "string"
+          },
+          "save_before_confirm": {
+            "default": 0,
+            "title": "Save Before Confirm",
+            "type": "integer"
+          },
+          "tags": {
+            "default": "",
+            "title": "Tags",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_refresh_expense_fx_web_expenses__expense_id__fx_status_post",
+        "type": "object"
+      },
       "Body_web_reject_repayment_proposal_web_debts__public_id__repayment_proposals__proposal_public_id__reject_post": {
         "properties": {
           "csrf_token": {
@@ -4126,6 +4477,11 @@
             "title": "Return Page",
             "type": "string"
           },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -4134,6 +4490,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -4148,6 +4509,155 @@
           }
         },
         "title": "Body_web_reject_web_expenses__expense_id__reject_post",
+        "type": "object"
+      },
+      "Body_web_request_expense_fx_web_expenses__expense_id__fx_post": {
+        "properties": {
+          "amount_yuan": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Yuan"
+          },
+          "category": {
+            "default": "",
+            "title": "Category",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "expense_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Time"
+          },
+          "fragment": {
+            "default": 0,
+            "title": "Fragment",
+            "type": "integer"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "manual_exchange_rate": {
+            "default": "",
+            "title": "Manual Exchange Rate",
+            "type": "string"
+          },
+          "merchant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "original_currency": {
+            "default": "",
+            "title": "Original Currency",
+            "type": "string"
+          },
+          "return_filter": {
+            "default": "",
+            "title": "Return Filter",
+            "type": "string"
+          },
+          "return_granularity": {
+            "default": "",
+            "title": "Return Granularity",
+            "type": "string"
+          },
+          "return_home_currency_code": {
+            "default": "",
+            "title": "Return Home Currency Code",
+            "type": "string"
+          },
+          "return_merchant_category": {
+            "default": "",
+            "title": "Return Merchant Category",
+            "type": "string"
+          },
+          "return_month": {
+            "default": "",
+            "title": "Return Month",
+            "type": "string"
+          },
+          "return_page": {
+            "default": "",
+            "title": "Return Page",
+            "type": "string"
+          },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
+          "return_query": {
+            "default": "",
+            "title": "Return Query",
+            "type": "string"
+          },
+          "return_ranking_metric": {
+            "default": "",
+            "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
+            "type": "string"
+          },
+          "return_tag": {
+            "default": "",
+            "title": "Return Tag",
+            "type": "string"
+          },
+          "return_to": {
+            "default": "",
+            "title": "Return To",
+            "type": "string"
+          },
+          "save_before_confirm": {
+            "default": 0,
+            "title": "Save Before Confirm",
+            "type": "integer"
+          },
+          "tags": {
+            "default": "",
+            "title": "Tags",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_request_expense_fx_web_expenses__expense_id__fx_post",
         "type": "object"
       },
       "Body_web_review_bulk_web_review_bulk_post": {
@@ -4552,6 +5062,11 @@
             "title": "Return Page",
             "type": "string"
           },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -4560,6 +5075,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -4658,6 +5178,11 @@
             "default": "",
             "title": "Month",
             "type": "string"
+          },
+          "payment_id": {
+            "default": "",
+            "title": "Payment Id",
+            "type": "string"
           }
         },
         "title": "Body_web_set_recurring_occurrence_web_recurring__public_id__occurrence_post",
@@ -4723,6 +5248,11 @@
             "title": "Return Page",
             "type": "string"
           },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -4731,6 +5261,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -4802,6 +5337,11 @@
             "title": "Return Page",
             "type": "string"
           },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -4810,6 +5350,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -4883,6 +5428,11 @@
             "title": "Return Page",
             "type": "string"
           },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -4891,6 +5441,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -5107,6 +5662,11 @@
             "title": "Return Page",
             "type": "string"
           },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -5115,6 +5675,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -5686,6 +6251,13 @@
           "month": {
             "title": "Month",
             "type": "string"
+          },
+          "reference_rates": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectionReferenceDto"
+            },
+            "title": "Reference Rates",
+            "type": "array"
           }
         },
         "required": [
@@ -5840,6 +6412,13 @@
               }
             ],
             "title": "Overspent Amount Cents"
+          },
+          "reference_rates": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectionReferenceDto"
+            },
+            "title": "Reference Rates",
+            "type": "array"
           },
           "remaining_amount_cents": {
             "anyOf": [
@@ -7361,6 +7940,10 @@
             "title": "Missing Category Pending",
             "type": "integer"
           },
+          "missing_fx": {
+            "title": "Missing Fx",
+            "type": "integer"
+          },
           "missing_merchant": {
             "title": "Missing Merchant",
             "type": "integer"
@@ -7396,6 +7979,7 @@
         "required": [
           "pending_total",
           "missing_amount",
+          "missing_fx",
           "missing_merchant",
           "missing_category",
           "missing_category_pending",
@@ -10503,6 +11087,16 @@
             "title": "Fx Status",
             "type": "string"
           },
+          "fx_task": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BackgroundTaskResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "home_amount_cents": {
             "anyOf": [
               {
@@ -11927,6 +12521,13 @@
           "month": {
             "title": "Month",
             "type": "string"
+          },
+          "reference_rates": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectionReferenceDto"
+            },
+            "title": "Reference Rates",
+            "type": "array"
           },
           "scheduled_amount_cents": {
             "anyOf": [
@@ -15075,6 +15676,31 @@
           "rate_date"
         ],
         "title": "ProjectionGapDto",
+        "type": "object"
+      },
+      "ProjectionReferenceDto": {
+        "description": "The actual reference date used to value a plan in another currency.",
+        "properties": {
+          "home_currency_code": {
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "rate_date": {
+            "format": "date",
+            "title": "Rate Date",
+            "type": "string"
+          },
+          "source_currency_code": {
+            "title": "Source Currency Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_currency_code",
+          "home_currency_code",
+          "rate_date"
+        ],
+        "title": "ProjectionReferenceDto",
         "type": "object"
       },
       "RecurringCandidateConfirmRequest": {
@@ -24868,6 +25494,196 @@
           }
         },
         "summary": "Get Expense Fact Bundle",
+        "tags": [
+          "expenses"
+        ]
+      }
+    },
+    "/api/expenses/{expense_id}/fx": {
+      "get": {
+        "operationId": "get_expense_fx_api_expenses__expense_id__fx_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BackgroundTaskResponse"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Expense Fx Api Expenses  Expense Id  Fx Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Expense Fx",
+        "tags": [
+          "expenses"
+        ]
+      },
+      "post": {
+        "operationId": "post_expense_fx_api_expenses__expense_id__fx_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpenseConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackgroundTaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Expense Fx",
         "tags": [
           "expenses"
         ]
@@ -40026,6 +40842,44 @@
         ]
       }
     },
+    "/web/debts/rate": {
+      "post": {
+        "operationId": "web_debt_rate_web_debts_rate_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_debt_rate_web_debts_rate_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Debt Rate",
+        "tags": [
+          "web"
+        ]
+      }
+    },
     "/web/debts/{public_id}": {
       "get": {
         "operationId": "web_debt_detail_web_debts__public_id__get",
@@ -41010,6 +41864,26 @@
               "title": "Return Merchant Category",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "return_recurring_public_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Recurring Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_payment_expense_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Payment Expense Id",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -41316,6 +42190,26 @@
               "title": "Return Merchant Category",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "return_recurring_public_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Recurring Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_payment_expense_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Payment Expense Id",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -41341,6 +42235,108 @@
           }
         },
         "summary": "Web Edit Get",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/expenses/{expense_id}/fx": {
+      "post": {
+        "operationId": "web_request_expense_fx_web_expenses__expense_id__fx_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_request_expense_fx_web_expenses__expense_id__fx_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Request Expense Fx",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/expenses/{expense_id}/fx-status": {
+      "post": {
+        "operationId": "web_refresh_expense_fx_web_expenses__expense_id__fx_status_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_refresh_expense_fx_web_expenses__expense_id__fx_status_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Refresh Expense Fx",
         "tags": [
           "web"
         ]
@@ -41443,6 +42439,55 @@
           }
         },
         "summary": "Web Items Save",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/expenses/{expense_id}/offset-rate": {
+      "post": {
+        "operationId": "web_offset_rate_web_expenses__expense_id__offset_rate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_offset_rate_web_expenses__expense_id__offset_rate_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Offset Rate",
         "tags": [
           "web"
         ]
@@ -44634,6 +45679,16 @@
                 }
               ],
               "title": "Message"
+            }
+          },
+          {
+            "in": "query",
+            "name": "payment_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Payment Id",
+              "type": "string"
             }
           }
         ],

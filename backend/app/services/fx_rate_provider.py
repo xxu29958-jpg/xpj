@@ -7,10 +7,12 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from urllib.error import URLError
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 from xml.etree import ElementTree
 
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -60,6 +62,10 @@ def parse_ecb_daily_rates(xml_text: str) -> EcbDailyRates:
     if day_cube is None:
         raise ValueError("ECB daily XML missing rate date")
 
+    return _parse_ecb_day(day_cube)
+
+
+def _parse_ecb_day(day_cube: ElementTree.Element) -> EcbDailyRates:
     rates: dict[str, Decimal] = {ECB_PROVIDER_BASE_CURRENCY: Decimal("1")}
     for element in day_cube:
         currency = element.attrib.get("currency")
@@ -72,6 +78,16 @@ def parse_ecb_daily_rates(xml_text: str) -> EcbDailyRates:
             raise ValueError(f"ECB daily XML has invalid rate for {currency}") from exc
 
     return EcbDailyRates(rate_date=date.fromisoformat(day_cube.attrib["time"]), rates_per_eur=rates)
+
+
+def _parse_ecb_rates_for_date(xml_text: str, requested_date: date) -> EcbDailyRates:
+    root = ElementTree.fromstring(xml_text)
+    days = [element for element in root.iter()
+            if element.tag.rsplit("}", 1)[-1] == "Cube" and "time" in element.attrib]
+    applicable = [element for element in days if date.fromisoformat(element.attrib["time"]) <= requested_date]
+    if not applicable:
+        raise ValueError("ECB history has no rate on or before the requested date")
+    return _parse_ecb_day(max(applicable, key=lambda element: element.attrib["time"]))
 
 
 def parse_frankfurter_rates(json_text: str) -> EcbDailyRates:
@@ -160,6 +176,51 @@ def fetch_reference_rates() -> EcbDailyRates:
     return fetch_frankfurter_daily_rates()
 
 
+def _frankfurter_dated_url(configured_url: str, requested_date: date) -> str:
+    parts = urlsplit(configured_url)
+    prefix, _, endpoint = parts.path.rstrip("/").rpartition("/")
+    if endpoint != "latest":
+        try:
+            date.fromisoformat(endpoint)
+        except ValueError as exc:
+            raise ValueError("Configured Frankfurter URL must end in latest or an ISO date") from exc
+    query = [(key, value) for key, value in parse_qsl(parts.query, keep_blank_values=True)
+             if key not in {"base", "amount"}]
+    query.extend((("base", ECB_PROVIDER_BASE_CURRENCY), ("amount", "1")))
+    return urlunsplit(parts._replace(path=f"{prefix}/{requested_date.isoformat()}", query=urlencode(query), fragment=""))
+
+
+def _ecb_history_url(configured_url: str) -> str:
+    parts = urlsplit(configured_url)
+    prefix, _, endpoint = parts.path.rpartition("/")
+    if endpoint not in {"eurofxref-daily.xml", "eurofxref-hist-90d.xml", "eurofxref-hist.xml"}:
+        raise ValueError("Configured ECB URL cannot prove historical coverage")
+    return urlunsplit(parts._replace(path=f"{prefix}/eurofxref-hist.xml", fragment=""))
+
+
+def _validate_dated_rates(daily: EcbDailyRates, requested_date: date) -> None:
+    if daily.rate_date > requested_date:
+        raise ValueError("Reference rate publication is after the requested date")
+    if daily.rates_per_eur.get(ECB_PROVIDER_BASE_CURRENCY) != Decimal("1"):
+        raise ValueError("Reference rates must use one EUR as the provider base")
+    if any(not value.is_finite() or value <= 0 for value in daily.rates_per_eur.values()):
+        raise ValueError("Reference rates must be finite and positive")
+
+
+def fetch_reference_rates_for_date(requested_date: date) -> EcbDailyRates:
+    """Fetch the actual reference published on/before D without changing D."""
+    if requested_date > now_utc().date():
+        raise ValueError("A future provider date cannot be fetched as historical coverage")
+    settings = get_settings()
+    if (settings.fx_rate_source or "frankfurter").strip().lower() == "ecb":
+        daily = _parse_ecb_rates_for_date(_http_get_text(_ecb_history_url(settings.fx_rate_ecb_url)), requested_date)
+    else:
+        target = _frankfurter_dated_url(settings.fx_rate_frankfurter_url, requested_date)
+        daily = parse_frankfurter_rates(_http_get_text(target))
+    _validate_dated_rates(daily, requested_date)
+    return daily
+
+
 def cross_rate_to_home(
     rates_per_eur: dict[str, Decimal],
     *,
@@ -209,13 +270,9 @@ def get_fx_rate_on_or_before(
     home_currency_code: str,
     source: str = FX_SOURCE_ECB,
 ) -> FxRate | None:
-    """Most recent fetched rate effective on ``rate_date`` (``rate_date <= D``).
+    """Latest known quote for an explicit current valuation, with its real date.
 
-    ECB / Frankfurter only publish on TARGET working days, so an expense dated on
-    a weekend or holiday has no exact-date row. The rate in effect that day is the
-    last published one — markets carry Friday's rate through the weekend — so we
-    fall back to the newest row at or before the requested date instead of leaving
-    the expense ``pending``. Returns an exact-date row when one exists.
+    This lookup does not prove historical coverage of the requested date.
     """
     currency = normalize_currency_code(currency_code)
     home = normalize_currency_code(home_currency_code)
@@ -232,6 +289,25 @@ def get_fx_rate_on_or_before(
     )
 
 
+def get_covered_fx_rate(
+    db: Session,
+    *,
+    currency_code: str,
+    rate_date: date,
+    home_currency_code: str,
+    source: str = FX_SOURCE_ECB,
+) -> FxRate | None:
+    """An exact publication or a prior quote verified through the requested day."""
+    quote = get_fx_rate_on_or_before(
+        db, currency_code=currency_code, rate_date=rate_date, home_currency_code=home_currency_code, source=source,
+    )
+    if quote is not None and (quote.rate_date == rate_date or (
+        quote.verified_through is not None and quote.verified_through >= rate_date
+    )):
+        return quote
+    return None
+
+
 def upsert_fx_rate(
     db: Session,
     *,
@@ -242,6 +318,7 @@ def upsert_fx_rate(
     source: str = FX_SOURCE_ECB,
     provider_base_currency: str = ECB_PROVIDER_BASE_CURRENCY,
     provider_rate: Decimal | None = None,
+    verified_through: date | None = None,
 ) -> FxRate:
     currency = normalize_currency_code(currency_code)
     home = normalize_currency_code(home_currency_code)
@@ -251,34 +328,46 @@ def upsert_fx_rate(
     if rate is None:
         raise ValueError("fx rate is required")
     now = now_utc()
-    existing = get_fx_rate(
-        db,
-        currency_code=currency,
-        rate_date=rate_date,
-        home_currency_code=home,
-        source=source,
+    if verified_through is not None and (verified_through < rate_date or verified_through >= now.date()):
+        raise ValueError("Reference coverage must end on a closed date on/after publication")
+    statement = insert(FxRate).values(
+        source=source, home_currency_code=home, currency_code=currency, rate_date=rate_date,
+        rate_to_home=rate, provider_base_currency=provider_base_currency, provider_rate=provider_rate,
+        verified_through=verified_through, fetched_at=now, created_at=now, updated_at=now,
     )
-    if existing is None:
-        existing = FxRate(
-            source=source,
-            home_currency_code=home,
-            currency_code=currency,
-            rate_date=rate_date,
-            rate_to_home=rate,
-            provider_base_currency=provider_base_currency,
-            provider_rate=provider_rate,
-            fetched_at=now,
-            created_at=now,
-            updated_at=now,
-        )
-        db.add(existing)
-    else:
-        existing.rate_to_home = rate
-        existing.provider_base_currency = provider_base_currency
-        existing.provider_rate = provider_rate
-        existing.fetched_at = now
-        existing.updated_at = now
-    return existing
+    statement = statement.on_conflict_do_update(
+        constraint="uq_fx_rates_source_home_currency_date",
+        set_={
+            "rate_to_home": statement.excluded.rate_to_home,
+            "provider_base_currency": statement.excluded.provider_base_currency,
+            "provider_rate": statement.excluded.provider_rate,
+            "verified_through": func.greatest(FxRate.verified_through, statement.excluded.verified_through),
+            "fetched_at": now, "updated_at": now,
+        },
+    ).returning(FxRate)
+    return db.scalars(statement, execution_options={"populate_existing": True}).one()
+
+
+def cache_reference_rates_for_date(
+    db: Session, daily: EcbDailyRates, *, requested_date: date,
+    home_currency_code: str, currencies: set[str] | None = None,
+) -> list[FxRate]:
+    """Cache one validated response inside the caller's transaction, without IO.
+
+    A current response remains usable by that caller, but only closed UTC dates
+    extend persistent coverage. The household date may be ahead of the UTC date.
+    """
+    _validate_dated_rates(daily, requested_date)
+    home = normalize_currency_code(home_currency_code)
+    covered_through = requested_date if requested_date < now_utc().date() else None
+    target_currencies = supported_currency_codes() if currencies is None else currencies
+    quotes = [(normalize_currency_code(code), cross_rate_to_home(
+        daily.rates_per_eur, currency_code=code, home_currency_code=home,
+    )) for code in sorted(target_currencies) if normalize_currency_code(code) != home]
+    return [upsert_fx_rate(
+        db, currency_code=code, rate_date=daily.rate_date, rate_to_home=rate,
+        home_currency_code=home, provider_rate=daily.rates_per_eur.get(code), verified_through=covered_through,
+    ) for code, rate in quotes]
 
 
 def refresh_ecb_fx_rates(

@@ -18,10 +18,10 @@ from app.routes._web_expense_return_context import (
     ExpenseReturnContext,
     edit_context_params,
     edit_navigation_view,
-    resolve_return_to,
     return_context_params,
 )
 from app.routes._web_expense_split_presenter import web_split_members, web_split_rows
+from app.routes._web_money_views import expense_fx_view
 from app.routes.web_common import (
     _amount_yuan,
     _base_ctx,
@@ -80,7 +80,7 @@ def _edit_page_or_flash_redirect(
         )
     except AppError as exc:
         return _web_redirect(
-            resolve_return_to(return_context.return_to, fallback_path),
+            return_context.resolve_path(fallback_path),
             selected_id,
             msg=exc.message,
             flash_type="error",
@@ -217,6 +217,8 @@ def web_edit_context(
     if form_values and not conflict and form_values.get("expected_row_version"):
         expense_view["row_version"] = form_values["expected_row_version"]
     ctx["expense"] = expense_view
+    ctx["expense_fx"] = expense_fx_view(db, expense=expense)
+    ctx["fx_revision_changed"] = bool(ctx["expense_fx"] and str(expense_view["row_version"]) != str(expense.row_version))
     ctx["manual_draft_ack"] = manual_draft_ack(db, getattr(request.state, "web_session_auth", None), expense)
     ctx["conflict_current"] = current_expense_view if conflict else None
     ctx["confirm_idempotency_key"] = (form_values or {}).get("idempotency_key") or str(uuid4())
@@ -398,7 +400,7 @@ def web_save_response(
         (
             f"/web/expenses/{expense_id}/edit"
             if manual_rate_submitted
-            else resolve_return_to(return_context.return_to, f"/web/expenses/{expense_id}/edit")
+            else return_context.resolve_path(f"/web/expenses/{expense_id}/edit")
         ),
         selected_id,
         msg=(
