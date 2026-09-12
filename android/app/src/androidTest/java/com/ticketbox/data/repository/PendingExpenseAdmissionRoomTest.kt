@@ -13,6 +13,8 @@ import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.viewmodel.ExpenseEditViewModel
+import com.ticketbox.viewmodel.PendingViewModel
+import com.ticketbox.viewmodel.confirmReadyExpenses
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
@@ -28,12 +30,15 @@ import org.junit.Test
 class PendingExpenseAdmissionRoomTest {
     @get:Rule val compose = createComposeRule()
     private var editor: ExpenseEditViewModel? = null
+    private var pending: PendingViewModel? = null
     @Volatile private lateinit var current: ExpenseDto
+    private var secondPending: ExpenseDto? = null
     @Volatile private var holdTransport = false
     private val requests = CopyOnWriteArrayList<String>()
     private val fixture = ExpenseCorrectionConnectedFixture(InstrumentationRegistry.getInstrumentation().targetContext) { api ->
         object : ApiService by api {
             override suspend fun expense(id: Long): ExpenseDto = current
+            override suspend fun pendingExpenses(): List<ExpenseDto> = listOfNotNull(current, secondPending).filter { it.status == "pending" }
 
             override suspend fun updateExpense(id: String, request: ExpenseUpdateRequest, idempotencyKey: String?): ExpenseDto {
                 requests += "patch"
@@ -44,14 +49,16 @@ class PendingExpenseAdmissionRoomTest {
             override suspend fun confirmExpense(id: String, request: ExpenseStateTokenRequest, idempotencyKey: String?): ExpenseDto {
                 requests += "confirm"
                 if (holdTransport) awaitCancellation()
-                return current.copy(status = "confirmed", confirmedAt = "2026-09-06T00:01:00Z",
-                    rowVersion = current.rowVersion + 1).also { current = it }
+                val original = if (id == current.id.toString()) current else requireNotNull(secondPending)
+                check(id == original.id.toString() && request.expectedRowVersion == original.rowVersion)
+                return original.copy(status = "confirmed", confirmedAt = "2026-09-06T00:01:00Z",
+                    rowVersion = original.rowVersion + 1).also { if (it.id == current.id) current = it else secondPending = it }
             }
         }
     }
 
     @After fun close() {
-        compose.runOnIdle { editor?.viewModelScope?.cancel() }
+        compose.runOnIdle { editor?.viewModelScope?.cancel(); pending?.viewModelScope?.cancel() }
         fixture.close()
     }
 
@@ -101,6 +108,33 @@ class PendingExpenseAdmissionRoomTest {
         assertEquals("pending", vm.uiState.value.expense?.status)
         assertNotNull(vm.uiState.value.message)
         compose.runOnIdle { vm.viewModelScope.cancel(); editor = null }
+        fixture.reopen()
+        assertEquals(originals, fixture.stored())
+    }
+
+    @Test
+    fun readyBatchPreservesBothConfirmIntentsBeforeTransportAndAfterLeavingTheInbox() = runBlocking {
+        fixture.network.current = fixture.network.current.copy(status = "pending", confirmedAt = null)
+        current = fixture.network.current
+        secondPending = current.copy(id = 43, publicId = "expense-43")
+        val repository = fixture.reopen().expenseRepository
+        lateinit var vm: PendingViewModel
+        compose.runOnIdle { vm = PendingViewModel(repository, fixture.uploadIntents); pending = vm }
+        compose.waitUntil(10_000) { vm.uiState.value.items.size == 2 && !vm.uiState.value.readOnly }
+        compose.runOnIdle { vm.confirmReadyExpenses() }
+        compose.waitUntil(10_000) { vm.uiState.value.bulkConfirm.total == 2 && !vm.uiState.value.bulkConfirm.running }
+
+        val originals = fixture.stored()
+        assertEquals("Both reviewed bills need durable original commands", 2, originals.size)
+        assertEquals(listOf("expense:42", "expense:43"), originals.map { it["targetId"] })
+        assertTrue(originals.all { it["type"] == PendingMutationType.ConfirmExpense.wireValue })
+        assertTrue(originals.all { it["status"] == PendingMutationStatus.Pending.wireValue })
+        assertEquals(listOf("7", "7"), originals.map { it["expectedRowVersion"] })
+        assertEquals(2, originals.mapNotNull { it["idempotencyKey"]?.takeIf(String::isNotBlank) }.distinct().size)
+        assertTrue("The existing worker sends after admission", requests.isEmpty())
+        assertEquals("pending", current.status)
+        assertNotNull(vm.uiState.value.message)
+        compose.runOnIdle { vm.viewModelScope.cancel(); pending = null }
         fixture.reopen()
         assertEquals(originals, fixture.stored())
     }
