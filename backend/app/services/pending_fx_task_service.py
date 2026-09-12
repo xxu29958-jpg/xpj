@@ -12,6 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.database import SessionLocal
 from app.errors import AppError
 from app.models import Account, BackgroundTask, Device, Expense
 from app.services import background_task_service
@@ -38,6 +39,7 @@ from app.services.permission_service import ROLES_WRITE
 from app.services.session_credential_lock import lock_bootstrap_owner_transaction
 
 PENDING_EXPENSE_FX_TASK_TYPE = "expense_fx"
+_REFILL_BATCH_SIZE = 32
 
 _PROGRESS_MESSAGES = {
     "updated": "汇率已补齐，请核对换算金额后确认账单。",
@@ -138,6 +140,16 @@ def prepare_pending_expense_fx(
     db: Session, *, expense: Expense, initiator_account_id: int | None, initiator_device_id: int | None,
 ) -> background_task_service.PreparedBackgroundTask | None:
     """Stage alongside an accepted bill; capacity refusal must not discard that bill."""
+    try:
+        return _prepare_automatic_fx(db, expense=expense,
+            initiator_account_id=initiator_account_id, initiator_device_id=initiator_device_id)
+    except BackgroundTaskCapacityFullError:
+        return None
+
+
+def _prepare_automatic_fx(
+    db: Session, *, expense: Expense, initiator_account_id: int | None, initiator_device_id: int | None,
+) -> background_task_service.PreparedBackgroundTask | None:
     # Materialize staged SQL version increments before interpreting the input.
     db.flush()
     if _current_input(expense) is None and expense.row_version <= 1:
@@ -156,7 +168,7 @@ def prepare_pending_expense_fx(
         if latest is not None and _original_input(latest) == original:
             return None
         return _prepare_input(db, original, account_id=initiator_account_id, device_id=initiator_device_id)
-    except (BackgroundTaskCapacityFullError, ValueError):
+    except ValueError:
         return None
 
 
@@ -164,6 +176,34 @@ def submit_pending_expense_fx(db: Session, prepared: background_task_service.Pre
     with suppress(background_task_service.BackgroundTaskSubmissionError):
         background_task_service.submit_committed(db, prepared)
     return prepared.task_public_id
+
+
+def refill_pending_expense_fx(*, after_id: int = 0) -> int:
+    """Admit saved bills left outside capacity; return the next scan's in-memory cursor."""
+    if not get_settings().fx_rate_auto_sync_enabled:
+        return 0
+    with SessionLocal() as db:
+        expense_ids = list(db.scalars(select(Expense.id).where(
+            Expense.id > after_id, Expense.status == "pending", Expense.fx_status == "pending",
+            Expense.original_amount_minor.is_not(None), Expense.exchange_rate_date.is_not(None),
+            Expense.home_currency_code != Expense.original_currency_code,
+        ).order_by(Expense.id).limit(_REFILL_BATCH_SIZE)))
+    for expense_id in expense_ids:
+        try:
+            # Never carry the admission lock into the next Expense transaction.
+            with SessionLocal() as db:
+                expense = db.get(Expense, expense_id)
+                if expense is not None:
+                    prepared = _prepare_automatic_fx(db, expense=expense,
+                        initiator_account_id=None, initiator_device_id=None)
+                    db.commit()
+                    if prepared is not None:
+                        submit_pending_expense_fx(db, prepared)
+        except BackgroundTaskCapacityFullError:
+            # Keep the blocked bill first, including when later bills keep arriving.
+            return after_id
+        after_id = expense_id
+    return after_id if len(expense_ids) == _REFILL_BATCH_SIZE else 0
 
 
 def _can_resume(task: BackgroundTask) -> bool:

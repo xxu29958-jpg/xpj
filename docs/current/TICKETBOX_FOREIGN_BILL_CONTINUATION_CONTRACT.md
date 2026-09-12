@@ -110,13 +110,17 @@ completion path. No task status, financial authority or persistence model is add
 The original thirteen formal findings are resolved against qualified `65664c2c`.
 The subsequent live-task and offset-notification findings were reproduced by
 `2a3c4f2e`, then fixed and formally resolved on cloud/native-qualified `8129cc19`.
-Batch admission remains open: a second imported bill can lack a task after the
-first consumes capacity. Refill must use its persisted original amount, currency,
-requested exchange-rate date and current version; it must not reconstruct that
-date from current OCR settings or borrow another request's actor. Deferred system
-tasks use the existing nullable actor and remain visible through the bill's task
-projection, without broadening personal task-list access. No new table, task state,
-thread, quote-sync counter or financial writer is needed.
+The batch-admission correction reuses the automatic preparation owner for both
+accepted writes and scheduler refill. Each candidate commits before dispatch and
+before acquiring the next Expense lock; a full queue retains the blocked cursor.
+Persisted original amount, currency, requested exchange-rate date and current
+version own the input. Deferred system tasks use the existing nullable actor and
+remain visible through the bill's task projection, without broadening personal
+task-list access. Same-input terminal tasks retain explicit retry. No new table,
+task state, thread, quote-sync counter or financial writer is added. Tests-only
+`7614415a` reproduced seven missing-continuation assertions in the isolated VM;
+the independent-session commit/lock assertions require the subsequent GREEN run.
+Formal resolution still requires final exact qualification.
 
 The completion integration exposed a reverse dependency through the service facade.
 Prepared execution belongs to the existing registry; committed dispatch and its
