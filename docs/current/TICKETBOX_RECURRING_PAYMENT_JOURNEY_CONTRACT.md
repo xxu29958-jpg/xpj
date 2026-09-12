@@ -61,8 +61,8 @@ are retired; existing payment search and financial command recovery remain.
 The direct native journey checks August's obligation paid in September, retained
 invalid input, ignore/undo, FX review, explicit link and one counted expense.
 Exact `b98511bf` completed the native VM journey: August reserve 14000 to zero,
-September one counted expense of 17600, with installed data preserved. Its cloud
-run exposed test-producer omissions and the inherited task submission cycle;
+September one counted expense of 17600, with installed data preserved. Earlier cloud
+runs exposed test-producer omissions and the inherited task submission cycle;
 those are corrected, including actual valuation-date seeds and rendered inputs.
 The integrated short regression passes 39 checks. Android has six direct
 Connected producers. Its actual 286-test run exposed one draft-restoration defect
