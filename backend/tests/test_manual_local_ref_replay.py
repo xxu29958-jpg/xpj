@@ -20,6 +20,8 @@ def test_accepted_local_operation_replays_when_legacy_creation_receipt_is_missin
     auth = SimpleNamespace(tenant_id="owner", account_id=1, device_id=7)
     expense = SimpleNamespace(id=42, row_version=3, source="手动记账", status="pending")
     state = SimpleNamespace(claim=None, creation=SimpleNamespace(id=42, row_version=3), writes=0, claim_calls=0)
+    prepare_fx = Mock(return_value=None)
+    monkeypatch.setattr(edit, "prepare_pending_expense_fx", prepare_fx)
     monkeypatch.setattr(expense_query, "resolve_expense", lambda *_a, **_k: expense)
     monkeypatch.setattr(expense_query, "read_manual_creation_receipt", lambda *_a, **_k: state.creation)
     def claim(_db, **fields):
@@ -55,6 +57,11 @@ def test_accepted_local_operation_replays_when_legacy_creation_receipt_is_missin
     assert route("local:original", payload, "original-operation", auth, db) is expense
     assert state.writes == 1 and state.claim_calls == 2
     assert db.commit.call_count == 1
+    if operation == "patch":
+        prepare_fx.assert_called_once_with(db, expense=expense,
+            initiator_account_id=auth.account_id, initiator_device_id=auth.device_id)
+    else:
+        prepare_fx.assert_not_called()
 
 
 @pytest.mark.parametrize(("operation", "status"), [("confirm", "confirmed"), ("reject", "rejected")])

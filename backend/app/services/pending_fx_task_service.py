@@ -138,10 +138,11 @@ def prepare_pending_expense_fx(
     db: Session, *, expense: Expense, initiator_account_id: int | None, initiator_device_id: int | None,
 ) -> background_task_service.PreparedBackgroundTask | None:
     """Stage alongside an accepted bill; capacity refusal must not discard that bill."""
+    # Materialize staged SQL version increments before interpreting the input.
+    db.flush()
     if _current_input(expense) is None and expense.row_version <= 1:
         # A new inapplicable bill cannot have a superseded positive-version FX input.
         return None
-    db.flush()
     current = resolve_expense(db, expense.tenant_id, expense.id, for_update=True)
     if current is None:
         return None

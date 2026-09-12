@@ -123,9 +123,9 @@ internal class ExpenseCorrectionGlobalRecoveryTest {
         val stored = FakeExpenseDao()
         var rejectCache = false
         val cache = object : ExpenseDao by stored {
-            override suspend fun upsertByServerIdForLedger(ledgerId: String, expense: ExpenseEntity): Boolean {
+            override suspend fun applyServerExpense(ledgerId: String, expense: ExpenseEntity): Boolean {
                 if (rejectCache) throw IOException("cache unavailable")
-                return stored.upsertByServerIdForLedger(ledgerId, expense)
+                return stored.applyServerExpense(ledgerId, expense)
             }
         }
         val api = RecoveryApi(harness.confirmedDto())
