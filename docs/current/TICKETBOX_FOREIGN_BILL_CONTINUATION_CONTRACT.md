@@ -118,9 +118,10 @@ version own the input. Deferred system tasks use the existing nullable actor and
 remain visible through the bill's task projection, without broadening personal
 task-list access. Same-input terminal tasks retain explicit retry. No new table,
 task state, thread, quote-sync counter or financial writer is added. Tests-only
-`7614415a` reproduced seven missing-continuation assertions in the isolated VM;
-the independent-session commit/lock assertions require the subsequent GREEN run.
-Formal resolution still requires final exact qualification.
+`7614415a` reproduced seven missing-continuation assertions in the isolated VM.
+On `b9267749`, all seven actual CSV/worker/scheduler cases and six scheduler cases
+pass, including independent-session commit visibility and admission-lock release.
+Formal resolution still requires final exact cloud qualification.
 
 The completion integration exposed a reverse dependency through the service facade.
 Prepared execution belongs to the existing registry; committed dispatch and its
