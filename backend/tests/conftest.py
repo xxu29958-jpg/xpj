@@ -158,7 +158,7 @@ def _db_isolation(request: pytest.FixtureRequest):
 def _background_tasks_respect_db_isolation(
     request: pytest.FixtureRequest,
 ):
-    """Keep executor threads off the single-connection rollback lane.
+    """Keep executor and FX scheduler threads off the single-connection rollback lane.
 
     Uploads now persist their generic ``BackgroundTask`` before returning, so
     ordinary route tests also exercise task creation.  Their surrounding
@@ -167,7 +167,9 @@ def _background_tasks_respect_db_isolation(
     threads and corrupt SAVEPOINT state.  Real task outcomes already opt into
     ``@pytest.mark.real_db``.  On the ordinary lane we therefore leave tasks
     queued, while still allowing an explicit inline test to execute on the
-    calling thread.
+    calling thread. The FX scheduler now queries saved bills immediately at
+    startup, so ordinary app lifespans must also leave that daemon dormant.
+    Explicit scheduler tests and real-db/native app lifespans remain active.
     """
     if "real_db" in request.keywords:
         yield
@@ -184,6 +186,7 @@ def _background_tasks_respect_db_isolation(
         return None
 
     monkeypatch.setattr("app.services.background_task_executor.submit_task", submit_on_calling_thread_only)
+    monkeypatch.setattr("app.main.start_fx_rate_scheduler", lambda: None)
     yield
 
 

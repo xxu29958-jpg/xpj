@@ -21,7 +21,7 @@ from app.services.time_service import now_utc
 def test_native_csv_preview_and_apply_preserve_selected_ledger(web_client, identity) -> None:
     with TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 53007)) as browser:
         page = browser.get("/web/import?ledger_id=tester_1")
-        assert page.status_code == 200
+        assert page.status_code == 200, page.text
         preview_action = "/web/import/preview"
         preview = browser.post(
             preview_action,
