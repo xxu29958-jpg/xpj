@@ -36,17 +36,12 @@ data class PendingExpenseCorrection(
         row.lastError?.takeIf { exchangeRatePending }?.let(::readCorrectionRateFailure)
     val expenseId: Long? get() = parseExpenseTargetRef(row.targetId)?.toLongOrNull()
     val delivered: Boolean get() = hasSupportedIntent && row.status == PendingMutationStatus.Done
-    val refreshRequired: Boolean get() = delivered && row.lastError?.startsWith(CORRECTION_REFRESH_PREFIX) == true
+    val refreshRequired: Boolean get() = delivered && row.lastError?.startsWith(EXPENSE_REFRESH_PREFIX) == true
     val canRetry: Boolean get() = hasSupportedIntent && row.status == PendingMutationStatus.Failed &&
         row.lastError !in setOf("outbox_row_expired", "correction_target_unavailable", "correction_requires_review")
     val canDiscard: Boolean get() = row.status == PendingMutationStatus.Failed ||
         row.status == PendingMutationStatus.Conflict || (!hasSupportedIntent && row.status in setOf(PendingMutationStatus.Done, PendingMutationStatus.Pending))
 }
-
-internal const val CORRECTION_REFRESH_PREFIX = "correction_refresh_required:"
-
-internal fun correctionRefreshVersion(error: String?): Long? =
-    error?.takeIf { it.startsWith(CORRECTION_REFRESH_PREFIX) }?.removePrefix(CORRECTION_REFRESH_PREFIX)?.toLongOrNull()
 
 data class ExpenseCorrectionObservation(
     val access: LedgerAccessContext?,

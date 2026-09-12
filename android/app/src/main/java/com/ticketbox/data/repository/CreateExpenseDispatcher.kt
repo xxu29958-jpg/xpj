@@ -84,7 +84,7 @@ class CreateExpenseDispatcher(
         if (!created.matchesManualCreation(request)) return DispatchResult.Failure(MANUAL_CREATE_RECEIPT_REVIEW)
         return try {
             applyServerIdentity(row.ledgerId, clientRef, created)
-            DispatchResult.Success(newRowVersion = created.rowVersion, receiptJson = manualCreationReceiptJson(created.id))
+            DispatchResult.Success(newRowVersion = created.rowVersion, receiptJson = expenseAcceptanceReceiptJson(created.id))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

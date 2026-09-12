@@ -46,6 +46,7 @@ from app.routes._web_expense_return_context import (
     resolve_return_to,
     return_context_params,
 )
+from app.routes._web_rate_recovery import rate_recovery_context
 from app.routes.web_common import (
     LocalOnly,
     _list_ledger_options,
@@ -56,7 +57,6 @@ from app.routes.web_common import (
     preserve_original_ledger_form,
     templates,
 )
-from app.routes.web_expense_correction_rate import correction_rate_context
 from app.routes.web_expense_correction_rate import router as rate_router
 from app.services.expense_service import get_expense
 
@@ -308,7 +308,7 @@ def _command_failure_response(
         field_errors=field_errors,
         conflict=command.conflict,
         form_values=values,
-        rate_recovery=(correction_rate_context(db, selected_id, command.error_details)
+        rate_recovery=(rate_recovery_context(db, selected_id, command.error_details)
             if command.error_code == "exchange_rate_pending" else None),
     )
 

@@ -28,12 +28,24 @@ import org.junit.Test
 
 /**
  * Refund/Chargeback/Reversal 纵向片：事实详情 offsets VM 最小 Gate Map。
- * 只保留能改变本片裁决的反例：登记成功且金额快照不构成客户端 eligibility、
- * bundle 不可读仍可提交合法 command、direct 409 的禁用/恢复、queued 不造幻影
- * 事实、void 全流程。金额上限永远由服务端 OCC + money owner 终裁。
+ * 本地入队不冒充财务完成，只有权威 bundle 读取更新事实。
+ * 金额上限由服务端 OCC + money owner 终裁；本地保存失败保留原填写。
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class ExpenseFactViewModelOffsetsTest : ExpenseFactViewModelTestBase() {
+
+    @Test
+    fun switchingBindingBeforeVoidDispatchCannotAcceptTheOldDraft() = edit { fake ->
+        val vm = viewModel(fake)
+        vm.openVoidOffsetSheet(offsetFact())
+        vm.updateVoidOffsetReason("Original ledger void")
+        vm.submitVoidOffset()
+        val access = requireNotNull(fake.correctionObservations.value.access)
+        fake.correctionObservations.value = fake.correctionObservations.value.copy(
+            access = access.copy(binding = access.binding.copy(ledgerId = "another-ledger")))
+        advanceUntilIdle()
+        assertEquals(0, fake.voidOffsetCalls)
+    }
 
     @Test
     fun deliveredCurrencyCorrectionCannotReinterpretAnOpenRefundDraft() = edit { fake ->
@@ -157,7 +169,7 @@ internal class ExpenseFactViewModelOffsetsTest : ExpenseFactViewModelTestBase() 
     }
 
     @Test
-    fun `create success adopts bundle and amount above remaining snapshot is sent`() = edit { fake ->
+    fun `create enqueues amount above snapshot then explicit read adopts accepted fact`() = edit { fake ->
         // remaining=100 minor（预填 1.00）；用户改输 5.00 超出快照 —— 快照只预填/提示，
         // 不是 eligibility Owner，command 必须照常到达 repository。
         fake.stubBundle(bundleOf(fake.baseExpense, remaining = 100L))
@@ -174,7 +186,7 @@ internal class ExpenseFactViewModelOffsetsTest : ExpenseFactViewModelTestBase() 
             activeOffsets = listOf(offsetFact()),
         )
         fake.createOffsetResult = { _, _ ->
-            Result.success(ExpenseOffsetMutationOutcome.Synced(refunded, refreshPending = false))
+            Result.success(queued())
         }
         vm.submitOffset()
         advanceUntilIdle()
@@ -184,9 +196,14 @@ internal class ExpenseFactViewModelOffsetsTest : ExpenseFactViewModelTestBase() 
         assertEquals("商家退货", fake.lastOffsetDraft?.reason)
         val state = vm.uiState.value
         assertFalse(state.offsetForm.open)
-        assertEquals(refunded, state.factBundle)
-        assertEquals(2L, state.expense?.rowVersion)
-        assertTrue(state.doneAdviceInputsChanged)
+        assertEquals(1L, state.expense?.rowVersion)
+        assertTrue(state.factBundle?.activeOffsets?.isEmpty() == true)
+        assertFalse(state.doneAdviceInputsChanged)
+        fake.stubBundle(refunded)
+        vm.loadExpenseFactBundle()
+        advanceUntilIdle()
+        assertEquals(refunded, vm.uiState.value.factBundle)
+        assertEquals(2L, vm.uiState.value.expense?.rowVersion)
     }
 
     @Test
@@ -203,91 +220,61 @@ internal class ExpenseFactViewModelOffsetsTest : ExpenseFactViewModelTestBase() 
         vm.updateOffsetFormField(OffsetFormField.Reason, "商家退货")
         fake.createOffsetResult = { _, _ ->
             Result.success(
-                ExpenseOffsetMutationOutcome.Synced(bundleOf(fake.baseExpense), false),
+                queued(),
             )
         }
         vm.submitOffset()
         advanceUntilIdle()
         assertEquals(1, fake.createOffsetCalls)
         assertEquals(500L, fake.lastOffsetDraft?.originalAmountMinor)
-        assertNotNull(vm.uiState.value.factBundle)
+        assertNull(vm.uiState.value.factBundle)
+        assertFalse(vm.uiState.value.doneAdviceInputsChanged)
     }
 
     @Test
-    fun `conflict blocks stale-token resubmit until authoritative refresh adopts`() = edit { fake ->
-        fake.stubBundle()
+    fun `local enqueue failures preserve both original forms without a server refresh`() = edit { fake ->
+        val offset = offsetFact()
+        val originalBundle = bundleOf(fake.baseExpense, remaining = 500L, activeOffsets = listOf(offset))
+        var reads = 0
+        fake.factBundleResult = { reads += 1; Result.success(originalBundle) }
         val vm = viewModel(fake)
         advanceUntilIdle()
+        val readsBefore = reads
         vm.openOffsetSheet(StreamOffsetKind.Refund)
-        vm.updateOffsetFormField(OffsetFormField.Reason, "商家退货")
-        // 第一轮：direct 409 且权威刷新失败 —— 旧 token 禁用、草稿保留、可重试失败态。
-        fake.factBundleResult = {
-            Result.failure(RepositoryException(errorCode = "server_unavailable", message = "down"))
-        }
-        fake.createOffsetResult = { _, _ ->
-            Result.failure(RepositoryException(errorCode = "state_conflict", message = "conflict"))
-        }
+        vm.updateOffsetFormField(OffsetFormField.Amount, "3.00")
+        vm.updateOffsetFormField(OffsetFormField.Reason, "Original refund")
+        val original = vm.uiState.value.offsetForm
+        fake.createOffsetResult = { _, _ -> Result.failure(RepositoryException("Local storage unavailable")) }
+
         vm.submitOffset()
         advanceUntilIdle()
-        val blocked = vm.uiState.value.offsetForm
-        assertTrue(blocked.open)
-        assertEquals("商家退货", blocked.reason)
-        assertNotNull(blocked.conflictMessage)
-        assertTrue(blocked.refreshingAfterConflict)
-        assertFalse(vm.canSubmitOffset())
-        assertEquals(ExpenseDetailDataLoadState.Failed, vm.uiState.value.factBundleLoadState)
-        // 关闭再打开不是 authority reset：刷新没成功前仍不能拿旧 token 重试。
+        val rejected = vm.uiState.value.offsetForm
+        assertTrue(rejected.open)
+        assertFalse(rejected.saving)
+        assertEquals(original.sourceExpense, rejected.sourceExpense)
+        assertEquals(original.amountText, rejected.amountText)
+        assertEquals(original.accountingDate, rejected.accountingDate)
+        assertEquals(original.reason, rejected.reason)
+        assertNotNull(rejected.submitError)
+        assertEquals(originalBundle, vm.uiState.value.factBundle)
+        assertEquals(readsBefore, reads)
+
         vm.closeOffsetSheet()
-        vm.openOffsetSheet(StreamOffsetKind.Refund)
-        vm.updateOffsetFormField(OffsetFormField.Reason, "再次提交")
-        assertTrue(vm.uiState.value.offsetForm.refreshingAfterConflict)
-        assertFalse(vm.canSubmitOffset())
-        // 第二轮：显式 retry，刷新成功 —— 整包采用 rv=2、解除禁用、草稿仍在。
-        fake.factBundleResult = { Result.success(bundleOf(fake.baseExpense.copy(rowVersion = 2L))) }
-        vm.loadExpenseFactBundle()
-        advanceUntilIdle()
-        val refreshed = vm.uiState.value.offsetForm
-        assertFalse(refreshed.refreshingAfterConflict)
-        assertEquals("再次提交", refreshed.reason)
-        assertEquals(2L, vm.uiState.value.expense?.rowVersion)
-        assertFalse(vm.canSubmitOffset())
-        vm.reviewOffsetDraft()
-        assertEquals(refreshed.amountText, vm.uiState.value.offsetForm.amountText)
-        assertEquals(refreshed.reason, vm.uiState.value.offsetForm.reason)
-        assertTrue(vm.canSubmitOffset())
-    }
-
-    @Test
-    fun `void conflict remains blocked after dismiss until authoritative refresh succeeds`() = edit { fake ->
-        val offset = offsetFact()
-        fake.stubBundle(bundleOf(fake.baseExpense, remaining = 500L, activeOffsets = listOf(offset)))
-        val vm = viewModel(fake)
-        advanceUntilIdle()
         vm.openVoidOffsetSheet(offset)
-        vm.updateVoidOffsetReason("误记")
-        fake.factBundleResult = {
-            Result.failure(RepositoryException(errorCode = "server_unavailable", message = "down"))
-        }
-        fake.voidOffsetResult = { _, _, _ ->
-            Result.failure(RepositoryException(errorCode = "state_conflict", message = "conflict"))
-        }
-
+        vm.updateVoidOffsetReason("Original void")
+        fake.voidOffsetResult = { _, _, _ -> Result.failure(RepositoryException("Local storage unavailable")) }
         vm.submitVoidOffset()
         advanceUntilIdle()
-        vm.closeVoidOffsetSheet()
-        vm.openVoidOffsetSheet(offset)
-        vm.updateVoidOffsetReason("再次撤销")
-
-        assertTrue(vm.uiState.value.voidOffsetForm.refreshingAfterConflict)
-        assertFalse(vm.canSubmitVoidOffset())
-        fake.factBundleResult = { Result.success(bundleOf(fake.baseExpense.copy(rowVersion = 2L))) }
-        vm.loadExpenseFactBundle()
-        advanceUntilIdle()
-        assertTrue(vm.canSubmitVoidOffset())
+        assertTrue(vm.uiState.value.voidOffsetForm.open)
+        assertEquals("Original void", vm.uiState.value.voidOffsetForm.reason)
+        assertNotNull(vm.uiState.value.voidOffsetForm.submitError)
+        assertEquals(offset, fake.lastVoidOffset)
+        assertEquals(originalBundle, vm.uiState.value.factBundle)
+        assertEquals(readsBefore, reads)
     }
 
     @Test
-    fun `queued outcome leaves session pending chip without phantom fact`() = edit { fake ->
+    fun `queued outcome acknowledges saved intent without changing financial facts`() = edit { fake ->
         fake.stubBundle()
         val vm = viewModel(fake)
         advanceUntilIdle()
@@ -309,13 +296,14 @@ internal class ExpenseFactViewModelOffsetsTest : ExpenseFactViewModelTestBase() 
         advanceUntilIdle()
         val state = vm.uiState.value
         assertFalse(state.offsetForm.open)
-        assertNotNull(state.pendingOffsetIntent)
-        // queued 不冒充事实：activeOffsets 不变。
+        assertNotNull(state.message)
+        assertFalse(state.doneAdviceInputsChanged)
+        // The durable Outbox owns pending intent; this screen acknowledges saving only.
         assertTrue(state.factBundle?.activeOffsets?.isEmpty() == true)
     }
 
     @Test
-    fun `void requires reason and applies returned bundle`() = edit { fake ->
+    fun `void requires reason and keeps the active fact until explicit accepted read`() = edit { fake ->
         val offset = offsetFact()
         fake.stubBundle(bundleOf(fake.baseExpense, remaining = 500L, activeOffsets = listOf(offset)))
         val vm = viewModel(fake)
@@ -326,10 +314,7 @@ internal class ExpenseFactViewModelOffsetsTest : ExpenseFactViewModelTestBase() 
         assertTrue(vm.canSubmitVoidOffset())
         fake.voidOffsetResult = { _, _, _ ->
             Result.success(
-                ExpenseOffsetMutationOutcome.Synced(
-                    bundleOf(fake.baseExpense.copy(rowVersion = 2L), remaining = 1000L),
-                    refreshPending = false,
-                ),
+                queued(ExpenseOffsetIntentKind.Void, offset.publicId),
             )
         }
         vm.submitVoidOffset()
@@ -338,6 +323,16 @@ internal class ExpenseFactViewModelOffsetsTest : ExpenseFactViewModelTestBase() 
         assertEquals(offset, fake.lastVoidOffset)
         assertEquals("退款被收回", fake.lastVoidReason)
         assertFalse(vm.uiState.value.voidOffsetForm.open)
+        assertEquals(listOf(offset), vm.uiState.value.factBundle?.activeOffsets)
+        assertEquals(1L, vm.uiState.value.expense?.rowVersion)
+        assertFalse(vm.uiState.value.doneAdviceInputsChanged)
+        fake.stubBundle(bundleOf(fake.baseExpense.copy(rowVersion = 2L), remaining = 1000L))
+        vm.loadExpenseFactBundle()
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.factBundle?.activeOffsets?.isEmpty() == true)
         assertEquals(2L, vm.uiState.value.expense?.rowVersion)
     }
+
+    private fun queued(operation: ExpenseOffsetIntentKind = ExpenseOffsetIntentKind.Create, publicId: String? = null) =
+        ExpenseOffsetMutationOutcome.Queued(PendingExpenseOffsetIntent(operation, StreamOffsetKind.Refund, publicId, "商家退货"))
 }

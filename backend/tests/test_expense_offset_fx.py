@@ -110,20 +110,23 @@ def test_foreign_refund_without_accounting_date_rate_refuses_without_mutation(
     assert expense_response.status_code == 200, expense_response.text
     expense = expense_response.json()
 
+    headers = idem(identity.app_headers)
+    payload = {
+        "kind": "refund", "original_amount_minor": 2500,
+        "accounting_date": "2026-05-06", "reason": "退款日没有汇率",
+        "expected_row_version": expense["row_version"],
+    }
     refused = client.post(
         f"/api/expenses/{expense['id']}/offsets",
-        headers=idem(identity.app_headers),
-        json={
-            "kind": "refund",
-            "original_amount_minor": 2500,
-            "accounting_date": "2026-05-06",
-            "reason": "退款日没有汇率",
-            "expected_row_version": expense["row_version"],
-        },
+        headers=headers,
+        json=payload,
     )
 
     assert refused.status_code == 409, refused.text
-    assert refused.json()["error"] == "exchange_rate_required"
+    assert refused.json()["error"] == "exchange_rate_pending"
+    assert {key: refused.json()[key] for key in ("currency_code", "home_currency_code", "rate_date")} == {
+        "currency_code": "USD", "home_currency_code": "CNY", "rate_date": "2026-05-06",
+    }
     reread = client.get(
         f"/api/expenses/{expense['id']}/fact-bundle",
         headers=identity.app_headers,
@@ -131,6 +134,21 @@ def test_foreign_refund_without_accounting_date_rate_refuses_without_mutation(
     assert reread.status_code == 200, reread.text
     assert reread.json()["root"]["row_version"] == expense["row_version"]
     assert reread.json()["active_offsets"] == []
+
+    rate = client.put(
+        "/api/exchange-rates/USD/2026-05-06",
+        headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": 0, "currency_code": "USD", "home_currency_code": "CNY",
+            "rate_date": "2026-05-06", "rate_to_cny": "8", "source": "manual"},
+    )
+    assert rate.status_code == 200, rate.text
+    resumed = client.post(f"/api/expenses/{expense['id']}/offsets", headers=headers, json=payload)
+    replay = client.post(f"/api/expenses/{expense['id']}/offsets", headers=headers, json=payload)
+    assert resumed.status_code == 201, resumed.text
+    assert resumed.json()["active_offsets"][0]["amount_cents"] == 20000
+    assert resumed.json()["active_offsets"][0]["exchange_rate_date"] == "2026-05-06"
+    assert replay.status_code == 201, replay.text
+    assert replay.json() == resumed.json()
 
 
 def test_foreign_reversal_reuses_root_snapshot_without_a_new_rate(

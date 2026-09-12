@@ -27,7 +27,7 @@ internal enum class ReviewField {
 
     /** 该票是否仍缺本字段（与列表 / 滑动动作的「缺字段」判定同源——domain 谓词族）。 */
     fun isMissing(expense: Expense): Boolean = when (this) {
-        AMOUNT -> expense.amountCents == null
+        AMOUNT -> com.ticketbox.domain.model.pendingNeedsAmount(expense)
         MERCHANT -> pendingMerchantPresentation(expense).needsReview
         CATEGORY -> pendingNeedsCategory(expense)
     }

@@ -60,6 +60,7 @@ internal fun BudgetSummarySection(
             currencyDisplay = currencyDisplay,
         )
         configuredBudget.spentProgress?.let { BudgetProgressBar(progress = it) }
+        com.ticketbox.ui.components.CurrencyReferenceDates(configuredBudget.referenceRates)
         if (configuredBudget.missingCurrencyCodes.isNotEmpty()) {
             Text(stringResource(R.string.budget_missing_conversion, configuredBudget.missingCurrencyCodes.joinToString("、")))
         }

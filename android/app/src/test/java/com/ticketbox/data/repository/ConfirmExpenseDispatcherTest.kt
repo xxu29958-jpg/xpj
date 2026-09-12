@@ -1,8 +1,11 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.data.remote.dto.ExpenseDto
+
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
+import com.ticketbox.data.remote.ApiService
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -21,6 +24,8 @@ import kotlin.test.assertTrue
  * key; ``successExpenseDto`` / ``httpException`` build the responses).
  */
 internal class ConfirmExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestBase() {
+    private val published = mutableListOf<Pair<String, ExpenseDto>>()
+
 
     private fun confirmRow(idempotencyKey: String?, targetId: String = "expense:42"): OutboxRow = OutboxRow(
         id = 1L,
@@ -40,10 +45,44 @@ internal class ConfirmExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
         idempotencyKey = idempotencyKey,
     )
 
-    private fun dispatcherFor(stub: ApiServiceStub) = ConfirmExpenseDispatcher(
+    private fun dispatcherFor(
+        stub: ApiService,
+        publishExpense: suspend (String, ExpenseDto) -> Unit = { ledgerId, expense -> published += ledgerId to expense },
+    ) = ConfirmExpenseDispatcher(
         apiProvider = { stub },
         payloadAdapter = moshi().adapter(ExpenseStateTokenRequest::class.java),
+        publishExpense = publishExpense,
     )
+
+    @Test
+    fun `accepted confirm retains its receipt when cache publication fails`() = runTest {
+        val response = successExpenseDto().copy(status = "confirmed")
+        val stub = ApiServiceStub(confirmExpenseResult = ApiResult.Success(response))
+        val row = confirmRow(idempotencyKey = "cache-failure-key", targetId = "expense:local:original-create")
+        val api = object : ApiService by stub {
+            override suspend fun confirmExpense(
+                id: String,
+                request: ExpenseStateTokenRequest,
+                idempotencyKey: String?,
+            ): ExpenseDto {
+                assertEquals("local:original-create", id)
+                assertEquals(ExpenseStateTokenRequest(expectedRowVersion = row.expectedRowVersion), request)
+                return stub.confirmExpense(id, request, idempotencyKey)
+            }
+        }
+        var publicationAttempts = 0
+        val result = dispatcherFor(api) { ledgerId, expense ->
+            assertEquals(row.ledgerId, ledgerId)
+            assertEquals(response, expense)
+            publicationAttempts++
+            throw IllegalStateException("cache unavailable")
+        }.dispatch(row)
+
+        assertEquals(row.idempotencyKey, stub.lastConfirmIdempotencyKey)
+        assertEquals(1, publicationAttempts)
+        assertEquals(DispatchResult.Success(newRowVersion = 2L, cacheRefreshVersion = 2L,
+            receiptJson = """{"expenseId":42}"""), result)
+    }
 
     @Test
     fun `dispatch replays the row's idempotency key and returns the new row_version`() = runTest {
@@ -53,6 +92,7 @@ internal class ConfirmExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
 
         assertEquals("key-abc", stub.lastConfirmIdempotencyKey, "dispatcher must send the row's key")
         assertEquals(DispatchResult.Success(newRowVersion = 2L), result)
+        assertEquals(listOf("owner" to successExpenseDto()), published)
     }
 
     @Test

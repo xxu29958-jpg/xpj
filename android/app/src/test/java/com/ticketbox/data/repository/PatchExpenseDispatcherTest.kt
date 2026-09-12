@@ -1,11 +1,16 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.data.remote.dto.ExpenseDto
+
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 /**
@@ -22,6 +27,8 @@ import kotlin.test.assertTrue
  * ``ExpenseDto`` shape here.
  */
 internal class PatchExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestBase() {
+    private val published = mutableListOf<Pair<String, ExpenseDto>>()
+
 
     private fun patchRow(idempotencyKey: String?): OutboxRow {
         val payload = moshi().adapter(ExpenseUpdateRequest::class.java)
@@ -44,10 +51,48 @@ internal class PatchExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestBa
         )
     }
 
-    private fun dispatcherFor(stub: ApiServiceStub) = PatchExpenseDispatcher(
+    private fun dispatcherFor(
+        stub: ApiServiceStub,
+        publishExpense: suspend (String, ExpenseDto) -> Unit = { ledgerId, expense -> published += ledgerId to expense },
+    ) = PatchExpenseDispatcher(
         apiProvider = { stub },
         payloadAdapter = moshi().adapter(ExpenseUpdateRequest::class.java),
+        publishExpense = publishExpense,
     )
+
+    @Test
+    fun `accepted patch retains its receipt when cache publication fails`() = runTest {
+        val response = successExpenseDto()
+        val stub = ApiServiceStub(updateExpenseResult = ApiResult.Success(response))
+        val row = patchRow(idempotencyKey = "cache-failure-key").copy(targetId = "expense:local:original-create")
+        var publicationAttempts = 0
+        val result = dispatcherFor(stub) { ledgerId, expense ->
+            assertEquals(row.ledgerId, ledgerId)
+            assertEquals(response, expense)
+            publicationAttempts++
+            throw IllegalStateException("cache unavailable")
+        }.dispatch(row)
+
+        val expectedRequest = requireNotNull(moshi().adapter(ExpenseUpdateRequest::class.java).fromJson(row.payloadJson))
+            .copy(expectedRowVersion = row.expectedRowVersion)
+        assertEquals(row.idempotencyKey, stub.lastIdempotencyKey)
+        assertEquals(expectedRequest, stub.lastUpdateRequest)
+        assertEquals(1, publicationAttempts)
+        assertEquals(DispatchResult.Success(newRowVersion = 2L, cacheRefreshVersion = 2L,
+            receiptJson = """{"expenseId":42}"""), result)
+    }
+
+    @Test
+    fun `cancellation during accepted patch publication still propagates`() = runTest {
+        val stub = ApiServiceStub(updateExpenseResult = ApiResult.Success(successExpenseDto()))
+        val row = patchRow(idempotencyKey = "cancelled-publication-key")
+        val cancellation = CancellationException("publication cancelled")
+        val dispatcher = dispatcherFor(stub) { _, _ -> throw cancellation }
+
+        assertSame(cancellation, assertFailsWith<CancellationException> { dispatcher.dispatch(row) })
+        assertEquals(row.idempotencyKey, stub.lastIdempotencyKey)
+        assertEquals(row.expectedRowVersion, stub.lastUpdateRequest?.expectedRowVersion)
+    }
 
     @Test
     fun `dispatch replays the row's idempotency key and returns the new row_version`() = runTest {
@@ -58,6 +103,7 @@ internal class PatchExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestBa
         assertEquals("key-abc", stub.lastIdempotencyKey, "dispatcher must send the row's key")
         // successExpenseDto carries rowVersion=2L → cascaded to same-target rows.
         assertEquals(DispatchResult.Success(newRowVersion = 2L), result)
+        assertEquals(listOf("owner" to successExpenseDto()), published)
     }
 
     @Test

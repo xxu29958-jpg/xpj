@@ -6,7 +6,8 @@ All metrics are read-only counters scoped by ``tenant_id``.
 
 Metric definitions:
 - ``pending_total``: rows with ``status = 'pending'``
-- ``missing_amount``: pending rows with ``amount_cents IS NULL``
+- ``missing_amount``: pending rows with neither home nor original amount
+- ``missing_fx``: pending foreign bills with an original amount awaiting conversion
 - ``missing_merchant``: pending rows whose merchant is UNUSABLE per the
   inbox caliber ported from Android ``pendingMerchantPresentation``:
   NULL/blank, fewer than two letter-or-digit characters, no letter at all,
@@ -161,6 +162,7 @@ def is_ready_to_confirm_row(
 class DataQualitySummary:
     pending_total: int
     missing_amount: int
+    missing_fx: int
     missing_merchant: int
     missing_category: int
     missing_category_pending: int
@@ -176,6 +178,7 @@ class DataQualitySummary:
         return {
             "pending_total": self.pending_total,
             "missing_amount": self.missing_amount,
+            "missing_fx": self.missing_fx,
             "missing_merchant": self.missing_merchant,
             "missing_category": self.missing_category,
             "missing_category_pending": self.missing_category_pending,
@@ -259,8 +262,11 @@ def data_quality_summary(db: Session, *, tenant_id: str) -> DataQualitySummary:
 
     missing_amount = _count(
         db,
-        base.where(Expense.status == "pending").where(Expense.amount_cents.is_(None)),
+        base.where(Expense.status == "pending", Expense.amount_cents.is_(None),
+                   Expense.original_amount_minor.is_(None)),
     )
+    missing_fx = _count(db, base.where(Expense.status == "pending", Expense.fx_status == "pending",
+        Expense.original_amount_minor.is_not(None), Expense.original_currency_code != Expense.home_currency_code))
 
     missing_merchant = _count_grouped(
         db,
@@ -310,6 +316,7 @@ def data_quality_summary(db: Session, *, tenant_id: str) -> DataQualitySummary:
     return DataQualitySummary(
         pending_total=pending_total,
         missing_amount=missing_amount,
+        missing_fx=missing_fx,
         missing_merchant=missing_merchant,
         missing_category=missing_category,
         missing_category_pending=missing_category_pending,

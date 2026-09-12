@@ -790,6 +790,13 @@ internal class FakeApiService(
     override suspend fun archiveRecurringItem(publicId: String): RecurringItemDto = unsupported()
     override suspend fun dataQualitySummary(): com.ticketbox.data.remote.dto.DataQualitySummaryDto = unsupported()
 
+    override suspend fun expenseFx(id: Long): com.ticketbox.data.remote.dto.BackgroundTaskDto? = unsupported()
+
+    override suspend fun retryExpenseFx(
+        id: Long,
+        request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
+    ): com.ticketbox.data.remote.dto.BackgroundTaskDto = unsupported()
+
     override suspend fun listBackgroundTasks(): com.ticketbox.data.remote.dto.BackgroundTaskListResponseDto =
         unsupported()
 

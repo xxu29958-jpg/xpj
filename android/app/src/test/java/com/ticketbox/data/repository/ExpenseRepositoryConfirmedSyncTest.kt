@@ -96,7 +96,7 @@ class ExpenseRepositoryConfirmedSyncTest {
     fun fullConfirmedSyncDoesNotPruneRowConfirmedDuringFetch() = runTest {
         // Audit follow-up P2: the full-list response predates anything cached
         // while the (paginated) fetch is in flight. A row confirmed mid-fetch
-        // (cacheIfConfirmed) is missing from that response by timing alone —
+        // (cacheServerExpense) is missing from that response by timing alone —
         // it must NOT be pruned as "server-deleted". The pre-fetch snapshot
         // in syncConfirmedFromService scopes the prune to pre-existing rows.
         val dao = FakeExpenseDao()

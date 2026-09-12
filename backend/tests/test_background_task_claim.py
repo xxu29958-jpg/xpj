@@ -76,7 +76,7 @@ def test_submission_refusal_cannot_overwrite_a_concurrent_task_outcome(monkeypat
             assert task.status == "queued", "The request still holds its original stale task snapshot"
             raise RuntimeError("duplicate wakeup was not accepted")
 
-        monkeypatch.setattr(background_task_service, "_submit_task", race_then_refuse)
+        monkeypatch.setattr("app.services.background_task_executor.submit_task", race_then_refuse)
         with pytest.raises(background_task_service.BackgroundTaskSubmissionError):
             background_task_service.submit_existing(db, task, {})
 

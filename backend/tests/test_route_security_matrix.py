@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 @pytest.mark.parametrize(
     ("method", "path", "kwargs"),
     [
+        ("POST", "/api/expenses/1/fx", {"json": {"expected_row_version": 1}}),
         ("PUT", "/api/recurring/items/recurring_missing/occurrences/2026-09", {
             "json": {"action": "clear", "expected_row_version": 0, "expected_series_row_version": 1},
         }),

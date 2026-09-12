@@ -26,6 +26,7 @@ from app.services.csv_import_batch_service import (
     apply_csv_import_batch,
     create_csv_import_batch,
 )
+from app.services.ledger_service import find_owner_account_id_for_ledger
 from app.services.time_service import now_utc
 from tests._runtime_protocol import current_protocol_headers
 from tests.desktop_activation_support import token_row as _token_row
@@ -106,6 +107,8 @@ def test_desktop_apply_aborts_when_membership_disabled_mid_batch(identity, monke
         apply_csv_import_batch(
             db,
             tenant_id="owner",
+            initiator_account_id=auth.account_id,
+            initiator_device_id=auth.device_id,
             public_id=public_id,
             batch_size=3,
             desktop_session=auth,
@@ -140,6 +143,8 @@ def test_desktop_apply_aborts_with_counts_when_demoted_to_viewer_mid_batch(
         apply_csv_import_batch(
             db,
             tenant_id="owner",
+            initiator_account_id=auth.account_id,
+            initiator_device_id=auth.device_id,
             public_id=public_id,
             batch_size=3,
             desktop_session=auth,
@@ -166,6 +171,8 @@ def test_desktop_apply_with_live_principal_applies_the_full_batch(identity) -> N
         applied = apply_csv_import_batch(
             db,
             tenant_id="owner",
+            initiator_account_id=auth.account_id,
+            initiator_device_id=auth.device_id,
             public_id=public_id,
             batch_size=3,
             desktop_session=auth,
@@ -191,6 +198,8 @@ def test_apply_without_desktop_session_never_revalidates(identity, monkeypatch) 
         applied = apply_csv_import_batch(
             db,
             tenant_id="owner",
+            initiator_account_id=find_owner_account_id_for_ledger(db, ledger_id="owner"),
+            initiator_device_id=None,
             public_id=public_id,
             batch_size=2,
         )

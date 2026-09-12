@@ -177,7 +177,11 @@ def _freeze_foreign_amount(
     if fx_status == FX_STATUS_PENDING:
         # §2.2: cannot freeze a home amount yet — reject rather than commit an
         # un-foldable fact.
-        raise AppError("exchange_rate_pending", status_code=409)
+        raise AppError("exchange_rate_pending", status_code=409, details={
+            "currency_code": code,
+            "home_currency_code": home,
+            "rate_date": rate_date.isoformat(),
+        })
 
     cents = calculate_cny_cents(
         home_currency_code=home,

@@ -37,7 +37,7 @@ from app.services.currency_common import (
     normalize_currency_code,
     supported_currency_codes,
 )
-from app.services.fx_rate_provider import get_fx_rate_on_or_before
+from app.services.fx_rate_provider import get_covered_fx_rate, get_fx_rate_on_or_before
 from app.services.idempotency import (
     IdempotencyOutcomeKind,
     claim_idempotency_key,
@@ -315,10 +315,9 @@ def resolve_payload_rate(
     )
     if stored is not None:
         return Decimal(stored.rate_to_cny), stored.source, FX_STATUS_READY, stored.rate_date
-    # A tenant manual rate is an exact-date override; the auto-fetched global set
-    # falls back to the newest rate on or before the date so weekend / holiday
-    # expenses resolve to the last published rate instead of staying pending.
-    global_rate = get_fx_rate_on_or_before(
+    # A published row proves its own day. An earlier row needs evidence that
+    # the requested day was checked, including weekends and holidays.
+    global_rate = get_covered_fx_rate(
         db,
         currency_code=code,
         rate_date=rate_date,
@@ -327,6 +326,21 @@ def resolve_payload_rate(
     if global_rate is not None:
         return Decimal(global_rate.rate_to_home), global_rate.source, FX_STATUS_READY, global_rate.rate_date
     return None, None, FX_STATUS_PENDING, rate_date
+
+
+def resolve_valuation_rate(
+    db: Session, *, tenant_id: str, currency_code: str, home_currency_code: str, rate_date: date,
+) -> tuple[Decimal | None, str | None, str, date]:
+    """Value a current plan from the latest known quote, retaining its real date."""
+    resolved = resolve_payload_rate(db, tenant_id=tenant_id, currency_code=currency_code,
+        home_currency_code=home_currency_code, rate_date=rate_date)
+    if resolved[0] is not None:
+        return resolved
+    row = get_fx_rate_on_or_before(db, currency_code=currency_code,
+        home_currency_code=home_currency_code, rate_date=rate_date)
+    if row is None:
+        return resolved
+    return Decimal(row.rate_to_home), row.source, FX_STATUS_READY, row.rate_date
 
 
 def _payload_attr(payload: CurrencyPayload, name: str):
@@ -462,24 +476,21 @@ def apply_currency_payload(
     expense.home_currency_code = home
     expense.original_currency_code = code
     expense.original_amount_minor = original_amount
+    apply_resolved_currency_rate(expense, rate=rate, source=source,
+        fx_status=fx_status, rate_date=effective_rate_date)
+
+
+def apply_resolved_currency_rate(
+    expense: Expense, *, rate: Decimal | None, source: str | None, fx_status: str, rate_date: date,
+) -> None:
+    """Apply an already resolved reference without changing original money or confirming."""
     expense.exchange_rate_to_cny = rate
-    expense.exchange_rate_date = effective_rate_date
+    expense.exchange_rate_date = rate_date
     expense.exchange_rate_source = source
     expense.fx_status = fx_status
     expense.amount_cents = calculate_cny_cents(
-        home_currency_code=home,
-        original_currency_code=code,
-        original_amount_minor=original_amount,
-        exchange_rate_to_cny=rate,
-    )
-
-
-def refresh_currency_snapshot(db: Session, *, tenant_id: str, expense: Expense) -> None:
-    apply_currency_payload(
-        db,
-        tenant_id=tenant_id,
         home_currency_code=expense.home_currency_code,
-        expense=expense,
-        payload=expense,
-        amount_was_explicit=False,
+        original_currency_code=expense.original_currency_code,
+        original_amount_minor=expense.original_amount_minor,
+        exchange_rate_to_cny=rate,
     )

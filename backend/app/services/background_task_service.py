@@ -38,11 +38,9 @@ Orphan recovery:
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy import select
@@ -51,23 +49,21 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.models import BackgroundTask
+from app.services import background_task_executor
 from app.services.background_task_admission import stage_queued_task
+from app.services.background_task_executor import BackgroundTaskSubmissionError as BackgroundTaskSubmissionError
 from app.services.background_task_executor import (
     shutdown_executor as _shutdown_executor,
 )
-from app.services.background_task_executor import submit_task as _submit_to_executor
-from app.services.background_task_handler_api import mark_failed as _mark_failed
 from app.services.background_task_recovery_service import (
     recover_orphaned_tasks as _recover_orphaned_tasks,
 )
-from app.services.background_task_registry import TaskHandler, TaskHandlerRegistry
+from app.services.background_task_registry import PreparedBackgroundTask, TaskHandler, TaskHandlerRegistry
 from app.services.background_task_registry import (
     runtime_handler_registry as _runtime_handler_registry,
 )
 from app.services.background_task_worker import run_task as _run_background_task
 from app.services.time_service import now_utc
-
-logger = logging.getLogger(__name__)
 
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
 _RECOVERABLE_STATUSES = frozenset({"running", "queued"})
@@ -75,25 +71,6 @@ _RECOVERABLE_STATUSES = frozenset({"running", "queued"})
 
 class BackgroundTaskRegistrationError(Exception):
     """Raised when test-only handler registration is used outside its scope."""
-
-
-class BackgroundTaskSubmissionError(RuntimeError):
-    """A durable task row exists, but its in-process execution was not submitted."""
-
-    def __init__(self, task_public_id: str) -> None:
-        super().__init__("background task submission failed")
-        self.task_public_id = task_public_id
-
-
-@dataclass(frozen=True)
-class PreparedBackgroundTask:
-    """A staged task plus the process-local execution intent it will submit."""
-
-    task: BackgroundTask
-    task_id: int
-    task_public_id: str
-    payload: dict[str, Any]
-    registry: TaskHandlerRegistry
 
 
 _handler_registry_context: ContextVar[TaskHandlerRegistry | None] = ContextVar(
@@ -227,27 +204,7 @@ def submit_committed(
 ) -> BackgroundTask:
     """Submit an already-committed task, preserving its durable receipt on failure."""
 
-    task = prepared.task
-    try:
-        _submit_task(prepared.task_id, prepared.payload, registry=prepared.registry)
-    except Exception as exc:  # noqa: BLE001 - executor submission barrier
-        logger.exception("background task %s could not be submitted", prepared.task_id)
-        try:
-            _mark_failed(
-                db,
-                prepared.task_id,
-                expected_status="queued",
-                error_code="task_submission_failed",
-                error_message="Task execution could not be started.",
-            )
-        except SQLAlchemyError:
-            # The task receipt itself is already durable.  A secondary status
-            # publication failure must not turn the accepted upload into a
-            # retryable HTTP error; startup orphan recovery owns the queued row.
-            db.rollback()
-            logger.exception("background task %s failure status could not be persisted", prepared.task_id)
-        raise BackgroundTaskSubmissionError(prepared.task_public_id) from exc
-    return task
+    return background_task_executor.submit_committed(db, prepared, runner=_run_background_task)
 
 
 def submit_existing(db: Session, task: BackgroundTask, payload: dict[str, object]) -> BackgroundTask:
@@ -313,22 +270,8 @@ def enqueue_or_get_active(
         db.rollback()
         raise
 
-    _submit_task(task.id, payload_copy, registry=registry)
+    background_task_executor.submit_task(task.id, payload_copy, registry=registry, runner=_run_background_task)
     return task, True
-
-
-def _submit_task(
-    task_id: int,
-    payload: dict[str, Any],
-    *,
-    registry: TaskHandlerRegistry,
-) -> None:
-    _submit_to_executor(
-        task_id,
-        payload,
-        registry=registry,
-        runner=_run_background_task,
-    )
 
 
 def _active_task(

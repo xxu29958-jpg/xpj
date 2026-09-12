@@ -19,6 +19,7 @@ from uuid import uuid4
 from sqlalchemy import (
     CheckConstraint,
     DateTime,
+    ForeignKey,
     Index,
     Integer,
     String,
@@ -72,6 +73,10 @@ class BackgroundTask(Base):
     task_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     initiated_by_account_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     initiated_by_device_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source_expense_id: Mapped[int | None] = mapped_column(
+        ForeignKey("expenses.id", name="fk_background_tasks_source_expense", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
 
     status: Mapped[str] = mapped_column(
         String(32), default="queued", server_default="queued", nullable=False, index=True

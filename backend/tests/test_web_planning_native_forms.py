@@ -46,7 +46,7 @@ def test_native_create_preserves_selected_ledger_and_money(
     # The real loopback peer executes CSRF checks; the usual 'testclient' peer skips them.
     with TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 53005)) as browser:
         page = browser.get(f"{route}?ledger_id=tester_1&month=2026-05")
-        assert page.status_code == 200
+        assert page.status_code == 200, page.text
         action = f"{route}/create"
         submitted = browser.post(
             action,

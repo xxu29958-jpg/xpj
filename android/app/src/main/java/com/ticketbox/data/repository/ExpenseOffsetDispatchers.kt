@@ -28,8 +28,7 @@ class CreateExpenseOffsetDispatcher(
             ?: return DispatchResult.Failure("CreateExpenseOffset row missing idempotency key")
         val result = dispatchOffsetCommand {
             val bundle = apiProvider(row).createExpenseOffset(expenseRef, request, key)
-            publishBundle(row.ledgerId, bundle)
-            DispatchResult.Success(bundle.root.rowVersion)
+            publishAcceptedExpense(bundle.root.id, bundle.root.rowVersion) { publishBundle(row.ledgerId, bundle) }
         }
         return if (result is DispatchResult.Discarded) DispatchResult.Failure("offset_create_requires_review") else result
     }
@@ -57,8 +56,7 @@ class VoidExpenseOffsetDispatcher(
                 request,
                 key,
             )
-            publishBundle(row.ledgerId, bundle)
-            DispatchResult.Success(bundle.root.rowVersion)
+            publishAcceptedExpense(bundle.root.id, bundle.root.rowVersion) { publishBundle(row.ledgerId, bundle) }
         }
     }
 }
@@ -86,6 +84,10 @@ private suspend fun dispatchOffsetCommand(block: suspend () -> DispatchResult): 
 private fun mapOffsetHttpException(error: HttpException): DispatchResult {
     val body = error.response()?.errorBody()?.string().orEmpty()
     val message = extractOffsetServerMessage(body) ?: error.message().orEmpty()
+    val parsed = NetworkErrorHandler({ null }, "ExpenseOffset").parseErrorMessage(error.code(), body)
+    if (error.code() == 409 && parsed.errorCode == CORRECTION_RATE_PENDING) {
+        return DispatchResult.Failure(parsed.correctionRateFailure())
+    }
     return when (error.code()) {
         409 -> when {
             "state_conflict" in body -> DispatchResult.Conflict(message)

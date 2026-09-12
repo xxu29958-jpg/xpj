@@ -22,8 +22,8 @@ import kotlinx.coroutines.launch
  * detekt 函数数门下的同责拆分）。
  *
  * 事实源唯一：段内一切金额/状态渲染 [ExpenseFactBundle]（服务端 query owner
- * 组装）；客户端不重算金额、FX 或 remaining。`pendingOffsetIntent` 只表达本会话
- * 内刚保存的待提交 intent（持久表达归既有 Outbox surface），不冒充已生效事实。
+ * 组装）；客户端不重算金额、FX 或 remaining。原提交状态归既有 Outbox surface，
+ * 排队反馈不冒充已生效事实。
  *
  * 两条共同冻结纪律：
  *  - command 不依赖 read model：已知 confirmed root + 写权限时 create 永远可打开，
@@ -44,9 +44,6 @@ data class OffsetFormState(
     val amountError: UiText? = null,
     val dateError: UiText? = null,
     val submitError: UiText? = null,
-    val conflictMessage: UiText? = null,
-    /** direct 409 后的权威刷新在途/失败期间为 true：禁用提交，不用旧 root token 循环 409。 */
-    val refreshingAfterConflict: Boolean = false,
     val saving: Boolean = false,
 ) {
     fun matchesRoot(expense: Expense?): Boolean = sourceExpense != null && expense != null &&
@@ -61,9 +58,6 @@ data class VoidOffsetFormState(
     val target: ExpenseOffsetFact? = null,
     val reason: String = "",
     val submitError: UiText? = null,
-    val conflictMessage: UiText? = null,
-    /** 同 [OffsetFormState.refreshingAfterConflict]。 */
-    val refreshingAfterConflict: Boolean = false,
     val saving: Boolean = false,
 )
 
@@ -98,12 +92,6 @@ fun ExpenseFactViewModel.loadExpenseFactBundle() {
     }
 }
 
-/** 命令响应携带的 bundle 是本 lineage 最新事实：先使一切在途读失效，再采纳。 */
-internal fun ExpenseFactViewModel.applyFactBundle(bundle: ExpenseFactBundle) {
-    factBundleLoadGeneration += 1
-    adoptFactBundle(bundle)
-}
-
 /**
  * 原子采用（共同冻结）：FactBundle 是单一原子 publication —— 整包采用（含
  * root）或整包丢弃，绝不混装跨版本视图。旧包到达（root.rowVersion 回退）时
@@ -128,10 +116,6 @@ private fun ExpenseFactViewModel.adoptFactBundle(bundle: ExpenseFactBundle) {
                 factBundle = bundle,
                 factBundleLoadState = ExpenseDetailDataLoadState.Loaded,
                 factBundleMessage = null,
-                offsetCommandsBlockedUntilRefresh = false,
-                // 权威刷新完成：解除 conflict 后的提交禁用（banner 由 sheet 按状态收尾）。
-                offsetForm = it.offsetForm.copy(refreshingAfterConflict = false),
-                voidOffsetForm = it.voidOffsetForm.copy(refreshingAfterConflict = false),
             )
         }
     }
@@ -176,9 +160,6 @@ fun ExpenseFactViewModel.openOffsetSheet(kind: StreamOffsetKind) {
                     ""
                 },
                 accountingDate = today,
-                conflictMessage = UiText.res(R.string.expense_offset_conflict)
-                    .takeIf { state.offsetCommandsBlockedUntilRefresh },
-                refreshingAfterConflict = state.offsetCommandsBlockedUntilRefresh,
             ),
         )
     }
@@ -198,7 +179,7 @@ fun ExpenseFactViewModel.reviewOffsetDraft() {
     updateOffsetForm {
         it.copy(sourceExpense = expense,
             amountText = it.amountText.takeIf { form.sourceExpense?.originalCurrencyCode == expense.originalCurrencyCode }.orEmpty(),
-            amountError = null, dateError = null, conflictMessage = null)
+            amountError = null, dateError = null)
     }
 }
 
@@ -228,15 +209,14 @@ internal fun ExpenseFactViewModel.updateOffsetForm(transform: (OffsetFormState) 
 
 /**
  * 提交可用性（禁用态而非说教）：reason/日期必填，金额类 kind 还需金额非空；
- * conflict 权威刷新完成前禁用（不用旧 root token 立即重复提交）。
+ * 当前表单必须已核对当前账单版本，后续提交冲突由持久队列处理。
  */
 fun ExpenseFactViewModel.canSubmitOffset(): Boolean {
     val state = _uiState.value
     val form = state.offsetForm
     if (state.readOnly || !state.authoritativeRootReady) return false
     if (!form.matchesRoot(state.expense)) return false
-    if (state.offsetCommandsBlockedUntilRefresh) return false
-    if (!form.open || form.saving || form.refreshingAfterConflict) return false
+    if (!form.open || form.saving) return false
     if (form.reason.isBlank() || form.accountingDate.isBlank()) return false
     return !form.kind.isMoneyEvent || form.amountText.isNotBlank()
 }

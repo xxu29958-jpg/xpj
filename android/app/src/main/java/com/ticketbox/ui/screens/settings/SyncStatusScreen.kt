@@ -54,6 +54,7 @@ fun SyncStatusScreen(
     val actions = remember(viewModel, navigation) {
         SyncStatusActions(
             onOpenExpense = navigation.onOpenExpense,
+            onRefreshExpense = viewModel::refreshExpense,
             onKeepMine = viewModel::keepMine,
             onDropMine = viewModel::dropMine,
             onRetry = viewModel::retry,
@@ -89,6 +90,7 @@ data class SyncStatusNavigation(
 /** Row callbacks grouped to keep the content API small and testable. */
 internal data class SyncStatusActions(
     val onOpenExpense: (Long) -> Unit,
+    val onRefreshExpense: (OutboxRow) -> Unit,
     val onKeepMine: (OutboxRow) -> Unit,
     val onDropMine: (OutboxRow) -> Unit,
     val onRetry: (OutboxRow) -> Unit,
@@ -188,7 +190,7 @@ private fun SyncStatusPageBody(
     SyncStatusIncomeReviews(state, actions)
     SyncStatusRateReviews(state, actions)
     SyncStatusBillSplitSection(state, actions)
-    SyncStatusCorrectionSection(state, actions)
+    SyncStatusExpenseRecoverySection(state, actions)
     SyncStatusUploadSection(state, onOpenInbox)
 
     SyncStatusQuarantineSection(
@@ -245,7 +247,7 @@ private fun SyncStatusUploadSection(state: OutboxStatusUiState, onOpenInbox: () 
 }
 
 @Composable
-private fun SyncStatusCorrectionSection(state: OutboxStatusUiState, actions: SyncStatusActions) {
+private fun SyncStatusExpenseRecoverySection(state: OutboxStatusUiState, actions: SyncStatusActions) {
     state.correctionObservation.corrections.filter { !it.delivered || it.refreshRequired }.forEach { pending ->
         com.ticketbox.ui.screens.expense.fact.ExpenseCorrectionSubmissionCard(
             pending = pending,
@@ -257,6 +259,20 @@ private fun SyncStatusCorrectionSection(state: OutboxStatusUiState, actions: Syn
                     { gap -> actions.onRepairCorrectionRate(binding, gap) }
                 }),
         )
+    }
+    val rows = state.status.refreshRequired.filter { it.type != PendingMutationType.CorrectExpense }.distinctBy { it.targetId }
+    if (rows.isEmpty()) return
+    SettingsSection(title = stringResource(R.string.sync_status_refresh_title), icon = Icons.Filled.RestartAlt) {
+        rows.forEach { row ->
+            SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
+                Text(stringResource(syncStatusMutationLabelResources.getValue(row.type)), style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.sync_status_refresh_required), style = MaterialTheme.typography.bodyMedium)
+                AppOutlinedButton(onClick = { actions.onRefreshExpense(row) },
+                    options = AppOutlinedButtonOptions(enabled = state.busyRowId == null)) {
+                    Text(stringResource(R.string.sync_status_refresh_expense))
+                }
+            }
+        }
     }
 }
 

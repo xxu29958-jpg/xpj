@@ -4,7 +4,6 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.PendingExpenseCorrection
-import com.ticketbox.data.repository.correctionRefreshVersion
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
@@ -13,77 +12,11 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** Establish the durable snapshot before reads, so historical delivery is not a new edit. */
-internal fun ExpenseFactViewModel.observeCorrectionSubmissions(onBindingSnapshot: () -> Unit) {
-    viewModelScope.launch {
-        repository.observeCorrections().collect { observation ->
-            val previous = _uiState.value.correctionAccess
-            if (previous?.binding != observation.access?.binding) {
-                correctionSplitMemberGeneration++
-                correctionBaseline = null
-                correctionBinding = null
-                correctionOriginalItems = null
-                correctionOriginalSplits = null
-                observedCorrectionCompletions = null
-                factBundleLoadGeneration++
-                revisionLoadGeneration++
-                expenseLoadGeneration++
-                expenseReadInFlightGeneration = null
-                itemsLoadGeneration++
-                splitsLoadGeneration++
-                thumbnailLoadGeneration++
-                fullImageLoadGeneration++
-                _uiState.value = ExpenseFactUiState(readOnly = true)
-            }
-            val corrections = observation.corrections.filter { it.expenseId == expenseId }
-            val done = corrections.filter { it.delivered }.map { it.row.id }.toSet()
-            val previousDone = observedCorrectionCompletions
-            val newlyDelivered = if (previousDone == null) emptyList() else {
-                corrections.filter { it.delivered && it.row.id !in previousDone }
-            }
-            val refreshAcknowledged = _uiState.value.corrections.any { previousCorrection ->
-                previousCorrection.refreshRequired && corrections.none {
-                    it.row.id == previousCorrection.row.id && it.refreshRequired
-                }
-            }
-            val refreshAfterAcknowledgment = shouldRefreshAcknowledgedRoot(refreshAcknowledged)
-            val needsRefresh = newlyDelivered.isNotEmpty() || refreshAfterAcknowledgment
-            val requiredVersion = corrections.filter { it.refreshRequired }
-                .mapNotNull { correctionRefreshVersion(it.row.lastError) }.maxOrNull() ?: 0L
-            _uiState.update {
-                it.copy(
-                    correctionAccess = observation.access,
-                    corrections = corrections,
-                    requiredRootRowVersion = maxOf(it.requiredRootRowVersion, requiredVersion),
-                    readOnly = observation.access?.canModify != true,
-                    expenseLoading = it.expenseLoading || needsRefresh,
-                    expenseLoadState = if (needsRefresh) {
-                        ExpenseDetailDataLoadState.Loading
-                    } else it.expenseLoadState,
-                )
-            }
-            observedCorrectionCompletions = done
-            when {
-                observation.access == null -> observedCorrectionCompletions = null
-                previousDone == null -> onBindingSnapshot()
-                else -> refreshNewCorrectionCompletions(newlyDelivered, refreshAfterAcknowledgment)
-            }
-        }
-    }
-}
-
-private fun ExpenseFactViewModel.shouldRefreshAcknowledgedRoot(acknowledged: Boolean): Boolean {
-    val state = _uiState.value
-    return acknowledged && (state.expense?.rowVersion ?: 0L) < state.requiredRootRowVersion &&
-        expenseReadInFlightGeneration == null && !state.initialRootVerificationPending &&
-        state.factBundleLoadState != ExpenseDetailDataLoadState.Loading
-}
-
-private fun ExpenseFactViewModel.refreshNewCorrectionCompletions(
+internal fun ExpenseFactViewModel.refreshNewCorrectionCompletions(
     corrections: List<PendingExpenseCorrection>,
-    refreshAfterAcknowledgment: Boolean,
+    refreshRequired: Boolean,
 ) {
-    if (corrections.isEmpty() && !refreshAfterAcknowledgment) return
+    if (corrections.isEmpty() && !refreshRequired) return
     val changesAdvice = corrections.any {
         val request = it.intent?.request
         request?.originalAmountMinor != null || request?.originalCurrencyCode != null ||
@@ -91,7 +24,7 @@ private fun ExpenseFactViewModel.refreshNewCorrectionCompletions(
     }
     _uiState.update { it.copy(factBundle = null, message = null,
         doneAdviceInputsChanged = it.doneAdviceInputsChanged || changesAdvice) }
-    if (corrections.isNotEmpty() && corrections.none { it.refreshRequired }) {
+    if (!refreshRequired && corrections.isNotEmpty() && corrections.none { it.refreshRequired }) {
         verifyExpenseFromCache(afterRowVersion = corrections.maxOf { it.row.expectedRowVersion }) {
             refreshCorrectionFact()
         }
@@ -145,7 +78,7 @@ private fun ExpenseFactViewModel.adoptVerifiedCachedRoot(cached: Expense): Boole
     }
     val state = _uiState.value
     state.expense?.let { loadThumbnailFor(it) }
-    return state.corrections.none { it.refreshRequired } &&
+    return state.expenseRefreshRequirements.isEmpty() && state.corrections.none { it.refreshRequired } &&
         (state.expense?.rowVersion ?: 0L) >= state.requiredRootRowVersion
 }
 

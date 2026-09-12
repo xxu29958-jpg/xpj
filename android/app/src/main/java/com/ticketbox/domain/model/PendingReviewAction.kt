@@ -43,7 +43,7 @@ internal fun isUsablePendingMerchantText(value: String): Boolean {
 }
 
 internal fun pendingPrimaryReviewAction(expense: Expense): PendingPrimaryReviewAction = when {
-    expense.amountCents == null -> PendingPrimaryReviewAction.MissingAmount
+    pendingNeedsAmount(expense) -> PendingPrimaryReviewAction.MissingAmount
     expense.duplicateStatus == DuplicateStatusValues.SUSPECTED -> PendingPrimaryReviewAction.DuplicateReview
     pendingNeedsCategory(expense) -> PendingPrimaryReviewAction.QuickCategory
     pendingMerchantPresentation(expense).needsReview -> PendingPrimaryReviewAction.QuickMerchant
@@ -67,3 +67,12 @@ private val PendingDateNoise = Regex(
     pattern = """^(?:\d{4}\s*[-/.年]\s*)?\d{1,2}\s*[-/.月]\s*\d{1,2}\s*日?(?:\s+周[一二三四五六日天])?(?:\s+\d{1,2}\s*[:：]\s*\d{2}(?:\s*[:：]\s*\d{2})?)?$""",
     option = RegexOption.IGNORE_CASE,
 )
+
+internal fun pendingNeedsAmount(expense: Expense): Boolean =
+    expense.amountCents == null && expense.originalAmountMinor == null
+
+internal fun pendingNeedsFx(expense: Expense): Boolean =
+    expense.status == "pending" && expense.fxStatus == FxContract.StatusPending &&
+        expense.originalAmountMinor != null &&
+        (expense.originalCurrencyCodeRaw ?: expense.originalCurrencyCode.storageKey) !=
+        (expense.homeCurrencyCode ?: expense.homeCurrency.storageKey)

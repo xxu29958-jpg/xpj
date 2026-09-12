@@ -123,18 +123,21 @@ internal fun MainNavGraph(
             ExpenseEditRoute(
                 expenseId = expenseId,
                 screenFactory = runtime.screenFactory,
-                onBack = { runtime.navController.popBackStack() },
-                onCompleted = { adviceInputsChanged ->
-                    runtime.shellState.markExpenseEditCompleted()
-                    // Narrow hook (218-B4 review P2-19): only edits that moved
-                    // advisor-payload fields (amount / currency / category /
-                    // date-time, or confirmed-set membership) invalidate the
-                    // advice cache — note/tag/merchant-only edits preserve it.
-                    if (adviceInputsChanged) {
-                        runtime.screenFactory.budgetRepository.invalidateBudgetAdvice()
-                    }
-                    runtime.navController.popBackStack()
-                },
+                financialDataRevision = runtime.shellState.financialDataRevision,
+                exit = ExpenseEditExitActions(
+                    onBack = { runtime.navController.popBackStack() },
+                    onCompleted = { adviceInputsChanged ->
+                        runtime.shellState.markExpenseEditCompleted()
+                        // Narrow hook (218-B4 review P2-19): only edits that moved
+                        // advisor-payload fields (amount / currency / category /
+                        // date-time, or confirmed-set membership) invalidate the
+                        // advice cache — note/tag/merchant-only edits preserve it.
+                        if (adviceInputsChanged) {
+                            runtime.screenFactory.budgetRepository.invalidateBudgetAdvice()
+                        }
+                        runtime.navController.popBackStack()
+                    },
+                ),
                 related = ExpenseFactNavigation(onOpenRepaymentDrafts = { draftPublicId ->
                     runtime.shellState.openRepaymentDrafts(draftPublicId)
                     runtime.navController.popBackStack()

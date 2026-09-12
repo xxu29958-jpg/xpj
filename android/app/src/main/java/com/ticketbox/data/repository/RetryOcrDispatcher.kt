@@ -5,6 +5,7 @@ import com.squareup.moshi.JsonDataException
 import com.squareup.moshi.JsonEncodingException
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
+import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
@@ -19,6 +20,7 @@ import retrofit2.HttpException
 class RetryOcrDispatcher(
     private val apiProvider: (OutboxRow) -> ApiService,
     private val payloadAdapter: JsonAdapter<ExpenseStateTokenRequest>,
+    private val publishExpense: suspend (ledgerId: String, expense: ExpenseDto) -> Unit,
 ) : OutboxMutationDispatcher {
     override val type: PendingMutationType = PendingMutationType.RetryOcr
 
@@ -52,7 +54,7 @@ class RetryOcrDispatcher(
             // committed-but-unseen first attempt is deduped server-side (HIT →
             // canonical row) instead of false-409ing on the stale row_version.
             val retried = apiProvider(row).retryOcr(expenseRef, request, idempotencyKey)
-            DispatchResult.Success(newRowVersion = retried.rowVersion)
+            publishAcceptedExpense(retried.id, retried.rowVersion) { publishExpense(row.ledgerId, retried) }
         } catch (e: HttpException) {
             mapOutboxHttpException(e)
         } catch (e: IOException) {

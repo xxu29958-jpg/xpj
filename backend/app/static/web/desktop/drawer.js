@@ -32,6 +32,7 @@
   // Action kind derived from the POST target so success handling can branch
   // without coupling to exact element ids.
   function actionKind(url) {
+    if (/\/fx(?:-status)?$/.test(url)) return "fx";
     if (/\/confirm$/.test(url)) return "confirm";
     if (/\/reject$/.test(url)) return "reject";
     if (/\/duplicates\/\d+\/keep$/.test(url)) return "keep";
@@ -349,11 +350,13 @@
       // present. Same-origin source + token satisfies the /web CSRF gate.
       fetch(actionUrl, { method: "POST", credentials: "same-origin", body: body })
         .then(function (res) {
-          if (res.ok) {
+          if (res.ok && kind !== "fx") {
             onMutationOk(kind);
             return undefined;
           }
-          // Error: server returns the drawer fragment with the inline error.
+          // FX status/retry returns the original form and OCC with saved-bill
+          // status alongside it. Only explicit reload may replace that draft.
+          // Errors likewise return the fragment with its inline message.
           return res.text().then(function (html) {
             drawer.innerHTML = html;
             bindFragment();

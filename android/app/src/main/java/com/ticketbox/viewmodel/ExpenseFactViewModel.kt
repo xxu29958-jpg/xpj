@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.ExpenseFactActions
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
@@ -13,7 +14,6 @@ import com.ticketbox.domain.model.ExpenseItems
 import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.MessageTone
-import com.ticketbox.domain.model.PendingExpenseOffsetIntent
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.canInitiateBillSplit
@@ -75,6 +75,8 @@ data class ExpenseFactUiState(
     val timelineExpanded: Boolean = false,
     val correctionAccess: com.ticketbox.data.repository.LedgerAccessContext? = null,
     val corrections: List<com.ticketbox.data.repository.PendingExpenseCorrection> = emptyList(),
+    /** Accepted non-correction commands whose complete financial projection is still missing. */
+    val expenseRefreshRequirements: List<OutboxRow> = emptyList(),
     val correctionRecoveryBusy: Boolean = false,
     // 更正流（correction 扩展拥有全部逻辑）。
     val correction: CorrectionFormState = CorrectionFormState(),
@@ -83,11 +85,9 @@ data class ExpenseFactUiState(
     val factBundle: ExpenseFactBundle? = null,
     val factBundleLoadState: ExpenseDetailDataLoadState = ExpenseDetailDataLoadState.Unknown,
     val factBundleMessage: UiText? = null,
-    val pendingOffsetIntent: PendingExpenseOffsetIntent? = null,
     val offsetForm: OffsetFormState = OffsetFormState(),
     val voidOffsetForm: VoidOffsetFormState = VoidOffsetFormState(),
     /** A 409 raised this root's OCC gate; only an adopted authoritative bundle clears it. */
-    val offsetCommandsBlockedUntilRefresh: Boolean = false,
     // 拆账邀请（bill-split 扩展拥有逻辑；字段名与旧编辑 VM 同构，便于组件复用）。
     val billSplitSubmissions: List<com.ticketbox.data.repository.PendingBillSplitCreation> = emptyList(),
     val billSplitRecoveryBusy: Boolean = false,
@@ -117,7 +117,8 @@ data class ExpenseFactUiState(
     val authoritativeRootReady: Boolean get() = correctionAccess != null && expense != null &&
         !initialRootVerificationPending && expense.rowVersion >= requiredRootRowVersion &&
         !expenseLoading && !expenseStale &&
-        expenseLoadState == ExpenseDetailDataLoadState.Loaded && corrections.none { !it.delivered || it.refreshRequired }
+        expenseLoadState == ExpenseDetailDataLoadState.Loaded && expenseRefreshRequirements.isEmpty() &&
+        corrections.none { !it.delivered || it.refreshRequired }
 
     val canStartCorrection: Boolean get() = !readOnly && authoritativeRootReady
 }
@@ -182,7 +183,7 @@ class ExpenseFactViewModel(
     init {
         observeBillSplitSubmissions()
         var verifyInitialCache = preferLocalCache
-        observeCorrectionSubmissions {
+        observeFactSubmissions {
             if (verifyInitialCache) {
                 verifyInitialCache = false
                 verifyInitialExpenseFromCache { loadExpense(initialLoad = true) }

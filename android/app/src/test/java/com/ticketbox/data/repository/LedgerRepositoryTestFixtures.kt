@@ -325,6 +325,11 @@ internal class StubApi(
         idempotencyKey: String?,
     ): UploadResponseDto = ledgerUnsupported()
     override suspend fun expense(id: Long): ExpenseDto = ledgerUnsupported()
+    override suspend fun expenseFx(id: Long): com.ticketbox.data.remote.dto.BackgroundTaskDto? = ledgerUnsupported()
+    override suspend fun retryExpenseFx(
+        id: Long,
+        request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
+    ): com.ticketbox.data.remote.dto.BackgroundTaskDto = ledgerUnsupported()
     override suspend fun updateExpense(
         id: String,
         request: ExpenseUpdateRequest,
@@ -872,10 +877,6 @@ internal class LedgerFakeDao : ExpenseDao {
     }
     override suspend fun deleteConfirmedForLedger(ledgerId: String) {
         val ids = map.values.filter { it.ledgerId == ledgerId && it.status == "confirmed" }.map { it.id }
-        ids.forEach { map.remove(it) }
-    }
-    override suspend fun deletePendingForLedger(ledgerId: String) {
-        val ids = map.values.filter { it.ledgerId == ledgerId && it.status == "pending" }.map { it.id }
         ids.forEach { map.remove(it) }
     }
     override suspend fun deleteConfirmedByServerIds(ledgerId: String, serverIds: List<Long>) {

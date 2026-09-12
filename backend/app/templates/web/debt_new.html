@@ -25,6 +25,8 @@
     <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
     <input type="hidden" name="home_currency_code" value="{{ form_home_currency_code }}">
 
+    <button type="submit" hidden tabindex="-1" aria-hidden="true"></button>
+    {% include '_fact_rate_recovery.html' %}
     <fieldset class="debt-choice-group">
       <legend>谁欠谁</legend>
       <div class="debt-choice-row">

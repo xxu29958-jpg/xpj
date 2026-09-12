@@ -35,7 +35,7 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
         val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
         val api = ApiServiceStub(
-            confirmExpenseResult = ApiResult.Success(successExpenseDto(serverUpdatedAt = "2026-05-20T14:00:00.000Z")),
+            confirmExpenseResult = ApiResult.Success(successExpenseDto(serverUpdatedAt = "2026-05-20T14:00:00.000Z").copy(status = "confirmed")),
         )
         val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
 
@@ -45,6 +45,10 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
         assertNotEquals(baseline.updatedAt, outcome.expense.updatedAt)
         assertNotEquals(baseline.rowVersion, outcome.expense.rowVersion)
         assertEquals(0, dao.rows.size, "no row should be enqueued on direct success")
+        val cached = repo.fetchExpenseFromLocalCache(baseline.id).getOrThrow()
+        assertEquals("confirmed", cached.status)
+        assertEquals(outcome.expense.rowVersion, cached.rowVersion)
+        assertEquals(outcome.expense.merchant, cached.merchant)
     }
 
     @Test
@@ -117,13 +121,16 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
         val dao = FakePendingMutationDao()
         val outbox = testOutboxRepository(dao = dao)
         val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
-        val api = ApiServiceStub(rejectExpenseResult = ApiResult.Success(successExpenseDto()))
+        val api = ApiServiceStub(rejectExpenseResult = ApiResult.Success(successExpenseDto().copy(status = "rejected")))
         val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
 
         val outcome = repo.rejectExpenseAllowingOffline(baseline).getOrThrow()
 
         assertTrue(outcome is ExpenseStateOutcome.Synced)
         assertEquals(0, dao.rows.size)
+        assertEquals("rejected", outcome.expense.status)
+        assertTrue(repo.fetchExpenseFromLocalCache(baseline.id).isFailure)
+        assertTrue(repo.getCachedPending().getOrThrow().isEmpty())
     }
 
     @Test
@@ -198,6 +205,9 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
 
         assertTrue(outcome is ExpenseStateOutcome.Synced)
         assertEquals(0, dao.rows.size)
+        val cached = repo.fetchExpenseFromLocalCache(baseline.id).getOrThrow()
+        assertEquals(outcome.expense.rowVersion, cached.rowVersion)
+        assertEquals(outcome.expense.merchant, cached.merchant)
     }
 
     @Test
@@ -239,6 +249,9 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
 
         assertTrue(outcome is ExpenseStateOutcome.Synced)
         assertEquals(0, dao.rows.size)
+        val cached = repo.fetchExpenseFromLocalCache(baseline.id).getOrThrow()
+        assertEquals(outcome.expense.rowVersion, cached.rowVersion)
+        assertEquals(outcome.expense.merchant, cached.merchant)
     }
 
     // endregion

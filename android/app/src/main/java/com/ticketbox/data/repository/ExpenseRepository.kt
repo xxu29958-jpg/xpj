@@ -141,6 +141,15 @@ class ExpenseRepository(
     override suspend fun syncPending(): Result<List<Expense>> =
         pendingRepository.syncPending()
 
+    override suspend fun fetchExpenseFx(binding: LogicalSessionBinding, id: Long): Result<BackgroundTask?> =
+        backgroundTaskRepository.fetchExpenseFx(binding, id)
+
+    override suspend fun retryExpenseFx(binding: LogicalSessionBinding, expense: Expense): Result<BackgroundTask> =
+        backgroundTaskRepository.retryExpenseFx(binding, expense)
+
+    override suspend fun fetchExpenseForFxReview(binding: LogicalSessionBinding, id: Long): Result<Expense> =
+        backgroundTaskRepository.fetchExpenseForFxReview(binding, id)
+
     override suspend fun fetchExpense(id: Long): Result<Expense> =
         detailRepository.fetchExpense(id)
 
@@ -155,6 +164,8 @@ class ExpenseRepository(
     ): Result<ExpenseRevisionPage> = correctionRepository.fetchRevisions(id, page, pageSize, snapshotRevision)
 
     override fun observeCorrections(): Flow<ExpenseCorrectionObservation> = correctionRepository.observe()
+
+    override fun observeExpenseOutboxStatus(): Flow<OutboxStatus> = core.offlineMutations.outbox.observeStatus()
 
     internal suspend fun publishDeliveredCorrection(row: OutboxRow, expense: com.ticketbox.data.remote.dto.ExpenseDto) =
         correctionRepository.publishDelivered(row, expense)
@@ -178,10 +189,11 @@ class ExpenseRepository(
         row.lastError != "offset_create_requires_review" && core.offsetCreateAdapter?.readSupportedOffsetCreate(row) != null
 
     override suspend fun voidExpenseOffsetAllowingOffline(
+        expectedBinding: LogicalSessionBinding,
         expense: Expense,
         offset: ExpenseOffsetFact,
         reason: String,
-    ): Result<ExpenseOffsetMutationOutcome> = offsetRepository.voidAllowingOffline(expense, offset, reason)
+    ): Result<ExpenseOffsetMutationOutcome> = offsetRepository.voidAllowingOffline(expectedBinding, expense, offset, reason)
 
 
     override suspend fun updateExpense(
@@ -304,7 +316,7 @@ class ExpenseRepository(
         notificationKey: String? = null,
     ): Result<Expense> = detailRepository.createNotificationDraft(draft, expectedBinding, notificationKey)
 
-    internal fun captureDeferredLedgerBinding(): LogicalSessionBinding? =
+    override fun captureDeferredLedgerBinding(): LogicalSessionBinding? =
         core.ledgerRequestGuard.captureLogicalBinding()
 
     internal fun observeLedgerAccess(): Flow<LedgerAccessContext?> = core.apiProvider.observeActiveLedgerAccess()

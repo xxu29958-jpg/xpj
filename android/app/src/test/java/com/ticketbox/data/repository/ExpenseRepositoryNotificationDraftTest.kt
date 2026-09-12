@@ -14,7 +14,7 @@ import kotlin.test.assertNull
 @OptIn(ExperimentalCoroutinesApi::class)
 class ExpenseRepositoryNotificationDraftTest {
     @Test
-    fun notificationDraftUploadsStructuredFieldsOnlyAndDoesNotCachePending() = runTest {
+    fun notificationDraftUploadsStructuredFieldsAndCachesOnlyThePendingProjection() = runTest {
         val dao = FakeExpenseDao()
         val settingsStore = FakeTicketboxSettingsStore().apply {
             saveServerUrl("https://api.example.com")
@@ -59,6 +59,10 @@ class ExpenseRepositoryNotificationDraftTest {
         assertEquals("wechat", apiService.lastNotificationDraftRequest?.source)
         assertEquals(listOf<String?>("session-token"), apiClient.tokenValues)
         assertEquals(emptyList(), dao.getConfirmed("owner"))
+        val cached = dao.getPending("owner").single()
+        assertEquals(result.id, cached.serverId)
+        assertEquals(result.rowVersion, cached.rowVersion)
+        assertEquals(result.merchant, cached.merchant)
     }
 
     @Test

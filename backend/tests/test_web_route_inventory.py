@@ -4,7 +4,8 @@ Before /web can serve public traffic (Cloudflare Tunnel + Web session,
 v1.0 PR-3/4), every existing /web route must be classified along these
 axes:
 
-- ``local-only-rendering`` — GET that depends on the current
+- ``local-only-rendering`` — read/render, including POST that preserves a form,
+  that depends on the current
   ``selected_ledger_id`` fallback (which defaults to ``owner``); rendering
   this to an unauthenticated public visitor would leak the owner ledger.
   Only safe to publish after a Web session forces ``selected_ledger_id``
@@ -95,6 +96,7 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("GET", "/web/confirmed"): "local-only-rendering",
     ("POST", "/web/confirmed/batch-update"): "writer-only",
     ("POST", "/web/expenses/{expense_id}/offsets"): "writer-only",
+    ("POST", "/web/expenses/{expense_id}/offset-rate"): "writer-only",
     ("POST", "/web/expenses/{expense_id}/offsets/{offset_public_id}/voids"): "writer-only",
     # Budgets
     ("GET", "/web/budgets"): "local-only-rendering",
@@ -127,6 +129,7 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("GET", "/web/debts/{public_id}"): "local-only-rendering",
     ("GET", "/web/debts/{public_id}/repayments"): "local-only-rendering",
     ("POST", "/web/debts"): "writer-only",
+    ("POST", "/web/debts/rate"): "writer-only",
     ("POST", "/web/debts/{public_id}/adjustments"): "writer-only",
     ("POST", "/web/debts/{public_id}/forgive"): "writer-only",
     ("POST", "/web/debts/{public_id}/kind"): "writer-only",
@@ -163,6 +166,9 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("GET", "/web/expenses/{expense_id}/edit"): "local-only-rendering",
     ("GET", "/web/expenses/{expense_id}/correct"): "local-only-rendering",
     ("POST", "/web/expenses/{expense_id}/save"): "writer-only",
+    ("POST", "/web/expenses/{expense_id}/fx"): "writer-only",
+    # Keeps the raw editor draft while reading current saved FX/task state.
+    ("POST", "/web/expenses/{expense_id}/fx-status"): "local-only-rendering",
     ("POST", "/web/expenses/{expense_id}/corrections"): "writer-only",
     ("POST", "/web/expenses/{expense_id}/correction-rate"): "writer-only",
     ("POST", "/web/expenses/{expense_id}/confirm"): "writer-only",
@@ -342,7 +348,7 @@ def _uses_writer_guard(
         helper = function.__globals__.get(name)
         if not inspect.isfunction(helper):
             continue
-        if helper.__module__ != function.__module__:
+        if not helper.__module__.startswith("app.routes."):
             continue
         if _uses_writer_guard(helper, visited=seen):
             return True

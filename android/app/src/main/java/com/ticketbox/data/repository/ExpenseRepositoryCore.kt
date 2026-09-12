@@ -107,7 +107,7 @@ internal class ExpenseRepositoryCore(
     val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
 
     /**
-     * 「确认态写入本地缓存」的单点回调（轴 6 预算超支检测的触发接缝）。[cacheIfConfirmed]
+     * 「确认态写入本地缓存」的单点回调（轴 6 预算超支检测的触发接缝）。[cacheServerExpense]
      * 真正 upsert 后同步调用；实现必须 fire-and-forget（立即返回、内部自行 launch），
      * 不得阻塞确认链路。var 而非构造参数：facade 构造已 12 参，加参会让 detekt
      * LongParameterList baseline 按签名失配（RuleRepository 的 onConfirmedChanged 是构造注入
@@ -236,36 +236,32 @@ internal class ExpenseRepositoryCore(
         )
     }
 
-    suspend fun cacheIfConfirmed(dto: ExpenseDto, bound: BoundLedgerRequest): ExpenseDto {
-        if (dto.status == "confirmed") {
-            withActiveBindingCommit(bound) {
-                expenseDao.upsertByServerIdForLedger(bound.ledgerId, dto.toEntity(bound.ledgerId))
-                onConfirmedCommitted(bound.ledgerId)
-            }
+    suspend fun cacheServerExpense(dto: ExpenseDto, bound: BoundLedgerRequest): ExpenseDto {
+        val accepted = withActiveBindingCommit(bound) {
+            val accepted = expenseDao.applyServerExpense(bound.ledgerId, dto.toEntity(bound.ledgerId))
+            if (accepted && dto.status == "confirmed") notifyConfirmedExpenseWrite(bound.ledgerId, onConfirmedCommitted)
+            accepted
         }
+        if (accepted && dto.status != "confirmed") acknowledgeExpenseRefresh(bound, mapOf(dto.id to dto.rowVersion))
         return dto
     }
 
     suspend fun fetchAuthoritativeExpense(bound: BoundLedgerRequest, id: Long): ExpenseDto {
-        val dto = bound.call { it.expense(id) }
+        val dto = cacheServerExpense(bound.call { it.expense(id) }, bound)
         if (dto.status == "confirmed") {
-            cacheIfConfirmed(dto, bound)
-            val needsProjection = outbox?.observeActiveByTypes(setOf(PendingMutationType.CorrectExpense),
+            val needsProjection = outbox?.observeActiveByTypes(EXPENSE_REFRESH_TYPES,
                 includeCompleted = true)?.first()?.any {
-                it.targetId == "expense:$id" && correctionRefreshVersion(it.lastError) != null
+                expenseRefreshTargetId(it.targetId, it.receiptJson) == id && it.requiresExpenseRefresh()
             } == true
             if (needsProjection) syncConfirmedFromService(bound)
-            return dto
         }
-        withActiveBindingCommit(bound) { expenseDao.retireConfirmedRoot(bound.ledgerId, id, dto.rowVersion) }
-        acknowledgeCorrectionRefresh(bound, mapOf(id to dto.rowVersion))
         return dto
     }
 
     /** Marker cleanup must not turn a successful mutation into an offline enqueue. */
-    suspend fun acknowledgeCorrectionRefresh(bound: BoundLedgerRequest, versions: Map<Long, Long>) {
+    suspend fun acknowledgeExpenseRefresh(bound: BoundLedgerRequest, versions: Map<Long, Long>) {
         try {
-            outbox?.acknowledgeCorrectionRefresh(bound, versions)
+            outbox?.acknowledgeExpenseRefresh(bound, versions)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (bindingError: RepositoryException) {
@@ -366,11 +362,11 @@ internal class ExpenseRepositoryCore(
             }
             accepted
         }
-        acknowledgeCorrectionRefresh(bound, roots.filter { it.streamDate != null && it.serverId in acceptedRootIds }
-            .associate { requireNotNull(it.serverId) to it.rowVersion })
-        // Only a full-ledger sync delivers the confirmed set the budget
-        // advisor consumes; filtered syncs fingerprint a subset and would flap.
+        // A root month can omit an offset in another month. Only the complete projection repairs the receipt.
         if (request.isFullLedger) {
+            acknowledgeExpenseRefresh(bound, roots.filter { it.streamDate != null && it.serverId in acceptedRootIds }
+                .associate { requireNotNull(it.serverId) to it.rowVersion })
+            // The advisor also consumes the complete set; a filtered fingerprint would flap.
             onFullConfirmedSyncSnapshot(
                 "entries=${collectedDtos.size};roots=${roots.size};" +
                     "rv=${roots.maxOfOrNull { it.rowVersion } ?: 0};" +
@@ -385,32 +381,27 @@ internal class ExpenseRepositoryCore(
      *  (var per the [onConfirmedCommitted] precedent). */
     var onFullConfirmedSyncSnapshot: (stamp: String) -> Unit = {}
 
-    /**
-     * issue #64 A3：pending 列表本地优先读的「读缓存」入口。从 Room 取本账本已缓存
-     * 的 pending 行（[syncPendingFromService] 写回的），供 PendingViewModel 在
-     * init / 换账本时立即填充列表、消掉「空白 → 骨架屏 → 网络回来」的间隙。
-     * 一次性快照读，不是持续 Flow——持续 Flow 会复活 VM 已乐观移除的行
-     * （confirm/reject 只改内存不写 Room），撞 review action 执行器「行为不变」红线。
-     */
+    /** A ledger-scoped initial snapshot for PendingViewModel; lists, detail reads and accepted writes share Room. */
     suspend fun getCachedPending(ledgerId: String = activeLedgerIdOrLegacy()): List<Expense> =
         expenseDao.getPending(ledgerId).map { it.toDomain() }
 
-    /**
-     * issue #64 A3：pending 列表本地优先读的「拉远端 + 写回缓存」入口。镜像
-     * [syncConfirmedFromService] 但 pending 走非分页单次 `pendingExpenses()`，整张
-     * 列表原子到达，故写回用 wholesale-replace（[ExpenseDao.applyPendingSyncForLedger]，
-     * 只清 pending 不动 confirmed 缓存），无需 prune。换账本守卫与 confirmed 同：
-     * 拿到响应后若 active ledger 已变即丢弃，绝不把旧账本数据写进新账本缓存。
-     */
-    suspend fun syncPendingFromService(
-        bound: BoundLedgerRequest,
-    ): List<Expense> {
-        val dtos = bound.call { it.pendingExpenses() }
-        withActiveBindingCommit(bound) {
-            val entities = dtos.map { it.toEntity(bound.ledgerId) }
-            expenseDao.applyPendingSyncForLedger(ledgerId = bound.ledgerId, expenses = entities)
+    /** Merge the list with accepted detail/write responses that arrived while its HTTP request was in flight. */
+    suspend fun syncPendingFromService(bound: BoundLedgerRequest): List<Expense> {
+        val pruneVersions = withActiveBindingCommit(bound) {
+            expenseDao.getPending(bound.ledgerId).mapNotNull { row -> row.serverId?.let { it to row.rowVersion } }.toMap()
         }
-        return dtos.map { it.toDomain() }
+        val dtos = bound.call { it.pendingExpenses() }
+        return withActiveBindingCommit(bound) {
+            expenseDao.applyPendingSyncForLedger(bound.ledgerId, dtos.map { it.toEntity(bound.ledgerId) }, pruneVersions)
+            val receivedById = dtos.associateBy { it.id }
+            getCachedPending(bound.ledgerId).map { expense ->
+                // Room owns the accepted fact. A live task describes only its matching response revision.
+                val received = receivedById[expense.id]?.takeIf {
+                    it.publicId == expense.publicId && it.rowVersion == expense.rowVersion
+                }
+                expense.copy(fxTask = received?.fxTask?.toDomain())
+            }
+        }
     }
 
     suspend fun <T> withActiveBindingCommit(

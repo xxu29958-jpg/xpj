@@ -7,6 +7,9 @@ import com.ticketbox.data.repository.PendingExpenseCorrection
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.OutboxRow
+import com.ticketbox.data.repository.OutboxBinding
+import com.ticketbox.data.repository.OutboxOwnerIdentity
+import com.ticketbox.data.repository.OutboxStatus
 import com.ticketbox.data.repository.toRequest
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.local.PendingMutationStatus
@@ -116,8 +119,13 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
             splits = emptyList(),
         ),
     )
-    val correctionBinding = LogicalSessionBinding("https://example.test", "owner", "fixture-owner", "session", "binding")
+    val outboxOwner = requireNotNull(OutboxOwnerIdentity.fromOrNull(
+        "00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002",
+        "00000000-0000-0000-0000-000000000003", "00000000-0000-0000-0000-000000000004"))
+    val correctionBinding = LogicalSessionBinding("https://example.test", "owner", outboxOwner.storageKey, "session", "binding")
     val correctionObservations = MutableStateFlow(ExpenseCorrectionObservation(null, emptyList()))
+    val expenseOutboxStatus = MutableStateFlow(OutboxStatus(0, emptyList(), emptyList(),
+        binding = OutboxBinding(correctionBinding.serverUrl, correctionBinding.ledgerId, outboxOwner)))
     var correctResult: (Expense, ExpenseCorrectionDraft) -> Result<Long> = { _, _ -> Result.success(1L) }
     var fetchExpenseFailure: Throwable? = null
     var recoveryCalls = 0
@@ -306,6 +314,8 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
         return correctionObservations
     }
 
+    override fun observeExpenseOutboxStatus(): Flow<OutboxStatus> = expenseOutboxStatus
+
     override suspend fun submitCorrection(expectedBinding: LogicalSessionBinding, expense: Expense,
         correction: ExpenseCorrectionDraft): Result<Long> {
         correctCalls++
@@ -394,10 +404,14 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
     }
 
     override suspend fun voidExpenseOffsetAllowingOffline(
+        expectedBinding: LogicalSessionBinding,
         expense: Expense,
         offset: ExpenseOffsetFact,
         reason: String,
     ): Result<ExpenseOffsetMutationOutcome> {
+        if (expectedBinding != correctionObservations.value.access?.binding) {
+            return Result.failure(RepositoryException("The void belongs to an obsolete binding"))
+        }
         voidOffsetCalls++
         lastVoidOffset = offset
         lastVoidReason = reason

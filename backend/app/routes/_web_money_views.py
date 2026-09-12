@@ -20,6 +20,8 @@ from app.services.data_quality_service import (
     is_uncategorized_expense_category,
     is_usable_pending_merchant,
 )
+from app.services.expense_service._fx import PendingFxInput
+from app.services.pending_fx_task_service import current_pending_expense_fx_tasks
 from app.services.spending_contract_service import (
     accounting_datetime_label,
     accounting_zone,
@@ -151,13 +153,16 @@ def _expense_amount_labels(
     rate_date = getattr(expense, "exchange_rate_date", None)
     date_text = rate_date.isoformat() if hasattr(rate_date, "isoformat") else (str(rate_date) if rate_date else "")
     if getattr(expense, "fx_status", "") == FX_STATUS_PENDING or amount_cents is None:
-        return primary, f"汇率待同步{(' · ' + date_text) if date_text else ''}"
+        return primary, f"待补汇率{(' · 账单日期 ' + date_text) if date_text else ''}"
     rate = getattr(expense, "exchange_rate_to_cny", None)
     if rate is None:
-        return primary, f"汇率待同步{(' · ' + date_text) if date_text else ''}"
+        return primary, f"待补汇率{(' · 账单日期 ' + date_text) if date_text else ''}"
     meta = f"≈ {_home_amount_label(amount_cents, home_code)} · 汇率 1 {original_code} = {rate} {home_code}"
     if date_text:
         meta += f" · {date_text}"
+    source = getattr(expense, "exchange_rate_source", None)
+    if source:
+        meta += " · " + ("手动汇率" if source == "manual" else str(source))
     return primary, meta
 
 
@@ -213,7 +218,7 @@ def _expense_view(
     source_raw = getattr(expense, "source", "") or ""
     source_label = web_stats_service.source_label(source_raw, "未知")
     is_split_received = source_raw == bill_split_service.SPLIT_RECEIVED_SOURCE
-    needs_amount = expense.amount_cents is None
+    needs_amount = expense.amount_cents is None and original_minor is None
     needs_merchant = not is_usable_pending_merchant(expense.merchant)
     needs_category = is_uncategorized_expense_category(expense.category)
     is_duplicate = (getattr(expense, "duplicate_status", None) or "") == "suspected"
@@ -332,3 +337,24 @@ def _offset_stream_view(
         "fx_meta": fx_meta,
         "is_money_event": is_money_event,
     }
+
+
+def expense_fx_view(db: Session, *, expense) -> dict | None:
+    if expense.status != "pending":
+        return None
+    if not expense.original_currency_code or expense.original_currency_code == expense.home_currency_code:
+        return None
+    task = current_pending_expense_fx_tasks(db, tenant_id=expense.tenant_id, expenses=[expense]).get(expense.id)
+    requested_date = expense.exchange_rate_date
+    if task is not None:
+        try:
+            requested_date = PendingFxInput.model_validate_json(task.input_payload_json or "null").rate_date
+        except ValueError:
+            requested_date = None
+    state = task.status if task is not None else "unrequested"
+    return {"state": state, "requested_date": requested_date,
+        "message": (task.error_message or task.progress_message or "") if task is not None else "",
+        "current": _expense_view(expense),
+        "can_request": expense.status == "pending" and expense.fx_status == "pending"
+            and expense.original_amount_minor is not None and expense.exchange_rate_date is not None
+            and state not in {"queued", "running"}}

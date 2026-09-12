@@ -395,8 +395,8 @@ class OutboxRepository private constructor(
             val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
             boundRequest?.requireStillActiveFor(binding)
             binding.requireReadyForEnqueue()
-            validateTargetRows?.invoke(activeForTarget(binding, intent.targetId,
-                ACTIVE_STATUS_VALUES + PendingMutationStatus.Done.wireValue))
+            validateTargetRows?.invoke(dao.expenseAdmissionRows(binding, intent.targetId, activeForTarget(binding, intent.targetId,
+                ACTIVE_STATUS_VALUES + PendingMutationStatus.Done.wireValue)))
             val row = intent.toEntity(binding, nowIso())
             dao.insertAndPublish(row, afterPersisted)
         }
@@ -644,13 +644,13 @@ class OutboxRepository private constructor(
             id = id,
             status = PendingMutationStatus.Done.wireValue,
             completedAt = nowIso(),
-            lastError = cacheRefreshVersion?.let { "$CORRECTION_REFRESH_PREFIX$it" },
+            lastError = cacheRefreshVersion?.let { "$EXPENSE_REFRESH_PREFIX$it" },
             receiptJson = receiptJson,
         )
     }
 
     /** Acknowledges adopted roots without changing delivery, original OCC or command bytes. */
-    internal suspend fun acknowledgeCorrectionRefresh(boundRequest: BoundLedgerRequest, versions: Map<Long, Long>) =
+    internal suspend fun acknowledgeExpenseRefresh(boundRequest: BoundLedgerRequest, versions: Map<Long, Long>) =
         bindingTransitionLease.withLock {
             val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
             try {
@@ -659,15 +659,7 @@ class OutboxRepository private constructor(
                 // Adoption already completed. A later transition leaves its marker for the next bound read.
                 return@withLock
             }
-            val rows = dao.observeActiveByTypes(binding.ownerStorageKey, binding.ledgerId,
-                listOf(PendingMutationType.CorrectExpense.wireValue), listOf(PendingMutationStatus.Done.wireValue)).first()
-            for (row in rows) {
-                val required = correctionRefreshVersion(row.lastError) ?: continue
-                val target = parseExpenseTargetRef(row.targetId)?.toLongOrNull() ?: continue
-                if ((versions[target] ?: continue) >= required) {
-                    dao.clearCorrectionRefresh(row.id, requireNotNull(row.lastError))
-                }
-            }
+            dao.clearAdoptedExpenseRefreshes(binding, versions)
         }
 
     /**
@@ -881,13 +873,15 @@ class OutboxRepository private constructor(
                     failedStatus = PendingMutationStatus.Failed.wireValue,
                 ),
                 dao.observeQuarantinedCount(binding.owner?.storageKey),
-            ) { queueDepth, conflicts, failed, quarantinedCount ->
+                dao.observeExpenseRefreshRows(binding),
+            ) { queueDepth, conflicts, failed, quarantinedCount, completed ->
                 OutboxStatus(
                     binding = binding,
                     queueDepth = queueDepth,
                     conflicts = conflicts.map { it.toDomain() },
                     failed = failed.map { it.toDomain() },
                     quarantinedCount = quarantinedCount,
+                    refreshRequired = completed.map { it.toDomain() }.filter { it.requiresExpenseRefresh() },
                 )
             }.combine(writeBlock) { status, block -> status.copy(writeBlock = block) }
         }
@@ -1154,9 +1148,10 @@ data class OutboxStatus(
     val quarantinedCount: Int = 0,
     val writeBlock: OutboxWriteBlock? = null,
     val binding: OutboxBinding? = null,
+    val refreshRequired: List<OutboxRow> = emptyList(),
 ) {
     val needsUserAction: Boolean
-        get() = conflicts.isNotEmpty() || failed.isNotEmpty() || quarantinedCount > 0
+        get() = conflicts.isNotEmpty() || failed.isNotEmpty() || quarantinedCount > 0 || refreshRequired.isNotEmpty()
 }
 
 enum class OutboxWriteBlock {

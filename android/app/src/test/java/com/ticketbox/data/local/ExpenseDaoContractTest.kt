@@ -178,17 +178,17 @@ class ExpenseDaoContractTest {
     fun staleFactBundleCannotReplaceOffsetsOfANewerRoot() = runTest {
         val dao = FakeExpenseDao()
         val newerOffsets = listOf(offset("refund-a", 300), offset("refund-b", 200))
-        dao.applyExpenseFactBundle(
+        assertEquals(true, dao.applyExpenseFactBundle(
             ledgerId = "owner",
             root = entity("owner", serverId = 9, fixture = ExpenseEntityFixture(rowVersion = 3)),
             activeOffsets = newerOffsets,
-        )
+        ))
 
-        dao.applyExpenseFactBundle(
+        assertEquals(false, dao.applyExpenseFactBundle(
             ledgerId = "owner",
             root = entity("owner", serverId = 9, fixture = ExpenseEntityFixture(rowVersion = 2)),
             activeOffsets = listOf(offset("refund-a", 100)),
-        )
+        ))
 
         assertEquals(3L, dao.findByServerId("owner", 9)?.rowVersion)
         assertEquals(
@@ -286,6 +286,7 @@ class ExpenseDaoContractTest {
 
         dao.applyPendingSyncForLedger(
             ledgerId = "owner",
+            pruneVersions = dao.getPending("owner").associate { requireNotNull(it.serverId) to it.rowVersion },
             expenses = listOf(
                 entity("owner", serverId = 2, status = "pending"),
                 entity("owner", serverId = 3, status = "pending"),
@@ -297,13 +298,12 @@ class ExpenseDaoContractTest {
     }
 
     @Test
-    fun pendingSyncWholesaleReplacesStalePending() = runTest {
-        // A3: pending arrives as one atomic non-paginated list, so each sync is
-        // a full snapshot — rows confirmed/rejected elsewhere (absent from the
-        // new response) must drop, no prune needed.
+    fun pendingSyncPrunesUnchangedStalePending() = runTest {
+        // An absent row can be pruned only if it still has its pre-request version.
         val dao = FakeExpenseDao()
         dao.applyPendingSyncForLedger(
             ledgerId = "owner",
+            pruneVersions = dao.getPending("owner").associate { requireNotNull(it.serverId) to it.rowVersion },
             expenses = listOf(
                 entity("owner", serverId = 1, status = "pending"),
                 entity("owner", serverId = 2, status = "pending"),
@@ -312,6 +312,7 @@ class ExpenseDaoContractTest {
 
         dao.applyPendingSyncForLedger(
             ledgerId = "owner",
+            pruneVersions = dao.getPending("owner").associate { requireNotNull(it.serverId) to it.rowVersion },
             expenses = listOf(
                 entity("owner", serverId = 2, status = "pending", fixture = ExpenseEntityFixture(merchant = "updated")),
                 entity("owner", serverId = 3, status = "pending"),
@@ -330,10 +331,12 @@ class ExpenseDaoContractTest {
         val dao = FakeExpenseDao()
         dao.applyPendingSyncForLedger(
             ledgerId = "owner",
+            pruneVersions = dao.getPending("owner").associate { requireNotNull(it.serverId) to it.rowVersion },
             expenses = listOf(entity("owner", serverId = 1, status = "pending")),
         )
         dao.applyPendingSyncForLedger(
             ledgerId = "L_family",
+            pruneVersions = dao.getPending("L_family").associate { requireNotNull(it.serverId) to it.rowVersion },
             expenses = listOf(entity("L_family", serverId = 2, status = "pending")),
         )
 
@@ -562,13 +565,6 @@ private class FakeExpenseDao : ExpenseDao {
         emit(ledgerId)
     }
 
-    override suspend fun deletePendingForLedger(ledgerId: String) {
-        val ids = expenses.values
-            .filter { it.ledgerId == ledgerId && it.status == "pending" }
-            .map { it.id }
-        ids.forEach { expenses.remove(it) }
-        emit(ledgerId)
-    }
 
     override suspend fun deleteConfirmedByServerIds(ledgerId: String, serverIds: List<Long>) {
         val remove = serverIds.toSet()

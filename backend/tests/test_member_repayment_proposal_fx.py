@@ -138,6 +138,9 @@ def test_foreign_currency_proposal_pending_rate_is_409(client: TestClient, *, id
     )
     assert response.status_code == 409, response.json()
     assert response.json()["error"] == "exchange_rate_pending"
+    assert {key: response.json()[key] for key in ("currency_code", "home_currency_code", "rate_date")} == {
+        "currency_code": "USD", "home_currency_code": "CNY", "rate_date": "2026-05-10",
+    }
     # No proposal landed.
     proposals = client.get(
         f"/api/debts/{debt['public_id']}/repayment-proposals", headers=identity.app_headers

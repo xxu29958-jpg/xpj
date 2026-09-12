@@ -36,6 +36,7 @@ data class IncomePlanListResponseDto(
     @param:Json(name = "expected_amount_cents") val expectedAmountCents: Long?,
     @param:Json(name = "home_currency_code") val homeCurrencyCode: String? = null,
     @param:Json(name = "missing_currency_codes") val missingCurrencyCodes: List<String> = emptyList(),
+    @param:Json(name = "reference_rates") val referenceRates: List<ProjectionReferenceDto> = emptyList(),
 )
 
 @JsonClass(generateAdapter = true)

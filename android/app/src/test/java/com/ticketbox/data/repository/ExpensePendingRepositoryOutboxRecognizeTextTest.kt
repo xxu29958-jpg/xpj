@@ -112,7 +112,8 @@ internal class ExpensePendingRepositoryOutboxRecognizeTextTest : ExpensePendingR
             ): ExpenseDto = successExpenseDto()
         }
 
-        val outcome = recognizeTextRepo(api, outbox)
+        val repository = recognizeTextRepo(api, outbox)
+        val outcome = repository
             .recognizeTextAllowingOffline(baseline, pastedText)
             .getOrThrow()
 
@@ -120,5 +121,8 @@ internal class ExpensePendingRepositoryOutboxRecognizeTextTest : ExpensePendingR
         // Synced carries the server-parsed expense (row_version bumped to 2).
         assertEquals(2L, outcome.expense.rowVersion)
         assertEquals(0, dao.rows.size, "no row should be enqueued on direct success")
+        val cached = repository.fetchExpenseFromLocalCache(baseline.id).getOrThrow()
+        assertEquals(outcome.expense.rowVersion, cached.rowVersion)
+        assertEquals(outcome.expense.merchant, cached.merchant)
     }
 }

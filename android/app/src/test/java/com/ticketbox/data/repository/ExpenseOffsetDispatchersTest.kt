@@ -8,6 +8,8 @@ import com.ticketbox.data.remote.dto.ExpenseFactBundleDto
 import com.ticketbox.data.remote.dto.ExpenseOffsetCreateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseOffsetKindDto
 import com.ticketbox.data.remote.dto.ExpenseOffsetVoidRequestDto
+import java.io.IOException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Protocol
@@ -17,10 +19,28 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.HttpException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertSame
 
 class ExpenseOffsetDispatchersTest {
     private val moshi = Moshi.Builder().build()
+
+    @Test
+    fun missingRateRetainsTypedOriginalDateForManualRecovery() = runTest {
+        val stub = Stub(Result.failure(httpException(409,
+            """{"error":"exchange_rate_pending","message":"rate missing","currency_code":"USD","home_currency_code":"CNY","rate_date":"2026-09-03"}""")))
+        val dispatcher = CreateExpenseOffsetDispatcher({ stub },
+            moshi.adapter(ExpenseOffsetCreateRequestDto::class.java), { _, _ -> })
+        val original = createRow()
+        val result = assertIs<DispatchResult.Failure>(dispatcher.dispatch(original))
+        val gap = requireNotNull(readCorrectionRateFailure(result.message))
+        assertEquals("USD", gap.sourceCurrencyCode)
+        assertEquals("CNY", gap.homeCurrencyCode)
+        assertEquals("2026-09-03", gap.rateDate)
+        assertEquals("offset-key", stub.createKey)
+        assertEquals(7L, stub.createRequest?.expectedRowVersion)
+    }
 
     @Test
     fun legacyNormalizedCreateRequiresReviewWithoutSending() = runTest {
@@ -186,6 +206,62 @@ class ExpenseOffsetDispatchersTest {
         assertEquals("void-key", stub.voidKey)
         assertEquals("owner" to bundle, published)
         assertEquals(DispatchResult.Success(newRowVersion = 8), result)
+    }
+
+    @Test
+    fun acceptedCreateWithFailedCacheKeepsItsRootRefreshReceiptAndOriginalCommand() = runTest {
+        val bundle = expenseFactBundleDtoFixture(
+            root = confirmedExpenseDtoFixture(ConfirmedExpenseFixture(rowVersion = 8)))
+        val stub = Stub(Result.success(bundle))
+        var failure: Exception = IllegalStateException("Room unavailable")
+        var published: Pair<String, ExpenseFactBundleDto>? = null
+        val dispatcher = CreateExpenseOffsetDispatcher({ stub },
+            moshi.adapter(ExpenseOffsetCreateRequestDto::class.java), { ledgerId, response ->
+                published = ledgerId to response
+                throw failure
+            })
+        val original = createRow()
+        for (cacheFailure in listOf(IllegalStateException("Room unavailable"), IOException("cache IO"))) {
+            failure = cacheFailure
+            assertEquals(DispatchResult.Success(newRowVersion = 8, cacheRefreshVersion = 8,
+                receiptJson = """{"expenseId":9}"""), dispatcher.dispatch(original))
+            assertEquals("owner" to bundle, published)
+            assertEquals("42", stub.createId)
+            assertEquals("offset-key", stub.createKey)
+            assertEquals(moshi.adapter(ExpenseOffsetCreateRequestDto::class.java).fromJson(original.payloadJson), stub.createRequest)
+            assertEquals(7L, stub.createRequest?.expectedRowVersion)
+        }
+        val cancelled = CancellationException("binding changed")
+        failure = cancelled
+        assertSame(cancelled, assertFailsWith<CancellationException> { dispatcher.dispatch(original) })
+    }
+
+    @Test
+    fun acceptedVoidWithFailedCacheKeepsItsRootRefreshReceiptAndOffsetVersion() = runTest {
+        val bundle = expenseFactBundleDtoFixture(
+            root = confirmedExpenseDtoFixture(ConfirmedExpenseFixture(rowVersion = 8)), activeOffsets = emptyList())
+        val stub = Stub(Result.failure(AssertionError("create not expected")), Result.success(bundle))
+        var failure: Exception = IllegalStateException("Room unavailable")
+        var published: Pair<String, ExpenseFactBundleDto>? = null
+        val dispatcher = VoidExpenseOffsetDispatcher({ stub },
+            moshi.adapter(ExpenseOffsetVoidOutboxPayload::class.java), { ledgerId, response ->
+                published = ledgerId to response
+                throw failure
+            })
+        val original = voidRow()
+        for (cacheFailure in listOf(IllegalStateException("Room unavailable"), IOException("cache IO"))) {
+            failure = cacheFailure
+            assertEquals(DispatchResult.Success(newRowVersion = 8, cacheRefreshVersion = 8,
+                receiptJson = """{"expenseId":9}"""), dispatcher.dispatch(original))
+            assertEquals("owner" to bundle, published)
+            assertEquals("42", stub.voidId)
+            assertEquals("refund-1", stub.voidOffsetPublicId)
+            assertEquals("void-key", stub.voidKey)
+            assertEquals(ExpenseOffsetVoidRequestDto("撤销误记", 3), stub.voidRequest)
+        }
+        val cancelled = CancellationException("binding changed")
+        failure = cancelled
+        assertSame(cancelled, assertFailsWith<CancellationException> { dispatcher.dispatch(original) })
     }
 
     private fun createRow() = OutboxRow(

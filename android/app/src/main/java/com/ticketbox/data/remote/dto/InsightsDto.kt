@@ -25,6 +25,7 @@ data class DataQualitySummaryDto(
     val pendingTotal: Int,
     @param:Json(name = "missing_amount")
     val missingAmount: Int,
+    @param:Json(name = "missing_fx") val missingFx: Int = 0,
     @param:Json(name = "missing_merchant")
     val missingMerchant: Int,
     @param:Json(name = "missing_category")

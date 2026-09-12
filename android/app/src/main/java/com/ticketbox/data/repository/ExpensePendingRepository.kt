@@ -24,11 +24,7 @@ internal class ExpensePendingRepository(
 
     override fun currentActiveLedgerId(): String? = core.currentActiveLedgerId()
 
-    override suspend fun fetchPending(): Result<List<Expense>> = core.errorHandler.safeCall {
-        core.ledgerRequestGuard.guardedCall { api ->
-            api.pendingExpenses().map { it.toDomain() }
-        }
-    }
+    override suspend fun fetchPending(): Result<List<Expense>> = syncPending()
 
     override suspend fun getCachedPending(): Result<List<Expense>> = core.errorHandler.safeCall {
         core.getCachedPending()
@@ -64,7 +60,7 @@ internal class ExpensePendingRepository(
         // committed-but-unseen edit on this path still surfaces as a failure for
         // the chained caller to handle; the offline-aware variant below is the
         // one whose replay actually reuses the key.)
-        val updated = core.cacheIfConfirmed(
+        val updated = core.cacheServerExpense(
             bound.call {
                 it.updateExpense(id.toString(), draft.toRequest(baseline = baseline), UUID.randomUUID().toString())
             },
@@ -118,7 +114,7 @@ internal class ExpensePendingRepository(
             // Outbox wiring missing OR baseline lacked a token — direct-only;
             // any failure (incl. IOException) surfaces as Result.failure so we
             // don't pretend we saved.
-            val updated = core.cacheIfConfirmed(
+            val updated = core.cacheServerExpense(
                 bound.call { it.updateExpense(pathRef, request, idempotencyKey) },
                 bound,
             )
@@ -144,7 +140,7 @@ internal class ExpensePendingRepository(
         return try {
             // Direct PATCH first — fast path when online. Returns
             // Synced with the server's canonical Expense.
-            val updated = core.cacheIfConfirmed(
+            val updated = core.cacheServerExpense(
                 bound.call { it.updateExpense(pathRef, request, idempotencyKey) },
                 bound,
             )
@@ -248,7 +244,7 @@ internal class ExpensePendingRepository(
         expectedRowVersion: Long,
     ): Result<Expense> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bind()
-        val confirmed = core.cacheIfConfirmed(
+        val confirmed = core.cacheServerExpense(
             bound.call {
                 // ADR-0042: this DIRECT path never enqueues, so the key is
                 // single-use — it only satisfies the server's mandatory header.
@@ -268,12 +264,7 @@ internal class ExpensePendingRepository(
             // ADR-0042: single-use key — direct-only path, no replay.
             it.rejectExpense(id.toString(), ExpenseStateTokenRequest(expectedRowVersion), UUID.randomUUID().toString())
         }
-        if (rejected.status == "rejected") {
-            core.withActiveBindingCommit(bound) {
-                core.expenseDao.deleteConfirmedByServerIds(bound.ledgerId, listOf(rejected.id))
-            }
-        }
-        rejected.toDomain()
+        core.cacheServerExpense(rejected, bound).toDomain()
     }
 
     override suspend fun undoRejectExpense(
@@ -285,7 +276,7 @@ internal class ExpensePendingRepository(
             val restored = bound.call {
                 it.undoExpense(id, ExpenseStateTokenRequest(expectedRowVersion))
             }
-            restored.toDomain()
+            core.cacheServerExpense(restored, bound).toDomain()
         }
 
     override suspend fun markNotDuplicate(
@@ -293,7 +284,7 @@ internal class ExpensePendingRepository(
         expectedRowVersion: Long,
     ): Result<Expense> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bind()
-        val updated = core.cacheIfConfirmed(
+        val updated = core.cacheServerExpense(
             bound.call {
                 // ADR-0042: single-use key — direct-only path, no replay.
                 it.markNotDuplicate(id.toString(), ExpenseStateTokenRequest(expectedRowVersion), UUID.randomUUID().toString())
@@ -331,7 +322,7 @@ internal class ExpensePendingRepository(
             return@safeCall ExpenseStateOutcome.Queued(expense.copy(status = "confirmed"))
         }
         try {
-            val confirmed = core.cacheIfConfirmed(
+            val confirmed = core.cacheServerExpense(
                 bound.call {
                     it.confirmExpense(expense.id.toString(), ExpenseStateTokenRequest(expense.rowVersion), idempotencyKey)
                 },
@@ -375,12 +366,7 @@ internal class ExpensePendingRepository(
             val rejected = bound.call {
                 it.rejectExpense(expense.id.toString(), ExpenseStateTokenRequest(expense.rowVersion), idempotencyKey)
             }
-            if (rejected.status == "rejected") {
-                core.withActiveBindingCommit(bound) {
-                    core.expenseDao.deleteConfirmedByServerIds(bound.ledgerId, listOf(rejected.id))
-                }
-            }
-            ExpenseStateOutcome.Synced(rejected.toDomain()) as ExpenseStateOutcome
+            ExpenseStateOutcome.Synced(core.cacheServerExpense(rejected, bound).toDomain()) as ExpenseStateOutcome
         } catch (networkError: IOException) {
             core.enqueueStateTransition(
                 bound = bound,
@@ -415,7 +401,7 @@ internal class ExpensePendingRepository(
             return@safeCall ExpenseStateOutcome.Queued(expense.copy(duplicateStatus = "none"))
         }
         try {
-            val updated = core.cacheIfConfirmed(
+            val updated = core.cacheServerExpense(
                 bound.call {
                     it.markNotDuplicate(expense.id.toString(), ExpenseStateTokenRequest(expense.rowVersion), idempotencyKey)
                 },

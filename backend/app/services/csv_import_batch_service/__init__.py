@@ -77,6 +77,7 @@ from app.services.csv_import_batch_service._queries import (
     build_csv_import_batch_response,
     get_csv_import_batch_progress,
     list_csv_import_batches,
+    list_imported_expenses,
 )
 from app.services.csv_import_batch_service._row_claim import (
     _claim_csv_import_rows,
@@ -84,6 +85,7 @@ from app.services.csv_import_batch_service._row_claim import (
 )
 
 __all__ = [
+    "list_imported_expenses",
     "APPLY_LEASE_MINUTES",
     "DEFAULT_BATCH_FILE_NAME",
     "MAX_CSV_IMPORT_ROWS",

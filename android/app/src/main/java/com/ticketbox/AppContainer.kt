@@ -44,8 +44,10 @@ import com.ticketbox.data.repository.UpdateMerchantAliasDispatcher
 import com.ticketbox.data.repository.UpdateRecurringItemDispatcher
 import com.ticketbox.data.repository.VoidExpenseOffsetDispatcher
 import com.ticketbox.data.repository.bindingOrNull
+import com.ticketbox.data.repository.notifyConfirmedExpenseWrite
 import com.ticketbox.data.repository.reconcileLocalSession
 import com.ticketbox.data.repository.toEntity
+import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.repository.toCacheProjection
 import com.ticketbox.data.remote.dto.ExpenseFactBundleDto
 import com.ticketbox.data.remote.dto.RuntimeWriteCompatibility
@@ -150,13 +152,21 @@ class AppContainer(context: Context) {
             }
         }
 
+    private suspend fun publishExpenseSnapshot(ledgerId: String, expense: ExpenseDto) {
+        val accepted = database.expenseDao().applyServerExpense(ledgerId, expense.toEntity(ledgerId))
+        if (accepted && expense.status == "confirmed") {
+            notifyConfirmedExpenseWrite(ledgerId, expenseRepository.onConfirmedCommitted)
+        }
+    }
+
     private suspend fun publishExpenseFactBundle(ledgerId: String, bundle: ExpenseFactBundleDto) {
         val projection = bundle.toCacheProjection(ledgerId)
-        database.expenseDao().applyExpenseFactBundle(
+        val accepted = database.expenseDao().applyExpenseFactBundle(
             ledgerId = ledgerId,
             root = projection.root,
             activeOffsets = projection.activeOffsets,
         )
+        if (accepted) notifyConfirmedExpenseWrite(ledgerId, expenseRepository.onConfirmedCommitted)
     }
 
     /**
@@ -192,6 +202,7 @@ class AppContainer(context: Context) {
             PatchExpenseDispatcher(
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.patchExpenseAdapter,
+                publishExpense = ::publishExpenseSnapshot,
             ),
             CorrectExpenseDispatcher(
                 apiProvider = ::outboxApi,
@@ -243,22 +254,25 @@ class AppContainer(context: Context) {
             ConfirmExpenseDispatcher(
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.expenseStateTokenAdapter,
+                publishExpense = ::publishExpenseSnapshot,
             ),
             // PR-2g.7: POST /api/expenses/{id}/reject via outbox.
             RejectExpenseDispatcher(
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.expenseStateTokenAdapter,
-                deleteConfirmedCache = database.expenseDao()::deleteConfirmedByServerIds,
+                publishExpense = ::publishExpenseSnapshot,
             ),
             // PR-2g.8: POST /api/expenses/{id}/mark-not-duplicate via outbox.
             MarkNotDuplicateDispatcher(
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.expenseStateTokenAdapter,
+                publishExpense = ::publishExpenseSnapshot,
             ),
             // PR-2g.8: POST /api/expenses/{id}/ocr/retry via outbox.
             RetryOcrDispatcher(
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.expenseStateTokenAdapter,
+                publishExpense = ::publishExpenseSnapshot,
             ),
             // PR-2g.9: POST /api/expenses/{id}/items/acknowledge-mismatch via outbox.
             AcknowledgeItemsMismatchDispatcher(
@@ -281,6 +295,7 @@ class AppContainer(context: Context) {
             RecognizeTextDispatcher(
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.recognizeTextAdapter,
+                publishExpense = ::publishExpenseSnapshot,
             ),
             com.ticketbox.data.repository.CreateGoalDispatcher(
                 apiProvider = ::outboxApi,

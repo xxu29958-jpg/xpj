@@ -156,6 +156,7 @@ internal enum class DataQualityRemediation(
     InboxAll(R.string.stats_data_quality_remediation_inbox_hint),
     InboxReady(R.string.stats_data_quality_remediation_inbox_hint),
     InboxMissingAmount(R.string.stats_data_quality_remediation_inbox_hint),
+    InboxMissingFx(R.string.stats_data_quality_remediation_inbox_hint),
     InboxMissingMerchant(R.string.stats_data_quality_remediation_inbox_hint),
     InboxMissingCategory(R.string.stats_data_quality_remediation_inbox_hint),
     InboxDuplicate(R.string.stats_data_quality_remediation_inbox_hint),
@@ -191,6 +192,9 @@ internal fun pendingOverviewMetrics(summary: DataQualitySummary): List<PendingOv
             summary.missingAmount,
             DataQualityRemediation.InboxMissingAmount,
         )
+    }
+    if (summary.missingFx > 0) {
+        metrics += PendingOverviewMetric(R.string.expense_fx_waiting, summary.missingFx, DataQualityRemediation.InboxMissingFx)
     }
     if (summary.missingMerchant > 0) {
         metrics += PendingOverviewMetric(

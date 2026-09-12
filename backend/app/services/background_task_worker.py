@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import logging
+from contextlib import suppress
 from typing import Any
 
 from sqlalchemy import update
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.models import BackgroundTask
+from app.services import background_task_executor
+from app.services.background_task_executor import BackgroundTaskSubmissionError
 from app.services.background_task_handler_api import TaskCancelledError
 from app.services.background_task_handler_api import mark_failed as _mark_failed
 from app.services.background_task_registry import TaskHandlerRegistry, runtime_handler_registry
@@ -62,7 +66,7 @@ def run_task(
         else:
             # The handler owns result_summary_json; this worker owns only the
             # final status transition after the handler returns successfully.
-            _mark_completed(db, task_id)
+            _mark_completed(db, task_id, active_registry)
 
 
 def claim_queued_task(db: Session, task_id: int) -> BackgroundTask | None:
@@ -82,18 +86,36 @@ def claim_queued_task(db: Session, task_id: int) -> BackgroundTask | None:
     return db.get(BackgroundTask, task_id) if result.rowcount == 1 else None
 
 
-def _mark_completed(db: Session, task_id: int) -> None:
+def _mark_completed(db: Session, task_id: int, registry: TaskHandlerRegistry) -> None:
     task = db.get(BackgroundTask, task_id)
-    if task is None or task.status in _TERMINAL_STATUSES:
+    if task is None:
         return
-    task.status = "completed"
-    task.completed_at = now_utc()
-    db.commit()
+    db.refresh(task, with_for_update=True)
+    if task.status in _TERMINAL_STATUSES:
+        return
+    try:
+        task.status = "completed"
+        task.completed_at = now_utc()
+        # Admission counts our flushed terminal transition in this transaction;
+        # other sessions see the parent active until parent + child commit together.
+        db.flush()
+        continuation = registry.prepare_completion(db, task)
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        raise
+    if continuation is not None:
+        # Dispatch refusal belongs to the durable child, never the completed parent.
+        with suppress(BackgroundTaskSubmissionError):
+            background_task_executor.submit_committed(db, continuation, runner=run_task)
 
 
 def _mark_cancelled(db: Session, task_id: int) -> None:
     task = db.get(BackgroundTask, task_id)
-    if task is None or task.status in _TERMINAL_STATUSES:
+    if task is None:
+        return
+    db.refresh(task, with_for_update=True)
+    if task.status in _TERMINAL_STATUSES:
         return
     task.status = "cancelled"
     task.completed_at = now_utc()

@@ -16,12 +16,10 @@ from app.services.currency_binding_service import (
     resolve_write_capability,
 )
 from app.services.duplicate_service import clear_duplicate_references_to
-from app.services.exchange_rate_service import refresh_currency_snapshot
 from app.services.expense_revision_service import record_confirmation_revision
 from app.services.expense_service._field_mutation import apply_expense_fields_to_claimed_row
 from app.services.expense_service._helpers import (
     _ensure_pending_expense_can_confirm,
-    _expense_has_pending_fx,
 )
 from app.services.expense_service._query import get_expense, resolve_expense
 from app.services.expense_split_service import validate_current_expense_split_allocation
@@ -143,8 +141,6 @@ def _claim_pending_confirmation(
         return expense, False
     if expense.status != "pending":
         raise AppError("expense_not_found", status_code=404)
-    if _expense_has_pending_fx(expense):
-        refresh_currency_snapshot(db, tenant_id=tenant_id, expense=expense)
     _ensure_pending_expense_can_confirm(expense)
     validate_current_expense_split_allocation(db, expense=expense)
     db.flush()

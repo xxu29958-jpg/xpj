@@ -239,7 +239,7 @@ class HistoricalCorrectionRateRecoveryTest {
         harness.fixture.expenseDao.applyLocalCreateServerIdentity(row.ledgerId,
             original.toEntity(row.ledgerId).copy(clientRef = ref))
         assertTrue(harness.fixture.outbox.tryClaim(row.id))
-        harness.fixture.outbox.markDone(row.id, receiptJson = manualCreationReceiptJson(original.id))
+        harness.fixture.outbox.markDone(row.id, receiptJson = expenseAcceptanceReceiptJson(original.id))
         ref
     }
 

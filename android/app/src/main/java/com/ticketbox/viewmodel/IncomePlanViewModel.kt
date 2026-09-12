@@ -40,6 +40,7 @@ data class IncomePlanUiState(
     val forecastMonth: String? = null,
     val forecastCurrencyCode: String? = null,
     val missingCurrencyCodes: List<String> = emptyList(),
+    val referenceRates: List<com.ticketbox.domain.model.CurrencyReferenceRate> = emptyList(),
     val pendingSubmissions: List<PendingIncomePlanSubmission> = emptyList(),
     val selectedSubmissionId: Long? = null,
     val binding: LogicalSessionBinding? = null,
@@ -207,6 +208,7 @@ class IncomePlanViewModel(
                         forecastMonth = listing.month,
                         forecastCurrencyCode = listing.homeCurrencyCode,
                         missingCurrencyCodes = listing.missingCurrencyCodes,
+                        referenceRates = listing.referenceRates,
                         addDraft = _state.value.addDraft.let { draft ->
                             draft.copy(intentMonth = draft.intentMonth.ifEmpty { listing.month },
                                 incomeMonthInput = if (draft.intentMonth.isEmpty()) {

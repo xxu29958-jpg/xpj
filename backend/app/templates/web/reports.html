@@ -144,6 +144,9 @@
               <td class="amount">{{ report_money(item.amount_major_text) }}</td>
               <td class="amount">{% if item.budget_cents is none %}待补汇率{% elif item.budget_cents > 0 %}{{ report_money(item.budget_major_text) }}{% else %}—{% endif %}</td>
             </tr>
+            {% if item.reference_rates %}
+            <tr><td colspan="3">{% with reference_rates=item.reference_rates %}{% include 'partials/reference_rates.html' %}{% endwith %}</td></tr>
+            {% endif %}
           {% endfor %}
           </tbody>
         </table>
