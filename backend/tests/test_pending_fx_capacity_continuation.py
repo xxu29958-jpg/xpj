@@ -2,13 +2,14 @@
 
 import json
 import threading
+from dataclasses import replace
 from datetime import date, time
 from decimal import Decimal
 from unittest.mock import Mock
 from zoneinfo import ZoneInfo
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 from app.config import get_settings
 from app.database import SessionLocal
@@ -39,10 +40,8 @@ class _TwoTicks(threading.Event):
 
 @pytest.fixture
 def one_slot(monkeypatch):
-    settings = get_settings().model_copy(update={
-        "fx_rate_auto_sync_enabled": True, "background_task_max_active": 1,
-        "background_task_orphan_grace_seconds": 0,
-    })
+    settings = replace(get_settings(), fx_rate_auto_sync_enabled=True,
+        background_task_max_active=1, background_task_orphan_grace_seconds=0)
     for module in (background_task_admission, pending_fx_task_service, background_task_recovery_service, fx_rate_scheduler):
         monkeypatch.setattr(module, "get_settings", lambda: settings)
     submitted = Mock()
@@ -190,3 +189,67 @@ def test_terminal_tasks_at_the_front_cannot_starve_a_later_bill_without_a_task(c
     with SessionLocal() as db:
         tasks = list(db.scalars(select(BackgroundTask).where(BackgroundTask.source_expense_id.in_(expense_ids[:32]))))
         assert len(tasks) == 32 and all(task.status == "failed" for task in tasks)
+
+
+def test_full_capacity_keeps_the_blocked_bill_before_later_bills_in_the_same_loop(client, identity, one_slot):
+    expense_ids = _apply_bills(client, identity, (1000, 2000, 3000))
+    first_task_id = one_slot.call_args.args[0]
+    blocked = _bill(client, identity, expense_ids[1])
+    stop = _TwoTicks()
+    wait = stop.wait
+
+    def release_first_after_a_full_tick(timeout=None):
+        if len(stop.delays) == 1:
+            assert one_slot.call_count == 1 and _active_count() == 1
+            assert _bill(client, identity, expense_ids[1])["fx_task"] is None
+            assert _bill(client, identity, expense_ids[2])["fx_task"] is None
+            background_task_worker.run_task(first_task_id, {})
+            assert _active_count() == 0
+        return wait(timeout)
+
+    stop.wait = release_first_after_a_full_tick
+    fx_rate_scheduler._scheduler_loop(stop, [time(9, 10)], ZoneInfo("UTC"))
+
+    assert one_slot.call_count == 2, "The next free slot belongs to the original capacity-blocked bill"
+    with SessionLocal() as db:
+        resumed = db.get(BackgroundTask, one_slot.call_args.args[0])
+        assert (resumed.source_expense_id, resumed.status) == (expense_ids[1], "queued")
+        saved = json.loads(resumed.input_payload_json)
+        assert (saved["expected_row_version"], saved["original_amount_minor"], saved["rate_date"]) == (
+            blocked["row_version"], blocked["original_amount_minor"], "2026-05-31")
+    assert _bill(client, identity, expense_ids[2])["fx_task"] is None
+    assert _active_count() == 1
+
+
+def test_next_candidate_sees_previous_task_committed_and_admission_lock_released(client, identity, one_slot, monkeypatch):
+    expense_ids = _apply_bills(client, identity, (1000, 2000, 3000))
+    background_task_worker.run_task(one_slot.call_args.args[0], {})
+    settings = replace(background_task_admission.get_settings(), background_task_max_active=2)
+    monkeypatch.setattr(background_task_admission, "get_settings", lambda: settings)
+    resolve = pending_fx_task_service.resolve_expense
+    observations = []
+
+    def observe_before_next_expense(db, tenant_id, ref, **kwargs):
+        if ref == expense_ids[2] and kwargs.get("for_update"):
+            with SessionLocal() as observer:
+                previous = observer.scalar(select(BackgroundTask).where(
+                    BackgroundTask.source_expense_id == expense_ids[1], BackgroundTask.task_type == "expense_fx"))
+                assert previous is not None, "The previous candidate must commit before the next Expense lock"
+                assert previous.status == "queued"
+                acquired = observer.scalar(text(
+                    "SELECT pg_try_advisory_xact_lock(hashtext(current_database()), hashtext(:label))"
+                ), {"label": "ticketbox-background-task-admission"})
+                assert acquired is True, "A prior admission lock must not cross into the next candidate transaction"
+                observations.append(previous.id)
+        return resolve(db, tenant_id, ref, **kwargs)
+
+    monkeypatch.setattr(pending_fx_task_service, "resolve_expense", observe_before_next_expense)
+
+    _tick()
+
+    assert observations, "The actual scheduler must reach the second eligible bill"
+    assert one_slot.call_count == 3 and _active_count() == 2
+    for expense_id in expense_ids[1:]:
+        bill = _bill(client, identity, expense_id)
+        assert (bill["status"], bill["fx_task"]["status"], bill["fx_task"]["source_expense_id"]) == (
+            "pending", "queued", expense_id)
