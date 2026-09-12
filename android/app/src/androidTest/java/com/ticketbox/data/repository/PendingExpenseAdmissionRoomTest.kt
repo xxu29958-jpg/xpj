@@ -113,6 +113,28 @@ class PendingExpenseAdmissionRoomTest {
     }
 
     @Test
+    fun anOldEditorCannotSendOrAdmitItsDraftAfterTheLedgerBindingChanges() = runBlocking {
+        fixture.network.current = fixture.network.current.copy(status = "pending", confirmedAt = null)
+        current = fixture.network.current
+        val repository = fixture.reopen().expenseRepository
+        lateinit var vm: ExpenseEditViewModel
+        compose.runOnIdle { vm = ExpenseEditViewModel(42, repository); editor = vm }
+        compose.waitUntil(10_000) { !vm.uiState.value.expenseLoading && vm.uiState.value.expense != null }
+        val original = requireNotNull(vm.uiState.value.expense)
+        fixture.switchLedger()
+
+        compose.runOnIdle { vm.save(draft()) }
+        compose.waitUntil(10_000) { !vm.uiState.value.saving && vm.uiState.value.message != null }
+
+        assertTrue("The old editor must not send to the later binding", requests.isEmpty())
+        assertTrue("No old draft may enter the later ledger queue", fixture.stored().isEmpty())
+        assertEquals(original, vm.uiState.value.expense)
+        assertEquals(false, vm.uiState.value.done)
+        assertEquals(original.merchant, current.merchant)
+        assertEquals(original.rowVersion, current.rowVersion)
+    }
+
+    @Test
     fun readyBatchPreservesBothConfirmIntentsBeforeTransportAndAfterLeavingTheInbox() = runBlocking {
         fixture.network.current = fixture.network.current.copy(status = "pending", confirmedAt = null)
         current = fixture.network.current
