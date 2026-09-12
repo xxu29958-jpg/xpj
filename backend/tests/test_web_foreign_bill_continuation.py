@@ -12,7 +12,7 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import BackgroundTask, CsvImportBatch, CsvImportRow, Expense
-from app.services import background_task_service, background_task_worker, pending_fx_task_service
+from app.services import background_task_worker, pending_fx_task_service
 from app.services.fx_rate_provider import EcbDailyRates, FxFetchError
 from tests.test_foreign_bill_continuation import _import_foreign_bill
 
@@ -23,7 +23,7 @@ pytestmark = pytest.mark.real_db
 def captured_submissions(monkeypatch):
     """Keep each durable task queued until this journey explicitly runs its worker."""
     submitted = Mock()
-    monkeypatch.setattr(background_task_service, "_submit_task", submitted)
+    monkeypatch.setattr("app.services.background_task_executor.submit_task", submitted)
     return submitted
 
 
@@ -64,7 +64,7 @@ def test_web_fx_failure_retry_and_completion_keep_original_form_until_explicit_l
     edit = f"/web/expenses/{bill['id']}/edit?ledger_id=owner"
     submitted = _form(web_client.get(edit).text, bill)
     original_key = submitted["idempotency_key"]
-    monkeypatch.setattr(background_task_service, "_submit_task",
+    monkeypatch.setattr("app.services.background_task_executor.submit_task",
         lambda task_id, payload, **kwargs: background_task_worker.run_task(task_id, payload, kwargs["registry"]))
 
     def unavailable(_original):

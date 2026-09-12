@@ -16,7 +16,6 @@ from app.database import SessionLocal
 from app.errors import AppError
 from app.main import app
 from app.models import BackgroundTask, Expense, UploadLink, UploadLinkDailyUsage
-from app.services import background_task_service
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.identity_service import hash_secret
 from app.services.pending_enrichment_task_service import prepare_pending_expense_enrichment
@@ -97,7 +96,7 @@ def test_full_enrichment_capacity_rejects_before_any_upload_artifact_is_durable(
     consumer: str,
 ) -> None:
     del one_active_task_capacity
-    monkeypatch.setattr(background_task_service, "_submit_task", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("app.services.background_task_executor.submit_task", lambda *_args, **_kwargs: None)
     before_rows = _row_counts()
     before_files = _stored_upload_files()
     path = "/api/app/upload-screenshot" if consumer == "android" else identity.upload_url_path
@@ -122,7 +121,7 @@ def test_web_capacity_rejection_returns_to_pending_with_honest_flash(
     one_active_task_capacity: int,
 ) -> None:
     del one_active_task_capacity
-    monkeypatch.setattr(background_task_service, "_submit_task", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("app.services.background_task_executor.submit_task", lambda *_args, **_kwargs: None)
     before_rows = _row_counts()
     before_files = _stored_upload_files()
 
@@ -187,7 +186,7 @@ def test_concurrent_enqueues_share_one_postgres_capacity_slot(
 ) -> None:
     monkeypatch.setenv("BACKGROUND_TASK_MAX_ACTIVE", "1")
     reset_settings_cache()
-    monkeypatch.setattr(background_task_service, "_submit_task", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("app.services.background_task_executor.submit_task", lambda *_args, **_kwargs: None)
     with SessionLocal() as db:
         resolve_write_capability(db)
         expense = Expense(tenant_id="owner", status="pending", source="截图上传",

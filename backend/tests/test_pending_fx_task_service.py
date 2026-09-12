@@ -134,7 +134,7 @@ def test_provider_failure_preserves_original_and_only_explicit_retry_creates_ano
     expense_id, version, task_id, auth = _seed_pending_task(identity)
     monkeypatch.setattr(service, "fetch_pending_fx_reference", Mock(side_effect=FxFetchError("https://private?key=hidden")))
     _run(task_id)
-    monkeypatch.setattr(background_task_service, "_submit_task", Mock())
+    monkeypatch.setattr("app.services.background_task_executor.submit_task", Mock())
     with SessionLocal() as db:
         expense, task = db.get(Expense, expense_id), db.get(BackgroundTask, task_id)
         original_payload = task.input_payload_json
@@ -172,8 +172,8 @@ def test_restart_after_result_commit_completes_original_despite_later_edit(ident
         bump_row_version(expense)
         db.commit()
     assert background_task_service.recover_orphaned_tasks() >= 1
-    monkeypatch.setattr(background_task_service, "_submit_task",
-        lambda task_id, payload, *, registry: background_task_worker.run_task(task_id, payload, registry))
+    monkeypatch.setattr("app.services.background_task_executor.submit_task",
+        lambda task_id, payload, *, registry, runner: runner(task_id, payload, registry))
     with SessionLocal() as db:
         original = service.request_pending_expense_fx(db, tenant_id=auth.tenant_id,
             initiator_account_id=auth.account_id, initiator_device_id=auth.device_id,
@@ -266,7 +266,7 @@ def test_edit_with_auto_sync_off_excludes_old_task_and_manual_request_uses_new_i
 ):
     expense_id, version, task_id, _ = _seed_pending_task(identity)
     submitted = Mock()
-    monkeypatch.setattr(background_task_service, "_submit_task", submitted)
+    monkeypatch.setattr("app.services.background_task_executor.submit_task", submitted)
     monkeypatch.setattr(service, "get_settings", lambda: SimpleNamespace(fx_rate_auto_sync_enabled=False))
     edited = client.patch(f"/api/expenses/{expense_id}",
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},

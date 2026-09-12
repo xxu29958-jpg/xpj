@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy.orm import Session
 
 from app.models import BackgroundTask
-
-if TYPE_CHECKING:
-    from app.services.background_task_service import PreparedBackgroundTask
 
 TaskHandler = Callable[[Session, BackgroundTask, dict[str, Any]], None]
 TaskCompletion = Callable[[Session, BackgroundTask], "PreparedBackgroundTask | None"]
@@ -45,6 +43,17 @@ class TaskHandlerRegistry:
         self._handlers_by_type.update(dict(handlers or {}))
         self._completions_by_type.clear()
         return previous
+
+
+@dataclass(frozen=True)
+class PreparedBackgroundTask:
+    """A staged task bound to the handler catalog selected at admission."""
+
+    task: BackgroundTask
+    task_id: int
+    task_public_id: str
+    payload: dict[str, Any]
+    registry: TaskHandlerRegistry
 
 
 def runtime_handler_registry() -> TaskHandlerRegistry:

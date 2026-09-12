@@ -32,7 +32,7 @@ from tests._infra.assets import PNG_BYTES
 @pytest.mark.real_db
 @pytest.mark.parametrize("replay_result", [False, True])
 def test_one_slot_enrichment_hands_off_one_durable_fx_task_after_completion(monkeypatch, identity, replay_result):
-    from app.services import background_task_admission, background_task_service, pending_fx_task_service
+    from app.services import background_task_admission, pending_fx_task_service
     from app.services.fx_rate_provider import EcbDailyRates
 
     expense_id, predecessor, task_id = _seed_pending_enrichment_task()
@@ -49,6 +49,7 @@ def test_one_slot_enrichment_hands_off_one_durable_fx_task_after_completion(monk
     monkeypatch.setattr(enrich_service, "collect_auto_ocr_extractions", extract)
     monkeypatch.setattr(enrich_service, "_try_stage_thumbnail", lambda *_args: None)
     with SessionLocal() as db:
+        resolve_write_capability(db)
         expense, task = db.get(Expense, expense_id), db.get(BackgroundTask, task_id)
         expense.original_currency_code, expense.original_amount_minor = "USD", 1000
         expense.fx_status, expense.exchange_rate_date = "pending", date(2026, 5, 31)
@@ -81,7 +82,8 @@ def test_one_slot_enrichment_hands_off_one_durable_fx_task_after_completion(monk
 
     monkeypatch.setattr(Session, "commit", check_atomic_completion)
 
-    def capture_committed_child(child_id, child_payload, *, registry):
+    def capture_committed_child(child_id, child_payload, *, registry, runner):
+        assert runner is background_task_worker.run_task
         with SessionLocal() as observer:
             parent, child = observer.get(BackgroundTask, task_id), observer.get(BackgroundTask, child_id)
             assert parent.status == "completed", "Child dispatch must follow atomic parent completion"
@@ -93,7 +95,7 @@ def test_one_slot_enrichment_hands_off_one_durable_fx_task_after_completion(monk
             assert child_payload["expected_row_version"] == observer.get(Expense, expense_id).row_version
         submissions.append(child_id)
 
-    monkeypatch.setattr(background_task_service, "_submit_task", capture_committed_child)
+    monkeypatch.setattr("app.services.background_task_executor.submit_task", capture_committed_child)
     background_task_worker.run_task(task_id, payload)
     assert len(submissions) == 1, "The completed enrichment must pass its sole active slot to FX"
     assert atomic_handoffs == submissions
@@ -187,8 +189,8 @@ def test_restart_replay_finishes_the_committed_result_without_repeating_enrichme
         assert json.loads(committed_result)["outcome"] == "updated"
 
     assert background_task_service.recover_orphaned_tasks() >= 1
-    monkeypatch.setattr(background_task_service, "_submit_task",
-        lambda task_id, payload, *, registry: background_task_worker.run_task(task_id, payload, registry))
+    monkeypatch.setattr("app.services.background_task_executor.submit_task",
+        lambda task_id, payload, *, registry, runner: runner(task_id, payload, registry))
     with SessionLocal() as db:
         task = db.get(BackgroundTask, task_id)
         assert task.status == "failed" and task.error_code == "orphaned_after_restart"

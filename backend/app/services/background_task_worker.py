@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.models import BackgroundTask
+from app.services import background_task_executor
+from app.services.background_task_executor import BackgroundTaskSubmissionError
 from app.services.background_task_handler_api import TaskCancelledError
 from app.services.background_task_handler_api import mark_failed as _mark_failed
 from app.services.background_task_registry import TaskHandlerRegistry, runtime_handler_registry
@@ -100,11 +102,9 @@ def _mark_completed(db: Session, task_id: int, registry: TaskHandlerRegistry) ->
         db.rollback()
         raise
     if continuation is not None:
-        from app.services.background_task_service import BackgroundTaskSubmissionError, submit_committed
-
         # Dispatch refusal belongs to the durable child, never the completed parent.
         with suppress(BackgroundTaskSubmissionError):
-            submit_committed(db, continuation)
+            background_task_executor.submit_committed(db, continuation, runner=run_task)
 
 
 def _mark_cancelled(db: Session, task_id: int) -> None:

@@ -60,15 +60,16 @@ def test_completion_flushes_parent_then_admits_then_commits_then_dispatches(work
         order.append("admit-child")
         return background_task_service.PreparedBackgroundTask(child, 2, "child-receipt", {}, registry)
 
-    def submit(session, prepared):
+    def submit(session, prepared, *, runner):
         assert session is db and prepared.task is child and order[-1] == "commit"
+        assert runner is background_task_worker.run_task
         assert parent.status == "completed"
         order.append("submit-child")
 
     registry = CompletionRegistry(handler, completion)
     db.flush.side_effect = flush
     db.commit.side_effect = lambda: order.append("commit")
-    monkeypatch.setattr(background_task_service, "submit_committed", submit)
+    monkeypatch.setattr("app.services.background_task_executor.submit_committed", submit)
     background_task_worker.run_task(1, payload, registry)
     assert order == ["handler", "flush-completed", "admit-child", "commit", "submit-child"]
     assert parent.result_summary_json == result
@@ -96,11 +97,12 @@ def test_child_submission_refusal_preserves_completed_parent(worker, monkeypatch
     registry = CompletionRegistry(lambda *_: None, lambda *_: background_task_service.PreparedBackgroundTask(
         child, 2, "child-receipt", {}, registry))
 
-    def refuse(_db, _prepared):
+    def refuse(_db, _prepared, *, runner):
         assert parent.status == "completed" and db.commit.called
+        assert runner is background_task_worker.run_task
         child.status = "failed"
         raise background_task_service.BackgroundTaskSubmissionError("child-receipt")
 
-    monkeypatch.setattr(background_task_service, "submit_committed", refuse)
+    monkeypatch.setattr("app.services.background_task_executor.submit_committed", refuse)
     background_task_worker.run_task(1, {}, registry)
     assert parent.status == "completed" and child.status == "failed"
