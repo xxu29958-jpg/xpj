@@ -3,7 +3,7 @@ package com.ticketbox.ui.navigation
 import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
@@ -83,7 +83,7 @@ class ExpenseFxContinuationRouteTest {
         harness.close()
     }
 
-    @Test fun retryThenCompletedObservationPreservesDraftUntilExplicitCleanReview() {
+    @Test fun retryThenCompletedObservationPreservesDraftUntilExplicitReviewConsent() {
         compose.setContent {
             CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
                 TicketboxTheme(skin = AppSkin.Default) {
@@ -103,12 +103,13 @@ class ExpenseFxContinuationRouteTest {
         val load = context.getString(R.string.expense_fx_load_review)
         compose.waitUntil(5_000) { compose.onAllNodes(hasText(load)).fetchSemanticsNodes().isNotEmpty() }
         compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("12.34")
-        compose.onNodeWithText(load).assertIsNotEnabled()
+        compose.onNodeWithText(load).assertIsEnabled().performScrollTo().performClick()
+        compose.onNodeWithText("保留填写").performClick()
+        compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("12.34")
         assertEquals(1, reads)
         assertEquals(0, confirmed)
-        compose.onAllNodes(hasSetTextAction())[0].performTextReplacement("10.00")
-        closeSoftKeyboard()
         compose.onNodeWithText(load).performScrollTo().performClick()
+        compose.onNodeWithText("替换并载入").performClick()
         compose.waitUntil(5_000) { reads == 2 }
         compose.waitForIdle()
         compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("10.00")
@@ -160,10 +161,13 @@ class ExpenseFxContinuationRouteTest {
 
         val load = context.getString(R.string.expense_fx_load_review)
         compose.onNodeWithText(load).assertExists()
-        compose.onNodeWithText(load).assertIsNotEnabled()
-        compose.onAllNodes(hasSetTextAction())[0].performTextReplacement("10.00")
-        closeSoftKeyboard()
+        compose.onNodeWithText(load).assertIsEnabled().performScrollTo().performClick()
+        compose.onNodeWithText("保留填写").performClick()
+        assertEquals(1, reads)
+        assertEquals(original, vm.uiState.value.expense)
+        compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("12.34")
         compose.onNodeWithText(load).performScrollTo().performClick()
+        compose.onNodeWithText("替换并载入").performClick()
         compose.waitUntil(5_000) { vm.uiState.value.expense?.rowVersion == 2L && !vm.uiState.value.fx.loading }
         assertEquals(2, reads)
         assertEquals("ready", vm.uiState.value.expense?.fxStatus)
