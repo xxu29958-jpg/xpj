@@ -89,6 +89,7 @@ internal fun BudgetRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
     onDataChanged: () -> Unit = {},
+    financialDataRevision: Int = 0,
 ) {
     val budgetViewModel: BudgetViewModel = viewModel(
         factory = budgetViewModelFactory(
@@ -97,6 +98,9 @@ internal fun BudgetRoute(
         ),
     )
     val state by budgetViewModel.uiState.collectAsStateWithLifecycle()
+    LaunchedEffect(financialDataRevision, state.saving) {
+        if (financialDataRevision > 0 && !state.saving) budgetViewModel.refresh()
+    }
     BudgetScreen(
         state = state,
         actions = BudgetScreenActions(
@@ -123,6 +127,7 @@ internal fun IncomePlanRoute(
     onBack: () -> Unit,
     onDataChanged: () -> Unit = {},
     originalSubmissionId: Long? = null,
+    financialDataRevision: Int = 0,
 ) {
     val incomePlanViewModel: IncomePlanViewModel = viewModel(
         key = IncomePlanViewModelKey,
@@ -142,6 +147,9 @@ internal fun IncomePlanRoute(
     )
     LaunchedEffect(incomePlanViewModel, originalSubmissionId) {
         originalSubmissionId?.let(incomePlanViewModel::openSubmission)
+    }
+    LaunchedEffect(financialDataRevision) {
+        if (financialDataRevision > 0) incomePlanViewModel.refresh()
     }
     IncomePlanScreen(
         viewModel = incomePlanViewModel,

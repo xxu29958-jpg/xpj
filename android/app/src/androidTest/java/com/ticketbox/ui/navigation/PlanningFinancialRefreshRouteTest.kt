@@ -182,7 +182,7 @@ class PlanningFinancialRefreshRouteTest {
         compose.runOnIdle { outer.openExpense(42L) }
         val confirm = context.getString(R.string.expense_edit_confirm_button)
         waitForText(confirm)
-        compose.onNodeWithText(confirm).performScrollTo().performClick()
+        compose.onNodeWithText(confirm).assertIsDisplayed().performClick()
         compose.waitUntil(5_000) { harness.fixture.network.current.status == "confirmed" &&
             outer.currentBackStackEntry?.destination?.route == MAIN_ROUTE }
         compose.waitForIdle()

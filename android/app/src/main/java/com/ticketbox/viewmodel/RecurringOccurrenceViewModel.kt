@@ -155,7 +155,7 @@ class RecurringOccurrenceViewModel(
         val binding = state.access?.binding ?: return
         val item = state.item ?: return
         val requestEpoch = ++epoch
-        mutableState.update { it.copy(loading = true, choice = null, message = null) }
+        mutableState.update { it.copy(loading = true, message = null) }
         viewModelScope.launch {
             val result = repository.fetch(binding, item.publicId, period)
             if (requestEpoch != epoch || mutableState.value.access?.binding != binding) return@launch

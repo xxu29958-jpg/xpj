@@ -8,6 +8,8 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
@@ -130,6 +132,10 @@ class OutboxRepository private constructor(
      */
     private val onClearAll = lifecycleHooks.onClearAll
     private val onRowsDeleted = lifecycleHooks.onRowsDeleted
+
+    private val mutableAcceptedReplayRevision = MutableStateFlow(0L)
+    val acceptedReplayRevision: StateFlow<Long> = mutableAcceptedReplayRevision.asStateFlow()
+    internal fun noteAcceptedReplay() = mutableAcceptedReplayRevision.update { it + 1L }
 
     // Composition boundary: the compatibility flow is a real status dependency,
     // alongside persistence, binding and scheduling. Keep these inputs explicit.

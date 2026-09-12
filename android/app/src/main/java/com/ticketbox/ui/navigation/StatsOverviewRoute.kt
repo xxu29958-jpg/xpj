@@ -44,8 +44,11 @@ internal fun StatsRoute(shellState: MainShellState, screenFactory: MainScreenFac
     val layoutState by layout.uiState.collectAsStateWithLifecycle()
     val recurringState by recurring.uiState.collectAsStateWithLifecycle()
 
-    LaunchedEffect(shellState.insightsDataRevision, monthlyState.ledgerReady) {
-        if (shellState.insightsDataRevision > 0 && monthlyState.ledgerReady) reloadAllStats(monthly, reports)
+    LaunchedEffect(shellState.financialDataRevision, monthlyState.ledgerReady) {
+        if (shellState.financialDataRevision > 0 && monthlyState.ledgerReady) {
+            reloadAllStats(monthly, reports)
+            recurring.refresh()
+        }
     }
     LaunchedEffect(monthlyState.ledgerReady, monthlyState.binding) {
         layout.refresh()
@@ -69,7 +72,7 @@ internal fun StatsRoute(shellState: MainShellState, screenFactory: MainScreenFac
         overview = OverviewModulesState(layoutState, recurringState),
         actions = statsScreenActions(
             monthly, reports, shellState,
-            OverviewInteractionActions(dashboardLayoutActions(layout), overviewModuleActions(shellState)),
+            OverviewInteractionActions(dashboardLayoutActions(layout), overviewModuleActions(shellState, monthlyState.month)),
             onRepairReport,
         ).copy(
             onRefresh = {
@@ -94,9 +97,9 @@ internal fun dashboardLayoutActions(layout: DashboardLayoutViewModel) = Dashboar
     onMove = layout::move, onSave = layout::save, onCancel = layout::cancelEdit, onReset = layout::reset,
 )
 
-internal fun overviewModuleActions(shell: MainShellState) = OverviewModuleActions(
+internal fun overviewModuleActions(shell: MainShellState, month: String) = OverviewModuleActions(
     onInbox = { shell.openPrimaryDomainRoot(PrimaryDomain.Inbox) },
-    onBudget = { shell.openSecondaryPage(ProductSecondaryPage.Budget) },
+    onBudget = { shell.openBudget(month) },
     onGoals = { shell.openSecondaryPage(ProductSecondaryPage.SpendingGoal) },
     onRecurring = { shell.openSecondaryPage(ProductSecondaryPage.Recurring) },
 )

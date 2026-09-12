@@ -224,45 +224,35 @@ class MainShellStateTest {
 
 class MainShellStateRevisionTest {
     @Test
-    fun planAndExpenseMutationsInvalidateTheRightProductSummaries() {
+    fun planAndExpenseMutationsShareFinancialInvalidationWithDistinctExpenseCompletion() {
         val state = MainShellState()
 
-        state.markPlanDataChanged()
-
-        assertEquals(1, state.planDataRevision)
-        assertEquals(1, state.insightsDataRevision)
+        state.markFinancialDataChanged()
+        assertEquals(1, state.financialDataRevision)
+        assertEquals(0, state.expenseEditCompletionRevision)
 
         state.markExpenseEditCompleted()
-
-        assertEquals(1, state.planDataRevision)
-        assertEquals(2, state.insightsDataRevision)
+        assertEquals(2, state.financialDataRevision)
         assertEquals(1, state.expenseEditCompletionRevision)
     }
 
     @Test
-    fun libraryMutationInvalidatesTransactionsVocabularyAndInsightsTogether() {
+    fun libraryMutationInvalidatesVocabularyAndFinancialReadsTogether() {
         val state = MainShellState()
-
         state.markTransactionVocabularyChanged()
 
         assertEquals(1, state.transactionVocabularyRevision)
-        assertEquals(1, state.insightsDataRevision)
-        assertEquals(0, state.planDataRevision)
+        assertEquals(1, state.financialDataRevision)
         assertEquals(0, state.expenseEditCompletionRevision)
     }
 
     @Test
-    fun recycleBinRestoreInvalidatesVocabularyAndPlanButInsightsOnlyOnce() {
+    fun recycleBinRestoreInvalidatesVocabularyAndFinancialReadsOnce() {
         val state = MainShellState()
-
         state.markRecycleBinRestoreCompleted()
 
-        // Restored rows can belong to the transactions vocabulary domain
-        // (category preferences) or the plan domain (budget / income plans /
-        // recurring / goals) — both channels must refresh.
         assertEquals(1, state.transactionVocabularyRevision)
-        assertEquals(1, state.planDataRevision)
-        assertEquals(1, state.insightsDataRevision)
+        assertEquals(1, state.financialDataRevision)
         assertEquals(0, state.expenseEditCompletionRevision)
     }
 }

@@ -162,7 +162,7 @@ class PendingLaunchActionEffectTest {
                         val store = remember(repositories) { ViewModelStore() }
                         val owner = remember(repositories) { ViewModelProvider(store, repositoryViewModelFactory(
                             RepositoryViewModelRepositories(repositories.expenseRepository, fixture.uploadIntents, repositories.budgetRepository,
-                                repositories.reportsRepository, repositories.debtRepository), currentShell::markInsightsDataChanged,
+                                repositories.reportsRepository, repositories.debtRepository), currentShell::markFinancialDataChanged,
                         ))[PendingViewModel::class.java] }
                         vm = owner
                         shell = currentShell
@@ -313,7 +313,7 @@ class PendingLaunchActionEffectTest {
         graph: RepositoryGraph, fixture: UploadIntentConnectedFixture, shell: MainShellState, store: ViewModelStore,
     ): PendingViewModel = ViewModelProvider(store, repositoryViewModelFactory(
         RepositoryViewModelRepositories(graph.expenseRepository, fixture.uploadIntents, graph.budgetRepository,
-            graph.reportsRepository, graph.debtRepository), shell::markInsightsDataChanged,
+            graph.reportsRepository, graph.debtRepository), shell::markFinancialDataChanged,
     ))[PendingViewModel::class.java]
 
     private fun assertOriginalAttempts(fixture: UploadIntentConnectedFixture) {

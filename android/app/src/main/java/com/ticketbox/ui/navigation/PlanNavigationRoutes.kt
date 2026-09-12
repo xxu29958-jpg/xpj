@@ -30,8 +30,8 @@ internal fun NavGraphBuilder.addPlanRoutes(
             SpendingGoalsRoute(
                 originalCreationId = entry.arguments?.getString("create")?.toLongOrNull(),
                 originalGoalPublicId = entry.arguments?.getString("goal"),
-                screenFactory = screenFactory,
-                onBack = onBack,
+                financialDataRevision = shellState.financialDataRevision,
+                screenFactory = screenFactory, onBack = onBack,
             )
         }
         composable(
@@ -39,19 +39,18 @@ internal fun NavGraphBuilder.addPlanRoutes(
             arguments = listOf(navArgument("month") { type = NavType.StringType; nullable = true; defaultValue = null }),
         ) {
             BudgetRoute(
-                screenFactory = screenFactory,
-                onBack = onBack,
+                screenFactory = screenFactory, onBack = onBack,
                 // The monthly-budget row is NOT an advisor input
                 // (_inputs_builder.py) — a budget save must not invalidate.
-                onDataChanged = shellState::markPlanDataChanged,
+                onDataChanged = shellState::markFinancialDataChanged,
+                financialDataRevision = shellState.financialDataRevision,
             )
         }
         composable("${ProductSecondaryPage.BudgetAdvice.route}?submission={submission}&report={report}",
             arguments = listOf(navArgument("submission") { type = NavType.StringType; nullable = true; defaultValue = null },
                 navArgument("report") { type = NavType.StringType; nullable = true; defaultValue = null })) { entry ->
             BudgetAdviceRoute(
-                screenFactory = screenFactory,
-                onBack = onBack,
+                screenFactory = screenFactory, onBack = onBack,
                 originalSubmissionId = entry.arguments?.getString("submission")?.toLongOrNull(),
                 reportContext = readReportRateContext(entry.arguments?.getString("report")),
             )
@@ -62,6 +61,7 @@ internal fun NavGraphBuilder.addPlanRoutes(
                 onBack = onBack,
                 onOpenExpense = runtime.navController::openExpense,
                 onDataChanged = onAdviceInputChanged,
+                financialDataRevision = shellState.financialDataRevision,
             )
         }
         composable(route = "${ProductSecondaryPage.IncomePlans.route}?submission={submission}",
@@ -72,12 +72,13 @@ internal fun NavGraphBuilder.addPlanRoutes(
                 screenFactory = screenFactory,
                 onBack = onBack,
                 onDataChanged = onAdviceInputChanged,
+                financialDataRevision = shellState.financialDataRevision,
             )
         }
     }
 }
 
-/** Plan-write refresh composition: every plan save bumps the plan revision;
+/** Plan-write refresh composition: every plan save invalidates financial reads;
  *  only saves that feed the budget-advisor inputs (income plans, recurring —
  *  NOT the monthly-budget row, see _inputs_builder.py) also drop the
  *  process-lifetime advice cache, so a reopened advice page recomputes
@@ -87,9 +88,8 @@ internal fun markPlanWriteCompleted(
     invalidatesAdvice: Boolean,
     invalidateBudgetAdvice: () -> Unit,
 ) {
-    shellState.markPlanDataChanged()
+    shellState.markFinancialDataChanged()
     if (invalidatesAdvice) {
         invalidateBudgetAdvice()
     }
 }
-

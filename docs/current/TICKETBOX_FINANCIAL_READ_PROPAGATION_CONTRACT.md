@@ -39,4 +39,23 @@ and export FX evidence; complete budget/debt offline reads and remaining RC task
 Those are current-product gaps, not next-version assets or Windows lifecycle work.
 Fresh G2 stays CLOSED and full Windows lifecycle stays HOLD.
 
-Status: source impact mapped; RED construction begins; implementation open.
+## Impact closure after implementation
+
+One shell financial revision replaces both old counters/marks across all source
+consumers. Outbox Success publishes after Done/receipt storage under the existing
+lease; the outer graph observes its retained value without restarting on revision.
+Plan, Budget, Stats/DataQuality, Goal list/detail, Income and Recurring queries
+consume it. Budget waits for saving to end; Goal detail waits for editing to end.
+Occurrence choices and explicitly cleared Income input keep their original basis.
+The six original-task routes in both Sync containers use their registered product
+graph; Budget entries carry their selected month through existing SavedStateHandle.
+Old symbols have no source/test references. No fact/protocol/storage writer changed.
+
+RED at aa8653c7: cloud CI34686622916 ran 2423 unit tests, with only the two new
+draft failures. Connected34686622880 ran 275 tests: background Plan refresh and
+three Budget navigation cases failed at their real postconditions; two foreground
+cases stopped at an invalid scroll action on the fixed confirmation bar, now fixed
+without changing assertions. Earlier6326b29a failed test compilation, not business
+behavior. New producer tests cover acceptance ordering, refusal and binding scope.
+Bounded source review and short Detekt passed. Final candidate cloud GREEN remains
+required; this is an implemented candidate, not a closed slice or RC.

@@ -42,6 +42,7 @@ internal fun SpendingGoalsRoute(
     onBack: () -> Unit,
     originalCreationId: Long? = null,
     originalGoalPublicId: String? = null,
+    financialDataRevision: Int = 0,
 ) {
     SpendingGoalRouteContent(
         models = SpendingGoalRouteModels(
@@ -61,6 +62,7 @@ internal fun SpendingGoalsRoute(
         onBack = onBack,
         originalCreationId = originalCreationId,
         originalGoalPublicId = originalGoalPublicId,
+        financialDataRevision = financialDataRevision,
     )
 }
 
@@ -70,6 +72,7 @@ private fun SpendingGoalRouteContent(
     onBack: () -> Unit,
     originalCreationId: Long?,
     originalGoalPublicId: String?,
+    financialDataRevision: Int,
 ) {
     var page by rememberSaveable(originalCreationId, originalGoalPublicId) { mutableStateOf(when {
         originalCreationId != null -> SpendingGoalPage.Create
@@ -81,8 +84,11 @@ private fun SpendingGoalRouteContent(
     var createMonth by rememberSaveable { mutableStateOf(models.list.state.value.month) }
     val detailState by models.detail.state.collectAsStateWithLifecycle()
 
-    LaunchedEffect(page, detailPublicId) {
-        if (page == SpendingGoalPage.Detail) {
+    LaunchedEffect(financialDataRevision) {
+        if (financialDataRevision > 0) models.list.refresh()
+    }
+    LaunchedEffect(page, detailPublicId, financialDataRevision, detailState.isEditing) {
+        if (page == SpendingGoalPage.Detail && !detailState.isEditing) {
             detailPublicId?.let(models.detail::load)
         }
     }

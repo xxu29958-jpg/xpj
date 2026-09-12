@@ -209,7 +209,9 @@ class IncomePlanViewModel(
                         missingCurrencyCodes = listing.missingCurrencyCodes,
                         addDraft = _state.value.addDraft.let { draft ->
                             draft.copy(intentMonth = draft.intentMonth.ifEmpty { listing.month },
-                                incomeMonthInput = draft.incomeMonthInput.ifEmpty { listing.month },
+                                incomeMonthInput = if (draft.intentMonth.isEmpty()) {
+                                    draft.incomeMonthInput.ifEmpty { listing.month }
+                                } else draft.incomeMonthInput,
                                 homeCurrency = draft.homeCurrency ?: CurrencyCode.fromStorageKeyOrNull(listing.homeCurrencyCode))
                         },
                         currentMonthSummary = IncomePlanMonthSummary(listing.effectivePlanCount, listing.expectedAmountCents),

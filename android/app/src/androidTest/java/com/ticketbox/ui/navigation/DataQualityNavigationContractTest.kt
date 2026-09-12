@@ -175,12 +175,12 @@ class DataQualityNavigationContractTest {
         }
 
         // Leave DQ in the Insights saved stack, then remediate elsewhere:
-        // production marks insightsDataRevision when Inbox/Transactions writes
-        // land (markInsightsDataChanged/markExpenseEditCompleted).
+        // Production invalidates financial reads when Inbox/Transactions writes
+        // land (markFinancialDataChanged/markExpenseEditCompleted).
         selectDomain(PrimaryDomain.Inbox)
         composeRule.runOnIdle {
             apiProbe.summary = apiProbe.summary.copy(missingMerchant = 0)
-            shellState.markInsightsDataChanged()
+            shellState.markFinancialDataChanged()
         }
 
         // Restoring the saved [Insights, DQ] stack must reload — the preserved

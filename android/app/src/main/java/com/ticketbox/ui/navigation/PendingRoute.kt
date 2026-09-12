@@ -49,7 +49,7 @@ internal fun PendingRoute(
     screenFactory: MainScreenFactory,
 ) {
     val pendingFactory = remember(screenFactory, shellState) {
-        screenFactory.repositoryViewModelFactory(shellState::markInsightsDataChanged)
+        screenFactory.repositoryViewModelFactory(shellState::markFinancialDataChanged)
     }
     val pendingViewModel: PendingViewModel = viewModel(factory = pendingFactory)
     // Narrow hook (218-B4 review): only actions that LAND in confirmed

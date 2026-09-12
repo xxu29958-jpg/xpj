@@ -3,9 +3,6 @@ package com.ticketbox.ui.navigation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.ui.screens.plan.PlanScreen
@@ -36,18 +33,13 @@ internal fun PlanRoute(
     val budgetState by budgetViewModel.uiState.collectAsStateWithLifecycle()
     val recurringState by recurringViewModel.uiState.collectAsStateWithLifecycle()
     val incomeState by incomePlanViewModel.state.collectAsStateWithLifecycle()
-    var appliedPlanDataRevision by rememberSaveable {
-        mutableIntStateOf(shellState.planDataRevision)
-    }
-
-    LaunchedEffect(shellState.planDataRevision) {
-        if (appliedPlanDataRevision != shellState.planDataRevision) {
+    LaunchedEffect(shellState.financialDataRevision) {
+        if (shellState.financialDataRevision > 0) {
             refreshPlanOverview(
                 budget = budgetViewModel,
                 recurring = recurringViewModel,
                 income = incomePlanViewModel,
             )
-            appliedPlanDataRevision = shellState.planDataRevision
         }
     }
 
@@ -59,7 +51,7 @@ internal fun PlanRoute(
         ),
         actions = PlanScreenActions(
             budgetNavigation = PlanBudgetNavigationActions(
-                onOpenBudget = { shellState.openSecondaryPage(ProductSecondaryPage.Budget) },
+                onOpenBudget = { shellState.openBudget(budgetState.month) },
                 onOpenAdvice = { shellState.openSecondaryPage(ProductSecondaryPage.BudgetAdvice) },
             ),
             onOpenSpendingGoal = { shellState.openSecondaryPage(ProductSecondaryPage.SpendingGoal) },
