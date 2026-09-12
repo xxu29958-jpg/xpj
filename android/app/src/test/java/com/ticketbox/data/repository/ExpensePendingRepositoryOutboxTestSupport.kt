@@ -120,18 +120,20 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
         outbox: OutboxRepository? = null,
         adapter: com.squareup.moshi.JsonAdapter<ExpenseUpdateRequest>? = null,
         stateTokenAdapter: com.squareup.moshi.JsonAdapter<ExpenseStateTokenRequest>? = null,
+        session: TestSessionFixture = seededTokenStore(),
     ): ExpenseRepository = ExpenseRepository(
         expenseDao = FakeExpenseDao(),
         binding = testServerSessionBinding(
             apiClient = TestApiServiceFactory(api),
             settingsStore = seededSettingsStore(),
-            tokenStore = seededTokenStore(),
+            tokenStore = session,
         ),
         deviceNameProvider = { "Android Test" },
         offlineMutations = ExpenseOfflineMutationWiring(
             outbox = outbox ?: testOutboxRepository(FakePendingMutationDao()),
-            patchExpenseAdapter = adapter.takeIf { outbox != null },
-            expenseStateTokenAdapter = stateTokenAdapter.takeIf { outbox != null },
+            patchExpenseAdapter = adapter ?: moshi().adapter(ExpenseUpdateRequest::class.java),
+            expenseStateTokenAdapter = stateTokenAdapter ?: moshi().adapter(ExpenseStateTokenRequest::class.java),
+            recognizeTextAdapter = moshi().adapter(ExpenseRecognizeTextRequestDto::class.java),
             correctionAdapter = com.ticketbox.OutboxAdapterGraph().correctionAdapter,
             billSplitReceiptAdapter = com.ticketbox.OutboxAdapterGraph().billSplitReceiptAdapter,
             billSplitCreateAdapter = com.ticketbox.OutboxAdapterGraph().billSplitCreateAdapter,
@@ -212,6 +214,9 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
         deviceNameProvider = { "Android Test" },
         offlineMutations = ExpenseOfflineMutationWiring(
             outbox = outbox,
+            patchExpenseAdapter = moshi().adapter(ExpenseUpdateRequest::class.java),
+            expenseStateTokenAdapter = moshi().adapter(ExpenseStateTokenRequest::class.java),
+            recognizeTextAdapter = moshi().adapter(ExpenseRecognizeTextRequestDto::class.java),
             replaceItemsAdapter = moshi().adapter(ExpenseItemReplaceRequestDto::class.java),
             correctionAdapter = com.ticketbox.OutboxAdapterGraph().correctionAdapter,
             billSplitReceiptAdapter = com.ticketbox.OutboxAdapterGraph().billSplitReceiptAdapter,

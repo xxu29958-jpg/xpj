@@ -76,6 +76,8 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
             deviceNameProvider = { "Android Test" },
             offlineMutations = ExpenseOfflineMutationWiring(
                 outbox = outbox,
+                expenseStateTokenAdapter = com.ticketbox.OutboxAdapterGraph().expenseStateTokenAdapter,
+                recognizeTextAdapter = com.ticketbox.OutboxAdapterGraph().recognizeTextAdapter,
                 patchExpenseAdapter = moshi().adapter(ExpenseUpdateRequest::class.java),
                 manualCreateAdapter = moshi().adapter(ExpenseManualCreateRequestDto::class.java),
             correctionAdapter = com.ticketbox.OutboxAdapterGraph().correctionAdapter,
@@ -207,10 +209,11 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
         val repo = createRepo(api, dao, outbox)
         val pending = repo.createManualExpense(draft).getOrThrow()
 
-        val outcome = repo.saveExpenseAllowingOffline(pending.id, draft, baseline = pending)
-            .getOrThrow() as SaveOutcome.Queued
+        val outcome = repo.saveExpenseAllowingOffline(requireNotNull(repo.captureDeferredLedgerBinding()), pending.id, draft, baseline = pending)
+            .getOrThrow()
 
-        assertEquals(0, api.updateExpenseCalls, "the FIFO guard must divert BEFORE any direct PATCH is attempted")
+        assertEquals(0, api.updateExpenseCalls, "Admission must not send the later PATCH inline")
+        assertEquals(listOf(pendingDao.rows.values.last().id), outcome.rowIds)
         assertEquals(0L, pending.rowVersion, "a local record has never observed a server OCC version")
         assertEquals("新商家", outcome.expense.merchant)
         val patchRow = pendingDao.rows.values.single { it.type == PendingMutationType.PatchExpense.wireValue }

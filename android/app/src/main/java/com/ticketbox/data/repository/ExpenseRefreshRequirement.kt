@@ -13,6 +13,7 @@ internal val EXPENSE_REFRESH_TYPES = setOf(
     PendingMutationType.PatchExpense,
     PendingMutationType.ConfirmExpense,
     PendingMutationType.RejectExpense,
+    PendingMutationType.UndoExpense,
     PendingMutationType.MarkNotDuplicate,
     PendingMutationType.RetryOcr,
     PendingMutationType.RecognizeText,

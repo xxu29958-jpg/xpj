@@ -413,6 +413,20 @@ class OutboxRepository private constructor(
         }
     }
 
+    /** Save+confirm and ready-bulk preserve every original before any worker may send. */
+    internal suspend fun enqueueExpenseBatch(
+        boundRequest: BoundLedgerRequest,
+        intents: List<PendingMutationIntent>,
+        validateTargetRows: (List<OutboxRow>) -> Unit,
+    ): List<Long> {
+        val ids = withActiveBinding(boundRequest) { binding ->
+            binding.requireReadyForEnqueue()
+            dao.insertExpenseCommands(binding, intents, nowIso(), validateTargetRows)
+        }
+        schedulePending()
+        return ids
+    }
+
     /** Files must already be durable, with the upload file lock held across this bound transaction. */
     internal suspend fun enqueueUploadBatch(
         boundRequest: BoundLedgerRequest,
@@ -675,7 +689,7 @@ class OutboxRepository private constructor(
                 ownerKey = binding.ownerStorageKey,
                 ledgerId = binding.ledgerId,
                 targetId = targetId,
-                preservedTokenTypes = listOf(PendingMutationType.VoidExpenseOffset.wireValue,
+                preservedTokenTypes = listOf(PendingMutationType.UndoExpense.wireValue, PendingMutationType.VoidExpenseOffset.wireValue,
                     PendingMutationType.CreateBillSplitInvitation.wireValue,
                     PendingMutationType.CorrectExpense.wireValue, PendingMutationType.CreateExpenseOffset.wireValue, PendingMutationType.UploadScreenshot.wireValue),
                 freshToken = newToken,
@@ -793,6 +807,7 @@ class OutboxRepository private constructor(
         val changed = bindingTransitionLease.withLock {
             val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
             boundRequest?.requireStillActiveFor(binding)
+            if (!drop && dao.refusesExpenseRecovery(binding, id, status, freshToken)) return@withLock false
             when {
                 drop -> dao.deleteIfStatus(id, binding.ownerStorageKey, binding.ledgerId, status.wireValue) > 0
                 expireOverAgeOnResolve(id, binding, status.wireValue) -> {
@@ -1198,4 +1213,32 @@ sealed interface ConflictResolution {
 sealed interface FailedResolution {
     data class Retry(val freshToken: Long? = null) : FailedResolution
     data object Drop : FailedResolution
+}
+
+/** Runs under the existing binding lease before the single Room batch transaction. */
+private suspend fun PendingMutationDao.insertExpenseCommands(
+    binding: OutboxBinding,
+    intents: List<PendingMutationIntent>,
+    createdAt: String,
+    validateTargetRows: (List<OutboxRow>) -> Unit,
+): List<Long> {
+    require(intents.isNotEmpty() && intents.all { it.type in PENDING_EXPENSE_COMMAND_TYPES })
+    for (targetId in intents.map { it.targetId }.distinct()) {
+        val targetRows = activeForTarget(binding.ownerStorageKey, binding.ledgerId, targetId,
+            listOf(PendingMutationStatus.Pending, PendingMutationStatus.InFlight, PendingMutationStatus.Conflict,
+                PendingMutationStatus.Failed, PendingMutationStatus.Done).map { it.wireValue }).map { it.toDomain() }
+        validateTargetRows(expenseAdmissionRows(binding, targetId, targetRows))
+    }
+    return insertBatch(intents.map { it.toEntity(binding, createdAt) })
+}
+
+private suspend fun PendingMutationDao.refusesExpenseRecovery(
+    binding: OutboxBinding, id: Long, status: PendingMutationStatus, freshToken: Long?,
+): Boolean {
+    val original = observeActiveByTypes(binding.ownerStorageKey, binding.ledgerId,
+        listOf(PendingMutationType.UndoExpense.wireValue, PendingMutationType.RejectExpense.wireValue),
+        listOf(status.wireValue)).first().firstOrNull { it.id == id } ?: return false
+    return original.lastError == EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW ||
+        (original.type == PendingMutationType.UndoExpense.wireValue &&
+            (freshToken != null || original.lastError == "expense_not_found"))
 }

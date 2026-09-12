@@ -142,7 +142,7 @@ class ExpenseRepositoryExpenseDetailTest {
     }
 
     @Test
-    fun confirmExpenseUsesFrozenTokenAndRejectsLateLedgerSwitch() = runTest {
+    fun confirmAdmissionRejectsTheOriginalBindingAfterALedgerSwitch() = runTest {
         val dao = FakeExpenseDao()
         val settingsStore = FakeTicketboxSettingsStore().apply {
             saveServerUrl("https://api.zen70.cn")
@@ -158,11 +158,7 @@ class ExpenseRepositoryExpenseDetailTest {
             )
         }
         val tokenStore = TestSessionFixture().apply { saveToken("session-owner") }
-        val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0).apply {
-            onConfirmExpense = {
-                tokenStore.switchLedgerForFixture("family", "Family Ledger", role = "member")
-            }
-        }
+        val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
         val apiClient = FakeApiServiceFactory(apiService)
         val repository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = dao,
@@ -174,17 +170,19 @@ class ExpenseRepositoryExpenseDetailTest {
             deviceNameProvider = { "Android Test Device" },
         )
 
-        val failure = repository.confirmExpense(9, 2L).exceptionOrNull()
+        val reviewed = apiService.expense(9).toDomain().copy(status = "pending", confirmedAt = null, rowVersion = 2L)
+        val originalBinding = requireNotNull(repository.captureDeferredLedgerBinding())
+        tokenStore.switchLedgerForFixture("family", "Family Ledger", role = "member")
+        val failure = repository.confirmExpenseAllowingOffline(originalBinding, reviewed).exceptionOrNull()
 
         assertEquals("账本已切换，请重新操作。", failure?.message)
-        assertEquals(listOf("9"), apiService.confirmExpenseIds)
-        assertEquals(listOf<String?>("session-owner"), apiClient.tokenValues)
+        assertTrue(apiService.confirmExpenseIds.isEmpty())
         assertTrue(dao.getConfirmed("owner").isEmpty())
         assertTrue(dao.getConfirmed("family").isEmpty())
     }
 
     @Test
-    fun markNotDuplicateRefreshesConfirmedCacheForActiveLedger() = runTest {
+    fun markNotDuplicateAdmissionDoesNotPublishAReplacementCacheSnapshot() = runTest {
         val dao = FakeExpenseDao()
         val repository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = dao,
@@ -196,10 +194,14 @@ class ExpenseRepositoryExpenseDetailTest {
             deviceNameProvider = { "Android Test Device" },
         )
 
-        val result = repository.markNotDuplicate(9, 2L).getOrThrow()
+        val baseline = repository.fetchExpense(9).getOrThrow()
+        val cached = dao.getConfirmed("owner")
+        val accepted = repository.markNotDuplicateAllowingOffline(
+            requireNotNull(repository.captureDeferredLedgerBinding()), baseline).getOrThrow()
 
-        assertEquals(9L, result.id)
-        assertEquals(listOf(9L), dao.getConfirmed("owner").map { it.serverId })
+        assertEquals(baseline, accepted.expense)
+        assertEquals(1, accepted.rowIds.size)
+        assertEquals(cached, dao.getConfirmed("owner"))
     }
 
 

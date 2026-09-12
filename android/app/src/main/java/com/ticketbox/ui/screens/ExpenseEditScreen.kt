@@ -549,8 +549,8 @@ fun ExpenseEditScreen(
             ),
             actions = ExpenseEditDetailsActions(
                 onAcknowledgeItemsMismatch = itemizationActions.onAcknowledgeItemsMismatch,
-                onEditItems = if (state.readOnly) null else itemizationActions.onEditItems,
-                onEditSplits = if (state.readOnly) null else splitEditingActions.onEditSplits,
+                onEditItems = if (state.readOnly || state.commandRowIds.isNotEmpty()) null else itemizationActions.onEditItems,
+                onEditSplits = if (state.readOnly || state.commandRowIds.isNotEmpty()) null else splitEditingActions.onEditSplits,
             ),
         )
         ExpenseEditMoreSection(
@@ -609,9 +609,9 @@ fun ExpenseEditScreen(
                 ExpenseEditActionBar(
                     state = ExpenseEditActionBarState(
                         saving = state.saving || state.loadingFxReview,
-                        allowSave = !readOnly,
-                        allowConfirm = actionAvailability.allowConfirm && !readOnly && !manualExchangeRateNeedsReview,
-                        allowReject = actionAvailability.allowReject && !readOnly,
+                        allowSave = !readOnly && state.commandRowIds.isEmpty(),
+                        allowConfirm = actionAvailability.allowConfirm && !readOnly && !manualExchangeRateNeedsReview && state.commandRowIds.isEmpty(),
+                        allowReject = actionAvailability.allowReject && !readOnly && state.commandRowIds.isEmpty(),
                         validationMessage = message,
                         statusMessage = state.message?.asString(),
                         statusTone = state.messageTone,

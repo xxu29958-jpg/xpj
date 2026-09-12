@@ -22,6 +22,7 @@ import com.ticketbox.data.repository.bindingOrNull
 import com.ticketbox.data.repository.canonicalServerOriginOrNull
 import com.ticketbox.data.repository.requiresManualCreateReview
 import com.ticketbox.data.repository.MANUAL_CREATE_RECEIPT_REVIEW
+import com.ticketbox.data.repository.EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -139,7 +140,8 @@ class OutboxStatusViewModel(
 
     /** "用我的覆盖" — re-apply my change on top of the server's latest. */
     fun keepMine(row: OutboxRow) {
-        if (row.type == PendingMutationType.CreateExpense) return
+        if (row.type == PendingMutationType.CreateExpense || row.type == PendingMutationType.UndoExpense ||
+            row.lastError == EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW) return
         if (row.type in originalSubmissionTypes || row.type in DEBT_WRITE_TYPES ||
             row.type == PendingMutationType.CreateBillSplitInvitation) return
         val binding = expenseRepository.captureDeferredLedgerBinding()
@@ -373,6 +375,8 @@ data class OutboxStatusUiState(
     val messageTone: MessageTone = MessageTone.Neutral,
 ) {
     fun offersRetry(row: OutboxRow): Boolean {
+        if (row.lastError == EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW ||
+            row.type == PendingMutationType.UndoExpense && row.lastError == "expense_not_found") return false
         if (row.type in writerSubmissionTypes && correctionObservation.access?.canModify != true) return false
         return when (row.type) {
             in categoryRuleSubmissionTypes -> categoryRules[row.id]?.canRetry == true

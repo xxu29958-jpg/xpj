@@ -39,10 +39,12 @@ internal fun ExpenseFxStatusCard(
     actions: ExpenseEditPrimaryActions,
 ) {
     val state = editState.fx
-    if (expense.status != "pending" || (!pendingNeedsFx(expense) && state.task == null)) return
+    val showFx = expense.status == "pending" && (pendingNeedsFx(expense) || state.task != null)
+    if (!showFx && editState.commandRowIds.isEmpty()) return
     val busy = editState.saving || editState.expenseLoading
     val actionsEnabled = !busy && !state.loading
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
+        if (showFx) {
         Text(stringResource(expenseFxTaskStatusRes(state.task)), style = MaterialTheme.typography.titleSmall)
         Text(stringResource(R.string.expense_fx_manual_recovery), style = MaterialTheme.typography.bodySmall)
         state.message?.let { Text(it.asString(), color = MaterialTheme.colorScheme.error) }
@@ -52,13 +54,15 @@ internal fun ExpenseFxStatusCard(
         if (pendingNeedsFx(expense) && !editState.readOnly && (state.task == null || state.task.status in setOf("failed", "cancelled"))) {
             TextButton(onClick = actions.onRetryFx, enabled = actionsEnabled) { Text(stringResource(R.string.expense_fx_retry)) }
         }
-        ExpenseFxReviewAction(actionsEnabled, hasDraftChanges) { actions.onLoadFxReview(false) }
+        }
+        ExpenseReviewAction(actionsEnabled && (editState.commandRowIds.isEmpty() || editState.commandsCompleted),
+            hasDraftChanges) { actions.onLoadFxReview(false) }
     }
 }
 
 /** Raw form replacement is a user's explicit choice; stale OCC must not force a save first. */
 @Composable
-private fun ExpenseFxReviewAction(enabled: Boolean, hasDraftChanges: Boolean, loadReview: () -> Unit) {
+internal fun ExpenseReviewAction(enabled: Boolean, hasDraftChanges: Boolean, loadReview: () -> Unit) {
     var confirmReplacement by remember { mutableStateOf(false) }
     TextButton(onClick = { if (hasDraftChanges) confirmReplacement = true else loadReview() }, enabled = enabled) {
         Text(stringResource(R.string.expense_fx_load_review))

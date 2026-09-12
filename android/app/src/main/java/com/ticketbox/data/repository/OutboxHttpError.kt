@@ -6,6 +6,7 @@ private val outboxHttpErrors = NetworkErrorHandler(serverUrlProvider = { null },
 private val outboxRecoveryErrorCodes = setOf(
     "runtime_version_mismatch", "client_upgrade_required", "rule_category_deleted", DEBT_ADJUSTMENT_NEGATIVE_REMAINING,
     BUDGET_CURRENCY_CONFLICT,
+    EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW,
 )
 
 /** Persist known recovery reasons so the sync UI can explain the required next step. */

@@ -34,6 +34,7 @@ import com.ticketbox.data.repository.UploadScreenshotDispatcher
 import com.ticketbox.data.repository.PatchExpenseDispatcher
 import com.ticketbox.data.repository.RecognizeTextDispatcher
 import com.ticketbox.data.repository.RejectExpenseDispatcher
+import com.ticketbox.data.repository.UndoExpenseDispatcher
 import com.ticketbox.data.repository.ReplaceItemsDispatcher
 import com.ticketbox.data.repository.ReplaceSplitsDispatcher
 import com.ticketbox.data.repository.RetryOcrDispatcher
@@ -258,6 +259,11 @@ class AppContainer(context: Context) {
             ),
             // PR-2g.7: POST /api/expenses/{id}/reject via outbox.
             RejectExpenseDispatcher(
+                apiProvider = ::outboxApi,
+                payloadAdapter = outboxAdapters.expenseStateTokenAdapter,
+                publishExpense = ::publishExpenseSnapshot,
+            ),
+            UndoExpenseDispatcher(
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.expenseStateTokenAdapter,
                 publishExpense = ::publishExpenseSnapshot,

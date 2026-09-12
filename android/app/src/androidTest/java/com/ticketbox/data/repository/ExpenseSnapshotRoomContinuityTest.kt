@@ -91,8 +91,8 @@ class ExpenseSnapshotRoomContinuityTest {
         originalSnapshot = current
         val local = repository.createManualExpense(foreignDraft("Original manual merchant")).getOrThrow()
         assertTrue(local.pendingSync)
-        assertTrue(repository.saveExpenseAllowingOffline(local.id, foreignDraft("Reviewed local merchant"), local)
-            .getOrThrow() is SaveOutcome.Queued)
+        assertTrue(repository.saveExpenseAllowingOffline(requireNotNull(repository.captureDeferredLedgerBinding()), local.id, foreignDraft("Reviewed local merchant"), local)
+            .getOrThrow().rowIds.single() > 0L)
         val originals = fixture.stored()
         assertEquals(listOf(PendingMutationType.CreateExpense.wireValue, PendingMutationType.PatchExpense.wireValue),
             originals.map { it["type"] })
@@ -151,8 +151,8 @@ class ExpenseSnapshotRoomContinuityTest {
         originalSnapshot = current
         val baseline = repository.fetchExpense(42).getOrThrow()
         offline = true
-        assertTrue(repository.saveExpenseAllowingOffline(42, draft("First saved merchant"), baseline).getOrThrow() is SaveOutcome.Queued)
-        assertTrue(repository.saveExpenseAllowingOffline(42, draft("Second saved merchant"), baseline).getOrThrow() is SaveOutcome.Queued)
+        assertTrue(repository.saveExpenseAllowingOffline(requireNotNull(repository.captureDeferredLedgerBinding()), 42, draft("First saved merchant"), baseline).getOrThrow().rowIds.single() > 0L)
+        assertTrue(repository.saveExpenseAllowingOffline(requireNotNull(repository.captureDeferredLedgerBinding()), 42, draft("Second saved merchant"), baseline).getOrThrow().rowIds.single() > 0L)
         val originals = fixture.stored()
         assertEquals(2, originals.size)
         assertTrue(commits.isEmpty())

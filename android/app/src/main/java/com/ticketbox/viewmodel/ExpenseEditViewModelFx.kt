@@ -30,7 +30,7 @@ private fun ExpenseEditViewModel.requestExpenseFx(retry: Boolean) {
         _uiState.update { it.copy(fx = it.fx.copy(message = UiText.res(R.string.expense_fx_binding_changed))) }
         return
     }
-    if (retry && (!pendingNeedsFx(expense) || !repository.canModifyLedger())) return
+    if (retry && (!pendingNeedsFx(expense) || !repository.canModifyLedger() || state.commandRowIds.isNotEmpty())) return
     _uiState.update { it.copy(fx = it.fx.copy(loading = true, message = null)) }
     viewModelScope.launch {
         val result = if (retry) repository.retryExpenseFx(binding, expense) else repository.fetchExpenseFx(binding, expense.id)
@@ -52,6 +52,10 @@ fun ExpenseEditViewModel.loadFxReview(preserveDraft: Boolean) {
     }
     if (state.fx.loading || state.expenseLoading || state.itemsLoading || state.splitsLoading) return
     if (state.saving || state.itemsSaving || state.splitsSaving) return
+    if (state.commandRowIds.isNotEmpty() && !state.commandsCompleted) {
+        _uiState.update { it.copy(message = UiText.res(R.string.expense_command_needs_attention)) }
+        return
+    }
     if (preserveDraft || state.itemEditorOpen || state.splitEditorOpen) {
         _uiState.update { it.copy(fx = it.fx.copy(message = UiText.res(R.string.expense_fx_save_draft_first))) }
         return
@@ -91,6 +95,8 @@ private suspend fun ExpenseEditViewModel.applyFxReview(binding: LogicalSessionBi
             it.copy(
                 expense = fresh,
                 formRevision = it.formRevision + 1,
+                commandRowIds = emptyList(),
+                commandsCompleted = false,
                 expenseLoading = false,
                 expenseItems = items,
                 expenseSplits = splits,

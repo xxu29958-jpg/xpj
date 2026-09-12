@@ -73,7 +73,9 @@ internal class RejectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestB
         assertEquals(row.idempotencyKey, stub.lastRejectIdempotencyKey)
         assertEquals(1, publicationAttempts)
         assertEquals(DispatchResult.Success(newRowVersion = 2L, cacheRefreshVersion = 2L,
-            receiptJson = """{"expenseId":42}"""), result)
+            receiptJson = expenseAcceptanceReceiptJson(response)), result)
+        assertEquals(response, expenseAcceptanceReceiptSnapshot(row.copy(status = PendingMutationStatus.Done,
+            receiptJson = (result as DispatchResult.Success).receiptJson)))
     }
 
     @Test
@@ -86,7 +88,8 @@ internal class RejectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestB
         }.dispatch(rejectRow(idempotencyKey = "key-abc"))
 
         assertEquals("key-abc", stub.lastRejectIdempotencyKey, "dispatcher must send the row's key")
-        assertEquals(DispatchResult.Success(newRowVersion = 2L), result)
+        assertEquals(DispatchResult.Success(newRowVersion = 2L,
+            receiptJson = expenseAcceptanceReceiptJson(successExpenseDto().copy(status = "rejected"))), result)
         assertEquals(listOf("owner" to successExpenseDto().copy(status = "rejected")), published)
     }
 
@@ -120,5 +123,13 @@ internal class RejectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestB
         val result = dispatcherFor(stub).dispatch(rejectRow(idempotencyKey = "key-abc"))
 
         assertTrue(result is DispatchResult.Conflict, "state_conflict must stay Conflict: $result")
+    }
+
+    @Test
+    fun `unverified original acceptance keeps its recovery code`() = runTest {
+        val body = """{"error":"expense_rejection_original_requires_review","message":"原回执无法核对"}"""
+        val stub = ApiServiceStub(rejectExpenseResult = ApiResult.Throw(httpException(409, body)))
+        assertEquals(DispatchResult.Failure(EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW),
+            dispatcherFor(stub).dispatch(rejectRow("original-reject")))
     }
 }

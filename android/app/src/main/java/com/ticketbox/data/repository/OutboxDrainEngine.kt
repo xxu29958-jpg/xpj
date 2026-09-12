@@ -135,6 +135,7 @@ class OutboxDrainEngine(
          *  leaves every advisor aggregate byte-identical. */
         val ADVICE_INPUT_MUTATION_TYPES: Set<PendingMutationType> = setOf(
             PendingMutationType.ConfirmExpense,
+            PendingMutationType.UndoExpense,
             PendingMutationType.CreateExpense,
             PendingMutationType.CreateExpenseOffset,
             PendingMutationType.PatchExpense,

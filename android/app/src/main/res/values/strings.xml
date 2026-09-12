@@ -185,4 +185,7 @@
     <string name="expense_fx_cached_read">正在显示已保存的账单。换算进度尚未读取，请联网后刷新。</string>
     <string name="expense_fx_binding_changed">登录或账本已变化，请重新打开账单。</string>
     <string name="projection_reference_date">%1$s → %2$s · 参考汇率发布于 %3$s</string>
+    <string name="expense_command_accepted">操作已保存，等待同步。可返回并在同步中查看结果。</string>
+    <string name="expense_command_completed">原操作已完成。加载最新账单后可继续编辑。</string>
+    <string name="expense_command_needs_attention">原操作尚未完成，请到同步查看并处理。</string>
 </resources>

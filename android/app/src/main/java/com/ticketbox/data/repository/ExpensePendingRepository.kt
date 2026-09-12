@@ -1,211 +1,141 @@
 package com.ticketbox.data.repository
 
-import com.squareup.moshi.JsonAdapter
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
-import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
+import com.ticketbox.data.remote.dto.ExpenseRecognizeTextRequestDto
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.mergeExpenseCategories
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
-import java.io.IOException
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import java.util.UUID
 
-internal class ExpensePendingRepository(
-    private val core: ExpenseRepositoryCore,
-) : PendingReviewActions {
+internal class ExpensePendingRepository(private val core: ExpenseRepositoryCore) : PendingReviewActions {
     private val pendingSyncCoordinator = PendingSyncCoordinator()
+    private val outbox get() = core.offlineMutations.outbox
 
     override fun canModifyLedger(): Boolean = core.canModifyLedger()
-
     override fun observeActiveLedgerId(): Flow<String?> = core.observeActiveLedgerId()
-
     override fun currentActiveLedgerId(): String? = core.currentActiveLedgerId()
-
     override suspend fun fetchPending(): Result<List<Expense>> = syncPending()
-
-    override suspend fun getCachedPending(): Result<List<Expense>> = core.errorHandler.safeCall {
-        core.getCachedPending()
-    }
-
+    override suspend fun getCachedPending(): Result<List<Expense>> = core.errorHandler.safeCall { core.getCachedPending() }
     override fun observeConfirmed(): Flow<List<Expense>> = core.observeConfirmed()
-
     override suspend fun syncPending(): Result<List<Expense>> = core.errorHandler.safeCall {
         val ledgerId = core.ledgerRequestGuard.bind().ledgerId
         pendingSyncCoordinator.sync(ledgerId) {
-            val bound = core.ledgerRequestGuard.bind(expectedLedgerId = ledgerId)
-            core.syncPendingFromService(bound)
+            core.syncPendingFromService(core.ledgerRequestGuard.bind(expectedLedgerId = ledgerId))
         }
     }
 
-    override suspend fun updateExpense(
-        id: Long,
-        draft: ExpenseDraft,
-        baseline: Expense?,
-    ): Result<Expense> = core.errorHandler.safeCall {
-        // ADR-0038 PR-2g.3 round-8: this method is the DIRECT path
-        // only. Any error — IOException, HttpException, anything —
-        // surfaces as Result.failure. Chained callers (confirm /
-        // saveAndConfirm) rely on this: a silent offline-queue
-        // would let them dispatch a follow-up with a stale token.
-        //
-        // For offline-aware save use [saveExpenseAllowingOffline]
-        // which returns a sealed [SaveOutcome] the caller must
-        // branch on.
-        val bound = core.ledgerRequestGuard.bind()
-        // ADR-0042: this DIRECT path never enqueues, so the key is single-use —
-        // it only satisfies the server's now-mandatory Idempotency-Key. (A
-        // committed-but-unseen edit on this path still surfaces as a failure for
-        // the chained caller to handle; the offline-aware variant below is the
-        // one whose replay actually reuses the key.)
-        val updated = core.cacheServerExpense(
-            bound.call {
-                it.updateExpense(id.toString(), draft.toRequest(baseline = baseline), UUID.randomUUID().toString())
-            },
-            bound,
-        )
-        updated.toDomain()
-    }
+    @OptIn(ExperimentalCoroutinesApi::class)
+    override fun observeExpenseCommands(): Flow<ExpenseCommandObservation> = core.apiProvider.observeActiveLedgerAccess()
+        .flatMapLatest { access ->
+            if (access == null) flowOf(ExpenseCommandObservation(null, emptyList()))
+            else outbox.observeActiveByTypes(PENDING_EXPENSE_COMMAND_TYPES, includeCompleted = true).map { rows ->
+                val current = access.takeIf { core.ledgerRequestGuard.captureLogicalBinding() == it.binding }
+                ExpenseCommandObservation(current, if (current == null) emptyList() else rows.filter {
+                    it.ownerKey == current.binding.ownerKey && it.ledgerId == current.binding.ledgerId
+                }.map { row -> PendingExpenseCommand(row, expenseAcceptanceReceiptSnapshot(row)?.toDomain()) })
+            }.distinctUntilChanged()
+        }.distinctUntilChanged()
 
     override suspend fun saveExpenseAllowingOffline(
-        id: Long,
-        draft: ExpenseDraft,
-        baseline: Expense,
-    ): Result<SaveOutcome> = core.errorHandler.safeCall {
-        patchExpenseOffline(
-            id = id,
-            request = draft.toRequest(baseline = baseline),
-            optimistic = projectOptimisticExpense(baseline, draft),
-        )
+        expectedBinding: LogicalSessionBinding, id: Long, draft: ExpenseDraft, baseline: Expense,
+    ): Result<ExpenseCommandAcceptance> = core.errorHandler.safeCall {
+        require(id == baseline.id) { "账单已变化，请重新打开。" }
+        ExpenseCommandAcceptance(projectOptimisticExpense(baseline, draft),
+            admit(expectedBinding, listOf(patchIntent(baseline, draft))))
     }
 
-    /**
-     * Pending-editor offline-aware PATCH core. Mints ONE intent-time
-     * Idempotency-Key, tries the direct PATCH, and on IOException (only) enqueues
-     * a PatchExpense outbox row replaying that SAME key; [optimistic] is the
-     * Expense surfaced in [SaveOutcome.Queued]. HttpException (409 / 4xx / 5xx)
-     * propagates to safeCall as ``Result.failure``. Confirmed batch correction is
-     * owned by the atomic correction endpoint and cannot enter this path.
-     */
-    private suspend fun patchExpenseOffline(
-        id: Long,
-        request: ExpenseUpdateRequest,
-        optimistic: Expense,
-    ): SaveOutcome {
-        val bound = core.ledgerRequestGuard.bind()
-        // ADR-0042: ONE intent-time key shared by the direct attempt and the
-        // outbox replay. If the direct PATCH commits server-side but its
-        // response is lost (IOException below), the enqueued row replays with
-        // this SAME key — the server HITs the recorded success and returns the
-        // canonical row instead of false-409ing on the now-stale row_version.
-        val idempotencyKey = UUID.randomUUID().toString()
-        val outbox = core.outbox
-        val adapter = core.patchExpenseAdapter
-        val token = request.expectedRowVersion
-        // issue #65 slice 4: address a not-yet-synced offline create by its
-        // device-local ref (``local:{clientRef}``) — its id is a negative local
-        // stand-in the server can't resolve. ``targetId`` keys the outbox + the
-        // FIFO guard; ``pathRef`` is the matching mutation-route path param.
-        val targetId = expenseOutboxTargetId(optimistic)
-        val pathRef = parseExpenseTargetRef(targetId) ?: id.toString()
-        if (outbox == null || adapter == null || token == null || !optimistic.hasExpenseMutationBaseline()) {
-            // Outbox wiring missing OR baseline lacked a token — direct-only;
-            // any failure (incl. IOException) surfaces as Result.failure so we
-            // don't pretend we saved.
-            val updated = core.cacheServerExpense(
-                bound.call { it.updateExpense(pathRef, request, idempotencyKey) },
-                bound,
-            )
-            return SaveOutcome.Synced(updated.toDomain())
-        }
-        val enqueueContext = PatchExpenseOutboxContext(
-            bound = bound,
-            outbox = outbox,
-            targetId = targetId,
-            token = token,
-            idempotencyKey = idempotencyKey,
-        )
-        if (core.hasUnresolvedQueuedMutationsFor(bound, enqueueContext.targetId)) {
-            // Per-target FIFO guard: an unresolved queued mutation for this
-            // row exists, so a direct PATCH now would land out of intent
-            // order (e.g. ahead of a queued confirm whose token cascade
-            // expects to run first, or a queued CreateExpense that must land
-            // before this edit). Queue behind it; the dispatcher's fresh-token
-            // cascade corrects this row's token on replay.
-            enqueuePatchExpense(enqueueContext, adapter, request)
-            return SaveOutcome.Queued(optimistic)
-        }
-        return try {
-            // Direct PATCH first — fast path when online. Returns
-            // Synced with the server's canonical Expense.
-            val updated = core.cacheServerExpense(
-                bound.call { it.updateExpense(pathRef, request, idempotencyKey) },
-                bound,
-            )
-            SaveOutcome.Synced(updated.toDomain())
-        } catch (networkError: IOException) {
-            // Network failed. Enqueue for the worker to replay AND
-            // return an optimistic Expense so the UI reflects the
-            // user's edit (not the pre-edit baseline). Only
-            // IOException is the offline-fallback trigger —
-            // HttpException (409 / 4xx / 5xx) propagates out to
-            // safeCall and surfaces as Result.failure.
-            enqueuePatchExpense(enqueueContext, adapter, request)
-            SaveOutcome.Queued(optimistic)
-        }
+    override suspend fun saveAndConfirmExpense(
+        expectedBinding: LogicalSessionBinding, expense: Expense, draft: ExpenseDraft,
+    ): Result<ExpenseCommandAcceptance> = core.errorHandler.safeCall {
+        ExpenseCommandAcceptance(projectOptimisticExpense(expense, draft), admit(expectedBinding,
+            listOf(patchIntent(expense, draft), stateIntent(PendingMutationType.ConfirmExpense, expense))))
     }
 
-    /**
-     * Shared PatchExpense enqueue for [patchExpenseOffline]'s two queue
-     * branches (queue-jump guard / IOException fallback).
-     *
-     * [codex round-13 P1] Session race guard: ``bound.call`` only re-checks
-     * ``isStillActive`` when the API block returns normally; the fallback
-     * branch jumps straight here on IOException and would otherwise let a row
-     * queued under ledger A land in ledger B's outbox after a mid-flight
-     * switch (the OutboxRepository.clearAll that fires on switch already
-     * wiped the OLD queue; what this guard prevents is a NEW row being added
-     * AFTER the wipe with stale session context). Throws RepositoryException
-     * with "账本已切换…" if so; safeCall maps it to Result.failure.
-     *
-     * codex round-8 P3#5: the token is stripped from the payload — the outbox
-     * row's expectedRowVersion is the single source of truth; replay
-     * (PatchExpenseDispatcher) already overwrites the request token from the
-     * row before dispatching. Saving it in the payload too duplicates state
-     * and risks drift if KeepMine refreshes the row token without rewriting
-     * the serialised payload.
-     */
-    private suspend fun enqueuePatchExpense(
-        context: PatchExpenseOutboxContext,
-        adapter: JsonAdapter<ExpenseUpdateRequest>,
-        request: ExpenseUpdateRequest,
-    ) {
-        context.outbox.enqueue(
-            boundRequest = context.bound,
-            intent = PendingMutationIntent(
-                type = PendingMutationType.PatchExpense,
-                // issue #65 slice 4: caller resolves the server-id vs local-ref
-                // target so a pending-create edit replays against the local ref.
-                targetId = context.targetId,
-                payloadJson = adapter.toJson(request.copy(expectedRowVersion = null)),
-                expectedRowVersion = context.token,
-                idempotencyKey = context.idempotencyKey,
-            ),
-        )
+    override suspend fun confirmExpenses(
+        expectedBinding: LogicalSessionBinding, expenses: List<Expense>,
+    ): Result<List<ExpenseCommandAcceptance>> = core.errorHandler.safeCall {
+        require(expenses.isNotEmpty() && expenses.map(::expenseOutboxTargetId).distinct().size == expenses.size) {
+            "请重新选择待确认账单。"
+        }
+        val ids = admit(expectedBinding, expenses.map { stateIntent(PendingMutationType.ConfirmExpense, it) })
+        expenses.zip(ids) { expense, id -> ExpenseCommandAcceptance(expense, listOf(id)) }
     }
 
-    /**
-     * Build the optimistic projection of what the server WOULD
-     * return once the queued PATCH replays. Used as the [Expense]
-     * carried in [SaveOutcome.Queued] so the UI shows the user's
-     * edit (their new merchant / amount / note) rather than the
-     * pre-edit baseline. The ``updatedAt`` is intentionally
-     * unchanged — it's the pre-mutation token, NOT a server-
-     * confirmed one; chained callers shouldn't reach this branch
-     * (they use [updateExpense] which fails on IOException).
-     */
+    override suspend fun confirmExpenseAllowingOffline(
+        expectedBinding: LogicalSessionBinding, expense: Expense,
+    ): Result<ExpenseCommandAcceptance> = acceptState(expectedBinding, expense, PendingMutationType.ConfirmExpense)
+
+    override suspend fun rejectExpenseAllowingOffline(
+        expectedBinding: LogicalSessionBinding, expense: Expense,
+    ): Result<ExpenseCommandAcceptance> = acceptState(expectedBinding, expense, PendingMutationType.RejectExpense)
+
+    override suspend fun markNotDuplicateAllowingOffline(
+        expectedBinding: LogicalSessionBinding, expense: Expense,
+    ): Result<ExpenseCommandAcceptance> = acceptState(expectedBinding, expense, PendingMutationType.MarkNotDuplicate)
+
+    override suspend fun undoRejectExpense(
+        expectedBinding: LogicalSessionBinding, expense: Expense,
+    ): Result<ExpenseCommandAcceptance> = core.errorHandler.safeCall {
+        require(expense.status == "rejected" && expense.id > 0L && expense.rejectedAt != null) {
+            "无法读取原拒绝结果，请先核对账单。"
+        }
+        ExpenseCommandAcceptance(expense, admit(expectedBinding, listOf(stateIntent(PendingMutationType.UndoExpense, expense))))
+    }
+
+    suspend fun retryOcrAllowingOffline(
+        expectedBinding: LogicalSessionBinding, expense: Expense,
+    ): Result<ExpenseCommandAcceptance> = acceptState(expectedBinding, expense, PendingMutationType.RetryOcr)
+
+    suspend fun recognizeTextAllowingOffline(
+        expectedBinding: LogicalSessionBinding, expense: Expense, rawText: String,
+    ): Result<ExpenseCommandAcceptance> = core.errorHandler.safeCall {
+        require(rawText.isNotBlank()) { "请先粘贴待识别文字。" }
+        requireBaseline(expense)
+        val intent = PendingMutationIntent(PendingMutationType.RecognizeText, expenseOutboxTargetId(expense),
+            core.offlineMutations.recognizeTextAdapter.toJson(ExpenseRecognizeTextRequestDto(0L, rawText)),
+            expense.rowVersion, UUID.randomUUID().toString())
+        ExpenseCommandAcceptance(expense, admit(expectedBinding, listOf(intent)))
+    }
+
+    private suspend fun acceptState(
+        binding: LogicalSessionBinding, expense: Expense, type: PendingMutationType,
+    ): Result<ExpenseCommandAcceptance> = core.errorHandler.safeCall {
+        ExpenseCommandAcceptance(expense, admit(binding, listOf(stateIntent(type, expense))))
+    }
+
+    private suspend fun admit(binding: LogicalSessionBinding, intents: List<PendingMutationIntent>): List<Long> =
+        outbox.enqueueExpenseBatch(core.ledgerRequestGuard.bindExact(binding), intents) { rows ->
+            if (!core.canModifyLedger()) throw RepositoryException("当前角色为只读，无法修改账本。")
+            requireExpenseRefreshComplete(rows)
+        }
+
+    private fun requireBaseline(expense: Expense) {
+        require(expense.hasExpenseMutationBaseline()) { "缺少账单版本，请重新打开后操作。" }
+    }
+
+    private fun patchIntent(expense: Expense, draft: ExpenseDraft): PendingMutationIntent {
+        requireBaseline(expense)
+        return PendingMutationIntent(PendingMutationType.PatchExpense, expenseOutboxTargetId(expense),
+            core.offlineMutations.patchExpenseAdapter.toJson(draft.toRequest(baseline = expense).copy(expectedRowVersion = null)),
+            expense.rowVersion, UUID.randomUUID().toString())
+    }
+
+    private fun stateIntent(type: PendingMutationType, expense: Expense): PendingMutationIntent {
+        requireBaseline(expense)
+        return PendingMutationIntent(type, expenseOutboxTargetId(expense),
+            core.offlineMutations.expenseStateTokenAdapter.toJson(ExpenseStateTokenRequest(0L)),
+            expense.rowVersion, UUID.randomUUID().toString())
+    }
+
     private fun projectOptimisticExpense(baseline: Expense, draft: ExpenseDraft): Expense {
         // Only fields the draft can change get overwritten; the rest
         // (timestamps, server-side derived state) stay at baseline.
@@ -239,207 +169,11 @@ internal class ExpensePendingRepository(
         )
     }
 
-    override suspend fun confirmExpense(
-        id: Long,
-        expectedRowVersion: Long,
-    ): Result<Expense> = core.errorHandler.safeCall {
-        val bound = core.ledgerRequestGuard.bind()
-        val confirmed = core.cacheServerExpense(
-            bound.call {
-                // ADR-0042: this DIRECT path never enqueues, so the key is
-                // single-use — it only satisfies the server's mandatory header.
-                it.confirmExpense(id.toString(), ExpenseStateTokenRequest(expectedRowVersion), UUID.randomUUID().toString())
-            },
-            bound,
-        )
-        confirmed.toDomain()
-    }
-
-    override suspend fun rejectExpense(
-        id: Long,
-        expectedRowVersion: Long,
-    ): Result<Expense> = core.errorHandler.safeCall {
-        val bound = core.ledgerRequestGuard.bind()
-        val rejected = bound.call {
-            // ADR-0042: single-use key — direct-only path, no replay.
-            it.rejectExpense(id.toString(), ExpenseStateTokenRequest(expectedRowVersion), UUID.randomUUID().toString())
-        }
-        core.cacheServerExpense(rejected, bound).toDomain()
-    }
-
-    override suspend fun undoRejectExpense(
-        id: Long,
-        expectedRowVersion: Long,
-    ): Result<Expense> =
-        core.errorHandler.safeCall {
-            val bound = core.ledgerRequestGuard.bind()
-            val restored = bound.call {
-                it.undoExpense(id, ExpenseStateTokenRequest(expectedRowVersion))
-            }
-            core.cacheServerExpense(restored, bound).toDomain()
-        }
-
-    override suspend fun markNotDuplicate(
-        id: Long,
-        expectedRowVersion: Long,
-    ): Result<Expense> = core.errorHandler.safeCall {
-        val bound = core.ledgerRequestGuard.bind()
-        val updated = core.cacheServerExpense(
-            bound.call {
-                // ADR-0042: single-use key — direct-only path, no replay.
-                it.markNotDuplicate(id.toString(), ExpenseStateTokenRequest(expectedRowVersion), UUID.randomUUID().toString())
-            },
-            bound,
-        )
-        updated.toDomain()
-    }
-
-    override suspend fun confirmExpenseAllowingOffline(
-        expense: Expense,
-    ): Result<ExpenseStateOutcome> = core.errorHandler.safeCall {
-        val bound = core.ledgerRequestGuard.bind()
-        // ADR-0042: ONE intent-time key shared by the direct attempt and the
-        // outbox replay. A committed-but-unseen confirm (the POST commits
-        // server-side but its response is lost) replays with this SAME key — the
-        // server HITs the recorded success instead of false-409ing on the stale
-        // token. The dispatcher replays it from row.idempotencyKey.
-        val idempotencyKey = UUID.randomUUID().toString()
-        if (
-            core.canEnqueueStateTransition(expense) &&
-            core.hasUnresolvedQueuedMutationsFor(bound, expenseOutboxTargetId(expense))
-        ) {
-            // Per-target FIFO guard: an unresolved queued mutation (e.g. the
-            // PATCH a just-queued save enqueued) must replay BEFORE this
-            // confirm — a direct confirm now would commit the row WITHOUT the
-            // user's edit and 409 the queued PATCH on replay. Queue behind it.
-            core.enqueueStateTransition(
-                bound = bound,
-                type = PendingMutationType.ConfirmExpense,
-                expense = expense,
-                networkError = null,
-                idempotencyKey = idempotencyKey,
-            )
-            return@safeCall ExpenseStateOutcome.Queued(expense.copy(status = "confirmed"))
-        }
-        try {
-            val confirmed = core.cacheServerExpense(
-                bound.call {
-                    it.confirmExpense(expense.id.toString(), ExpenseStateTokenRequest(expense.rowVersion), idempotencyKey)
-                },
-                bound,
-            )
-            ExpenseStateOutcome.Synced(confirmed.toDomain()) as ExpenseStateOutcome
-        } catch (networkError: IOException) {
-            core.enqueueStateTransition(
-                bound = bound,
-                type = PendingMutationType.ConfirmExpense,
-                expense = expense,
-                networkError = networkError,
-                idempotencyKey = idempotencyKey,
-            )
-            ExpenseStateOutcome.Queued(expense.copy(status = "confirmed")) as ExpenseStateOutcome
-        }
-    }
-
-    override suspend fun rejectExpenseAllowingOffline(
-        expense: Expense,
-    ): Result<ExpenseStateOutcome> = core.errorHandler.safeCall {
-        val bound = core.ledgerRequestGuard.bind()
-        // ADR-0042: one intent-time key for both the direct attempt and the
-        // replay — see confirmExpenseAllowingOffline for the rationale.
-        val idempotencyKey = UUID.randomUUID().toString()
-        if (
-            core.canEnqueueStateTransition(expense) &&
-            core.hasUnresolvedQueuedMutationsFor(bound, expenseOutboxTargetId(expense))
-        ) {
-            // Per-target FIFO guard — see confirmExpenseAllowingOffline.
-            core.enqueueStateTransition(
-                bound = bound,
-                type = PendingMutationType.RejectExpense,
-                expense = expense,
-                networkError = null,
-                idempotencyKey = idempotencyKey,
-            )
-            return@safeCall ExpenseStateOutcome.Queued(expense.copy(status = "rejected"))
-        }
-        try {
-            val rejected = bound.call {
-                it.rejectExpense(expense.id.toString(), ExpenseStateTokenRequest(expense.rowVersion), idempotencyKey)
-            }
-            ExpenseStateOutcome.Synced(core.cacheServerExpense(rejected, bound).toDomain()) as ExpenseStateOutcome
-        } catch (networkError: IOException) {
-            core.enqueueStateTransition(
-                bound = bound,
-                type = PendingMutationType.RejectExpense,
-                expense = expense,
-                networkError = networkError,
-                idempotencyKey = idempotencyKey,
-            )
-            ExpenseStateOutcome.Queued(expense.copy(status = "rejected")) as ExpenseStateOutcome
-        }
-    }
-
-    override suspend fun markNotDuplicateAllowingOffline(
-        expense: Expense,
-    ): Result<ExpenseStateOutcome> = core.errorHandler.safeCall {
-        val bound = core.ledgerRequestGuard.bind()
-        // ADR-0042: one intent-time key for both the direct attempt and the
-        // replay — see confirmExpenseAllowingOffline for the rationale.
-        val idempotencyKey = UUID.randomUUID().toString()
-        if (
-            core.canEnqueueStateTransition(expense) &&
-            core.hasUnresolvedQueuedMutationsFor(bound, expenseOutboxTargetId(expense))
-        ) {
-            // Per-target FIFO guard — see confirmExpenseAllowingOffline.
-            core.enqueueStateTransition(
-                bound = bound,
-                type = PendingMutationType.MarkNotDuplicate,
-                expense = expense,
-                networkError = null,
-                idempotencyKey = idempotencyKey,
-            )
-            return@safeCall ExpenseStateOutcome.Queued(expense.copy(duplicateStatus = "none"))
-        }
-        try {
-            val updated = core.cacheServerExpense(
-                bound.call {
-                    it.markNotDuplicate(expense.id.toString(), ExpenseStateTokenRequest(expense.rowVersion), idempotencyKey)
-                },
-                bound,
-            )
-            ExpenseStateOutcome.Synced(updated.toDomain()) as ExpenseStateOutcome
-        } catch (networkError: IOException) {
-            core.enqueueStateTransition(
-                bound = bound,
-                type = PendingMutationType.MarkNotDuplicate,
-                expense = expense,
-                networkError = networkError,
-                idempotencyKey = idempotencyKey,
-            )
-            // Optimistic projection: the suspected-duplicate badge clears
-            // the moment the user taps "保留" — duplicateStatus flips to
-            // "none" so the pending row stops showing the dedup
-            // affordance while the POST waits for connectivity.
-            ExpenseStateOutcome.Queued(expense.copy(duplicateStatus = "none")) as ExpenseStateOutcome
-        }
-    }
-
     override suspend fun fetchThumbnail(id: Long): Result<ProtectedImage> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bind()
         bound.call { core.readProtectedImage(it.expenseThumbnail(id)) }
     }
-
     override suspend fun categories(): Result<List<String>> = core.errorHandler.safeCall {
-        core.ledgerRequestGuard.guardedCall { api ->
-            mergeExpenseCategories(api.categories().items)
-        }
+        core.ledgerRequestGuard.guardedCall { api -> mergeExpenseCategories(api.categories().items) }
     }
 }
-
-private data class PatchExpenseOutboxContext(
-    val bound: BoundLedgerRequest,
-    val outbox: OutboxRepository,
-    val targetId: String,
-    val token: Long,
-    val idempotencyKey: String,
-)

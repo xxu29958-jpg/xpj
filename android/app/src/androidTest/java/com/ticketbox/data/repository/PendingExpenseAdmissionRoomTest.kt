@@ -68,11 +68,11 @@ class PendingExpenseAdmissionRoomTest {
         current = fixture.network.current
         val repository = fixture.reopen().expenseRepository
         val original = repository.fetchExpense(42).getOrThrow()
-        val result = repository.saveExpenseAllowingOffline(42, draft(), original).getOrThrow()
+        val result = repository.saveExpenseAllowingOffline(requireNotNull(repository.captureDeferredLedgerBinding()), 42, draft(), original).getOrThrow()
 
         val rows = fixture.stored()
         assertEquals("A saved intent must exist before HTTP can start", 1, rows.size)
-        assertTrue(result is SaveOutcome.Queued)
+        assertEquals(rows.map { it["id"]?.toLong() }, result.rowIds)
         assertTrue("Admission schedules the existing worker; it does not send inline", requests.isEmpty())
         assertEquals("pending", result.expense.status)
         assertEquals(original.rowVersion, result.expense.rowVersion)

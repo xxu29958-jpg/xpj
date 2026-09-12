@@ -81,15 +81,15 @@ internal class ExpenseRepositoryCore(
         get() = binding.apiProvider
     val outbox: OutboxRepository?
         get() = offlineMutations.outbox
-    val patchExpenseAdapter: JsonAdapter<ExpenseUpdateRequest>?
+    val patchExpenseAdapter: JsonAdapter<ExpenseUpdateRequest>
         get() = offlineMutations.patchExpenseAdapter
-    val expenseStateTokenAdapter: JsonAdapter<ExpenseStateTokenRequest>?
+    val expenseStateTokenAdapter: JsonAdapter<ExpenseStateTokenRequest>
         get() = offlineMutations.expenseStateTokenAdapter
     val replaceItemsAdapter: JsonAdapter<ExpenseItemReplaceRequestDto>?
         get() = offlineMutations.replaceItemsAdapter
     val replaceSplitsAdapter: JsonAdapter<ExpenseSplitReplaceRequestDto>?
         get() = offlineMutations.replaceSplitsAdapter
-    val recognizeTextAdapter: JsonAdapter<ExpenseRecognizeTextRequestDto>?
+    val recognizeTextAdapter: JsonAdapter<ExpenseRecognizeTextRequestDto>
         get() = offlineMutations.recognizeTextAdapter
     val offsetCreateAdapter: JsonAdapter<ExpenseOffsetCreateRequestDto>?
         get() = offlineMutations.offsetCreateAdapter
@@ -477,7 +477,7 @@ internal class ExpenseRepositoryCore(
      * ``networkError = null`` call never hits the rethrow path.
      */
     fun canEnqueueStateTransition(expense: Expense): Boolean =
-        outbox != null && expenseStateTokenAdapter != null && expense.hasExpenseMutationBaseline()
+        outbox != null && expense.hasExpenseMutationBaseline()
 
     /**
      * ADR-0038 PR-2g.7/8: shared IOException → outbox fallback for the
@@ -518,7 +518,7 @@ internal class ExpenseRepositoryCore(
     ) {
         val outboxRef = outbox
         val adapter = expenseStateTokenAdapter
-        if (outboxRef == null || adapter == null || !expense.hasExpenseMutationBaseline()) {
+        if (outboxRef == null || !expense.hasExpenseMutationBaseline()) {
             throw networkError ?: IllegalStateException(
                 "enqueueStateTransition without outbox wiring — guard callers must pre-check canEnqueueStateTransition",
             )
@@ -534,11 +534,6 @@ internal class ExpenseRepositoryCore(
                 expectedRowVersion = expense.rowVersion,
                 idempotencyKey = idempotencyKey,
             ),
-            afterPersisted = {
-                if (type == PendingMutationType.RejectExpense && expense.status == "confirmed") {
-                    expenseDao.deleteConfirmedByServerIds(bound.ledgerId, listOf(expense.id))
-                }
-            },
         )
     }
 

@@ -28,22 +28,13 @@ interface ExpenseStateApi {
         @Header("Idempotency-Key") idempotencyKey: String?,
     ): ExpenseDto
 
-    // ADR-0038 undo: restore a recently-rejected expense (5-min window). No
-    // request body — the caller just rejected the row and there's near-zero
-    // contention inside the window. 404 ``expense_not_found`` once the window
-    // closes / row was never rejected / cross-tenant — same collapse semantic
-    // as merchant_alias / category_rule undo. Online-only: an offline Queued
-    // reject has nothing to restore via the API (its rejection lives in the
-    // outbox, not the server); UI should only show the undo affordance after
-    // an ExpenseStateOutcome.Synced reject.
-    // ADR-0038 PR-A: undo now carries expected_row_version — rejects stale
-    // /undo from a banner whose row has been re-rejected since the banner
-    // was shown. Without it a cached banner could un-do a NEW intentional
-    // reject.
+    // The original rejection token and intent key survive an unknown response.
+    // A later rejection must never become this Undo's new OCC basis.
     @POST("api/expenses/{id}/undo")
     suspend fun undoExpense(
         @Path("id") id: Long,
         @Body request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
+        @Header("Idempotency-Key") idempotencyKey: String,
     ): ExpenseDto
 
     @POST("api/expenses/{id}/ocr/retry")

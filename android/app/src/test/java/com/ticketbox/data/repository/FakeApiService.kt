@@ -456,6 +456,7 @@ internal class FakeApiService(
     override suspend fun undoExpense(
         id: Long,
         request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
+        idempotencyKey: String,
     ): ExpenseDto = unsupported()
 
     override suspend fun retryOcr(

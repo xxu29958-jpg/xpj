@@ -53,10 +53,14 @@ class RejectExpenseDispatcher(
 
         return try {
             // ADR-0042: replay carries the row's original intent-time key, so a
-            // committed-but-unseen first attempt is deduped server-side (HIT →
-            // canonical row) instead of false-409ing on the stale row_version.
+            // committed-but-unseen first attempt returns its original receipt.
             val rejected = apiProvider(row).rejectExpense(expenseRef, request, idempotencyKey)
+            if (!validExpenseAcceptanceSnapshot(row, rejected)) {
+                return DispatchResult.Failure(EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW)
+            }
+            val receipt = expenseAcceptanceReceiptJson(rejected)
             publishAcceptedExpense(rejected.id, rejected.rowVersion) { publishExpense(row.ledgerId, rejected) }
+                .copy(receiptJson = receipt)
         } catch (e: HttpException) {
             mapOutboxHttpException(e)
         } catch (e: IOException) {

@@ -40,6 +40,7 @@ import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.DebtCreationIntentSummary
 import com.ticketbox.ui.screens.expense.fact.CorrectionSubmissionOptions
 import com.ticketbox.ui.screens.expense.fact.CorrectionSubmissionActions
+import com.ticketbox.data.repository.EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW
 import com.ticketbox.viewmodel.OutboxStatusUiState
 import com.ticketbox.viewmodel.OutboxStatusViewModel
 
@@ -317,7 +318,8 @@ internal fun ConflictCard(
 ) {
     // Only expense mutations can refresh state and retry as "keep mine".
     val originalOffset = row.type == PendingMutationType.CreateExpenseOffset
-    val canKeep = row.type !in com.ticketbox.viewmodel.incomePlanSubmissionTypes && !originalOffset && row.type !in com.ticketbox.viewmodel.categoryRuleSubmissionTypes &&
+    val reviewOriginal = row.type == PendingMutationType.UndoExpense || row.lastError == EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW
+    val canKeep = !reviewOriginal && row.type !in com.ticketbox.viewmodel.incomePlanSubmissionTypes && !originalOffset && row.type !in com.ticketbox.viewmodel.categoryRuleSubmissionTypes &&
         row.type !in setOf(PendingMutationType.CreateExpense, PendingMutationType.CorrectExpense, PendingMutationType.CreateBillSplitInvitation) && row.targetId.startsWith("expense:")
     SettingsOpenPanel(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
@@ -338,7 +340,7 @@ internal fun ConflictCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             SyncStatusRecoveryActions(
-                primary = if (originalOffset) offsetReviewAction(row, busy, actions) else if (canKeep) {
+                primary = if (originalOffset || reviewOriginal) expenseReviewAction(row, busy, actions) else if (canKeep) {
                     SyncStatusActionButton(
                         text = stringResource(R.string.sync_status_conflict_button_keep_mine),
                         icon = Icons.Filled.CloudUpload,
@@ -368,6 +370,8 @@ internal fun FailedCard(
 ) {
     // Expired rows cannot be retried because the server-side idempotency key may be gone.
     val expired = isExpiredFailure(row.lastError)
+    val rejectionReview = row.lastError == EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW
+    val undoUnavailable = row.type == PendingMutationType.UndoExpense && row.lastError == "expense_not_found"
     SettingsOpenPanel(
         modifier = Modifier.semantics(mergeDescendants = true) {},
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
@@ -384,15 +388,17 @@ internal fun FailedCard(
             )
             debtCreation?.let { DebtCreationIntentSummary(it) }
             Text(
-                text = if (row.type == PendingMutationType.CreateExpenseOffset && onRetry == null)
+                text = if (rejectionReview) stringResource(R.string.sync_status_expense_original_requires_review)
+                    else if (undoUnavailable) stringResource(R.string.sync_status_undo_unavailable)
+                    else if (row.type == PendingMutationType.CreateExpenseOffset && onRetry == null)
                     stringResource(R.string.expense_offset_original_requires_review)
                     else friendlyLastError(row.lastError, fallback = stringResource(R.string.sync_status_failed_fallback)),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             SyncStatusRecoveryActions(
-                primary = if (row.type == PendingMutationType.CreateExpenseOffset && onRetry == null) {
-                    offsetReviewAction(row, busy, actions)
+                primary = if (rejectionReview || undoUnavailable || row.type == PendingMutationType.CreateExpenseOffset && onRetry == null) {
+                    expenseReviewAction(row, busy, actions)
                 } else if (row.manualCreateReviewExpenseId() != null) {
                     SyncStatusActionButton(text = stringResource(R.string.ledger_manual_review_existing), enabled = !busy,
                         onClick = { row.manualCreateReviewExpenseId()?.let(actions.onOpenExpense) })
@@ -421,8 +427,8 @@ internal fun FailedCard(
 }
 
 @Composable
-private fun offsetReviewAction(row: OutboxRow, busy: Boolean, actions: SyncStatusActions): SyncStatusActionButton? {
-    val id = parseExpenseTargetRef(row.targetId)?.toLongOrNull()?.takeIf { it > 0 } ?: return null
+private fun expenseReviewAction(row: OutboxRow, busy: Boolean, actions: SyncStatusActions): SyncStatusActionButton? {
+    val id = com.ticketbox.data.repository.expenseRefreshTargetId(row.targetId, row.receiptJson) ?: return null
     return SyncStatusActionButton(text = stringResource(R.string.expense_offset_review_current), enabled = !busy,
         onClick = { actions.onOpenExpense(id) })
 }
@@ -502,6 +508,7 @@ internal val syncStatusMutationLabelResources = mapOf(
     PendingMutationType.RecordDebtRepayment to R.string.debt_action_repayment_title,
     PendingMutationType.ConfirmExpense to R.string.sync_status_mutation_confirm_expense,
     PendingMutationType.RejectExpense to R.string.sync_status_mutation_reject_expense,
+    PendingMutationType.UndoExpense to R.string.sync_status_mutation_undo_expense,
     PendingMutationType.MarkNotDuplicate to R.string.sync_status_mutation_mark_not_duplicate,
     PendingMutationType.RetryOcr to R.string.sync_status_mutation_retry_ocr,
     PendingMutationType.RecognizeText to R.string.sync_status_mutation_recognize_text,

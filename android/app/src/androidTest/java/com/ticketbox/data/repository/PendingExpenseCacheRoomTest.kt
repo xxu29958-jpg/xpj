@@ -46,9 +46,9 @@ class PendingExpenseCacheRoomTest {
                 if (offline) throw IOException("Offline rejection")
                 check(id == current.id.toString() && request.expectedRowVersion == current.rowVersion)
                 check(!idempotencyKey.isNullOrBlank())
-                return current.copy(status = "rejected", rowVersion = current.rowVersion + 1).also { current = it }
+                return current.copy(status = "rejected", rejectedAt = fixture.clock.instant().toString(), rowVersion = current.rowVersion + 1).also { current = it }
             }
-            override suspend fun undoExpense(id: Long, request: ExpenseStateTokenRequest): ExpenseDto {
+            override suspend fun undoExpense(id: Long, request: ExpenseStateTokenRequest, idempotencyKey: String): ExpenseDto {
                 check(id == current.id && request.expectedRowVersion == current.rowVersion)
                 return current.copy(status = "pending", rowVersion = current.rowVersion + 1).also { current = it }
             }
@@ -80,7 +80,11 @@ class PendingExpenseCacheRoomTest {
     @Test fun acceptedPendingPatchReopensItsSavedFieldsAndTokenWhileOffline() = runBlocking {
         val repository = start()
         val original = repository.fetchExpense(42).getOrThrow()
-        val accepted = repository.updateExpense(42, draft(), original).getOrThrow()
+        val admitted = repository.saveExpenseAllowingOffline(requireNotNull(repository.captureDeferredLedgerBinding()),
+            42, draft(), original).getOrThrow()
+        assertEquals(original.rowVersion, admitted.expense.rowVersion)
+        assertEquals(1, drainReview().done)
+        val accepted = repository.fetchExpenseFromLocalCache(42).getOrThrow()
         assertEquals("Saved merchant", accepted.merchant)
         assertEquals(2L, accepted.rowVersion)
         offline = true
@@ -92,20 +96,23 @@ class PendingExpenseCacheRoomTest {
         assertEquals(accepted.rowVersion, cached.rowVersion)
         assertEquals("pending", cached.status)
         assertEquals(cached, reopened.getCachedPending().getOrThrow().single())
-        assertTrue(fixture.stored().isEmpty())
+        assertEquals(listOf(PendingMutationStatus.Done.wireValue), fixture.stored().map { it["status"] })
         assertEquals(0, fixture.confirmedCallbacks)
     }
 
     @Test fun rejectionSurvivesAnOlderListAndReopenUntilAnExplicitUndoReturnsPending() = runBlocking {
         val repository = start()
-        repository.fetchExpense(42).getOrThrow()
+        val original = repository.fetchExpense(42).getOrThrow()
         val before = current
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         pendingResponse = { started.complete(Unit); release.await(); listOf(before) }
         val staleRead = async { repository.syncPending().getOrThrow() }
         withTimeout(5_000) { started.await() }
-        try { repository.rejectExpense(42, 1).getOrThrow() } finally { release.complete(Unit) }
+        try {
+            repository.rejectExpenseAllowingOffline(requireNotNull(repository.captureDeferredLedgerBinding()), original).getOrThrow()
+            assertEquals(1, drainReview().done)
+        } finally { release.complete(Unit) }
         assertTrue(withTimeout(5_000) { staleRead.await() }.isEmpty())
         offline = true
         val reopened = fixture.reopen().expenseRepository
@@ -113,7 +120,10 @@ class PendingExpenseCacheRoomTest {
         assertTrue(reopened.fetchExpenseFromLocalCache(42).isFailure)
 
         offline = false
-        val restored = reopened.undoRejectExpense(42, 2).getOrThrow()
+        val rejection = requireNotNull(expenseAcceptanceReceiptSnapshot(fixture.pendingDao.allRows().single().toDomain()))
+        reopened.undoRejectExpense(requireNotNull(reopened.captureDeferredLedgerBinding()), rejection.toDomain()).getOrThrow()
+        assertEquals(1, drainReview().done)
+        val restored = reopened.fetchExpenseFromLocalCache(42).getOrThrow()
         assertEquals(3L, restored.rowVersion)
         assertEquals(restored, reopened.fetchExpenseFromLocalCache(42).getOrThrow())
         assertEquals(restored, reopened.getCachedPending().getOrThrow().single())
@@ -123,7 +133,8 @@ class PendingExpenseCacheRoomTest {
         val repository = start()
         val pending = repository.fetchExpense(42).getOrThrow()
         offline = true
-        assertTrue(repository.rejectExpenseAllowingOffline(pending).getOrThrow() is ExpenseStateOutcome.Queued)
+        assertTrue(repository.rejectExpenseAllowingOffline(requireNotNull(repository.captureDeferredLedgerBinding()), pending)
+            .getOrThrow().rowIds.single() > 0L)
         val original = fixture.pendingDao.allRows().single()
         offline = false
         val dispatcher = RejectExpenseDispatcher(apiProvider = { sendingApi },
@@ -167,6 +178,18 @@ class PendingExpenseCacheRoomTest {
         assertEquals(null, observed.getValue(43).fxTask)
         assertEquals(observed, repository.getCachedPending().getOrThrow().associateBy { it.id })
         assertEquals(1L, fixture.expenseDao.getPending("other-ledger").single().rowVersion)
+    }
+
+    private suspend fun drainReview(): DrainSummary {
+        val adapters = OutboxAdapterGraph()
+        val publish: suspend (String, ExpenseDto) -> Unit = { ledgerId, expense ->
+            fixture.expenseDao.applyServerExpense(ledgerId, expense.toEntity(ledgerId)); Unit
+        }
+        return OutboxDrainEngine(fixture.outbox, listOf(
+            PatchExpenseDispatcher({ sendingApi }, adapters.patchExpenseAdapter, publish),
+            RejectExpenseDispatcher({ sendingApi }, adapters.expenseStateTokenAdapter, publish),
+            UndoExpenseDispatcher({ sendingApi }, adapters.expenseStateTokenAdapter, publish),
+        ), now = fixture.clock::millis).drainOnce()
     }
 
     private fun start(): ExpenseRepository {

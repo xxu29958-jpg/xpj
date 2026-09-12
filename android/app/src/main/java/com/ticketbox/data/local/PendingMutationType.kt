@@ -14,6 +14,7 @@ package com.ticketbox.data.local
  *   CorrectExpense                   POST   /api/expenses/{id}/corrections
  *   ConfirmExpense                   POST   /api/expenses/{id}/confirm
  *   RejectExpense                    POST   /api/expenses/{id}/reject
+ *   UndoExpense                      POST   /api/expenses/{id}/undo
  *   MarkNotDuplicate                 POST   /api/expenses/{id}/mark-not-duplicate
  *   RetryOcr                         POST   /api/expenses/{id}/ocr/retry
  *   RecognizeText                    POST   /api/expenses/{id}/recognize-text
@@ -56,6 +57,7 @@ enum class PendingMutationType(val wireValue: String) {
     VoidExpenseOffset("void_expense_offset"),
     ConfirmExpense("confirm_expense"),
     RejectExpense("reject_expense"),
+    UndoExpense("undo_expense"),
     MarkNotDuplicate("mark_not_duplicate"),
     RetryOcr("retry_ocr"),
     RecognizeText("recognize_text"),

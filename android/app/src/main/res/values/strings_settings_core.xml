@@ -283,6 +283,9 @@
     <string name="sync_status_mutation_create_expense">新建账单</string>
     <string name="sync_status_mutation_confirm_expense">确认入账</string>
     <string name="sync_status_mutation_reject_expense">删除账单</string>
+    <string name="sync_status_mutation_undo_expense">恢复账单</string>
+    <string name="sync_status_expense_original_requires_review">原操作结果暂时无法核实。请打开账单核对；原提交已保留。</string>
+    <string name="sync_status_undo_unavailable">当前无法撤销这次删除。请打开账单核对最新状态。</string>
     <string name="sync_status_mutation_mark_not_duplicate">保留账单（非重复）</string>
     <string name="sync_status_mutation_retry_ocr">重新识别</string>
     <string name="sync_status_mutation_recognize_text">识别文字</string>
