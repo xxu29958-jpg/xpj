@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, field_serializer, model_validator
@@ -28,6 +29,13 @@ class ConfirmedOffsetStreamProjection(BaseModel):
     original_currency_code: str
     home_currency_code: str
     category: str
+    exchange_rate_to_cny: Decimal | None = None
+    exchange_rate_date: date | None = None
+    exchange_rate_source: str | None = None
+
+    @field_serializer("exchange_rate_to_cny")
+    def _serialize_exchange_rate(self, value: Decimal | None) -> str | None:
+        return format(value, "f") if value is not None else None
 
 
 class ConfirmedExpenseStreamItem(BaseModel):
