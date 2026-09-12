@@ -185,12 +185,11 @@ private class OffsetPublicationFixture(
         activeOffsets = if (voided) emptyList() else expenseFactBundleDtoFixture().activeOffsets,
     )
 
-    @Suppress("UNCHECKED_CAST")
     private fun registeredPublisher(type: PendingMutationType): suspend (String, ExpenseFactBundleDto) -> Unit {
         // Read the production closure; no substitute publisher or new production visibility exists for this test.
         val getter = AppContainer::class.java.getDeclaredMethod("getOutboxDispatchers").apply { isAccessible = true }
-        val dispatchers = getter.invoke(container) as List<OutboxMutationDispatcher>
-        val dispatcher = dispatchers.single { it.type == type }
+        val dispatchers = getter.invoke(container) as List<*>
+        val dispatcher = dispatchers.filterIsInstance<OutboxMutationDispatcher>().single { it.type == type }
         return dispatcher.javaClass.getDeclaredField("publishBundle").apply { isAccessible = true }.get(dispatcher)
             as suspend (String, ExpenseFactBundleDto) -> Unit
     }
