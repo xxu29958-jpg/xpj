@@ -57,5 +57,8 @@ three Budget navigation cases failed at their real postconditions; two foregroun
 cases stopped at an invalid scroll action on the fixed confirmation bar, now fixed
 without changing assertions. Earlier6326b29a failed test compilation, not business
 behavior. New producer tests cover acceptance ordering, refusal and binding scope.
-Bounded source review and short Detekt passed. Final candidate cloud GREEN remains
-required; this is an implemented candidate, not a closed slice or RC.
+Bounded source review and short Detekt passed. At cb145ed9, 2426 cloud unit tests
+reached one new test-cleanup failure: its cancelled ViewModel collector resumed
+after Main dispatcher reset. Cleanup now joins cancellation before resetting Main;
+the original choice/payload/OCC assertions remain. Final candidate cloud GREEN
+remains required; this is an implemented candidate, not a closed slice or RC.

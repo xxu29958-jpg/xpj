@@ -20,10 +20,11 @@ import com.ticketbox.domain.model.ExpenseLineageStatus
 import com.ticketbox.ui.screens.recurringItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.job
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -67,7 +68,7 @@ class RecurringOccurrenceViewModelTest {
             assertEquals(listOf(actions.access.binding to original), actions.submissions)
             assertEquals(payment.publicId, actions.submissions.single().second.request.expensePublicId)
         } finally {
-            model.viewModelScope.cancel()
+            model.viewModelScope.coroutineContext.job.cancelAndJoin()
             Dispatchers.resetMain()
         }
     }
