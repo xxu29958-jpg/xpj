@@ -13,12 +13,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.job
 import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.HttpException
@@ -42,12 +44,14 @@ class DirectRepaymentIntentTest {
         val model = DebtDetailViewModel(DebtRepository(provider), adjustments)
         try {
             model.loadDebt("d1")
-            advanceUntilIdle()
+            withContext(Dispatchers.Default) {
+                withTimeout(5_000) { model.state.first { it.adjustmentSnapshotLoaded && !it.isLoading } }
+            }
             assertTrue(model.state.value.canWriteActions)
             model.openAction(DebtAction.Repayment)
             model.updateActionInput(amount = "100")
             model.submit()
-            advanceUntilIdle()
+            withContext(Dispatchers.Default) { withTimeout(5_000) { model.state.first { !it.isSubmitting } } }
             assertEquals(1, api.facts.size)
             assertEquals(DebtAction.Repayment, model.state.value.activeAction)
             assertEquals("100", model.state.value.amountInput)
@@ -55,7 +59,7 @@ class DirectRepaymentIntentTest {
 
             // The user continues this failed form; no new form, amount or intent.
             model.submit()
-            advanceUntilIdle()
+            withContext(Dispatchers.Default) { withTimeout(5_000) { model.state.first { !it.isSubmitting } } }
 
             assertEquals(2, api.calls.size)
             assertEquals(api.calls.first(), api.calls.last())
