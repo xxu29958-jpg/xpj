@@ -71,6 +71,9 @@ def test_one_slot_enrichment_hands_off_one_durable_fx_task_after_completion(monk
         completing = any(isinstance(row, BackgroundTask) and row.id == task_id and row.status == "completed"
             for row in db.identity_map.values())
         if completing:
+            # Observe the full staged transaction that commit itself flushes.
+            # Admission allocates the child id before attaching its original input.
+            db.flush()
             child = db.scalar(select(BackgroundTask).where(BackgroundTask.source_expense_id == expense_id,
                 BackgroundTask.task_type == "expense_fx"))
             assert child is not None, "Completion cannot commit before its durable child admission"
