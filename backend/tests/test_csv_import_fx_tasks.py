@@ -6,7 +6,6 @@ from sqlalchemy.exc import IntegrityError
 
 from app.database import SessionLocal
 from app.models import BackgroundTask, CsvImportRow, Expense
-from app.services import background_task_service
 from app.services.csv_import_batch_service import _apply
 from app.services.identity_service import authenticate_session_token
 
@@ -40,7 +39,7 @@ def test_csv_executor_refusal_preserves_committed_bill_row_and_original_task(cli
             committed_before_dispatch.append(task.public_id)
         raise RuntimeError("executor refused the committed FX task")
 
-    monkeypatch.setattr(background_task_service, "_submit_task", refuse_execution)
+    monkeypatch.setattr("app.services.background_task_executor.submit_task", refuse_execution)
     endpoint = _create_foreign_batch(client, identity)
     applied = client.post(f"{endpoint}/apply", headers=identity.app_headers)
     assert applied.status_code == 200, applied.text

@@ -85,6 +85,18 @@ refresh finding against the existing dispatcher-to-shell-to-Fact refresh chain.
 Short transaction/worker counterexamples changed from five failures to 27 passing
 checks; real database, Android and final exact-source qualification remain required.
 
+The completion integration exposed a reverse dependency through the service facade.
+Prepared execution belongs to the existing registry; committed dispatch and its
+conditional failure publication now belong to the existing executor. The worker
+and service both use that implementation. The old private service submitter is
+retired, including all capture/upload/worker test interceptors. No cycles or debt
+allowances are added. The one-slot database fixture obtains the existing currency
+write proof before seeding money; its earlier fence refusal did not test capacity.
+Review-test source `4ceb9e77` reproduced five short worker/transaction failures,
+two database child-state failures and one actual missing-amount row failure among
+280 Connected tests. Source `95a72e7e` completed the isolated native Web journey;
+the subsequent dependency correction still requires final exact cloud qualification.
+
 | Exit | Direct qualification producer |
 |---|---|
 | Dated conversion, preserved source and separate review | PostgreSQL foreign-bill/capture/CSV/task/migration tests; frozen-money and valuation tests |

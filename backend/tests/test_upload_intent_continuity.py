@@ -22,17 +22,17 @@ def _ledger_upload_row_counts(ledger_id: str) -> tuple[int, int]:
 
 
 def _capture_enrichment_execution(monkeypatch: pytest.MonkeyPatch) -> list[tuple[int, dict]]:
-    from app.services import background_task_service, background_task_worker
+    from app.services import background_task_worker
 
     executions: list[tuple[int, dict]] = []
 
-    def execute(task_id, payload, *, registry):
-        del registry
+    def execute(task_id, payload, *, registry, runner):
+        del registry, runner
         with SessionLocal() as db:
             if background_task_worker.claim_queued_task(db, task_id) is not None:
                 executions.append((task_id, dict(payload)))
 
-    monkeypatch.setattr(background_task_service, "_submit_task", execute)
+    monkeypatch.setattr("app.services.background_task_executor.submit_task", execute)
     return executions
 
 
@@ -116,7 +116,7 @@ def test_android_upload_key_rejects_changed_original_input_before_saving_again(
 
     from app.routes import _upload_request
 
-    monkeypatch.setattr("app.services.background_task_service._submit_task", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("app.services.background_task_executor.submit_task", lambda *_args, **_kwargs: None)
     headers = {**identity.app_headers, "Idempotency-Key": "70000000-0000-4000-8000-000000000020",
         "X-Timezone": "America/Los_Angeles"}
     response = client.post("/api/app/upload-screenshot", headers=headers,
@@ -158,7 +158,7 @@ def test_android_upload_receipt_claim_failure_rolls_back_its_expense_task_and_fi
     from app.routes import _upload_request
 
     submissions: list[int] = []
-    monkeypatch.setattr("app.services.background_task_service._submit_task",
+    monkeypatch.setattr("app.services.background_task_executor.submit_task",
         lambda task_id, *_args, **_kwargs: submissions.append(task_id))
     before_rows, before_files = _ledger_upload_row_counts("owner"), _stored_upload_files()
     key = "70000000-0000-4000-8000-000000000021"
@@ -279,7 +279,7 @@ def test_restart_replay_respects_capacity_cancellation_and_terminal_outcomes(
     from app.config import reset_settings_cache
     from app.services.time_service import now_utc
 
-    monkeypatch.setattr("app.services.background_task_service._submit_task", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("app.services.background_task_executor.submit_task", lambda *_args, **_kwargs: None)
     headers = {**identity.app_headers, "Idempotency-Key": "70000000-0000-4000-8000-000000000025",
         "Content-Type": "image/png"}
     first = client.post("/api/app/upload-screenshot", headers=headers, content=PNG_BYTES)
@@ -340,7 +340,7 @@ def test_original_task_replay_wakes_a_concurrently_readmitted_original(
     from app.services import background_task_recovery_service, background_task_service, pending_enrichment_task_service
     from app.services.time_service import now_utc
 
-    monkeypatch.setattr(background_task_service, "_submit_task", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("app.services.background_task_executor.submit_task", lambda *_args, **_kwargs: None)
     headers = {**identity.app_headers, "Idempotency-Key": "70000000-0000-4000-8000-000000000026",
         "Content-Type": "image/png"}
     first = client.post("/api/app/upload-screenshot", headers=headers, content=PNG_BYTES)
@@ -396,7 +396,7 @@ def test_receipt_replay_preserves_terminal_tasks_and_exposes_unrecoverable_origi
     client: TestClient, monkeypatch: pytest.MonkeyPatch, *, identity, task_status, invalid_input,
 ) -> None:
     submissions = []
-    monkeypatch.setattr("app.services.background_task_service._submit_task",
+    monkeypatch.setattr("app.services.background_task_executor.submit_task",
         lambda task_id, *_args, **_kwargs: submissions.append(task_id))
     headers = {**identity.app_headers, "Idempotency-Key": "70000000-0000-4000-8000-000000000024",
         "Content-Type": "image/png"}
@@ -435,7 +435,7 @@ def test_android_upload_uncommitted_attempt_cannot_submit_or_return_a_receipt(
     from sqlalchemy.orm import Session
 
     submissions: list[int] = []
-    monkeypatch.setattr("app.services.background_task_service._submit_task",
+    monkeypatch.setattr("app.services.background_task_executor.submit_task",
         lambda task_id, *_args, **_kwargs: submissions.append(task_id))
     before_rows, before_files = _ledger_upload_row_counts("owner"), set(_stored_upload_files())
     key = "70000000-0000-4000-8000-000000000023"

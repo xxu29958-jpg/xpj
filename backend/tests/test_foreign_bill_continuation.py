@@ -11,7 +11,7 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import BackgroundTask, Expense
-from app.services import background_task_service, background_task_worker
+from app.services import background_task_worker
 from app.services.fx_rate_provider import EcbDailyRates, FxFetchError, upsert_fx_rate
 
 
@@ -127,7 +127,7 @@ def test_import_conversion_failure_retry_review_then_confirm_is_one_complete_tas
     from app.services import pending_fx_task_service as service
 
     submitted = Mock()
-    monkeypatch.setattr(background_task_service, "_submit_task", submitted)
+    monkeypatch.setattr("app.services.background_task_executor.submit_task", submitted)
     bill = _import_foreign_bill(client, identity)
     url = f"/api/expenses/{bill['id']}"
     with SessionLocal() as db:
@@ -204,7 +204,7 @@ def test_fx_worker_keeps_receipt_reconciliation_and_split_allocation_consistent(
     from app.services import pending_fx_task_service
     from tests.expense_split_test_support import personal_owner_member_id
 
-    monkeypatch.setattr(background_task_service, "_submit_task", Mock())
+    monkeypatch.setattr("app.services.background_task_executor.submit_task", Mock())
     bill = _import_foreign_bill(client, identity)
     url = f"/api/expenses/{bill['id']}"
     values = [{"name": "Receipt line", "amount_cents": 85000}] if child == "items" else [

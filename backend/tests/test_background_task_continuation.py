@@ -10,7 +10,7 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import BackgroundTask, Expense
-from app.services import background_task_service, background_task_worker
+from app.services import background_task_worker
 from app.services.background_task_registry import TaskHandlerRegistry
 from tests._infra.assets import PNG_BYTES
 from tests._runtime_protocol import negotiated_headers
@@ -23,9 +23,7 @@ def _failed_upload(client, monkeypatch, headers):
         raise RuntimeError("recognition unavailable")
 
     registry = TaskHandlerRegistry({"expense_enrichment": fail_recognition})
-    monkeypatch.setattr(
-        background_task_service,
-        "_submit_task",
+    monkeypatch.setattr("app.services.background_task_executor.submit_task",
         lambda task_id, payload, **_kwargs: background_task_worker.run_task(task_id, payload, registry),
     )
     response = client.post(
