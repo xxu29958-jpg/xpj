@@ -63,7 +63,7 @@ The load, first committed fact and unchanged-form assertions had passed.
 | Web original submission | Native POST preserves original key/OCC/raw amount/date/timezone/binding through unknown outcomes and closed-debt recovery. Exact service ACK survives an independent detail-query failure; actual form tests retain the original controls |
 | Web local continuation | repayment-entry uses the existing minimal draft store and Web Lock mechanism. Same-target originals block accidental replacement; explicit confirmed rejection can create a new draft. Existing Expense API/storage and six direct contracts retained; eight repayment browser-script contracts added |
 | Web binding and result | Real authentication/binding test checks all five axes, no-write refusals and one receipt on identical retry. ACK clearing requires exact original values and receipt identity; no balance/history inference |
-| Server/adjacent owners | record_repayment_idempotently remains the sole fact writer; no schema/migration/protocol version change. Member proposals, capture confirmation and their authorities remain separate; unrelated void/kind continuity stays in the product map |
+| Server/adjacent owners | record_repayment_idempotently remains the sole fact writer; no database migration or Android API command-version change; the native form schema snapshot is regenerated. Member proposals, capture confirmation and their authorities remain separate; unrelated void/kind continuity stays in the product map |
 
 Short checks pass: scoped Kotlin Detekt, changed Python Ruff, three template parses,
 eight repayment plus six existing Expense browser-script contracts, and diff checks.
@@ -83,3 +83,13 @@ the retired writer or bypassing the audit. JS/Python command-result logic now ha
 separate small responsibilities (measured maximum CC11/9), with all14 browser-script
 cases passing. The unchanged Desktop Node probe timed out once; its log is retained,
 and the next exact candidate must independently pass. Final qualification is open.
+
+Exact90791b37 isolated VM Edge passed1585-file source verification, real post-commit
+response abort, process restart, cleared-debt original recovery and one-fact receipt
+acknowledgement; installed runtime was unchanged and QA listeners cleaned. Cloud
+executed2428 Android unit tests: all6 direct-owner and2 receipt-consumer cases passed;
+one remaining adjustment-recovery assertion still targeted the retired writer and
+is migrated to the actual queued repayment plus its original binding/OCC. All release
+audit lanes passed; the native form's four added fields required regenerating the
+OpenAPI snapshot with the real app schema generator. Final-head cloud gates remain
+required after these test/snapshot-only corrections.

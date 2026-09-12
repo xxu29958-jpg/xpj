@@ -21,6 +21,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -84,10 +85,7 @@ class DebtAdjustmentRecoveryViewModelTest {
         val writes = DebtAdjustmentFixture()
         val canonical = writes.debt
         val fresh = canonical.copy(rowVersion = 3L, remainingAmountCents = 53_000L)
-        val repo = AdjustmentDetailActions().apply {
-            getResult = Result.success(canonical)
-            writeResult = Result.success(fresh.copy(rowVersion = 4L, remainingAmountCents = 52_900L))
-        }
+        val repo = AdjustmentDetailActions().apply { getResult = Result.success(canonical) }
         val model = DebtDetailViewModel(repo, writes.repository)
         val gate = CompletableDeferred<Unit>()
         try {
@@ -114,7 +112,8 @@ class DebtAdjustmentRecoveryViewModelTest {
             model.submit()
             model.selectKind(DebtKinds.REVOLVING)
             runCurrent()
-            assertTrue(repo.mutations.isEmpty(), "Repayment and kind writes must remain blocked")
+            assertTrue(repo.mutations.isEmpty(), "Kind writes must remain blocked")
+            assertEquals(setOf(id), writes.dao.rows.keys, "The blocked repayment must not publish an original")
             assertEquals(canonical, model.state.value.debt)
             assertEquals("1.00", model.state.value.amountInput)
             gate.complete(Unit)
@@ -131,10 +130,29 @@ class DebtAdjustmentRecoveryViewModelTest {
             assertEquals(fresh, model.state.value.debt)
             assertTrue(model.state.value.canWriteActions)
             assertNull(model.state.value.error)
+            val priorSubmitJobs = model.viewModelScope.coroutineContext.job.children.toSet()
             model.submit()
+            model.viewModelScope.coroutineContext.job.children.single { it !in priorSubmitJobs }.join()
             advanceUntilIdle()
-            assertEquals(listOf("repayment:${canonical.publicId}:3:100"), repo.mutations)
-            assertTrue(writes.outbox.dequeueNextRunnable().isEmpty())
+            val published = writes.repository.observeWrites(writes.binding, canonical.publicId).first()
+                .single { it.repayment != null }
+            val repayment = assertNotNull(published.repayment)
+            assertEquals(100L, repayment.request.amountCents)
+            assertEquals(3L, repayment.request.expectedRowVersion)
+            assertEquals(canonical.publicId, repayment.subject.publicId)
+            assertEquals(writes.binding.ownerKey, published.row.ownerKey)
+            assertEquals(writes.binding.ledgerId, published.row.ledgerId)
+            assertEquals(writes.binding.serverUrl, published.row.serverUrl)
+            assertEquals(writes.binding.sessionGeneration, repayment.originSessionGeneration)
+            assertEquals(writes.binding.bindingRevision, repayment.originBindingRevision)
+            assertTrue(!published.row.idempotencyKey.isNullOrBlank())
+            assertTrue(published.row.idempotencyKey != original.row.idempotencyKey)
+            assertEquals("pending", published.row.status.wireValue)
+            assertEquals(setOf(id, published.row.id), writes.dao.rows.keys)
+            assertEquals(published.row.id, writes.outbox.dequeueNextRunnable().single().id)
+            assertEquals("abandoned", writes.dao.rows.getValue(id).status)
+            assertEquals(fresh, model.state.value.debt)
+            assertTrue(repo.mutations.isEmpty())
             assertTrue(writes.api.calls.isEmpty())
         } finally {
             gate.complete(Unit)

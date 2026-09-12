@@ -143,7 +143,6 @@ internal class AdjustmentDetailActions : DebtActions by FakeDebtActions() {
         return getResult
     }
     var getResult: Result<Debt> = Result.success(sampleDebt().copy(rowVersion = 7))
-    var writeResult: Result<Debt>? = null
     var getGate: CompletableDeferred<Unit>? = null
     val getCalls = mutableListOf<String>()
 

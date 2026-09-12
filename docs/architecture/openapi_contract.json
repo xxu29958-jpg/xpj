@@ -3835,9 +3835,19 @@
             "title": "Csrf Token",
             "type": "string"
           },
+          "debt_public_id": {
+            "default": "",
+            "title": "Debt Public Id",
+            "type": "string"
+          },
           "expected_row_version": {
             "default": "",
             "title": "Expected Row Version",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "default": "",
+            "title": "Home Currency Code",
             "type": "string"
           },
           "idempotency_key": {
@@ -3850,9 +3860,19 @@
             "title": "Ledger Id",
             "type": "string"
           },
+          "origin_binding": {
+            "default": "",
+            "title": "Origin Binding",
+            "type": "string"
+          },
           "paid_at": {
             "default": "",
             "title": "Paid At",
+            "type": "string"
+          },
+          "paid_at_timezone": {
+            "default": "",
+            "title": "Paid At Timezone",
             "type": "string"
           }
         },
