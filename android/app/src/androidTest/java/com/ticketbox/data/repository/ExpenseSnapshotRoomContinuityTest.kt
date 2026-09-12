@@ -11,8 +11,10 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.lifecycle.viewModelScope
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.OutboxAdapterGraph
+import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.ExpenseDto
+import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CurrencyCode
@@ -44,6 +46,7 @@ class ExpenseSnapshotRoomContinuityTest {
     private lateinit var originalSnapshot: ExpenseDto
     @Volatile private var offline = false
     @Volatile private var staleRead = false
+    private var localRef: String? = null
     private val reads = AtomicInteger()
     private val attempts = AtomicInteger()
     private val commits = CopyOnWriteArrayList<Pair<ExpenseUpdateRequest, String>>()
@@ -51,6 +54,12 @@ class ExpenseSnapshotRoomContinuityTest {
     private var global: OutboxStatusViewModel? = null
     private val fixture = ExpenseCorrectionConnectedFixture(InstrumentationRegistry.getInstrumentation().targetContext) { api ->
         object : ApiService by api {
+            override suspend fun createManualExpense(request: ExpenseManualCreateRequestDto): ExpenseDto {
+                check(!request.clientRef.isNullOrBlank() && request.originalCurrency == "USD" && request.originalAmount == "10.00")
+                localRef = "local:${request.clientRef}"
+                return current.copy(source = "手动记账", merchant = request.merchant).also { current = it }
+            }
+
             override suspend fun expense(id: Long): ExpenseDto {
                 reads.incrementAndGet()
                 if (offline) throw IOException("Offline canonical expense read")
@@ -61,12 +70,73 @@ class ExpenseSnapshotRoomContinuityTest {
             override suspend fun updateExpense(id: String, request: ExpenseUpdateRequest, idempotencyKey: String?): ExpenseDto {
                 attempts.incrementAndGet()
                 if (offline) throw IOException("Offline before submission")
-                check(id == current.id.toString() && request.expectedRowVersion == current.rowVersion)
+                check(id == current.id.toString() || id == localRef)
+                // The existing server local-ref protocol resolves first-write OCC 0 from the original create receipt.
+                check(request.expectedRowVersion == current.rowVersion || (id == localRef && request.expectedRowVersion == 0L))
                 check(!idempotencyKey.isNullOrBlank())
                 commits += request to idempotencyKey
                 return current.copy(merchant = request.merchant, rowVersion = current.rowVersion + 1).also { current = it }
             }
         }.also { sendingApi = it }
+    }
+
+    @Test
+    fun aDeliveredLocalPatchRefreshesAfterItsCreateReceiptAndIdentityCacheAreGone() = runBlocking {
+        val repository = fixture.reopen().expenseRepository
+        current = fixture.network.current.copy(status = "pending", confirmedAt = null, rowVersion = 1,
+            homeCurrency = "CNY", originalCurrency = "USD", originalCurrencyCode = "USD",
+            originalAmount = "10.00", originalAmountMinor = 1000, amountCents = null, homeAmountCents = null,
+            fxStatus = "pending", fxRate = null, fxRateDate = null, fxSource = null,
+            exchangeRateToCny = null, exchangeRateDate = null, exchangeRateSource = null)
+        originalSnapshot = current
+        val local = repository.createManualExpense(foreignDraft("Original manual merchant")).getOrThrow()
+        assertTrue(local.pendingSync)
+        assertTrue(repository.saveExpenseAllowingOffline(local.id, foreignDraft("Reviewed local merchant"), local)
+            .getOrThrow() is SaveOutcome.Queued)
+        val originals = fixture.stored()
+        assertEquals(listOf(PendingMutationType.CreateExpense.wireValue, PendingMutationType.PatchExpense.wireValue),
+            originals.map { it["type"] })
+        assertTrue(originals.all { it["targetId"] == "expense:local:${local.clientRef}" })
+        assertEquals(0, attempts.get())
+
+        val adapters = OutboxAdapterGraph()
+        val engine = OutboxDrainEngine(fixture.outbox, listOf(
+            CreateExpenseDispatcher({ sendingApi }, adapters.manualCreateAdapter) { ledgerId, ref, dto ->
+                fixture.expenseDao.applyLocalCreateServerIdentity(ledgerId, dto.toEntity(ledgerId).copy(clientRef = ref))
+            },
+            PatchExpenseDispatcher({ sendingApi }, adapters.patchExpenseAdapter) { _, _ ->
+                throw IOException("Accepted local PATCH could not publish its cache")
+            },
+        ), now = fixture.clock::millis)
+        assertEquals(2, engine.drainOnce().done)
+        val delivered = fixture.stored().last()
+        assertOriginalFields(listOf(originals.last()), listOf(delivered))
+        assertEquals("0", delivered["expectedRowVersion"])
+        assertEquals("correction_refresh_required:2", delivered["lastError"])
+        assertEquals(originals.last()["idempotencyKey"], commits.single().second)
+
+        val binding = requireNotNull(fixture.outbox.observeStatus().first().binding)
+        val cleanup = OutboxRepository(fixture.pendingDao, Clock.offset(fixture.clock, Duration.ofDays(14)),
+            bindingProvider = { binding }, onRowsDeleted = {})
+        assertEquals("Only the original Create receipt is eligible for retirement", 1, cleanup.gcCompleted())
+        fixture.expenseDao.clearForLedger(binding.ledgerId)
+        val reopened = fixture.reopen().expenseRepository
+        assertEquals(listOf(delivered), fixture.stored())
+        showSync()
+        compose.waitUntil(10_000) { compose.onAllNodes(hasText(REFRESH_REQUIRED)).fetchSemanticsNodes().isNotEmpty() }
+        val beforeRead = reads.get()
+        clickRefresh()
+        compose.runOnIdle {
+            assertTrue("The refresh action must start or complete its canonical read",
+                global?.uiState?.value?.busyRowId != null || reads.get() > beforeRead)
+        }
+        compose.waitUntil(10_000) { global?.uiState?.value?.busyRowId == null }
+        assertEquals("The refresh action must resolve the original local target", beforeRead + 1, reads.get())
+        assertEquals(listOf(delivered + ("lastError" to null)), fixture.stored())
+        assertEquals("""{"expenseId":42}""", delivered["receiptJson"])
+        assertEquals("Reviewed local merchant", reopened.fetchExpenseFromLocalCache(42).getOrThrow().merchant)
+        assertEquals(0, drain().attempted)
+        assertEquals(1, commits.size)
     }
 
     @After fun close() {
@@ -178,6 +248,8 @@ class ExpenseSnapshotRoomContinuityTest {
     private fun draft(merchant: String) = ExpenseDraft(amountCents = 1000, originalCurrencyCode = CurrencyCode.CNY,
         originalAmountMinor = 1000, ledgerHomeCurrency = CurrencyCode.CNY, merchant = merchant, category = "Other",
         note = null, expenseTime = "2026-09-06T00:00:00Z", tags = null, valueScore = null, regretScore = null)
+
+    private fun foreignDraft(merchant: String) = draft(merchant).copy(amountCents = null, originalCurrencyCode = CurrencyCode.USD)
 
     private companion object {
         const val REFRESH_REQUIRED = "操作已完成，账单显示尚待更新。"

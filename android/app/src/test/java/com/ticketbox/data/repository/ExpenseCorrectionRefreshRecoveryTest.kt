@@ -31,6 +31,36 @@ import kotlin.test.assertTrue
 
 internal class ExpenseCorrectionRefreshRecoveryTest {
     @Test
+    fun anAcceptedLocalPatchBlocksPromotedFactCommandsUntilTheCompleteReadIsAdopted() = runTest {
+        val fixture = CorrectionRefreshFixture()
+        fixture.read = { fixture.expense(it, 12L) }
+        val fact = fixture.repository.fetchExpense(42).getOrThrow()
+        val binding = assertNotNull(fixture.repository.observeCorrections().first().access).binding
+        val request = ExpenseUpdateRequest(merchant = "Original pending edit", category = null, note = null,
+            expenseTime = null, tags = null, valueScore = null, regretScore = null)
+        val payload = com.ticketbox.OutboxAdapterGraph().patchExpenseAdapter.toJson(request)
+        val id = fixture.outbox.enqueue(PendingMutationType.PatchExpense, "expense:local:original-create",
+            payload, 10, "original-local-patch-key")
+        // The delayed accepted PATCH predates the newer confirmed root; its projection could not be published.
+        fixture.outbox.markDone(id, cacheRefreshVersion = 11, receiptJson = """{"expenseId":42}""")
+        val original = fixture.queue.rows.getValue(id)
+        val correction = ExpenseCorrectionDraft("Reviewed correction", merchant = "Reviewed merchant")
+        val offset = ExpenseOffsetDraft(StreamOffsetKind.Refund, 100, "2026-09-06", "Reviewed refund")
+
+        val correctionAttempt = fixture.repository.submitCorrection(binding, fact, correction)
+        val offsetAttempt = fixture.repository.createExpenseOffsetAllowingOffline(binding, fact, offset)
+        assertTrue(correctionAttempt.isFailure, "The numeric target cannot bypass its local-target accepted PATCH")
+        assertTrue(offsetAttempt.isFailure, "Offset admission shares the same outstanding projection")
+        assertEquals(listOf(original), fixture.queue.rows.values.toList())
+
+        fixture.streamVersions[42] = 12
+        fixture.repository.fetchExpense(42).getOrThrow()
+        assertEquals(original.copy(lastError = null), fixture.queue.rows[id], "Root GET must also adopt the full confirmed stream")
+        assertTrue(fixture.repository.submitCorrection(binding, fact, correction).isSuccess)
+        assertTrue(fixture.repository.createExpenseOffsetAllowingOffline(binding, fact, offset).isSuccess)
+    }
+
+    @Test
     fun acceptedExpenseRefreshRequirementsRemainVisibleAcrossAllCommandTypes() = runTest {
         val clock = Clock.fixed(Instant.parse("2026-05-04T00:00:00Z"), ZoneOffset.UTC)
         val types = listOf(

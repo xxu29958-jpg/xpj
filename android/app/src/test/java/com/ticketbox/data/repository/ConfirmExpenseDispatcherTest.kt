@@ -58,14 +58,14 @@ internal class ConfirmExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
     fun `accepted confirm retains its receipt when cache publication fails`() = runTest {
         val response = successExpenseDto().copy(status = "confirmed")
         val stub = ApiServiceStub(confirmExpenseResult = ApiResult.Success(response))
-        val row = confirmRow(idempotencyKey = "cache-failure-key")
+        val row = confirmRow(idempotencyKey = "cache-failure-key", targetId = "expense:local:original-create")
         val api = object : ApiService by stub {
             override suspend fun confirmExpense(
                 id: String,
                 request: ExpenseStateTokenRequest,
                 idempotencyKey: String?,
             ): ExpenseDto {
-                assertEquals("42", id)
+                assertEquals("local:original-create", id)
                 assertEquals(ExpenseStateTokenRequest(expectedRowVersion = row.expectedRowVersion), request)
                 return stub.confirmExpense(id, request, idempotencyKey)
             }
@@ -80,7 +80,8 @@ internal class ConfirmExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
 
         assertEquals(row.idempotencyKey, stub.lastConfirmIdempotencyKey)
         assertEquals(1, publicationAttempts)
-        assertEquals(DispatchResult.Success(newRowVersion = 2L, cacheRefreshVersion = 2L), result)
+        assertEquals(DispatchResult.Success(newRowVersion = 2L, cacheRefreshVersion = 2L,
+            receiptJson = """{"expenseId":42}"""), result)
     }
 
     @Test

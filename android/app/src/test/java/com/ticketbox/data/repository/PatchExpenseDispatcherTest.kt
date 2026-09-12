@@ -64,7 +64,7 @@ internal class PatchExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestBa
     fun `accepted patch retains its receipt when cache publication fails`() = runTest {
         val response = successExpenseDto()
         val stub = ApiServiceStub(updateExpenseResult = ApiResult.Success(response))
-        val row = patchRow(idempotencyKey = "cache-failure-key")
+        val row = patchRow(idempotencyKey = "cache-failure-key").copy(targetId = "expense:local:original-create")
         var publicationAttempts = 0
         val result = dispatcherFor(stub) { ledgerId, expense ->
             assertEquals(row.ledgerId, ledgerId)
@@ -78,7 +78,8 @@ internal class PatchExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestBa
         assertEquals(row.idempotencyKey, stub.lastIdempotencyKey)
         assertEquals(expectedRequest, stub.lastUpdateRequest)
         assertEquals(1, publicationAttempts)
-        assertEquals(DispatchResult.Success(newRowVersion = 2L, cacheRefreshVersion = 2L), result)
+        assertEquals(DispatchResult.Success(newRowVersion = 2L, cacheRefreshVersion = 2L,
+            receiptJson = """{"expenseId":42}"""), result)
     }
 
     @Test

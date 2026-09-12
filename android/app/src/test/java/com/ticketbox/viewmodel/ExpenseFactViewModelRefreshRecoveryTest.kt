@@ -23,6 +23,34 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class ExpenseFactViewModelRefreshRecoveryTest : ExpenseFactViewModelTestBase() {
     @Test
+    fun aLocalConfirmationReceiptBlocksOnlyItsOwnAcceptedFact() = edit { fake ->
+        val binding = fake.correctionBinding
+        val accepted = OutboxRow(801, binding.serverUrl, binding.ledgerId, binding.ownerKey,
+            PendingMutationType.ConfirmExpense, "expense:local:original-create", "{\"expected_row_version\":0}", 0,
+            PendingMutationStatus.Done, 0, "correction_refresh_required:1", "2026-09-13T00:00:00Z",
+            null, "2026-09-13T00:00:01Z", "original-confirm-key", receiptJson = """{"expenseId":7}""")
+        val unrelated = listOf(accepted.copy(id = 802, receiptJson = """{"expenseId":99}"""),
+            accepted.copy(id = 803, targetId = "expense:99"))
+        fake.expenseOutboxStatus.value = fake.expenseOutboxStatus.value.copy(refreshRequired = unrelated)
+        val vm = viewModel(fake)
+        try {
+            assertTrue(vm.uiState.value.authoritativeRootReady)
+            fake.expenseOutboxStatus.value = fake.expenseOutboxStatus.value.copy(refreshRequired = unrelated + accepted)
+            advanceUntilIdle()
+            assertFalse(vm.uiState.value.authoritativeRootReady, "The original local target resolves through its own accepted receipt")
+            assertEquals(2, fake.fetchExpenseCalls)
+            assertEquals(accepted, vm.uiState.value.expenseRefreshRequirements.single())
+            fake.expenseOutboxStatus.value = fake.expenseOutboxStatus.value.copy(refreshRequired = unrelated)
+            advanceUntilIdle()
+            assertTrue(vm.uiState.value.authoritativeRootReady)
+            assertEquals(2, fake.fetchExpenseCalls)
+            assertEquals(0, fake.correctCalls)
+        } finally {
+            vm.viewModelScope.coroutineContext.job.cancelAndJoin()
+        }
+    }
+
+    @Test
     fun anOffsetReceiptBlocksCachedAndLiveFactsUntilAdoptionWithoutReplacingTheDraft() = edit { fake ->
         fake.baseExpense = fake.baseExpense.copy(rowVersion = 7)
         val vm = viewModel(fake)
