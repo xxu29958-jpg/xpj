@@ -55,7 +55,9 @@ def _currency_selector(form):
 
 
 def _payment_link(html):
-    for href in re.findall(r'href="([^"]+)"', html):
+    section = re.search(r'<section\b[^>]*aria-label="记录本期付款"[^>]*>(.*?)</section>', html, re.S)
+    assert section is not None, "The original period has no record-payment task section"
+    for href in re.findall(r'href="([^"]+)"', section.group(1)):
         href = unescape(href)
         if urlsplit(href).path == "/web/expenses/new":
             return href
@@ -102,8 +104,11 @@ def test_actual_unpaid_period_offers_manual_payment_with_original_ledger_series_
     monkeypatch.setattr(web, "find_recurring_payments", lambda *a, **kw: [])
     monkeypatch.setattr(web, "_base_ctx", lambda request, **kw: {
         "request": request, "selected_ledger_id": "family", "can_write": True, "csrf_field": ""})
-    page = web._page(_request(f"/web/recurring/{SERIES_ID}/occurrence"), object(),
+    request = _request(f"/web/recurring/{SERIES_ID}/occurrence")
+    request.state.web_session_auth = SimpleNamespace(account_id=1)
+    page = web._page(request, object(),
         public_id=SERIES_ID, ledger_id="family", month="2026-09")
+    assert 'data-shell-shortcut="manual-expense"' in page.body.decode()
     href = _payment_link(page.body.decode())
     assert parse_qs(urlsplit(href).query) == {"ledger_id": ["family"], "return_to": ["recurring_occurrence"],
         "return_recurring_public_id": [SERIES_ID], "return_month": ["2026-09"]}
