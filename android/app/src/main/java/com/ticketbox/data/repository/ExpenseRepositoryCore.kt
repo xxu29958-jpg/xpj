@@ -251,7 +251,7 @@ internal class ExpenseRepositoryCore(
         if (dto.status == "confirmed") {
             val needsProjection = outbox?.observeActiveByTypes(EXPENSE_REFRESH_TYPES,
                 includeCompleted = true)?.first()?.any {
-                it.targetId == "expense:$id" && it.requiresExpenseRefresh()
+                expenseRefreshTargetId(it.targetId, it.receiptJson) == id && it.requiresExpenseRefresh()
             } == true
             if (needsProjection) syncConfirmedFromService(bound)
         }

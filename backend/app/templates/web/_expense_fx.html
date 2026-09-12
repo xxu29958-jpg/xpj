@@ -26,11 +26,11 @@
     {% endif %}
   </div>
   {% endif %}
-  {% if fx_revision_changed %}
-  <div class="product-feedback product-feedback--warning" role="status">
-    已保存账单有新结果。你的未保存填写和原提交版本仍保留；载入后请核对新金额，再确认入账。
-    <a href="{{ core_fields_reload_href }}" data-drawer-reload>载入最新账单（替换未保存填写）</a>
-  </div>
-  {% endif %}
 </section>
+{% endif %}
+{% if fx_revision_changed %}
+<div class="product-feedback product-feedback--warning" role="status">
+  已保存账单有新结果。你的未保存填写和原提交版本仍保留；载入后请核对新金额，再确认入账。
+  <a href="{{ core_fields_reload_href }}" data-drawer-reload>载入最新账单（替换未保存填写）</a>
+</div>
 {% endif %}

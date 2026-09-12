@@ -64,7 +64,7 @@ class RecognizeTextDispatcher(
             // committed-but-unseen first attempt is deduped server-side (HIT →
             // canonical row) instead of false-409ing on the stale row_version.
             val recognized = apiProvider(row).recognizeText(expenseRef, request, idempotencyKey)
-            publishAcceptedExpense(recognized.rowVersion) { publishExpense(row.ledgerId, recognized) }
+            publishAcceptedExpense(recognized.id, recognized.rowVersion) { publishExpense(row.ledgerId, recognized) }
         } catch (e: HttpException) {
             mapOutboxHttpException(e)
         } catch (e: IOException) {

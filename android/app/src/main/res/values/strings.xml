@@ -176,7 +176,10 @@
     <string name="expense_fx_manual_recovery">换算不会自动入账。也可在下方填写手工汇率，保存后核对。</string>
     <string name="expense_fx_refresh">刷新换算状态</string>
     <string name="expense_fx_retry">重新换算</string>
-    <string name="expense_fx_load_review">加载换算结果</string>
+    <string name="expense_fx_load_review">加载最新账单</string>
+    <string name="expense_fx_replace_draft_explanation">未保存的填写将被最新账单替换，载入后请重新核对。</string>
+    <string name="expense_fx_replace_draft">替换并载入</string>
+    <string name="expense_fx_keep_draft">保留填写</string>
     <string name="expense_fx_save_draft_first">当前修改仍保留。请先保存草稿，再加载新版本核对。</string>
     <string name="expense_fx_read_failed">无法读取换算状态，请联网后重试；当前输入仍保留。</string>
     <string name="expense_fx_cached_read">正在显示已保存的账单。换算进度尚未读取，请联网后刷新。</string>

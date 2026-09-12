@@ -54,7 +54,7 @@ class RetryOcrDispatcher(
             // committed-but-unseen first attempt is deduped server-side (HIT →
             // canonical row) instead of false-409ing on the stale row_version.
             val retried = apiProvider(row).retryOcr(expenseRef, request, idempotencyKey)
-            publishAcceptedExpense(retried.rowVersion) { publishExpense(row.ledgerId, retried) }
+            publishAcceptedExpense(retried.id, retried.rowVersion) { publishExpense(row.ledgerId, retried) }
         } catch (e: HttpException) {
             mapOutboxHttpException(e)
         } catch (e: IOException) {

@@ -4,6 +4,7 @@ import kotlinx.coroutines.CancellationException
 
 /** A local projection failure cannot reverse a server-accepted Expense command. */
 internal suspend fun publishAcceptedExpense(
+    expenseId: Long,
     rowVersion: Long,
     publish: suspend () -> Unit,
 ): DispatchResult.Success = try {
@@ -12,7 +13,8 @@ internal suspend fun publishAcceptedExpense(
 } catch (cancelled: CancellationException) {
     throw cancelled
 } catch (_: Exception) {
-    DispatchResult.Success(newRowVersion = rowVersion, cacheRefreshVersion = rowVersion)
+    DispatchResult.Success(newRowVersion = rowVersion, cacheRefreshVersion = rowVersion,
+        receiptJson = expenseAcceptanceReceiptJson(expenseId))
 }
 
 /** Notification is best effort after adoption; cancellation keeps its original meaning. */

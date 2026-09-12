@@ -34,10 +34,11 @@
     </span>
     <span class="kv-key">任务运行</span>
     <span class="kv-val" data-testid="fx-scheduler-state">
-      {% if fx_scheduler_running %}
+      {% if fx_scheduler_config_error %}
+      <span class="badge badge-err">报价计划配置无效</span> 请核对同步时间和时区，修正后重启后端。
+      {% if fx_scheduler_running %}待补汇率的账单仍会继续处理。{% endif %}
+      {% elif fx_scheduler_running %}
       <span class="badge badge-ok">运行中</span> 等待计划时间或正在同步
-      {% elif fx_scheduler_config_error %}
-      <span class="badge badge-err">启动配置无效</span> 请核对同步时间和时区，修正后重启后端。
       {% elif fx_auto_enabled %}
       <span class="badge badge-err">任务未运行</span> 请通过桌面管理器查看后端状态；仍可尝试手动拉取。
       {% else %}
@@ -54,7 +55,7 @@
   <form method="post" action="/owner/fx/refresh" class="form-row" data-show-loading="正在拉取最新汇率，请稍候…">
     <button type="submit" class="btn btn-primary">立即拉取一次</button>
   </form>
-  {% if fx_scheduler_running and fx_last_error %}
+  {% if fx_scheduler_running and not fx_scheduler_config_error and fx_last_error %}
   <p class="text-meta">自动任务会在后续计划时间继续尝试，也可现在手动拉取。</p>
   {% endif %}
   <p class="text-meta mt-3">

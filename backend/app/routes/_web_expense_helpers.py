@@ -219,7 +219,7 @@ def web_edit_context(
         expense_view["row_version"] = form_values["expected_row_version"]
     ctx["expense"] = expense_view
     ctx["expense_fx"] = expense_fx_view(db, expense=expense)
-    ctx["fx_revision_changed"] = bool(ctx["expense_fx"] and str(expense_view["row_version"]) != str(expense.row_version))
+    ctx["fx_revision_changed"] = str(expense_view["row_version"]) != str(expense.row_version)
     ctx["manual_draft_ack"] = manual_draft_ack(db, getattr(request.state, "web_session_auth", None), expense)
     ctx["conflict_current"] = current_expense_view if conflict else None
     ctx["confirm_idempotency_key"] = (form_values or {}).get("idempotency_key") or str(uuid4())

@@ -56,7 +56,7 @@ class RejectExpenseDispatcher(
             // committed-but-unseen first attempt is deduped server-side (HIT →
             // canonical row) instead of false-409ing on the stale row_version.
             val rejected = apiProvider(row).rejectExpense(expenseRef, request, idempotencyKey)
-            publishAcceptedExpense(rejected.rowVersion) { publishExpense(row.ledgerId, rejected) }
+            publishAcceptedExpense(rejected.id, rejected.rowVersion) { publishExpense(row.ledgerId, rejected) }
         } catch (e: HttpException) {
             mapOutboxHttpException(e)
         } catch (e: IOException) {

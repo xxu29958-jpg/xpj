@@ -223,7 +223,8 @@ class ExpenseOffsetDispatchersTest {
         val original = createRow()
         for (cacheFailure in listOf(IllegalStateException("Room unavailable"), IOException("cache IO"))) {
             failure = cacheFailure
-            assertEquals(DispatchResult.Success(newRowVersion = 8, cacheRefreshVersion = 8), dispatcher.dispatch(original))
+            assertEquals(DispatchResult.Success(newRowVersion = 8, cacheRefreshVersion = 8,
+                receiptJson = """{"expenseId":9}"""), dispatcher.dispatch(original))
             assertEquals("owner" to bundle, published)
             assertEquals("42", stub.createId)
             assertEquals("offset-key", stub.createKey)
@@ -250,7 +251,8 @@ class ExpenseOffsetDispatchersTest {
         val original = voidRow()
         for (cacheFailure in listOf(IllegalStateException("Room unavailable"), IOException("cache IO"))) {
             failure = cacheFailure
-            assertEquals(DispatchResult.Success(newRowVersion = 8, cacheRefreshVersion = 8), dispatcher.dispatch(original))
+            assertEquals(DispatchResult.Success(newRowVersion = 8, cacheRefreshVersion = 8,
+                receiptJson = """{"expenseId":9}"""), dispatcher.dispatch(original))
             assertEquals("owner" to bundle, published)
             assertEquals("42", stub.voidId)
             assertEquals("refund-1", stub.voidOffsetPublicId)

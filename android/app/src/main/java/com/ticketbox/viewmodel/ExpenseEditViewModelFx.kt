@@ -43,7 +43,7 @@ private fun ExpenseEditViewModel.requestExpenseFx(retry: Boolean) {
 }
 
 /** Only an explicit review action may replace the editor's original OCC snapshot. */
-fun ExpenseEditViewModel.loadFxReview(hasDraftChanges: Boolean) {
+fun ExpenseEditViewModel.loadFxReview(preserveDraft: Boolean) {
     val state = uiState.value
     val expense = state.expense ?: return
     val binding = fxBinding ?: run {
@@ -52,7 +52,7 @@ fun ExpenseEditViewModel.loadFxReview(hasDraftChanges: Boolean) {
     }
     if (state.fx.loading || state.expenseLoading || state.itemsLoading || state.splitsLoading) return
     if (state.saving || state.itemsSaving || state.splitsSaving) return
-    if (hasDraftChanges || state.itemEditorOpen || state.splitEditorOpen) {
+    if (preserveDraft || state.itemEditorOpen || state.splitEditorOpen) {
         _uiState.update { it.copy(fx = it.fx.copy(message = UiText.res(R.string.expense_fx_save_draft_first))) }
         return
     }
@@ -90,6 +90,7 @@ private suspend fun ExpenseEditViewModel.applyFxReview(binding: LogicalSessionBi
         } else {
             it.copy(
                 expense = fresh,
+                formRevision = it.formRevision + 1,
                 expenseLoading = false,
                 expenseItems = items,
                 expenseSplits = splits,

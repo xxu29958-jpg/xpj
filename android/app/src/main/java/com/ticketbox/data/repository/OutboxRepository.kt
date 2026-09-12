@@ -395,8 +395,8 @@ class OutboxRepository private constructor(
             val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
             boundRequest?.requireStillActiveFor(binding)
             binding.requireReadyForEnqueue()
-            validateTargetRows?.invoke(activeForTarget(binding, intent.targetId,
-                ACTIVE_STATUS_VALUES + PendingMutationStatus.Done.wireValue))
+            validateTargetRows?.invoke(dao.expenseAdmissionRows(binding, intent.targetId, activeForTarget(binding, intent.targetId,
+                ACTIVE_STATUS_VALUES + PendingMutationStatus.Done.wireValue)))
             val row = intent.toEntity(binding, nowIso())
             dao.insertAndPublish(row, afterPersisted)
         }

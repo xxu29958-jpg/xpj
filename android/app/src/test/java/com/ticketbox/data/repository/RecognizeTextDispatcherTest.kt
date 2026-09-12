@@ -134,7 +134,8 @@ class RecognizeTextDispatcherTest {
         assertEquals(row.idempotencyKey, stub.lastIdempotencyKey)
         assertEquals(expectedRequest, stub.lastRequest)
         assertEquals(1, publicationAttempts)
-        assertEquals(DispatchResult.Success(newRowVersion = 8L, cacheRefreshVersion = 8L), result)
+        assertEquals(DispatchResult.Success(newRowVersion = 8L, cacheRefreshVersion = 8L,
+            receiptJson = """{"expenseId":42}"""), result)
     }
 
     @Test

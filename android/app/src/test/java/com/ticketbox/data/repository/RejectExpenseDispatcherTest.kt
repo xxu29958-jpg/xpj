@@ -72,7 +72,8 @@ internal class RejectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestB
 
         assertEquals(row.idempotencyKey, stub.lastRejectIdempotencyKey)
         assertEquals(1, publicationAttempts)
-        assertEquals(DispatchResult.Success(newRowVersion = 2L, cacheRefreshVersion = 2L), result)
+        assertEquals(DispatchResult.Success(newRowVersion = 2L, cacheRefreshVersion = 2L,
+            receiptJson = """{"expenseId":42}"""), result)
     }
 
     @Test

@@ -42,7 +42,7 @@ class ExpenseFxViewModelTest {
     }
 
     @Test
-    fun taskRefreshNeverAdoptsMoneyOrOccAndExplicitReviewRequiresSavedDraft() = runTest {
+    fun taskRefreshNeverAdoptsMoneyOrOccAndExplicitReviewPreservesProtectedDrafts() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
             val fake = FakeExpenseEditActions()
@@ -69,14 +69,14 @@ class ExpenseFxViewModelTest {
                 assertSame(pending, vm.uiState.value.expense)
                 assertEquals(observedTask, vm.uiState.value.fx.task)
                 assertEquals(0, fake.fxReviewCalls)
-                vm.loadFxReview(hasDraftChanges = true)
+                vm.loadFxReview(preserveDraft = true)
                 advanceUntilIdle()
                 assertSame(pending, vm.uiState.value.expense)
                 assertEquals(0, fake.fxReviewCalls)
                 assertEquals(originalItems, vm.uiState.value.expenseItems)
                 assertEquals(originalSplits, vm.uiState.value.expenseSplits)
             }
-            vm.loadFxReview(hasDraftChanges = false)
+            vm.loadFxReview(preserveDraft = false)
             advanceUntilIdle()
             assertEquals(fresh, vm.uiState.value.expense)
             assertEquals(freshItems, vm.uiState.value.expenseItems)
@@ -125,7 +125,7 @@ class ExpenseFxViewModelTest {
             )
             for (result in incomplete) {
                 fake.fetchSplitsResponder = { result }
-                vm.loadFxReview(hasDraftChanges = false)
+                vm.loadFxReview(preserveDraft = false)
                 advanceUntilIdle()
                 assertEquals(original.expense, vm.uiState.value.expense)
                 assertEquals(original.expenseItems, vm.uiState.value.expenseItems)
@@ -135,7 +135,7 @@ class ExpenseFxViewModelTest {
                 assertFalse(vm.uiState.value.fx.loading)
             }
             fake.fetchSplitsResponder = { Result.success(freshSplits) }
-            vm.loadFxReview(hasDraftChanges = false)
+            vm.loadFxReview(preserveDraft = false)
             advanceUntilIdle()
             assertEquals(fresh, vm.uiState.value.expense)
             assertEquals(freshItems, vm.uiState.value.expenseItems)

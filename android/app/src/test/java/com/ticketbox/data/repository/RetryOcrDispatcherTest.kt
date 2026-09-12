@@ -75,7 +75,8 @@ internal class RetryOcrDispatcherTest : ExpensePendingRepositoryOutboxTestBase()
 
         assertEquals(row.idempotencyKey, stub.lastRetryOcrIdempotencyKey)
         assertEquals(1, publicationAttempts)
-        assertEquals(DispatchResult.Success(newRowVersion = 2L, cacheRefreshVersion = 2L), result)
+        assertEquals(DispatchResult.Success(newRowVersion = 2L, cacheRefreshVersion = 2L,
+            receiptJson = """{"expenseId":42}"""), result)
     }
 
     @Test

@@ -14,6 +14,7 @@ import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.OutboxStatus
 import com.ticketbox.data.repository.PendingDebtCreation
 import com.ticketbox.data.repository.parseExpenseTargetRef
+import com.ticketbox.data.repository.expenseRefreshTargetId
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.OutboxBinding
 import com.ticketbox.data.repository.ExpenseCorrectionObservation
@@ -303,8 +304,12 @@ class OutboxStatusViewModel(
     fun refreshExpense(row: OutboxRow) {
         if (_uiState.value.status.refreshRequired.none { it.id == row.id }) return
         val binding = expenseRepository.captureDeferredLedgerBinding() ?: return
-        val id = parseExpenseTargetRef(row.targetId)?.toLongOrNull() ?: return
         resolve(row) {
+            val id = expenseRefreshTargetId(row.targetId, row.receiptJson)
+            if (id == null) {
+                _uiState.update { it.copy(message = UiText.res(R.string.sync_status_refresh_failed), messageTone = MessageTone.Danger) }
+                return@resolve
+            }
             expenseRepository.fetchExpense(id).onFailure { error ->
                 if (expenseRepository.captureDeferredLedgerBinding() == binding) {
                     _uiState.update { it.copy(message = error.toUiText(R.string.sync_status_refresh_failed),

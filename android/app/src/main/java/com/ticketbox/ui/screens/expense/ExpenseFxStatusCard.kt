@@ -4,9 +4,14 @@ import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.BackgroundTask
@@ -47,11 +52,26 @@ internal fun ExpenseFxStatusCard(
         if (pendingNeedsFx(expense) && !editState.readOnly && (state.task == null || state.task.status in setOf("failed", "cancelled"))) {
             TextButton(onClick = actions.onRetryFx, enabled = actionsEnabled) { Text(stringResource(R.string.expense_fx_retry)) }
         }
-        if (state.task?.status == "completed") {
-            if (hasDraftChanges) Text(stringResource(R.string.expense_fx_save_draft_first), style = MaterialTheme.typography.bodySmall)
-            TextButton(onClick = { actions.onLoadFxReview(hasDraftChanges) }, enabled = actionsEnabled && !hasDraftChanges) {
-                Text(stringResource(R.string.expense_fx_load_review))
-            }
-        }
+        ExpenseFxReviewAction(actionsEnabled, hasDraftChanges) { actions.onLoadFxReview(false) }
     }
+}
+
+/** Raw form replacement is a user's explicit choice; stale OCC must not force a save first. */
+@Composable
+private fun ExpenseFxReviewAction(enabled: Boolean, hasDraftChanges: Boolean, loadReview: () -> Unit) {
+    var confirmReplacement by remember { mutableStateOf(false) }
+    TextButton(onClick = { if (hasDraftChanges) confirmReplacement = true else loadReview() }, enabled = enabled) {
+        Text(stringResource(R.string.expense_fx_load_review))
+    }
+    if (confirmReplacement) AlertDialog(
+        onDismissRequest = { confirmReplacement = false },
+        title = { Text(stringResource(R.string.expense_fx_load_review)) },
+        text = { Text(stringResource(R.string.expense_fx_replace_draft_explanation)) },
+        confirmButton = { TextButton(onClick = { confirmReplacement = false; loadReview() }, enabled = enabled) {
+            Text(stringResource(R.string.expense_fx_replace_draft))
+        } },
+        dismissButton = { TextButton(onClick = { confirmReplacement = false }) {
+            Text(stringResource(R.string.expense_fx_keep_draft))
+        } },
+    )
 }

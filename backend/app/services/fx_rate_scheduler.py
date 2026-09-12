@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime, time, timedelta
+from datetime import UTC, datetime, time, timedelta, tzinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -155,10 +155,10 @@ def _run_scheduled_fx_sync() -> None:
         _record_sync_failure("storage_unavailable")
 
 
-def _scheduler_loop(stop_event: threading.Event, sync_times: list[time], timezone: ZoneInfo) -> None:
+def _scheduler_loop(stop_event: threading.Event, sync_times: list[time], timezone: tzinfo) -> None:
     after_id = 0
     now = datetime.now(timezone)
-    next_sync_at = now + timedelta(seconds=_seconds_until_next_run(now, sync_times))
+    next_sync_at = now + timedelta(seconds=_seconds_until_next_run(now, sync_times)) if sync_times else None
     while not stop_event.is_set():
         try:
             after_id = refill_pending_expense_fx(after_id=after_id)
@@ -167,11 +167,14 @@ def _scheduler_loop(stop_event: threading.Event, sync_times: list[time], timezon
         if stop_event.is_set():
             return
         now = datetime.now(timezone)
-        if now >= next_sync_at:
+        if next_sync_at is not None and now >= next_sync_at:
             _run_scheduled_fx_sync()
             now = datetime.now(timezone)
             next_sync_at = now + timedelta(seconds=_seconds_until_next_run(now, sync_times))
-        delay_seconds = min(_PENDING_FX_TICK_SECONDS, max((next_sync_at - now).total_seconds(), 1))
+        delay_seconds = (
+            min(_PENDING_FX_TICK_SECONDS, max((next_sync_at - now).total_seconds(), 1))
+            if next_sync_at is not None else _PENDING_FX_TICK_SECONDS
+        )
         if stop_event.wait(delay_seconds):
             return
 
@@ -184,11 +187,13 @@ def start_fx_rate_scheduler() -> FxRateScheduler | None:
         return None
     try:
         sync_times = _parse_sync_times(settings.fx_rate_sync_times)
-        timezone = ZoneInfo(settings.fx_rate_sync_timezone)
+        timezone: tzinfo = ZoneInfo(settings.fx_rate_sync_timezone)
     except (ValueError, ZoneInfoNotFoundError):
         _runtime.config_error = True
         logger.warning("FX rate scheduler config is invalid")
-        return None
+        # Daily quote configuration cannot strand already accepted bill continuation.
+        sync_times = []
+        timezone = UTC
 
     stop_event = threading.Event()
     thread = threading.Thread(

@@ -60,7 +60,7 @@ class ConfirmExpenseDispatcher(
             // committed-but-unseen first attempt is deduped server-side (HIT →
             // canonical row) instead of false-409ing on the stale row_version.
             val confirmed = apiProvider(row).confirmExpense(expenseRef, request, idempotencyKey)
-            publishAcceptedExpense(confirmed.rowVersion) { publishExpense(row.ledgerId, confirmed) }
+            publishAcceptedExpense(confirmed.id, confirmed.rowVersion) { publishExpense(row.ledgerId, confirmed) }
         } catch (e: HttpException) {
             mapOutboxHttpException(e)
         } catch (e: IOException) {

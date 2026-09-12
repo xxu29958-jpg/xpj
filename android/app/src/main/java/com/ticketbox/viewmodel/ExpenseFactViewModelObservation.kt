@@ -11,6 +11,7 @@ import com.ticketbox.data.repository.PendingExpenseCorrection
 import com.ticketbox.data.repository.bindingOrNull
 import com.ticketbox.data.repository.canonicalServerOriginOrNull
 import com.ticketbox.data.repository.expenseRefreshVersion
+import com.ticketbox.data.repository.expenseRefreshTargetId
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -66,7 +67,7 @@ private fun ExpenseFactViewModel.reconcileFactSubmissions(
 private fun ExpenseFactViewModel.boundExpenseRefreshRows(status: OutboxStatus, binding: LogicalSessionBinding?): List<OutboxRow> {
     if (!status.binding.matchesFactBinding(binding)) return _uiState.value.expenseRefreshRequirements
     return status.refreshRequired.filter { row ->
-        row.type != PendingMutationType.CorrectExpense && row.targetId == "expense:$expenseId" &&
+        row.type != PendingMutationType.CorrectExpense && expenseRefreshTargetId(row.targetId, row.receiptJson) == expenseId &&
             row.bindingOrNull().matchesFactBinding(binding)
     }
 }

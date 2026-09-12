@@ -77,6 +77,8 @@ data class ExpenseEditUiState(
     val expense: Expense? = null,
     val expenseLoading: Boolean = true,
     val fx: ExpenseFxUiState = ExpenseFxUiState(),
+    /** Explicit successful form adoption, independent of the server's financial revision. */
+    val formRevision: Int = 0,
     val thumbnail: ProtectedImage? = null,
     val fullImage: ProtectedImage? = null,
     val categories: List<String> = DEFAULT_EXPENSE_CATEGORIES,

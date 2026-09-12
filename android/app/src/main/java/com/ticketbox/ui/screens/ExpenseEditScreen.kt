@@ -209,7 +209,7 @@ fun ExpenseEditScreen(
     }
 
     val currentExpense = state.expense ?: expense
-    val initialFormValues = remember(currentExpense.id, currentExpense.updatedAt) {
+    val initialFormValues = remember(currentExpense.id, currentExpense.updatedAt, state.formRevision) {
         ExpenseEditFormValues.fromExpense(currentExpense)
     }
     // rememberSaveable (not remember): without Manifest configChanges, a
@@ -217,7 +217,7 @@ fun ExpenseEditScreen(
     // plain remember silently resets every unsaved field back to server values
     // — saving then writes stale data. Same fields in ManualExpenseSheet are
     // already saveable; CurrencyCode is an enum (Bundle-safe, proven there).
-    var currency by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
+    var currency by rememberSaveable(currentExpense.id, currentExpense.updatedAt, state.formRevision) {
         mutableStateOf(initialFormValues.currency)
     }
     // R13-4：original 原码严格解析 —— record 原码在支持集外时，按 lossy 枚举（CNY）改金额
@@ -226,30 +226,30 @@ fun ExpenseEditScreen(
     val originalUnsupported = !originalRawCode.isNullOrBlank() &&
         CurrencyCode.fromStorageKeyOrNull(originalRawCode) == null
     val initialAmountText = initialFormValues.amountText
-    var amountText by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
+    var amountText by rememberSaveable(currentExpense.id, currentExpense.updatedAt, state.formRevision) {
         mutableStateOf(initialAmountText)
     }
     val savedManualExchangeRate = currentExpense.fxRate
         ?.takeIf { currentExpense.fxSource == FxContract.SourceManual }
-    var manualExchangeRateText by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
+    var manualExchangeRateText by rememberSaveable(currentExpense.id, currentExpense.updatedAt, state.formRevision) {
         mutableStateOf(initialFormValues.manualExchangeRateText)
     }
-    var manualExchangeRateIsError by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
+    var manualExchangeRateIsError by rememberSaveable(currentExpense.id, currentExpense.updatedAt, state.formRevision) {
         mutableStateOf(false)
     }
-    var merchant by rememberSaveable(currentExpense.id, currentExpense.updatedAt) { mutableStateOf(initialFormValues.merchant) }
-    var category by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
+    var merchant by rememberSaveable(currentExpense.id, currentExpense.updatedAt, state.formRevision) { mutableStateOf(initialFormValues.merchant) }
+    var category by rememberSaveable(currentExpense.id, currentExpense.updatedAt, state.formRevision) {
         mutableStateOf(initialFormValues.category)
     }
-    var note by rememberSaveable(currentExpense.id, currentExpense.updatedAt) { mutableStateOf(initialFormValues.note) }
-    var expenseTime by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
+    var note by rememberSaveable(currentExpense.id, currentExpense.updatedAt, state.formRevision) { mutableStateOf(initialFormValues.note) }
+    var expenseTime by rememberSaveable(currentExpense.id, currentExpense.updatedAt, state.formRevision) {
         mutableStateOf(initialFormValues.expenseTime)
     }
-    var tags by rememberSaveable(currentExpense.id, currentExpense.updatedAt) { mutableStateOf(initialFormValues.tags) }
-    var valueScoreText by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
+    var tags by rememberSaveable(currentExpense.id, currentExpense.updatedAt, state.formRevision) { mutableStateOf(initialFormValues.tags) }
+    var valueScoreText by rememberSaveable(currentExpense.id, currentExpense.updatedAt, state.formRevision) {
         mutableStateOf(initialFormValues.valueScoreText)
     }
-    var regretScoreText by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
+    var regretScoreText by rememberSaveable(currentExpense.id, currentExpense.updatedAt, state.formRevision) {
         mutableStateOf(initialFormValues.regretScoreText)
     }
     var message by rememberSaveable { mutableStateOf<String?>(null) }
