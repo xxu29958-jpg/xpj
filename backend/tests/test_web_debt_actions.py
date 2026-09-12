@@ -16,6 +16,7 @@ from app.database import SessionLocal
 from app.models import Account, Debt, LedgerMember, Repayment
 from app.services.spending_contract_service import accounting_zone
 from tests._runtime_protocol import negotiated_headers
+from tests._web_native_form_support import hidden_post_forms
 
 
 def test_web_debt_fact_adapters_delegate_to_shared_commands_and_views() -> None:
@@ -219,11 +220,12 @@ def test_web_stale_row_version_surfaces_conflict_without_second_fact(
     )
     assert api_repayment.status_code == 201, api_repayment.text
 
+    original_key = str(uuid4())
     stale = web_client.post(
         f"/web/debts/{debt['public_id']}/repayments",
         data=_form(
             debt,
-            idempotency_key=str(uuid4()),
+            idempotency_key=original_key,
             amount_major="20.00",
             paid_at="2026-07-19",
         ),
@@ -234,7 +236,9 @@ def test_web_stale_row_version_surfaces_conflict_without_second_fact(
     assert "另一端刚更新了这笔欠款" in stale.text
     assert 'value="20.00"' in stale.text
     assert 'value="2026-07-19"' in stale.text
-    assert f'name="expected_row_version" value="{debt["row_version"] + 1}"' in stale.text
+    retained = hidden_post_forms(stale.text)[f"/web/debts/{debt['public_id']}/repayments"]
+    assert retained["expected_row_version"] == str(debt["row_version"])
+    assert retained["idempotency_key"] == original_key
     current = _detail(web_client, identity=identity, public_id=debt["public_id"])
     assert current["paid_amount_cents"] == 1_000
     assert current["row_version"] == debt["row_version"] + 1
