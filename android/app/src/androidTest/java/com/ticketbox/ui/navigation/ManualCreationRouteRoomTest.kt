@@ -77,7 +77,7 @@ class ManualCreationRouteRoomTest {
                             addManualExpenseSubmissionRoute(MainNavigationRuntime(nav, harness.shell, harness.screenFactory))
                             composable(EXPENSE_ROUTE, arguments = listOf(navArgument(EXPENSE_ID_ARG) { type = NavType.LongType })) { entry ->
                                 ExpenseEditRoute(requireNotNull(entry.arguments).getLong(EXPENSE_ID_ARG), harness.screenFactory,
-                                    { nav.popBackStack() }, { nav.popBackStack() }, ExpenseFactNavigation({}, { _, _ -> }))
+                                    ExpenseEditExitActions({ nav.popBackStack() }, { nav.popBackStack() }), ExpenseFactNavigation({}, { _, _ -> }))
                             }
                         }
                     }
@@ -129,7 +129,7 @@ class ManualCreationRouteRoomTest {
         compose.setContent {
             CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
                 TicketboxTheme(skin = AppSkin.Default) {
-                    if (mounted.value) ExpenseEditRoute(expense.id, harness.screenFactory, {}, {}, ExpenseFactNavigation({}, { _, _ -> }))
+                    if (mounted.value) ExpenseEditRoute(expense.id, harness.screenFactory, ExpenseEditExitActions({}, {}), ExpenseFactNavigation({}, { _, _ -> }))
                 }
             }
         }

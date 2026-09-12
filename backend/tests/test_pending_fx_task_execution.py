@@ -3,6 +3,7 @@
 import json
 from datetime import date
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import Mock
 from xml.etree.ElementTree import ParseError
 
@@ -11,8 +12,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.models import BackgroundTask, Expense
+from app.services import expense_split_service, receipt_item_service
 from app.services import pending_fx_task_service as service
 from app.services.background_task_handler_api import TaskCancelledError
+from app.services.expense_service import _fx
 from app.services.expense_service._fx import PendingFxInput, PendingFxResult
 from app.services.fx_rate_provider import EcbDailyRates, FxFetchError
 
@@ -150,3 +153,38 @@ def test_current_task_projection_excludes_old_inputs_and_only_associates_applied
     projected = service.current_pending_expense_fx_tasks(db, tenant_id="owner", expenses=[expense, foreign])
     assert projected == ({expense.id: task} if visible else {})
     lookup.assert_called_once_with(db, tenant_id="owner", expense_ids=[expense.id])
+
+
+@pytest.fixture
+def pending_conversion(monkeypatch):
+    expense = Expense(id=7, tenant_id="owner", status="pending", row_version=2, home_currency_code="CNY",
+        original_currency_code="USD", original_amount_minor=1000, exchange_rate_date=date(2026, 5, 4),
+        fx_status="pending", items_sum_status="matched")
+    original = PendingFxInput.from_expense(expense)
+    monkeypatch.setattr(_fx, "check_pending_fx", lambda *a, **kw: expense)
+    monkeypatch.setattr(_fx, "resolve_write_capability", lambda *a: None)
+    monkeypatch.setattr(_fx, "resolve_payload_rate", lambda *a, **kw: (Decimal(7), "manual", "ready", original.rate_date))
+    monkeypatch.setattr(_fx, "mark_duplicate_status", lambda *a: None)
+    monkeypatch.setattr(_fx, "bump_row_version", lambda row: setattr(row, "row_version", row.row_version + 1))
+    monkeypatch.setattr(receipt_item_service, "_compute_items_sum_cents", lambda *a: 6500)
+    monkeypatch.setattr(expense_split_service, "_expense_splits", lambda *a, **kw: [])
+    return Mock(spec=Session), expense, original
+
+
+def test_conversion_reconciles_existing_receipt_items_with_the_new_parent_amount(pending_conversion):
+    db, expense, original = pending_conversion
+    result = _fx.apply_pending_fx(db, original, None)
+    assert expense.amount_cents == 7000 and expense.items_sum_status == "mismatch_known"
+    assert expense.status == "pending" and result.row_version == 3
+
+
+def test_conversion_cannot_publish_a_parent_below_its_existing_split_allocation(pending_conversion, monkeypatch):
+    from app.errors import AppError
+
+    db, expense, original = pending_conversion
+    monkeypatch.setattr(expense_split_service, "_expense_splits", lambda *a, **kw: [SimpleNamespace(amount_cents=8000)])
+    with pytest.raises(AppError) as refused:
+        _fx.apply_pending_fx(db, original, None)
+    assert refused.value.error == "expense_split_total_exceeds_parent"
+    assert expense.row_version == original.expected_row_version
+    db.commit.assert_not_called()

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, date, datetime
+from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import select
@@ -24,6 +27,74 @@ from app.services.pending_enrichment_task_service import (
 )
 from app.services.time_service import now_utc
 from tests._infra.assets import PNG_BYTES
+
+
+@pytest.mark.real_db
+@pytest.mark.parametrize("replay_result", [False, True])
+def test_one_slot_enrichment_hands_off_one_durable_fx_task_after_completion(monkeypatch, identity, replay_result):
+    from app.services import background_task_admission, background_task_service, pending_fx_task_service
+    from app.services.fx_rate_provider import EcbDailyRates
+
+    expense_id, predecessor, task_id = _seed_pending_enrichment_task()
+    payload = {"expense_id": expense_id, "tenant_id": "owner", "timezone_name": "Asia/Shanghai",
+        "expected_row_version": predecessor}
+    monkeypatch.setattr(background_task_admission, "get_settings", lambda: SimpleNamespace(background_task_max_active=1))
+    monkeypatch.setattr(pending_fx_task_service, "get_settings", lambda: SimpleNamespace(fx_rate_auto_sync_enabled=True))
+    calls = []
+
+    def extract(*_args, **_kwargs):
+        calls.append(expense_id)
+        return _ocr_result()
+
+    monkeypatch.setattr(enrich_service, "collect_auto_ocr_extractions", extract)
+    monkeypatch.setattr(enrich_service, "_try_stage_thumbnail", lambda *_args: None)
+    with SessionLocal() as db:
+        expense, task = db.get(Expense, expense_id), db.get(BackgroundTask, task_id)
+        expense.original_currency_code, expense.original_amount_minor = "USD", 1000
+        expense.fx_status, expense.exchange_rate_date = "pending", date(2026, 5, 31)
+        expense.exchange_rate_source = expense.exchange_rate_to_cny = None
+        expense.expense_time = datetime(2026, 5, 31, 4, tzinfo=UTC)
+        task.input_payload_json, task.source_expense_id = json.dumps(payload), expense_id
+        db.commit()
+        if replay_result:
+            # Interrupt after the durable enrichment result, before worker terminal publication.
+            run_pending_expense_enrichment_task(db, task, payload)
+            assert task.status == "running" and task.result_summary_json is not None
+        task.status, task.started_at = "queued", None
+        db.commit()
+
+    submissions = []
+
+    def capture_committed_child(child_id, child_payload, *, registry):
+        with SessionLocal() as observer:
+            parent, child = observer.get(BackgroundTask, task_id), observer.get(BackgroundTask, child_id)
+            assert parent.status == "completed", "Child dispatch must follow atomic parent completion"
+            assert json.loads(parent.result_summary_json)["outcome"] == "updated"
+            assert (child.task_type, child.status, child.source_expense_id) == ("expense_fx", "queued", expense_id)
+            assert child.tenant_id == parent.tenant_id and child.initiated_by_account_id == parent.initiated_by_account_id
+            assert child.initiated_by_device_id == parent.initiated_by_device_id
+            assert child_payload == json.loads(child.input_payload_json)
+            assert child_payload["expected_row_version"] == observer.get(Expense, expense_id).row_version
+        submissions.append(child_id)
+
+    monkeypatch.setattr(background_task_service, "_submit_task", capture_committed_child)
+    background_task_worker.run_task(task_id, payload)
+    assert len(submissions) == 1, "The completed enrichment must pass its sole active slot to FX"
+    background_task_worker.run_task(task_id, payload)
+    assert len(submissions) == 1 and calls == [expense_id]
+    with SessionLocal() as db:
+        rows = list(db.scalars(select(BackgroundTask).where(BackgroundTask.source_expense_id == expense_id)))
+        assert len(rows) == 2 and sum(row.status in {"queued", "running"} for row in rows) == 1
+        bill = db.get(Expense, expense_id)
+        assert (bill.status, bill.amount_cents, bill.original_currency_code, bill.original_amount_minor) == (
+            "pending", None, "USD", 1000)
+    monkeypatch.setattr(pending_fx_task_service, "fetch_pending_fx_reference", lambda _: EcbDailyRates(
+        date(2026, 5, 29), {"EUR": Decimal(1), "USD": Decimal(1), "CNY": Decimal(7)}))
+    background_task_worker.run_task(submissions[0], {})
+    with SessionLocal() as db:
+        bill, child = db.get(Expense, expense_id), db.get(BackgroundTask, submissions[0])
+        assert (bill.status, bill.fx_status, bill.amount_cents, child.status) == ("pending", "ready", 7000, "completed")
+        assert bill.confirmed_at is None
 
 
 def _seed_pending_enrichment_task() -> tuple[int, int, int]:
