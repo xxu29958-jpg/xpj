@@ -36,6 +36,11 @@ valuation, writer, command schema, database/cached fact or column order changed.
 The paginated wire gains only optional nullable metadata. An Android Moshi
 consumer test preserves the established list DTO while accepting those fields.
 
+The first cloud candidate rejected redundant null/date branches in the existing
+row formatter. CSV's native cell conversion and `safe_csv_cell` already cover them;
+the branches are removed without a helper, suppression or changed blank-cell contract.
+The four direct export cases still pass. The final complexity gate remains cloud-owned.
+
 Bounded local verification: the four export cases pass; with the existing stream
 envelope and exact-money parser cases, 10 tests pass. Ruff, OpenAPI snapshot check
 and changed Android test's plain Detekt CLI pass. Plain Detekt does not prove
