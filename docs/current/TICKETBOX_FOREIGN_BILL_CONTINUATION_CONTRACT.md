@@ -54,8 +54,15 @@ CSV atomicity, task-worker and migration tests cover actor attribution, original
 payload, concurrent edits, restart, admission refusal and preserved data. Web and
 Android producers cover original-entry navigation and retained drafts; shared
 projection tests separate historical coverage from current valuation with actual
-reference dates. Short checks have run; implementation cloud/client qualification
-and final before/after closure remain pending. No full product completion claim.
+reference dates. The first implementation candidate (55062496) failed cloud and
+native VM qualification: the pending version bump remained an SQL expression when
+the task serialized its result, rolling back every conversion. The existing
+transaction now flushes the pending revision before creating the result. The VM
+failure and cloud logs are retained; a new exact candidate must repeat the journey.
+Task-test scheduling now controls the actual submitter, and legacy confirmation
+tests require explicit conversion and review. Shared fact templates no longer
+query pending tasks or claim planning valuation metadata. Short checks pass;
+cloud/client qualification and final closure remain pending.
 
 Refund create/void now enter the existing Android Outbox before HTTP; its sole
 dispatcher retains original binding/key/OCC and exposes typed missing-rate recovery.

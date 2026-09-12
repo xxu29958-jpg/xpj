@@ -3,7 +3,7 @@
 from datetime import date
 from uuid import uuid4
 
-from fastapi import Request
+from fastapi import Form, Request
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
@@ -17,10 +17,14 @@ _RATE_FIELDS = ("currency_code", "home_currency_code", "rate_date", "rate_to_cny
     "expected_row_version", "idempotency_key")
 
 
-async def rate_recovery_form(request: Request) -> dict[str, str]:
+async def rate_recovery_form(
+    request: Request, fx_expected_row_version: str = Form(default=""),
+) -> dict[str, str]:
     """These debt/refund forms have scalar inputs; keep their original command fields."""
     raw = await request.form()
-    return {key: str(value) for key, value in raw.items() if key != "csrf_token"}
+    original = {key: str(value) for key, value in raw.items() if key != "csrf_token"}
+    original["fx_expected_row_version"] = fx_expected_row_version
+    return original
 
 
 def rate_recovery_context(db: Session, selected: str, details: dict[str, object] | None) -> dict[str, str] | None:

@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from contextlib import suppress
 from dataclasses import asdict
-from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -265,7 +264,7 @@ def _publish_failure(db: Session, task_id: int, exc: Exception) -> None:
         raise PendingFxTaskError(_FAILURE_MESSAGE) from storage_error
 
 
-def run_pending_expense_fx_task(db: Session, task: BackgroundTask, payload: dict[str, Any]) -> None:
+def run_pending_expense_fx_task(db: Session, task: BackgroundTask, payload: dict[str, object]) -> None:
     """The saved input owns execution; a saved result needs only worker completion."""
     del payload
     task_id = task.id
@@ -281,5 +280,5 @@ def run_pending_expense_fx_task(db: Session, task: BackgroundTask, payload: dict
     except TaskCancelledError:
         db.rollback()
         raise
-    except Exception as exc:  # noqa: BLE001 - keep provider/configuration and storage details out of public task errors
+    except Exception as exc:  # Keep provider and storage details out of public task errors.
         _publish_failure(db, task_id, exc)

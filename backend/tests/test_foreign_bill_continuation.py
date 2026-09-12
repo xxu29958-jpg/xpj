@@ -2,6 +2,7 @@
 
 from datetime import date
 from decimal import Decimal
+from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
@@ -10,7 +11,7 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import BackgroundTask, Expense
-from app.services import background_task_worker
+from app.services import background_task_service, background_task_worker
 from app.services.fx_rate_provider import EcbDailyRates, FxFetchError, upsert_fx_rate
 
 
@@ -125,11 +126,14 @@ def test_confirm_does_not_resolve_a_new_rate_and_accept_an_unreviewed_home_amoun
 def test_import_conversion_failure_retry_review_then_confirm_is_one_complete_task(client, identity, monkeypatch):
     from app.services import pending_fx_task_service as service
 
+    submitted = Mock()
+    monkeypatch.setattr(background_task_service, "_submit_task", submitted)
     bill = _import_foreign_bill(client, identity)
     url = f"/api/expenses/{bill['id']}"
     with SessionLocal() as db:
         task = db.scalar(select(BackgroundTask).where(BackgroundTask.public_id == bill["fx_task"]["public_id"]))
         task_id = task.id
+    assert submitted.call_args.args[0] == task_id
 
     def unavailable(_original):
         raise FxFetchError("test provider unavailable")
@@ -153,6 +157,7 @@ def test_import_conversion_failure_retry_review_then_confirm_is_one_complete_tas
     with SessionLocal() as db:
         task = db.scalar(select(BackgroundTask).where(BackgroundTask.public_id == retry.json()["public_id"]))
         retry_id = task.id
+    assert submitted.call_args.args[0] == retry_id
     monkeypatch.setattr(service, "fetch_pending_fx_reference", lambda _original: EcbDailyRates(
         date(2026, 5, 4), {"EUR": Decimal(1), "USD": Decimal(1), "CNY": Decimal(7)}))
     background_task_worker.run_task(retry_id, {})

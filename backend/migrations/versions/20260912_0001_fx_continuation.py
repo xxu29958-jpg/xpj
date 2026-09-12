@@ -59,16 +59,20 @@ def downgrade():
     _set_authority_revision(bind, revision, down_revision)
 
 
-def assert_postcondition(bind):
-    inspector = sa.inspect(bind)
+def _assert_rate_coverage_schema(inspector):
     rates = {column["name"]: column for column in inspector.get_columns("fx_rates")}
-    tasks = {column["name"]: column for column in inspector.get_columns("background_tasks")}
     if "verified_through" not in rates or not rates["verified_through"]["nullable"]:
         raise RuntimeError("nullable historical FX coverage is missing")
-    if "source_expense_id" not in tasks or not tasks["source_expense_id"]["nullable"]:
-        raise RuntimeError("original expense task source is missing")
     if not isinstance(rates["verified_through"]["type"], sa.Date):
         raise RuntimeError("historical FX coverage is not a date")
+    if not any(check["name"] == "ck_fx_rates_coverage_date" for check in inspector.get_check_constraints("fx_rates")):
+        raise RuntimeError("historical FX coverage constraint is missing")
+
+
+def _assert_expense_task_schema(inspector):
+    tasks = {column["name"]: column for column in inspector.get_columns("background_tasks")}
+    if "source_expense_id" not in tasks or not tasks["source_expense_id"]["nullable"]:
+        raise RuntimeError("original expense task source is missing")
     if not isinstance(tasks["source_expense_id"]["type"], sa.Integer):
         raise RuntimeError("original expense task source is not an integer")
     indexes = inspector.get_indexes("background_tasks")
@@ -79,8 +83,12 @@ def assert_postcondition(bind):
                and fk["referred_columns"] == ["id"] and fk.get("options", {}).get("ondelete") == "SET NULL"
                for fk in sources):
         raise RuntimeError("original expense source deletion boundary is missing")
-    if not any(check["name"] == "ck_fx_rates_coverage_date" for check in inspector.get_check_constraints("fx_rates")):
-        raise RuntimeError("historical FX coverage constraint is missing")
+
+
+def assert_postcondition(bind):
+    inspector = sa.inspect(bind)
+    _assert_rate_coverage_schema(inspector)
+    _assert_expense_task_schema(inspector)
     live = bind.scalar(sa.text("SELECT version_num FROM alembic_version"))
     expected = revision if live == down_revision else live
     if bind.scalar(sa.text("SELECT schema_revision FROM dataset_authority WHERE singleton_id = 1")) != expected:

@@ -2946,6 +2946,17 @@
         "title": "Body_web_debt_goal_target_date_web_debt_goals__public_id__target_date_post",
         "type": "object"
       },
+      "Body_web_debt_rate_web_debts_rate_post": {
+        "properties": {
+          "fx_expected_row_version": {
+            "default": "",
+            "title": "Fx Expected Row Version",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_debt_rate_web_debts_rate_post",
+        "type": "object"
+      },
       "Body_web_dismiss_repayment_draft_web_repayment_drafts__public_id__dismiss_post": {
         "properties": {
           "csrf_token": {
@@ -3717,6 +3728,11 @@
       },
       "Body_web_offset_rate_web_expenses__expense_id__offset_rate_post": {
         "properties": {
+          "fx_expected_row_version": {
+            "default": "",
+            "title": "Fx Expected Row Version",
+            "type": "string"
+          },
           "return_filter": {
             "default": "",
             "title": "Return Filter",
@@ -40614,6 +40630,15 @@
     "/web/debts/rate": {
       "post": {
         "operationId": "web_debt_rate_web_debts_rate_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_debt_rate_web_debts_rate_post"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -40622,6 +40647,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Web Debt Rate",

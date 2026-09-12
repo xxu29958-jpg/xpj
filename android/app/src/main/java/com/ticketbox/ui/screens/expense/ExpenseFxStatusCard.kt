@@ -10,9 +10,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.BackgroundTask
+import com.ticketbox.domain.model.Expense
+import com.ticketbox.domain.model.FxContract
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.viewmodel.ExpenseFxUiState
+import com.ticketbox.viewmodel.ExpenseEditUiState
 
 @StringRes
 internal fun expenseFxTaskStatusRes(task: BackgroundTask?): Int = when (task?.status) {
@@ -25,27 +27,30 @@ internal fun expenseFxTaskStatusRes(task: BackgroundTask?): Int = when (task?.st
 
 @Composable
 internal fun ExpenseFxStatusCard(
-    state: ExpenseFxUiState,
+    expense: Expense,
+    editState: ExpenseEditUiState,
     hasDraftChanges: Boolean,
-    readOnly: Boolean,
-    busy: Boolean,
     onRefresh: () -> Unit,
     onRetry: () -> Unit,
     onLoadReview: () -> Unit,
 ) {
+    val state = editState.fx
+    if (expense.status != "pending" || (expense.fxStatus != FxContract.StatusPending && state.task == null)) return
+    val busy = editState.saving || editState.expenseLoading
+    val actionsEnabled = !busy && !state.loading
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
         Text(stringResource(expenseFxTaskStatusRes(state.task)), style = MaterialTheme.typography.titleSmall)
         Text(stringResource(R.string.expense_fx_manual_recovery), style = MaterialTheme.typography.bodySmall)
         state.message?.let { Text(it.asString(), color = MaterialTheme.colorScheme.error) }
-        TextButton(onClick = onRefresh, enabled = !busy && !state.loading) {
+        TextButton(onClick = onRefresh, enabled = actionsEnabled) {
             Text(stringResource(R.string.expense_fx_refresh))
         }
-        if (!readOnly && (state.task == null || state.task.status in setOf("failed", "cancelled"))) {
-            TextButton(onClick = onRetry, enabled = !busy && !state.loading) { Text(stringResource(R.string.expense_fx_retry)) }
+        if (!editState.readOnly && (state.task == null || state.task.status in setOf("failed", "cancelled"))) {
+            TextButton(onClick = onRetry, enabled = actionsEnabled) { Text(stringResource(R.string.expense_fx_retry)) }
         }
         if (state.task?.status == "completed") {
             if (hasDraftChanges) Text(stringResource(R.string.expense_fx_save_draft_first), style = MaterialTheme.typography.bodySmall)
-            TextButton(onClick = onLoadReview, enabled = !busy && !state.loading && !hasDraftChanges) {
+            TextButton(onClick = onLoadReview, enabled = actionsEnabled && !hasDraftChanges) {
                 Text(stringResource(R.string.expense_fx_load_review))
             }
         }

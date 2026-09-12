@@ -20,6 +20,8 @@ from app.services.data_quality_service import (
     is_uncategorized_expense_category,
     is_usable_pending_merchant,
 )
+from app.services.expense_service._fx import PendingFxInput
+from app.services.pending_fx_task_service import current_pending_expense_fx_tasks
 from app.services.spending_contract_service import (
     accounting_datetime_label,
     accounting_zone,
@@ -335,3 +337,24 @@ def _offset_stream_view(
         "fx_meta": fx_meta,
         "is_money_event": is_money_event,
     }
+
+
+def expense_fx_view(db: Session, *, expense) -> dict | None:
+    if expense.status != "pending":
+        return None
+    if not expense.original_currency_code or expense.original_currency_code == expense.home_currency_code:
+        return None
+    task = current_pending_expense_fx_tasks(db, tenant_id=expense.tenant_id, expenses=[expense]).get(expense.id)
+    requested_date = expense.exchange_rate_date
+    if task is not None:
+        try:
+            requested_date = PendingFxInput.model_validate_json(task.input_payload_json or "null").rate_date
+        except ValueError:
+            requested_date = None
+    state = task.status if task is not None else "unrequested"
+    return {"state": state, "requested_date": requested_date,
+        "message": (task.error_message or task.progress_message or "") if task is not None else "",
+        "current": _expense_view(expense),
+        "can_request": expense.status == "pending" and expense.fx_status == "pending"
+            and expense.original_amount_minor is not None and expense.exchange_rate_date is not None
+            and state not in {"queued", "running"}}

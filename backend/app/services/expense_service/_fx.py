@@ -110,4 +110,5 @@ def apply_pending_fx(
     mark_duplicate_status(db, current)
     bump_row_version(current)
     current.updated_at = now_utc()
+    db.flush()
     return PendingFxResult(current.id, "updated", current.row_version)

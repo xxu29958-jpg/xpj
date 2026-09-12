@@ -93,7 +93,8 @@ def test_batch_actions_follow_effective_remainder_and_actual_applied_rows(
         "q": "?ledger_id=family", "selected_ledger_id": "family", "can_write": True, "csrf_token": "fixture",
         "flash_message": "Import result", "flash_type": flash_type,
         "rows": [], "page": 1, "page_size": 100, "total": 0, "total_pages": 1,
-        "status": "", "home_currency_symbol": "¥", "base_batch_url": "/web/import/original?ledger_id=family",
+        "status": "", "home_currency_symbol": "¥", "home_currency_code": "CNY",
+        "base_batch_url": "/web/import/original?ledger_id=family",
         "batch_page": CsvImportBatchPage([], page=1, page_size=20, total=0, total_pages=1),
         "batch_created_labels": {}, "max_rows": 1000, "export_categories": [], "export_tags": [],
     }

@@ -4,6 +4,7 @@ import json
 import re
 from datetime import date
 from decimal import Decimal
+from unittest.mock import Mock
 
 import pytest
 from _web_native_form_support import hidden_post_forms
@@ -18,14 +19,23 @@ from tests.test_foreign_bill_continuation import _import_foreign_bill
 pytestmark = pytest.mark.real_db
 
 
+@pytest.fixture(autouse=True)
+def captured_submissions(monkeypatch):
+    """Keep each durable task queued until this journey explicitly runs its worker."""
+    submitted = Mock()
+    monkeypatch.setattr(background_task_service, "_submit_task", submitted)
+    return submitted
+
+
 def _form(html, expense):
     values = hidden_post_forms(html)[f"/web/expenses/{expense['id']}/save"]
     return {**values, "amount_yuan": "123.45", "merchant": "Unsent cafe", "category": "交通",
         "note": "keep my note", "tags": "trip", "expense_time": "2026-05-04T00:30", "manual_exchange_rate": ""}
 
 
-def test_web_import_pending_and_health_link_to_current_foreign_bill(web_client, identity):
+def test_web_import_pending_and_health_link_to_current_foreign_bill(web_client, identity, captured_submissions):
     bill = _import_foreign_bill(web_client, identity)
+    captured_submissions.assert_called_once()
     with SessionLocal() as db:
         batch_id = db.scalar(select(CsvImportBatch.public_id).join(CsvImportRow, CsvImportRow.batch_id == CsvImportBatch.id)
             .where(CsvImportRow.expense_id == bill["id"]))
@@ -46,8 +56,11 @@ def test_web_import_pending_and_health_link_to_current_foreign_bill(web_client, 
         assert "/owner/fx" not in page.text
 
 
-def test_web_fx_failure_retry_and_completion_keep_original_form_until_explicit_load(web_client, identity, monkeypatch):
+def test_web_fx_failure_retry_and_completion_keep_original_form_until_explicit_load(
+    web_client, identity, monkeypatch, captured_submissions,
+):
     bill = _import_foreign_bill(web_client, identity)
+    captured_submissions.assert_called_once()
     edit = f"/web/expenses/{bill['id']}/edit?ledger_id=owner"
     submitted = _form(web_client.get(edit).text, bill)
     original_key = submitted["idempotency_key"]

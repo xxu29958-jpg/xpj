@@ -37,11 +37,22 @@ def test_explicit_foreign_capture_stages_once_and_original_replay_does_not_dupli
         payload.update(source="wechat", notification_key=str(uuid4()))
     response = client.post(f"/api/expenses/{entry}", headers=identity.app_headers, json=payload)
     assert response.status_code == 200, response.text
-    _assert_original_task(response.json(), identity)
+    receipt = response.json()
+    if entry == "manual":
+        # Creation replays its frozen receipt; current task status belongs to the read projection.
+        assert receipt["fx_task"] is None
+        current = client.get(f"/api/expenses/{receipt['id']}", headers=identity.app_headers)
+        assert current.status_code == 200, current.text
+        _assert_original_task(current.json(), identity)
+    else:
+        _assert_original_task(receipt, identity)
     replay = client.post(f"/api/expenses/{entry}", headers=identity.app_headers, json=payload)
     assert replay.status_code == 200, replay.text
-    assert replay.json()["id"] == response.json()["id"]
-    assert replay.json()["fx_task"]["public_id"] == response.json()["fx_task"]["public_id"]
+    assert replay.json()["id"] == receipt["id"]
+    if entry == "manual":
+        assert replay.json() == receipt
+    else:
+        assert replay.json()["fx_task"]["public_id"] == receipt["fx_task"]["public_id"]
     with SessionLocal() as db:
         tasks = list(db.scalars(select(BackgroundTask).where(
             BackgroundTask.tenant_id == "owner", BackgroundTask.task_type == "expense_fx",

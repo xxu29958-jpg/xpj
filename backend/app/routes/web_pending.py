@@ -164,8 +164,9 @@ def web_pending(
         filter_key = "all"
 
     items = [it for it in raw_items if _matches_filter(it, filter_key)]
+    filter_counts = {key: sum(_matches_filter(it, key) for it in raw_items) for key in _PENDING_FILTERS}
     pending_total = len(raw_items)
-    suspected_total = sum(1 for it in raw_items if it["is_duplicate"])
+    suspected_total = filter_counts["duplicate"]
     ctx = _base_ctx(
         request,
         db=db,
@@ -205,12 +206,12 @@ def web_pending(
     ctx["undo_expense_id"] = undo_expense_id
     ctx["undo_expected_row_version"] = undo_expected_row_version
     ctx["undo_items"] = _resolve_batch_undo_items(db, selected_id=selected_id, undo_ids=undo_id, undo_tokens=undo_rv)
-    ctx["needs_amount_count"] = sum(1 for it in raw_items if it["needs_amount"])
-    ctx["missing_fx_count"] = sum(1 for it in raw_items if _matches_filter(it, "missing_fx"))
-    ctx["needs_merchant_count"] = sum(1 for it in raw_items if it["needs_merchant"])
-    ctx["needs_category_count"] = sum(1 for it in raw_items if _needs_category(it))
+    ctx["needs_amount_count"] = filter_counts["missing_amount"]
+    ctx["missing_fx_count"] = filter_counts["missing_fx"]
+    ctx["needs_merchant_count"] = filter_counts["missing_merchant"]
+    ctx["needs_category_count"] = filter_counts["missing_category"]
     ctx["suspected_duplicate_count"] = suspected_total
-    ctx["ready_count"] = sum(1 for it in raw_items if _is_ready(it))
+    ctx["ready_count"] = filter_counts["ready"]
     ctx["show_owner_upload_setup"] = (
         getattr(request.state, "web_session_auth", None) is None
         and ctx["selected_ledger_role"] == "owner"

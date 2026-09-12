@@ -147,14 +147,10 @@ def _batch_next_actions(html: str) -> str:
 
 
 def test_native_csv_returns_to_original_partial_batch_without_duplicate_rows(web_client, identity) -> None:
-    with SessionLocal() as db:
-        member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "tester_1").limit(1))
-        assert member is not None
-        member.role = "member"
-        db.commit()
     csv_text = "amount_yuan,merchant,category\n18.50,First original row,餐饮\n9.00,Second original row,交通\n"
     public_id, detail_url = _preview_native_csv(web_client, ledger_id="tester_1", csv_text=csv_text)
-    _apply_native_csv(web_client, public_id=public_id, ledger_id="tester_1")
+    applied = _apply_native_csv(web_client, public_id=public_id, ledger_id="tester_1")
+    assert parse_qs(urlsplit(applied.headers["location"]).query).get("flash_type") != ["error"]
     before = web_client.get("/api/expenses/pending", headers=identity.gray_app_headers)
     assert before.status_code == 200 and len(before.json()) == 1
     first_id = before.json()[0]["id"]

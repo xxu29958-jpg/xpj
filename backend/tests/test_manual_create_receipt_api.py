@@ -58,8 +58,19 @@ def test_pending_first_receipt_stays_pending_after_fx_and_confirmation(client, i
         "currency_code": "JPY", "home_currency_code": "CNY", "rate_date": "2026-09-09",
         "rate_to_cny": "0.05", "source": "manual", "expected_row_version": 0})
     assert rate.status_code == 200, rate.text
-    confirmed = client.post(f"/api/expenses/{accepted['id']}/confirm", headers=idem(identity.app_headers),
+    unresolved = client.post(f"/api/expenses/{accepted['id']}/confirm", headers=idem(identity.app_headers),
         json={"expected_row_version": accepted["row_version"]})
+    assert unresolved.status_code == 409, unresolved.text
+    assert unresolved.json()["error"] == "exchange_rate_pending"
+    reviewed = client.patch(f"/api/expenses/{accepted['id']}", headers=idem(identity.app_headers),
+        json={"expected_row_version": accepted["row_version"],
+            "original_currency_code": "JPY", "original_amount_minor": 12})
+    assert reviewed.status_code == 200, reviewed.text
+    assert (reviewed.json()["status"], reviewed.json()["fx_status"], reviewed.json()["amount_cents"]) == (
+        "pending", "ready", 60)
+    assert reviewed.json()["row_version"] > accepted["row_version"]
+    confirmed = client.post(f"/api/expenses/{accepted['id']}/confirm", headers=idem(identity.app_headers),
+        json={"expected_row_version": reviewed.json()["row_version"]})
     assert confirmed.status_code == 200, confirmed.text
     assert (confirmed.json()["status"], confirmed.json()["amount_cents"]) == ("confirmed", 60)
     replay = _post(client, identity, body)

@@ -13,7 +13,6 @@ from fastapi.responses import HTMLResponse, Response
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.routes._web_expense_fx import expense_fx_view
 from app.routes._web_expense_manual_fx_presenter import project_manual_fx_edit_views
 from app.routes._web_expense_return_context import (
     ExpenseReturnContext,
@@ -23,6 +22,7 @@ from app.routes._web_expense_return_context import (
     return_context_params,
 )
 from app.routes._web_expense_split_presenter import web_split_members, web_split_rows
+from app.routes._web_money_views import expense_fx_view
 from app.routes.web_common import (
     _amount_yuan,
     _base_ctx,

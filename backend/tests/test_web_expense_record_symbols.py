@@ -3,6 +3,7 @@
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 from jinja2 import ChoiceLoader, DictLoader
@@ -14,6 +15,7 @@ from app.routes import _web_correction_page as correction
 from app.routes import _web_expense_fact as fact
 from app.routes import _web_expense_helpers as helpers
 from app.routes import _web_expense_split_presenter as splits
+from app.routes import _web_money_views as money_views
 from app.routes.web_common import templates
 from app.schemas import ExpenseRevisionListResponse
 
@@ -32,6 +34,8 @@ def record_context(monkeypatch):
         "request": request, "home_currency_code": "USD", "home_currency_symbol": "$",
         "can_write": True, "csrf_token": "csrf", "selected_ledger_id": "owner"})
     monkeypatch.setattr(helpers, "manual_draft_ack", lambda *_a: None)
+    task_query = Mock(return_value={})
+    monkeypatch.setattr(money_views, "current_pending_expense_fx_tasks", task_query)
     monkeypatch.setattr(helpers, "web_split_members", lambda *_a: [])
     monkeypatch.setattr(helpers, "list_ledger_category_options", lambda *_a, **_k: [])
     item_response = SimpleNamespace(items_sum_status="mismatch_known", mismatch_cents=200, items=[
@@ -56,7 +60,12 @@ def record_context(monkeypatch):
             "path": "/web/expenses/41/edit", "query_string": b""})
         factory = {"fact": fact.web_fact_context, "correction": correction.web_correction_context,
             "pending": helpers.web_edit_context}[mode]
-        return factory(object(), request, [], "owner", 41)
+        before = task_query.call_count
+        context = factory(object(), request, [], "owner", 41)
+        assert task_query.call_count == before + (mode == "pending")
+        if mode != "pending":
+            assert context["expense_fx"] is None
+        return context
 
     return read
 

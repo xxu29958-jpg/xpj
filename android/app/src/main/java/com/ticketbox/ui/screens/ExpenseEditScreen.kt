@@ -36,7 +36,6 @@ import com.ticketbox.ui.components.rememberAppHaptics
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.nowUtcIso
 import com.ticketbox.ui.asString
-import com.ticketbox.ui.components.formatMinorAmountInput
 import com.ticketbox.ui.components.formatExpenseExchangeMeta
 import com.ticketbox.ui.components.parseMinorAmount
 import com.ticketbox.ui.components.sanitizeMinorAmountInput
@@ -46,6 +45,7 @@ import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
 import com.ticketbox.ui.design.appAdaptiveSupportingPaneWidth
 import com.ticketbox.ui.screens.expense.ExpenseFxStatusCard
+import com.ticketbox.ui.screens.expense.ExpenseEditFormValues
 import com.ticketbox.ui.screens.expense.ExpenseEditActionBar
 import com.ticketbox.ui.screens.expense.ExpenseEditActionBarActions
 import com.ticketbox.ui.screens.expense.ExpenseEditActionBarState
@@ -75,7 +75,6 @@ import com.ticketbox.ui.screens.expense.ExpenseEditTimeRow
 import com.ticketbox.ui.screens.expense.ExpenseEditTimeRowActions
 import com.ticketbox.ui.screens.expense.ExpenseEditTimeRowState
 import com.ticketbox.ui.screens.expense.ExpenseDetailActionButtonRow
-import com.ticketbox.ui.screens.expense.initialExpenseAmountInputMinor
 import com.ticketbox.domain.model.canonicalManualExchangeRateOrNull
 import com.ticketbox.ui.screens.expense.manualExchangeRateEditorVisible
 import com.ticketbox.ui.screens.expense.manualExchangeRateNeedsServerReview
@@ -210,50 +209,48 @@ fun ExpenseEditScreen(
     }
 
     val currentExpense = state.expense ?: expense
+    val initialFormValues = remember(currentExpense.id, currentExpense.updatedAt) {
+        ExpenseEditFormValues.fromExpense(currentExpense)
+    }
     // rememberSaveable (not remember): without Manifest configChanges, a
     // rotation / dark-mode switch / process death recreates the activity and a
     // plain remember silently resets every unsaved field back to server values
     // — saving then writes stale data. Same fields in ManualExpenseSheet are
     // already saveable; CurrencyCode is an enum (Bundle-safe, proven there).
     var currency by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
-        mutableStateOf(currentExpense.originalCurrencyCode)
+        mutableStateOf(initialFormValues.currency)
     }
     // R13-4：original 原码严格解析 —— record 原码在支持集外时，按 lossy 枚举（CNY）改金额
     // 会 100× 缩放；禁金额承载编辑（选择器显式改币种的除外：用户已重新声明口径）。
     val originalRawCode = currentExpense.originalCurrencyCodeRaw
     val originalUnsupported = !originalRawCode.isNullOrBlank() &&
         CurrencyCode.fromStorageKeyOrNull(originalRawCode) == null
-    val initialAmountText = remember(currentExpense.id, currentExpense.updatedAt) {
-        formatMinorAmountInput(
-            initialExpenseAmountInputMinor(currentExpense),
-            currentExpense.originalCurrencyCode,
-        )
-    }
+    val initialAmountText = initialFormValues.amountText
     var amountText by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
         mutableStateOf(initialAmountText)
     }
     val savedManualExchangeRate = currentExpense.fxRate
         ?.takeIf { currentExpense.fxSource == FxContract.SourceManual }
     var manualExchangeRateText by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
-        mutableStateOf(savedManualExchangeRate.orEmpty())
+        mutableStateOf(initialFormValues.manualExchangeRateText)
     }
     var manualExchangeRateIsError by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
         mutableStateOf(false)
     }
-    var merchant by rememberSaveable(currentExpense.id, currentExpense.updatedAt) { mutableStateOf(currentExpense.merchant.orEmpty()) }
+    var merchant by rememberSaveable(currentExpense.id, currentExpense.updatedAt) { mutableStateOf(initialFormValues.merchant) }
     var category by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
-        mutableStateOf(editInitialCategory(currentExpense))
+        mutableStateOf(initialFormValues.category)
     }
-    var note by rememberSaveable(currentExpense.id, currentExpense.updatedAt) { mutableStateOf(currentExpense.note.orEmpty()) }
+    var note by rememberSaveable(currentExpense.id, currentExpense.updatedAt) { mutableStateOf(initialFormValues.note) }
     var expenseTime by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
-        mutableStateOf(currentExpense.expenseTime.orEmpty())
+        mutableStateOf(initialFormValues.expenseTime)
     }
-    var tags by rememberSaveable(currentExpense.id, currentExpense.updatedAt) { mutableStateOf(currentExpense.tags.orEmpty()) }
+    var tags by rememberSaveable(currentExpense.id, currentExpense.updatedAt) { mutableStateOf(initialFormValues.tags) }
     var valueScoreText by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
-        mutableStateOf(currentExpense.valueScore?.toString().orEmpty())
+        mutableStateOf(initialFormValues.valueScoreText)
     }
     var regretScoreText by rememberSaveable(currentExpense.id, currentExpense.updatedAt) {
-        mutableStateOf(currentExpense.regretScore?.toString().orEmpty())
+        mutableStateOf(initialFormValues.regretScoreText)
     }
     var message by rememberSaveable { mutableStateOf<String?>(null) }
     var rawTextExpanded by remember(currentExpense.id) { mutableStateOf(false) }
@@ -270,7 +267,7 @@ fun ExpenseEditScreen(
     val rawTextDisplay = currentExpense.rawText?.takeIf { it.isNotBlank() }
         ?: stringResource(R.string.expense_edit_raw_text_empty)
     val previewImage = state.fullImage ?: state.thumbnail
-    val readOnly = state.readOnly || (state.fx.loading && state.expenseLoading)
+    val readOnly = state.readOnly || state.loadingFxReview
     val haptics = rememberAppHaptics()
     // ADR-0044: stringResource is @Composable-only, but the validation messages
     // below are assigned inside non-composable local functions / onClick lambdas.
@@ -287,9 +284,10 @@ fun ExpenseEditScreen(
         ?.takeIf { it.isNotBlank() }
         ?: currentExpense.homeCurrency.storageKey
     val foreignCurrency = currency.storageKey != homeCurrencyCode
-    val fxIdentityChanged = currency != currentExpense.originalCurrencyCode ||
-        parseMinorAmount(amountText, currency) != currentExpense.originalAmountMinor ||
-        expenseTime != currentExpense.expenseTime.orEmpty()
+    val formValues = ExpenseEditFormValues(
+        currency, amountText, manualExchangeRateText, merchant, category, note, expenseTime, tags, valueScoreText, regretScoreText,
+    )
+    val fxIdentityChanged = formValues.changesFxIdentity(currentExpense)
     val manualExchangeRateVisible = manualExchangeRateEditorVisible(
         pendingExpense = isPendingExpense,
         foreignCurrency = foreignCurrency,
@@ -452,23 +450,16 @@ fun ExpenseEditScreen(
         }
     }
 
-    val hasDraftChanges = currency != currentExpense.originalCurrencyCode || amountText != initialAmountText ||
-        manualExchangeRateText != savedManualExchangeRate.orEmpty() || merchant != currentExpense.merchant.orEmpty() ||
-        category != editInitialCategory(currentExpense) || note != currentExpense.note.orEmpty() ||
-        expenseTime != currentExpense.expenseTime.orEmpty() || tags != currentExpense.tags.orEmpty() ||
-        valueScoreText != currentExpense.valueScore?.toString().orEmpty() || regretScoreText != currentExpense.regretScore?.toString().orEmpty()
+    val hasDraftChanges = formValues != initialFormValues
     val formSections: @Composable () -> Unit = {
-        if (isPendingExpense && (currentExpense.fxStatus == FxContract.StatusPending || state.fx.task != null)) {
-            ExpenseFxStatusCard(
-                state = state.fx,
-                hasDraftChanges = hasDraftChanges,
-                readOnly = state.readOnly,
-                busy = state.saving || state.expenseLoading,
-                onRefresh = primaryActions.onRefreshFx,
-                onRetry = primaryActions.onRetryFx,
-                onLoadReview = { primaryActions.onLoadFxReview(hasDraftChanges) },
-            )
-        }
+        ExpenseFxStatusCard(
+            expense = currentExpense,
+            editState = state,
+            hasDraftChanges = hasDraftChanges,
+            onRefresh = primaryActions.onRefreshFx,
+            onRetry = primaryActions.onRetryFx,
+            onLoadReview = { primaryActions.onLoadFxReview(hasDraftChanges) },
+        )
         ExpenseEditAmountCluster(
             state = ExpenseEditAmountClusterState(
                 currency = currency,
@@ -619,7 +610,7 @@ fun ExpenseEditScreen(
             bottomBar = {
                 ExpenseEditActionBar(
                     state = ExpenseEditActionBarState(
-                        saving = state.saving || (state.fx.loading && state.expenseLoading),
+                        saving = state.saving || state.loadingFxReview,
                         allowSave = !readOnly,
                         allowConfirm = actionAvailability.allowConfirm && !readOnly && !manualExchangeRateNeedsReview,
                         allowReject = actionAvailability.allowReject && !readOnly,

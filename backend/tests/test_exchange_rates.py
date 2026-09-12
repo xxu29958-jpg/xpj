@@ -230,6 +230,16 @@ def test_jpy_expense_uses_zero_fraction_minor_units_and_missing_rate_stays_pendi
         )
         db.commit()
 
+    reviewed = client.patch(
+        f"/api/expenses/{pending_id}",
+        headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": pending_payload["row_version"],
+            "original_currency_code": "JPY", "original_amount_minor": 1200},
+    )
+    assert reviewed.status_code == 200, reviewed.json()
+    assert (reviewed.json()["status"], reviewed.json()["fx_status"], reviewed.json()["amount_cents"]) == (
+        "pending", "ready", 5760)
+    assert reviewed.json()["row_version"] > pending_payload["row_version"]
     confirmed_pending = confirm_expense_api(
         client, pending_id, headers=identity.app_headers
     )

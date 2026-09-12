@@ -112,7 +112,9 @@ data class ExpenseEditUiState(
      *  (confirm / reject). Consumed by the route to decide advice-cache
      *  invalidation; note/tag/merchant-only edits stay false. */
     val doneAdviceInputsChanged: Boolean = false,
-)
+) {
+    val loadingFxReview: Boolean get() = fx.loading && expenseLoading
+}
 
 /**
  * 主编辑面：加载（expense / categories / 图片 / items / splits）+ 保存 /

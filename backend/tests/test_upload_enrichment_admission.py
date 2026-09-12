@@ -17,6 +17,7 @@ from app.errors import AppError
 from app.main import app
 from app.models import BackgroundTask, Expense, UploadLink, UploadLinkDailyUsage
 from app.services import background_task_service
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.identity_service import hash_secret
 from app.services.pending_enrichment_task_service import prepare_pending_expense_enrichment
 from tests._infra.assets import PNG_BYTES
@@ -182,10 +183,18 @@ def test_capacity_rejection_releases_upload_link_byte_reservation(
 @pytest.mark.real_db
 def test_concurrent_enqueues_share_one_postgres_capacity_slot(
     monkeypatch: pytest.MonkeyPatch,
+    identity,
 ) -> None:
     monkeypatch.setenv("BACKGROUND_TASK_MAX_ACTIVE", "1")
     reset_settings_cache()
     monkeypatch.setattr(background_task_service, "_submit_task", lambda *_args, **_kwargs: None)
+    with SessionLocal() as db:
+        resolve_write_capability(db)
+        expense = Expense(tenant_id="owner", status="pending", source="截图上传",
+            home_currency_code="CNY", original_currency_code="CNY", fx_status="ready")
+        db.add(expense)
+        db.commit()
+        expense_id, row_version = expense.id, expense.row_version
     start = Barrier(2)
 
     def enqueue_once() -> str:
@@ -194,10 +203,10 @@ def test_concurrent_enqueues_share_one_postgres_capacity_slot(
             try:
                 prepare_pending_expense_enrichment(
                     db,
-                    expense_id=1,
+                    expense_id=expense_id,
                     tenant_id="owner",
                     timezone_name=None,
-                    expected_row_version=1,
+                    expected_row_version=row_version,
                     initiator_account_id=None,
                     initiator_device_id=None,
                 )

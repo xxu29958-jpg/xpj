@@ -265,6 +265,8 @@ def test_edit_with_auto_sync_off_excludes_old_task_and_manual_request_uses_new_i
     client, identity, monkeypatch, finish_stale_task,
 ):
     expense_id, version, task_id, _ = _seed_pending_task(identity)
+    submitted = Mock()
+    monkeypatch.setattr(background_task_service, "_submit_task", submitted)
     monkeypatch.setattr(service, "get_settings", lambda: SimpleNamespace(fx_rate_auto_sync_enabled=False))
     edited = client.patch(f"/api/expenses/{expense_id}",
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
@@ -286,6 +288,7 @@ def test_edit_with_auto_sync_off_excludes_old_task_and_manual_request_uses_new_i
     with SessionLocal() as db:
         task = db.scalar(select(BackgroundTask).where(BackgroundTask.public_id == requested.json()["public_id"]))
         assert task.id != task_id and task.status == "queued"
+        assert submitted.call_args.args[0] == task.id
         original = json.loads(task.input_payload_json)
         assert (original["expected_row_version"], original["original_amount_minor"], original["rate_date"]) == (
             current_version, 2000, "2026-05-30")

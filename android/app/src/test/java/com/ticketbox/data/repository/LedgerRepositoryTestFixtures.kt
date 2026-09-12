@@ -325,6 +325,11 @@ internal class StubApi(
         idempotencyKey: String?,
     ): UploadResponseDto = ledgerUnsupported()
     override suspend fun expense(id: Long): ExpenseDto = ledgerUnsupported()
+    override suspend fun expenseFx(id: Long): com.ticketbox.data.remote.dto.BackgroundTaskDto? = ledgerUnsupported()
+    override suspend fun retryExpenseFx(
+        id: Long,
+        request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
+    ): com.ticketbox.data.remote.dto.BackgroundTaskDto = ledgerUnsupported()
     override suspend fun updateExpense(
         id: String,
         request: ExpenseUpdateRequest,

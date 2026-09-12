@@ -293,7 +293,7 @@ def test_foreign_currency_debt_pending_rate_is_rejected(client: TestClient, *, i
     replay = client.post("/api/debts", headers=headers, json=payload)
     assert resumed.status_code == 201, resumed.text
     assert resumed.json()["principal_amount_cents"] == 72000
-    assert resumed.json()["exchange_rate_date"] == "2026-05-10"
+    assert resumed.json()["exchange_rate_date"] == "2026-05-10T00:00:00Z"
     assert replay.status_code == 201, replay.text
     assert replay.json() == resumed.json()
 

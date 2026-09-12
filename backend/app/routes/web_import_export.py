@@ -11,12 +11,10 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.models import Expense
 from app.routes._web_money_views import _expense_view, _minor_amount_label
 from app.routes._web_session_common import resolve_web_actor
 from app.routes.web_common import (
@@ -38,6 +36,7 @@ from app.services.csv_import_batch_service import (
     get_csv_import_batch_progress,
     list_csv_import_batches,
     list_csv_import_rows,
+    list_imported_expenses,
 )
 from app.services.spending_contract_service import accounting_datetime_label
 from app.services.stats_service import export_confirmed_csv
@@ -167,8 +166,8 @@ def web_import_batch_detail(
     expense_ids = [row.expense_id for row in rows_page.items if row.expense_id is not None]
     current_expenses = {
         expense.id: _expense_view(expense)
-        for expense in db.scalars(select(Expense).where(Expense.tenant_id == selected_id, Expense.id.in_(expense_ids)))
-    } if expense_ids else {}
+        for expense in list_imported_expenses(db, tenant_id=selected_id, expense_ids=expense_ids)
+    }
     total_pages = max(1, (rows_page.total + rows_page.page_size - 1) // rows_page.page_size)
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id)
     ctx.update(
