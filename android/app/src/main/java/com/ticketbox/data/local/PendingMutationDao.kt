@@ -400,11 +400,11 @@ interface PendingMutationDao {
         """
         UPDATE pending_mutations SET status = 'abandoned', completedAt = :stoppedAt
         WHERE id = :id AND ownerKey = :ownerKey AND ledgerId = :ledgerId
-          AND type = 'record_debt_adjustment' AND status = :expectedStatus
+          AND type IN ('record_debt_adjustment', 'record_debt_repayment') AND status = :expectedStatus
           AND status IN ('failed', 'conflict')
         """,
     )
-    suspend fun abandonDebtAdjustment(
+    suspend fun abandonDebtWrite(
         id: Long,
         ownerKey: String,
         ledgerId: String,

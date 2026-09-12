@@ -100,5 +100,5 @@ class CategoryRuleGlobalRecoveryViewModelTest {
     }
 
     private fun OutboxStatusHarness.createGlobalViewModel() = OutboxStatusViewModel(outbox, expenseRepository,
-        OutboxRecoveryRepositories(debtCreation, null, incomePlans, debtAdjustments, goalEdits, budgetSaves, recurringItems, rules))
+        OutboxRecoveryRepositories(debtCreation, null, incomePlans, debtWrites, goalEdits, budgetSaves, recurringItems, rules))
 }

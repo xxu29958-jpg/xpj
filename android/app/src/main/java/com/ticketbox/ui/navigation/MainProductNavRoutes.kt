@@ -195,7 +195,7 @@ private fun NavGraphBuilder.addObligationSyncRoute(dependencies: MainProductRout
                     screenFactory.outboxRepository, screenFactory.repository,
                     com.ticketbox.viewmodel.OutboxRecoveryRepositories(screenFactory.debtCreationRepository,
                         screenFactory.recurringRepository.occurrences, screenFactory.incomePlanRepository,
-                        screenFactory.debtAdjustmentRepository, screenFactory.goalEditRepository, screenFactory.budgetRepository, screenFactory.recurringRepository, screenFactory.ruleRepository),
+                        screenFactory.debtWriteRepository, screenFactory.goalEditRepository, screenFactory.budgetRepository, screenFactory.recurringRepository, screenFactory.ruleRepository),
                 ),
             )
             SyncStatusScreen(viewModel = vm, onBack = onBack,

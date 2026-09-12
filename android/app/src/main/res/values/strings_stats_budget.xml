@@ -454,8 +454,6 @@
     <string name="debt_action_repayment_validation">请输入大于 0 的还款金额。</string>
     <string name="debt_action_adjustment_validation">请输入大于 0 的调整金额，并填写不超过 500 个字符的原因。</string>
     <string name="debt_action_void_validation">请填写作废原因。</string>
-    <string name="debt_action_repayment_done">已记一笔还款。</string>
-    <string name="debt_action_adjustment_done">已记录调整。</string>
     <string name="debt_action_void_done">已作废这笔欠款。</string>
     <!-- 单笔还款作废（external/manual）：与整笔作废欠款不同——只撤销一条还款事实，原记录永久可追溯。 -->
     <string name="debt_action_repayment_void_title">作废这笔还款</string>

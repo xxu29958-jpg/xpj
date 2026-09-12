@@ -3,8 +3,8 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
-import com.ticketbox.data.repository.DebtAdjustmentActions
-import com.ticketbox.data.repository.DebtAdjustmentObservation
+import com.ticketbox.data.repository.DebtWriteActions
+import com.ticketbox.data.repository.DebtWriteObservation
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.Debt
@@ -54,11 +54,11 @@ data class CreateDebtGoalUiState(
 class CreateDebtGoalViewModel(
     private val reports: ReportsActions,
     private val debts: DebtActions,
-    private val adjustments: DebtAdjustmentActions,
+    private val writes: DebtWriteActions,
 ) : ViewModel() {
 
-    private var adjustmentBinding = adjustments.currentAccess()?.binding
-    private var adjustmentObservation: DebtAdjustmentObservation? = null
+    private var adjustmentBinding = writes.currentAccess()?.binding
+    private var writeObservation: DebtWriteObservation? = null
 
     private val _state = MutableStateFlow(CreateDebtGoalUiState(canModify = reports.canModifyLedger()))
     val state: StateFlow<CreateDebtGoalUiState> = _state.asStateFlow()
@@ -67,10 +67,10 @@ class CreateDebtGoalViewModel(
 
     init {
         viewModelScope.launch {
-            adjustments.observeAdjustments().collect { change ->
+            writes.observeWrites().collect { change ->
                 val changedBinding = adjustmentBinding != change.binding
                 adjustmentBinding = change.binding
-                adjustmentObservation = change
+                writeObservation = change
                 if (change.binding == null) {
                     loadGeneration++
                     _state.value = CreateDebtGoalUiState(canModify = false)
@@ -96,23 +96,23 @@ class CreateDebtGoalViewModel(
 
     /** Refresh or retry within the open form, preserving its name and explicit selection. */
     fun refreshCandidates() {
-        val observation = adjustmentObservation
+        val observation = writeObservation
         if (observation?.binding == null) {
-            _state.update { it.copy(isLoadingDebts = adjustments.currentAccess() != null) }
+            _state.update { it.copy(isLoadingDebts = writes.currentAccess() != null) }
             return
         }
         val generation = ++loadGeneration
         _state.update { it.copy(isLoadingDebts = true, loadError = null) }
         viewModelScope.launch {
             val result = debts.listDebts()
-            if (generation != loadGeneration || observation.binding != adjustments.currentAccess()?.binding) return@launch
-            val currentObservation = adjustmentObservation ?: return@launch
+            if (generation != loadGeneration || observation.binding != writes.currentAccess()?.binding) return@launch
+            val currentObservation = writeObservation ?: return@launch
             result.fold(
                 onSuccess = { page ->
                     if (!page.debts.filterNot { "debt:${it.publicId}" in observation.unresolvedTargetIds }
                             .all(observation::acceptsCanonical)) {
                         _state.update { it.copy(isLoadingDebts = false,
-                            loadError = UiText.res(R.string.debt_adjustment_canonical_refresh_required)) }
+                            loadError = UiText.res(R.string.debt_write_canonical_refresh_required)) }
                         return@launch
                     }
                     _state.update {
@@ -155,8 +155,8 @@ class CreateDebtGoalViewModel(
 
     fun submit() {
         val current = _state.value
-        val binding = adjustmentObservation?.binding ?: return
-        if (binding != adjustments.currentAccess()?.binding || !current.canStartSubmission) return
+        val binding = writeObservation?.binding ?: return
+        if (binding != writes.currentAccess()?.binding || !current.canStartSubmission) return
         val cleanName = current.name.trim()
         // Build the id list from candidate order ∩ selection — a stable, candidate-ordered
         // request (NOT selection-insertion order; submitSuccess...InCandidateOrder pins this).
@@ -174,14 +174,14 @@ class CreateDebtGoalViewModel(
         _state.update { it.copy(isSubmitting = true, formError = null) }
         val generation = loadGeneration
         viewModelScope.launch {
-            val currentObservation = adjustmentObservation ?: return@launch
-            if (generation != loadGeneration || binding != adjustments.currentAccess()?.binding ||
+            val currentObservation = writeObservation ?: return@launch
+            if (generation != loadGeneration || binding != writes.currentAccess()?.binding ||
                 ids.any { "debt:$it" in currentObservation.unresolvedTargetIds }) {
                 _state.update { it.copy(isSubmitting = false) }
                 return@launch
             }
             val result = reports.createDebtGoal(cleanName, ids, expectedBinding = binding)
-            if (binding != adjustments.currentAccess()?.binding) return@launch
+            if (binding != writes.currentAccess()?.binding) return@launch
             result.fold(
                 onSuccess = { goal ->
                     _state.update { it.copy(isSubmitting = false, createdPublicId = goal.publicId) }

@@ -549,7 +549,7 @@ internal class StubApi(
         publicId: String,
         request: com.ticketbox.data.remote.dto.RepaymentCreateRequestDto,
         idempotencyKey: String?,
-    ): com.ticketbox.data.remote.dto.DebtDto = ledgerUnsupported()
+    ): com.ticketbox.data.remote.dto.DebtRepaymentReceiptDto = ledgerUnsupported()
     override suspend fun recordDebtAdjustment(
         publicId: String,
         request: com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto,

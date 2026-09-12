@@ -1,19 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="debt_adjustment_saved">原调整已保存在本机，同步完成后更新欠款。</string>
-    <string name="debt_adjustment_waiting">调整等待同步</string>
-    <string name="debt_adjustment_attention">这次调整尚未确认完成，原提交仍保留在本机。</string>
+    <string name="debt_write_waiting">提交等待同步</string>
+    <string name="debt_write_attention">这次提交尚未确认完成，原提交仍保留在本机。</string>
     <string name="debt_adjustment_original_amount">原调整金额：%1$s</string>
-    <string name="debt_adjustment_unsupported">当前版本无法读取原调整，请升级后继续；原记录仍保留在本机。</string>
-    <string name="debt_adjustment_conflict">欠款已发生变化。请核对最新欠款；这次调整不会用新版本自动覆盖。</string>
-    <string name="debt_adjustment_expired">已超出安全重试期限，请先核对账本中的调整结果。</string>
-    <string name="debt_adjustment_retry">重试原调整</string>
-    <string name="debt_adjustment_drop">放弃本机调整</string>
-    <string name="debt_adjustment_drop_explanation">本机将停止发送这次调整，原金额和原因仍保留。不会撤销账本中可能已记入的调整；欠款页面会重新读取账本后再允许新的操作。</string>
-    <string name="debt_adjustment_stopped">已停止本机调整</string>
-    <string name="debt_adjustment_stopped_body">本机不会再发送这次原调整；是否已记入账本仍以欠款页面重新读取的结果为准。</string>
-    <string name="debt_adjustment_stopped_unreadable">原提交仍保留在本机，当前版本无法读取其内容。</string>
-    <string name="sync_status_overview_caption_stopped">%1$d 笔原调整已在本机停止发送，记录仍保留；停止发送不表示已确认送达。</string>
+    <string name="debt_write_unsupported">当前版本无法读取原提交，请升级后继续；原记录仍保留在本机。</string>
+    <string name="debt_write_conflict">欠款已发生变化。请核对最新欠款；这次提交不会用新版本自动覆盖。</string>
+    <string name="debt_write_expired">已超出安全重试期限，请先核对账本中的提交结果。</string>
+    <string name="debt_write_retry">重试原提交</string>
+    <string name="debt_write_drop">放弃本机提交</string>
+    <string name="debt_write_drop_explanation">本机将停止发送这次提交，原金额、日期或原因仍保留。不会撤销账本中可能已记入的提交；欠款页面会重新读取账本后再允许新的操作。</string>
+    <string name="debt_write_stopped">已停止本机提交</string>
+    <string name="debt_write_stopped_body">本机不会再发送这次原提交；是否已记入账本仍以欠款页面重新读取的结果为准。</string>
+    <string name="debt_write_stopped_unreadable">原提交仍保留在本机，当前版本无法读取其内容。</string>
+    <string name="sync_status_overview_caption_stopped">%1$d 笔原提交已在本机停止发送，记录仍保留；停止发送不表示已确认送达。</string>
     <string name="debt_create_no_synced_records">暂无已同步往来</string>
     <string name="debt_create_local_saved">已保存在本机，同步后会更新账本。</string>
     <string name="debt_create_pending_title">待同步的往来</string>
@@ -30,13 +30,17 @@
     <string name="debt_create_drop_dialog_title">放弃这笔本机记录？</string>
     <string name="debt_create_drop_dialog_text">这只会移除本机待同步记录，不会撤销账本中可能已保存的往来。请先核对账本，再决定是否放弃。</string>
     <string name="debt_create_expired_drop_dialog_text">这笔本机记录已超出安全重试期限。移除不会撤销账本中可能已保存的往来，请先核对账本。</string>
-    <string name="debt_adjustment_refresh_required">请刷新核对最新欠款。核对完成前暂停新的操作；停止本机调整不代表账本未收到原提交。</string>
-    <string name="debt_adjustment_canonical_refresh_required">请刷新并核对调整后的欠款。</string>
-    <string name="debt_adjustment_write_waiting">这笔欠款还有原调整待处理，请先核对原提交，再继续新的操作。</string>
-    <string name="debt_adjustment_checking">正在核对这笔欠款的原调整，请稍候。</string>
+    <string name="debt_write_refresh_required">请刷新核对最新欠款。核对完成前暂停新的操作；停止本机提交不代表账本未收到原提交。</string>
+    <string name="debt_write_canonical_refresh_required">请刷新并核对提交后的欠款。</string>
+    <string name="debt_write_waiting_for_original">这笔欠款还有原提交待处理，请先核对原提交，再继续新的操作。</string>
+    <string name="debt_write_checking">正在核对这笔欠款的原提交，请稍候。</string>
     <string name="debt_goal_create_selection_changed">所选欠款已发生变化，部分已不可关联。原名称和选择已保留，请核对后移除不可关联的选择。</string>
     <string name="debt_goal_create_remove_unavailable">移除不可关联的选择</string>
     <string name="repayment_draft_target_changed">这笔欠款已发生变化，请刷新并重新选择还款对象。</string>
     <string name="debt_adjustment_exceeds_remaining">减少金额不能超过当前剩余金额。</string>
     <string name="debt_adjustment_reduction_rejected">账本已拒绝这次调整：减少金额超过剩余金额。原金额和原因已保留，请核对后忽略这次本地调整，再重新填写。</string>
+    <string name="debt_repayment_saved">原还款已保存在本机，同步确认后更新欠款。</string>
+    <string name="debt_repayment_confirmed">这次还款已确认。欠款余额与还款记录可刷新查看。</string>
+    <string name="debt_repayment_pending_amount">原还款金额：%1$s</string>
+    <string name="debt_repayment_original_date">原还款时间：%1$s</string>
 </resources>

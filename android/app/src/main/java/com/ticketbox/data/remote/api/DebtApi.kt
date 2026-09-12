@@ -50,15 +50,14 @@ interface DebtApi {
     // ADR-0049 §3 (slice 8c) direct fact writes for external/manual Debt (member/bill_split go
     // through the slice-3 proposal flow, §5.2 → 409 here). Each carries expected_row_version in the
     // body (§2.1 stale-intent fence + §3.6 fingerprint) and an ADR-0042 intent-time idempotency key
-    // in the header (nullable for Retrofit ergonomics — the repository always supplies a UUID). The
-    // repayment route returns RepaymentCreateResponse (a DebtResponse superset); Moshi keeps the
-    // shared fold fields and drops the unused repayment_public_id, so DebtDto is the right shape.
+    // in the header (nullable for Retrofit ergonomics — the repository always supplies a UUID).
+    // A receipt identifies this original command; Debt/history remain canonical queries.
     @POST("api/debts/{publicId}/repayments")
     suspend fun recordDebtRepayment(
         @Path("publicId") publicId: String,
         @Body request: RepaymentCreateRequestDto,
         @Header("Idempotency-Key") idempotencyKey: String?,
-    ): DebtDto
+    ): com.ticketbox.data.remote.dto.DebtRepaymentReceiptDto
 
     @POST("api/debts/{publicId}/adjustments")
     suspend fun recordDebtAdjustment(

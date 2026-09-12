@@ -52,7 +52,7 @@ class DebtGoalCanonicalContinuityTest {
                 else Result.success(ReadSnapshot(detail, "2026-09-09T01:00:00Z", false))
             }
         }
-        val viewModel = DebtGoalViewModel(repository, FakeDebtAdjustmentActions())
+        val viewModel = DebtGoalViewModel(repository, FakeDebtWriteActions())
         try {
             advanceUntilIdle()
             viewModel.openDetail(original)
@@ -102,8 +102,8 @@ class DebtGoalCanonicalContinuityTest {
             }
             override suspend fun goal(publicId: String, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String) = Result.success(ReadSnapshot(current, "2026-09-09T00:00:00Z", false))
         }
-        val adjustments = FakeDebtAdjustmentActions()
-        val vm = DebtGoalViewModel(repo, adjustments)
+        val writes = FakeDebtWriteActions()
+        val vm = DebtGoalViewModel(repo, writes)
         try {
             advanceUntilIdle()
             vm.openDetail(original)
@@ -114,7 +114,7 @@ class DebtGoalCanonicalContinuityTest {
             runCurrent()
             gate = null
             result = Result.failure(IllegalStateException("post-terminal goal query failed"))
-            adjustments.rows.value = listOf(pendingAdjustment(status = PendingMutationStatus.Abandoned))
+            writes.rows.value = listOf(pendingAdjustment(status = PendingMutationStatus.Abandoned))
             advanceUntilIdle()
             assertNotNull(vm.state.value.error)
             oldRead.complete(Unit)
@@ -155,7 +155,7 @@ class DebtGoalCanonicalContinuityTest {
                 return Result.success(accepted)
             }
         }
-        val vm = DebtGoalViewModel(repo, FakeDebtAdjustmentActions())
+        val vm = DebtGoalViewModel(repo, FakeDebtWriteActions())
         try {
             advanceUntilIdle()
             vm.openDetail(original)

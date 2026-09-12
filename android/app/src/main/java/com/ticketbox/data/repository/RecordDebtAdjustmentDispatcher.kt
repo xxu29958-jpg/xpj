@@ -14,7 +14,7 @@ class RecordDebtAdjustmentDispatcher(
     override val type = PendingMutationType.RecordDebtAdjustment
 
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
-        val intent = row.describeDebtAdjustment(adapter).intent
+        val intent = row.describeDebtAdjustment(adapter).adjustment
             ?: return DispatchResult.Failure("debt_adjustment_payload_unsupported")
         return try {
             apiProvider(row).recordDebtAdjustment(intent.subject.publicId, intent.request, row.idempotencyKey)

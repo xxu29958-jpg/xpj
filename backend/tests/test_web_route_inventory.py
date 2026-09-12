@@ -125,6 +125,7 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("GET", "/web/debts"): "local-only-rendering",
     ("GET", "/web/debts/new"): "local-only-rendering",
     ("GET", "/web/debts/{public_id}"): "local-only-rendering",
+    ("GET", "/web/debts/{public_id}/repayments"): "local-only-rendering",
     ("POST", "/web/debts"): "writer-only",
     ("POST", "/web/debts/{public_id}/adjustments"): "writer-only",
     ("POST", "/web/debts/{public_id}/forgive"): "writer-only",

@@ -52,7 +52,7 @@ class DebtListViewModelCapabilityTest {
             createResult = Result.success(Unit),
         )
         repo.listCapability = "JPY"
-        val viewModel = DebtListViewModel(repo, repo.creation, repo.adjustments)
+        val viewModel = DebtListViewModel(repo, repo.creation, repo.writes)
         advanceUntilIdle()
 
         assertTrue(viewModel.state.value.debts.isEmpty())
@@ -75,7 +75,7 @@ class DebtListViewModelCapabilityTest {
             createResult = Result.success(Unit),
         )
         repo.listCapability = "JPY"
-        val viewModel = DebtListViewModel(repo, repo.creation, repo.adjustments)
+        val viewModel = DebtListViewModel(repo, repo.creation, repo.writes)
         advanceUntilIdle()
 
         assertEquals(true, viewModel.state.value.homeCurrencyResolved)
@@ -95,7 +95,7 @@ class DebtListViewModelCapabilityTest {
             listResult = Result.success(listOf(sampleDebt("cny-debt").copy(homeCurrencyCode = "CNY"))),
             createResult = Result.success(Unit),
         )
-        val viewModel = DebtListViewModel(repo, repo.creation, repo.adjustments)
+        val viewModel = DebtListViewModel(repo, repo.creation, repo.writes)
         advanceUntilIdle()
         assertEquals(true, viewModel.state.value.homeCurrencyResolved)
 
@@ -123,7 +123,7 @@ class DebtListViewModelCapabilityTest {
             createResult = Result.success(Unit),
         )
         repo.listCapability = "CNY"
-        val viewModel = DebtListViewModel(repo, repo.creation, repo.adjustments)
+        val viewModel = DebtListViewModel(repo, repo.creation, repo.writes)
         advanceUntilIdle()
 
         assertEquals(false, viewModel.state.value.homeCurrencyResolved)
@@ -152,7 +152,7 @@ class DebtListViewModelCapabilityTest {
         // 禁止 fromStorageKey 式静默落 CNY（ADR-0061 C03），创建保持阻断。
         val repo = FakeDebtActions(listResult = Result.success(emptyList()))
         repo.listCapability = "XXX"
-        val viewModel = DebtListViewModel(repo, repo.creation, repo.adjustments)
+        val viewModel = DebtListViewModel(repo, repo.creation, repo.writes)
         advanceUntilIdle()
 
         assertEquals(false, viewModel.state.value.homeCurrencyResolved)
@@ -179,7 +179,7 @@ class DebtListViewModelCapabilityTest {
             ),
         )
         repo.listCapability = "JPY"
-        val viewModel = DebtListViewModel(repo, repo.creation, repo.adjustments)
+        val viewModel = DebtListViewModel(repo, repo.creation, repo.writes)
         advanceUntilIdle()
 
         assertEquals(false, viewModel.state.value.homeCurrencyResolved)
@@ -204,7 +204,7 @@ class DebtListViewModelCapabilityTest {
             ),
         )
         repo.listCapability = "JPY"
-        val viewModel = DebtListViewModel(repo, repo.creation, repo.adjustments)
+        val viewModel = DebtListViewModel(repo, repo.creation, repo.writes)
         advanceUntilIdle()
 
         assertEquals(false, viewModel.state.value.homeCurrencyResolved)
@@ -226,7 +226,7 @@ class DebtListViewModelCapabilityTest {
             listResult = Result.success(listOf(sampleDebt("cny-debt").copy(homeCurrencyCode = "CNY"))),
         )
         repo.listCapability = "VND"
-        val viewModel = DebtListViewModel(repo, repo.creation, repo.adjustments)
+        val viewModel = DebtListViewModel(repo, repo.creation, repo.writes)
         advanceUntilIdle()
 
         assertEquals(false, viewModel.state.value.homeCurrencyResolved)
@@ -247,7 +247,7 @@ class DebtListViewModelCapabilityTest {
             createResult = Result.success(Unit),
         )
         repo.listCapability = ""
-        val viewModel = DebtListViewModel(repo, repo.creation, repo.adjustments)
+        val viewModel = DebtListViewModel(repo, repo.creation, repo.writes)
         advanceUntilIdle()
 
         assertEquals(true, viewModel.state.value.homeCurrencyResolved)

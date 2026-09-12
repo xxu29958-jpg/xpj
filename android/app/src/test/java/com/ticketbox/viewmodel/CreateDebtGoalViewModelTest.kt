@@ -54,7 +54,7 @@ class CreateDebtGoalViewModelTest {
                 listOf(debt("open-1", "open"), debt("cleared-1", "cleared"), debt("voided-1", "voided")),
             ),
         )
-        val viewModel = CreateDebtGoalViewModel(FakeCreateReportsActions(canModify = false), debts, adjustments = FakeDebtAdjustmentActions())
+        val viewModel = CreateDebtGoalViewModel(FakeCreateReportsActions(canModify = false), debts, writes = FakeDebtWriteActions())
         viewModel.reload()
         advanceUntilIdle()
 
@@ -68,8 +68,8 @@ class CreateDebtGoalViewModelTest {
     fun candidateRefreshRetainsDraftAfterFailureAndRecovery() = runTest(dispatcher) {
         val debts = FakeCreateDebtActions(listResult = Result.failure(RuntimeException("offline")))
         val reports = FakeCreateReportsActions()
-        val adjustments = FakeDebtAdjustmentActions()
-        val viewModel = CreateDebtGoalViewModel(reports, debts, adjustments)
+        val writes = FakeDebtWriteActions()
+        val viewModel = CreateDebtGoalViewModel(reports, debts, writes)
         viewModel.reload()
         advanceUntilIdle()
 
@@ -83,7 +83,7 @@ class CreateDebtGoalViewModelTest {
         viewModel.toggleDebt("open-1")
 
         debts.listResult = Result.failure(RuntimeException("offline after adjustment"))
-        adjustments.rows.value = listOf(pendingAdjustment(status = PendingMutationStatus.Done))
+        writes.rows.value = listOf(pendingAdjustment(status = PendingMutationStatus.Done))
         advanceUntilIdle()
         assertTrue(viewModel.state.value.loadError != null)
         assertFalse(viewModel.state.value.canSubmit)
@@ -121,7 +121,7 @@ class CreateDebtGoalViewModelTest {
         val reports = FakeCreateReportsActions()
         val viewModel = CreateDebtGoalViewModel(reports, FakeCreateDebtActions(
             listResult = Result.success(listOf(debt("open-1", "open"))),
-        ), adjustments = FakeDebtAdjustmentActions())
+        ), writes = FakeDebtWriteActions())
         viewModel.reload()
         advanceUntilIdle()
         viewModel.toggleDebt("open-1") // selection present, but name is blank
@@ -139,7 +139,7 @@ class CreateDebtGoalViewModelTest {
         val reports = FakeCreateReportsActions()
         val viewModel = CreateDebtGoalViewModel(reports, FakeCreateDebtActions(
             listResult = Result.success(listOf(debt("open-1", "open"))),
-        ), adjustments = FakeDebtAdjustmentActions())
+        ), writes = FakeDebtWriteActions())
         viewModel.reload()
         advanceUntilIdle()
         viewModel.updateName("还清欠款") // name present, but nothing selected
@@ -159,8 +159,8 @@ class CreateDebtGoalViewModelTest {
                 listOf(debt("open-a", "open"), debt("open-b", "open"), debt("open-c", "open")),
             ),
         )
-        val adjustments = FakeDebtAdjustmentActions()
-        val viewModel = CreateDebtGoalViewModel(reports, debts, adjustments)
+        val writes = FakeDebtWriteActions()
+        val viewModel = CreateDebtGoalViewModel(reports, debts, writes)
         viewModel.reload()
         advanceUntilIdle()
         // Select out of candidate order; submit must still send candidate order.
@@ -170,7 +170,7 @@ class CreateDebtGoalViewModelTest {
 
         // A background correction clears a selected debt; never silently submit only the other id.
         debts.listResult = Result.success(listOf(debt("open-a", "open"), debt("open-c", "cleared")))
-        adjustments.rows.value = listOf(pendingAdjustment(status = PendingMutationStatus.Done))
+        writes.rows.value = listOf(pendingAdjustment(status = PendingMutationStatus.Done))
         advanceUntilIdle()
         assertEquals(setOf("open-a", "open-c"), viewModel.state.value.selectedDebtIds)
         assertEquals("  还清欠款  ", viewModel.state.value.name)
@@ -184,7 +184,7 @@ class CreateDebtGoalViewModelTest {
         assertEquals("  还清欠款  ", viewModel.state.value.name)
 
         debts.listResult = Result.success(listOf(debt("open-a", "open"), debt("open-c", "open")))
-        adjustments.rows.value += pendingAdjustment(id = 2, status = PendingMutationStatus.Done)
+        writes.rows.value += pendingAdjustment(id = 2, status = PendingMutationStatus.Done)
         advanceUntilIdle()
         viewModel.toggleDebt("open-c")
         viewModel.submit()
@@ -203,7 +203,7 @@ class CreateDebtGoalViewModelTest {
         val reports = FakeCreateReportsActions(createResult = Result.failure(RuntimeException("conflict")))
         val viewModel = CreateDebtGoalViewModel(reports, FakeCreateDebtActions(
             listResult = Result.success(listOf(debt("open-1", "open"))),
-        ), adjustments = FakeDebtAdjustmentActions())
+        ), writes = FakeDebtWriteActions())
         viewModel.reload()
         advanceUntilIdle()
         viewModel.toggleDebt("open-1")
@@ -223,7 +223,7 @@ class CreateDebtGoalViewModelTest {
         val reports = FakeCreateReportsActions(createResult = Result.success(debtGoal("new-goal")))
         val viewModel = CreateDebtGoalViewModel(reports, FakeCreateDebtActions(
             listResult = Result.success(listOf(debt("open-1", "open"))),
-        ), adjustments = FakeDebtAdjustmentActions())
+        ), writes = FakeDebtWriteActions())
         viewModel.reload()
         advanceUntilIdle()
         viewModel.toggleDebt("open-1")
@@ -255,7 +255,7 @@ class CreateDebtGoalViewModelTest {
         CreateDebtGoalViewModel(
             FakeCreateReportsActions(),
             FakeCreateDebtActions(listResult = Result.success(candidates)),
-            adjustments = FakeDebtAdjustmentActions(),
+            writes = FakeDebtWriteActions(),
         )
 
     private fun debt(publicId: String, status: String): Debt = Debt(
@@ -320,11 +320,6 @@ private class FakeCreateDebtActions(
     ): Result<DebtBillSuggestion> = Result.failure(UnsupportedOperationException())
 
     // slice 8c widened DebtActions; the create-debt-goal flow only reads listDebts for the picker.
-    override suspend fun recordRepayment(
-        publicId: String,
-        expectedRowVersion: Long,
-        amountCents: Long,
-    ): Result<Debt> = Result.failure(UnsupportedOperationException())
 
     override suspend fun voidRepayment(
         publicId: String,

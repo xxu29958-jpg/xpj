@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationType
+import com.ticketbox.data.repository.DEBT_WRITE_TYPES
 import com.ticketbox.data.repository.ConflictResolution
 import com.ticketbox.data.repository.DebtCreationActions
 import com.ticketbox.data.repository.ExpenseRepository
@@ -74,20 +75,20 @@ class OutboxStatusViewModel(
     init {
         viewModelScope.launch {
             combine(outbox.observeStatus(), expenseRepository.observeCorrections(),
-                recoveries.debtAdjustments.observeAdjustments(), expenseRepository.observeLedgerAccess(),
+                recoveries.debtWrites.observeWrites(), expenseRepository.observeLedgerAccess(),
                 outbox.observeActiveByTypes(incomePlanSubmissionTypes + setOf(PendingMutationType.SaveManualExchangeRate,
-                    PendingMutationType.CreateExpense), includeCompleted = true)) { status, corrections, adjustments, access, incomeRows ->
-                Triple(Triple(status, corrections, adjustments), access, incomeRows)
+                    PendingMutationType.CreateExpense), includeCompleted = true)) { status, corrections, writes, access, incomeRows ->
+                Triple(Triple(status, corrections, writes), access, incomeRows)
             }.collect { (observations, access, incomeRows) ->
-                val (observedStatus, corrections, adjustments) = observations
+                val (observedStatus, corrections, writes) = observations
                 val binding = access?.binding?.takeIf { it == expenseRepository.captureDeferredLedgerBinding() }
                 val status = observedStatus.takeIf { it.binding.matches(binding) }
                     ?: OutboxStatus(0, emptyList(), emptyList())
                 val currentCorrections = corrections.takeIf { it.access?.binding == binding }
                     ?: ExpenseCorrectionObservation(null, emptyList())
-                val currentAdjustments = adjustments.adjustments.takeIf { adjustments.binding == binding }.orEmpty()
+                val currentWrites = writes.writes.takeIf { writes.binding == binding }.orEmpty()
                 val ready = binding != null && status.binding.matches(binding) &&
-                    currentCorrections.access?.binding == binding && adjustments.binding == binding
+                    currentCorrections.access?.binding == binding && writes.binding == binding
                 val descriptions = status.failed.mapNotNull { row ->
                     recoveries.debtCreation.describePendingCreation(row)?.let { row.id to it }
                 }.toMap()
@@ -101,7 +102,7 @@ class OutboxStatusViewModel(
                     expenseRepository.describeManualCreation(row)?.let { row.id to it }
                 }.toMap()
                 if (binding != expenseRepository.captureDeferredLedgerBinding()) return@collect
-                val adjustmentDescriptions = currentAdjustments.filter {
+                val writeDescriptions = currentWrites.filter {
                     it.row.status != com.ticketbox.data.local.PendingMutationStatus.Done
                 }.associateBy { it.row.id }
                 _uiState.update { previous ->
@@ -109,8 +110,8 @@ class OutboxStatusViewModel(
                     state.copy(binding = binding, bindingReady = ready,
                     correctionObservation = currentCorrections, status = status, failedDebtCreations = descriptions,
                     billSplitCreations = status.failed.mapNotNull { row -> expenseRepository.describeBillSplitCreation(row)?.let { row.id to it } }.toMap(),
-                    debtAdjustments = adjustmentDescriptions,
-                    waitingDebtAdjustments = adjustmentDescriptions.values.filter {
+                    debtWrites = writeDescriptions,
+                    waitingDebtWrites = writeDescriptions.values.filter {
                         it.row.status in setOf(com.ticketbox.data.local.PendingMutationStatus.Pending,
                             com.ticketbox.data.local.PendingMutationStatus.InFlight)
                     },
@@ -138,7 +139,8 @@ class OutboxStatusViewModel(
     /** "用我的覆盖" — re-apply my change on top of the server's latest. */
     fun keepMine(row: OutboxRow) {
         if (row.type == PendingMutationType.CreateExpense) return
-        if (row.type in originalSubmissionTypes || row.type == PendingMutationType.CreateBillSplitInvitation) return
+        if (row.type in originalSubmissionTypes || row.type in DEBT_WRITE_TYPES ||
+            row.type == PendingMutationType.CreateBillSplitInvitation) return
         val binding = expenseRepository.captureDeferredLedgerBinding()
         if (!_uiState.value.accepts(row, binding)) return
         if (row.type in setOf(PendingMutationType.CorrectExpense, PendingMutationType.UploadScreenshot)) return
@@ -173,7 +175,7 @@ class OutboxStatusViewModel(
         if (row.type == PendingMutationType.CreateExpense) { recoverSubmission(row, true); return }
         if (row.type == PendingMutationType.UploadScreenshot) return
         if (row.type in originalSubmissionTypes) recoverSubmission(row, true)
-        else if (row.type == PendingMutationType.RecordDebtAdjustment) recoverAdjustment(row, true)
+        else if (row.type in DEBT_WRITE_TYPES) recoverDebtWrite(row, true)
         else resolve(row) { outbox.resolveConflict(row.id, ConflictResolution.DropMine) }
     }
 
@@ -193,8 +195,8 @@ class OutboxStatusViewModel(
             explainOffsetReview()
             return
         }
-        if (row.type == PendingMutationType.RecordDebtAdjustment) {
-            recoverAdjustment(row, false)
+        if (row.type in DEBT_WRITE_TYPES) {
+            recoverDebtWrite(row, false)
             return
         }
         resolve(row) {
@@ -219,24 +221,24 @@ class OutboxStatusViewModel(
         if (row.type == PendingMutationType.CreateExpense) { recoverSubmission(row, true); return }
         if (row.type == PendingMutationType.UploadScreenshot) return
         if (row.type in originalSubmissionTypes) recoverSubmission(row, true)
-        else if (row.type == PendingMutationType.RecordDebtAdjustment) recoverAdjustment(row, true)
+        else if (row.type in DEBT_WRITE_TYPES) recoverDebtWrite(row, true)
         else resolve(row) { outbox.resolveFailed(row.id, FailedResolution.Drop) }
     }
 
-    private fun recoverAdjustment(row: OutboxRow, drop: Boolean) {
-        val access = recoveries.debtAdjustments.currentAccess()
-        val pending = recoveries.debtAdjustments.describeAdjustment(row)
+    private fun recoverDebtWrite(row: OutboxRow, drop: Boolean) {
+        val access = recoveries.debtWrites.currentAccess()
+        val pending = recoveries.debtWrites.describeWrite(row)
         if (access == null || pending == null || !drop && !pending.hasSupportedIntent) {
-            _uiState.update { it.copy(message = UiText.res(R.string.debt_adjustment_unsupported), messageTone = MessageTone.Danger) }
+            _uiState.update { it.copy(message = UiText.res(R.string.debt_write_unsupported), messageTone = MessageTone.Danger) }
             return
         }
         if (!drop && !pending.canRetry) {
-            val message = if (pending.reductionRejected) R.string.debt_adjustment_reduction_rejected else R.string.debt_adjustment_attention
+            val message = if (pending.reductionRejected) R.string.debt_adjustment_reduction_rejected else R.string.debt_write_attention
             _uiState.update { it.copy(message = UiText.res(message), messageTone = MessageTone.Danger) }
             return
         }
         resolve(row) {
-            recoveries.debtAdjustments.recover(access.binding, pending, drop).onFailure { error ->
+            recoveries.debtWrites.recover(access.binding, pending, drop).onFailure { error ->
                 if (expenseRepository.captureDeferredLedgerBinding() == access.binding) {
                     _uiState.update { it.copy(message = error.toUiText(R.string.debt_action_failed), messageTone = MessageTone.Danger) }
                 }
@@ -344,8 +346,8 @@ data class OutboxStatusUiState(
     val budgetSaves: Map<Long, com.ticketbox.data.repository.PendingBudgetSave> = emptyMap(),
     val recurringItems: Map<Long, com.ticketbox.data.repository.RecurringPendingIntent> = emptyMap(),
     val categoryRules: Map<Long, com.ticketbox.data.repository.PendingCategoryRuleSubmission> = emptyMap(),
-    val debtAdjustments: Map<Long, com.ticketbox.data.repository.PendingDebtAdjustment> = emptyMap(),
-    val waitingDebtAdjustments: List<com.ticketbox.data.repository.PendingDebtAdjustment> = emptyList(),
+    val debtWrites: Map<Long, com.ticketbox.data.repository.PendingDebtWrite> = emptyMap(),
+    val waitingDebtWrites: List<com.ticketbox.data.repository.PendingDebtWrite> = emptyList(),
     val retryableOffsetIds: Set<Long> = emptySet(),
     val busyRowId: Long? = null,
     val isClearingQuarantine: Boolean = false,
@@ -365,7 +367,7 @@ data class OutboxStatusUiState(
             in incomePlanSubmissionTypes -> incomeSubmissions[row.id]?.canRetry == true
             PendingMutationType.UpdateGoal -> goalEdits[row.id]?.canRetry == true
             PendingMutationType.CreateGoal -> goalCreations[row.id]?.canRetry == true
-            PendingMutationType.RecordDebtAdjustment -> debtAdjustments[row.id]?.canRetry == true
+            in DEBT_WRITE_TYPES -> debtWrites[row.id]?.canRetry == true
             PendingMutationType.CreateExpenseOffset -> row.id in retryableOffsetIds
             else -> !row.requiresManualCreateReview()
         }
@@ -384,7 +386,7 @@ data class OutboxRecoveryRepositories(
     val debtCreation: DebtCreationActions,
     val recurringOccurrences: com.ticketbox.data.repository.RecurringOccurrenceActions?,
     val incomePlans: com.ticketbox.data.repository.IncomePlanActions,
-    val debtAdjustments: com.ticketbox.data.repository.DebtAdjustmentActions,
+    val debtWrites: com.ticketbox.data.repository.DebtWriteActions,
     val goalEdits: com.ticketbox.data.repository.GoalEditActions,
     val budgetSaves: com.ticketbox.data.repository.BudgetActions,
     val recurringItems: com.ticketbox.data.repository.RecurringManualMutationActions,

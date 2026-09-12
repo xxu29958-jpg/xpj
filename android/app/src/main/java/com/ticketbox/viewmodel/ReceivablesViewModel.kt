@@ -3,8 +3,8 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
-import com.ticketbox.data.repository.DebtAdjustmentActions
-import com.ticketbox.data.repository.DebtAdjustmentObservation
+import com.ticketbox.data.repository.DebtWriteActions
+import com.ticketbox.data.repository.DebtWriteObservation
 import com.ticketbox.data.repository.ReceivablesActions
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtLinkStatuses
@@ -32,11 +32,11 @@ data class ReceivablesUiState(
 
 class ReceivablesViewModel(
     private val repository: ReceivablesActions,
-    private val adjustments: DebtAdjustmentActions,
+    private val writes: DebtWriteActions,
 ) : ViewModel() {
 
-    private var adjustmentBinding = adjustments.currentAccess()?.binding
-    private var adjustmentObservation: DebtAdjustmentObservation? = null
+    private var adjustmentBinding = writes.currentAccess()?.binding
+    private var writeObservation: DebtWriteObservation? = null
 
     private val _state = MutableStateFlow(ReceivablesUiState())
     val state: StateFlow<ReceivablesUiState> = _state.asStateFlow()
@@ -48,10 +48,10 @@ class ReceivablesViewModel(
 
     init {
         viewModelScope.launch {
-            adjustments.observeAdjustments().collect { change ->
+            writes.observeWrites().collect { change ->
                 val changedBinding = adjustmentBinding != change.binding
                 adjustmentBinding = change.binding
-                adjustmentObservation = change
+                writeObservation = change
                 if (change.binding == null) {
                     loadGeneration++
                     _state.value = ReceivablesUiState()
@@ -66,9 +66,9 @@ class ReceivablesViewModel(
     }
 
     fun refresh() {
-        val observation = adjustmentObservation
+        val observation = writeObservation
         if (observation?.binding == null) {
-            _state.update { it.copy(isLoading = adjustments.currentAccess() != null) }
+            _state.update { it.copy(isLoading = writes.currentAccess() != null) }
             return
         }
         val gen = ++loadGeneration
@@ -76,13 +76,13 @@ class ReceivablesViewModel(
         viewModelScope.launch {
             val result = repository.listReceivables()
             // Drop a load superseded by a newer refresh (which set isLoading and owns clearing it).
-            if (gen != loadGeneration || observation.binding != adjustments.currentAccess()?.binding) return@launch
+            if (gen != loadGeneration || observation.binding != writes.currentAccess()?.binding) return@launch
             result.fold(
                 onSuccess = { debts ->
                     if (!debts.filterNot { "debt:${it.publicId}" in observation.unresolvedTargetIds }
                             .all(observation::acceptsCanonical)) {
                         _state.update { it.copy(isLoading = false,
-                            error = UiText.res(R.string.debt_adjustment_canonical_refresh_required)) }
+                            error = UiText.res(R.string.debt_write_canonical_refresh_required)) }
                         return@launch
                     }
                     _state.update {

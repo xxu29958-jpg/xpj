@@ -31,7 +31,7 @@ internal class FakeDebtActions(
     var parseBillResult: Result<DebtBillSuggestion> = Result.success(blankBillSuggestion()),
 ) : DebtActions {
     val creation = FakeDebtCreationActions(canModify, createResult)
-    val adjustments = FakeDebtAdjustmentActions(creation.access)
+    val writes = FakeDebtWriteActions(creation.access)
     val parseBillCalls = mutableListOf<String>()
     var listCalls = 0
     val listLenses = mutableListOf<DebtListLens>()
@@ -69,11 +69,6 @@ internal class FakeDebtActions(
         return captured
     }
 
-    override suspend fun recordRepayment(
-        publicId: String,
-        expectedRowVersion: Long,
-        amountCents: Long,
-    ): Result<Debt> = Result.success(sampleDebt(publicId))
 
     override suspend fun voidRepayment(
         publicId: String,

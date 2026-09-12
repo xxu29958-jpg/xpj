@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, time
 from uuid import uuid4
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import Request
 from sqlalchemy.orm import Session
@@ -49,7 +50,7 @@ PROPOSAL_CONFIRM_AMOUNT_FIELD = "confirmed_amount_major"
 PROPOSAL_CONFIRM_AMOUNT_FIELD_LEGACY = "amount_major"
 
 
-def _parse_paid_at(raw: str) -> datetime | None:
+def _parse_paid_at(raw: str, timezone_name: str = "") -> datetime | None:
     text = (raw or "").strip()
     if not text:
         return None
@@ -61,7 +62,11 @@ def _parse_paid_at(raw: str) -> datetime | None:
             "请选择正确的还款日期。",
             status_code=422,
         ) from exc
-    return datetime.combine(selected_date, time.min, tzinfo=accounting_zone())
+    try:
+        zone = ZoneInfo(timezone_name) if timezone_name else accounting_zone()
+    except (ValueError, ZoneInfoNotFoundError) as exc:
+        raise AppError("invalid_request", "原还款日期的时区无法读取，请核对后重新填写。", status_code=422) from exc
+    return datetime.combine(selected_date, time.min, tzinfo=zone)
 
 
 def _day_label(value) -> str:

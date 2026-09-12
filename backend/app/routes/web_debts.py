@@ -22,9 +22,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.errors import AppError
 from app.routes._web_debt_write import (
     PROPOSAL_CONFIRM_AMOUNT_FIELD,
     _debt_action_keys,
@@ -405,6 +407,9 @@ def _render_debt_detail(
     flash_message: str = "",
     flash_type: str = "",
     status_code: int = 200,
+    repayment_ack: dict | None = None,
+    repayment_result: str = "",
+    repayment_rejected: bool = False,
 ) -> HTMLResponse:
     """详情页唯一渲染入口：GET 与 proposal 确认 422 原地重渲染共用 (照
     ``web_repayment_drafts._render_repayment_drafts`` 同页重渲染范式)，保证错误重渲染
@@ -443,6 +448,22 @@ def _render_debt_detail(
         )
     )
     ctx["today"] = now_utc().astimezone(accounting_zone()).strftime("%Y-%m-%d")
+    from app.routes._web_debt_repayment import repayment_context
+
+    ctx["repayment_form"] = repayment_context(
+        request, db, selected_id=selected_id, public_id=public_id,
+        currency_code=debt.home_currency_code, expected_row_version=str(debt.row_version),
+        can_create=ctx["can_write"] and debt.status == "open" and not ctx["debt"]["is_member"],
+        can_recover=ctx["can_write"] and not ctx["debt"]["is_member"],
+        values=action_draft if action_kind == "repayment" else None,
+        error=action_error if action_kind == "repayment" else "",
+        result=repayment_result, ack=repayment_ack, rejected=repayment_rejected,
+    )
+    if action_kind == "repayment":
+        # The retained form owns external repayment feedback, including unknown
+        # post-commit outcomes. The old terminal fallback's "not saved" claim
+        # cannot describe those commands. Member debts retain their static guard.
+        ctx["action_form"]["fallback"] = ctx["debt"]["is_member"]
     ctx["repayment_facts"] = _repayment_fact_rows(
         db,
         selected_id=selected_id,
@@ -469,12 +490,17 @@ def web_debt_detail(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
-    return _render_debt_detail(
-        request,
-        db,
-        options=options,
-        selected_id=selected_id,
-        public_id=public_id,
-        flash_message=msg,
-        flash_type=flash_type,
-    )
+    try:
+        return _render_debt_detail(
+            request, db, options=options, selected_id=selected_id, public_id=public_id,
+            flash_message=msg, flash_type=flash_type,
+        )
+    except (AppError, SQLAlchemyError) as exc:
+        if isinstance(exc, AppError) and exc.status_code < 500:
+            raise
+        from app.routes._web_debt_repayment import render_repayment_recovery
+
+        db.rollback()
+        return render_repayment_recovery(
+            request, db, options=options, selected_id=selected_id, public_id=public_id,
+        )

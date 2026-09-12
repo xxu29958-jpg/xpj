@@ -690,7 +690,7 @@ internal class FakeApiService(
         publicId: String,
         request: com.ticketbox.data.remote.dto.RepaymentCreateRequestDto,
         idempotencyKey: String?,
-    ): com.ticketbox.data.remote.dto.DebtDto = unsupported()
+    ): com.ticketbox.data.remote.dto.DebtRepaymentReceiptDto = unsupported()
     override suspend fun recordDebtAdjustment(
         publicId: String,
         request: com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto,

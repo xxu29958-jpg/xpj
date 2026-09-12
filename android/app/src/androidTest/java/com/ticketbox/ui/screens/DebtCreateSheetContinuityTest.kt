@@ -18,8 +18,8 @@ import androidx.lifecycle.viewModelScope
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
 import com.ticketbox.data.repository.DebtActions
-import com.ticketbox.data.repository.DebtAdjustmentActions
-import com.ticketbox.data.repository.DebtAdjustmentObservation
+import com.ticketbox.data.repository.DebtWriteActions
+import com.ticketbox.data.repository.DebtWriteObservation
 import com.ticketbox.data.repository.DebtCreationActions
 import com.ticketbox.data.repository.DebtCreationPendingState
 import com.ticketbox.data.repository.DebtCreationQueueSnapshot
@@ -149,13 +149,13 @@ private fun sheetQueries(): DebtActions {
 }
 
 /** Explicit known-empty adjustment read for isolated UI tests; mutations remain unexpected. */
-internal fun initialAdjustmentReadFixture(access: LedgerAccessContext): DebtAdjustmentActions {
-    val uncalled = Proxy.newProxyInstance(DebtAdjustmentActions::class.java.classLoader,
-        arrayOf(DebtAdjustmentActions::class.java)) { _, method, _ ->
+internal fun initialAdjustmentReadFixture(access: LedgerAccessContext): DebtWriteActions {
+    val uncalled = Proxy.newProxyInstance(DebtWriteActions::class.java.classLoader,
+        arrayOf(DebtWriteActions::class.java)) { _, method, _ ->
         error("Unexpected sheet adjustment fixture call: ${method.name}")
-    } as DebtAdjustmentActions
-    return object : DebtAdjustmentActions by uncalled {
+    } as DebtWriteActions
+    return object : DebtWriteActions by uncalled {
         override fun currentAccess() = access
-        override fun observeAdjustments() = flowOf(DebtAdjustmentObservation(access.binding, emptyList(), true, emptyList()))
+        override fun observeWrites() = flowOf(DebtWriteObservation(access.binding, emptyList(), true, emptyList()))
     }
 }

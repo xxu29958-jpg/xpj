@@ -18,6 +18,9 @@ import com.ticketbox.data.remote.dto.DebtRepaymentEvaluationDto
 import com.ticketbox.data.remote.dto.DebtGoalLinkViewDto
 import com.ticketbox.data.remote.dto.DebtListResponseDto
 import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
+import com.ticketbox.data.remote.dto.DebtRepaymentReceiptDto
+import com.ticketbox.data.remote.dto.RepaymentCreateRequestDto
+import com.ticketbox.data.remote.dto.RepaymentFactDto
 import com.ticketbox.data.remote.dto.RepaymentFactListDto
 import com.ticketbox.data.remote.dto.RepaymentDraftDto
 import com.ticketbox.data.remote.dto.RepaymentDraftListResponseDto
@@ -84,7 +87,8 @@ internal class DebtAdjustmentConnectedFixture(private val context: Context, priv
         } }
 
     suspend fun drain(maxAttempts: Int = 10) = OutboxDrainEngine(outbox,
-        listOf(RecordDebtAdjustmentDispatcher({ network.service }, adapters.debtAdjustmentAdapter)),
+        listOf(RecordDebtAdjustmentDispatcher({ remote ?: network.service }, adapters.debtAdjustmentAdapter),
+            RecordDebtRepaymentDispatcher({ remote ?: network.service }, adapters.debtRepaymentAdapter, adapters.debtRepaymentReceiptAdapter)),
         maxAttempts = maxAttempts, now = clock::millis).drainOnce()
 
     fun close() { database?.close(); context.deleteDatabase(name) }
@@ -102,6 +106,8 @@ internal class DebtAdjustmentConnectedNetwork {
     var loseResponse = true
     val calls = mutableListOf<Pair<DebtAdjustmentCreateRequestDto, String>>()
     val results = mutableMapOf<String, DebtDto>()
+    val repaymentCalls = mutableListOf<Pair<RepaymentCreateRequestDto, String>>()
+    val repaymentResults = mutableMapOf<String, Pair<RepaymentCreateRequestDto, DebtRepaymentReceiptDto>>()
     val service = object : ApiService by debtAdjustmentProxy<ApiService>({ error("Unexpected remote method: $it") }) {
         override suspend fun debt(publicId: String): DebtDto {
             check(publicId == current.publicId)
@@ -120,8 +126,29 @@ internal class DebtAdjustmentConnectedNetwork {
             return GoalListResponseDto(listOf(adjustmentConnectedGoal(readCanonicalDebt())))
         }
 
-        override suspend fun debtRepayments(publicId: String, page: Int) =
-            RepaymentFactListDto(publicId, "CNY", emptyList(), page, 20, 0)
+        override suspend fun debtRepayments(publicId: String, page: Int): RepaymentFactListDto {
+            if (failReads) throw IOException("Synthetic unavailable repayment history")
+            val facts = repaymentResults.values.map { (request, receipt) ->
+                RepaymentFactDto(receipt.repaymentPublicId, request.amountCents, request.paidAt, request.paidAt, "active")
+            }
+            return RepaymentFactListDto(publicId, "CNY", facts, page, 20, facts.size)
+        }
+
+        override suspend fun recordDebtRepayment(publicId: String, request: RepaymentCreateRequestDto,
+            idempotencyKey: String?): DebtRepaymentReceiptDto {
+            check(publicId == current.publicId)
+            val key = requireNotNull(idempotencyKey)
+            repaymentCalls += request to key
+            val original = repaymentResults.getOrPut(key) {
+                check(request.expectedRowVersion == current.rowVersion)
+                current = current.copy(remainingAmountCents = current.remainingAmountCents - request.amountCents,
+                    paidAmountCents = current.paidAmountCents + request.amountCents, rowVersion = current.rowVersion + 1)
+                request to DebtRepaymentReceiptDto(publicId, "repayment-${repaymentResults.size + 1}", current.rowVersion, current.homeCurrencyCode)
+            }
+            check(original.first == request)
+            if (loseResponse) throw IOException("Synthetic lost response after repayment commit")
+            return original.second
+        }
 
         override suspend fun repaymentDrafts(status: String?) = RepaymentDraftListResponseDto(listOf(
             RepaymentDraftDto(publicId = "draft-original", source = "bank_app", amountCents = 1_000,
@@ -197,11 +224,11 @@ internal fun assertRetainedAdjustmentSelection(model: ViewModel, publicId: Strin
 
 /** The five retained production projections share one real Room/repository graph. */
 internal class RetainedAdjustmentConsumers(graph: RepositoryGraph) {
-    val list = DebtListViewModel(graph.debtRepository, graph.debtCreationRepository, graph.debtAdjustmentRepository)
-    val receivables = ReceivablesViewModel(graph.debtRepository, graph.debtAdjustmentRepository)
-    val goal = DebtGoalViewModel(graph.reportsRepository, graph.debtAdjustmentRepository)
-    val createGoal = CreateDebtGoalViewModel(graph.reportsRepository, graph.debtRepository, graph.debtAdjustmentRepository)
-    val inbox = RepaymentDraftInboxViewModel(graph.repaymentDraftRepository, graph.debtRepository, graph.debtAdjustmentRepository)
+    val list = DebtListViewModel(graph.debtRepository, graph.debtCreationRepository, graph.debtWriteRepository)
+    val receivables = ReceivablesViewModel(graph.debtRepository, graph.debtWriteRepository)
+    val goal = DebtGoalViewModel(graph.reportsRepository, graph.debtWriteRepository)
+    val createGoal = CreateDebtGoalViewModel(graph.reportsRepository, graph.debtRepository, graph.debtWriteRepository)
+    val inbox = RepaymentDraftInboxViewModel(graph.repaymentDraftRepository, graph.debtRepository, graph.debtWriteRepository)
 
     fun balances(): List<Long?> = listOf(
         list.state.value.debts.singleOrNull()?.remainingAmountCents,
