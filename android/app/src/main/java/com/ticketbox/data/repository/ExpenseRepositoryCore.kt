@@ -393,7 +393,14 @@ internal class ExpenseRepositoryCore(
         val dtos = bound.call { it.pendingExpenses() }
         return withActiveBindingCommit(bound) {
             expenseDao.applyPendingSyncForLedger(bound.ledgerId, dtos.map { it.toEntity(bound.ledgerId) }, pruneVersions)
-            getCachedPending(bound.ledgerId)
+            val receivedById = dtos.associateBy { it.id }
+            getCachedPending(bound.ledgerId).map { expense ->
+                // Room owns the accepted fact. A live task describes only its matching response revision.
+                val received = receivedById[expense.id]?.takeIf {
+                    it.publicId == expense.publicId && it.rowVersion == expense.rowVersion
+                }
+                expense.copy(fxTask = received?.fxTask?.toDomain())
+            }
         }
     }
 

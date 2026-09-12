@@ -56,6 +56,7 @@ import com.ticketbox.security.SecureSessionStore
 import com.ticketbox.security.SessionCredentialAdapter
 import com.ticketbox.security.isBusinessReady
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
@@ -158,11 +159,19 @@ class AppContainer(context: Context) {
 
     private suspend fun publishExpenseFactBundle(ledgerId: String, bundle: ExpenseFactBundleDto) {
         val projection = bundle.toCacheProjection(ledgerId)
-        database.expenseDao().applyExpenseFactBundle(
+        val accepted = database.expenseDao().applyExpenseFactBundle(
             ledgerId = ledgerId,
             root = projection.root,
             activeOffsets = projection.activeOffsets,
         )
+        if (!accepted) return
+        try {
+            expenseRepository.onConfirmedCommitted(ledgerId)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Notification failure cannot turn an accepted financial command into a retry.
+        }
     }
 
     /**

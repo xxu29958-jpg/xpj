@@ -178,17 +178,17 @@ class ExpenseDaoContractTest {
     fun staleFactBundleCannotReplaceOffsetsOfANewerRoot() = runTest {
         val dao = FakeExpenseDao()
         val newerOffsets = listOf(offset("refund-a", 300), offset("refund-b", 200))
-        dao.applyExpenseFactBundle(
+        assertEquals(true, dao.applyExpenseFactBundle(
             ledgerId = "owner",
             root = entity("owner", serverId = 9, fixture = ExpenseEntityFixture(rowVersion = 3)),
             activeOffsets = newerOffsets,
-        )
+        ))
 
-        dao.applyExpenseFactBundle(
+        assertEquals(false, dao.applyExpenseFactBundle(
             ledgerId = "owner",
             root = entity("owner", serverId = 9, fixture = ExpenseEntityFixture(rowVersion = 2)),
             activeOffsets = listOf(offset("refund-a", 100)),
-        )
+        ))
 
         assertEquals(3L, dao.findByServerId("owner", 9)?.rowVersion)
         assertEquals(

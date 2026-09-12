@@ -84,6 +84,9 @@ financial form, including final-submit ledger checks; rate acceptance never subm
 Void captures the reviewed binding before launching and requires it at enqueue;
 late callbacks cannot publish into another binding. Both the FX card and retry
 command require complete original input, leaving missing amounts in the editor.
+The registered offset publisher invokes the existing budget check only after the
+DAO accepts its root/offset transaction. Older bundles and failed cache writes do
+not notify; notification failure cannot change the original financial receipt.
 
 The existing Expense DAO now owns accepted lifecycle snapshots from detail reads,
 direct mutations and their Outbox dispatchers. Rejected versions remain hidden
@@ -91,6 +94,9 @@ from usable reads and prevent older responses reviving the bill. Pending lists
 prune only unchanged rows observed before the request and merge newer versions.
 The confirmed-only mutation cache and wholesale pending replacement are retired;
 disk Room tests cover edits, reject/undo, original queued rejection and late lists.
+The online pending result attaches its response's task only to a matching cached
+id/publicId/rowVersion. Live task state is not persisted or attached to newer facts;
+an offline reopen retains the bill without claiming a fresh runtime task status.
 
 The post-construction impact check includes dependent receipt items and splits:
 FX uses their existing reconciliation/allocation validators before publishing a
@@ -100,13 +106,12 @@ its bounded slot to FX in worker-owned completion: parent completion and child
 admission commit together, then the existing executor submits the child. The old
 running-parent admission path is removed; durable-result replay uses the same
 completion path. No task status, financial authority or persistence model is added.
-Formal findings covering task capacity, late completion, dependent snapshots,
-binding and cache publication have fix candidates. The queued-refund refresh
-finding is rejected against the existing dispatcher-to-shell-to-Fact refresh chain.
-Test-only cloud execution reproduced the task, binding, incomplete-input and three
-cache failures; one late-list fixture first failed its global public-ID constraint.
-That fixture now uses distinct identities without changing its pruning assertions.
-Actual final PostgreSQL/Room execution and formal review resolution remain required.
+The original thirteen formal findings are resolved against qualified source
+`65664c2c` (twelve FIX, one REJECT for the existing dispatcher-to-shell-to-Fact
+refresh chain). Two subsequent findings remain open: live pending task projection
+and budget notification after offset publication. Test-only source `2a3c4f2e`
+reproduced both through the actual list query and AppContainer-registered publisher;
+their fixes still require final cloud execution and formal resolution.
 
 The completion integration exposed a reverse dependency through the service facade.
 Prepared execution belongs to the existing registry; committed dispatch and its

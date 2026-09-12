@@ -360,14 +360,15 @@ interface ExpenseDao {
         ledgerId: String,
         root: ExpenseEntity,
         activeOffsets: List<ExpenseOffsetStreamEntity>,
-    ) {
+    ): Boolean {
         val rootServerId = requireNotNull(root.serverId)
         require(root.ledgerId == ledgerId && activeOffsets.all {
             it.ledgerId == ledgerId && it.rootServerId == rootServerId
         }) { "expense fact bundle crossed its ledger or root boundary" }
-        if (!upsertByServerIdForLedger(ledgerId, root)) return
+        if (!upsertByServerIdForLedger(ledgerId, root)) return false
         deleteConfirmedStreamOffsetsForRoot(ledgerId, rootServerId)
         if (activeOffsets.isNotEmpty()) upsertConfirmedStreamOffsets(activeOffsets)
+        return true
     }
 
     @Transaction
