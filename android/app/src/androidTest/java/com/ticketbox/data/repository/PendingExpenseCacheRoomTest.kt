@@ -3,13 +3,16 @@ package com.ticketbox.data.repository
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.ticketbox.OutboxAdapterGraph
+import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.remote.ApiService
+import com.ticketbox.data.remote.dto.BackgroundTaskDto
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.ui.screens.expense.expenseFxTaskStatusRes
 import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
@@ -53,6 +56,26 @@ class PendingExpenseCacheRoomTest {
     }
 
     @After fun close() { fixture.close() }
+
+    @Test fun livePendingReadRetainsFxTaskForTheMatchingRevisionWithoutInventingOfflineTaskState() = runBlocking {
+        val repository = start()
+        val statuses = listOf("queued" to R.string.expense_fx_queued, "running" to R.string.expense_fx_running,
+            "failed" to R.string.expense_fx_failed, "cancelled" to R.string.expense_fx_failed)
+        for ((status, expectedLabel) in statuses) {
+            current = current.copy(amountCents = null, originalCurrencyCode = "USD", originalAmountMinor = 1000,
+                fxStatus = "pending", fxTask = fxTask(status))
+            val observed = repository.syncPending().getOrThrow().single()
+            assertEquals(current.fxTask?.toDomain(), observed.fxTask)
+            assertEquals(expectedLabel, expenseFxTaskStatusRes(observed.fxTask))
+            assertEquals(current.rowVersion, observed.rowVersion)
+        }
+        offline = true
+        val cached = fixture.reopen().expenseRepository.getCachedPending().getOrThrow().single()
+        assertEquals(current.rowVersion, cached.rowVersion)
+        assertEquals("pending", cached.fxStatus)
+        assertEquals(null, cached.fxTask)
+        assertEquals(R.string.expense_fx_waiting, expenseFxTaskStatusRes(cached.fxTask))
+    }
 
     @Test fun acceptedPendingPatchReopensItsSavedFieldsAndTokenWhileOffline() = runBlocking {
         val repository = start()
@@ -120,6 +143,7 @@ class PendingExpenseCacheRoomTest {
 
     @Test fun delayedPendingListCannotEraseNewerDetailOrANewlyObservedBillInTheSameLedger() = runBlocking {
         val repository = start()
+        current = current.copy(fxTask = fxTask("failed"))
         repository.fetchExpense(42).getOrThrow()
         fixture.expenseDao.insert(current.copy(id = 45, publicId = "stale-45").toEntity("correction-ledger"))
         fixture.expenseDao.insert(current.copy(publicId = "other-ledger-expense-42").toEntity("other-ledger"))
@@ -139,6 +163,8 @@ class PendingExpenseCacheRoomTest {
         assertEquals(setOf(42L, 43L), observed.keys)
         assertEquals(2L, observed.getValue(42).rowVersion)
         assertEquals("Fresh review", observed.getValue(42).merchant)
+        assertEquals(null, observed.getValue(42).fxTask)
+        assertEquals(null, observed.getValue(43).fxTask)
         assertEquals(observed, repository.getCachedPending().getOrThrow().associateBy { it.id })
         assertEquals(1L, fixture.expenseDao.getPending("other-ledger").single().rowVersion)
     }
@@ -148,6 +174,9 @@ class PendingExpenseCacheRoomTest {
         current = fixture.network.current.copy(status = "pending", confirmedAt = null, rowVersion = 1)
         return repository
     }
+
+    private fun fxTask(status: String) = BackgroundTaskDto(publicId = "fx-42", taskType = "expense_fx", status = status,
+        sourceExpenseId = 42, createdAt = "2026-09-06T00:00:00Z")
 
     private fun draft() = ExpenseDraft(amountCents = 1000, originalCurrencyCode = CurrencyCode.CNY,
         originalAmountMinor = 1000, ledgerHomeCurrency = CurrencyCode.CNY, merchant = "Saved merchant",
