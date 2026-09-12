@@ -25,6 +25,23 @@ import java.io.IOException
 @OptIn(ExperimentalCoroutinesApi::class)
 class ExpenseFxViewModelTest {
     @Test
+    fun incompleteForeignInputCannotStartAnFxTask() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val fake = FakeExpenseEditActions()
+            val pending = fake.baseExpense.copy(status = "pending", amountCents = null, originalAmountMinor = null,
+                originalCurrencyCode = CurrencyCode.USD, originalCurrency = CurrencyCode.USD, fxStatus = "pending")
+            fake.fetchExpenseResponder = { Result.success(pending) }
+            val vm = ExpenseEditViewModel(7, fake)
+            advanceUntilIdle()
+            vm.retryFx()
+            advanceUntilIdle()
+            assertEquals(0, fake.fxRetryCalls)
+            assertSame(pending, vm.uiState.value.expense)
+        } finally { Dispatchers.resetMain() }
+    }
+
+    @Test
     fun taskRefreshNeverAdoptsMoneyOrOccAndExplicitReviewRequiresSavedDraft() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {

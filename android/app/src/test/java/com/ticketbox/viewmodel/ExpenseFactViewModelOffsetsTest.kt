@@ -35,6 +35,19 @@ import org.junit.Test
 internal class ExpenseFactViewModelOffsetsTest : ExpenseFactViewModelTestBase() {
 
     @Test
+    fun switchingBindingBeforeVoidDispatchCannotAcceptTheOldDraft() = edit { fake ->
+        val vm = viewModel(fake)
+        vm.openVoidOffsetSheet(offsetFact())
+        vm.updateVoidOffsetReason("Original ledger void")
+        vm.submitVoidOffset()
+        val access = requireNotNull(fake.correctionObservations.value.access)
+        fake.correctionObservations.value = fake.correctionObservations.value.copy(
+            access = access.copy(binding = access.binding.copy(ledgerId = "another-ledger")))
+        advanceUntilIdle()
+        assertEquals(0, fake.voidOffsetCalls)
+    }
+
+    @Test
     fun deliveredCurrencyCorrectionCannotReinterpretAnOpenRefundDraft() = edit { fake ->
         val vm = viewModel(fake)
         try {

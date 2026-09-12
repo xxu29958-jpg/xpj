@@ -37,6 +37,7 @@ class ExpenseFxContinuationRouteTest {
     private var currentTask = BackgroundTaskDto("fx-1", "expense_fx", "failed",
         createdAt = "2026-09-12T00:00:00Z", sourceExpenseId = 9)
     private var converted = false
+    private var missingAmount = false
     private var reads = 0
     private val retryVersions = mutableListOf<Long>()
     private var confirmed = 0
@@ -44,10 +45,10 @@ class ExpenseFxContinuationRouteTest {
         override suspend fun expense(id: Long): ExpenseDto {
             reads++
             return api.expense(id).copy(id = id, publicId = "expense-$id", status = "pending", category = "餐饮", originalCurrency = "USD", homeCurrency = "CNY",
-                originalAmount = "10.00", originalAmountMinor = 1000, amountCents = if (converted) 7000 else null,
+                originalAmount = if (missingAmount) null else "10.00", originalAmountMinor = if (missingAmount) null else 1000, amountCents = if (converted) 7000 else null,
                 homeAmountCents = if (converted) 7000 else null, fxRate = if (converted) "7" else null,
                 fxRateDate = if (converted) "2026-09-11" else null, fxSource = if (converted) "reference" else null,
-                fxStatus = if (converted) "ready" else "pending", fxTask = currentTask,
+                fxStatus = if (converted) "ready" else "pending", fxTask = currentTask.takeUnless { missingAmount },
                 rowVersion = if (converted) 2 else 1,
                 updatedAt = if (converted) "2026-09-12T01:00:00Z" else "2026-09-12T00:00:00Z")
         }
@@ -109,5 +110,21 @@ class ExpenseFxContinuationRouteTest {
         compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("10.00")
         assertEquals(0, confirmed)
         compose.onNodeWithText("2026-09-11", substring = true).performScrollTo().assertExists()
+    }
+
+    @Test fun missingAmountOpensTheEditorWithoutOfferingAnImpossibleFxRetry() {
+        missingAmount = true
+        compose.setContent {
+            CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
+                TicketboxTheme(skin = AppSkin.Default) {
+                    if (mounted.value) ExpenseEditRoute(9, harness.screenFactory, ExpenseEditExitActions({}, {}), ExpenseFactNavigation({}, { _, _ -> }))
+                }
+            }
+        }
+        compose.waitUntil(5_000) { compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText(context.getString(R.string.expense_fx_retry)).assertDoesNotExist()
+        assertEquals(1, reads)
+        assertEquals(emptyList<Long>(), retryVersions)
+        assertEquals(0, confirmed)
     }
 }
