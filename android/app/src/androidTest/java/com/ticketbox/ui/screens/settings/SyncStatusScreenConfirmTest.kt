@@ -10,6 +10,7 @@ import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.OutboxStatus
+import com.ticketbox.data.repository.correctionRateFailure
 import com.ticketbox.data.repository.PendingIncomePlanSubmission
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.ui.theme.TicketboxTheme
@@ -64,6 +65,37 @@ class SyncStatusScreenConfirmTest {
             .performScrollTo().performClick()
         composeRule.runOnIdle { assertEquals(7L, opened) }
         composeRule.onNodeWithText("放弃").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun missingOffsetRateOpensOriginalPairAndDateWithoutRewritingOrRetryingCommand() {
+        val binding = com.ticketbox.data.repository.LogicalSessionBinding("https://qa.invalid", "ledger-1", "owner", "session", "first")
+        val error = com.ticketbox.data.repository.NetworkErrorHandler({ null }, "OffsetRecoveryTest").parseErrorMessage(409,
+            """{"error":"exchange_rate_pending","currency_code":"USD","home_currency_code":"CNY","rate_date":"2026-09-03"}""")
+        val original = outboxRow(PendingMutationStatus.Failed, error.correctionRateFailure())
+            .copy(type = PendingMutationType.CreateExpenseOffset, idempotencyKey = "original-refund")
+        var opened: Pair<com.ticketbox.data.repository.LogicalSessionBinding, com.ticketbox.data.remote.dto.MissingExchangeRateDto>? = null
+        var retried = 0
+        val state = OutboxStatusUiState(binding = binding, bindingReady = true,
+            retryableOffsetIds = setOf(original.id), status = OutboxStatus(0, emptyList(), listOf(original)),
+            correctionObservation = com.ticketbox.data.repository.ExpenseCorrectionObservation(
+                com.ticketbox.data.repository.LedgerAccessContext(binding, true), emptyList()))
+        composeRule.setContent { TicketboxTheme(skin = AppSkin.Default) {
+            SyncStatusScreenContent(state, SyncStatusActions(onRepairCorrectionRate = { owner, gap -> opened = owner to gap },
+                onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {},
+                onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {}, onOpenExpense = {}, onKeepMine = {},
+                onDropMine = {}, onRetry = { retried++ }, onDropFailed = {}, onClearQuarantined = {}), {}, {})
+        } }
+        val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext
+        composeRule.onNodeWithText(context.getString(com.ticketbox.R.string.correction_rate_open)).performScrollTo().performClick()
+        composeRule.runOnIdle {
+            assertEquals(binding, opened?.first)
+            assertEquals("USD", opened?.second?.sourceCurrencyCode)
+            assertEquals("CNY", opened?.second?.homeCurrencyCode)
+            assertEquals("2026-09-03", opened?.second?.rateDate)
+            assertEquals(0, retried)
+            assertEquals("original-refund", state.status.failed.single().idempotencyKey)
+        }
     }
 
     @Test

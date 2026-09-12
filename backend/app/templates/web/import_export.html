@@ -43,7 +43,16 @@
     <details class="import-schema">
       <summary>CSV 需要哪些列？</summary>
       <div class="import-schema-body">
-        <p><code>amount_yuan</code> 必填（可换成 <code>amount_cents</code>）；<code>merchant</code>、<code>category</code>、<code>note</code>、<code>expense_time</code>（ISO，可选）、<code>tags</code> 按需。</p>
+        <p>推荐使用 <code>home_currency_code</code>（记账币种）和 <code>amount_cents</code>（该币种最小单位的整数金额）。<code>merchant</code>、<code>category</code>、<code>note</code>、<code>expense_time</code>（ISO 时间，建议带时区）、<code>tags</code> 按需填写。</p>
+        <p><strong>外币账单：</strong>保留 <code>amount_cents</code> 列，但金额可以留空；填写 <code>original_currency_code</code> 和 <code>original_amount_minor</code>，保留原币及其最小单位金额。例如 USD 的 12345 表示 123.45 美元，JPY 的 12345 表示 12345 日元。填写真实消费时间，系统按账单日期获取汇率；缺率时原账单会留在待确认中，可重试或补充本笔汇率。</p>
+        <p>本币示例（记账币种为 {{ home_currency_code }}）：</p>
+        <pre><code>home_currency_code,amount_cents,merchant,category,expense_time
+{{ home_currency_code }},1299,日常商店,日用品,2026-05-04T12:00:00+08:00</code></pre>
+        {% set example_foreign_currency = 'EUR' if home_currency_code == 'USD' else 'USD' %}
+        <p>外币示例（{{ example_foreign_currency }} 123.45，尚未折算为 {{ home_currency_code }}）：</p>
+        <pre><code>home_currency_code,amount_cents,original_currency_code,original_amount_minor,merchant,category,expense_time
+{{ home_currency_code }},,{{ example_foreign_currency }},12345,旅行商店,购物,2026-05-04T12:00:00+08:00</code></pre>
+        <p>旧格式 <code>amount_yuan</code> 仅适用于 CNY 人民币行，表示元；其它币种请使用上述格式。金额不加千位分隔符。</p>
         <p>单批最多 {{ max_rows }} 行。</p>
       </div>
     </details>

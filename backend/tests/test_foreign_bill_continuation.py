@@ -4,12 +4,14 @@ from datetime import date
 from decimal import Decimal
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import BackgroundTask, Expense
-from app.services.fx_rate_provider import upsert_fx_rate
+from app.services import background_task_worker
+from app.services.fx_rate_provider import EcbDailyRates, FxFetchError, upsert_fx_rate
 
 
 def _import_foreign_bill(client: TestClient, identity) -> dict:
@@ -50,6 +52,11 @@ def test_csv_missing_historical_rate_has_a_durable_task_back_to_the_pending_bill
     assert bill["amount_cents"] is None
     # The intended day is the household's spending day, not today's import day.
     assert bill["fx_rate_date"] == "2026-05-04"
+
+    health = client.get("/api/insights/data-quality", headers=identity.app_headers)
+    assert health.status_code == 200, health.text
+    assert (health.json()["missing_amount"], health.json()["missing_fx"]) == (0, 1)
+    assert bill["fx_task"] is not None
 
     response = client.get("/api/tasks", headers=identity.app_headers)
     assert response.status_code == 200, response.text
@@ -112,3 +119,75 @@ def test_confirm_does_not_resolve_a_new_rate_and_accept_an_unreviewed_home_amoun
     stats = client.get("/api/stats/monthly?month=2026-05", headers=identity.app_headers)
     assert stats.status_code == 200, stats.text
     assert (stats.json()["count"], stats.json()["total_amount_cents"]) == (0, 0)
+
+
+@pytest.mark.real_db
+def test_import_conversion_failure_retry_review_then_confirm_is_one_complete_task(client, identity, monkeypatch):
+    from app.services import pending_fx_task_service as service
+
+    bill = _import_foreign_bill(client, identity)
+    url = f"/api/expenses/{bill['id']}"
+    with SessionLocal() as db:
+        task = db.scalar(select(BackgroundTask).where(BackgroundTask.public_id == bill["fx_task"]["public_id"]))
+        task_id = task.id
+
+    def unavailable(_original):
+        raise FxFetchError("test provider unavailable")
+
+    monkeypatch.setattr(service, "fetch_pending_fx_reference", unavailable)
+    background_task_worker.run_task(task_id, {})
+    failed = client.get(f"{url}/fx", headers=identity.app_headers)
+    assert failed.status_code == 200, failed.text
+    assert failed.json()["status"] == "failed"
+    still_pending = client.get(url, headers=identity.app_headers).json()
+    assert (still_pending["row_version"], still_pending["amount_cents"], still_pending["status"]) == (
+        bill["row_version"], None, "pending")
+
+    retry = client.post(f"{url}/fx", headers=identity.app_headers,
+        json={"expected_row_version": bill["row_version"]})
+    assert retry.status_code == 200, retry.text
+    assert retry.json()["public_id"] != failed.json()["public_id"]
+    replay = client.post(f"{url}/fx", headers=identity.app_headers,
+        json={"expected_row_version": bill["row_version"]})
+    assert replay.status_code == 200 and replay.json()["public_id"] == retry.json()["public_id"]
+    with SessionLocal() as db:
+        task = db.scalar(select(BackgroundTask).where(BackgroundTask.public_id == retry.json()["public_id"]))
+        retry_id = task.id
+    monkeypatch.setattr(service, "fetch_pending_fx_reference", lambda _original: EcbDailyRates(
+        date(2026, 5, 4), {"EUR": Decimal(1), "USD": Decimal(1), "CNY": Decimal(7)}))
+    background_task_worker.run_task(retry_id, {})
+    resolved = client.get(url, headers=identity.app_headers).json()
+    assert (resolved["status"], resolved["fx_status"], resolved["amount_cents"], resolved["row_version"]) == (
+        "pending", "ready", 86415, bill["row_version"] + 1)
+    assert resolved["fx_task"]["status"] == "completed"
+    assert resolved["fx_rate_date"] == "2026-05-04"
+    old_review = client.post(f"{url}/confirm", headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": bill["row_version"]})
+    assert old_review.status_code == 409 and old_review.json()["error"] == "state_conflict"
+    confirmed = client.post(f"{url}/confirm", headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": resolved["row_version"]})
+    assert confirmed.status_code == 200, confirmed.text
+    assert confirmed.json()["status"] == "confirmed"
+    stats = client.get("/api/stats/monthly?month=2026-05", headers=identity.app_headers).json()
+    assert (stats["count"], stats["total_amount_cents"]) == (1, 86415)
+    health = client.get("/api/insights/data-quality", headers=identity.app_headers).json()
+    assert (health["missing_fx"], health["pending_total"]) == (0, 0)
+
+
+def test_bill_fx_read_uses_bill_access_and_mutation_keeps_ledger_and_occ_guards(client, identity):
+    bill = _import_foreign_bill(client, identity)
+    url = f"/api/expenses/{bill['id']}/fx"
+    # An upload/background producer need not be the current reader's account.
+    with SessionLocal() as db:
+        task = db.scalar(select(BackgroundTask).where(BackgroundTask.public_id == bill["fx_task"]["public_id"]))
+        task.initiated_by_account_id = None
+        db.commit()
+    readable = client.get(url, headers=identity.app_headers)
+    assert readable.status_code == 200 and readable.json()["source_expense_id"] == bill["id"]
+    assert client.get(url).status_code == 401
+    assert client.post(url, json={"expected_row_version": bill["row_version"]}).status_code == 401
+    assert client.get(url, headers=identity.gray_app_headers).status_code == 404
+    assert client.post(url, headers=identity.gray_app_headers,
+        json={"expected_row_version": bill["row_version"]}).status_code == 404
+    stale = client.post(url, headers=identity.app_headers, json={"expected_row_version": bill["row_version"] + 1})
+    assert stale.status_code == 409 and stale.json()["error"] == "state_conflict"

@@ -170,7 +170,10 @@ def test_date_changed_offset_correction_requires_and_freezes_the_new_rate(
         json=payload,
     )
     assert missing_rate.status_code == 409, missing_rate.text
-    assert missing_rate.json()["error"] == "exchange_rate_required"
+    assert missing_rate.json()["error"] == "exchange_rate_pending"
+    assert {key: missing_rate.json()[key] for key in ("currency_code", "home_currency_code", "rate_date")} == {
+        "currency_code": "USD", "home_currency_code": "CNY", "rate_date": "2026-05-06",
+    }
     unchanged = client.get(
         f"/api/expenses/{expense['id']}/fact-bundle",
         headers=identity.app_headers,

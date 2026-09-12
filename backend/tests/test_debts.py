@@ -266,20 +266,36 @@ def test_viewer_cannot_create_debt(client: TestClient, *, identity) -> None:
 def test_foreign_currency_debt_pending_rate_is_rejected(client: TestClient, *, identity) -> None:
     # No USD rate seeded for the event date → backend cannot freeze a home
     # principal → reject rather than commit an un-foldable Debt (§2.2).
-    response = client.post(
-        "/api/debts",
-        headers=negotiated_headers(client, _idem_headers(identity.app_headers)),
-        json={
-            "home_currency_code": "CNY", "direction": "i_owe",
-            "counterparty_type": "external",
-            "counterparty_label": "美元借款",
-            "original_currency": "USD",
-            "original_amount": "100.00",
-            "event_time": "2026-05-10T04:00:00Z",
-        },
-    )
+    headers = negotiated_headers(client, _idem_headers(identity.app_headers))
+    payload = {
+        "home_currency_code": "CNY", "direction": "i_owe",
+        "counterparty_type": "external", "counterparty_label": "美元借款",
+        "original_currency": "USD", "original_amount": "100.00",
+        "event_time": "2026-05-10T04:00:00Z",
+    }
+    response = client.post("/api/debts", headers=headers, json=payload)
     assert response.status_code == 409, response.json()
     assert response.json()["error"] == "exchange_rate_pending"
+    assert {key: response.json()[key] for key in ("currency_code", "home_currency_code", "rate_date")} == {
+        "currency_code": "USD", "home_currency_code": "CNY", "rate_date": "2026-05-10",
+    }
+    with SessionLocal() as db:
+        assert db.scalar(select(Debt).where(Debt.tenant_id == "owner")) is None
+
+    rate = client.put(
+        "/api/exchange-rates/USD/2026-05-10",
+        headers=negotiated_headers(client, _idem_headers(identity.app_headers)),
+        json={"expected_row_version": 0, "currency_code": "USD", "home_currency_code": "CNY",
+            "rate_date": "2026-05-10", "rate_to_cny": "7.2", "source": "manual"},
+    )
+    assert rate.status_code == 200, rate.text
+    resumed = client.post("/api/debts", headers=headers, json=payload)
+    replay = client.post("/api/debts", headers=headers, json=payload)
+    assert resumed.status_code == 201, resumed.text
+    assert resumed.json()["principal_amount_cents"] == 72000
+    assert resumed.json()["exchange_rate_date"] == "2026-05-10"
+    assert replay.status_code == 201, replay.text
+    assert replay.json() == resumed.json()
 
 
 def test_foreign_currency_debt_freezes_home_principal_from_snapshot(

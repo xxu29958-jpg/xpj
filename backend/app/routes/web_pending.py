@@ -60,6 +60,7 @@ _PENDING_FILTERS = {
     "missing_amount",
     "missing_merchant",
     "missing_category",
+    "missing_fx",
     "duplicate",
     "ready",
 }
@@ -93,6 +94,8 @@ def _matches_filter(view: dict, filter_key: str) -> bool:
         return view["needs_merchant"]
     if filter_key == "missing_category":
         return _needs_category(view)
+    if filter_key == "missing_fx":
+        return view["fx_pending"] and view["is_foreign_currency"] and view["original_amount_minor"] is not None
     if filter_key == "duplicate":
         return view["is_duplicate"]
     if filter_key == "ready":
@@ -203,6 +206,7 @@ def web_pending(
     ctx["undo_expected_row_version"] = undo_expected_row_version
     ctx["undo_items"] = _resolve_batch_undo_items(db, selected_id=selected_id, undo_ids=undo_id, undo_tokens=undo_rv)
     ctx["needs_amount_count"] = sum(1 for it in raw_items if it["needs_amount"])
+    ctx["missing_fx_count"] = sum(1 for it in raw_items if _matches_filter(it, "missing_fx"))
     ctx["needs_merchant_count"] = sum(1 for it in raw_items if it["needs_merchant"])
     ctx["needs_category_count"] = sum(1 for it in raw_items if _needs_category(it))
     ctx["suspected_duplicate_count"] = suspected_total

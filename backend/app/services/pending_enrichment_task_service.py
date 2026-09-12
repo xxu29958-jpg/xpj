@@ -18,7 +18,9 @@ from app.services.background_task_handler_api import (
     check_cancellation_requested,
     mark_failed,
 )
+from app.services.expense_query import resolve_expense
 from app.services.expense_service import enrich_pending_expense
+from app.services.pending_fx_task_service import prepare_pending_expense_fx, submit_pending_expense_fx
 
 PENDING_EXPENSE_ENRICHMENT_TASK_TYPE = "expense_enrichment"
 
@@ -62,6 +64,7 @@ def prepare_pending_expense_enrichment(
             progress_total=1,
         )
         prepared.task.input_payload_json = json.dumps(prepared.payload, separators=(",", ":"), sort_keys=True)
+        prepared.task.source_expense_id = expense_id
         return prepared
     except BackgroundTaskCapacityFullError as exc:
         raise AppError("enrichment_capacity_full", status_code=503) from exc
@@ -194,7 +197,13 @@ def run_pending_expense_enrichment_task(
     task.progress_current = 1
     task.progress_total = 1
     task.progress_message = _PROGRESS_MESSAGES[result.outcome]
+    expense = resolve_expense(db, tenant_id, expense_id)
+    fx_task = prepare_pending_expense_fx(db, expense=expense,
+        initiator_account_id=task.initiated_by_account_id,
+        initiator_device_id=task.initiated_by_device_id) if expense is not None else None
     db.commit()
+    if fx_task is not None:
+        submit_pending_expense_fx(db, fx_task)
 
 
 __all__ = [

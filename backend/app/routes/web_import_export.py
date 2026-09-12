@@ -11,11 +11,14 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.routes._web_money_views import _minor_amount_label
+from app.models import Expense
+from app.routes._web_money_views import _expense_view, _minor_amount_label
+from app.routes._web_session_common import resolve_web_actor
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -161,6 +164,11 @@ def web_import_batch_detail(
     except AppError as exc:
         return _web_redirect("/web/import", selected_id, msg=exc.message, flash_type="error")
     batch = progress.batch
+    expense_ids = [row.expense_id for row in rows_page.items if row.expense_id is not None]
+    current_expenses = {
+        expense.id: _expense_view(expense)
+        for expense in db.scalars(select(Expense).where(Expense.tenant_id == selected_id, Expense.id.in_(expense_ids)))
+    } if expense_ids else {}
     total_pages = max(1, (rows_page.total + rows_page.page_size - 1) // rows_page.page_size)
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id)
     ctx.update(
@@ -170,6 +178,7 @@ def web_import_batch_detail(
             "created_label": accounting_datetime_label(batch.created_at),
             "updated_label": accounting_datetime_label(batch.updated_at),
             "rows": rows_page.items,
+            "current_expenses": current_expenses,
             "row_amount_label": _minor_amount_label,
             "page": rows_page.page,
             "page_size": rows_page.page_size,
@@ -209,9 +218,12 @@ def web_import_batch_apply(
     if getattr(request.state, "web_session_platform", "") == "desktop":
         desktop_session = getattr(request.state, "web_session_auth", None)
     try:
+        account_id, device_id = resolve_web_actor(db, request, selected_id)
         applied = apply_csv_import_batch(
             db,
             tenant_id=selected_id,
+            initiator_account_id=account_id,
+            initiator_device_id=device_id,
             public_id=public_id,
             batch_size=safe_batch_size,
             desktop_session=desktop_session,

@@ -43,12 +43,14 @@ def test_apply_refusal_retains_only_a_recoverable_original_batch(import_route, m
 
     monkeypatch.setattr(import_route, "apply_csv_import_batch", refuse_apply)
     request = Request({"type": "http", "path": "/web/import/original/apply", "headers": []})
+    request.state.web_session_auth = SimpleNamespace(ledger_id="family", account_id=17, device_id=23)
     response = import_route.web_import_batch_apply(
         request, public_id="original", ledger_id="family", batch_size=1, db=object(),
     )
 
     assert calls == [{
         "tenant_id": "family", "public_id": "original", "batch_size": 1, "desktop_session": None,
+        "initiator_account_id": 17, "initiator_device_id": 23,
     }]
     assert response.status_code == 303
     target = urlsplit(response.headers["location"])

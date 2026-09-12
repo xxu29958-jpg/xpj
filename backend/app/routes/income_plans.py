@@ -77,6 +77,7 @@ def list_plans(
         month=month_label,
         home_currency_code=forecast.home_currency_code,
         missing_currency_codes=list(forecast.missing_currency_codes),
+        reference_rates=list(forecast.reference_rates),
         # Older APKs render this field as scheduled through today.
         total_active_amount_cents=forecast.scheduled_amount_cents,
         expected_amount_cents=forecast.expected_amount_cents,

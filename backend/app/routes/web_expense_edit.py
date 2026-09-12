@@ -12,6 +12,7 @@ from app.routes._web_confirmed_write_guard import confirmed_write_guard_response
 from app.routes._web_expense_edit_command import apply_web_expense_form
 from app.routes._web_expense_edit_form import WebExpenseEditForm, web_expense_edit_form
 from app.routes._web_expense_fact import web_fact_context
+from app.routes._web_expense_fx import render_web_fx_action
 from app.routes._web_expense_helpers import (
     web_edit_context,
     web_save_response,
@@ -22,6 +23,7 @@ from app.routes._web_expense_return_context import (
     resolve_return_to,
     return_context_params,
 )
+from app.routes._web_session_common import resolve_web_actor
 from app.routes.web_common import (
     LocalOnly,
     _list_ledger_options,
@@ -127,10 +129,13 @@ def web_save(
     )
     if guarded is not None:
         return guarded
+    account_id, device_id = resolve_web_actor(db, request, selected_id)
     outcome = apply_web_expense_form(
         db,
         expense_id=expense_id,
         selected_ledger_id=selected_id,
+        initiator_account_id=account_id,
+        initiator_device_id=device_id,
         form=form,
     )
     return web_save_response(
@@ -147,3 +152,19 @@ def web_save(
         fragment=form.fragment,
         return_context=form.return_context,
     )
+
+
+@router.post("/expenses/{expense_id}/fx", response_class=HTMLResponse)
+def web_request_expense_fx(
+    expense_id: int, request: Request, form: WebExpenseEditForm = Depends(web_expense_edit_form),
+    _local: None = LocalOnly, db: Session = Depends(get_db),
+) -> Response:
+    return render_web_fx_action(db, request, expense_id, form, start=True)
+
+
+@router.post("/expenses/{expense_id}/fx-status", response_class=HTMLResponse)
+def web_refresh_expense_fx(
+    expense_id: int, request: Request, form: WebExpenseEditForm = Depends(web_expense_edit_form),
+    _local: None = LocalOnly, db: Session = Depends(get_db),
+) -> Response:
+    return render_web_fx_action(db, request, expense_id, form, start=False)

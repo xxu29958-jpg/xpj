@@ -108,6 +108,11 @@
        {% if filter == 'missing_amount' %}aria-current="page"{% endif %}>
       缺金额 <span class="count">{{ needs_amount_count }}</span>
     </a>
+    <a class="filter-tab{% if filter == 'missing_fx' %} is-active{% endif %}"
+       href="/web/pending{{ _q }}&filter=missing_fx"
+       {% if filter == 'missing_fx' %}aria-current="page"{% endif %}>
+      待补汇率 <span class="count">{{ missing_fx_count }}</span>
+    </a>
     <a class="filter-tab{% if filter == 'missing_merchant' %} is-active{% endif %}"
        href="/web/pending{{ _q }}&filter=missing_merchant"
        {% if filter == 'missing_merchant' %}aria-current="page"{% endif %}>

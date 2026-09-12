@@ -318,9 +318,10 @@ def test_native_csv_older_batch_remains_reachable_through_hub_pagination(web_cli
         assert errors.status_code == 200 and "Original older row" in errors.text
 
 
-def _interrupt_csv_before_finalize(monkeypatch, *, public_id: str, row_outcome: str) -> None:
+def _interrupt_csv_before_finalize(monkeypatch, *, public_id: str, row_outcome: str, identity) -> None:
     from app.errors import AppError
     from app.services.csv_import_batch_service import _apply
+    from app.services.identity_service import authenticate_session_token
 
     def stop_before_finalize(*_args, **_kwargs):
         raise KeyboardInterrupt("CSV execution stopped before batch finalization")
@@ -333,7 +334,11 @@ def _interrupt_csv_before_finalize(monkeypatch, *, public_id: str, row_outcome: 
         monkeypatch.setattr(_apply, "_process_csv_import_apply_row", reject_row)
     # The original service commits the terminal row. Only its later finalization is stopped.
     with SessionLocal() as db, pytest.raises(KeyboardInterrupt, match="before batch finalization"):
-        _apply.apply_csv_import_batch(db, tenant_id="owner", public_id=public_id, batch_size=1)
+        auth = authenticate_session_token(db, identity.app_token, {"app"})
+        _apply.apply_csv_import_batch(
+            db, tenant_id=auth.tenant_id, initiator_account_id=auth.account_id,
+            initiator_device_id=auth.device_id, public_id=public_id, batch_size=1,
+        )
 
 
 def _csv_receipt_rendered_counts(hub: str, detail: str, public_id: str) -> tuple[list[int], list[int]]:
@@ -365,7 +370,7 @@ def test_native_csv_committed_result_survives_interrupted_finalization(
         web_client, ledger_id="owner", file_name="interrupted.csv",
         csv_text="amount_yuan,merchant\n3.00,Terminal original row\n",
     )
-    _interrupt_csv_before_finalize(monkeypatch, public_id=public_id, row_outcome=row_outcome)
+    _interrupt_csv_before_finalize(monkeypatch, public_id=public_id, row_outcome=row_outcome, identity=identity)
     batch_url = f"/api/imports/csv/{public_id}"
     cached = _csv_persisted_receipt_state(public_id)
     assert cached[:4] == (0, 0, 0, "applying") and cached[4] is not None

@@ -39,6 +39,9 @@ import com.ticketbox.ui.screens.ExpenseEditScreenState
 import com.ticketbox.ui.screens.ExpenseEditSplitEditingActions
 import com.ticketbox.ui.screens.expense.ItemsEditorSheetActions
 import com.ticketbox.ui.screens.expense.SplitsEditorSheetActions
+import com.ticketbox.viewmodel.refreshFx
+import com.ticketbox.viewmodel.retryFx
+import com.ticketbox.viewmodel.loadFxReview
 import com.ticketbox.viewmodel.ExpenseEditUiState
 import com.ticketbox.viewmodel.ExpenseEditViewModel
 import com.ticketbox.viewmodel.acknowledgeItemsMismatch
@@ -63,6 +66,7 @@ internal fun ExpenseEditRoute(
     onBack: () -> Unit,
     onCompleted: (adviceInputsChanged: Boolean) -> Unit,
     related: ExpenseFactNavigation,
+    financialDataRevision: Int = 0,
 ) {
     val editViewModel: ExpenseEditViewModel = viewModel(
         key = "expense-edit-$expenseId",
@@ -88,7 +92,7 @@ internal fun ExpenseEditRoute(
     }
 
     if (expense.pendingSync) {
-        ManualExpenseSubmissionRoute(expense.clientRef.orEmpty(), screenFactory, onBack, onCompleted, related)
+        ManualExpenseSubmissionRoute(expense.clientRef.orEmpty(), screenFactory, onBack, onCompleted, related, financialDataRevision)
         return
     }
 
@@ -103,6 +107,7 @@ internal fun ExpenseEditRoute(
                 if (adviceInputsChanged) onCompleted(true) else onBack()
             },
             related = related,
+            financialDataRevision = financialDataRevision,
         )
         return
     }
@@ -134,6 +139,9 @@ private fun expenseEditPrimaryActions(
     onCompleted: (adviceInputsChanged: Boolean) -> Unit,
 ): ExpenseEditPrimaryActions = ExpenseEditPrimaryActions(
     onSave = viewModel::save,
+    onRefreshFx = viewModel::refreshFx,
+    onRetryFx = viewModel::retryFx,
+    onLoadFxReview = viewModel::loadFxReview,
     onConfirm = viewModel::confirm,
     onReject = viewModel::reject,
     onDone = {

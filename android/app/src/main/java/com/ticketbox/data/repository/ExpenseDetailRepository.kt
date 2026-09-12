@@ -42,11 +42,12 @@ internal class ExpenseDetailRepository(
      */
     suspend fun fetchExpenseFromLocalCache(domainId: Long): Result<Expense> = core.errorHandler.safeCall {
         val ledgerId = core.activeLedgerIdOrLegacy()
-        core.expenseDao.getConfirmed(ledgerId)
-            .firstOrNull { cached ->
-                if (domainId < 0) cached.id == -domainId else cached.serverId == domainId
-            }
-            ?.toDomain()
+        val cached = if (domainId > 0) {
+            core.expenseDao.findByServerId(ledgerId, domainId)
+        } else {
+            core.expenseDao.getConfirmed(ledgerId).firstOrNull { it.id == -domainId }
+        }
+        cached?.toDomain()
             ?: throw RepositoryException("本地没有这笔账单，请联网后重试。")
     }
 

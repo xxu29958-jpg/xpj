@@ -21,4 +21,5 @@
   {% else %}
   <p class="meta">按记录的币种和日期折算为 {{ rate_context.home_currency_code }}。已填写的人工汇率可在这里查看和纠正。</p>
   {% endif %}
+  {% include 'partials/reference_rates.html' %}
 </section>

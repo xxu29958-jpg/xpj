@@ -17,6 +17,8 @@ from app.database import get_db
 from app.middleware import csrf
 from app.routes import (
     web_common,
+    web_debt_create,
+    web_expense_offsets,
     web_goal_edit,
     web_goals,
     web_income_edit,
@@ -26,6 +28,7 @@ from app.routes import (
     web_rule_edit,
     web_rules,
 )
+from app.routes._web_expense_return_context import ExpenseReturnContext
 from app.routes._web_session_common import LedgerOption
 from tests._web_native_form_support import hidden_post_forms
 
@@ -119,6 +122,44 @@ def test_original_ledger_match_continues_to_the_existing_owner_without_reading_o
         options=[], selected="owner", fields=fields, task="添加支出目标") is None
     assert not db.mock_calls
     assert fields == {"ledger_id": "owner", "idempotency_key": "original-key", "expected_row_version": "3"}
+
+
+def test_final_debt_submit_after_rate_recovery_cannot_follow_a_switched_session(
+    monkeypatch, retained_form_context,
+):
+    monkeypatch.setattr(web_debt_create, "_list_ledger_options",
+        lambda _db: [LedgerOption("new-ledger", "New", "owner", False, 0, 0)])
+    monkeypatch.setattr(web_debt_create, "_actor_account_id", lambda *_: 7)
+    writer = Mock(return_value=SimpleNamespace(public_id="wrong-ledger-debt"))
+    monkeypatch.setattr(web_debt_create, "create_debt_idempotently", writer)
+    original = {"ledger_id": "old-ledger", "home_currency_code": "CNY", "currency_code": "USD",
+        "amount_major": "12.50", "event_time": "2026-05-06", "direction": "i_owe",
+        "counterparty_label": "Original debt", "note": "Keep original intent", "debt_kind": "unspecified",
+        "installment_count": "", "installment_period_months": "", "idempotency_key": "original-debt-key"}
+    response = web_debt_create.web_create_debt(_request("/web/debts"), **original, csrf_token="", db=Mock(), _local=None)
+    assert response.status_code == 409
+    saved = hidden_post_forms(response.body.decode())["/web/debts"]
+    assert all(saved[key] == value for key, value in original.items())
+    writer.assert_not_called()
+
+
+def test_final_refund_after_rate_recovery_preserves_original_before_new_ledger_lookup(
+    monkeypatch, retained_form_context,
+):
+    monkeypatch.setattr(web_expense_offsets, "_list_ledger_options",
+        lambda _db: [LedgerOption("new-ledger", "New", "owner", False, 0, 0)])
+    reader = Mock(side_effect=AssertionError("Original refund reached a different ledger"))
+    monkeypatch.setattr(web_expense_offsets, "get_expense", reader)
+    original = {"ledger_id": "old-ledger", "kind": "refund", "original_amount": "25.00",
+        "accounting_date": "2026-05-06", "reason": "Original refund",
+        "expected_row_version": "7", "idempotency_key": "original-refund-key"}
+    response = web_expense_offsets.web_create_expense_offset(17, _request("/web/expenses/17/offsets"),
+        **original, return_context=ExpenseReturnContext(return_to="reports", return_month="2026-05"), db=Mock(), _local=None)
+    assert response.status_code == 409
+    saved = hidden_post_forms(response.body.decode())["/web/expenses/17/offsets"]
+    assert all(saved[key] == value for key, value in original.items())
+    assert saved["return_month"] == "2026-05" and saved["return_to"] == "reports"
+    reader.assert_not_called()
 
 
 def test_native_retained_form_can_retry_unchanged_after_switching_back(monkeypatch, retained_form_context):

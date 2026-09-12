@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse, Response
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.routes._web_expense_fx import expense_fx_view
 from app.routes._web_expense_manual_fx_presenter import project_manual_fx_edit_views
 from app.routes._web_expense_return_context import (
     ExpenseReturnContext,
@@ -217,6 +218,8 @@ def web_edit_context(
     if form_values and not conflict and form_values.get("expected_row_version"):
         expense_view["row_version"] = form_values["expected_row_version"]
     ctx["expense"] = expense_view
+    ctx["expense_fx"] = expense_fx_view(db, expense=expense)
+    ctx["fx_revision_changed"] = bool(ctx["expense_fx"] and str(expense_view["row_version"]) != str(expense.row_version))
     ctx["manual_draft_ack"] = manual_draft_ack(db, getattr(request.state, "web_session_auth", None), expense)
     ctx["conflict_current"] = current_expense_view if conflict else None
     ctx["confirm_idempotency_key"] = (form_values or {}).get("idempotency_key") or str(uuid4())

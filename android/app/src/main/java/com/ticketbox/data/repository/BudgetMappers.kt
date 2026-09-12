@@ -36,6 +36,7 @@ fun BudgetMonthlyDto.toDomain(): BudgetMonthly = BudgetMonthly(
     rowVersion = rowVersion,
     homeCurrencyCode = homeCurrencyCode,
     missingCurrencyCodes = missingCurrencyCodes,
+    referenceRates = referenceRates.map { it.toDomain() },
 )
 
 private fun BudgetCategoryDto.toDomain(): BudgetCategoryBudget = BudgetCategoryBudget(

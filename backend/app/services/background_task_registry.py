@@ -47,9 +47,11 @@ def runtime_handler_registry() -> TaskHandlerRegistry:
         PENDING_EXPENSE_ENRICHMENT_TASK_TYPE,
         run_pending_expense_enrichment_task,
     )
+    from app.services.pending_fx_task_service import PENDING_EXPENSE_FX_TASK_TYPE, run_pending_expense_fx_task
 
     return TaskHandlerRegistry(
         {
             PENDING_EXPENSE_ENRICHMENT_TASK_TYPE: run_pending_expense_enrichment_task,
+            PENDING_EXPENSE_FX_TASK_TYPE: run_pending_expense_fx_task,
         }
     )

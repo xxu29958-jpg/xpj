@@ -257,7 +257,10 @@ internal class ExpenseRepositoryCore(
             if (needsProjection) syncConfirmedFromService(bound)
             return dto
         }
-        withActiveBindingCommit(bound) { expenseDao.retireConfirmedRoot(bound.ledgerId, id, dto.rowVersion) }
+        withActiveBindingCommit(bound) {
+            expenseDao.retireConfirmedRoot(bound.ledgerId, id, dto.rowVersion)
+            if (dto.status == "pending") expenseDao.upsertByServerIdForLedger(bound.ledgerId, dto.toEntity(bound.ledgerId))
+        }
         acknowledgeCorrectionRefresh(bound, mapOf(id to dto.rowVersion))
         return dto
     }

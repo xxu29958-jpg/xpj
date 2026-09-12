@@ -45,6 +45,7 @@ import com.ticketbox.ui.design.AppAdaptivePaneTokens
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
 import com.ticketbox.ui.design.appAdaptiveSupportingPaneWidth
+import com.ticketbox.ui.screens.expense.ExpenseFxStatusCard
 import com.ticketbox.ui.screens.expense.ExpenseEditActionBar
 import com.ticketbox.ui.screens.expense.ExpenseEditActionBarActions
 import com.ticketbox.ui.screens.expense.ExpenseEditActionBarState
@@ -108,6 +109,9 @@ data class ExpenseEditScreenActions(
 
 data class ExpenseEditPrimaryActions(
     val onSave: (ExpenseDraft) -> Unit = {},
+    val onRefreshFx: () -> Unit = {},
+    val onRetryFx: () -> Unit = {},
+    val onLoadFxReview: (Boolean) -> Unit = {},
     val onConfirm: (ExpenseDraft) -> Unit = {},
     val onReject: () -> Unit = {},
     val onDone: () -> Unit = {},
@@ -266,7 +270,7 @@ fun ExpenseEditScreen(
     val rawTextDisplay = currentExpense.rawText?.takeIf { it.isNotBlank() }
         ?: stringResource(R.string.expense_edit_raw_text_empty)
     val previewImage = state.fullImage ?: state.thumbnail
-    val readOnly = state.readOnly
+    val readOnly = state.readOnly || (state.fx.loading && state.expenseLoading)
     val haptics = rememberAppHaptics()
     // ADR-0044: stringResource is @Composable-only, but the validation messages
     // below are assigned inside non-composable local functions / onClick lambdas.
@@ -448,7 +452,23 @@ fun ExpenseEditScreen(
         }
     }
 
+    val hasDraftChanges = currency != currentExpense.originalCurrencyCode || amountText != initialAmountText ||
+        manualExchangeRateText != savedManualExchangeRate.orEmpty() || merchant != currentExpense.merchant.orEmpty() ||
+        category != editInitialCategory(currentExpense) || note != currentExpense.note.orEmpty() ||
+        expenseTime != currentExpense.expenseTime.orEmpty() || tags != currentExpense.tags.orEmpty() ||
+        valueScoreText != currentExpense.valueScore?.toString().orEmpty() || regretScoreText != currentExpense.regretScore?.toString().orEmpty()
     val formSections: @Composable () -> Unit = {
+        if (isPendingExpense && (currentExpense.fxStatus == FxContract.StatusPending || state.fx.task != null)) {
+            ExpenseFxStatusCard(
+                state = state.fx,
+                hasDraftChanges = hasDraftChanges,
+                readOnly = state.readOnly,
+                busy = state.saving || state.expenseLoading,
+                onRefresh = primaryActions.onRefreshFx,
+                onRetry = primaryActions.onRetryFx,
+                onLoadReview = { primaryActions.onLoadFxReview(hasDraftChanges) },
+            )
+        }
         ExpenseEditAmountCluster(
             state = ExpenseEditAmountClusterState(
                 currency = currency,
@@ -599,7 +619,7 @@ fun ExpenseEditScreen(
             bottomBar = {
                 ExpenseEditActionBar(
                     state = ExpenseEditActionBarState(
-                        saving = state.saving,
+                        saving = state.saving || (state.fx.loading && state.expenseLoading),
                         allowSave = !readOnly,
                         allowConfirm = actionAvailability.allowConfirm && !readOnly && !manualExchangeRateNeedsReview,
                         allowReject = actionAvailability.allowReject && !readOnly,

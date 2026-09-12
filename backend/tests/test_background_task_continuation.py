@@ -60,15 +60,25 @@ def test_failed_upload_task_identifies_original_bill_without_changing_it(client,
         assert (expense.public_id, expense.status, expense.row_version) == original
 
 
-@pytest.mark.parametrize("payload", [None, {"expense_id": True, "tenant_id": "owner"},
+@pytest.mark.parametrize("payload", [None, "{broken-json", {"expense_id": True, "tenant_id": "owner"},
     {"expense_id": 1, "tenant_id": "another-ledger"}, {"expense_id": 99999999, "tenant_id": "owner"}])
-def test_task_with_unavailable_original_never_invents_a_bill_link(client, monkeypatch, payload, *, identity):
+def test_bad_task_payload_cannot_replace_or_invent_original_navigation(client, monkeypatch, payload, *, identity):
     receipt = _failed_upload(client, monkeypatch, identity.app_headers)
     with SessionLocal() as db:
         task = db.scalar(select(BackgroundTask).where(
             BackgroundTask.public_id == receipt["enrichment_task_public_id"],
         ))
-        task.input_payload_json = json.dumps(payload)
+        assert task.source_expense_id == receipt["id"]
+        task.input_payload_json = payload if isinstance(payload, str) else json.dumps(payload)
+        db.commit()
+    response = client.get(f"/api/tasks/{receipt['enrichment_task_public_id']}", headers=identity.app_headers)
+    assert response.status_code == 200, response.text
+    assert response.json()["source_expense_id"] == receipt["id"]
+    with SessionLocal() as db:
+        task = db.scalar(select(BackgroundTask).where(
+            BackgroundTask.public_id == receipt["enrichment_task_public_id"],
+        ))
+        task.source_expense_id = None
         db.commit()
     response = client.get(f"/api/tasks/{receipt['enrichment_task_public_id']}", headers=identity.app_headers)
     assert response.status_code == 200, response.text
@@ -90,6 +100,7 @@ def test_task_link_requires_the_original_bill_to_remain_accessible(client, monke
             payload = json.loads(task.input_payload_json)
             payload["expense_id"] = foreign["id"]
             task.input_payload_json = json.dumps(payload)
+            task.source_expense_id = foreign["id"]
             db.commit()
     response = client.get(f"/api/tasks/{receipt['enrichment_task_public_id']}", headers=identity.app_headers)
     assert response.status_code == 200, response.text

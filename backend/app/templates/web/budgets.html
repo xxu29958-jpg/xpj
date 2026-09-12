@@ -38,6 +38,7 @@
 {% if budget.missing_currency_codes %}
 <div class="product-feedback" role="status">部分汇总待补齐汇率或币种：{{ budget.missing_currency_codes | join('、') }}。原预算和分类金额保持不变。</div>
 {% endif %}
+{% with reference_rates=budget.reference_rates %}{% include 'partials/reference_rates.html' %}{% endwith %}
 {% if not can_write %}
 <div class="product-feedback" role="status">只读角色可以查看本月预算与执行，但不能修改预算设置。</div>
 {% endif %}

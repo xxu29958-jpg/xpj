@@ -6,6 +6,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, PositiveInt, field_serializer
 
+from app.schemas._exchange import ProjectionReferenceDto
 from app.schemas._money import (
     NonNegativeMoneyAggregate,
     NonNegativeMoneyMinor,
@@ -85,6 +86,7 @@ class BudgetMonthlyResponse(BaseModel):
     remaining_amount_cents: SignedMoneyAggregate | None
     overspent_amount_cents: NonNegativeMoneyAggregate | None
     missing_currency_codes: list[str] = Field(default_factory=list)
+    reference_rates: list[ProjectionReferenceDto] = Field(default_factory=list)
     excluded_categories: list[str]
     excluded_breakdown: list[BudgetExcludedCategoryResponse]
     category_budgets: list[BudgetCategoryResponse]

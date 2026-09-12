@@ -6,8 +6,8 @@ behaviours are pinned here:
 
 1. Frankfurter JSON parses into the same EUR-based shape the cross-rate math
    already expects, and the source dispatcher defaults to it.
-2. A weekend / holiday expense resolves to the most recent rate on or before its
-   date instead of staying ``pending`` (ECB/Frankfurter only publish weekdays).
+2. A dated weekend / holiday lookup proves the prior publication applies through
+   that day; the expense keeps the actual publication date.
 3. ``run_fx_sync_once`` — shared by the scheduler and the owner manual trigger —
    updates the same status counters and never raises.
 """
@@ -126,8 +126,16 @@ def _seed_global_rate(*, currency: str, rate_date: date, rate_to_home: str) -> N
 
 
 def test_weekend_expense_resolves_to_prior_working_day_rate(client: TestClient, *, identity) -> None:
-    # Friday 2026-05-29 global rate exists; no row for the weekend.
-    _seed_global_rate(currency="USD", rate_date=date(2026, 5, 29), rate_to_home="7.00000000")
+    from app.database import SessionLocal
+
+    # The dated response proves Friday's quote applies on Saturday.
+    with SessionLocal() as db:
+        provider.cache_reference_rates_for_date(
+            db, provider.EcbDailyRates(date(2026, 5, 29), {
+                "EUR": Decimal("1"), "USD": Decimal("1"), "CNY": Decimal("7"),
+            }), requested_date=date(2026, 5, 30), home_currency_code="CNY", currencies={"USD"},
+        )
+        db.commit()
 
     # Saturday 2026-05-30 (10:00 Asia/Shanghai) USD expense.
     resp = client.post(

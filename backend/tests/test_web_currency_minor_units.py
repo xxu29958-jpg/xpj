@@ -127,7 +127,7 @@ def test_foreign_expense_metadata_always_names_original_currency() -> None:
         )
     )
     assert primary == "¥1,234"
-    assert pending_meta and "汇率待同步" in pending_meta
+    assert pending_meta and "待补汇率" in pending_meta
 
     _, ready_meta = _expense_amount_labels(
         SimpleNamespace(

@@ -23,6 +23,22 @@ class ExpenseOffsetDispatchersTest {
     private val moshi = Moshi.Builder().build()
 
     @Test
+    fun missingRateRetainsTypedOriginalDateForManualRecovery() = runTest {
+        val stub = Stub(Result.failure(httpException(409,
+            """{"error":"exchange_rate_pending","message":"rate missing","currency_code":"USD","home_currency_code":"CNY","rate_date":"2026-09-03"}""")))
+        val dispatcher = CreateExpenseOffsetDispatcher({ stub },
+            moshi.adapter(ExpenseOffsetCreateRequestDto::class.java), { _, _ -> })
+        val original = createRow()
+        val result = assertIs<DispatchResult.Failure>(dispatcher.dispatch(original))
+        val gap = requireNotNull(readCorrectionRateFailure(result.message))
+        assertEquals("USD", gap.sourceCurrencyCode)
+        assertEquals("CNY", gap.homeCurrencyCode)
+        assertEquals("2026-09-03", gap.rateDate)
+        assertEquals("offset-key", stub.createKey)
+        assertEquals(7L, stub.createRequest?.expectedRowVersion)
+    }
+
+    @Test
     fun legacyNormalizedCreateRequiresReviewWithoutSending() = runTest {
         val stub = Stub(Result.success(expenseFactBundleDtoFixture()))
         val dispatcher = CreateExpenseOffsetDispatcher({ stub },

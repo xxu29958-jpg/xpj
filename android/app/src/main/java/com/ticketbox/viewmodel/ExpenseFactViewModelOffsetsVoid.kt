@@ -22,9 +22,6 @@ fun ExpenseFactViewModel.openVoidOffsetSheet(offset: ExpenseOffsetFact) {
             voidOffsetForm = VoidOffsetFormState(
                 open = true,
                 target = offset,
-                conflictMessage = UiText.res(R.string.expense_offset_conflict)
-                    .takeIf { state.offsetCommandsBlockedUntilRefresh },
-                refreshingAfterConflict = state.offsetCommandsBlockedUntilRefresh,
             ),
         )
     }
@@ -43,8 +40,7 @@ fun ExpenseFactViewModel.updateVoidOffsetReason(value: String) {
 fun ExpenseFactViewModel.canSubmitVoidOffset(): Boolean {
     val state = _uiState.value
     val form = state.voidOffsetForm
-    if (state.offsetCommandsBlockedUntilRefresh) return false
-    if (!form.open || form.saving || form.refreshingAfterConflict) return false
+    if (!form.open || form.saving) return false
     return form.target != null && form.reason.isNotBlank()
 }
 
@@ -66,8 +62,8 @@ fun ExpenseFactViewModel.submitVoidOffset() {
     viewModelScope.launch {
         _uiState.update { it.copy(voidOffsetForm = it.voidOffsetForm.copy(saving = true)) }
         repository.voidExpenseOffsetAllowingOffline(expense, target, form.reason.trim())
-            .onSuccess { outcome ->
-                publishOffsetOutcome(outcome, R.string.expense_offset_void_success)
+            .onSuccess {
+                publishOffsetQueued()
             }
             .onFailure { error -> publishOffsetFailure(error, isVoid = true) }
     }

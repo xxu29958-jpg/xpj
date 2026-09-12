@@ -199,7 +199,8 @@ def _six_month_history_view(rows: list[dict], *, currency_code: str) -> dict:
     """Keep the history chart, accessible table, and average on the same series."""
     amounts_known = all(row["amount_cents"] is not None and row["budget_cents"] is not None for row in rows)
     return {
-        "six_month_trend": [{**row, "missing_rates": projection_gaps_view(row["missing_rates"])} for row in rows],
+        "six_month_trend": [{**row, "missing_rates": projection_gaps_view(row["missing_rates"]),
+            "reference_rates": projection_gaps_view(row["reference_rates"])} for row in rows],
         "six_month_average_amount_yuan": _six_month_average_amount_yuan(rows, currency_code=currency_code),
         "overspent_months": sum(row["amount_cents"] > row["budget_cents"] > 0 for row in rows) if amounts_known else None,
     }

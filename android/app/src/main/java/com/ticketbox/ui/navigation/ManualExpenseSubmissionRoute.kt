@@ -37,6 +37,7 @@ internal fun NavGraphBuilder.addManualExpenseSubmissionRoute(runtime: MainNaviga
                 if (adviceInputsChanged) runtime.screenFactory.budgetRepository.invalidateBudgetAdvice()
                 runtime.navController.popBackStack()
             },
+            financialDataRevision = runtime.shellState.financialDataRevision,
             related = ExpenseFactNavigation(onOpenRepaymentDrafts = {
                 runtime.shellState.openRepaymentDrafts(it)
                 runtime.navController.popBackStack()
@@ -52,6 +53,7 @@ internal fun ManualExpenseSubmissionRoute(
     onBack: () -> Unit,
     onCompleted: (Boolean) -> Unit,
     related: ExpenseFactNavigation,
+    financialDataRevision: Int = 0,
 ) {
     val binding by remember(screenFactory) { screenFactory.repository.observeLedgerAccess().map { it?.binding } }
         .collectAsStateWithLifecycle(initialValue = screenFactory.repository.captureDeferredLedgerBinding())
@@ -60,7 +62,7 @@ internal fun ManualExpenseSubmissionRoute(
         var openedExpense by rememberSaveable { mutableStateOf<Long?>(null) }
         val id = openedExpense
         if (id != null) {
-            ExpenseEditRoute(id, screenFactory, onBack, onCompleted, related)
+            ExpenseEditRoute(id, screenFactory, onBack, onCompleted, related, financialDataRevision)
         } else {
             val vm: OutboxStatusViewModel = viewModel(key = "manual-submission-$clientRef",
                 factory = outboxStatusViewModelFactory(screenFactory.outboxRepository, screenFactory.repository,

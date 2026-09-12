@@ -13,7 +13,6 @@ import com.ticketbox.domain.model.ExpenseItems
 import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.MessageTone
-import com.ticketbox.domain.model.PendingExpenseOffsetIntent
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.canInitiateBillSplit
@@ -83,11 +82,9 @@ data class ExpenseFactUiState(
     val factBundle: ExpenseFactBundle? = null,
     val factBundleLoadState: ExpenseDetailDataLoadState = ExpenseDetailDataLoadState.Unknown,
     val factBundleMessage: UiText? = null,
-    val pendingOffsetIntent: PendingExpenseOffsetIntent? = null,
     val offsetForm: OffsetFormState = OffsetFormState(),
     val voidOffsetForm: VoidOffsetFormState = VoidOffsetFormState(),
     /** A 409 raised this root's OCC gate; only an adopted authoritative bundle clears it. */
-    val offsetCommandsBlockedUntilRefresh: Boolean = false,
     // 拆账邀请（bill-split 扩展拥有逻辑；字段名与旧编辑 VM 同构，便于组件复用）。
     val billSplitSubmissions: List<com.ticketbox.data.repository.PendingBillSplitCreation> = emptyList(),
     val billSplitRecoveryBusy: Boolean = false,

@@ -14,12 +14,14 @@ from starlette.responses import Response
 from app.database import get_db
 from app.errors import AppError
 from app.routes._web_expense_form import parse_expense_time_local
+from app.routes._web_rate_recovery import _RATE_FIELDS, rate_recovery_context, rate_recovery_form, submit_recovery_rate
 from app.routes.web_common import (
     LocalOnly,
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _web_redirect,
+    preserve_original_ledger_form,
     templates,
 )
 from app.routes.web_debt_actions import _actor_account_id, _error_message
@@ -64,18 +66,19 @@ def _render_create_error(
     values: dict[str, str],
     message: str,
     status_code: int,
+    rate_recovery: dict | None = None,
 ) -> HTMLResponse:
     return templates.TemplateResponse(
         request=request,
         name="debt_new.html",
-        context=_debt_create_context(
+        context={**_debt_create_context(
             request,
             db,
             options=options,
             selected_id=selected_id,
             values=values,
             error=message,
-        ),
+        ), "rate_recovery": rate_recovery, "rate_recovery_action": "/web/debts/rate"},
         status_code=status_code,
     )
 
@@ -156,7 +159,6 @@ def web_create_debt(
 ) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
-    _require_selected_ledger_write(options, selected_id)
     values = {
         "direction": direction,
         "counterparty_label": counterparty_label,
@@ -170,6 +172,11 @@ def web_create_debt(
         "installment_period_months": installment_period_months,
         "idempotency_key": idempotency_key,
     }
+    retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
+        fields={**values, "ledger_id": ledger_id}, task="保存原欠款")
+    if retained is not None:
+        return retained
+    _require_selected_ledger_write(options, selected_id)
     try:
         if not home_currency_code:
             raise AppError("invalid_request", "页面已更新，请核对金额、原币和记账币种后再次保存。", status_code=422)
@@ -194,6 +201,7 @@ def web_create_debt(
             idempotency_key=(idempotency_key or "").strip() or None,
         )
     except (AppError, ValidationError, InvalidOperation) as exc:
+        db.rollback()
         if isinstance(exc, AppError):
             message = _error_message(exc)
             status_code = exc.status_code
@@ -211,5 +219,26 @@ def web_create_debt(
             values=values,
             message=message,
             status_code=status_code,
+            rate_recovery=rate_recovery_context(db, selected_id, exc.details)
+                if isinstance(exc, AppError) and exc.error == "exchange_rate_pending" else None,
         )
     return _web_redirect(f"/web/debts/{created.public_id}", selected_id)
+
+
+@router.post("/rate")
+def web_debt_rate(
+    request: Request, original: dict[str, str] = Depends(rate_recovery_form),
+    _local: None = LocalOnly, db: Session = Depends(get_db),
+) -> Response:
+    options = _list_ledger_options(db)
+    selected = _resolve_selected_ledger_id(db, original.get("ledger_id"), options, request=request)
+    retained = preserve_original_ledger_form(request, db, options=options, selected=selected,
+        fields=original, task="补汇率并继续原欠款")
+    if retained is not None:
+        return retained
+    _require_selected_ledger_write(options, selected)
+    values = {key: original.get(f"fx_{key}", "") for key in _RATE_FIELDS}
+    result = submit_recovery_rate(db, request, selected, values,
+        review_latest=original.get("fx_review_latest") == "true")
+    return _render_create_error(request, db, options=options, selected_id=selected,
+        values=original, message="", status_code=result["status_code"], rate_recovery={**values, **result})

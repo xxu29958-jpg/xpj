@@ -123,6 +123,7 @@ internal fun MainNavGraph(
             ExpenseEditRoute(
                 expenseId = expenseId,
                 screenFactory = runtime.screenFactory,
+                financialDataRevision = runtime.shellState.financialDataRevision,
                 onBack = { runtime.navController.popBackStack() },
                 onCompleted = { adviceInputsChanged ->
                     runtime.shellState.markExpenseEditCompleted()

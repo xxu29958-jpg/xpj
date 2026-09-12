@@ -50,6 +50,15 @@ class DataQualityRouteTest {
     }
 
     @Test
+    fun missingFxNavigatesToForeignPendingBillsInsteadOfMissingAmounts() {
+        val shellState = MainShellState()
+        openDataQualityRemediation(shellState, DataQualityRemediation.InboxMissingFx)
+        assertEquals(NeedsReviewFilter.NeedsFx, shellState.pendingFilterRequest.pending)
+        assertEquals(MainNavigationRequest.OpenDomain(PrimaryDomain.Inbox,
+            PrimaryDomainSelectionBehavior.OpenRoot), shellState.consumeNavigationRequest())
+    }
+
+    @Test
     fun confirmedIssuePostsTypedTransactionsContextBeforeNavigation() {
         val shellState = MainShellState()
         shellState.syncDestination(MainProductDestination.Domain(PrimaryDomain.Insights))
