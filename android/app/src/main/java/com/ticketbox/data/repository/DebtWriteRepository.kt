@@ -97,7 +97,7 @@ class DebtWriteRepository(
                 originBindingRevision = binding.bindingRevision,
                 request = DebtAdjustmentCreateRequestDto(amountCents, cleanReason, debt.rowVersion),
             )
-            publish(binding, debt, PendingMutationType.RecordDebtAdjustment, adapter.toJson(payload))
+            publish(binding, debt, type = PendingMutationType.RecordDebtAdjustment, payload = adapter.toJson(payload))
         }
 
     override suspend fun saveRepayment(binding: LogicalSessionBinding, debt: Debt, amountCents: Long): Result<Long> =
@@ -106,7 +106,7 @@ class DebtWriteRepository(
             val payload = DebtRepaymentPayload(1, DebtWriteSubject(debt.publicId, debt.counterpartyLabel, debt.homeCurrencyCode),
                 binding.sessionGeneration, binding.bindingRevision,
                 RepaymentCreateRequestDto(amountCents, debt.rowVersion, clock.instant().toString()))
-            publish(binding, debt, PendingMutationType.RecordDebtRepayment, repaymentAdapter.toJson(payload))
+            publish(binding, debt, type = PendingMutationType.RecordDebtRepayment, payload = repaymentAdapter.toJson(payload))
         }
 
     private suspend fun publish(binding: LogicalSessionBinding, debt: Debt, type: PendingMutationType, payload: String): Long {

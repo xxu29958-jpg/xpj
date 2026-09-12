@@ -182,7 +182,7 @@ class OutboxStatusViewModelTest {
         assertEquals(PendingMutationStatus.Pending, pending.row.status)
         assertEquals(0, pending.row.retryCount)
         assertNotNull(pending.row.idempotencyKey)
-        val intent = assertNotNull(pending.intent)
+        val intent = assertNotNull(pending.adjustment)
         assertEquals(debt.publicId, intent.subject.publicId)
         assertEquals(debt.counterpartyLabel, intent.subject.label)
         assertEquals(debt.homeCurrencyCode, intent.subject.homeCurrencyCode)

@@ -42,7 +42,7 @@ class DebtBillPreparationBindingTest {
             blankBillSuggestion().copy(merchant = "Original household bill", principalAmountCents = 12_000),
         ))
         repo.listCapability = "CNY"
-        viewModel = DebtListViewModel(repo, repo.creation, repo.adjustments)
+        viewModel = DebtListViewModel(repo, repo.creation, repo.writes)
         advanceUntilIdle()
         val attempt = requireNotNull(viewModel.markBillParsePreparing())
 
@@ -71,7 +71,7 @@ class DebtBillPreparationBindingTest {
     @Test
     fun oldPreparationFailureCannotClearTheNextAttempt() = runTest(dispatcher) {
         val repo = FakeDebtActions().apply { listCapability = "CNY" }
-        viewModel = DebtListViewModel(repo, repo.creation, repo.adjustments)
+        viewModel = DebtListViewModel(repo, repo.creation, repo.writes)
         advanceUntilIdle()
         val old = requireNotNull(viewModel.markBillParsePreparing())
         viewModel.reload()
@@ -91,7 +91,7 @@ class DebtBillPreparationBindingTest {
     fun earlierResponseCannotReplaceTheNewDraftAfterReentry() = runTest(dispatcher) {
         val repo = FakeDebtActions(parseBillResult = Result.success(blankBillSuggestion().copy(merchant = "Old bill")))
             .apply { listCapability = "CNY"; parseBillGate = CompletableDeferred() }
-        viewModel = DebtListViewModel(repo, repo.creation, repo.adjustments)
+        viewModel = DebtListViewModel(repo, repo.creation, repo.writes)
         advanceUntilIdle()
         val attempt = requireNotNull(viewModel.markBillParsePreparing())
         viewModel.parseDebtBillImage(attempt, PreparedUploadImage("old.jpg", "image/jpeg", byteArrayOf(1), 1L))

@@ -9,7 +9,7 @@
         data-repayment-target="{{ repayment.public_id }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     {% for name in ['debt_public_id', 'ledger_id', 'origin_binding', 'home_currency_code', 'expected_row_version', 'paid_at_timezone', 'idempotency_key'] %}
-    <input type="hidden" name="{{ name }}" value="{{ repayment.values[name] }}">
+    <input type="hidden" name="{{ name }}" value="{{ repayment['values'][name] }}">
     {% endfor %}
     {% if repayment.error %}<div id="debt-action-error-repayment" class="product-feedback product-feedback--danger" role="alert">{{ repayment.error }}</div>{% endif %}
     <div class="product-form-grid">
@@ -18,11 +18,11 @@
         <input id="debt-repay-amount" class="product-input" name="amount_major" type="text"
                step="{{ repayment.currency_input.amount_step if repayment.currency_input else 'any' }}"
                min="{{ repayment.currency_input.positive_amount_min if repayment.currency_input else '0' }}"
-               inputmode="decimal" value="{{ repayment.values.amount_major }}" required{% if repayment.error %} aria-invalid="true" aria-describedby="debt-action-error-repayment"{% endif %}{% if repayment.result in ['submitted', 'blocked'] %} readonly{% endif %}>
+               inputmode="decimal" value="{{ repayment['values']['amount_major'] }}" required{% if repayment.error %} aria-invalid="true" aria-describedby="debt-action-error-repayment"{% endif %}{% if repayment.result in ['submitted', 'blocked'] %} readonly{% endif %}>
       </div>
       <div class="product-field">
         <label for="debt-repay-paid-at">还款日</label>
-        <input id="debt-repay-paid-at" class="product-input" name="paid_at" type="date" value="{{ repayment.values.paid_at }}" required{% if repayment.error %} aria-describedby="debt-action-error-repayment"{% endif %}{% if repayment.result in ['submitted', 'blocked'] %} readonly{% endif %}>
+        <input id="debt-repay-paid-at" class="product-input" name="paid_at" type="date" value="{{ repayment['values']['paid_at'] }}" required{% if repayment.error %} aria-describedby="debt-action-error-repayment"{% endif %}{% if repayment.result in ['submitted', 'blocked'] %} readonly{% endif %}>
       </div>
     </div>
     <p class="product-page-summary" data-repayment-status role="status" hidden></p>

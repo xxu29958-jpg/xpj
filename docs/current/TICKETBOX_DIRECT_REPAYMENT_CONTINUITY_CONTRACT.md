@@ -71,3 +71,15 @@ Bounded Android/Web production review found no remaining formal P1/P2; these che
 do not prove compilation or runtime. Exact candidate CI/CodeQL/Connected and isolated
 VM Edge lost-response/reopen verification are pending. No merge or RC acceptance is
 claimed; long suites stay cloud-only.
+
+Candidate b15d91d4 exposed a real Web entrance failure in isolated Edge: Jinja
+resolved the dict.values method instead of the original form values, leaving the
+key empty and hiding repayment. Existing native PG and real-binding producers
+also failed on those empty fields. Explicit item access fixes all form states;
+short actual-template checks retain each original control. Cloud also identified
+eight unmigrated Android test consumers and a positional-argument enqueue scan
+miss; consumers and explicit typed publication were corrected without restoring
+the retired writer or bypassing the audit. JS/Python command-result logic now has
+separate small responsibilities (measured maximum CC11/9), with all14 browser-script
+cases passing. The unchanged Desktop Node probe timed out once; its log is retained,
+and the next exact candidate must independently pass. Final qualification is open.

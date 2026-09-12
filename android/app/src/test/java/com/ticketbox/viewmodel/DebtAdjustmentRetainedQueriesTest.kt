@@ -37,7 +37,7 @@ class DebtAdjustmentRetainedQueriesTest {
             val original = sampleDebt().copy(rowVersion = 7)
             val debts = FakeDebtActions(listResult = Result.success(listOf(original)))
             val calls = mutableListOf<Pair<String, List<String>>>()
-            val vm = CreateDebtGoalViewModel(retainedCreateReports(calls), debts, debts.adjustments)
+            val vm = CreateDebtGoalViewModel(retainedCreateReports(calls), debts, debts.writes)
             try {
                 advanceUntilIdle()
                 vm.updateName("保留原计划")
@@ -47,13 +47,13 @@ class DebtAdjustmentRetainedQueriesTest {
                 debts.listGate = oldRead
                 vm.refreshCandidates()
                 runCurrent()
-                debts.adjustments.rows.value = listOf(pendingAdjustment(status = PendingMutationStatus.Failed))
+                debts.writes.rows.value = listOf(pendingAdjustment(status = PendingMutationStatus.Failed))
                 runCurrent()
                 assertTrue(vm.state.value.candidates.isEmpty())
                 assertFalse(vm.state.value.canSubmit)
                 debts.listGate = null
                 debts.listResult = Result.failure(IllegalStateException("post-terminal read unavailable"))
-                debts.adjustments.rows.value = listOf(pendingAdjustment(status = terminal))
+                debts.writes.rows.value = listOf(pendingAdjustment(status = terminal))
                 advanceUntilIdle()
                 assertNotNull(vm.state.value.loadError)
                 oldRead.complete(Unit)
@@ -89,15 +89,15 @@ class DebtAdjustmentRetainedQueriesTest {
     fun debtListKeepsDraftAndRejectsOldReadsAfterEitherTerminal() = runTest(dispatcher) {
         val original = sampleDebt().copy(rowVersion = 7)
         val debts = FakeDebtActions(listResult = Result.success(listOf(original)))
-        val vm = DebtListViewModel(debts, debts.creation, debts.adjustments)
+        val vm = DebtListViewModel(debts, debts.creation, debts.writes)
         try {
             advanceUntilIdle()
             vm.updateDraftField(DebtDraftField.Counterparty, "未提交的新欠款")
             val initialReads = debts.listCalls
-            debts.adjustments.rows.value = listOf(pendingAdjustment(status = PendingMutationStatus.Failed))
+            debts.writes.rows.value = listOf(pendingAdjustment(status = PendingMutationStatus.Failed))
             advanceUntilIdle()
             assertEquals(initialReads, debts.listCalls, "Unresolved emissions do not replay canonical queries")
-            debts.adjustments.rows.value = listOf(pendingAdjustment(status = PendingMutationStatus.Abandoned))
+            debts.writes.rows.value = listOf(pendingAdjustment(status = PendingMutationStatus.Abandoned))
             advanceUntilIdle()
             assertEquals(initialReads + 1, debts.listCalls)
             assertEquals(listOf(original), vm.state.value.debts)
@@ -107,7 +107,7 @@ class DebtAdjustmentRetainedQueriesTest {
             vm.refresh()
             runCurrent()
             debts.listGate = null
-            debts.adjustments.rows.value += pendingAdjustment(id = 2, status = PendingMutationStatus.Done)
+            debts.writes.rows.value += pendingAdjustment(id = 2, status = PendingMutationStatus.Done)
             advanceUntilIdle()
             assertNotNull(vm.state.value.error, "Done cannot accept the original OCC as its confirmed result")
             oldRead.complete(Unit)

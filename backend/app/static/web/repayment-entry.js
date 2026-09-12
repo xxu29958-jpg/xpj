@@ -100,6 +100,67 @@
     pointTo(currentRef);
   }
 
+  function selectSubmission(items) {
+    let requested = fragmentRef();
+    if (requested === acknowledged) requested = "";
+    const nativePending = nativeResult && nativeRef !== acknowledged;
+    if (nativePending) return {ref:nativeRef, requested, nativePending};
+    if (requested) return {ref:requested, requested};
+    const preferred = items.find(record => record.phase !== "editing") || items[0];
+    const freshRef = canCreate && nativeRef !== acknowledged ? nativeRef : "";
+    return {ref:preferred ? preferred.clientRef : freshRef, requested:""};
+  }
+  function admitSubmission(record, selection, count) {
+    if (count > 1 && (record ? record.phase === "editing" : !selection.nativePending)) {
+      blocked("此欠款还有原提交待核对。请从下方打开原提交继续核实，当前不会发送新的还款。");
+      return false;
+    }
+    if (record) {
+      if (drafts.matches(record.scope, scope) && bound(record.values)) return true;
+      if (drafts.matches(record.scope, scope, false) && record.values.debt_public_id === target) showValues(record.values);
+      blocked("这是原身份的还款，仅供核对，不会转移到当前身份重新提交。");
+      return false;
+    }
+    if (selection.requested) {
+      blocked("这份原提交已收起或移除。请先核对还款事实，不会重新创建它。");
+      return false;
+    }
+    if (bound(nativeValues)) return true;
+    blocked("原提交的身份或欠款不匹配，输入仍保留，当前不会发送。");
+    return false;
+  }
+  function applyNativeResult(record) {
+    if (record && !sameValues(record.values, nativeValues)) {
+      blocked("返回结果与保留的原提交不一致，请先核对，原输入未被改写。");
+      return;
+    }
+    const rejected = nativeResult === "rejected";
+    phase = rejected ? "editing" : nativeResult;
+    showValues(nativeValues);
+    drafts.save(scope, currentRef, phase, nativeValues, rejected ? "rejected" : "");
+    retained = true;
+    pointTo(currentRef);
+    showPhase();
+  }
+  function openSubmission() {
+    const items = renderShelf(), selection = selectSubmission(items);
+    if (!selection.ref) { panel.hidden = true; return false; }
+    if (!uuid.test(selection.ref)) {
+      blocked("原提交编号无法读取，内容未被覆盖。请保留本页核对。");
+      return false;
+    }
+    const record = drafts.read(selection.ref);
+    currentRef = selection.ref; refInput.value = currentRef; retained = !!record;
+    held = true; panel.hidden = false;
+    if (admitSubmission(record, selection, items.length)) {
+      phase = record ? record.phase : "editing";
+      if (record) { showValues(record.values); pointTo(currentRef); }
+      if (selection.nativePending) applyNativeResult(record);
+      else showPhase();
+    }
+    nativeResult = "";
+    return true;
+  }
   function activate() {
     const turn = ++epoch;
     const previousLease = leaseFinished;
@@ -114,42 +175,7 @@
           blocked("这笔欠款正在另一个标签页核对。请回到那个页面，或关闭后刷新本页。", "locked");
           return;
         }
-        const items = renderShelf();
-        let requested = fragmentRef();
-        if (requested === acknowledged) requested = "";
-        const nativePending = nativeResult && nativeRef !== acknowledged;
-        const preferred = items.find(record => record.phase !== "editing") || items[0];
-        const ref = nativePending ? nativeRef : requested || (preferred && preferred.clientRef) ||
-          (canCreate && nativeRef !== acknowledged ? nativeRef : "");
-        if (!ref) { panel.hidden = true; return; }
-        if (!uuid.test(ref)) { blocked("原提交编号无法读取，内容未被覆盖。请保留本页核对。"); return; }
-        const record = drafts.read(ref);
-        currentRef = ref; refInput.value = ref; retained = !!record;
-        held = true; panel.hidden = false;
-        if (items.length > 1 && (record ? record.phase === "editing" : !nativePending)) {
-          blocked("此欠款还有原提交待核对。请从下方打开原提交继续核实，当前不会发送新的还款。");
-        } else if (record && (!drafts.matches(record.scope, scope) || !bound(record.values))) {
-          if (drafts.matches(record.scope, scope, false) && record.values.debt_public_id === target) showValues(record.values);
-          blocked("这是原身份的还款，仅供核对，不会转移到当前身份重新提交。");
-        } else if (!record && requested) {
-          blocked("这份原提交已收起或移除。请先核对还款事实，不会重新创建它。");
-        } else if (!record && !bound(nativeValues)) {
-          blocked("原提交的身份或欠款不匹配，输入仍保留，当前不会发送。");
-        } else {
-          phase = record ? record.phase : "editing";
-          if (record) { showValues(record.values); pointTo(ref); }
-          if (nativePending) {
-            if (record && !sameValues(record.values, nativeValues)) {
-              blocked("返回结果与保留的原提交不一致，请先核对，原输入未被改写。");
-            } else {
-              phase = nativeResult === "rejected" ? "editing" : nativeResult;
-              showValues(nativeValues);
-              drafts.save(scope, ref, phase, nativeValues, nativeResult === "rejected" ? "rejected" : "");
-              retained = true; pointTo(ref); showPhase();
-            }
-          } else showPhase();
-        }
-        nativeResult = "";
+        if (!openSubmission()) return;
         return new Promise(resolve => { release = resolve; });
       });
     }).catch(function () {
@@ -203,21 +229,27 @@
       notice("原提交未能安全保留，这次没有发送。请保留本页并检查浏览器存储。", "storage-error");
     }
   });
+  function matchingDraft(record, expectedPhase, saved) {
+    return record && record.phase === expectedPhase && drafts.matches(record.scope, scope) &&
+      sameValues(record.values, saved);
+  }
+  function replacementDraft(previous) {
+    if (!matchingDraft(previous, "blocked", nativeValues)) throw Error("replacement_mismatch");
+    const candidate = records().find(record => matchingDraft(record, "editing", replacement.values));
+    const next = candidate || replacement;
+    if (!uuid.test(next.clientRef) || next.clientRef === currentRef || !bound(next.values) ||
+        !sameValues({...next.values, expected_row_version:previous.values.expected_row_version}, previous.values)) {
+      throw Error("replacement_mismatch");
+    }
+    const existing = drafts.read(next.clientRef);
+    if (existing && !matchingDraft(existing, "editing", next.values)) throw Error("replacement_already_used");
+    return next;
+  }
   if (replace) replace.addEventListener("click", function () {
     if (!held || phase !== "blocked" || currentRef !== nativeRef || !replacement) return;
     let verified = false;
     try {
-      const candidate = records().find(record => record.phase === "editing" &&
-        drafts.matches(record.scope, scope) && sameValues(record.values, replacement.values));
-      const next = candidate || replacement, previous = drafts.read(currentRef);
-      if (!previous || previous.phase !== "blocked" || !sameValues(previous.values, nativeValues) || !drafts.matches(previous.scope, scope) ||
-          !uuid.test(next.clientRef) || next.clientRef === currentRef || !bound(next.values) ||
-          !sameValues({...next.values, expected_row_version:previous.values.expected_row_version}, previous.values)) {
-        throw Error("replacement_mismatch");
-      }
-      const existing = drafts.read(next.clientRef);
-      if (existing && (existing.phase !== "editing" || !drafts.matches(existing.scope, scope) ||
-          !sameValues(existing.values, next.values))) throw Error("replacement_already_used");
+      const previous = drafts.read(currentRef), next = replacementDraft(previous);
       verified = true;
       drafts.save(scope, next.clientRef, "editing", next.values);
       if (!drafts.discardRejected({scope, clientRef:currentRef, values:previous.values,

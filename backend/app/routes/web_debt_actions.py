@@ -112,6 +112,21 @@ def _actor_account_id(request: Request, db: Session, ledger_id: str) -> int:
     return account_id
 
 
+def _repayment_error(exc: Exception, *, attempted: bool) -> dict:
+    """Classify whether the original command can be corrected or only recovered."""
+    status, code, message = 422, "", "还款信息不完整，请检查后重试。"
+    if isinstance(exc, AppError):
+        status, code, message = exc.status_code, exc.error, _error_message(exc)
+    elif isinstance(exc, SQLAlchemyError):
+        status, message = 503, "还款结果暂未确认，请继续核实原提交。"
+    result = "blocked"
+    if status >= 500 or code == "idempotency_key_in_progress":
+        result = "submitted"
+    elif code in {"debt_overpay_rejected", "debt_amount_invalid"} or not attempted and status == 422:
+        result = "rejected"
+    return {"status_code": status, "error": message, "result": result, "rejected": code == "state_conflict"}
+
+
 def _repayment_outcome(
     request, db, *, options, selected_id, public_id, values=None,
     error="", result="", status_code=200, ack=None,
@@ -189,15 +204,9 @@ def web_record_repayment(
         )
     except (AppError, ValidationError, SQLAlchemyError) as exc:
         db.rollback()
-        status = exc.status_code if isinstance(exc, AppError) else 503 if isinstance(exc, SQLAlchemyError) else 422
-        unknown = status >= 500 or isinstance(exc, AppError) and exc.error == "idempotency_key_in_progress"
-        invalid_amount = isinstance(exc, AppError) and exc.error in {"debt_overpay_rejected", "debt_amount_invalid"}
-        result = "submitted" if unknown else "rejected" if invalid_amount or not attempted and status == 422 else "blocked"
-        message = _error_message(exc) if isinstance(exc, AppError) else "还款结果暂未确认，请继续核实原提交。" if unknown else "还款信息不完整，请检查后重试。"
         return _repayment_outcome(
             request, db, options=options, selected_id=selected_id, public_id=public_id,
-            values=values, error=message, result=result, status_code=status,
-            rejected=isinstance(exc, AppError) and exc.error == "state_conflict",
+            values=values, **_repayment_error(exc, attempted=attempted),
         )
     # Exact command receipt precedes the independent detail query. Even when that
     # query fails, the original acceptance can be shown and acknowledged locally.
