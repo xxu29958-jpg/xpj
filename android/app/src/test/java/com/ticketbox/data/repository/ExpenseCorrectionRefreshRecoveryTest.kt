@@ -5,6 +5,7 @@ import com.ticketbox.data.local.PendingMutationDao
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.ExpenseDto
+import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.ConfirmedExpenseStreamItemDto
 import com.ticketbox.data.remote.dto.ConfirmedStreamEntryKindDto
 import com.ticketbox.data.remote.dto.PaginatedExpensesDto
@@ -12,6 +13,8 @@ import com.ticketbox.data.remote.dto.ExpenseLineageStatusDto
 import com.ticketbox.data.remote.dto.ConfirmedOffsetStreamDto
 import com.ticketbox.data.remote.dto.ExpenseOffsetKindDto
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
+import com.ticketbox.domain.model.ExpenseOffsetDraft
+import com.ticketbox.domain.model.StreamOffsetKind
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -75,6 +78,33 @@ internal class ExpenseCorrectionRefreshRecoveryTest {
         fixture.cache.beforeApplyConfirmedSync = null
         fixture.streamVersions[42L] = 12L
         fixture.repository.syncConfirmed().getOrThrow()
+        assertEquals(original.copy(lastError = null), fixture.queue.rows[original.id])
+        assertTrue(fixture.outbox.dequeueNextRunnable().isEmpty())
+    }
+
+    @Test
+    fun aPendingReadRejectedByNewerCacheCannotClearTheAcceptedReceipt() = runTest {
+        val fixture = CorrectionRefreshFixture()
+        val request = ExpenseUpdateRequest(merchant = "Reviewed merchant", category = null, note = null,
+            expenseTime = null, tags = null, valueScore = null, regretScore = null)
+        val payload = com.ticketbox.OutboxAdapterGraph().patchExpenseAdapter.toJson(request)
+        val id = fixture.outbox.enqueue(PendingMutationType.PatchExpense, "expense:42", payload,
+            10L, "original-pending-patch-key")
+        fixture.outbox.markDone(id, cacheRefreshVersion = 11L)
+        val original = fixture.queue.rows.getValue(id)
+        fixture.cache.upsertByServerIdForLedger("owner", fixture.expense(42L, 12L)
+            .copy(status = "pending", confirmedAt = null).toEntity("owner"))
+        fixture.read = { fixture.expense(it, 11L).copy(status = "pending", confirmedAt = null) }
+
+        fixture.repository.fetchExpense(42L).getOrThrow()
+
+        val retained = fixture.repository.fetchExpenseFromLocalCache(42L).getOrThrow()
+        assertEquals(12L, retained.rowVersion)
+        assertEquals("pending", retained.status)
+        assertEquals(original, fixture.queue.rows[original.id], "A rejected pending DTO cannot acknowledge its receipt")
+        fixture.read = { fixture.expense(it, 13L).copy(status = "pending", confirmedAt = null) }
+        fixture.repository.fetchExpense(42L).getOrThrow()
+        assertEquals(13L, fixture.repository.fetchExpenseFromLocalCache(42L).getOrThrow().rowVersion)
         assertEquals(original.copy(lastError = null), fixture.queue.rows[original.id])
         assertTrue(fixture.outbox.dequeueNextRunnable().isEmpty())
     }
@@ -158,6 +188,41 @@ internal class ExpenseCorrectionRefreshRecoveryTest {
     }
 
     @Test
+    fun aRootOnlyMonthKeepsTheOffsetReceiptUntilTheFullStreamIsAdopted() = runTest {
+        val fixture = CorrectionRefreshFixture()
+        fixture.streamVersions[42L] = 7L
+        val root = fixture.repository.fetchExpense(42L).getOrThrow()
+        val access = assertNotNull(fixture.repository.observeCorrections().first().access)
+        fixture.repository.createExpenseOffsetAllowingOffline(access.binding, root,
+            ExpenseOffsetDraft(StreamOffsetKind.Refund, 100L, "2026-10-03", "Original refund")).getOrThrow()
+        val id = fixture.queue.rows.values.single().id
+        assertEquals(PendingMutationType.CreateExpenseOffset.wireValue, fixture.queue.rows.getValue(id).type)
+        fixture.outbox.markDone(id, cacheRefreshVersion = 11L)
+        val original = fixture.queue.rows.getValue(id)
+        fixture.streamVersions[42L] = 11L
+        fixture.streamItems = { items -> items.map { it.copy(lineageStatus = ExpenseLineageStatusDto.PartiallyRefunded,
+            lineageHomeNetCents = requireNotNull(it.root.amountCents) - 100) } }
+
+        fixture.repository.syncConfirmed(month = "2026-09").getOrThrow()
+
+        assertEquals(11L, fixture.repository.fetchExpenseFromLocalCache(42L).getOrThrow().rowVersion)
+        assertTrue(fixture.cache.getConfirmedStreamOffsets("owner").isEmpty())
+        assertEquals(original, fixture.queue.rows[original.id], "A root month omits the accepted refund in another month")
+        val rootProjection = fixture.streamItems
+        fixture.streamItems = { rawItems ->
+            val items = rootProjection(rawItems)
+            items + items.map { it.copy(entryKind = ConfirmedStreamEntryKindDto.Offset,
+            streamDate = "2026-10-03", streamAmountCents = -100,
+            offset = ConfirmedOffsetStreamDto("refund", ExpenseOffsetKindDto.Refund, 100, 100, "CNY", "CNY", "餐饮"),
+            lineageStatus = ExpenseLineageStatusDto.PartiallyRefunded,
+            lineageHomeNetCents = requireNotNull(it.root.amountCents) - 100) } }
+        fixture.repository.syncConfirmed().getOrThrow()
+        assertEquals("refund", fixture.cache.getConfirmedStreamOffsets("owner").single().publicId)
+        assertEquals(original.copy(lastError = null), fixture.queue.rows[original.id])
+        assertTrue(fixture.outbox.dequeueNextRunnable().isEmpty())
+    }
+
+    @Test
     fun completedRowCleanupWaitsForCanonicalRecoveryWithoutChangingTheOriginal() = runTest {
         val fixture = CorrectionRefreshFixture()
         val original = fixture.seed(42L)
@@ -207,7 +272,8 @@ private class CorrectionRefreshFixture(failAcknowledgment: () -> Boolean = { fal
         Clock.fixed(Instant.parse("2026-09-06T00:00:00Z"), ZoneOffset.UTC),
         bindingProvider = { binding.sessionStore.currentSession().toOutboxBinding() }, onRowsDeleted = {})
     val repository = ExpenseRepository(cache, binding, deviceNameProvider = { "Synthetic Android" },
-        offlineMutations = testExpenseOfflineMutationWiring(outbox))
+        offlineMutations = testExpenseOfflineMutationWiring(outbox).copy(
+            offsetCreateAdapter = com.ticketbox.OutboxAdapterGraph().offsetCreateAdapter))
 
     fun expense(id: Long, version: Long): ExpenseDto = successExpenseDto().copy(
         id = id, publicId = "expense-$id", status = "confirmed", rowVersion = version,
