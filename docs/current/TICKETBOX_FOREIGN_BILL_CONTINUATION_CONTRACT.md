@@ -23,6 +23,7 @@ qualified at 45044f8b; this candidate incorporates that integration.
 | Reference lookup | Fetch by requested historical date and preserve actual publication date/source. An arbitrary older cached row is not proof that the requested date was checked; do not invent a fixed age threshold |
 | Cache and provider | Keep manual exact-date overrides and per-bill manual rates distinct. Concentrate any coverage evidence in the existing reference cache; retain configured transport and ECB provenance |
 | Background execution | Existing persistent task owner reports queued/running/result/failure and supports bounded retry/restart; network work cannot hold the financial command transaction. A nullable indexed source-expense relation supports direct per-bill queries; migrate the current enrichment source producer and valid stored inputs, rather than scanning task history or matching serialized JSON |
+| Deferred admission | Accepted bills lacking a current FX task are durable unfinished work. The existing FX scheduler must check them on startup and within 30-second ticks, separately from scheduled current-quote refresh. Reuse the task owner and its queued+running capacity; each candidate uses its own Expense→Task→admission transaction and dispatches after commit. Bound scans to 32 rows and retain a loop-local paging cursor; capacity refusal keeps the blocked candidate next. Same-input failed/cancelled/orphan tasks keep explicit retry |
 | Superseded FX input | A changed pending revision must not exhaust admission with obsolete tasks. Automatic preparation and explicit retry retire older same-ledger/source inputs under the Expense lock before admission; preserve their original payload and any committed result. Worker publication must re-read its task after IO/OCC so an old object cannot undo retirement |
 | Release schema declaration | The release manifest's maximum schema must match the actual migration head consumed by the frozen backend; preserve the existing pre-freeze build check. This qualifies packaging of the product change and does not reopen Windows lifecycle |
 | Pending mutation | Revalidate status/OCC/current binding after fetching, preserve later user edits and confirmed snapshots, and use the existing Expense owner; conversion does not auto-confirm |
@@ -106,12 +107,16 @@ its bounded slot to FX in worker-owned completion: parent completion and child
 admission commit together, then the existing executor submits the child. The old
 running-parent admission path is removed; durable-result replay uses the same
 completion path. No task status, financial authority or persistence model is added.
-The original thirteen formal findings are resolved against qualified source
-`65664c2c` (twelve FIX, one REJECT for the existing dispatcher-to-shell-to-Fact
-refresh chain). Two subsequent findings remain open: live pending task projection
-and budget notification after offset publication. Test-only source `2a3c4f2e`
-reproduced both through the actual list query and AppContainer-registered publisher;
-their fixes still require final cloud execution and formal resolution.
+The original thirteen formal findings are resolved against qualified `65664c2c`.
+The subsequent live-task and offset-notification findings were reproduced by
+`2a3c4f2e`, then fixed and formally resolved on cloud/native-qualified `8129cc19`.
+Batch admission remains open: a second imported bill can lack a task after the
+first consumes capacity. Refill must use its persisted original amount, currency,
+requested exchange-rate date and current version; it must not reconstruct that
+date from current OCR settings or borrow another request's actor. Deferred system
+tasks use the existing nullable actor and remain visible through the bill's task
+projection, without broadening personal task-list access. No new table, task state,
+thread, quote-sync counter or financial writer is needed.
 
 The completion integration exposed a reverse dependency through the service facade.
 Prepared execution belongs to the existing registry; committed dispatch and its
