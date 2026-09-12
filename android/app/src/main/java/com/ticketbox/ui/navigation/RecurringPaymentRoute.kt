@@ -14,7 +14,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.SaveableStateHolder
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -64,6 +66,7 @@ private fun RecurringPaymentRoute(
     val repository = factory.repository
     val access by remember(repository) { repository.observeLedgerAccess() }.collectAsStateWithLifecycle(initialValue = null)
     val scope = rememberCoroutineScope()
+    val draftState = rememberSaveableStateHolder()
     var prepared by remember { mutableStateOf<ManualExpenseSheetState?>(null) }
     var saved by rememberSaveable { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
@@ -75,7 +78,8 @@ private fun RecurringPaymentRoute(
         if (saved) return@LaunchedEffect
         repository.hasManualExpense(origin.binding, clientRef).fold(onSuccess = { exists ->
             saved = exists
-            if (!exists) prepareRecurringPayment(factory, origin, bindingChangedMessage).fold(
+            if (exists) draftState.removeState(clientRef)
+            else prepareRecurringPayment(factory, origin, bindingChangedMessage).fold(
                 onSuccess = { prepared = it }, onFailure = { error = it.message })
         }, onFailure = { error = it.message })
     }
@@ -99,20 +103,28 @@ private fun RecurringPaymentRoute(
                         saving = true
                         scope.launch {
                             repository.createManualExpense(draft, origin.binding, clientRef).fold(
-                                onSuccess = { saved = true }, onFailure = { error = it.message })
+                                onSuccess = { draftState.removeState(clientRef); saved = true },
+                                onFailure = { error = it.message })
                             saving = false
                         }
                     }
-                }, onDismiss = { if (!saving) exit.onBack() }))
+                }, onDismiss = { if (!saving) exit.onBack() }), draftState, clientRef)
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun RecurringPaymentSheet(state: ManualExpenseSheetState, actions: ManualExpenseSheetActions) {
+private fun RecurringPaymentSheet(
+    state: ManualExpenseSheetState,
+    actions: ManualExpenseSheetActions,
+    draftState: SaveableStateHolder,
+    clientRef: String,
+) {
     ModalBottomSheet(onDismissRequest = actions.onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        ManualExpenseSheet(state, actions)
+        draftState.SaveableStateProvider(clientRef) {
+            ManualExpenseSheet(state, actions)
+        }
     }
 }
 

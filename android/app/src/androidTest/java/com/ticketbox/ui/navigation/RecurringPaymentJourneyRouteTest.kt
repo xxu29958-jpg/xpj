@@ -5,6 +5,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertTextContains
@@ -113,15 +114,20 @@ class RecurringPaymentJourneyRouteTest {
         // This missing entry is the product counterexample, not a future interface dependency.
         compose.onNodeWithText("记录本期付款").performScrollTo().assertIsEnabled().performClick()
         waitForText(context.getString(R.string.ledger_manual_sheet_title))
+        val clientRef = compose.runOnIdle {
+            requireNotNull(readRecurringPaymentOrigin(outer.currentBackStackEntry?.arguments?.getString("origin"))?.clientRef)
+        }
         compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("1200")
         compose.onAllNodes(hasSetTextAction())[1].assertTextEquals("日元订阅")
         compose.onAllNodes(hasSetTextAction())[2].performTextReplacement("购物")
+        compose.onAllNodes(hasSetTextAction())[3].performTextReplacement("八月义务，九月付款")
         closeSoftKeyboard()
         restoration.emulateSavedInstanceStateRestore()
         waitForText(context.getString(R.string.ledger_manual_sheet_title))
         compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("1200")
         compose.onAllNodes(hasSetTextAction())[1].assertTextEquals("日元订阅")
         compose.onAllNodes(hasSetTextAction())[2].assertTextEquals("购物")
+        compose.onAllNodes(hasSetTextAction())[3].assertTextEquals("八月义务，九月付款")
         compose.onNodeWithText(context.getString(R.string.ledger_manual_pick_date_button))
             .performScrollTo().assertIsEnabled().performClick()
         waitForText(context.getString(R.string.ledger_manual_date_picker_title))
@@ -138,7 +144,8 @@ class RecurringPaymentJourneyRouteTest {
         assertEquals("1200", original.originalAmount)
         assertEquals("日元订阅", original.merchant)
         assertEquals("购物", original.category)
-        assertFalse(original.clientRef.isNullOrBlank())
+        assertEquals("八月义务，九月付款", original.note)
+        assertEquals(clientRef, original.clientRef)
         assertFalse(original.spentAt.isNullOrBlank())
         assertTrue("Recording a payment must not submit a fulfillment", transport.linkCalls.isEmpty())
         assertEquals("2026-08", transport.reads.last().second)
@@ -217,7 +224,8 @@ class RecurringPaymentJourneyRouteTest {
         compose.onNodeWithText("记录本期付款").performScrollTo().performClick()
         waitForText(context.getString(R.string.recurring_payment_currency_required))
         compose.onNodeWithText("JPY").performScrollTo().performClick()
-        compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("")
+        assertEquals("", compose.onAllNodes(hasSetTextAction())[0].fetchSemanticsNode()
+            .config[SemanticsProperties.EditableText].text)
         compose.onAllNodes(hasSetTextAction())[1].assertTextEquals("日元订阅")
         compose.onAllNodes(hasSetTextAction())[0].performTextReplacement("1200")
         compose.onAllNodes(hasSetTextAction())[2].performTextReplacement("购物")
