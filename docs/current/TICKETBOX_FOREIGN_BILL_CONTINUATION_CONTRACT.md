@@ -13,7 +13,7 @@ Reuse the modular monolith, provider/cache, BackgroundTask, Expense edit/confirm
 and actual Web/Android consumers. No importer-specific writer or second job engine.
 No revaluation of confirmed facts, 1.1 expansion or Windows lifecycle work.
 Start from qualified main 3503359d; #403 subsequently integrated and independently
-qualified at 45044f8b. This candidate must incorporate it before qualification.
+qualified at 45044f8b; this candidate incorporates that integration.
 
 ## Impact before construction
 
