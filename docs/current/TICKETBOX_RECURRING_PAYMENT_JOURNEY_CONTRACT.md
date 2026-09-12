@@ -44,7 +44,10 @@ currency and amount. Both clients reuse their manual Expense writer, preserve it
 original command, and return to the captured obligation period. Web restores that
 origin with its existing browser draft; Android retains safe navigation identity
 and reads the durable Outbox creation receipt, since an Expense read cache can lose
-its local client reference. No credentials enter navigation or draft context.
+its local client reference. The original navigation entry preserves the existing
+manual form through asynchronous preparation and recreation. Once Room accepts the
+original command, that temporary form state is removed and the existing submission
+recovery owns continuation. No credentials enter navigation or draft context.
 
 The central Web return adapter reaches the existing edit/FX/confirm/correction,
 item/split/offset and missing-fact exits. Ignore and undo also return to the original
@@ -57,13 +60,15 @@ are retired; existing payment search and financial command recovery remain.
 
 The direct native journey checks August's obligation paid in September, retained
 invalid input, ignore/undo, FX review, explicit link and one counted expense.
-Exact `f7d45a21` completed the native VM journey: August reserve 14000 to zero,
+Exact `b98511bf` completed the native VM journey: August reserve 14000 to zero,
 September one counted expense of 17600, with installed data preserved. Its cloud
 run exposed test-producer omissions and the inherited task submission cycle;
 those are corrected, including actual valuation-date seeds and rendered inputs.
 The integrated short regression passes 39 checks. Android has six direct
-Connected producers; its test compilation import is corrected and actual final
-execution is still required. Generated Web protocol fields are
+Connected producers. Its actual 286-test run exposed one draft-restoration defect
+and an empty-input assertion that also compared placeholder text. Both are corrected;
+original failures remain in qualification evidence and final exact execution is
+still required. Generated Web protocol fields are
 optional navigation context; financial payloads and required API fields are unchanged.
 
 The full product map retains shared accounting-time, complete exports, offline
