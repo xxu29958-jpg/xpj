@@ -53,18 +53,19 @@ def one_slot(monkeypatch):
     return submitted
 
 
-def _apply_bills(client, identity, amounts=(1000, 2000)):
+def _apply_bills(client, identity, amounts=(1000, 2000), *, headers=None):
+    request_headers = identity.app_headers if headers is None else headers
     content = "home_currency_code,amount_cents,original_currency_code,original_amount_minor,expense_time,merchant,category\n"
     content += "".join(f"CNY,,USD,{amount},{SPENT_AT},Foreign bill {amount},交通\n" for amount in amounts)
-    created = client.post("/api/imports/csv", headers=identity.app_headers,
+    created = client.post("/api/imports/csv", headers=request_headers,
         files={"csv_file": ("capacity.csv", content.encode(), "text/csv")})
     assert created.status_code == 201, created.text
     assert (created.json()["valid_rows"], created.json()["error_rows"]) == (len(amounts), 0)
     endpoint = f"/api/imports/csv/{created.json()['public_id']}"
-    applied = client.post(f"{endpoint}/apply", headers=identity.app_headers, json={"batch_size": len(amounts)})
+    applied = client.post(f"{endpoint}/apply", headers=request_headers, json={"batch_size": len(amounts)})
     assert applied.status_code == 200, applied.text
     assert applied.json()["inserted_count"] == len(amounts)
-    rows = client.get(f"{endpoint}/rows", headers=identity.app_headers)
+    rows = client.get(f"{endpoint}/rows", headers=request_headers)
     assert rows.status_code == 200, rows.text
     assert len(rows.json()["items"]) == len(amounts)
     assert all(row["status"] == "applied" for row in rows.json()["items"])
@@ -131,6 +132,40 @@ def test_applied_csv_waits_for_capacity_then_scheduler_finishes_both_pending_con
     _tick()
     assert one_slot.call_count == 2 and _active_count() == 0
     assert delays and all(0 < delay <= 30 for delay in delays)
+
+
+def test_capacity_released_by_owner_continues_the_other_ledgers_original_bill(client, identity, one_slot):
+    owner_id = _apply_bills(client, identity, (1000,))[0]
+    owner_task_id = one_slot.call_args.args[0]
+    other_id = _apply_bills(client, identity, (2000,), headers=identity.gray_app_headers)[0]
+    other_url = f"/api/expenses/{other_id}"
+    before = client.get(other_url, headers=identity.gray_app_headers)
+    assert before.status_code == 200, before.text
+    original = before.json()
+    assert (original["status"], original["fx_status"], original["fx_task"]) == ("pending", "pending", None)
+    assert one_slot.call_count == 1 and _active_count() == 1
+    background_task_worker.run_task(owner_task_id, {})
+    assert _active_count() == 0
+    owner = _bill(client, identity, owner_id)
+
+    _tick()
+
+    assert one_slot.call_count == 2 and _active_count() == 1
+    with SessionLocal() as db:
+        task = db.get(BackgroundTask, one_slot.call_args.args[0])
+        assert (task.tenant_id, task.source_expense_id, task.status) == ("tester_1", other_id, "queued")
+        assert (task.initiated_by_account_id, task.initiated_by_device_id) == (None, None)
+        saved = json.loads(task.input_payload_json)
+        assert (saved["tenant_id"], saved["expense_id"], saved["expected_row_version"], saved["rate_date"],
+                saved["original_currency_code"], saved["original_amount_minor"], saved["home_currency_code"]) == (
+            "tester_1", other_id, original["row_version"], "2026-05-31", "USD", 2000, "CNY")
+    task_url = f"{other_url}/fx"
+    readable = client.get(task_url, headers=identity.gray_app_headers)
+    assert readable.status_code == 200, readable.text
+    assert (readable.json()["source_expense_id"], readable.json()["status"]) == (other_id, "queued")
+    assert client.get(task_url, headers=identity.app_headers).status_code == 404
+    assert client.get(other_url, headers=identity.app_headers).status_code == 404
+    assert _bill(client, identity, owner_id) == owner
 
 
 @pytest.mark.parametrize("terminal", ["failed", "cancelled", "orphaned_after_restart"])

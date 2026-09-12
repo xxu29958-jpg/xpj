@@ -183,16 +183,18 @@ def refill_pending_expense_fx(*, after_id: int = 0) -> int:
     if not get_settings().fx_rate_auto_sync_enabled:
         return 0
     with SessionLocal() as db:
-        expense_ids = list(db.scalars(select(Expense.id).where(
+        # System-wide discovery returns only identities; each bill is then read
+        # and prepared through its original ledger's existing owner.
+        candidates = list(db.execute(select(Expense.id, Expense.tenant_id).where(
             Expense.id > after_id, Expense.status == "pending", Expense.fx_status == "pending",
             Expense.original_amount_minor.is_not(None), Expense.exchange_rate_date.is_not(None),
             Expense.home_currency_code != Expense.original_currency_code,
         ).order_by(Expense.id).limit(_REFILL_BATCH_SIZE)))
-    for expense_id in expense_ids:
+    for expense_id, tenant_id in candidates:
         try:
             # Never carry the admission lock into the next Expense transaction.
             with SessionLocal() as db:
-                expense = db.get(Expense, expense_id)
+                expense = resolve_expense(db, tenant_id, expense_id)
                 if expense is None:
                     after_id = expense_id
                     continue
@@ -205,7 +207,7 @@ def refill_pending_expense_fx(*, after_id: int = 0) -> int:
             # Keep the blocked bill first, including when later bills keep arriving.
             return after_id
         after_id = expense_id
-    return after_id if len(expense_ids) == _REFILL_BATCH_SIZE else 0
+    return after_id if len(candidates) == _REFILL_BATCH_SIZE else 0
 
 
 def _can_resume(task: BackgroundTask) -> bool:
