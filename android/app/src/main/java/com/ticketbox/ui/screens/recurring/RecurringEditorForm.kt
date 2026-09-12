@@ -16,6 +16,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -40,6 +44,7 @@ import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.components.selectedDateMillisFromIso
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.screens.expense.ExpenseCurrencyChoices
 
 internal data class RecurringEditorFormState(
     val merchant: String,
@@ -67,6 +72,7 @@ internal data class RecurringEditorFormCallbacks(
     val date: RecurringDateCallbacks,
     val onSubmit: () -> Unit,
     val onCancel: () -> Unit,
+    val onCurrency: ((CurrencyCode) -> Unit)? = null,
 )
 
 internal data class RecurringEditorFeedback(
@@ -115,7 +121,7 @@ internal fun RecurringEditorForm(
                 )
             }
         }
-        RecurringEditorAmountField(state, callbacks.onAmount, feedback.errorText)
+        RecurringEditorAmountField(state, callbacks, feedback.errorText)
         RecurringDateField(
             dateIso = state.dateIso,
             enabled = state.draftEnabled,
@@ -133,10 +139,11 @@ internal fun RecurringEditorForm(
 @Composable
 private fun RecurringEditorAmountField(
     state: RecurringEditorFormState,
-    onAmount: (String) -> Unit,
+    callbacks: RecurringEditorFormCallbacks,
     errorText: String?,
 ) {
     val currency = state.currency
+    var showCurrencies by rememberSaveable { mutableStateOf(false) }
     if (currency == null) {
         AppTextInput(
             state = AppTextInputState(
@@ -144,7 +151,7 @@ private fun RecurringEditorAmountField(
                 value = state.amountText,
                 enabled = false,
             ),
-            actions = AppTextInputActions(onValueChange = onAmount),
+            actions = AppTextInputActions(onValueChange = callbacks.onAmount),
         )
     } else {
         AppAmountInput(
@@ -156,8 +163,15 @@ private fun RecurringEditorAmountField(
                 enabled = state.draftEnabled,
                 isError = errorText == stringResource(R.string.recurring_form_error_amount),
             ),
-            actions = AppAmountInputActions(onValueChange = onAmount),
+            actions = AppAmountInputActions(onValueChange = callbacks.onAmount,
+                onCurrencyClick = callbacks.onCurrency?.let { { showCurrencies = !showCurrencies } }),
         )
+        if (showCurrencies && callbacks.onCurrency != null) {
+            ExpenseCurrencyChoices(currency, state.draftEnabled) {
+                callbacks.onCurrency.invoke(it)
+                showCurrencies = false
+            }
+        }
     }
 }
 

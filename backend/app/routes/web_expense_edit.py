@@ -20,7 +20,6 @@ from app.routes._web_expense_helpers import (
 from app.routes._web_expense_return_context import (
     ExpenseReturnContext,
     expense_return_query_context,
-    resolve_return_to,
     return_context_params,
 )
 from app.routes._web_session_common import resolve_web_actor
@@ -71,7 +70,7 @@ def web_edit_get(
                 status_code=exc.status_code,
             )
         return _web_redirect(
-            resolve_return_to(return_context.return_to, "/web/confirmed"),
+            return_context.resolve_path("/web/confirmed"),
             selected_id,
             msg=exc.message,
             flash_type="error",

@@ -26,7 +26,6 @@ from app.routes._web_expense_return_context import (
     ExpenseReturnContext,
     clean_return_to,
     flow_href,
-    resolve_return_to,
     return_context_params,
     return_href,
     return_label,
@@ -445,7 +444,7 @@ def web_fact_error_response(
         )
     except AppError as exc:
         return _web_redirect(
-            resolve_return_to(return_context.return_to, "/web/confirmed"),
+            return_context.resolve_path("/web/confirmed"),
             selected_id,
             msg=exc.message,
             flash_type="error",

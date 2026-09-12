@@ -16,6 +16,7 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -31,17 +32,15 @@ import androidx.test.espresso.Espresso.closeSoftKeyboard
 import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.remote.ApiService
-import com.ticketbox.data.remote.dto.DebtListResponseDto
-import com.ticketbox.data.remote.dto.RecurringItemDto
-import com.ticketbox.data.remote.dto.RecurringItemListResponseDto
-import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
-import com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto
+import com.ticketbox.data.remote.dto.ConfirmedExpenseStreamItemDto
+import com.ticketbox.data.remote.dto.ConfirmedStreamEntryKindDto
+import com.ticketbox.data.remote.dto.ExpenseLineageStatusDto
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.AppThemeMode
 import com.ticketbox.domain.model.CurrencyCode
-import java.util.concurrent.CopyOnWriteArrayList
 import com.ticketbox.ui.theme.TicketboxTheme
+import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.domain.model.CurrencyDisplay
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -53,6 +52,7 @@ import org.junit.Test
 /** Real navigation and Room commands; controlled responses keep obligation month separate from payment date. */
 class RecurringPaymentJourneyRouteTest {
     @get:Rule val compose = createComposeRule()
+    private val restoration = StateRestorationTester(compose)
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val transport = RecurringPaymentJourneyTransport()
     private val harness = FactEntryNavigationHarness(context, transport::wrap)
@@ -60,7 +60,13 @@ class RecurringPaymentJourneyRouteTest {
     private lateinit var outer: NavHostController
 
     init {
-        harness.fixture.network.confirmedStreamItems = { emptyList() }
+        transport.network = harness.fixture.network
+        harness.fixture.network.confirmedStreamItems = { current ->
+            if (transport.created && current.status == "confirmed") listOf(ConfirmedExpenseStreamItemDto(
+                ConfirmedStreamEntryKindDto.Expense, requireNotNull(current.expenseTime).take(10), current.createdAt,
+                current.id, requireNotNull(current.amountCents), current, lineageStatus = ExpenseLineageStatusDto.Confirmed,
+                lineageHomeNetCents = requireNotNull(current.amountCents))) else emptyList()
+        }
     }
 
     @After fun close() {
@@ -98,6 +104,7 @@ class RecurringPaymentJourneyRouteTest {
     }
 
     @Test fun missingPaymentStartsAPrefilledManualCommandWithoutFulfillingTheOriginalPeriod() {
+        transport.recording = true
         showRecurring()
         openAugustOccurrence()
         compose.onNodeWithTag("occurrence-state").assertTextEquals(context.getString(R.string.occurrence_unfulfilled))
@@ -110,6 +117,11 @@ class RecurringPaymentJourneyRouteTest {
         compose.onAllNodes(hasSetTextAction())[1].assertTextEquals("日元订阅")
         compose.onAllNodes(hasSetTextAction())[2].performTextReplacement("购物")
         closeSoftKeyboard()
+        restoration.emulateSavedInstanceStateRestore()
+        waitForText(context.getString(R.string.ledger_manual_sheet_title))
+        compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("1200")
+        compose.onAllNodes(hasSetTextAction())[1].assertTextEquals("日元订阅")
+        compose.onAllNodes(hasSetTextAction())[2].assertTextEquals("购物")
         compose.onNodeWithText(context.getString(R.string.ledger_manual_pick_date_button))
             .performScrollTo().assertIsEnabled().performClick()
         waitForText(context.getString(R.string.ledger_manual_date_picker_title))
@@ -129,6 +141,47 @@ class RecurringPaymentJourneyRouteTest {
         assertFalse(original.clientRef.isNullOrBlank())
         assertFalse(original.spentAt.isNullOrBlank())
         assertTrue("Recording a payment must not submit a fulfillment", transport.linkCalls.isEmpty())
+        assertEquals("2026-08", transport.reads.last().second)
+        assertFalse(requireNotNull(original.spentAt).startsWith("2026-08"))
+        completeAndAssociateOriginalPayment()
+    }
+
+    private fun completeAndAssociateOriginalPayment() {
+        waitForText(context.getString(R.string.manual_submission_title))
+        val originalRows = harness.fixture.stored()
+        restoration.emulateSavedInstanceStateRestore()
+        waitForText(context.getString(R.string.manual_submission_title))
+        assertEquals(originalRows, harness.fixture.stored())
+        runBlocking { transport.drain(harness.fixture) }
+        val open = context.getString(R.string.manual_submission_open)
+        waitForText(open)
+        compose.onNodeWithText(open).performScrollTo().performClick()
+        waitForText(context.getString(R.string.expense_fx_refresh))
+        assertTrue(transport.linkCalls.isEmpty())
+        compose.runOnIdle { transport.completeFx() }
+        compose.onNodeWithText(context.getString(R.string.expense_fx_refresh)).performScrollTo().performClick()
+        val review = context.getString(R.string.expense_fx_load_review)
+        waitForText(review)
+        compose.onNodeWithText(review).performScrollTo().performClick()
+        val confirm = context.getString(R.string.expense_edit_confirm_button)
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText(confirm) and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText(confirm).performScrollTo().performClick()
+        waitForText(context.getString(R.string.occurrence_unfulfilled))
+        compose.onNodeWithTag("occurrence-period").assertTextContains("2026-08")
+        assertTrue(transport.linkCalls.isEmpty())
+        compose.onNodeWithText(context.getString(R.string.occurrence_reserved, "JPY ${formatDisplayAmount(1200L, CurrencyDisplay(CurrencyCode.JPY))}"))
+            .performScrollTo().assertIsDisplayed()
+        val payment = "occurrence-payment-42"
+        compose.waitUntil(5_000) { compose.onAllNodes(androidx.compose.ui.test.hasTestTag(payment)).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag(payment).performScrollTo().performClick()
+        compose.onNodeWithTag("occurrence-submit").performScrollTo().performClick()
+        compose.waitUntil(5_000) { runBlocking { harness.fixture.pendingDao.allRows().size == 2 } }
+        assertTrue(transport.linkCalls.isEmpty())
+        runBlocking { transport.drain(harness.fixture) }
+        waitForText(context.getString(R.string.occurrence_fulfilled))
+        assertEquals(1, transport.linkCalls.size)
+        compose.onNodeWithText(context.getString(R.string.occurrence_reserved, "JPY ${formatDisplayAmount(0L, CurrencyDisplay(CurrencyCode.JPY))}"))
+            .performScrollTo().assertIsDisplayed()
         assertEquals("2026-08", transport.reads.last().second)
     }
 
@@ -157,8 +210,30 @@ class RecurringPaymentJourneyRouteTest {
         assertEquals(MainProductDestination.Secondary(ProductSecondaryPage.Recurring), harness.shell.activeDestination)
     }
 
+    @Test fun legacyCommitmentWithoutCurrencyAllowsAnExplicitPaymentWithoutReinterpretingItsOldAmount() {
+        transport.recordedCurrency = null
+        showRecurring()
+        openAugustOccurrence()
+        compose.onNodeWithText("记录本期付款").performScrollTo().performClick()
+        waitForText(context.getString(R.string.recurring_payment_currency_required))
+        compose.onNodeWithText("JPY").performScrollTo().performClick()
+        compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("")
+        compose.onAllNodes(hasSetTextAction())[1].assertTextEquals("日元订阅")
+        compose.onAllNodes(hasSetTextAction())[0].performTextReplacement("1200")
+        compose.onAllNodes(hasSetTextAction())[2].performTextReplacement("购物")
+        closeSoftKeyboard()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        compose.waitUntil(5_000) { runBlocking { harness.fixture.pendingDao.allRows().size == 1 } }
+        val row = runBlocking { harness.fixture.pendingDao.allRows().single() }
+        val request = requireNotNull(OutboxAdapterGraph().manualCreateAdapter.fromJson(row.payload))
+        assertEquals("JPY", request.originalCurrency)
+        assertEquals("1200", request.originalAmount)
+        assertEquals("CNY", request.homeCurrencyCode)
+        assertTrue(transport.linkCalls.isEmpty())
+    }
+
     private fun showRecurring() {
-        compose.setContent {
+        restoration.setContent {
             if (mounted.value) CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
                 TicketboxTheme(skin = AppSkin.Paper) {
                     outer = rememberNavController()
@@ -193,38 +268,5 @@ class RecurringPaymentJourneyRouteTest {
 
     private fun waitForText(text: String) {
         compose.waitUntil(5_000) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
-    }
-}
-
-private class RecurringPaymentJourneyTransport {
-    var fulfilled = false
-    val reads = CopyOnWriteArrayList<Pair<String, String>>()
-    val linkCalls = CopyOnWriteArrayList<RecurringOccurrencePaymentRequestDto>()
-
-    fun wrap(delegate: ApiService): ApiService = object : ApiService by delegate {
-        override suspend fun debts(lens: String?) = DebtListResponseDto(emptyList(), homeCurrencyCode = "CNY")
-        override suspend fun recurringItems(status: String?, includeArchived: Boolean, month: String?, timezone: String?) =
-            RecurringItemListResponseDto(listOf(RecurringItemDto(publicId = "navigation-recurring", ledgerId = "correction-ledger",
-                merchant = "日元订阅", merchantKey = "日元订阅", frequency = "monthly", baselineAmountCents = 1200,
-                lastAmountCents = 1200, occurrenceCount = 1, lastSeenAt = null, nextExpectedDate = "2026-09-05", status = "active",
-                confidence = null, source = "manual", createdAt = "2026-07-01T00:00:00Z", updatedAt = "2026-09-06T00:00:00Z",
-                rowVersion = 2, pausedAt = null, archivedAt = null, homeCurrencyCode = "JPY")))
-
-        override suspend fun recurringOccurrence(publicId: String, month: String): RecurringOccurrenceDto {
-            check(publicId == "navigation-recurring")
-            reads += publicId to month
-            val period = if (month == "current") "2026-09" else month
-            return RecurringOccurrenceDto(publicId, period, 2, if (fulfilled) 1 else 0,
-                if (fulfilled) "fulfilled" else "unfulfilled", 1200, if (fulfilled) 0 else 1200,
-                if (fulfilled) "expense-42" else null, if (fulfilled) 1000 else null, "2026-09-05",
-                expenseId = if (fulfilled) 42 else null, homeCurrencyCode = "JPY", paidHomeCurrencyCode = "CNY")
-        }
-
-        override suspend fun setRecurringOccurrencePayment(
-            publicId: String, month: String, request: RecurringOccurrencePaymentRequestDto, idempotencyKey: String,
-        ): RecurringOccurrenceDto {
-            linkCalls += request
-            error("Neither recording nor viewing a payment is permission to fulfill its period")
-        }
     }
 }

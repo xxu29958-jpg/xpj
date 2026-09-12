@@ -28,15 +28,39 @@ owners. No new financial writer, matching engine, protocol state or Windows scop
 
 ## Gate and current state
 
-Three actual Web entry counterexamples failed against 6de1bb39: the create form
-has only a hidden currency, the unpaid period has no payment-entry action, and
-the expense return adapter drops the original series/period. Native PostgreSQL
-and three actual Android navigation producers are prepared; cloud execution is
-pending. The parent
-foreign-bill candidate is still under qualification; this isolated work does not
-change that candidate. Minimum proof is scoped pure UI/form checks, real native
+Test-only ba58c638 reproduced all three Web entry failures, the native PostgreSQL
+foreign creation failure, and three actual Android route failures: currency choice,
+record-payment entry and original-period return. Its fourth Android failure is the
+parent's already-corrected missing error-message fixture. The parent foreign-bill
+candidate is still under qualification. Minimum proof is scoped pure UI/form checks, real native
 PostgreSQL flow, actual Android route execution, bounded review, exact candidate
 cloud qualification and independent merged-main qualification. No local long suites.
+
+## Impact after construction
+
+Web and Android expose currency choice on creation; existing recorded units remain
+unchanged. A legacy unknown unit pre-fills only the merchant and asks for the actual
+currency and amount. Both clients reuse their manual Expense writer, preserve its
+original command, and return to the captured obligation period. Web restores that
+origin with its existing browser draft; Android retains safe navigation identity
+and reads the durable Outbox creation receipt, since an Expense read cache can lose
+its local client reference. No credentials enter navigation or draft context.
+
+The central Web return adapter reaches the existing edit/FX/confirm/correction,
+item/split/offset and missing-fact exits. Ignore and undo also return to the original
+period using the existing lifecycle command and OCC. Android keeps the original
+occurrence sheet across navigation and resumes its real query. An exact saved-bill
+focus makes a later month's payment visible without changing its recorded date.
+Only explicit occurrence association removes the reserve; recording, reviewing or
+confirming a bill does not. Old hidden-currency creation and return-to-list exits
+are retired; existing payment search and financial command recovery remain.
+
+The direct native journey checks August's obligation paid in September, retained
+invalid input, ignore/undo, FX review, explicit link and one counted expense. Short
+Web/draft/return checks pass (37); changed Web function complexity excess remains
+9 to 9. Android has six direct Connected producers and scoped static checks, but
+new runtime qualification is still pending. Generated Web protocol fields are
+optional navigation context; financial payloads and required API fields are unchanged.
 
 The full product map retains shared accounting-time, complete exports, offline
 reads/drafts, Backstage outcomes, consumer art and final RC delivery. This task

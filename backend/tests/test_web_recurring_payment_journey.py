@@ -122,11 +122,28 @@ def test_native_foreign_commitment_records_later_payment_and_returns_for_explici
     save_path = f"/web/expenses/{expense_id}/save"
     draft = _fields(_form(page.text, save_path))
     assert all(draft[key] == value for key, value in origin.items())
-    assert draft["return_expense_id"] == str(expense_id)
+    assert draft["return_payment_expense_id"] == str(expense_id)
+    rejected = post(f"/web/expenses/{expense_id}/reject", {**draft, "expected_row_version": str(version)})
+    assert rejected.status_code == 303, rejected.text
+    _assert_period(rejected.headers["location"], ledger=ledger, series_id=series_id, expense_id=expense_id)
+    rejected_page = get(rejected.headers["location"])
+    undo_path = f"/web/expenses/{expense_id}/undo"
+    undo_fields = _fields(_form(rejected_page.text, undo_path))
+    assert int(undo_fields["expected_row_version"]) > version
+    assert _state(ledger, series_id)[0].state == "unfulfilled"
+    restored = post(undo_path, undo_fields)
+    assert restored.status_code == 303, restored.text
+    _assert_period(restored.headers["location"], ledger=ledger, series_id=series_id, expense_id=expense_id)
+    review_return = get(restored.headers["location"])
+    review_href = next(unescape(href) for href in re.findall(r'href="([^"]+)"', review_return.text)
+        if urlsplit(unescape(href)).path == f"/web/expenses/{expense_id}/edit")
+    page = get(review_href)
+    draft = _fields(_form(page.text, save_path))
+    assert int(draft["expected_row_version"]) > int(undo_fields["expected_row_version"])
     status_page = post(f"/web/expenses/{expense_id}/fx-status", draft)
     assert status_page.status_code == 200, status_page.text
     status_fields = _fields(_form(status_page.text, save_path))
-    assert all(status_fields[key] == draft[key] for key in (*origin, "return_expense_id", "idempotency_key", "expected_row_version"))
+    assert all(status_fields[key] == draft[key] for key in (*origin, "return_payment_expense_id", "idempotency_key", "expected_row_version"))
     saved = post(save_path, {**status_fields, "manual_exchange_rate": "8"})
     assert saved.status_code == 303, saved.text
     review = get(saved.headers["location"])

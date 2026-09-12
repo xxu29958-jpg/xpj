@@ -10,11 +10,12 @@
 
 {% block content %}
 <div class="manual-entry">
-<a class="product-state-action" href="/web/confirmed?ledger_id={{ selected_ledger_id }}">← 返回流水</a>
+<a class="product-state-action" data-manual-return href="{{ manual_return_href }}">← {{ manual_return_label }}</a>
 <header class="product-page-header">
   <div class="product-page-heading">
     <h1 class="page-title">手动记一笔</h1>
     <p class="product-page-summary">记下金额，其余可以慢慢补。</p>
+    <p class="hint" data-manual-origin-note{% if manual_return_fields.return_to != 'recurring_occurrence' %} hidden{% endif %}>保存后返回本期核对并关联。这里记录实际付款，不会自动关联固定支出。</p>
   </div>
 </header>
 
@@ -29,6 +30,7 @@
     <input type="hidden" name="expected_device_public_id" value="{{ form_device_public_id }}">
     <input type="hidden" name="client_ref" value="{{ client_ref }}">
     <input type="hidden" name="home_currency_code" value="{{ form_home_currency_code }}">
+    {% for name, value in manual_return_fields.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
 
     <fieldset class="manual-expense-fields" data-manual-edit-fields>
     <div class="manual-expense-money">
@@ -38,7 +40,8 @@
       </div>
       <div class="product-field">
         <label for="manual-expense-currency">币种</label>
-        <select id="manual-expense-currency" class="product-input" name="currency_code">
+        <select id="manual-expense-currency" class="product-input" name="currency_code" required>
+          {% if 'currency_code' in values and values.currency_code not in currency_options %}<option value="{{ values.currency_code }}" selected>原币种待核对</option>{% endif %}
           {% for code in currency_options %}
           <option value="{{ code }}"{% if values.currency_code == code %} selected{% endif %}>{{ code }}</option>
           {% endfor %}
@@ -54,7 +57,7 @@
       </div>
       <div class="product-field">
         <label for="manual-expense-category">分类</label>
-        <input id="manual-expense-category" class="product-input" name="category" type="text" maxlength="64" list="manual-expense-categories" value="{{ values.category or '其他' }}">
+        <input id="manual-expense-category" class="product-input" name="category" type="text" maxlength="64" list="manual-expense-categories" value="{{ values.get('category', '其他') }}">
         <datalist id="manual-expense-categories">
           {% for category in category_options %}<option value="{{ category }}">{% endfor %}
         </datalist>

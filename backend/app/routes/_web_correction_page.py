@@ -17,7 +17,6 @@ from app.routes._web_expense_helpers import web_edit_context
 from app.routes._web_expense_return_context import (
     ExpenseReturnContext,
     flow_href,
-    resolve_return_to,
     return_context_params,
 )
 from app.routes.web_common import _web_redirect, templates
@@ -139,7 +138,7 @@ def correction_form_error_response(
         ctx["rate_recovery"] = rate_recovery
     except AppError as exc:
         return _web_redirect(
-            resolve_return_to(return_context.return_to, "/web/confirmed"),
+            return_context.resolve_path("/web/confirmed"),
             selected_id,
             msg=exc.message,
             flash_type="error",

@@ -47,6 +47,7 @@ class RecurringOccurrenceRoomContinuityTest {
                     current::dismiss, current::refresh, current::changePeriod,
                     current::choose, current::submit, current::recover,
                     onOpenExpense = { openedExpenses += it },
+                    onRecordPayment = { error("This test associates an existing payment") },
                 ))
             }
         }
@@ -126,6 +127,7 @@ class RecurringOccurrenceRoomContinuityTest {
                 RecurringOccurrenceSheet(state, OccurrenceSheetActions(
                     current::dismiss, current::refresh, current::changePeriod,
                     current::choose, current::submit, current::recover,
+                    onRecordPayment = { error("An unresolved original cannot start another payment") },
                 ))
             }
         }

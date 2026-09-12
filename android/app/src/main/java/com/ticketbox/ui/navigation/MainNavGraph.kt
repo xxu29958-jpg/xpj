@@ -110,6 +110,7 @@ internal fun MainNavGraph(
             )
         }
         addManualExpenseSubmissionRoute(runtime)
+        addRecurringPaymentRoute(runtime)
         addCorrectionRateRoute(runtime.screenFactory) { runtime.navController.popBackStack() }
         composable(
             route = EXPENSE_ROUTE,

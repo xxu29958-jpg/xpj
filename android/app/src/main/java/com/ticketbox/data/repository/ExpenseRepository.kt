@@ -300,6 +300,15 @@ class ExpenseRepository(
     override suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense> =
         ledgerRepository.createManualExpense(draft)
 
+    suspend fun createManualExpense(draft: ExpenseDraft, binding: LogicalSessionBinding, clientRef: String): Result<Unit> =
+        ledgerRepository.manualCreation.create(draft, binding, clientRef)
+
+    suspend fun hasManualExpense(binding: LogicalSessionBinding, clientRef: String): Result<Boolean> =
+        ledgerRepository.manualCreation.isSaved(binding, clientRef)
+
+    internal fun observeManualExpense(clientRef: String): Flow<ManualExpenseCreationProjection?> =
+        ledgerRepository.manualCreation.observe(clientRef)
+
     override suspend fun applyConfirmedBatch(
         expenses: List<Expense>,
         category: String?,

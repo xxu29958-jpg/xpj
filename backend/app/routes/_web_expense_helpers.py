@@ -18,7 +18,6 @@ from app.routes._web_expense_return_context import (
     ExpenseReturnContext,
     edit_context_params,
     edit_navigation_view,
-    resolve_return_to,
     return_context_params,
 )
 from app.routes._web_expense_split_presenter import web_split_members, web_split_rows
@@ -81,7 +80,7 @@ def _edit_page_or_flash_redirect(
         )
     except AppError as exc:
         return _web_redirect(
-            resolve_return_to(return_context.return_to, fallback_path),
+            return_context.resolve_path(fallback_path),
             selected_id,
             msg=exc.message,
             flash_type="error",
@@ -401,7 +400,7 @@ def web_save_response(
         (
             f"/web/expenses/{expense_id}/edit"
             if manual_rate_submitted
-            else resolve_return_to(return_context.return_to, f"/web/expenses/{expense_id}/edit")
+            else return_context.resolve_path(f"/web/expenses/{expense_id}/edit")
         ),
         selected_id,
         msg=(

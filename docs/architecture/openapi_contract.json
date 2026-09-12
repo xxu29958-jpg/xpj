@@ -1793,6 +1793,11 @@
             "title": "Return Page",
             "type": "string"
           },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -1801,6 +1806,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -2144,6 +2154,11 @@
             "title": "Return Page",
             "type": "string"
           },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -2152,6 +2167,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -2432,6 +2452,11 @@
             "title": "Return Page",
             "type": "string"
           },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -2440,6 +2465,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -2642,6 +2672,11 @@
             "title": "Return Page",
             "type": "string"
           },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -2650,6 +2685,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -3047,6 +3087,66 @@
             "default": "",
             "title": "Ledger Id",
             "type": "string"
+          },
+          "return_filter": {
+            "default": "",
+            "title": "Return Filter",
+            "type": "string"
+          },
+          "return_granularity": {
+            "default": "",
+            "title": "Return Granularity",
+            "type": "string"
+          },
+          "return_home_currency_code": {
+            "default": "",
+            "title": "Return Home Currency Code",
+            "type": "string"
+          },
+          "return_merchant_category": {
+            "default": "",
+            "title": "Return Merchant Category",
+            "type": "string"
+          },
+          "return_month": {
+            "default": "",
+            "title": "Return Month",
+            "type": "string"
+          },
+          "return_page": {
+            "default": "",
+            "title": "Return Page",
+            "type": "string"
+          },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
+          "return_query": {
+            "default": "",
+            "title": "Return Query",
+            "type": "string"
+          },
+          "return_ranking_metric": {
+            "default": "",
+            "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
+            "type": "string"
+          },
+          "return_tag": {
+            "default": "",
+            "title": "Return Tag",
+            "type": "string"
+          },
+          "return_to": {
+            "default": "",
+            "title": "Return To",
+            "type": "string"
           }
         },
         "title": "Body_web_expense_undo_web_expenses__expense_id__undo_post",
@@ -3429,6 +3529,11 @@
             "title": "Return Page",
             "type": "string"
           },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -3437,6 +3542,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -3543,6 +3653,11 @@
             "title": "Return Page",
             "type": "string"
           },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -3551,6 +3666,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -3763,6 +3883,11 @@
             "title": "Return Page",
             "type": "string"
           },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -3771,6 +3896,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -4235,6 +4365,11 @@
             "title": "Return Page",
             "type": "string"
           },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -4243,6 +4378,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -4337,6 +4477,11 @@
             "title": "Return Page",
             "type": "string"
           },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -4345,6 +4490,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -4466,6 +4616,11 @@
             "title": "Return Page",
             "type": "string"
           },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -4474,6 +4629,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -4902,6 +5062,11 @@
             "title": "Return Page",
             "type": "string"
           },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -4910,6 +5075,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -5008,6 +5178,11 @@
             "default": "",
             "title": "Month",
             "type": "string"
+          },
+          "payment_id": {
+            "default": "",
+            "title": "Payment Id",
+            "type": "string"
           }
         },
         "title": "Body_web_set_recurring_occurrence_web_recurring__public_id__occurrence_post",
@@ -5073,6 +5248,11 @@
             "title": "Return Page",
             "type": "string"
           },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -5081,6 +5261,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -5152,6 +5337,11 @@
             "title": "Return Page",
             "type": "string"
           },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -5160,6 +5350,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -5233,6 +5428,11 @@
             "title": "Return Page",
             "type": "string"
           },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -5241,6 +5441,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -5457,6 +5662,11 @@
             "title": "Return Page",
             "type": "string"
           },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -5465,6 +5675,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -41649,6 +41864,26 @@
               "title": "Return Merchant Category",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "return_recurring_public_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Recurring Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_payment_expense_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Payment Expense Id",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -41953,6 +42188,26 @@
             "schema": {
               "default": "",
               "title": "Return Merchant Category",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_recurring_public_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Recurring Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_payment_expense_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Payment Expense Id",
               "type": "string"
             }
           }
@@ -45424,6 +45679,16 @@
                 }
               ],
               "title": "Message"
+            }
+          },
+          {
+            "in": "query",
+            "name": "payment_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Payment Id",
+              "type": "string"
             }
           }
         ],

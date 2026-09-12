@@ -54,8 +54,12 @@ def _eligible_payments_for_ledgers(tenant_ids: list[str]):
     )
 
 
-def find_recurring_payments(db: Session, *, tenant_id: str, month: str | None, query: str) -> list[Expense]:
+def find_recurring_payments(
+    db: Session, *, tenant_id: str, month: str | None, query: str, expense_id: int | None = None,
+) -> list[Expense]:
     statement = eligible_payment_query(tenant_id=tenant_id)
+    if expense_id is not None:
+        statement = statement.where(Expense.id == expense_id)
     if month:
         start, end = month_bounds_utc(month)
         statement = statement.where(stat_time_expr() >= start, stat_time_expr() < end)

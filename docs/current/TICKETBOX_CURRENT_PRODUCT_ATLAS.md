@@ -125,7 +125,7 @@ slice. Full Internal Beta RC completion is still outstanding.
 | Android external-debt creation and recovery | `STRONG_SLICE`; #369/#370 CLOSED. Original submitted intent and readable retry/discard; keyboard, OS interruption and unsubmitted editing restoration remain | [Convenience plan](../superpowers/plans/2026-09-05-consumer-art-convenience.md) |
 | Debt adjustment continuity | `STRONG_SLICE`; #379 CLOSED. Sole dispatcher preserves original submission and refreshes affected consumers | [Adjustment contract](TICKETBOX_DEBT_ADJUSTMENT_CONTINUITY_CONTRACT.md) |
 | Budgets and goals | `PARTIAL`; compact first use, accurate feedback and durable Goal reads are main-qualified. Budget/debt query persistence, unsubmitted goal drafts and complete cross-client refresh remain | [Budget journey](TICKETBOX_USER_JOURNEYS_CONTRACT.md#budget-first-step), [Goal reads](TICKETBOX_GOAL_OFFLINE_READING_CONTRACT.md) |
-| Fixed commitments through actual payment | `PARTIAL`; occurrence association and removal of fulfilled reserves are integrated. Existing cross-currency valuation has no usable foreign-currency creation flow; recording a missing payment cannot return directly to the original period for association | [Recurring](TICKETBOX_RECURRING_OCCURRENCE_CONTRACT.md) |
+| Fixed commitments through actual payment | `PARTIAL`; #405 implements foreign-currency creation and the original-period payment/review/association journey, with durable original-command recovery. Actual entry counterexamples are reproduced; final client and integration qualification remain | [Payment journey](TICKETBOX_RECURRING_PAYMENT_JOURNEY_CONTRACT.md) |
 | Income planning | `STRONG_SLICE`; server-month revision and original submitted recovery are integrated; plans remain forecasts. Unsubmitted create/edit drafts still need interruption recovery | [Income plans](TICKETBOX_INCOME_PLAN_CONTRACT.md) |
 | Period review and explainable export | `PARTIAL`; canonical fact navigation and shared reports exist. Default accounting-time scope differs across clients; CSV refund/reversal rows omit their stored frozen FX evidence | [Insight navigation](TICKETBOX_INSIGHT_FACT_NAVIGATION_CONTRACT.md), [Journeys](TICKETBOX_USER_JOURNEYS_CONTRACT.md) |
 | First use, connection and household entry | `STRONG_SLICE`; invitation, real local Web identity and #378 original-code continuation integrated; full Owner/member/viewer rehearsal remains | [Household journeys](TICKETBOX_USER_JOURNEYS_CONTRACT.md#household-invitation), [Desktop first use](TICKETBOX_DESKTOP_FIRST_USE_CONTRACT.md) |
@@ -184,7 +184,7 @@ feedback and efficient actions within each active capability change.
 **#403 CLOSED:** [direct repayment recovery](TICKETBOX_DIRECT_REPAYMENT_CONTINUITY_CONTRACT.md) is integrated and main-qualified.
 
 **Next action:** qualify and integrate [foreign-bill continuation](TICKETBOX_FOREIGN_BILL_CONTINUATION_CONTRACT.md) across import, review, affected money commands and actual Web/Android consumers. Continue the
-fixed-commitment journey, shared accounting-time and
+[fixed-commitment journey](TICKETBOX_RECURRING_PAYMENT_JOURNEY_CONTRACT.md), shared accounting-time and
 complete export, then remaining read/draft/Backstage continuity. Select each
 bounded change from these full user outcomes; an isolated semantic fix, working
 API or green test never closes its entire delivery package. Reuse sufficient

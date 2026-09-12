@@ -43,7 +43,6 @@ from app.routes._web_expense_return_context import (
     ExpenseReturnContext,
     edit_context_params,
     expense_return_query_context,
-    resolve_return_to,
     return_context_params,
 )
 from app.routes._web_rate_recovery import rate_recovery_context
@@ -97,7 +96,7 @@ def web_correct_get(
         expense = get_expense(db, expense_id, selected_id)
     except AppError as exc:
         return _web_redirect(
-            resolve_return_to(return_context.return_to, "/web/confirmed"),
+            return_context.resolve_path("/web/confirmed"),
             selected_id,
             msg=exc.message,
             flash_type="error",
@@ -326,7 +325,7 @@ def _handle_correction_post(
         expense = get_expense(db, expense_id, selected_id)
     except AppError as exc:
         return _web_redirect(
-            resolve_return_to(form.return_context.return_to, "/web/confirmed"),
+            form.return_context.resolve_path("/web/confirmed"),
             selected_id,
             msg=exc.message,
             flash_type="error",

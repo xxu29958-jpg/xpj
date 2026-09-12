@@ -39,7 +39,7 @@ from app.routes.web_common import (
 )
 from app.routes.web_recurring_occurrences import router as occurrences_router
 from app.schemas import RecurringCandidateConfirmRequest
-from app.services.currency_common import normalize_currency_code
+from app.services.currency_common import normalize_currency_code, supported_currency_codes
 from app.services.insights_service import recurring_candidates
 from app.services.recurring_candidate_confirmation_service import confirm_recurring_candidate
 from app.services.recurring_item_command_service import (
@@ -144,6 +144,7 @@ def _render_recurring(
         page_title="固定支出",
     )
     currency_code = ctx["home_currency_code"]
+    ctx["currency_options"] = [currency_code, *sorted(supported_currency_codes() - {currency_code})]
     # 列表按状态筛选, 默认「全部」不带归档尸体; hero 与筛选解耦, 始终全体 active。
     if status:
         visible = [item for item in all_items if item.status == status]

@@ -5,6 +5,7 @@
   {{ csrf_field|safe }}
   <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
   <input type="hidden" name="month" value="{{ occurrence.period }}">
+  {% if focused_payment %}<input type="hidden" name="payment_id" value="{{ focused_payment.id }}">{% endif %}
   <input type="hidden" name="action" value="{{ action }}">
   <input type="hidden" name="idempotency_key" value="{{ key }}">
   <input type="hidden" name="expected_row_version" value="{{ occurrence.row_version }}">
@@ -13,6 +14,29 @@
   <input type="hidden" name="expense_public_id" value="{{ expense }}">
   <input type="hidden" name="expected_expense_row_version" value="{{ revision }}">
   {% endif %}
+{% endmacro %}
+{% macro payment_card(payment, can_link=True) %}
+  <div class="product-panel product-panel--padded">
+    <p><strong>{{ payment.merchant }}</strong> · {{ payment.date }} · {{ payment.home_currency_code or '' }} {{ payment.amount }}</p>
+    {% if payment.status == 'rejected' %}
+    <p>这笔账单已忽略，本期仍未关联付款。如果是误操作，可以在保留时间内撤销忽略。</p>
+    <form method="post" action="/web/expenses/{{ payment.id }}/undo">
+      {{ csrf_field|safe }}
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <input type="hidden" name="expected_row_version" value="{{ payment.row_version }}">
+      {% for name, value in payment.return_fields.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+      <button class="product-button" type="submit">撤销忽略并继续核对</button>
+    </form>
+    {% else %}
+    <a href="{{ payment.href }}">核对账单</a>
+    {% if can_link %}
+    <form method="post" action="/web/recurring/{{ item.public_id }}/occurrence">
+      {{ command_fields('link', payment.key, payment.public_id, payment.row_version) }}
+      <button class="product-button" type="submit">用这笔付款确认本期已付</button>
+    </form>
+    {% else %}<p>这笔账单尚不能关联。请先核对并确认付款，再回到本期选择关联。</p>{% endif %}
+    {% endif %}
+  </div>
 {% endmacro %}
 {% block content %}
 <header class="product-page-header">
@@ -23,7 +47,7 @@
   </div>
 </header>
 <div class="plan-flow">
-{% if message %}<p class="product-feedback product-feedback--success" role="status">{{ message }}</p>{% endif %}
+{% if message %}<p class="product-feedback product-feedback--{{ 'error' if message_is_error else 'success' }}" role="{{ 'alert' if message_is_error else 'status' }}">{{ message }}</p>{% endif %}
 {% if error %}
 <div class="product-feedback product-feedback--danger" role="alert">
   <p>{{ error.message }}</p>
@@ -37,6 +61,7 @@
     {{ csrf_field|safe }}
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <input type="hidden" name="month" value="{{ occurrence.period }}">
+    {% if focused_payment %}<input type="hidden" name="payment_id" value="{{ focused_payment.id }}">{% endif %}
     {% for name, value in retry.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
     <button class="product-button" type="submit">重试原提交</button>
   </form>
@@ -55,7 +80,7 @@
   <p>选一张已确认账单，明确它已经付清本期义务。名称相同不会自动算作已付。</p>
   {% endif %}
   {% if occurrence.expense_id %}
-  <a class="product-button" href="/web/expenses/{{ occurrence.expense_id }}/edit?ledger_id={{ selected_ledger_id }}">查看原账单</a>
+  <a class="product-button" href="{{ linked_payment_href }}">查看原账单</a>
   {% if can_associate %}
   <form class="product-inline-form" method="post" action="/web/recurring/{{ item.public_id }}/occurrence">
     {{ command_fields('clear', command_key) }}
@@ -76,19 +101,24 @@
   <button class="product-button" type="submit">查看</button>
 </form>
 {% if can_associate and occurrence.state != 'fulfilled' %}
+<section class="product-panel product-panel--padded" aria-label="记录本期付款">
+  <h2>还没有付款账单？</h2>
+  <a class="product-button product-button--primary" href="{{ record_payment_href }}">记录这次付款</a>
+  <p class="hint">带入计划的名称、原币和金额，实际金额与付款日期可以修改。保存后返回本期核对并关联。</p>
+</section>
+{% if focused_payment %}
+<section class="product-panel product-panel--padded" aria-label="刚记录的付款">
+  <h2>刚记录的付款</h2>
+  <p>这笔账单对应当前任务，付款月份可以与义务月份不同。</p>
+  {{ payment_card(focused_payment, focused_payment.eligible) }}
+</section>
+{% endif %}
 <section class="product-panel product-panel--padded" aria-label="选择本期付款">
   <h2>关联已有付款</h2>
   <p>关联表示这张账单已付清本期；不支持拆分一笔付款给多期。付款的原金额、日期与币种保持不变。</p>
   {% for payment in payments %}
-  <div class="product-panel product-panel--padded">
-    <p><strong>{{ payment.merchant }}</strong> · {{ payment.date }} · {{ payment.home_currency_code or '' }} {{ payment.amount }}</p>
-    <a href="/web/expenses/{{ payment.id }}/edit?ledger_id={{ selected_ledger_id }}">核对账单</a>
-    <form method="post" action="/web/recurring/{{ item.public_id }}/occurrence">
-      {{ command_fields('link', payment.key, payment.public_id, payment.row_version) }}
-      <button class="product-button" type="submit">用这笔付款确认本期已付</button>
-    </form>
-  </div>
-  {% else %}<p>没有找到可关联的已确认账单。可以调整付款月份，或先到流水中记录并确认付款。</p>{% endfor %}
+  {{ payment_card(payment) }}
+  {% else %}<p>这个筛选范围没有其他可关联账单。可以调整付款月份，或从上方记录这次付款。</p>{% endfor %}
   {% if limited %}<p>仅显示最近 100 张，请缩小月份或搜索范围。</p>{% endif %}
 </section>
 {% elif not can_associate %}<p class="readonly-inline">当前仅可查看本期记录。</p>{% endif %}

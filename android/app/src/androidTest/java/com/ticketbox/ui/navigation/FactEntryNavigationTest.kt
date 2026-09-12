@@ -274,7 +274,7 @@ class FactEntryNavigationTest {
         assertEquals(MainProductDestination.Secondary(ProductSecondaryPage.ObligationSync), harness.shell.activeDestination)
     }
 
-    @Test fun recurringPaymentOpensItsExactFactAndReturnsToTheRecurringList() {
+    @Test fun recurringPaymentOpensItsExactFactAndReturnsToItsRefreshedPeriod() {
         installMainGraph()
         compose.runOnIdle { harness.shell.openSecondaryPage(ProductSecondaryPage.Recurring) }
         waitForText(context.getString(R.string.recurring_hero_meta, 1))
@@ -286,11 +286,11 @@ class FactEntryNavigationTest {
         waitForText(openPayment)
         compose.onNodeWithText(openPayment).performScrollTo().performClick()
         assertRealFactAndReturn()
-        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(openOccurrence))
-        compose.onNodeWithText("家庭固定支出").assertIsDisplayed()
-        compose.onNodeWithText(openOccurrence).assertIsDisplayed()
+        waitForText(openPayment)
+        compose.onNodeWithTag("occurrence-period").assertExists()
+        compose.waitUntil(5_000) { harness.fixture.network.occurrenceReads.size > 1 }
         assertEquals(MainProductDestination.Secondary(ProductSecondaryPage.Recurring), harness.shell.activeDestination)
-        assertEquals("navigation-recurring", harness.fixture.network.occurrenceReads.single().first)
+        assertEquals("navigation-recurring", harness.fixture.network.occurrenceReads.last().first)
         assertTrue(harness.fixture.stored().isEmpty())
     }
 
