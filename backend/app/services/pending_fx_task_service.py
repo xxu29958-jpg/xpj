@@ -193,12 +193,14 @@ def refill_pending_expense_fx(*, after_id: int = 0) -> int:
             # Never carry the admission lock into the next Expense transaction.
             with SessionLocal() as db:
                 expense = db.get(Expense, expense_id)
-                if expense is not None:
-                    prepared = _prepare_automatic_fx(db, expense=expense,
-                        initiator_account_id=None, initiator_device_id=None)
-                    db.commit()
-                    if prepared is not None:
-                        submit_pending_expense_fx(db, prepared)
+                if expense is None:
+                    after_id = expense_id
+                    continue
+                prepared = _prepare_automatic_fx(db, expense=expense,
+                    initiator_account_id=None, initiator_device_id=None)
+                db.commit()
+                if prepared is not None:
+                    submit_pending_expense_fx(db, prepared)
         except BackgroundTaskCapacityFullError:
             # Keep the blocked bill first, including when later bills keep arriving.
             return after_id
