@@ -141,6 +141,27 @@ def test_replayed_original_reject_cannot_supply_a_later_rejections_undo_token(cl
             LedgerAuditLog.resource_type == "expense", LedgerAuditLog.action == "undo")) == 1
 
 
+def test_first_delayed_reject_with_old_token_cannot_claim_another_rejection(client, identity):
+    expense_id = _create_pending(client, identity=identity)
+    endpoint = f"/api/expenses/{expense_id}/reject"
+    with SessionLocal() as db:
+        original_version = db.get(Expense, expense_id).row_version
+    first = client.post(endpoint,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": original_version})
+    assert first.status_code == 200, first.text
+    key = str(uuid4())
+    delayed = client.post(endpoint, headers={**identity.app_headers, "Idempotency-Key": key},
+        json={"expected_row_version": original_version})
+    assert delayed.status_code == 409, delayed.text
+    assert delayed.json()["error"] == "state_conflict"
+    with SessionLocal() as db:
+        current = db.get(Expense, expense_id)
+        assert (current.status, current.row_version) == ("rejected", first.json()["row_version"])
+        assert current.rejected_at.isoformat().replace("+00:00", "Z") == first.json()["rejected_at"]
+        assert db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == key)) is None
+
+
 def test_undo_ack_loss_replays_original_success_without_a_second_restore(client, identity, monkeypatch):
     expense_id = _create_pending(client, identity=identity)
     _reject(client, expense_id, identity=identity)
