@@ -366,4 +366,7 @@ def _offset_stream_projection(
         original_currency_code=offset.original_currency_code,
         home_currency_code=offset.home_currency_code,
         category=offset.category,
+        exchange_rate_to_cny=offset.exchange_rate_to_cny,
+        exchange_rate_date=offset.exchange_rate_date,
+        exchange_rate_source=offset.exchange_rate_source,
     )

@@ -13,6 +13,30 @@ class ExpenseDtoContractTest {
         .build()
 
     @Test
+    fun offsetListProjectionAcceptsAdditiveFrozenExportEvidence() {
+        val adapter = moshi.adapter(ConfirmedOffsetStreamDto::class.java)
+        val dto = requireNotNull(adapter.fromJson("""
+            {
+              "public_id":"offset-frozen",
+              "kind":"refund",
+              "amount_cents":3728,
+              "original_amount_minor":2500,
+              "original_currency_code":"USD",
+              "home_currency_code":"JPY",
+              "category":"购物",
+              "exchange_rate_to_cny":"149.12345678",
+              "exchange_rate_date":"2026-05-05",
+              "exchange_rate_source":"manual"
+            }
+        """.trimIndent()))
+
+        assertEquals(
+            ConfirmedOffsetStreamDto("offset-frozen", ExpenseOffsetKindDto.Refund, 3728, 2500, "USD", "JPY", "购物"),
+            dto,
+        )
+    }
+
+    @Test
     fun uploadResponseDtoPreservesRequiredEnrichmentTaskReceipt() {
         val adapter = moshi.adapter(UploadResponseDto::class.java)
         val wireReceipt = """
