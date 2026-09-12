@@ -5,6 +5,7 @@ import com.squareup.moshi.JsonDataException
 import com.squareup.moshi.JsonEncodingException
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
+import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
@@ -25,6 +26,7 @@ import retrofit2.HttpException
 class ConfirmExpenseDispatcher(
     private val apiProvider: (OutboxRow) -> ApiService,
     private val payloadAdapter: JsonAdapter<ExpenseStateTokenRequest>,
+    private val publishExpense: suspend (ledgerId: String, expense: ExpenseDto) -> Unit,
 ) : OutboxMutationDispatcher {
     override val type: PendingMutationType = PendingMutationType.ConfirmExpense
 
@@ -58,6 +60,7 @@ class ConfirmExpenseDispatcher(
             // committed-but-unseen first attempt is deduped server-side (HIT →
             // canonical row) instead of false-409ing on the stale row_version.
             val confirmed = apiProvider(row).confirmExpense(expenseRef, request, idempotencyKey)
+            publishExpense(row.ledgerId, confirmed)
             DispatchResult.Success(newRowVersion = confirmed.rowVersion)
         } catch (e: HttpException) {
             mapOutboxHttpException(e)

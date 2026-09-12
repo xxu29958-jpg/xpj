@@ -55,7 +55,7 @@ internal class ExpenseCorrectionQueueContinuationTest(private val status: Pendin
         if (status == PendingMutationStatus.Conflict) outbox.markConflict(correction, "Current fact changed")
         else outbox.markFailed(correction, "Uncertain original result")
         assertIs<ExpenseOffsetMutationOutcome.Queued>(repository.voidExpenseOffsetAllowingOffline(
-            bundle.root.toDomain(), bundle.toDomain().activeOffsets.single(), "Undo the original refund").getOrThrow())
+            binding, bundle.root.toDomain(), bundle.toDomain().activeOffsets.single(), "Undo the original refund").getOrThrow())
         val original = queue.rows.values.single { it.type == PendingMutationType.VoidExpenseOffset.wireValue }
         val engine = OutboxDrainEngine(outbox, listOf(VoidExpenseOffsetDispatcher({ api }, adapter) { ledgerId, response ->
             val projection = response.toCacheProjection(ledgerId)

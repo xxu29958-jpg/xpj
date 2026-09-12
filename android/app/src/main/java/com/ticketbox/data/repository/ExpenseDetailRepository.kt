@@ -47,7 +47,7 @@ internal class ExpenseDetailRepository(
         } else {
             core.expenseDao.getConfirmed(ledgerId).firstOrNull { it.id == -domainId }
         }
-        cached?.toDomain()
+        cached?.takeIf { it.status == "pending" || it.status == "confirmed" }?.toDomain()
             ?: throw RepositoryException("本地没有这笔账单，请联网后重试。")
     }
 
@@ -477,7 +477,7 @@ internal class ExpenseDetailRepository(
         // closed（跨币种捕获契约挂账 D9），不是同步失败 bug；一次性 safeCall，无重试调度。
         val bound = core.ledgerRequestGuard.bindExact(expectedBinding)
         val created = bound.call { it.createNotificationDraft(draft.toRequest(notificationKey)) }
-        created.toDomain()
+        core.cacheServerExpense(created, bound).toDomain()
     }
 
     suspend fun createRepaymentDraftFromExpense(
@@ -510,7 +510,7 @@ internal class ExpenseDetailRepository(
         val retried = bound.call {
             it.retryOcr(id.toString(), ExpenseStateTokenRequest(expectedRowVersion), UUID.randomUUID().toString())
         }
-        retried.toDomain()
+        core.cacheServerExpense(retried, bound).toDomain()
     }
 
     /**
@@ -545,7 +545,7 @@ internal class ExpenseDetailRepository(
                 val retried = bound.call {
                     it.retryOcr(expense.id.toString(), ExpenseStateTokenRequest(expense.rowVersion), idempotencyKey)
                 }
-                ExpenseStateOutcome.Synced(retried.toDomain()) as ExpenseStateOutcome
+                ExpenseStateOutcome.Synced(core.cacheServerExpense(retried, bound).toDomain()) as ExpenseStateOutcome
             } catch (networkError: IOException) {
                 core.enqueueStateTransition(
                     bound = bound,
@@ -597,7 +597,8 @@ internal class ExpenseDetailRepository(
             // Outbox wiring missing OR baseline lacked a token — direct-only;
             // any failure (incl. IOException) surfaces as Result.failure so we
             // don't pretend we recognised.
-            val recognized = bound.call { it.recognizeText(expense.id.toString(), request, idempotencyKey) }.toDomain()
+            val recognized = core.cacheServerExpense(
+                bound.call { it.recognizeText(expense.id.toString(), request, idempotencyKey) }, bound).toDomain()
             return@safeCall ExpenseStateOutcome.Synced(recognized)
         }
         val enqueueContext = DetailOutboxContext(
@@ -613,7 +614,8 @@ internal class ExpenseDetailRepository(
             return@safeCall ExpenseStateOutcome.Queued(expense)
         }
         try {
-            val recognized = bound.call { it.recognizeText(expense.id.toString(), request, idempotencyKey) }.toDomain()
+            val recognized = core.cacheServerExpense(
+                bound.call { it.recognizeText(expense.id.toString(), request, idempotencyKey) }, bound).toDomain()
             ExpenseStateOutcome.Synced(recognized) as ExpenseStateOutcome
         } catch (networkError: IOException) {
             // Queued is the expense UNCHANGED — the server does the parsing.

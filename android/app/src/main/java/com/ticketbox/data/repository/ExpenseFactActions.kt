@@ -49,6 +49,7 @@ interface ExpenseFactCommandActions {
         draft: ExpenseOffsetDraft,
     ): Result<ExpenseOffsetMutationOutcome>
     suspend fun voidExpenseOffsetAllowingOffline(
+        expectedBinding: LogicalSessionBinding,
         expense: Expense,
         offset: ExpenseOffsetFact,
         reason: String,

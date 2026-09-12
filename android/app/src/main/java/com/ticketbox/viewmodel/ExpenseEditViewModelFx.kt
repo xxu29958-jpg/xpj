@@ -7,6 +7,7 @@ import com.ticketbox.domain.model.BackgroundTask
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
+import com.ticketbox.domain.model.pendingNeedsFx
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -29,7 +30,7 @@ private fun ExpenseEditViewModel.requestExpenseFx(retry: Boolean) {
         _uiState.update { it.copy(fx = it.fx.copy(message = UiText.res(R.string.expense_fx_binding_changed))) }
         return
     }
-    if (retry && !repository.canModifyLedger()) return
+    if (retry && (!pendingNeedsFx(expense) || !repository.canModifyLedger())) return
     _uiState.update { it.copy(fx = it.fx.copy(loading = true, message = null)) }
     viewModelScope.launch {
         val result = if (retry) repository.retryExpenseFx(binding, expense) else repository.fetchExpenseFx(binding, expense.id)

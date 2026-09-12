@@ -394,10 +394,14 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
     }
 
     override suspend fun voidExpenseOffsetAllowingOffline(
+        expectedBinding: LogicalSessionBinding,
         expense: Expense,
         offset: ExpenseOffsetFact,
         reason: String,
     ): Result<ExpenseOffsetMutationOutcome> {
+        if (expectedBinding != correctionObservations.value.access?.binding) {
+            return Result.failure(RepositoryException("The void belongs to an obsolete binding"))
+        }
         voidOffsetCalls++
         lastVoidOffset = offset
         lastVoidReason = reason

@@ -1,5 +1,7 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.data.remote.dto.ExpenseDto
+
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
@@ -21,6 +23,8 @@ import kotlin.test.assertTrue
  * key; ``successExpenseDto`` / ``httpException`` build the responses).
  */
 internal class ConfirmExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestBase() {
+    private val published = mutableListOf<Pair<String, ExpenseDto>>()
+
 
     private fun confirmRow(idempotencyKey: String?, targetId: String = "expense:42"): OutboxRow = OutboxRow(
         id = 1L,
@@ -43,6 +47,7 @@ internal class ConfirmExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
     private fun dispatcherFor(stub: ApiServiceStub) = ConfirmExpenseDispatcher(
         apiProvider = { stub },
         payloadAdapter = moshi().adapter(ExpenseStateTokenRequest::class.java),
+        publishExpense = { ledgerId, expense -> published += ledgerId to expense },
     )
 
     @Test
@@ -53,6 +58,7 @@ internal class ConfirmExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
 
         assertEquals("key-abc", stub.lastConfirmIdempotencyKey, "dispatcher must send the row's key")
         assertEquals(DispatchResult.Success(newRowVersion = 2L), result)
+        assertEquals(listOf("owner" to successExpenseDto()), published)
     }
 
     @Test

@@ -88,7 +88,10 @@ def claim_queued_task(db: Session, task_id: int) -> BackgroundTask | None:
 
 def _mark_completed(db: Session, task_id: int, registry: TaskHandlerRegistry) -> None:
     task = db.get(BackgroundTask, task_id)
-    if task is None or task.status in _TERMINAL_STATUSES:
+    if task is None:
+        return
+    db.refresh(task, with_for_update=True)
+    if task.status in _TERMINAL_STATUSES:
         return
     try:
         task.status = "completed"
@@ -109,7 +112,10 @@ def _mark_completed(db: Session, task_id: int, registry: TaskHandlerRegistry) ->
 
 def _mark_cancelled(db: Session, task_id: int) -> None:
     task = db.get(BackgroundTask, task_id)
-    if task is None or task.status in _TERMINAL_STATUSES:
+    if task is None:
+        return
+    db.refresh(task, with_for_update=True)
+    if task.status in _TERMINAL_STATUSES:
         return
     task.status = "cancelled"
     task.completed_at = now_utc()

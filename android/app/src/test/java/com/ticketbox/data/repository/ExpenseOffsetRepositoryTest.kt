@@ -89,6 +89,23 @@ internal class ExpenseOffsetRepositoryTest : ExpensePendingRepositoryOutboxTestB
     }
 
     @Test
+    fun aRetiredBindingCannotQueueAVoidInTheCurrentLedger() = runTest {
+        val mutationDao = FakePendingMutationDao()
+        val api = OffsetApiService(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0))
+        val repository = buildRepository(api, FakeExpenseDao(), testOutboxRepository(mutationDao))
+        val current = requireNotNull(repository.observeCorrections().first().access).binding
+
+        val result = repository.voidExpenseOffsetAllowingOffline(
+            current.copy(bindingRevision = "retired-binding"), rootExpense(rowVersion = 7),
+            offsetFact(rowVersion = 2), "Original ledger void")
+
+        assertTrue(result.isFailure)
+        assertTrue(mutationDao.rows.isEmpty())
+        assertEquals(null, api.voidRequest)
+        assertEquals(null, api.idempotencyKey)
+    }
+
+    @Test
     fun queuedRefundLosingItsAckReplaysOriginalThroughDispatcherAndEngineOnlyOnce() = runTest {
         val mutationDao = FakePendingMutationDao()
         val outbox = testOutboxRepository(mutationDao)
@@ -216,6 +233,7 @@ internal class ExpenseOffsetRepositoryTest : ExpensePendingRepositoryOutboxTestB
         val repository = buildRepository(api, dao, outbox)
 
         val outcome = repository.voidExpenseOffsetAllowingOffline(
+            requireNotNull(repository.observeCorrections().first().access).binding,
             rootExpense(rowVersion = 3),
             offsetFact(rowVersion = 2),
             "误记退款",
@@ -249,6 +267,7 @@ internal class ExpenseOffsetRepositoryTest : ExpensePendingRepositoryOutboxTestB
         )
 
         val outcome = repository.voidExpenseOffsetAllowingOffline(
+            requireNotNull(repository.observeCorrections().first().access).binding,
             rootExpense(rowVersion = 7),
             offsetFact(rowVersion = 2),
             "误记退款",

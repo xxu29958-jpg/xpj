@@ -16,7 +16,12 @@ from app.errors import AppError
 from app.models import Account, BackgroundTask, Device, Expense
 from app.services import background_task_service
 from app.services.background_task_admission import BackgroundTaskCapacityFullError, readmit_orphaned_task
-from app.services.background_task_handler_api import TaskCancelledError, check_cancellation_requested, mark_failed
+from app.services.background_task_handler_api import (
+    TaskCancelledError,
+    check_cancellation_requested,
+    mark_failed,
+    retire_obsolete_task,
+)
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.exchange_rate_service import resolve_payload_rate
 from app.services.expense_query import resolve_expense
@@ -107,11 +112,34 @@ def _prepare_input(
     return prepared
 
 
+def _retire_obsolete_fx_tasks(
+    db: Session, *, tenant_id: str, expense_id: int, current: PendingFxInput | None,
+) -> None:
+    # The caller already owns the Expense lock. Keep the same order for all
+    # paths: Expense, old task rows by id, then the existing admission lock.
+    tasks = db.scalars(select(BackgroundTask).where(
+        BackgroundTask.tenant_id == tenant_id,
+        BackgroundTask.source_expense_id == expense_id,
+        BackgroundTask.task_type == PENDING_EXPENSE_FX_TASK_TYPE,
+        BackgroundTask.status.in_(("queued", "running")),
+    ).order_by(BackgroundTask.id))
+    for task in tasks:
+        try:
+            original = _original_input(task)
+        except ValueError:
+            # Invalid durable inputs remain the task handler's explicit failure.
+            continue
+        if original != current:
+            retire_obsolete_task(db, task)
+    db.flush()
+
+
 def prepare_pending_expense_fx(
     db: Session, *, expense: Expense, initiator_account_id: int | None, initiator_device_id: int | None,
 ) -> background_task_service.PreparedBackgroundTask | None:
     """Stage alongside an accepted bill; capacity refusal must not discard that bill."""
-    if not get_settings().fx_rate_auto_sync_enabled or _current_input(expense) is None:
+    if _current_input(expense) is None and expense.row_version <= 1:
+        # A new inapplicable bill cannot have a superseded positive-version FX input.
         return None
     db.flush()
     current = resolve_expense(db, expense.tenant_id, expense.id, for_update=True)
@@ -119,7 +147,8 @@ def prepare_pending_expense_fx(
         return None
     db.refresh(current)
     original = _current_input(current)
-    if original is None:
+    _retire_obsolete_fx_tasks(db, tenant_id=current.tenant_id, expense_id=current.id, current=original)
+    if not get_settings().fx_rate_auto_sync_enabled or original is None:
         return None
     latest = latest_pending_expense_fx_tasks(db, tenant_id=current.tenant_id, expense_ids=[current.id]).get(current.id)
     try:
@@ -216,6 +245,7 @@ def _request_for_expense(
     original = _current_input(expense)
     if original is None:
         raise AppError("fx_input_required", "请先核对待确认账单的原币金额和日期。", status_code=409)
+    _retire_obsolete_fx_tasks(db, tenant_id=expense.tenant_id, expense_id=expense.id, current=original)
     if latest is not None and previous == original and _can_resume(latest):
         return _resume_task(db, latest, original)
     prepared = _prepare_input(db, original, account_id=account_id, device_id=device_id)
@@ -275,6 +305,13 @@ def run_pending_expense_fx_task(db: Session, task: BackgroundTask, payload: dict
         if task.result_summary_json is not None:
             return
         result = _resolve_pending_fx(db, task_id, original)
+        # apply_pending_fx owns the Expense lock before this task lock. Re-read
+        # after IO/OCC so an old ORM object cannot overwrite retirement or receipt.
+        db.refresh(task, with_for_update=True)
+        if task.cancellation_requested_at is not None or task.status == "cancelled":
+            raise TaskCancelledError
+        if task.result_summary_json is not None:
+            return
         task.result_summary_json = json.dumps(asdict(result), ensure_ascii=False, separators=(",", ":"), sort_keys=True)
         task.progress_current = task.progress_total = 1
         task.progress_message = _PROGRESS_MESSAGES[result.outcome]

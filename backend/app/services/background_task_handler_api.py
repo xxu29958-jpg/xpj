@@ -58,4 +58,21 @@ def mark_failed(
     db.commit()
 
 
-__all__ = ["TaskCancelledError", "check_cancellation_requested", "mark_failed", "update_progress"]
+def retire_obsolete_task(db: Session, task: BackgroundTask) -> None:
+    """Stage domain-proved retirement; the caller commits it with its replacement.
+
+    A durable result already owns acceptance, even before worker publication.
+    Otherwise cancellation fences both a queued claim and a running handler.
+    """
+    db.refresh(task, with_for_update=True)
+    if task.status not in {"queued", "running"}:
+        return
+    task.completed_at = now_utc()
+    if task.result_summary_json is not None:
+        task.status = "completed"
+    else:
+        task.status = "cancelled"
+        task.cancellation_requested_at = task.cancellation_requested_at or task.completed_at
+
+
+__all__ = ["TaskCancelledError", "check_cancellation_requested", "mark_failed", "retire_obsolete_task", "update_progress"]

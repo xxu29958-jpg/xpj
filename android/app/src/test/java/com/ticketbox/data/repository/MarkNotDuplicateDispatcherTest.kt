@@ -1,5 +1,7 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.data.remote.dto.ExpenseDto
+
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
@@ -16,6 +18,8 @@ import kotlin.test.assertTrue
  * Conflict, fails loud on a keyless row.
  */
 internal class MarkNotDuplicateDispatcherTest : ExpensePendingRepositoryOutboxTestBase() {
+    private val published = mutableListOf<Pair<String, ExpenseDto>>()
+
 
     private fun markRow(idempotencyKey: String?): OutboxRow = OutboxRow(
         id = 1L,
@@ -38,6 +42,7 @@ internal class MarkNotDuplicateDispatcherTest : ExpensePendingRepositoryOutboxTe
     private fun dispatcherFor(stub: ApiServiceStub) = MarkNotDuplicateDispatcher(
         apiProvider = { stub },
         payloadAdapter = moshi().adapter(ExpenseStateTokenRequest::class.java),
+        publishExpense = { ledgerId, expense -> published += ledgerId to expense },
     )
 
     @Test
@@ -48,6 +53,7 @@ internal class MarkNotDuplicateDispatcherTest : ExpensePendingRepositoryOutboxTe
 
         assertEquals("key-abc", stub.lastMarkNotDuplicateIdempotencyKey, "dispatcher must send the row's key")
         assertEquals(DispatchResult.Success(newRowVersion = 2L), result)
+        assertEquals(listOf("owner" to successExpenseDto()), published)
     }
 
     @Test

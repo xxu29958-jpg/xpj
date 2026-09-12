@@ -5,6 +5,7 @@ import com.squareup.moshi.JsonDataException
 import com.squareup.moshi.JsonEncodingException
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
+import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
@@ -21,6 +22,7 @@ import retrofit2.HttpException
 class MarkNotDuplicateDispatcher(
     private val apiProvider: (OutboxRow) -> ApiService,
     private val payloadAdapter: JsonAdapter<ExpenseStateTokenRequest>,
+    private val publishExpense: suspend (ledgerId: String, expense: ExpenseDto) -> Unit,
 ) : OutboxMutationDispatcher {
     override val type: PendingMutationType = PendingMutationType.MarkNotDuplicate
 
@@ -54,6 +56,7 @@ class MarkNotDuplicateDispatcher(
             // committed-but-unseen first attempt is deduped server-side (HIT →
             // canonical row) instead of false-409ing on the stale row_version.
             val updated = apiProvider(row).markNotDuplicate(expenseRef, request, idempotencyKey)
+            publishExpense(row.ledgerId, updated)
             DispatchResult.Success(newRowVersion = updated.rowVersion)
         } catch (e: HttpException) {
             mapOutboxHttpException(e)

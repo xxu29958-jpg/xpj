@@ -11,7 +11,7 @@ import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.BackgroundTask
 import com.ticketbox.domain.model.Expense
-import com.ticketbox.domain.model.FxContract
+import com.ticketbox.domain.model.pendingNeedsFx
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.ExpenseEditPrimaryActions
@@ -34,7 +34,7 @@ internal fun ExpenseFxStatusCard(
     actions: ExpenseEditPrimaryActions,
 ) {
     val state = editState.fx
-    if (expense.status != "pending" || (expense.fxStatus != FxContract.StatusPending && state.task == null)) return
+    if (expense.status != "pending" || (!pendingNeedsFx(expense) && state.task == null)) return
     val busy = editState.saving || editState.expenseLoading
     val actionsEnabled = !busy && !state.loading
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
@@ -44,7 +44,7 @@ internal fun ExpenseFxStatusCard(
         TextButton(onClick = actions.onRefreshFx, enabled = actionsEnabled) {
             Text(stringResource(R.string.expense_fx_refresh))
         }
-        if (!editState.readOnly && (state.task == null || state.task.status in setOf("failed", "cancelled"))) {
+        if (pendingNeedsFx(expense) && !editState.readOnly && (state.task == null || state.task.status in setOf("failed", "cancelled"))) {
             TextButton(onClick = actions.onRetryFx, enabled = actionsEnabled) { Text(stringResource(R.string.expense_fx_retry)) }
         }
         if (state.task?.status == "completed") {

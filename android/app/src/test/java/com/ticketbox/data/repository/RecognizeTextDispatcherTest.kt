@@ -29,6 +29,8 @@ import kotlin.test.assertTrue
  * dispatcher does before dispatch (only the token is overwritten).
  */
 class RecognizeTextDispatcherTest {
+    private val published = mutableListOf<Pair<String, ExpenseDto>>()
+
 
     private fun moshi(): Moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
 
@@ -108,6 +110,7 @@ class RecognizeTextDispatcherTest {
     private fun dispatcherFor(stub: ApiService) = RecognizeTextDispatcher(
         apiProvider = { stub },
         payloadAdapter = moshi().adapter(ExpenseRecognizeTextRequestDto::class.java),
+        publishExpense = { ledgerId, expense -> published += ledgerId to expense },
     )
 
     @Test
@@ -118,6 +121,7 @@ class RecognizeTextDispatcherTest {
 
         assertEquals("key-abc", stub.lastIdempotencyKey, "dispatcher must send the row's key")
         assertEquals(DispatchResult.Success(newRowVersion = 8L), result)
+        assertEquals(listOf("owner" to recognizedExpenseDto(rowVersion = 8L)), published)
     }
 
     @Test

@@ -37,15 +37,10 @@ class BudgetOverspendRuntime(
 )
 
 /**
- * 预算超支提醒检测器（轴 6 主动性 · 五类事件之四）。挂在「确认态写入本地缓存」单点
- * （[ExpenseRepositoryCore.cacheIfConfirmed][com.ticketbox.data.repository.ExpenseRepositoryCore] →
- * `onConfirmedCommitted` 回调）：在线确认 / 手动记账 / 详情拉取发现 confirmed 都会触发一次检测。
+ * Checks the fresh budget after an accepted confirmed expense is published to the cache.
+ * Direct writes, observed server facts and accepted Outbox replays share onConfirmedCommitted.
+ * Pending drafts and offline cache reads do not trigger a check.
  *
- * 覆盖边界（KDoc 级契约，有意的 MVP 取舍）：离线确认的 outbox 重放成功（dispatcher 不走
- * cacheIfConfirmed）与他端（/web）确认推高的超支**不会**即时触发——由本端下一次在线确认动作补检。
- * 提醒不是对账：迟到一拍可接受，漏报不可接受的场景（看板）在 /web dashboard 已有 budget_is_over 红字。
- *
- * 频率与去重（三道闸，依次短路）：
  * 1. 月级 sent-key（[BudgetOverspendStore]）：同账本同月已提醒 → 永久跳过（一月一响，防骚扰）。
  * 2. throttle（[CHECK_THROTTLE_MILLIS]，进程内）：未超支时高频确认/详情拉取至多每 10 分钟
  *    真正拉一次预算 API。拉取**前**占坑——source 失败也算一次，避免网络故障时每次确认都重试。

@@ -187,10 +187,11 @@ class ExpenseRepository(
         row.lastError != "offset_create_requires_review" && core.offsetCreateAdapter?.readSupportedOffsetCreate(row) != null
 
     override suspend fun voidExpenseOffsetAllowingOffline(
+        expectedBinding: LogicalSessionBinding,
         expense: Expense,
         offset: ExpenseOffsetFact,
         reason: String,
-    ): Result<ExpenseOffsetMutationOutcome> = offsetRepository.voidAllowingOffline(expense, offset, reason)
+    ): Result<ExpenseOffsetMutationOutcome> = offsetRepository.voidAllowingOffline(expectedBinding, expense, offset, reason)
 
 
     override suspend fun updateExpense(

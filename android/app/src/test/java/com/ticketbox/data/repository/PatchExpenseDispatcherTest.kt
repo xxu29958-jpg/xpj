@@ -1,5 +1,7 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.data.remote.dto.ExpenseDto
+
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
@@ -22,6 +24,8 @@ import kotlin.test.assertTrue
  * ``ExpenseDto`` shape here.
  */
 internal class PatchExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestBase() {
+    private val published = mutableListOf<Pair<String, ExpenseDto>>()
+
 
     private fun patchRow(idempotencyKey: String?): OutboxRow {
         val payload = moshi().adapter(ExpenseUpdateRequest::class.java)
@@ -47,6 +51,7 @@ internal class PatchExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestBa
     private fun dispatcherFor(stub: ApiServiceStub) = PatchExpenseDispatcher(
         apiProvider = { stub },
         payloadAdapter = moshi().adapter(ExpenseUpdateRequest::class.java),
+        publishExpense = { ledgerId, expense -> published += ledgerId to expense },
     )
 
     @Test
@@ -58,6 +63,7 @@ internal class PatchExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestBa
         assertEquals("key-abc", stub.lastIdempotencyKey, "dispatcher must send the row's key")
         // successExpenseDto carries rowVersion=2L → cascaded to same-target rows.
         assertEquals(DispatchResult.Success(newRowVersion = 2L), result)
+        assertEquals(listOf("owner" to successExpenseDto()), published)
     }
 
     @Test

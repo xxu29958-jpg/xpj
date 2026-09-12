@@ -105,7 +105,7 @@ class PendingExpenseCacheRoomTest {
         offline = false
         val dispatcher = RejectExpenseDispatcher(apiProvider = { sendingApi },
             payloadAdapter = OutboxAdapterGraph().expenseStateTokenAdapter,
-            deleteConfirmedCache = fixture.expenseDao::deleteConfirmedByServerIds)
+            publishExpense = { ledgerId, expense -> fixture.expenseDao.applyServerExpense(ledgerId, expense.toEntity(ledgerId)); Unit })
         assertEquals(1, OutboxDrainEngine(fixture.outbox, listOf(dispatcher), now = fixture.clock::millis).drainOnce().done)
         val delivered = fixture.pendingDao.allRows().single()
         assertEquals(PendingMutationStatus.Done.wireValue, delivered.status)
@@ -122,7 +122,7 @@ class PendingExpenseCacheRoomTest {
         val repository = start()
         repository.fetchExpense(42).getOrThrow()
         fixture.expenseDao.insert(current.copy(id = 45, publicId = "stale-45").toEntity("correction-ledger"))
-        fixture.expenseDao.insert(current.toEntity("other-ledger"))
+        fixture.expenseDao.insert(current.copy(publicId = "other-ledger-expense-42").toEntity("other-ledger"))
         val before = current
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()

@@ -879,10 +879,6 @@ internal class LedgerFakeDao : ExpenseDao {
         val ids = map.values.filter { it.ledgerId == ledgerId && it.status == "confirmed" }.map { it.id }
         ids.forEach { map.remove(it) }
     }
-    override suspend fun deletePendingForLedger(ledgerId: String) {
-        val ids = map.values.filter { it.ledgerId == ledgerId && it.status == "pending" }.map { it.id }
-        ids.forEach { map.remove(it) }
-    }
     override suspend fun deleteConfirmedByServerIds(ledgerId: String, serverIds: List<Long>) {
         val remove = serverIds.toSet()
         val ids = map.values

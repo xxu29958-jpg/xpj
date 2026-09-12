@@ -22,7 +22,7 @@ import retrofit2.HttpException
 class RejectExpenseDispatcher(
     private val apiProvider: (OutboxRow) -> ApiService,
     private val payloadAdapter: JsonAdapter<ExpenseStateTokenRequest>,
-    private val deleteConfirmedCache: suspend (ledgerId: String, serverIds: List<Long>) -> Unit,
+    private val publishExpense: suspend (ledgerId: String, expense: ExpenseDto) -> Unit,
 ) : OutboxMutationDispatcher {
     override val type: PendingMutationType = PendingMutationType.RejectExpense
 
@@ -56,7 +56,7 @@ class RejectExpenseDispatcher(
             // committed-but-unseen first attempt is deduped server-side (HIT →
             // canonical row) instead of false-409ing on the stale row_version.
             val rejected = apiProvider(row).rejectExpense(expenseRef, request, idempotencyKey)
-            deleteConfirmedCacheIfRejected(row, rejected)
+            publishExpense(row.ledgerId, rejected)
             DispatchResult.Success(newRowVersion = rejected.rowVersion)
         } catch (e: HttpException) {
             mapOutboxHttpException(e)
@@ -69,9 +69,4 @@ class RejectExpenseDispatcher(
         }
     }
 
-    private suspend fun deleteConfirmedCacheIfRejected(row: OutboxRow, rejected: ExpenseDto) {
-        if (rejected.status == "rejected") {
-            deleteConfirmedCache(row.ledgerId, listOf(rejected.id))
-        }
-    }
 }

@@ -58,15 +58,16 @@ internal class ExpenseOffsetRepository(
     }
 
     suspend fun voidAllowingOffline(
+        expectedBinding: LogicalSessionBinding,
         expense: Expense,
         offset: ExpenseOffsetFact,
         reason: String,
     ): Result<ExpenseOffsetMutationOutcome> = core.errorHandler.safeCall {
+        val bound = core.ledgerRequestGuard.bindExact(expectedBinding)
         requireMutableRoot(expense)
         if (offset.rowVersion <= 0) throw RepositoryException("这条退款事实还不能撤销。")
         val cleanReason = requiredReason(reason)
         val outboxPayload = ExpenseOffsetVoidOutboxPayload(offset.publicId, cleanReason)
-        val bound = core.ledgerRequestGuard.bind()
         val key = UUID.randomUUID().toString()
         enqueueVoid(bound, expenseOutboxTargetId(expense), outboxPayload, offset.rowVersion, key)
         queuedVoid(offset, cleanReason)

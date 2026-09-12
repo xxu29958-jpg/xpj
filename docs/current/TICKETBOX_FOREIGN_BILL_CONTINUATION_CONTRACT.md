@@ -23,8 +23,10 @@ qualified at 45044f8b; this candidate incorporates that integration.
 | Reference lookup | Fetch by requested historical date and preserve actual publication date/source. An arbitrary older cached row is not proof that the requested date was checked; do not invent a fixed age threshold |
 | Cache and provider | Keep manual exact-date overrides and per-bill manual rates distinct. Concentrate any coverage evidence in the existing reference cache; retain configured transport and ECB provenance |
 | Background execution | Existing persistent task owner reports queued/running/result/failure and supports bounded retry/restart; network work cannot hold the financial command transaction. A nullable indexed source-expense relation supports direct per-bill queries; migrate the current enrichment source producer and valid stored inputs, rather than scanning task history or matching serialized JSON |
+| Superseded FX input | A changed pending revision must not exhaust admission with obsolete tasks. Automatic preparation and explicit retry retire older same-ledger/source inputs under the Expense lock before admission; preserve their original payload and any committed result. Worker publication must re-read its task after IO/OCC so an old object cannot undo retirement |
 | Release schema declaration | The release manifest's maximum schema must match the actual migration head consumed by the frozen backend; preserve the existing pre-freeze build check. This qualifies packaging of the product change and does not reopen Windows lifecycle |
 | Pending mutation | Revalidate status/OCC/current binding after fetching, preserve later user edits and confirmed snapshots, and use the existing Expense owner; conversion does not auto-confirm |
+| Android saved reads | Detail, accepted PATCH/lifecycle/recognition and Outbox responses must share the DAO version owner; confirmed-only caching loses accepted pending edits, and wholesale list replacement erases newer reads. Preserve hidden rejection versions, request-scoped pruning, original create receipt promotion and atomic correction/offset bundles. Item/split DTOs do not pretend to be complete Expense snapshots |
 | Product consumers | Web/Android pending queue, bill editor/detail, import result and data-health entries identify blocked bills and return to review; Owner FX status describes actual relevant outcome |
 | Actionable classification | A complete original amount awaiting conversion is missing FX, not missing amount. Data-health counts, both pending filters, quick-entry queues and labels must agree; task updates never replace unsaved form fields or OCC |
 | Shared rate consumers | Debt member FX, refund/reversal money and historical projections require dated coverage. Current/future plan valuation keeps the latest reference with its actual publication date. Exact manual overrides and frozen reversal/same-date correction snapshots remain; complete their real recovery consumers with direct regression proof |
@@ -49,6 +51,14 @@ owns OCC-checked pending conversion. Confirm-time hidden refresh and the unused
 direct importer are removed. Exact-date manual overrides and per-bill input stay
 on their existing owners; no confirmed fact is revalued.
 
+Older active FX inputs now end in the existing `cancelled` state, or `completed`
+when a durable result already exists. Retirement and replacement share the bill
+transaction; original inputs and receipts are not rewritten. Lock order is
+Expense → old task rows by id → existing admission lock. Claim, cancellation,
+conditional failure and restart/readmission retain their existing owners; retired
+rows cannot be claimed or readmitted. Direct one-slot edit/provider/receipt and
+explicit-retry producers cover this boundary; no scheduler or task state is added.
+
 `test_foreign_bill_continuation` exercises real import, failure, explicit retry,
 pending revision, stale-review refusal, confirmation and stats. Capture-producer,
 CSV atomicity, task-worker and migration tests cover actor attribution, original
@@ -71,6 +81,16 @@ The direct POST, Synced success branch, session-only pending chip and unreachabl
 direct-conflict refresh state are retired. Fact reads consume financial revisions
 without publishing another write signal. Web rate recovery retains the original
 financial form, including final-submit ledger checks; rate acceptance never submits it.
+Void captures the reviewed binding before launching and requires it at enqueue;
+late callbacks cannot publish into another binding. Both the FX card and retry
+command require complete original input, leaving missing amounts in the editor.
+
+The existing Expense DAO now owns accepted lifecycle snapshots from detail reads,
+direct mutations and their Outbox dispatchers. Rejected versions remain hidden
+from usable reads and prevent older responses reviving the bill. Pending lists
+prune only unchanged rows observed before the request and merge newer versions.
+The confirmed-only mutation cache and wholesale pending replacement are retired;
+disk Room tests cover edits, reject/undo, original queued rejection and late lists.
 
 The post-construction impact check includes dependent receipt items and splits:
 FX uses their existing reconciliation/allocation validators before publishing a
@@ -80,10 +100,13 @@ its bounded slot to FX in worker-owned completion: parent completion and child
 admission commit together, then the existing executor submits the child. The old
 running-parent admission path is removed; durable-result replay uses the same
 completion path. No task status, financial authority or persistence model is added.
-Formal review retains five FIX dispositions and rejects the old queued-refund
-refresh finding against the existing dispatcher-to-shell-to-Fact refresh chain.
-Short transaction/worker counterexamples changed from five failures to 27 passing
-checks; real database, Android and final exact-source qualification remain required.
+Formal findings covering task capacity, late completion, dependent snapshots,
+binding and cache publication have fix candidates. The queued-refund refresh
+finding is rejected against the existing dispatcher-to-shell-to-Fact refresh chain.
+Test-only cloud execution reproduced the task, binding, incomplete-input and three
+cache failures; one late-list fixture first failed its global public-ID constraint.
+That fixture now uses distinct identities without changing its pruning assertions.
+Actual final PostgreSQL/Room execution and formal review resolution remain required.
 
 The completion integration exposed a reverse dependency through the service facade.
 Prepared execution belongs to the existing registry; committed dispatch and its

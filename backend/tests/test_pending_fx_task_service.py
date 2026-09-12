@@ -257,7 +257,7 @@ def test_optional_admission_capacity_does_not_rollback_staged_bill(identity, mon
         db.commit()
     with SessionLocal() as db:
         assert db.get(Expense, expense_id).original_amount_minor == 1200
-        assert db.get(BackgroundTask, task_id).status == "queued"
+        assert db.get(BackgroundTask, task_id).status == "cancelled"
 
 
 @pytest.mark.parametrize("finish_stale_task", [False, True])
