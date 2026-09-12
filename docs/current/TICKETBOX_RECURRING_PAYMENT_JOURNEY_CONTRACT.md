@@ -28,7 +28,11 @@ owners. No new financial writer, matching engine, protocol state or Windows scop
 
 ## Gate and current state
 
-Test-first entry counterexamples are being prepared against 6de1bb39. The parent
+Three actual Web entry counterexamples failed against 6de1bb39: the create form
+has only a hidden currency, the unpaid period has no payment-entry action, and
+the expense return adapter drops the original series/period. Native PostgreSQL
+and three actual Android navigation producers are prepared; cloud execution is
+pending. The parent
 foreign-bill candidate is still under qualification; this isolated work does not
 change that candidate. Minimum proof is scoped pure UI/form checks, real native
 PostgreSQL flow, actual Android route execution, bounded review, exact candidate
