@@ -63,7 +63,23 @@ def test_one_slot_enrichment_hands_off_one_durable_fx_task_after_completion(monk
         task.status, task.started_at = "queued", None
         db.commit()
 
-    submissions = []
+    submissions, atomic_handoffs = [], []
+    real_commit = Session.commit
+
+    def check_atomic_completion(db):
+        completing = any(isinstance(row, BackgroundTask) and row.id == task_id and row.status == "completed"
+            for row in db.identity_map.values())
+        if completing:
+            child = db.scalar(select(BackgroundTask).where(BackgroundTask.source_expense_id == expense_id,
+                BackgroundTask.task_type == "expense_fx"))
+            assert child is not None, "Completion cannot commit before its durable child admission"
+            with SessionLocal() as observer:
+                assert observer.get(BackgroundTask, task_id).status == "running"
+                assert observer.get(BackgroundTask, child.id) is None, "Child admission leaked a separate transaction"
+            atomic_handoffs.append(child.id)
+        real_commit(db)
+
+    monkeypatch.setattr(Session, "commit", check_atomic_completion)
 
     def capture_committed_child(child_id, child_payload, *, registry):
         with SessionLocal() as observer:
@@ -80,6 +96,7 @@ def test_one_slot_enrichment_hands_off_one_durable_fx_task_after_completion(monk
     monkeypatch.setattr(background_task_service, "_submit_task", capture_committed_child)
     background_task_worker.run_task(task_id, payload)
     assert len(submissions) == 1, "The completed enrichment must pass its sole active slot to FX"
+    assert atomic_handoffs == submissions
     background_task_worker.run_task(task_id, payload)
     assert len(submissions) == 1 and calls == [expense_id]
     with SessionLocal() as db:

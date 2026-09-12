@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import com.ticketbox.data.remote.dto.BackgroundTaskDto
 import com.ticketbox.data.repository.toDomain
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.PendingPrimaryReviewAction
 import com.ticketbox.domain.model.pendingPrimaryReviewAction
 import com.ticketbox.ui.screens.pending.NeedsReviewFilter
@@ -83,6 +84,44 @@ class ExpenseFxViewModelTest {
             vm.retryFx()
             advanceUntilIdle()
             assertEquals(0, fake.fxRetryCalls)
+        } finally { Dispatchers.resetMain() }
+    }
+
+    @Test
+    fun incompleteReviewKeepsTheWholeOriginalUntilAllSnapshotsAgree() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val fake = FakeExpenseEditActions()
+            val vm = ExpenseEditViewModel(7, fake)
+            advanceUntilIdle()
+            val original = vm.uiState.value
+            val fresh = fake.baseExpense.copy(amountCents = 7000, rowVersion = 2)
+            val freshItems = fake.items(parentRowVersion = 2).copy(parentAmountCents = 7000)
+            val freshSplits = fake.splits(parentAmountCents = 7000, parentRowVersion = 2)
+            fake.fetchExpenseResponder = { Result.success(fresh) }
+            fake.fetchItemsResponder = { Result.success(freshItems) }
+            val incomplete = listOf(
+                Result.failure<ExpenseSplits>(IOException("offline")),
+                Result.success(fake.splits()),
+            )
+            for (result in incomplete) {
+                fake.fetchSplitsResponder = { result }
+                vm.loadFxReview(hasDraftChanges = false)
+                advanceUntilIdle()
+                assertEquals(original.expense, vm.uiState.value.expense)
+                assertEquals(original.expenseItems, vm.uiState.value.expenseItems)
+                assertEquals(original.expenseSplits, vm.uiState.value.expenseSplits)
+                assertTrue(vm.uiState.value.fx.message != null)
+                assertFalse(vm.uiState.value.expenseLoading)
+                assertFalse(vm.uiState.value.fx.loading)
+            }
+            fake.fetchSplitsResponder = { Result.success(freshSplits) }
+            vm.loadFxReview(hasDraftChanges = false)
+            advanceUntilIdle()
+            assertEquals(fresh, vm.uiState.value.expense)
+            assertEquals(freshItems, vm.uiState.value.expenseItems)
+            assertEquals(freshSplits, vm.uiState.value.expenseSplits)
+            assertEquals(0, fake.confirmCalls)
         } finally { Dispatchers.resetMain() }
     }
 

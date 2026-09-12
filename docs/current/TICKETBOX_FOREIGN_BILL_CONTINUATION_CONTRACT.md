@@ -72,6 +72,19 @@ direct-conflict refresh state are retired. Fact reads consume financial revision
 without publishing another write signal. Web rate recovery retains the original
 financial form, including final-submit ledger checks; rate acceptance never submits it.
 
+The post-construction impact check includes dependent receipt items and splits:
+FX uses their existing reconciliation/allocation validators before publishing a
+pending version. Android adopts the root and matching child versions together;
+an incomplete original amount remains an actionable amount gap. Enrichment passes
+its bounded slot to FX in worker-owned completion: parent completion and child
+admission commit together, then the existing executor submits the child. The old
+running-parent admission path is removed; durable-result replay uses the same
+completion path. No task status, financial authority or persistence model is added.
+Formal review retains five FIX dispositions and rejects the old queued-refund
+refresh finding against the existing dispatcher-to-shell-to-Fact refresh chain.
+Short transaction/worker counterexamples changed from five failures to 27 passing
+checks; real database, Android and final exact-source qualification remain required.
+
 | Exit | Direct qualification producer |
 |---|---|
 | Dated conversion, preserved source and separate review | PostgreSQL foreign-bill/capture/CSV/task/migration tests; frozen-money and valuation tests |
