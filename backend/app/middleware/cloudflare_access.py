@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 
+from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 from starlette.responses import Response
 
@@ -53,7 +54,8 @@ async def cloudflare_access_guard(
             request_id=getattr(request.state, "request_id", None),
         )
     try:
-        claims = verify_cloudflare_access_jwt(
+        claims = await run_in_threadpool(
+            verify_cloudflare_access_jwt,
             token,
             team_domain=cfg.cloudflare_access_team_domain,
             audience=cfg.cloudflare_access_aud,
