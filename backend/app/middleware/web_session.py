@@ -29,9 +29,12 @@ URL editing).
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from typing import Literal
 from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy.exc import SQLAlchemyError
+from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
 
@@ -47,12 +50,14 @@ from app.routes.web_auth import (
     read_session_token,
 )
 from app.services.identity_service import (
+    WebSessionAuthResult,
     authenticate_desktop_session_token,
     authenticate_web_session_principal,
     authenticate_web_session_token,
     installation_web_identity_present,
     resolve_installation_web_account_id,
 )
+from app.tenants import AuthContext, SessionPrincipal
 
 DESKTOP_BRIDGE_HEADER = "X-Ticketbox-Desktop-Bridge"
 DESKTOP_BRIDGE_VERSION = "v1"
@@ -143,6 +148,54 @@ def _session_recovery_target(request: Request) -> str:
     )
 
 
+@dataclass(frozen=True)
+class _BrowserCookieOutcome:
+    kind: Literal["ok", "account_mismatch", "ledger_picker"]
+    principal: SessionPrincipal | None = None
+    result: WebSessionAuthResult | None = None
+
+
+@dataclass(frozen=True)
+class _LoopbackInstallationIdentity:
+    present: bool
+    account_id: int | None
+
+
+def _desktop_bridge_authenticate(token: str) -> AuthContext:
+    with SessionLocal() as db:
+        return authenticate_desktop_session_token(db, token)
+
+
+def _browser_cookie_authenticate(
+    token: str,
+    required_account_id: int | None,
+) -> _BrowserCookieOutcome:
+    with SessionLocal() as db:
+        principal = authenticate_web_session_principal(
+            db,
+            token,
+            ttl_seconds=SESSION_COOKIE_MAX_AGE_SECONDS,
+        )
+        if required_account_id is not None and principal.account_id != required_account_id:
+            return _BrowserCookieOutcome(kind="account_mismatch")
+        try:
+            result = authenticate_web_session_token(
+                db,
+                token,
+                ttl_seconds=SESSION_COOKIE_MAX_AGE_SECONDS,
+            )
+        except AppError:
+            return _BrowserCookieOutcome(kind="ledger_picker")
+        return _BrowserCookieOutcome(kind="ok", principal=principal, result=result)
+
+
+def _loopback_installation_identity() -> _LoopbackInstallationIdentity:
+    with SessionLocal() as db:
+        present = installation_web_identity_present(db)
+        account_id = resolve_installation_web_account_id(db) if present else None
+        return _LoopbackInstallationIdentity(present=present, account_id=account_id)
+
+
 def _login_redirect_url(request: Request) -> str:
     return f"/web/auth/login?{urlencode({'next': _session_recovery_target(request)})}"
 
@@ -204,8 +257,7 @@ async def _desktop_bridge_session_gate(
         )
 
     try:
-        with SessionLocal() as db:
-            auth = authenticate_desktop_session_token(db, token)
+        auth = await run_in_threadpool(_desktop_bridge_authenticate, token)
     except AppError as exc:
         return _app_error_response(request, exc)
     except SQLAlchemyError:
@@ -236,27 +288,11 @@ async def _browser_cookie_session_gate(
         return RedirectResponse(url=login_url, status_code=303)
 
     try:
-        with SessionLocal() as db:
-            principal = authenticate_web_session_principal(
-                db,
-                token,
-                ttl_seconds=SESSION_COOKIE_MAX_AGE_SECONDS,
-            )
-            if required_account_id is not None and principal.account_id != required_account_id:
-                redirect = RedirectResponse(url=login_url, status_code=303)
-                clear_session_cookie(redirect)
-                return redirect
-            try:
-                result = authenticate_web_session_token(
-                    db,
-                    token,
-                    ttl_seconds=SESSION_COOKIE_MAX_AGE_SECONDS,
-                )
-            except AppError:
-                return RedirectResponse(
-                    url=_ledger_picker_redirect_url(request),
-                    status_code=303,
-                )
+        outcome = await run_in_threadpool(
+            _browser_cookie_authenticate,
+            token,
+            required_account_id,
+        )
     except AppError:
         redirect = RedirectResponse(url=login_url, status_code=303)
         clear_session_cookie(redirect)
@@ -269,9 +305,19 @@ async def _browser_cookie_session_gate(
             request_id=_request_id(request),
         )
 
-    request.state.web_session_principal = principal
-    request.state.web_session_auth = result.auth
-    ledger_error = _ledger_binding_error(request, result.auth.ledger_id)
+    if outcome.kind == "account_mismatch":
+        redirect = RedirectResponse(url=login_url, status_code=303)
+        clear_session_cookie(redirect)
+        return redirect
+    if outcome.kind == "ledger_picker" or outcome.principal is None or outcome.result is None:
+        return RedirectResponse(
+            url=_ledger_picker_redirect_url(request),
+            status_code=303,
+        )
+
+    request.state.web_session_principal = outcome.principal
+    request.state.web_session_auth = outcome.result.auth
+    ledger_error = _ledger_binding_error(request, outcome.result.auth.ledger_id)
     if ledger_error is not None:
         return ledger_error
     return await call_next(request)
@@ -300,13 +346,7 @@ async def web_session_gate(
         and is_loopback_request(request)
     ):
         try:
-            with SessionLocal() as db:
-                has_installation_identity = installation_web_identity_present(db)
-                installation_account_id = (
-                    resolve_installation_web_account_id(db)
-                    if has_installation_identity
-                    else None
-                )
+            installation = await run_in_threadpool(_loopback_installation_identity)
         except AppError as exc:
             return _app_error_response(request, exc)
         except SQLAlchemyError:
@@ -316,12 +356,12 @@ async def web_session_gate(
                 status_code=503,
                 request_id=_request_id(request),
             )
-        if has_installation_identity:
+        if installation.present:
             return await _browser_cookie_session_gate(
                 request,
                 call_next,
                 login_url=_local_identity_redirect_url(request),
-                required_account_id=installation_account_id,
+                required_account_id=installation.account_id,
             )
         if runtime_settings_service_owned():
             return error_response(
