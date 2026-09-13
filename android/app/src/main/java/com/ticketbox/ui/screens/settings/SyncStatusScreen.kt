@@ -1,6 +1,5 @@
 package com.ticketbox.ui.screens.settings
 
-import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -371,7 +370,15 @@ internal fun FailedCard(
 ) {
     // Expired rows cannot be retried because the server-side idempotency key may be gone.
     val expired = isExpiredFailure(row.lastError)
-    val reviewMessage = failedRowReviewMessage(row, onRetry)
+    val reviewMessage = when {
+        row.lastError == EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW ->
+            R.string.sync_status_expense_original_requires_review
+        row.type == PendingMutationType.UndoExpense && row.lastError == "expense_not_found" ->
+            R.string.sync_status_undo_unavailable
+        row.type == PendingMutationType.CreateExpenseOffset && onRetry == null ->
+            R.string.expense_offset_original_requires_review
+        else -> null
+    }
     SettingsOpenPanel(
         modifier = Modifier.semantics(mergeDescendants = true) {},
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
@@ -421,17 +428,6 @@ internal fun FailedCard(
             )
         }
     }
-}
-
-@StringRes
-private fun failedRowReviewMessage(row: OutboxRow, onRetry: (() -> Unit)?): Int? = when {
-    row.lastError == EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW ->
-        R.string.sync_status_expense_original_requires_review
-    row.type == PendingMutationType.UndoExpense && row.lastError == "expense_not_found" ->
-        R.string.sync_status_undo_unavailable
-    row.type == PendingMutationType.CreateExpenseOffset && onRetry == null ->
-        R.string.expense_offset_original_requires_review
-    else -> null
 }
 
 @Composable
