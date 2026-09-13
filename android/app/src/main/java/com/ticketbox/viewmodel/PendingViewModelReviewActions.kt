@@ -138,11 +138,15 @@ fun PendingViewModel.saveAmountAndConfirm(expenseId: Long, originalAmountMinor: 
     val expense = _uiState.value.items.firstOrNull { it.id == expenseId } ?: return
     if (originalCurrencyUnsupportedOf(expense)) return
     val draft = blankDraft().copy(originalCurrencyCode = expense.originalCurrencyCode, originalAmountMinor = originalAmountMinor)
-    submitPendingCommand(expense, R.string.pending_review_amount_save_failed) { binding ->
-        repository.saveAndConfirmExpense(binding, expense, draft).onSuccess {
+    submitPendingCommand(
+        expense,
+        R.string.pending_review_amount_save_failed,
+        onAccepted = {
             reviewSkippedIds.add(expenseId)
             advanceReviewOrClose(ReviewField.AMOUNT, expenseId, UiText.res(R.string.expense_command_accepted))
-        }
+        },
+    ) { binding ->
+        repository.saveAndConfirmExpense(binding, expense, draft)
     }
 }
 
@@ -163,7 +167,11 @@ fun PendingViewModel.confirmReadyExpenses() {
         actionInProgressIds = it.actionInProgressIds + ids, message = null) }
     viewModelScope.launch {
         repository.confirmExpenses(binding, ready).onSuccess { accepted ->
-            if (commandBinding() != binding) return@onSuccess
+            if (!holdsCommandBinding(binding)) {
+                _uiState.update { it.copy(bulkConfirm = BulkConfirmRunState(),
+                    actionInProgressIds = it.actionInProgressIds - ids) }
+                return@onSuccess
+            }
             bulkCommandRows.addAll(accepted.flatMap { it.rowIds })
             accepted.forEach { acceptExpenseCommand(it) }
             _uiState.update { it.copy(bulkConfirm = it.bulkConfirm.copy(running = false),
@@ -171,7 +179,11 @@ fun PendingViewModel.confirmReadyExpenses() {
                 message = UiText.res(R.string.expense_command_accepted)) }
             reconcileExpenseCommands()
         }.onFailure { error ->
-            if (commandBinding() != binding) return@onFailure
+            if (!holdsCommandBinding(binding)) {
+                _uiState.update { it.copy(bulkConfirm = BulkConfirmRunState(),
+                    actionInProgressIds = it.actionInProgressIds - ids) }
+                return@onFailure
+            }
             _uiState.update { it.copy(bulkConfirm = BulkConfirmRunState(total = ready.size, failed = ready.size),
                 actionInProgressIds = it.actionInProgressIds - ids,
                 message = error.toUiText(R.string.pending_msg_confirm_failed)) }
@@ -248,13 +260,15 @@ private fun PendingViewModel.patchExpense(
 ) {
     if (blockReadOnlyWrite(closeSheet = true)) return
     val baseline = _uiState.value.items.firstOrNull { it.id == expenseId } ?: return
-    submitPendingCommand(baseline, failureMessageFallback) { binding ->
-        repository.saveExpenseAllowingOffline(binding, expenseId, draft, baseline).onSuccess { accepted ->
-            _uiState.update { PendingUiStateReducer.afterUpdated(it, accepted.expense, closeSheet = false,
-                message = UiText.res(R.string.expense_command_accepted)) }
+    submitPendingCommand(
+        baseline,
+        failureMessageFallback,
+        onAccepted = {
             reviewSkippedIds.add(expenseId)
             advanceReviewOrClose(field, expenseId, UiText.res(R.string.expense_command_accepted))
-        }
+        },
+    ) { binding ->
+        repository.saveExpenseAllowingOffline(binding, expenseId, draft, baseline)
     }
 }
 

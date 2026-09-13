@@ -2,11 +2,16 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.R
 import com.ticketbox.data.repository.ExpenseEditActions
-import com.ticketbox.data.repository.ExpenseStateOutcome
+import com.ticketbox.data.repository.ExpenseCommandAcceptance
+import com.ticketbox.data.repository.ExpenseCommandObservation
+import com.ticketbox.data.repository.LedgerAccessContext
+import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.data.local.PendingMutationType
+import kotlinx.coroutines.flow.MutableStateFlow
 import com.ticketbox.data.repository.ItemsAckOutcome
 import com.ticketbox.data.repository.ReplaceItemsOutcome
 import com.ticketbox.data.repository.ReplaceSplitsOutcome
-import com.ticketbox.data.repository.SaveOutcome
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
@@ -42,8 +47,8 @@ import kotlinx.coroutines.test.setMain
  * 该 ViewModel 此前直接依赖 final 的 [com.ticketbox.data.repository.ExpenseRepository]
  * 门面、无法 fake，是 viewmodel/ 里唯一零单测的大 VM。本切片抽出
  * [ExpenseEditActions] 接口（PendingReviewActions 先例模式）后补上：
- * save / confirm 的 Synced·Queued·failure 分支、confirm 的金额守卫与
- * token 级联、saveSplits 的 ADR-0042 P1 防数据丢失守卫、只读门、
+ * save / confirm 的持久化接收、独立完成观察、原 baseline 复核、金额守卫、
+ * saveSplits 的 ADR-0042 P1 防数据丢失守卫、只读门、
  * 均分对 disabled 固定份额的扣除。
  */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -157,36 +162,65 @@ internal class ExpenseEditViewModelTest {
     }
 
     @Test
-    fun saveSyncedShowsSuccessAndSignalsDone() = edit { fake ->
+    fun acceptedSaveKeepsReviewedVersionAndStaysOpenUntilExplicitBaselineReview() = edit { fake ->
         val vm = viewModel(fake)
-        val saved = fake.baseExpense.copy(merchant = "新商家", rowVersion = 2L)
-        fake.saveOfflineResponder = { _, _, _ -> Result.success(SaveOutcome.Synced(saved)) }
-
+        val accepted = fake.baseExpense.copy(merchant = "新商家", pendingSync = true)
+        fake.saveOfflineResponder = { _, _, baseline ->
+            assertEquals(fake.baseExpense, baseline)
+            Result.success(ExpenseCommandAcceptance(accepted, listOf(11L)))
+        }
         vm.save(draft(merchant = "新商家"))
         advanceUntilIdle()
+        assertEquals(accepted, vm.uiState.value.expense)
+        assertEquals(listOf(11L), vm.uiState.value.commandRowIds)
+        assertEquals(listOf(fake.binding), fake.submittedBindings)
+        assertEquals(UiText.res(R.string.expense_command_accepted), vm.uiState.value.message)
+        assertFalse(vm.uiState.value.commandsCompleted)
+        assertFalse(vm.consumeDone())
 
-        val state = vm.uiState.value
-        assertEquals(saved, state.expense)
-        assertFalse(state.saving)
-        assertNotNull(state.message)
-        assertEquals(MessageTone.Success, state.messageTone)
-        assertTrue(vm.consumeDone())
+        val originalFormRevision = vm.uiState.value.formRevision
+        fake.commands.value = fake.commands.value.copy(commands = listOf(observedExpenseCommand(
+            11L, accepted, PendingMutationType.PatchExpense, PendingMutationStatus.Done, fake.binding,
+        )))
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.commandsCompleted)
+        assertEquals(accepted, vm.uiState.value.expense)
+        assertEquals(originalFormRevision, vm.uiState.value.formRevision)
+        assertFalse(vm.consumeDone())
+        vm.save(draft(merchant = "later draft"))
+        advanceUntilIdle()
+        assertEquals(1, fake.saveCalls, "Done alone cannot authorize resubmission against the old baseline")
+
+        val canonical = accepted.copy(rowVersion = 2L, pendingSync = false)
+        fake.fetchExpenseResponder = { Result.success(canonical) }
+        fake.fetchItemsResponder = { Result.success(fake.items(parentRowVersion = 2L)) }
+        fake.fetchSplitsResponder = { Result.success(fake.splits(parentRowVersion = 2L)) }
+        vm.loadFxReview(preserveDraft = false)
+        advanceUntilIdle()
+        assertEquals(canonical, vm.uiState.value.expense)
+        assertEquals(originalFormRevision + 1, vm.uiState.value.formRevision)
+        assertTrue(vm.uiState.value.commandRowIds.isEmpty())
+        fake.saveOfflineResponder = { _, _, baseline ->
+            assertEquals(canonical, baseline)
+            Result.success(ExpenseCommandAcceptance(canonical, listOf(12L)))
+        }
+        vm.save(draft(merchant = "later draft"))
+        advanceUntilIdle()
+        assertEquals(2, fake.saveCalls)
     }
 
     @Test
-    fun saveQueuedSurfacesOfflineHint() = edit { fake ->
+    fun queuedSaveSurfacesPendingIntentWithoutCompletingTheEditor() = edit { fake ->
         val vm = viewModel(fake)
-        val queued = fake.baseExpense.copy(merchant = "离线商家")
-        fake.saveOfflineResponder = { _, _, _ -> Result.success(SaveOutcome.Queued(queued)) }
-
+        val queued = fake.baseExpense.copy(merchant = "离线商家", pendingSync = true)
+        fake.saveOfflineResponder = { _, _, _ -> Result.success(ExpenseCommandAcceptance(queued, listOf(11L))) }
         vm.save(draft(merchant = "离线商家"))
         advanceUntilIdle()
-
-        val state = vm.uiState.value
-        assertEquals(queued, state.expense)
-        assertNotNull(state.message)
-        assertEquals(MessageTone.Info, state.messageTone)
-        assertTrue(vm.consumeDone())
+        assertEquals(queued, vm.uiState.value.expense)
+        assertEquals(MessageTone.Info, vm.uiState.value.messageTone)
+        assertFalse(vm.uiState.value.saving)
+        assertFalse(vm.uiState.value.commandsCompleted)
+        assertFalse(vm.consumeDone())
     }
 
     @Test
@@ -205,40 +239,26 @@ internal class ExpenseEditViewModelTest {
     }
 
     @Test
-    fun manualRateSyncedSaveStaysOpenForCanonicalReview() = edit { fake ->
-        val pendingFx = fake.baseExpense.copy(
-            amountCents = null,
-            homeAmountCents = null,
-            originalCurrency = CurrencyCode.JPY,
-            originalCurrencyCode = CurrencyCode.JPY,
-            originalCurrencyCodeRaw = "JPY",
-            originalAmountMinor = 1200L,
-            fxRate = null,
-            exchangeRateToCny = null,
-            fxStatus = FxContract.StatusPending,
-        )
+    fun manualRateCompletionRequiresCanonicalReviewBeforeDisplayingConvertedMoney() = edit { fake ->
+        val pendingFx = fake.baseExpense.copy(amountCents = null, homeAmountCents = null,
+            originalCurrency = CurrencyCode.JPY, originalCurrencyCode = CurrencyCode.JPY,
+            originalCurrencyCodeRaw = "JPY", originalAmountMinor = 1200L,
+            fxRate = null, exchangeRateToCny = null, fxStatus = FxContract.StatusPending)
         fake.fetchExpenseResponder = { Result.success(pendingFx) }
         val vm = viewModel(fake)
-        val saved = pendingFx.copy(
-            amountCents = 5760L,
-            homeAmountCents = 5760L,
-            fxRate = "0.048",
-            exchangeRateToCny = "0.048",
-            fxSource = "manual",
-            exchangeRateSource = "manual",
-            fxStatus = FxContract.StatusReady,
-            updatedAt = "2026-05-05T01:00:00Z",
-            rowVersion = 2L,
-        )
-        fake.saveOfflineResponder = { _, _, _ -> Result.success(SaveOutcome.Synced(saved)) }
-
+        fake.saveOfflineResponder = { _, _, _ -> Result.success(ExpenseCommandAcceptance(pendingFx, listOf(11L))) }
         vm.save(draft(manualExchangeRate = "0.048"))
         advanceUntilIdle()
-
-        assertEquals(saved, vm.uiState.value.expense)
-        assertEquals(UiText.res(R.string.expense_edit_manual_rate_saved), vm.uiState.value.message)
-        assertEquals(MessageTone.Success, vm.uiState.value.messageTone)
-        assertFalse(vm.consumeDone(), "canonical FX must stay visible before manual confirmation")
+        fake.commands.value = fake.commands.value.copy(commands = listOf(observedExpenseCommand(
+            11L, pendingFx, PendingMutationType.PatchExpense, PendingMutationStatus.Done, fake.binding,
+        )))
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.commandsCompleted)
+        assertEquals(pendingFx, vm.uiState.value.expense)
+        assertNull(vm.uiState.value.expense?.homeAmountCents)
+        assertFalse(vm.consumeDone())
+        assertEquals(0, fake.confirmCalls)
+        assertEquals(0, fake.saveAndConfirmCalls)
     }
 
     @Test
@@ -256,14 +276,14 @@ internal class ExpenseEditViewModelTest {
         )
         fake.fetchExpenseResponder = { Result.success(pendingFx) }
         val vm = viewModel(fake)
-        fake.saveOfflineResponder = { _, _, _ -> Result.success(SaveOutcome.Queued(pendingFx)) }
+        fake.saveOfflineResponder = { _, _, _ -> Result.success(ExpenseCommandAcceptance(pendingFx, listOf(11L))) }
 
         vm.save(draft(manualExchangeRate = "7.20"))
         advanceUntilIdle()
 
         assertEquals(FxContract.StatusPending, vm.uiState.value.expense?.fxStatus)
         assertNull(vm.uiState.value.expense?.homeAmountCents)
-        assertEquals(UiText.res(R.string.expense_edit_manual_rate_offline_queued), vm.uiState.value.message)
+        assertEquals(UiText.res(R.string.expense_command_accepted), vm.uiState.value.message)
         assertEquals(MessageTone.Info, vm.uiState.value.messageTone)
         assertFalse(vm.consumeDone(), "queued rate intent must remain open and visibly unconfirmed")
         assertEquals(0, fake.confirmCalls)
@@ -284,70 +304,74 @@ internal class ExpenseEditViewModelTest {
     }
 
     @Test
-    fun confirmChainsSaveThenConfirmWithTheFreshToken() = edit { fake ->
+    fun confirmAdmitsSaveAndConfirmTogetherWithTheReviewedBaseline() = edit { fake ->
         val vm = viewModel(fake)
-        val saved = fake.baseExpense.copy(rowVersion = 5L)
-        val confirmed = saved.copy(status = "confirmed")
-        fake.saveOfflineResponder = { _, _, _ -> Result.success(SaveOutcome.Synced(saved)) }
-        fake.confirmOfflineResponder = { Result.success(ExpenseStateOutcome.Synced(confirmed)) }
-
+        val reviewed = fake.baseExpense
+        fake.saveAndConfirmResponder = { binding, expense, input ->
+            assertEquals(fake.binding, binding)
+            assertEquals(reviewed, expense)
+            assertEquals(1200L, input.amountCents)
+            Result.success(ExpenseCommandAcceptance(reviewed, listOf(21L, 22L)))
+        }
         vm.confirm(draft(amountCents = 1200L))
         advanceUntilIdle()
+        assertEquals(1, fake.saveAndConfirmCalls)
+        assertEquals(0, fake.saveCalls)
+        assertEquals(0, fake.confirmCalls)
+        assertEquals("pending", vm.uiState.value.expense?.status)
+        assertEquals(listOf(21L, 22L), vm.uiState.value.commandRowIds)
+        assertFalse(vm.consumeDone())
 
-        assertEquals(1, fake.saveCalls)
-        assertEquals(1, fake.confirmCalls)
-        // The chained confirm must run against the post-save expense (fresh
-        // OCC token), not the stale pre-save baseline.
-        assertEquals(saved, fake.confirmedExpense)
-        assertEquals(confirmed, vm.uiState.value.expense)
-        assertTrue(vm.consumeDone())
+        val saved = observedExpenseCommand(21L, reviewed, PendingMutationType.PatchExpense,
+            PendingMutationStatus.Done, fake.binding)
+        val confirming = observedExpenseCommand(22L, reviewed, PendingMutationType.ConfirmExpense,
+            PendingMutationStatus.Pending, fake.binding)
+        fake.commands.value = fake.commands.value.copy(commands = listOf(saved, confirming))
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.commandsCompleted, "a completed save is not a completed confirmation")
+        fake.commands.value = fake.commands.value.copy(commands = listOf(saved,
+            confirming.copy(row = confirming.row.copy(status = PendingMutationStatus.Done))))
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.commandsCompleted)
+        assertEquals(reviewed, vm.uiState.value.expense, "receipt observation must preserve the raw form baseline")
     }
 
     @Test
-    fun confirmSurfacesConfirmStepFailure() = edit { fake ->
+    fun confirmAdmissionFailureRetainsTheOriginalReviewedExpense() = edit { fake ->
         val vm = viewModel(fake)
-        val saved = fake.baseExpense.copy(rowVersion = 5L)
-        fake.saveOfflineResponder = { _, _, _ ->
-            Result.success(SaveOutcome.Synced(saved))
-        }
-        fake.confirmOfflineResponder = { Result.failure(RuntimeException("conflict")) }
-
+        fake.saveAndConfirmResponder = { _, _, _ -> Result.failure(RuntimeException("admission refused")) }
         vm.confirm(draft(amountCents = 500L))
         advanceUntilIdle()
-
-        assertNotNull(vm.uiState.value.message)
         assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
         assertFalse(vm.uiState.value.saving)
         assertFalse(vm.consumeDone())
-        // The save step COMMITTED (server bumped the OCC token). The failed
-        // confirm must write the post-save expense back into state — leaving
-        // the stale pre-save baseline would 409 every later mutate on this page.
-        assertEquals(saved, vm.uiState.value.expense)
+        assertEquals(fake.baseExpense, vm.uiState.value.expense)
+        assertTrue(vm.uiState.value.commandRowIds.isEmpty())
+        assertEquals(0, fake.saveCalls)
+        assertEquals(0, fake.confirmCalls)
     }
 
     @Test
-    fun confirmQueuedBehindOfflineSaveSurfacesOfflineHint() = edit { fake ->
-        // Per-target FIFO (codex review P1): when the save queued its PATCH,
-        // the repository diverts the chained confirm to the queue too. The VM
-        // must surface the offline hint (mirrors reject/save) instead of
-        // silently navigating away as if the confirm hit the server.
+    fun queuedConfirmConflictKeepsBothOriginalRowsForRecovery() = edit { fake ->
         val vm = viewModel(fake)
-        val queued = fake.baseExpense.copy(merchant = "离线商家")
-        fake.saveOfflineResponder = { _, _, _ -> Result.success(SaveOutcome.Queued(queued)) }
-        fake.confirmOfflineResponder = { expense ->
-            Result.success(ExpenseStateOutcome.Queued(expense.copy(status = "confirmed")))
+        fake.saveAndConfirmResponder = { _, expense, _ ->
+            Result.success(ExpenseCommandAcceptance(expense, listOf(21L, 22L)))
         }
-
         vm.confirm(draft(amountCents = 1200L))
         advanceUntilIdle()
-
-        assertEquals(
-            UiText.res(R.string.expense_edit_confirm_offline_queued),
-            vm.uiState.value.message,
-        )
-        assertEquals(MessageTone.Info, vm.uiState.value.messageTone)
-        assertEquals("confirmed", vm.uiState.value.expense?.status)
-        assertTrue(vm.consumeDone())
+        fake.commands.value = fake.commands.value.copy(commands = listOf(
+            observedExpenseCommand(21L, fake.baseExpense, PendingMutationType.PatchExpense,
+                PendingMutationStatus.Done, fake.binding),
+            observedExpenseCommand(22L, fake.baseExpense, PendingMutationType.ConfirmExpense,
+                PendingMutationStatus.Conflict, fake.binding),
+        ))
+        advanceUntilIdle()
+        assertEquals(UiText.res(R.string.expense_command_needs_attention), vm.uiState.value.message)
+        assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
+        assertEquals(listOf(21L, 22L), vm.uiState.value.commandRowIds)
+        assertEquals("pending", vm.uiState.value.expense?.status)
+        assertFalse(vm.uiState.value.commandsCompleted)
+        assertFalse(vm.consumeDone())
     }
 
     @Test
@@ -617,8 +641,8 @@ internal class FakeExpenseEditActions : ExpenseEditActions {
     var localCacheResponder: (suspend (Long) -> Result<Expense>)? = null
     var fetchItemsResponder: (suspend (Long) -> Result<ExpenseItems>)? = null
     var fetchSplitsResponder: (suspend (Long) -> Result<ExpenseSplits>)? = null
-    var saveOfflineResponder: (suspend (Long, ExpenseDraft, Expense) -> Result<SaveOutcome>)? = null
-    var confirmOfflineResponder: (suspend (Expense) -> Result<ExpenseStateOutcome>)? = null
+    var saveOfflineResponder: (suspend (Long, ExpenseDraft, Expense) -> Result<ExpenseCommandAcceptance>)? = null
+    var saveAndConfirmResponder: (suspend (LogicalSessionBinding, Expense, ExpenseDraft) -> Result<ExpenseCommandAcceptance>)? = null
     var ackResponder: (suspend (Expense, ExpenseItems) -> Result<ItemsAckOutcome>)? = null
     var replaceItemsResponder: (suspend (Expense, List<ExpenseItemDraft>, ExpenseItems) -> Result<ReplaceItemsOutcome>)? = null
     var replaceSplitsResponder: (suspend (Expense, List<ExpenseSplitDraft>, ExpenseSplits) -> Result<ReplaceSplitsOutcome>)? = null
@@ -635,8 +659,9 @@ internal class FakeExpenseEditActions : ExpenseEditActions {
         private set
     var replaceSplitsCalls: Int = 0
         private set
-    var confirmedExpense: Expense? = null
+    var saveAndConfirmCalls: Int = 0
         private set
+    val submittedBindings = mutableListOf<LogicalSessionBinding>()
     var localCacheCalls: Int = 0
         private set
     var fetchItemsCalls: Int = 0
@@ -647,9 +672,10 @@ internal class FakeExpenseEditActions : ExpenseEditActions {
     var fxTaskResult: Result<com.ticketbox.domain.model.BackgroundTask?> = Result.success(null)
     var fxRetryCalls = 0
     var fxReviewCalls = 0
-    override fun captureDeferredLedgerBinding() = com.ticketbox.data.repository.LogicalSessionBinding(
-        "https://example.test", "ledger", "owner", "session", "binding",
-    )
+    val binding = LogicalSessionBinding("https://example.test", "ledger", "owner", "session", "binding")
+    val commands = MutableStateFlow(ExpenseCommandObservation(LedgerAccessContext(binding, true), emptyList()))
+    override fun captureDeferredLedgerBinding() = binding
+    override fun observeExpenseCommands() = commands
     override suspend fun fetchExpenseFx(binding: com.ticketbox.data.repository.LogicalSessionBinding, id: Long) = fxTaskResult
     override suspend fun retryExpenseFx(binding: com.ticketbox.data.repository.LogicalSessionBinding, expense: Expense): Result<com.ticketbox.domain.model.BackgroundTask> {
         fxRetryCalls += 1
@@ -686,37 +712,46 @@ internal class FakeExpenseEditActions : ExpenseEditActions {
     override suspend fun fetchImage(id: Long): Result<ProtectedImage> =
         Result.success(ProtectedImage(bytes = "full".encodeToByteArray(), contentType = "image/jpeg"))
 
-    override suspend fun updateExpense(id: Long, draft: ExpenseDraft, baseline: Expense?): Result<Expense> =
-        Result.failure(IllegalStateException("direct updateExpense not exercised"))
-
     override suspend fun saveExpenseAllowingOffline(
-        id: Long,
-        draft: ExpenseDraft,
-        baseline: Expense,
-    ): Result<SaveOutcome> {
+        expectedBinding: LogicalSessionBinding, id: Long, draft: ExpenseDraft, baseline: Expense,
+    ): Result<ExpenseCommandAcceptance> {
         saveCalls += 1
+        submittedBindings += expectedBinding
         return saveOfflineResponder?.invoke(id, draft, baseline)
             ?: error("saveOfflineResponder not set; got id=$id")
     }
 
-    override suspend fun confirmExpenseAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> {
-        confirmCalls += 1
-        confirmedExpense = expense
-        return confirmOfflineResponder?.invoke(expense)
-            ?: error("confirmOfflineResponder not set")
+    override suspend fun saveAndConfirmExpense(
+        expectedBinding: LogicalSessionBinding, expense: Expense, draft: ExpenseDraft,
+    ): Result<ExpenseCommandAcceptance> {
+        saveAndConfirmCalls += 1
+        submittedBindings += expectedBinding
+        return saveAndConfirmResponder?.invoke(expectedBinding, expense, draft)
+            ?: error("saveAndConfirmResponder not set")
     }
 
-    override suspend fun rejectExpenseAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> =
-        error("rejectOfflineResponder not exercised in these tests")
+    override suspend fun confirmExpenseAllowingOffline(
+        expectedBinding: LogicalSessionBinding, expense: Expense,
+    ): Result<ExpenseCommandAcceptance> {
+        confirmCalls += 1
+        error("editor confirmation must use atomic saveAndConfirmExpense")
+    }
 
-    override suspend fun retryOcrAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> =
-        error("retryOcr not exercised in these tests")
+    override suspend fun rejectExpenseAllowingOffline(
+        expectedBinding: LogicalSessionBinding, expense: Expense,
+    ): Result<ExpenseCommandAcceptance> = error("reject not exercised in these tests")
 
-    override suspend fun recognizeTextAllowingOffline(expense: Expense, rawText: String): Result<ExpenseStateOutcome> =
-        error("recognizeText not exercised in these tests")
+    override suspend fun retryOcrAllowingOffline(
+        expectedBinding: LogicalSessionBinding, expense: Expense,
+    ): Result<ExpenseCommandAcceptance> = error("retryOcr not exercised in these tests")
 
-    override suspend fun markNotDuplicateAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> =
-        error("markNotDuplicate not exercised in these tests")
+    override suspend fun recognizeTextAllowingOffline(
+        expectedBinding: LogicalSessionBinding, expense: Expense, rawText: String,
+    ): Result<ExpenseCommandAcceptance> = error("recognizeText not exercised in these tests")
+
+    override suspend fun markNotDuplicateAllowingOffline(
+        expectedBinding: LogicalSessionBinding, expense: Expense,
+    ): Result<ExpenseCommandAcceptance> = error("markNotDuplicate not exercised in these tests")
 
     override suspend fun fetchExpenseItems(id: Long): Result<ExpenseItems> {
         fetchItemsCalls += 1

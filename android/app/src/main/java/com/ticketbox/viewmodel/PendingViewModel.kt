@@ -420,16 +420,22 @@ class PendingViewModel(
     }
 
     internal fun commandBinding(): LogicalSessionBinding? {
-        val binding = commandObservation?.access?.binding
-        if (binding != null && binding == currentUploadBinding() && binding == uploadIntents.currentUploadBinding()) return binding
+        if (holdsCommandBinding(commandObservation?.access?.binding)) return commandObservation?.access?.binding
         _uiState.update { it.copy(message = UiText.res(R.string.expense_fx_binding_changed)) }
         return null
+    }
+
+    internal fun holdsCommandBinding(expected: LogicalSessionBinding?): Boolean {
+        val binding = commandObservation?.access?.binding
+        return expected != null && binding != null && binding == expected &&
+            binding == currentUploadBinding() && binding == uploadIntents.currentUploadBinding()
     }
 
     internal fun submitPendingCommand(
         expense: Expense,
         @StringRes failureFallback: Int,
         offerUndo: Boolean = true,
+        onAccepted: (ExpenseCommandAcceptance) -> Unit = {},
         call: suspend (LogicalSessionBinding) -> Result<ExpenseCommandAcceptance>,
     ) {
         if (blockReadOnlyWrite() || expense.id in _uiState.value.actionInProgressIds) return
@@ -441,10 +447,17 @@ class PendingViewModel(
         _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds + expense.id, message = null) }
         viewModelScope.launch {
             call(binding).onSuccess { accepted ->
-                if (commandBinding() != binding) return@onSuccess
+                if (!holdsCommandBinding(binding)) {
+                    _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds - expense.id) }
+                    return@onSuccess
+                }
                 acceptExpenseCommand(accepted, offerUndo)
+                onAccepted(accepted)
             }.onFailure { error ->
-                if (commandBinding() != binding) return@onFailure
+                if (!holdsCommandBinding(binding)) {
+                    _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds - expense.id) }
+                    return@onFailure
+                }
                 _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds - expense.id,
                     message = error.toUiText(failureFallback)) }
             }
@@ -475,10 +488,16 @@ class PendingViewModel(
         _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds + target.id, message = null) }
         viewModelScope.launch {
             repository.undoRejectExpense(binding, target).onSuccess { accepted ->
-                if (commandBinding() != binding) return@onSuccess
+                if (!holdsCommandBinding(binding)) {
+                    _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds - target.id) }
+                    return@onSuccess
+                }
                 acceptExpenseCommand(accepted)
             }.onFailure { error ->
-                if (commandBinding() != binding) return@onFailure
+                if (!holdsCommandBinding(binding)) {
+                    _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds - target.id) }
+                    return@onFailure
+                }
                 _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds - target.id,
                     undoableExpense = it.undoableExpense ?: target,
                     message = error.toUiText(R.string.pending_msg_undo_failed)) }

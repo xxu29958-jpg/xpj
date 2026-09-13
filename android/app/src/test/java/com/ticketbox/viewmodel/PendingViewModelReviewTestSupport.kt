@@ -1,6 +1,11 @@
 package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModelStore
+import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.data.local.PendingMutationType
+import com.ticketbox.data.repository.ExpenseCommandAcceptance
+import com.ticketbox.data.repository.ExpenseCommandObservation
+import com.ticketbox.data.repository.PendingExpenseCommand
 import com.ticketbox.data.repository.PendingReviewActions
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
@@ -15,6 +20,8 @@ import com.ticketbox.domain.model.ProtectedImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
@@ -50,7 +57,7 @@ internal abstract class PendingViewModelReviewTestBase {
         enrichmentTaskReader: PendingEnrichmentTaskReader? = null,
         onDataChanged: () -> Unit = {},
     ): PendingViewModel = PendingViewModel(
-        fake, uploadIntents, enrichmentTaskReader = enrichmentTaskReader, onDataChanged = onDataChanged,
+        fake.also { it.commandAccessSource = uploadIntents }, uploadIntents, enrichmentTaskReader = enrichmentTaskReader, onDataChanged = onDataChanged,
     ).also { viewModels.put("pending-${nextViewModel++}", it) }
 
     protected fun clearPendingViewModels() = viewModels.clear()
@@ -146,19 +153,16 @@ internal class FakeReviewActions(
     var getCachedPendingResponder: (suspend () -> Result<List<Expense>>)? = null
 
     var updateResponder: (suspend (Long, ExpenseDraft) -> Result<Expense>)? = null
-    var confirmResponder: (suspend (Long) -> Result<Expense>)? = null
-    var rejectResponder: (suspend (Long) -> Result<Expense>)? = null
-    // ADR-0038 undo: drives [PendingReviewActions.undoRejectExpense].
-    var undoRejectResponder: (suspend (Long) -> Result<Expense>)? = null
-    var markNotDuplicateResponder: (suspend (Long) -> Result<Expense>)? = null
-    // PR-2g.7: offline-aware confirm/reject. Default to wrapping the
-    // existing confirm/rejectResponder in a Synced outcome so the
-    // online-path tests keep passing unchanged; set these to drive
-    // the Queued (offline) branch.
-    var confirmOfflineResponder: (suspend (Long) -> Result<com.ticketbox.data.repository.ExpenseStateOutcome>)? = null
-    var rejectOfflineResponder: (suspend (Long) -> Result<com.ticketbox.data.repository.ExpenseStateOutcome>)? = null
-    // PR-2g.8: same default-wrap pattern for mark-not-duplicate.
-    var markNotDuplicateOfflineResponder: (suspend (Long) -> Result<com.ticketbox.data.repository.ExpenseStateOutcome>)? = null
+    var saveAndConfirmResponder: (suspend (LogicalSessionBinding, Expense, ExpenseDraft) -> Result<Expense>)? = null
+    var saveResponder: (suspend (LogicalSessionBinding, Expense, ExpenseDraft) -> Result<Expense>)? = null
+    var undoRejectResponder: (suspend (LogicalSessionBinding, Expense) -> Result<Unit>)? = null
+    val commands = MutableStateFlow<List<PendingExpenseCommand>>(emptyList())
+    private var nextCommandId = 1L
+    val admissions = mutableListOf<Pair<LogicalSessionBinding, ExpenseCommandAcceptance>>()
+    var saveAndConfirmCalls = 0
+        private set
+    var confirmBatchCalls = 0
+        private set
     var fetchPendingResponder: (suspend () -> Result<List<Expense>>)? = null
     var thumbnailResponder: (suspend (Long) -> Result<ProtectedImage>)? = null
     // W1: drives [uploadScreenshot] so the share-multi-image path can be unit
@@ -190,6 +194,8 @@ internal class FakeReviewActions(
         activeLedgerFlow,
     )
 
+    var commandAccessSource: UploadIntentActions = uploadIntents
+
     override suspend fun fetchPending(): Result<List<Expense>> {
         fetchPendingCalls += 1
         fetchPendingResponder?.let { return it() }
@@ -214,80 +220,88 @@ internal class FakeReviewActions(
         thumbnailResponder?.invoke(id)
             ?: Result.failure(IllegalStateException("no thumbnail in tests"))
 
-    override suspend fun updateExpense(id: Long, draft: ExpenseDraft, baseline: Expense?): Result<Expense> {
-        updateCalls += 1
-        return updateResponder?.invoke(id, draft)
-            ?: error("updateResponder not set; got id=$id draft=$draft baseline=$baseline")
+    override fun observeExpenseCommands(): Flow<ExpenseCommandObservation> = combine(
+        commandAccessSource.observeUploadIntents(), commands,
+    ) { uploads, rows ->
+        val binding = uploads.access?.binding
+        ExpenseCommandObservation(uploads.access, rows.filter {
+            it.row.ownerKey == binding?.ownerKey && it.row.ledgerId == binding?.ledgerId &&
+                it.row.serverUrl == binding?.serverUrl
+        })
+    }
+
+    private fun admit(
+        binding: LogicalSessionBinding, expense: Expense, types: List<PendingMutationType>,
+    ): ExpenseCommandAcceptance {
+        val rows = types.map { observedExpenseCommand(nextCommandId++, expense, it, PendingMutationStatus.Pending, binding) }
+        commands.value += rows
+        return ExpenseCommandAcceptance(expense, rows.map { it.row.id }).also { admissions += binding to it }
+    }
+
+    fun publishCommand(
+        expenseId: Long, type: PendingMutationType, status: PendingMutationStatus,
+        acceptedExpense: Expense? = null, error: String? = null,
+    ) {
+        val original = commands.value.last { it.row.targetId == "expense:$expenseId" && it.row.type == type }
+        commands.value = commands.value.map {
+            if (it.row.id == original.row.id) it.copy(row = it.row.copy(status = status, lastError = error),
+                acceptedExpense = acceptedExpense) else it
+        }
     }
 
     override suspend fun saveExpenseAllowingOffline(
-        id: Long,
-        draft: ExpenseDraft,
-        baseline: Expense,
-    ): Result<com.ticketbox.data.repository.SaveOutcome> =
-        Result.failure(IllegalStateException("not exercised — PendingViewModel uses updateExpense"))
-
-    override suspend fun confirmExpense(id: Long, expectedRowVersion: Long): Result<Expense> {
-        confirmCalls += 1
-        confirmedIds += id
-        return confirmResponder?.invoke(id)
-            ?: error("confirmResponder not set; got id=$id token=$expectedRowVersion")
+        expectedBinding: LogicalSessionBinding, id: Long, draft: ExpenseDraft, baseline: Expense,
+    ): Result<ExpenseCommandAcceptance> {
+        updateCalls += 1
+        val projection = saveResponder?.invoke(expectedBinding, baseline, draft)
+            ?: updateResponder?.invoke(id, draft) ?: error("save responder not set")
+        return projection.map { admit(expectedBinding, it, listOf(PendingMutationType.PatchExpense)) }
     }
 
-    override suspend fun rejectExpense(id: Long, expectedRowVersion: Long): Result<Expense> {
-        rejectCalls += 1
-        return rejectResponder?.invoke(id) ?: error("rejectResponder not set")
+    override suspend fun saveAndConfirmExpense(
+        expectedBinding: LogicalSessionBinding, expense: Expense, draft: ExpenseDraft,
+    ): Result<ExpenseCommandAcceptance> {
+        saveAndConfirmCalls += 1
+        return requireNotNull(saveAndConfirmResponder)(expectedBinding, expense, draft).map {
+            admit(expectedBinding, it, listOf(PendingMutationType.PatchExpense, PendingMutationType.ConfirmExpense))
+        }
+    }
+
+    override suspend fun confirmExpenses(
+        expectedBinding: LogicalSessionBinding, expenses: List<Expense>,
+    ): Result<List<ExpenseCommandAcceptance>> {
+        confirmBatchCalls += 1
+        confirmedIds += expenses.map { it.id }
+        return Result.success(expenses.map { admit(expectedBinding, it, listOf(PendingMutationType.ConfirmExpense)) })
     }
 
     override suspend fun confirmExpenseAllowingOffline(
-        expense: Expense,
-    ): Result<com.ticketbox.data.repository.ExpenseStateOutcome> {
+        expectedBinding: LogicalSessionBinding, expense: Expense,
+    ): Result<ExpenseCommandAcceptance> {
         confirmCalls += 1
         confirmedIds += expense.id
-        confirmOfflineResponder?.let { return it(expense.id) }
-        return confirmResponder?.invoke(expense.id)
-            ?.map { com.ticketbox.data.repository.ExpenseStateOutcome.Synced(it) }
-            ?: error("confirmResponder/confirmOfflineResponder not set; got id=${expense.id}")
+        return Result.success(admit(expectedBinding, expense, listOf(PendingMutationType.ConfirmExpense)))
     }
 
     override suspend fun rejectExpenseAllowingOffline(
-        expense: Expense,
-    ): Result<com.ticketbox.data.repository.ExpenseStateOutcome> {
+        expectedBinding: LogicalSessionBinding, expense: Expense,
+    ): Result<ExpenseCommandAcceptance> {
         rejectCalls += 1
-        rejectOfflineResponder?.let { return it(expense.id) }
-        // Sweep #2 fix: the real backend POST /reject returns the row with
-        // status='rejected' (and rejectedAt populated); the default wrap
-        // here used to leak the caller's factory-default 'pending' status,
-        // making any ViewModel test that reads
-        // `undoableExpense.status == "rejected"` (e.g. the undo-banner
-        // contract) silently pass against an unrealistic shape. Match the
-        // explicit Queued branch in [rejectQueuedOfflineRemovesItem...] —
-        // both branches now project the same post-transition shape.
-        return rejectResponder?.invoke(expense.id)
-            ?.map { restored ->
-                com.ticketbox.data.repository.ExpenseStateOutcome.Synced(
-                    restored.copy(status = "rejected"),
-                ) as com.ticketbox.data.repository.ExpenseStateOutcome
-            }
-            ?: error("rejectResponder/rejectOfflineResponder not set")
+        return Result.success(admit(expectedBinding, expense, listOf(PendingMutationType.RejectExpense)))
     }
 
-    override suspend fun undoRejectExpense(id: Long, expectedRowVersion: Long): Result<Expense> =
-        undoRejectResponder?.invoke(id) ?: error("undoRejectResponder not set")
-
-    override suspend fun markNotDuplicate(id: Long, expectedRowVersion: Long): Result<Expense> {
-        markNotDuplicateCalls += 1
-        return markNotDuplicateResponder?.invoke(id) ?: error("markNotDuplicateResponder not set")
+    override suspend fun undoRejectExpense(
+        expectedBinding: LogicalSessionBinding, expense: Expense,
+    ): Result<ExpenseCommandAcceptance> {
+        val admitted = undoRejectResponder?.invoke(expectedBinding, expense) ?: Result.success(Unit)
+        return admitted.map { admit(expectedBinding, expense, listOf(PendingMutationType.UndoExpense)) }
     }
 
     override suspend fun markNotDuplicateAllowingOffline(
-        expense: Expense,
-    ): Result<com.ticketbox.data.repository.ExpenseStateOutcome> {
+        expectedBinding: LogicalSessionBinding, expense: Expense,
+    ): Result<ExpenseCommandAcceptance> {
         markNotDuplicateCalls += 1
-        markNotDuplicateOfflineResponder?.let { return it(expense.id) }
-        return markNotDuplicateResponder?.invoke(expense.id)
-            ?.map { com.ticketbox.data.repository.ExpenseStateOutcome.Synced(it) }
-            ?: error("markNotDuplicateResponder/markNotDuplicateOfflineResponder not set")
+        return Result.success(admit(expectedBinding, expense, listOf(PendingMutationType.MarkNotDuplicate)))
     }
 
     override suspend fun categories(): Result<List<String>> = Result.success(categoryOptions)

@@ -83,7 +83,7 @@ class PendingRejectUndoRoomTest {
         compose.waitUntil(10_000) { vm.uiState.value.items.size == 1 && !vm.uiState.value.readOnly }
         val reviewed = vm.uiState.value.items.single()
         compose.runOnIdle { vm.reject(reviewed) }
-        compose.waitUntil(10_000) { vm.uiState.value.message != null && vm.uiState.value.actionInProgressIds.isEmpty() }
+        compose.waitUntil(10_000) { vm.commandRowsByExpense[reviewed.id]?.isNotEmpty() == true }
 
         val original = fixture.pendingDao.allRows().single()
         assertEquals(PendingMutationType.RejectExpense.wireValue, original.type)

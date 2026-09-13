@@ -1,5 +1,7 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.R
 import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.UiText
@@ -39,7 +41,6 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
         val fake = FakeReviewActions(
             pending = listOf(ready, missingAmount, missingMerchant, suspected, missingCategory),
         )
-        fake.confirmResponder = { id -> Result.success(ready.copy(id = id, status = "confirmed")) }
         val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
@@ -47,6 +48,12 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
         advanceUntilIdle()
 
         assertEquals(listOf(10L), fake.confirmedIds)
+        assertEquals(1, fake.confirmBatchCalls)
+        assertEquals(0, vm.uiState.value.bulkConfirm.succeeded)
+        assertTrue(vm.uiState.value.items.any { it.id == ready.id })
+        fake.pending = fake.pending.filterNot { it.id == ready.id }
+        fake.publishCommand(ready.id, PendingMutationType.ConfirmExpense, PendingMutationStatus.Done)
+        advanceUntilIdle()
         val state = vm.uiState.value
         assertEquals(1, state.bulkConfirm.succeeded)
         assertEquals(0, state.bulkConfirm.failed)
@@ -68,7 +75,6 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
         val fake = FakeReviewActions(
             pending = listOf(ready, fxPending, noiseMerchant, rawBlankCategory),
         )
-        fake.confirmResponder = { id -> Result.success(ready.copy(id = id, status = "confirmed")) }
         val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
@@ -76,6 +82,12 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
         advanceUntilIdle()
 
         assertEquals(listOf(10L), fake.confirmedIds)
+        assertEquals(1, fake.confirmBatchCalls)
+        assertEquals(0, vm.uiState.value.bulkConfirm.succeeded)
+        assertTrue(vm.uiState.value.items.any { it.id == ready.id })
+        fake.pending = fake.pending.filterNot { it.id == ready.id }
+        fake.publishCommand(ready.id, PendingMutationType.ConfirmExpense, PendingMutationStatus.Done)
+        advanceUntilIdle()
         val state = vm.uiState.value
         assertEquals(1, state.bulkConfirm.succeeded)
         assertEquals(0, state.bulkConfirm.failed)
@@ -89,20 +101,22 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
         val a = expense(id = 20L, amountCents = 100L, merchant = "星巴克")
         val b = expense(id = 21L, amountCents = 100L, merchant = "麦当劳")
         val fake = FakeReviewActions(pending = listOf(a, b))
-        fake.confirmResponder = { id ->
-            if (id == 21L) Result.failure(RuntimeException("server_error"))
-            else Result.success(a.copy(id = id, status = "confirmed"))
-        }
         val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.confirmReadyExpenses()
         advanceUntilIdle()
 
+        assertEquals(0, vm.uiState.value.bulkConfirm.succeeded)
+        assertEquals(listOf(a, b), vm.uiState.value.items)
+        fake.pending = listOf(b)
+        fake.publishCommand(a.id, PendingMutationType.ConfirmExpense, PendingMutationStatus.Done)
+        fake.publishCommand(b.id, PendingMutationType.ConfirmExpense, PendingMutationStatus.Conflict)
+        advanceUntilIdle()
         val state = vm.uiState.value
         assertEquals(1, state.bulkConfirm.succeeded)
         assertEquals(1, state.bulkConfirm.failed)
-        assertEquals(UiText.res(R.string.pending_review_bulk_partial, 1, 1), state.message)
+        assertEquals(UiText.res(R.string.expense_command_needs_attention), state.message)
         assertEquals(listOf(21L), state.items.map { it.id })
     }
 
@@ -129,7 +143,6 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
     fun markNotDuplicateClearsSuspectedAndKeepsItem() = review {
         val target = expense(id = 40L, details = PendingExpenseDetails(duplicateStatus = "suspected"))
         val fake = FakeReviewActions(pending = listOf(target))
-        fake.markNotDuplicateResponder = { Result.success(target.copy(duplicateStatus = "none")) }
         val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
@@ -137,97 +150,76 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
         vm.markNotDuplicate(target)
         advanceUntilIdle()
 
+        assertEquals("suspected", vm.uiState.value.items.single().duplicateStatus)
+        fake.pending = listOf(target.copy(duplicateStatus = "none", rowVersion = 2L))
+        fake.publishCommand(target.id, PendingMutationType.MarkNotDuplicate, PendingMutationStatus.Done)
+        advanceUntilIdle()
         val state = vm.uiState.value
         assertEquals("none", state.items.single().duplicateStatus)
-        assertEquals(PendingSheet.None, state.activeSheet)
-        assertEquals(UiText.res(R.string.pending_msg_kept), state.message)
+        assertEquals(UiText.res(R.string.expense_command_completed), state.message)
     }
 
     @Test
-    fun markNotDuplicateQueuedOfflineKeepsItemWithOfflineMessage() = review {
-        // PR-2g.8: offline mark-not-duplicate. The item STAYS in the
-        // pending list (unlike confirm/reject) with the badge cleared,
-        // and the user sees the "联网后同步" hint.
+    fun queuedMarkNotDuplicateKeepsOriginalBadgeUntilCompletion() = review {
         val target = expense(id = 52L, details = PendingExpenseDetails(duplicateStatus = "suspected"))
         val fake = FakeReviewActions(pending = listOf(target))
-        fake.markNotDuplicateOfflineResponder = {
-            Result.success(
-                com.ticketbox.data.repository.ExpenseStateOutcome.Queued(target.copy(duplicateStatus = "none")),
-            )
-        }
         val vm = pendingViewModel(fake)
         advanceUntilIdle()
-
         vm.openDuplicateAction(target)
         vm.markNotDuplicate(target)
         advanceUntilIdle()
-
-        val state = vm.uiState.value
-        assertEquals("none", state.items.single().duplicateStatus, "queued mark-not-dup keeps the item")
-        assertEquals(PendingSheet.None, state.activeSheet)
-        assertEquals(UiText.res(R.string.pending_msg_kept_offline), state.message)
+        assertEquals("suspected", vm.uiState.value.items.single().duplicateStatus)
+        assertEquals(UiText.res(R.string.expense_command_accepted), vm.uiState.value.message)
         assertEquals(1, fake.markNotDuplicateCalls)
+        assertEquals(PendingMutationStatus.Pending, fake.commands.value.single().row.status)
     }
 
     @Test
-    fun rejectExpenseRemovesItem() = review {
+    fun rejectionOnlyRemovesTheBillAfterItsOriginalCompletion() = review {
         val target = expense(id = 41L, details = PendingExpenseDetails(duplicateStatus = "suspected"))
         val fake = FakeReviewActions(pending = listOf(target))
-        fake.rejectResponder = { Result.success(target) }
         val vm = pendingViewModel(fake)
         advanceUntilIdle()
-
         vm.openDuplicateAction(target)
         vm.reject(target)
         advanceUntilIdle()
-
+        assertEquals(listOf(target), vm.uiState.value.items)
+        fake.pending = emptyList()
+        fake.publishCommand(target.id, PendingMutationType.RejectExpense, PendingMutationStatus.Done,
+            target.copy(status = "rejected", rowVersion = 2L, rejectedAt = "2026-09-13T00:01:00Z"))
+        advanceUntilIdle()
         assertTrue(vm.uiState.value.items.isEmpty())
         assertEquals(PendingSheet.None, vm.uiState.value.activeSheet)
-        assertEquals(UiText.res(R.string.pending_msg_rejected), vm.uiState.value.message)
+        assertEquals(UiText.res(R.string.expense_command_completed), vm.uiState.value.message)
     }
 
     @Test
-    fun confirmQueuedOfflineRemovesItemWithOfflineMessage() = review {
-        // PR-2g.7: offline confirm. The repository returns Queued; the
-        // item still leaves the pending list optimistically and the
-        // user sees the "联网后同步" hint instead of "已确认入账".
+    fun queuedConfirmRetainsPendingBillAndOriginalCommand() = review {
         val target = expense(id = 50L, amountCents = 100L, merchant = "M")
         val fake = FakeReviewActions(pending = listOf(target))
-        fake.confirmOfflineResponder = {
-            Result.success(
-                com.ticketbox.data.repository.ExpenseStateOutcome.Queued(target.copy(status = "confirmed")),
-            )
-        }
         val vm = pendingViewModel(fake)
         advanceUntilIdle()
-
         vm.confirm(target)
         advanceUntilIdle()
-
-        assertTrue(vm.uiState.value.items.isEmpty(), "queued confirm still removes from pending")
-        assertEquals(UiText.res(R.string.pending_msg_confirmed_offline), vm.uiState.value.message)
+        assertEquals(listOf(target), vm.uiState.value.items)
+        assertEquals(UiText.res(R.string.expense_command_accepted), vm.uiState.value.message)
         assertEquals(1, fake.confirmCalls)
+        assertEquals(PendingMutationStatus.Pending, fake.commands.value.single().row.status)
     }
 
     @Test
-    fun rejectQueuedOfflineRemovesItemWithOfflineMessage() = review {
+    fun queuedRejectRetainsPendingBillWithoutInventingAnUndoReceipt() = review {
         val target = expense(id = 51L, details = PendingExpenseDetails(duplicateStatus = "suspected"))
         val fake = FakeReviewActions(pending = listOf(target))
-        fake.rejectOfflineResponder = {
-            Result.success(
-                com.ticketbox.data.repository.ExpenseStateOutcome.Queued(target.copy(status = "rejected")),
-            )
-        }
         val vm = pendingViewModel(fake)
         advanceUntilIdle()
-
         vm.openDuplicateAction(target)
         vm.reject(target)
         advanceUntilIdle()
-
-        assertTrue(vm.uiState.value.items.isEmpty())
-        assertEquals(PendingSheet.None, vm.uiState.value.activeSheet)
-        assertEquals(UiText.res(R.string.pending_msg_rejected_offline), vm.uiState.value.message)
+        assertEquals(listOf(target), vm.uiState.value.items)
+        assertEquals(UiText.res(R.string.expense_command_accepted), vm.uiState.value.message)
         assertEquals(1, fake.rejectCalls)
+        assertEquals(null, vm.uiState.value.undoableExpense)
+        assertEquals(PendingMutationStatus.Pending, fake.commands.value.single().row.status)
     }
 }
