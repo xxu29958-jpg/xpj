@@ -1,5 +1,6 @@
 """Legacy operation ACK recovery must not require a newer creation receipt."""
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -7,18 +8,43 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.models import Expense
 from app.routes import expenses
-from app.schemas import ExpenseConfirmRequest, ExpenseRejectRequest, ExpenseUpdateRequest
+from app.schemas import ExpenseConfirmRequest, ExpenseRejectRequest, ExpenseResponse, ExpenseUpdateRequest
 from app.services import expense_edit_command_service as edit
 from app.services import expense_query, expense_review_command_service, idempotency
 from app.services.expense_service import _update
+
+
+def _rejection_expense(*, status="pending", row_version=3) -> Expense:
+    now = datetime(2026, 9, 9, tzinfo=UTC)
+    return Expense(
+        id=42,
+        public_id="original-expense",
+        tenant_id="owner",
+        home_currency_code="CNY",
+        original_currency_code="CNY",
+        original_amount_minor=100,
+        amount_cents=100,
+        category="餐饮",
+        source="手动记账",
+        status=status,
+        fx_status="ready",
+        duplicate_status="none",
+        row_version=row_version,
+        fact_revision=0,
+        created_at=now,
+        updated_at=now,
+        expense_time=now,
+    )
 
 
 @pytest.mark.parametrize("operation", ["patch", "confirm", "reject"])
 def test_accepted_local_operation_replays_when_legacy_creation_receipt_is_missing(monkeypatch, operation):
     db = Mock(spec=Session)
     auth = SimpleNamespace(tenant_id="owner", account_id=1, device_id=7)
-    expense = SimpleNamespace(id=42, row_version=3, source="手动记账", status="pending")
+    expense = _rejection_expense() if operation == "reject" else SimpleNamespace(
+        id=42, row_version=3, source="手动记账", status="pending")
     state = SimpleNamespace(claim=None, creation=SimpleNamespace(id=42, row_version=3), writes=0, claim_calls=0)
     prepare_fx = Mock(return_value=None)
     monkeypatch.setattr(edit, "prepare_pending_expense_fx", prepare_fx)
@@ -49,20 +75,26 @@ def test_accepted_local_operation_replays_when_legacy_creation_receipt_is_missin
     if operation == "reject":
         monkeypatch.setattr(expense_review_command_service, "claim_idempotency_key", claim)
         monkeypatch.setattr(expense_review_command_service, "expense_to_response",
-            lambda _db, *, expense, tenant_id: expense)
-        monkeypatch.setattr(expense_review_command_service, "mark_idempotency_succeeded",
-            lambda _db, row, **_k: setattr(row, "status", "succeeded"))
-        monkeypatch.setattr(expense_review_command_service, "_replayed_rejection_receipt",
-            lambda outcome: expense if outcome.kind is idempotency.IdempotencyOutcomeKind.HIT else None)
+            lambda _db, *, expense, tenant_id: ExpenseResponse.model_validate(expense))
     route, payload = {
         "patch": (expenses.patch_expense, ExpenseUpdateRequest(expected_row_version=0, note="Original edit")),
         "confirm": (expenses.post_confirm_expense, ExpenseConfirmRequest(expected_row_version=0)),
         "reject": (expenses.post_reject_expense, ExpenseRejectRequest(expected_row_version=0)),
     }[operation]
-    assert route("local:original", payload, "original-operation", auth, db) is expense
-    assert state.writes == 1
-    state.creation = None
-    assert route("local:original", payload, "original-operation", auth, db) is expense
+    first = route("local:original", payload, "original-operation", auth, db)
+    if operation == "reject":
+        assert isinstance(first, ExpenseResponse)
+        original = first.model_dump(mode="json")
+        assert state.writes == 1
+        state.creation = None
+        expense.amount_cents, expense.row_version, expense.status = 900, 9, "confirmed"
+        replay = route("local:original", payload, "original-operation", auth, db)
+        assert replay.model_dump(mode="json") == original
+    else:
+        assert first is expense
+        assert state.writes == 1
+        state.creation = None
+        assert route("local:original", payload, "original-operation", auth, db) is expense
     assert state.writes == 1 and state.claim_calls == 2
     assert db.commit.call_count == 1
     if operation == "patch":
