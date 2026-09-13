@@ -447,17 +447,11 @@ class PendingViewModel(
         _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds + expense.id, message = null) }
         viewModelScope.launch {
             call(binding).onSuccess { accepted ->
-                if (!holdsCommandBinding(binding)) {
-                    _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds - expense.id) }
-                    return@onSuccess
-                }
+                if (!holdsCommandBinding(binding)) return@onSuccess
                 acceptExpenseCommand(accepted, offerUndo)
                 onAccepted(accepted)
             }.onFailure { error ->
-                if (!holdsCommandBinding(binding)) {
-                    _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds - expense.id) }
-                    return@onFailure
-                }
+                if (!holdsCommandBinding(binding)) return@onFailure
                 _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds - expense.id,
                     message = error.toUiText(failureFallback)) }
             }
@@ -488,16 +482,10 @@ class PendingViewModel(
         _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds + target.id, message = null) }
         viewModelScope.launch {
             repository.undoRejectExpense(binding, target).onSuccess { accepted ->
-                if (!holdsCommandBinding(binding)) {
-                    _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds - target.id) }
-                    return@onSuccess
-                }
+                if (!holdsCommandBinding(binding)) return@onSuccess
                 acceptExpenseCommand(accepted)
             }.onFailure { error ->
-                if (!holdsCommandBinding(binding)) {
-                    _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds - target.id) }
-                    return@onFailure
-                }
+                if (!holdsCommandBinding(binding)) return@onFailure
                 _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds - target.id,
                     undoableExpense = it.undoableExpense ?: target,
                     message = error.toUiText(R.string.pending_msg_undo_failed)) }

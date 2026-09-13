@@ -78,4 +78,43 @@ internal class PendingCommandBindingTest : PendingViewModelReviewTestBase() {
         assertEquals("ledger-a", fake.admissions.single().first.ledgerId)
         assertEquals(2, fake.admissions.single().second.rowIds.size)
     }
+
+    @Test
+    fun lateAdmissionCannotClearAnotherLedgersInProgressSameExpenseId() = review {
+        val ledger = MutableStateFlow<String?>("ledger-a")
+        val a = expense(1L, merchant = null)
+        val b = expense(1L, merchant = null).copy(publicId = "ledger-b-1")
+        val aAccepted = CompletableDeferred<Result<Expense>>()
+        val fake = FakeReviewActions(listOf(a), activeLedgerFlow = ledger, activeLedgerIdProvider = { ledger.value })
+        fake.saveResponder = { binding, baseline, _ ->
+            if (binding.ledgerId == "ledger-a") {
+                assertEquals(a, baseline)
+                aAccepted.await()
+            } else {
+                assertEquals("ledger-b", binding.ledgerId)
+                assertEquals(b, baseline)
+                Result.success(b.copy(merchant = "B merchant"))
+            }
+        }
+        val vm = pendingViewModel(fake)
+        advanceUntilIdle()
+        vm.openQuickMerchant(a)
+        vm.saveQuickMerchant(a.id, "A merchant")
+        runCurrent()
+        fake.pending = listOf(b)
+        ledger.value = "ledger-b"
+        runCurrent()
+        vm.openQuickMerchant(b)
+        vm.saveQuickMerchant(b.id, "B merchant")
+        runCurrent()
+        val before = vm.uiState.value
+        assertEquals(setOf(1L), before.actionInProgressIds)
+        aAccepted.complete(Result.success(a.copy(merchant = "A merchant")))
+        runCurrent()
+        assertEquals(before.actionInProgressIds, vm.uiState.value.actionInProgressIds)
+        assertEquals(before.items, vm.uiState.value.items)
+        assertEquals(before.activeSheet, vm.uiState.value.activeSheet)
+        assertEquals(before.bulkConfirm, vm.uiState.value.bulkConfirm)
+        assertEquals(listOf("ledger-a", "ledger-b"), fake.admissions.map { it.first.ledgerId })
+    }
 }

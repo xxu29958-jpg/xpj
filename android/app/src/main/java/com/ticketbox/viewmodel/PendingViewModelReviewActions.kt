@@ -167,11 +167,7 @@ fun PendingViewModel.confirmReadyExpenses() {
         actionInProgressIds = it.actionInProgressIds + ids, message = null) }
     viewModelScope.launch {
         repository.confirmExpenses(binding, ready).onSuccess { accepted ->
-            if (!holdsCommandBinding(binding)) {
-                _uiState.update { it.copy(bulkConfirm = BulkConfirmRunState(),
-                    actionInProgressIds = it.actionInProgressIds - ids) }
-                return@onSuccess
-            }
+            if (!holdsCommandBinding(binding)) return@onSuccess
             bulkCommandRows.addAll(accepted.flatMap { it.rowIds })
             accepted.forEach { acceptExpenseCommand(it) }
             _uiState.update { it.copy(bulkConfirm = it.bulkConfirm.copy(running = false),
@@ -179,11 +175,7 @@ fun PendingViewModel.confirmReadyExpenses() {
                 message = UiText.res(R.string.expense_command_accepted)) }
             reconcileExpenseCommands()
         }.onFailure { error ->
-            if (!holdsCommandBinding(binding)) {
-                _uiState.update { it.copy(bulkConfirm = BulkConfirmRunState(),
-                    actionInProgressIds = it.actionInProgressIds - ids) }
-                return@onFailure
-            }
+            if (!holdsCommandBinding(binding)) return@onFailure
             _uiState.update { it.copy(bulkConfirm = BulkConfirmRunState(total = ready.size, failed = ready.size),
                 actionInProgressIds = it.actionInProgressIds - ids,
                 message = error.toUiText(R.string.pending_msg_confirm_failed)) }
