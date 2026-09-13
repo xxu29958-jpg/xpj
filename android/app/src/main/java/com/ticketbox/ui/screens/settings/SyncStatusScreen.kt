@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.settings
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -370,8 +371,7 @@ internal fun FailedCard(
 ) {
     // Expired rows cannot be retried because the server-side idempotency key may be gone.
     val expired = isExpiredFailure(row.lastError)
-    val rejectionReview = row.lastError == EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW
-    val undoUnavailable = row.type == PendingMutationType.UndoExpense && row.lastError == "expense_not_found"
+    val reviewMessage = failedRowReviewMessage(row, onRetry)
     SettingsOpenPanel(
         modifier = Modifier.semantics(mergeDescendants = true) {},
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
@@ -388,16 +388,13 @@ internal fun FailedCard(
             )
             debtCreation?.let { DebtCreationIntentSummary(it) }
             Text(
-                text = if (rejectionReview) stringResource(R.string.sync_status_expense_original_requires_review)
-                    else if (undoUnavailable) stringResource(R.string.sync_status_undo_unavailable)
-                    else if (row.type == PendingMutationType.CreateExpenseOffset && onRetry == null)
-                    stringResource(R.string.expense_offset_original_requires_review)
+                text = if (reviewMessage != null) stringResource(reviewMessage)
                     else friendlyLastError(row.lastError, fallback = stringResource(R.string.sync_status_failed_fallback)),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             SyncStatusRecoveryActions(
-                primary = if (rejectionReview || undoUnavailable || row.type == PendingMutationType.CreateExpenseOffset && onRetry == null) {
+                primary = if (reviewMessage != null) {
                     expenseReviewAction(row, busy, actions)
                 } else if (row.manualCreateReviewExpenseId() != null) {
                     SyncStatusActionButton(text = stringResource(R.string.ledger_manual_review_existing), enabled = !busy,
@@ -427,6 +424,17 @@ internal fun FailedCard(
 }
 
 @Composable
+@StringRes
+private fun failedRowReviewMessage(row: OutboxRow, onRetry: (() -> Unit)?): Int? = when {
+    row.lastError == EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW ->
+        R.string.sync_status_expense_original_requires_review
+    row.type == PendingMutationType.UndoExpense && row.lastError == "expense_not_found" ->
+        R.string.sync_status_undo_unavailable
+    row.type == PendingMutationType.CreateExpenseOffset && onRetry == null ->
+        R.string.expense_offset_original_requires_review
+    else -> null
+}
+
 private fun expenseReviewAction(row: OutboxRow, busy: Boolean, actions: SyncStatusActions): SyncStatusActionButton? {
     val id = com.ticketbox.data.repository.expenseRefreshTargetId(row.targetId, row.receiptJson) ?: return null
     return SyncStatusActionButton(text = stringResource(R.string.expense_offset_review_current), enabled = !busy,

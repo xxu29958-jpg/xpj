@@ -268,6 +268,8 @@ fun ExpenseEditScreen(
         ?: stringResource(R.string.expense_edit_raw_text_empty)
     val previewImage = state.fullImage ?: state.thumbnail
     val readOnly = state.readOnly || state.loadingFxReview
+    val commandOpen = state.commandRowIds.isNotEmpty()
+    val canMutateFact = !readOnly && !commandOpen
     val haptics = rememberAppHaptics()
     // ADR-0044: stringResource is @Composable-only, but the validation messages
     // below are assigned inside non-composable local functions / onClick lambdas.
@@ -549,8 +551,8 @@ fun ExpenseEditScreen(
             ),
             actions = ExpenseEditDetailsActions(
                 onAcknowledgeItemsMismatch = itemizationActions.onAcknowledgeItemsMismatch,
-                onEditItems = if (state.readOnly || state.commandRowIds.isNotEmpty()) null else itemizationActions.onEditItems,
-                onEditSplits = if (state.readOnly || state.commandRowIds.isNotEmpty()) null else splitEditingActions.onEditSplits,
+                onEditItems = if (state.readOnly || commandOpen) null else itemizationActions.onEditItems,
+                onEditSplits = if (state.readOnly || commandOpen) null else splitEditingActions.onEditSplits,
             ),
         )
         ExpenseEditMoreSection(
@@ -609,9 +611,9 @@ fun ExpenseEditScreen(
                 ExpenseEditActionBar(
                     state = ExpenseEditActionBarState(
                         saving = state.saving || state.loadingFxReview,
-                        allowSave = !readOnly && state.commandRowIds.isEmpty(),
-                        allowConfirm = actionAvailability.allowConfirm && !readOnly && !manualExchangeRateNeedsReview && state.commandRowIds.isEmpty(),
-                        allowReject = actionAvailability.allowReject && !readOnly && state.commandRowIds.isEmpty(),
+                        allowSave = canMutateFact,
+                        allowConfirm = actionAvailability.allowConfirm && canMutateFact && !manualExchangeRateNeedsReview,
+                        allowReject = actionAvailability.allowReject && canMutateFact,
                         validationMessage = message,
                         statusMessage = state.message?.asString(),
                         statusTone = state.messageTone,

@@ -44,30 +44,35 @@ private fun ExpenseEditViewModel.requestExpenseFx(retry: Boolean) {
 
 /** Only an explicit review action may replace the editor's original OCC snapshot. */
 fun ExpenseEditViewModel.loadFxReview(preserveDraft: Boolean) {
-    val state = uiState.value
-    val expense = state.expense ?: return
-    val binding = fxBinding ?: run {
-        _uiState.update { it.copy(fx = it.fx.copy(message = UiText.res(R.string.expense_fx_binding_changed))) }
-        return
-    }
-    if (state.fx.loading || state.expenseLoading || state.itemsLoading || state.splitsLoading) return
-    if (state.saving || state.itemsSaving || state.splitsSaving) return
-    if (state.commandRowIds.isNotEmpty() && !state.commandsCompleted) {
-        _uiState.update { it.copy(message = UiText.res(R.string.expense_command_needs_attention)) }
-        return
-    }
-    if (preserveDraft || state.itemEditorOpen || state.splitEditorOpen) {
-        _uiState.update { it.copy(fx = it.fx.copy(message = UiText.res(R.string.expense_fx_save_draft_first))) }
-        return
-    }
+    val started = fxReviewStart(preserveDraft) ?: return
     _uiState.update { it.copy(expenseLoading = true, fx = it.fx.copy(loading = true, message = null)) }
     viewModelScope.launch {
-        repository.fetchExpenseForFxReview(binding, expense.id).mapCatching { fresh ->
-            applyFxReview(binding, fresh)
+        repository.fetchExpenseForFxReview(started.first, started.second.id).mapCatching { fresh ->
+            applyFxReview(started.first, fresh)
         }.onFailure { error ->
             failFxReview(error)
         }
     }
+}
+
+private fun ExpenseEditViewModel.fxReviewStart(preserveDraft: Boolean): Pair<LogicalSessionBinding, Expense>? {
+    val state = uiState.value
+    val expense = state.expense ?: return null
+    val binding = fxBinding ?: run {
+        _uiState.update { it.copy(fx = it.fx.copy(message = UiText.res(R.string.expense_fx_binding_changed))) }
+        return null
+    }
+    if (state.fx.loading || state.expenseLoading || state.itemsLoading || state.splitsLoading) return null
+    if (state.saving || state.itemsSaving || state.splitsSaving) return null
+    if (state.commandRowIds.isNotEmpty() && !state.commandsCompleted) {
+        _uiState.update { it.copy(message = UiText.res(R.string.expense_command_needs_attention)) }
+        return null
+    }
+    if (preserveDraft || state.itemEditorOpen || state.splitEditorOpen) {
+        _uiState.update { it.copy(fx = it.fx.copy(message = UiText.res(R.string.expense_fx_save_draft_first))) }
+        return null
+    }
+    return binding to expense
 }
 
 private fun ExpenseEditViewModel.failFxReview(error: Throwable) {

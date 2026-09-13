@@ -25,6 +25,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso.closeSoftKeyboard
 import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.R
+import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.BudgetMonthlyDto
@@ -82,7 +83,20 @@ class PlanningFinancialRefreshRouteTest {
         compose.onNodeWithText("¥2,000").assertIsDisplayed()
         assertTrue("Returning must query the changed financial facts", transport.reads.size > readsBeforeLeaving)
         assertEquals(MainProductDestination.Domain(PrimaryDomain.Plans), harness.shell.activeDestination)
-        assertTrue(harness.fixture.stored().isEmpty())
+        val completed = completedExpenseCommands()
+        assertEquals(2, completed.size)
+        assertEquals(
+            setOf(PendingMutationType.PatchExpense.wireValue, PendingMutationType.ConfirmExpense.wireValue),
+            completed.map { it.type }.toSet(),
+        )
+        completed.forEach { row ->
+            assertEquals(PendingMutationStatus.Done.wireValue, row.status)
+            assertEquals("correction-ledger", row.ledgerId)
+            assertEquals(completed.first().ownerKey, row.ownerKey)
+            assertEquals(completed.first().targetId, row.targetId)
+            assertTrue(!row.idempotencyKey.isNullOrBlank())
+            assertTrue(!row.receiptJson.isNullOrBlank())
+        }
     }
 
     @Test fun restoredBudgetPageRefreshesItsSummaryAndKeepsTheOriginalDraftCurrencyAndOcc() {
@@ -105,16 +119,32 @@ class PlanningFinancialRefreshRouteTest {
         waitForText("¥4,400")
         compose.onNodeWithText("¥4,400").performScrollTo().assertIsDisplayed()
         field.performScrollTo().assertTextEquals("3000.00")
+        val completedBeforeBudget = completedExpenseCommands()
+        assertEquals(2, completedBeforeBudget.size)
         compose.onNodeWithText(context.getString(R.string.budget_editor_save)).performScrollTo().performClick()
-        compose.waitUntil(5_000) { runBlocking { harness.fixture.pendingDao.allRows().size == 1 } }
-        val row = runBlocking { harness.fixture.pendingDao.allRows().single() }
+        compose.waitUntil(5_000) {
+            runBlocking {
+                harness.fixture.pendingDao.allRows()
+                    .count { it.type == PendingMutationType.SaveMonthlyBudget.wireValue } == 1
+            }
+        }
+        val rows = runBlocking { harness.fixture.pendingDao.allRows() }
+        val row = rows.single { it.type == PendingMutationType.SaveMonthlyBudget.wireValue }
         val original = requireNotNull(OutboxAdapterGraph().budgetSaveAdapter.fromJson(row.payload))
-        assertEquals(PendingMutationType.SaveMonthlyBudget.wireValue, row.type)
         assertEquals(1L, row.expectedRowVersion)
         assertEquals("JPY", original.request.homeCurrencyCode)
         assertEquals(3000L, original.request.totalAmountCents)
         assertEquals(transport.reads.first(), original.month)
         assertTrue(!row.idempotencyKey.isNullOrBlank())
+        completedBeforeBudget.forEach { kept ->
+            val stillPresent = rows.single { it.id == kept.id }
+            assertEquals(kept.type, stillPresent.type)
+            assertEquals(kept.status, stillPresent.status)
+            assertEquals(kept.payload, stillPresent.payload)
+            assertEquals(kept.idempotencyKey, stillPresent.idempotencyKey)
+            assertEquals(kept.expectedRowVersion, stillPresent.expectedRowVersion)
+            assertEquals(kept.receiptJson, stillPresent.receiptJson)
+        }
     }
 
     @Test fun acceptedBackgroundCorrectionRefreshesTheRetainedPlanWithoutACompletionCallback() {
@@ -196,6 +226,12 @@ class PlanningFinancialRefreshRouteTest {
     private fun waitForText(text: String) {
         compose.waitUntil(5_000) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
     }
+
+    private fun completedExpenseCommands() = runBlocking { harness.fixture.pendingDao.allRows() }
+        .filter {
+            it.type == PendingMutationType.PatchExpense.wireValue ||
+                it.type == PendingMutationType.ConfirmExpense.wireValue
+        }
 }
 
 private class PlanningBudgetTransport {

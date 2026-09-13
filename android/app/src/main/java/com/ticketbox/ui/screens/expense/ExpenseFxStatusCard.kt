@@ -44,19 +44,28 @@ internal fun ExpenseFxStatusCard(
     val busy = editState.saving || editState.expenseLoading
     val actionsEnabled = !busy && !state.loading
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
-        if (showFx) {
-        Text(stringResource(expenseFxTaskStatusRes(state.task)), style = MaterialTheme.typography.titleSmall)
-        Text(stringResource(R.string.expense_fx_manual_recovery), style = MaterialTheme.typography.bodySmall)
-        state.message?.let { Text(it.asString(), color = MaterialTheme.colorScheme.error) }
-        TextButton(onClick = actions.onRefreshFx, enabled = actionsEnabled) {
-            Text(stringResource(R.string.expense_fx_refresh))
-        }
-        if (pendingNeedsFx(expense) && !editState.readOnly && (state.task == null || state.task.status in setOf("failed", "cancelled"))) {
-            TextButton(onClick = actions.onRetryFx, enabled = actionsEnabled) { Text(stringResource(R.string.expense_fx_retry)) }
-        }
-        }
+        if (showFx) ExpenseFxTaskStatus(expense, editState, actionsEnabled, actions)
         ExpenseReviewAction(actionsEnabled && (editState.commandRowIds.isEmpty() || editState.commandsCompleted),
             hasDraftChanges) { actions.onLoadFxReview(false) }
+    }
+}
+
+@Composable
+private fun ExpenseFxTaskStatus(
+    expense: Expense,
+    editState: ExpenseEditUiState,
+    actionsEnabled: Boolean,
+    actions: ExpenseEditPrimaryActions,
+) {
+    val state = editState.fx
+    Text(stringResource(expenseFxTaskStatusRes(state.task)), style = MaterialTheme.typography.titleSmall)
+    Text(stringResource(R.string.expense_fx_manual_recovery), style = MaterialTheme.typography.bodySmall)
+    state.message?.let { Text(it.asString(), color = MaterialTheme.colorScheme.error) }
+    TextButton(onClick = actions.onRefreshFx, enabled = actionsEnabled) {
+        Text(stringResource(R.string.expense_fx_refresh))
+    }
+    if (pendingNeedsFx(expense) && !editState.readOnly && (state.task == null || state.task.status in setOf("failed", "cancelled"))) {
+        TextButton(onClick = actions.onRetryFx, enabled = actionsEnabled) { Text(stringResource(R.string.expense_fx_retry)) }
     }
 }
 

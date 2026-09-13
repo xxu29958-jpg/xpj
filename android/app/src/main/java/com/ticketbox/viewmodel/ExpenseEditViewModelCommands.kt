@@ -7,6 +7,7 @@ import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.repository.ExpenseCommandAcceptance
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.PendingExpenseCommand
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
@@ -79,19 +80,47 @@ internal fun ExpenseEditViewModel.reconcileExpenseCommands() {
     if (observation.access?.binding != fxBinding || repository.captureDeferredLedgerBinding() != fxBinding) return
     val ids = uiState.value.commandRowIds
     if (ids.isEmpty()) return
-    val originals = observation.commands.filter { it.row.id in ids }
+    applyExpenseCommandProgress(observation.commands.filter { it.row.id in ids }, ids)
+}
+
+private fun ExpenseEditViewModel.applyExpenseCommandProgress(
+    originals: List<PendingExpenseCommand>,
+    ids: List<Long>,
+) {
+    val progress = expenseCommandProgress(originals, ids)
+    _uiState.update {
+        it.copy(
+            commandsCompleted = progress.complete,
+            done = it.done || progress.leavesEditor,
+            doneAdviceInputsChanged = it.doneAdviceInputsChanged || progress.confirmed,
+            message = UiText.res(progress.message),
+            messageTone = if (progress.failed) MessageTone.Danger else MessageTone.Info,
+        )
+    }
+}
+
+private data class ExpenseCommandProgress(
+    val complete: Boolean,
+    val failed: Boolean,
+    val leavesEditor: Boolean,
+    val confirmed: Boolean,
+    @StringRes val message: Int,
+)
+
+private fun expenseCommandProgress(originals: List<PendingExpenseCommand>, ids: List<Long>): ExpenseCommandProgress {
     val complete = originals.size == ids.size && originals.all { it.row.status == PendingMutationStatus.Done }
     val failed = originals.any { it.row.status in setOf(PendingMutationStatus.Failed, PendingMutationStatus.Conflict) }
-    val leavesEditor = complete && originals.any {
-        it.row.type == PendingMutationType.ConfirmExpense || it.row.type == PendingMutationType.RejectExpense
-    }
-    _uiState.update { it.copy(commandsCompleted = complete,
-        done = it.done || leavesEditor,
-        doneAdviceInputsChanged = it.doneAdviceInputsChanged ||
-            (complete && originals.any { command -> command.row.type == PendingMutationType.ConfirmExpense }),
-        message = UiText.res(when {
+    return ExpenseCommandProgress(
+        complete = complete,
+        failed = failed,
+        leavesEditor = complete && originals.any {
+            it.row.type == PendingMutationType.ConfirmExpense || it.row.type == PendingMutationType.RejectExpense
+        },
+        confirmed = complete && originals.any { it.row.type == PendingMutationType.ConfirmExpense },
+        message = when {
             complete -> R.string.expense_command_completed
             failed -> R.string.expense_command_needs_attention
             else -> R.string.expense_command_accepted
-        }), messageTone = if (failed) MessageTone.Danger else MessageTone.Info) }
+        },
+    )
 }

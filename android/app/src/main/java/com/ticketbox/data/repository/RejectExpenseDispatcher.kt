@@ -54,13 +54,7 @@ class RejectExpenseDispatcher(
         return try {
             // ADR-0042: replay carries the row's original intent-time key, so a
             // committed-but-unseen first attempt returns its original receipt.
-            val rejected = apiProvider(row).rejectExpense(expenseRef, request, idempotencyKey)
-            if (!validExpenseAcceptanceSnapshot(row, rejected)) {
-                return DispatchResult.Failure(EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW)
-            }
-            val receipt = expenseAcceptanceReceiptJson(rejected)
-            publishAcceptedExpense(rejected.id, rejected.rowVersion) { publishExpense(row.ledgerId, rejected) }
-                .copy(receiptJson = receipt)
+            publishRejected(row, apiProvider(row).rejectExpense(expenseRef, request, idempotencyKey))
         } catch (e: HttpException) {
             mapOutboxHttpException(e)
         } catch (e: IOException) {
@@ -72,4 +66,12 @@ class RejectExpenseDispatcher(
         }
     }
 
+    private suspend fun publishRejected(row: OutboxRow, rejected: ExpenseDto): DispatchResult {
+        if (!validExpenseAcceptanceSnapshot(row, rejected)) {
+            return DispatchResult.Failure(EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW)
+        }
+        val receipt = expenseAcceptanceReceiptJson(rejected)
+        return publishAcceptedExpense(rejected.id, rejected.rowVersion) { publishExpense(row.ledgerId, rejected) }
+            .copy(receiptJson = receipt)
+    }
 }
